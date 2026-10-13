@@ -198,6 +198,38 @@ class NotificationPushTest extends TestCase
         $this->assertSame('ezbizi_notifications', $channelOf('Trial ends tomorrow'));
     }
 
+    /**
+     * A push carries the id of the recipient's own bell row, so a tap on a
+     * phone opens exactly what that row opens (Bar, 2026-10-12).
+     *
+     * And with the bell OFF there is no row, so no `data` key at all — not an
+     * empty one: PHP's empty array encodes as JSON [] and FCM refuses
+     * `"data": []`, which would fail every push of a bell-off organization.
+     */
+    public function test_a_push_names_the_bell_row_a_tap_opens_and_omits_data_without_one(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Alpha');
+        $this->device($tenant, $tenant['admin']->id, 'token-phone');
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch('With a row', onlyTo: $tenant['admin']));
+        $row = $this->inTenant($tenant['org'], fn () => \App\Models\Notification::where('title', 'With a row')->firstOrFail());
+
+        $this->set($tenant, 'notifications.in_app_enabled', false);
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch('No row', onlyTo: $tenant['admin']));
+
+        $message = fn (string $title) => collect(Http::recorded())->map(fn ($pair) => $pair[0])
+            ->first(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['notification']['title'] === $title);
+
+        $this->assertSame(['notification_id' => $row->id], $message('With a row')['message']['data']);
+        $this->assertArrayNotHasKey('data', $message('No row')['message']);
+    }
+
     public function test_one_person_with_two_handsets_is_one_person_told(): void
     {
         Http::fake([

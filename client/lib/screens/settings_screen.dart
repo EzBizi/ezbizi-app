@@ -1538,9 +1538,12 @@ class _SettingRow extends StatelessWidget {
     // so the field says what is actually the case and takes a replacement.
     final sensitive = setting['is_sensitive'] == true;
 
-    // int / decimal / string.
+    // int / decimal / string. A string is often a sentence — AI Assistance's
+    // welcome message showed as "Choose an optio" in the 150px a number
+    // needs (UI audit, 2026-10-08) — so it gets the width of one, and on a
+    // phone the Flexible around the control keeps it on the screen.
     return SizedBox(
-      width: 150,
+      width: type == 'string' ? 320 : 150,
       child: _InlineField(
         // Keyed by value, so a save elsewhere or a scope switch rebuilds the
         // field instead of leaving the old text sitting in it.
@@ -1645,7 +1648,8 @@ class _InlineFieldState extends State<_InlineField> {
       controller: _controller,
       focusNode: _focus,
       enabled: widget.enabled,
-      textAlign: TextAlign.right,
+      // Numbers line up on the right; words read from the left.
+      textAlign: widget.numeric ? TextAlign.right : TextAlign.start,
       decoration: InputDecoration(
         isDense: true,
         hintText: widget.hint,

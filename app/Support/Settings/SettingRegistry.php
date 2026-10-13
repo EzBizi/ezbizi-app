@@ -77,6 +77,7 @@ class SettingRegistry
             'field' => ['Field',              $this->field()],
             'phone' => ['Communication',      $this->phone()],
             'leads' => ['Leads',              $this->leads()],
+            'scheduling' => ['Scheduling',         $this->scheduling()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -1031,6 +1032,37 @@ class SettingRegistry
                 editPermission: 'phone.edit',
                 help: 'A card with the caller and Accept or Ignore, which can be dragged out of '
                     .'the way. The strip at the top of the screen appears either way.',
+            ),
+        ];
+    }
+
+    /**
+     * Suggested availability (Jose, 2026-10-13: "the mile radius should be
+     * changed in settings as usual"). Enums, because TYPE_INT has no bounds and
+     * a 0-mile radius suggests nothing ever. Franchise-level allowed: a dense
+     * city and a spread-out region want different radii. Read by
+     * App\Support\Scheduling\NearbySuggestion.
+     */
+    private function scheduling(): array
+    {
+        $miles = [1, 2, 3, 5, 10, 15, 20, 25, 30];
+        $days = [7, 10, 14, 21, 30];
+
+        return [
+            new SettingDefinition(
+                key: 'scheduling.suggest_radius_miles', label: 'Suggested availability: nearby radius',
+                type: SettingDefinition::TYPE_ENUM, default: 30,
+                options: $miles,
+                optionLabels: array_combine(array_map('strval', $miles), array_map(fn ($m) => $m === 1 ? '1 mile' : "{$m} miles", $miles)),
+                help: 'How close a booked job must be, in a straight line, for Scheduling › Availability '
+                    .'to suggest the same day so a technician does both.',
+            ),
+            new SettingDefinition(
+                key: 'scheduling.suggest_days', label: 'Suggested availability: look ahead',
+                type: SettingDefinition::TYPE_ENUM, default: 14,
+                options: $days,
+                optionLabels: array_combine(array_map('strval', $days), array_map(fn ($d) => "{$d} days", $days)),
+                help: 'How many days from tomorrow a suggestion may look for a day with nearby work.',
             ),
         ];
     }

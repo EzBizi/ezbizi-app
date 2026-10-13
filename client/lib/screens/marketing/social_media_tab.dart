@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:async';
 
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -59,13 +60,20 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// than drawn as progress forever.
   static const int _pollLimit = 20;
 
-  /// Posts · Accounts, by KEY — each is grantable on its own since
-  /// 2026-09-29, and an index would point at a different pane depending on
+  /// The panes, by KEY: an index would point at a different pane depending on
   /// which ones this role is shown.
-  String _tab = 'posts';
+  ///
+  /// One row since UI queue 76 (Jose, 2026-10-12, "2 definitely"): what was
+  /// Posts with Compose / Calendar inside it is three tabs beside Accounts,
+  /// each its own grant (`marketing.dashboard.view` and so on). The migration
+  /// that retired `marketing.posts.view` gave its holders all three, so no
+  /// role lost a pane.
+  String _tab = 'dashboard';
 
   static const _panes = [
-    ('posts', 'Posts', Icons.edit_outlined),
+    ('dashboard', 'Dashboard', Icons.insights_outlined),
+    ('compose', 'Compose', Icons.edit_outlined),
+    ('calendar', 'Calendar', Icons.calendar_month_outlined),
     ('accounts', 'Accounts', Icons.link_outlined),
     ('qr_codes', 'QR Codes', Icons.qr_code_2_outlined),
   ];
@@ -73,6 +81,11 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// Absent `/me` answers NO.
   bool _mayOpen(String pane) =>
       widget.session.me?.permissions.contains('marketing.$pane.view') ?? false;
+
+  /// Each of the three post panes reads the posts list; Accounts and QR Codes
+  /// do not, and are not made to ask for it.
+  bool get _mayReadPosts =>
+      _mayOpen('dashboard') || _mayOpen('compose') || _mayOpen('calendar');
 
   List<(String, String, IconData)> get _shownPanes =>
       [for (final pane in _panes) if (_mayOpen(pane.$1)) pane];
@@ -101,11 +114,6 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
 
   /// The calendar or the agenda, to scroll to when the layout is stacked.
   final GlobalKey _calendarKey = GlobalKey();
-
-  /// Compose or Calendar, the switch at the top of Posts (Mia, 2026-10-02,
-  /// layout A): the calendars moved behind it so writing a post and seeing
-  /// how it will look share the screen.
-  bool _calendar = false;
 
   /// The Posts tiles as the server counted them, across every post this view
   /// can see — the list itself is the twenty newest. Null from a server that
@@ -139,7 +147,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     final connections = await widget.api.get('/social/connections');
     // Not asked for without the Posts pane: the server would refuse it, and a
     // request made only to be refused is noise in every log that reads 403s.
-    final posts = _mayOpen('posts') ? await widget.api.get('/social/posts') : null;
+    final posts = _mayReadPosts ? await widget.api.get('/social/posts') : null;
     if (!mounted) return;
 
     setState(() {
@@ -176,7 +184,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// Just the Sent list. Used by the poll below, which has no business
   /// re-reading the catalogue and the connections every few seconds.
   Future<void> _loadPosts() async {
-    if (!_mayOpen('posts')) return;
+    if (!_mayReadPosts) return;
 
     final posts = await widget.api.get('/social/posts');
     if (!mounted || !posts.ok) return;
@@ -193,7 +201,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// so filtering those twenty here would hide the older ones the tile counts.
   Future<void> _loadFiltered() async {
     final filter = _filter;
-    if (filter == null || !_mayOpen('posts')) return;
+    if (filter == null || !_mayReadPosts) return;
 
     final posts = await widget.api.get('/social/posts', {'status': filter});
     if (!mounted || filter != _filter || !posts.ok) return;
@@ -302,7 +310,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     final when = _landing?.when;
 
     setState(() {
-      _calendar = true;
+      _tab = 'calendar';
       if (when != null) _focusDay = when;
       if (leave) _justPosted = null;
     });
@@ -361,12 +369,12 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       )?.showSnackBar(SnackBar(content: Text(response.reason)));
     }
 
-    // Back to Compose when it came from the calendar: that is where the
+    // To Compose, from the dashboard or the calendar: that is where the
     // result is drawn.
     setState(() {
       _justPosted = post.id;
       _gaveUpWaiting = false;
-      _calendar = false;
+      _tab = 'compose';
     });
 
     await _load();
@@ -442,6 +450,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
+          key: const ValueKey('tour-marketing-social-panes'),
           level: TabLevel.secondary,
           labels: [for (final pane in shown) (pane.$2, pane.$3)],
           selected: shown.indexWhere((p) => p.$1 == current),
@@ -451,7 +460,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         Expanded(
           child: current == 'qr_codes'
               ? QrCodesTab(api: widget.api, session: widget.session)
-              : current == 'posts'
+              : current != 'accounts'
               ? _PostsPane(
                   api: widget.api,
                   session: widget.session,
@@ -462,8 +471,13 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   tiles: _tileCounts,
                   filter: _filter,
                   onFilter: _pickFilter,
-                  calendar: _calendar,
-                  onCalendar: (on) => setState(() => _calendar = on),
+                  view: current,
+                  onNew: _mayOpen('compose')
+                      ? () => setState(() => _tab = 'compose')
+                      : null,
+                  onAccounts: _mayOpen('accounts')
+                      ? () => setState(() => _tab = 'accounts')
+                      : null,
                   onRetryPost: _canPost ? _retryPost : null,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
@@ -584,8 +598,7 @@ class _PostsPane extends StatelessWidget {
     required this.tiles,
     required this.filter,
     required this.onFilter,
-    required this.calendar,
-    required this.onCalendar,
+    required this.view,
     required this.stillWaiting,
     required this.pickMedia,
     required this.landing,
@@ -599,6 +612,8 @@ class _PostsPane extends StatelessWidget {
     required this.onDone,
     required this.onOpen,
     required this.onConnect,
+    this.onNew,
+    this.onAccounts,
     this.onRetry,
     this.onRetryPost,
   });
@@ -611,15 +626,20 @@ class _PostsPane extends StatelessWidget {
   /// Every post the list carries, for the calendars.
   final List<_SentPost> posts;
 
-  /// The table's rows: [posts], or the picked tile's.
+  /// The timeline's posts: [posts], or the picked tile's.
   final List<_SentPost> rows;
   final Map<String, int> tiles;
   final String? filter;
   final ValueChanged<String?> onFilter;
 
-  /// Calendar showing rather than Compose.
-  final bool calendar;
-  final ValueChanged<bool> onCalendar;
+  /// The tab this is drawn for: `dashboard`, `compose` or `calendar`.
+  final String view;
+
+  /// The dashboard's New post: the Compose tab, or null without it.
+  final VoidCallback? onNew;
+
+  /// The Accounts tab, or null when this role is not shown it.
+  final VoidCallback? onAccounts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
   final _SentPost? landing;
@@ -627,7 +647,7 @@ class _PostsPane extends StatelessWidget {
   /// Try again on a failed account; null without the right to post.
   final void Function(_SentPost, _SentTarget)? onRetry;
 
-  /// The table's Retry; null without the right to post.
+  /// The timeline's Retry; null without the right to post.
   final void Function(_SentPost)? onRetryPost;
   final String? outlined;
   final DateTime? focusDay;
@@ -654,7 +674,9 @@ class _PostsPane extends StatelessWidget {
         final stack = constraints.maxWidth < _stackBelow;
         final landing = this.landing;
 
-        if (phone && landing != null) {
+        // Only on Compose: the tabs are above this pane now, and a tap on
+        // Dashboard must open the dashboard, not the post still landing.
+        if (phone && landing != null && view == 'compose') {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -674,38 +696,35 @@ class _PostsPane extends StatelessWidget {
           );
         }
 
-        final compose = SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ComposeColumn(
-                api: api,
-                session: session,
-                viewName: viewName,
-                connections: connections,
-                stillWaiting: stillWaiting,
-                pickMedia: pickMedia,
-                landing: landing,
-                formats: formats,
-                onSent: onSent,
-                onWriteAnother: onWriteAnother,
-                onSeeCalendar: onSeeCalendar,
-                onRetry: onRetry,
-              ),
-              const SizedBox(height: 20),
-              _PostsTable(
-                rows: rows,
-                tiles: tiles,
-                filter: filter,
-                onFilter: onFilter,
-                stillWaiting: stillWaiting,
-                formats: formats,
-                onOpen: onOpen,
-                onRetry: onRetryPost,
-              ),
-            ],
-          ),
+        final compose = _ComposeColumn(
+          api: api,
+          session: session,
+          viewName: viewName,
+          connections: connections,
+          stillWaiting: stillWaiting,
+          pickMedia: pickMedia,
+          landing: landing,
+          formats: formats,
+          onSent: onSent,
+          onWriteAnother: onWriteAnother,
+          onSeeCalendar: onSeeCalendar,
+          onRetry: onRetry,
+        );
+
+        final dashboard = _PostsDashboard(
+          viewName: viewName,
+          connections: connections,
+          rows: rows,
+          tiles: tiles,
+          filter: filter,
+          onFilter: onFilter,
+          stillWaiting: stillWaiting,
+          formats: formats,
+          onOpen: onOpen,
+          onNew: onNew,
+          onConnect: onConnect,
+          onAccounts: onAccounts,
+          onRetry: onRetryPost,
         );
 
         final Widget calendarView;
@@ -749,102 +768,509 @@ class _PostsPane extends StatelessWidget {
           );
         }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _PostsBar(
-                calendar: calendar,
-                onCalendar: onCalendar,
-                viewName: viewName,
-                connections: connections,
-                onConnect: onConnect,
-              ),
-            ),
-            // Both kept: switching to look at the calendar must not throw
-            // away a post half written.
-            Expanded(
-              child: IndexedStack(
-                index: calendar ? 1 : 0,
-                sizing: StackFit.expand,
-                children: [compose, calendarView],
-              ),
-            ),
-          ],
+        // All three kept: looking at the dashboard or the calendar must not
+        // throw away a post half written.
+        return IndexedStack(
+          index: switch (view) {
+            'compose' => 1,
+            'calendar' => 2,
+            _ => 0,
+          },
+          sizing: StackFit.expand,
+          children: [dashboard, compose, calendarView],
         );
       },
     );
   }
 }
 
-/// Compose / Calendar, and the pages this view may post as.
+/// Posts at a glance (UI queue 76, Jose's pick 2): the tiles, every post on
+/// one timeline with each account's answer, and the accounts beside it.
 ///
-/// The Pages card, compacted to one line (Mia, 2026-10-02, layout A): how
-/// many are connected, each one's mark with its name on hover, and Connect.
-/// The full list with Disconnect is the Accounts pane.
-class _PostsBar extends StatelessWidget {
-  const _PostsBar({
-    required this.calendar,
-    required this.onCalendar,
+/// Every number is one EzBizi holds. No likes, reach or followers: the Meta
+/// review told Meta that EzBizi does not read them
+/// (docs/meta-app-review-submission.md), so they need a new review first.
+class _PostsDashboard extends StatelessWidget {
+  const _PostsDashboard({
     required this.viewName,
     required this.connections,
+    required this.rows,
+    required this.tiles,
+    required this.filter,
+    required this.onFilter,
+    required this.stillWaiting,
+    required this.formats,
+    required this.onOpen,
     required this.onConnect,
+    this.onNew,
+    this.onAccounts,
+    this.onRetry,
   });
 
-  final bool calendar;
-  final ValueChanged<bool> onCalendar;
   final String viewName;
   final List<_SocialConnection> connections;
+  final List<_SentPost> rows;
+  final Map<String, int> tiles;
+  final String? filter;
+  final ValueChanged<String?> onFilter;
+
+  /// The queue stopped answering before anything left `queued`. Said out loud
+  /// rather than drawn as an indefinite wait — see `_watchPending`.
+  final bool stillWaiting;
+  final DisplayFormats formats;
+  final void Function(_SentPost) onOpen;
+  final VoidCallback? onNew;
   final VoidCallback onConnect;
+  final VoidCallback? onAccounts;
+
+  /// Null without the right to post: a failure then opens, nothing more.
+  final void Function(_SentPost)? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final timeline = _timeline(context, phone: box.maxWidth < 600);
+        final accounts = _accounts(context);
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (stillWaiting) ...[
+              const DashboardNote(
+                'Something is still waiting to send and the queue has stopped '
+                'answering. Nothing is lost — but nothing is going out either '
+                'until somebody looks at the send queue.',
+              ),
+              const SizedBox(height: 12),
+            ],
+            _tiles(),
+            const SizedBox(height: 12),
+            if (box.maxWidth >= 1000)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: timeline),
+                  const SizedBox(width: 12),
+                  SizedBox(width: 340, child: accounts),
+                ],
+              )
+            else ...[
+              timeline,
+              const SizedBox(height: 12),
+              accounts,
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tiles() {
+    final count = connections.length;
+    final cannot = connections.where((c) => !c.canPublish).length;
+
+    return FilterTiles(
+      key: const ValueKey('tour-marketing-social-tiles'),
+      prefix: 'social-posts',
+      picked: filter,
+      onPick: onFilter,
+      tiles: [
+        FilterTile(
+          key: 'scheduled',
+          label: 'Scheduled',
+          count: tiles['scheduled'],
+          note: 'waiting for their time',
+          tone: Tone.info,
+        ),
+        FilterTile(
+          key: 'sent',
+          label: 'Sent',
+          count: tiles['sent'],
+          note: 'went out',
+          tone: Tone.ok,
+        ),
+        FilterTile(
+          key: 'failed',
+          label: 'Failed',
+          count: tiles['failed'],
+          note: 'an account refused it',
+          tone: Tone.bad,
+        ),
+      ],
+      facts: [
+        FactTile(
+          key: const Key('social-posts-fact-pages'),
+          label: 'Pages',
+          value: '$count',
+          note: count == 0
+              ? 'none connected yet'
+              : cannot > 0
+              ? '$cannot cannot post yet'
+              : count == 1
+              ? 'it can post'
+              : 'all $count can post',
+        ),
+      ],
+    );
+  }
+
+  /// What is coming, then each day's posts, newest day first.
+  Widget _timeline(BuildContext context, {required bool phone}) {
+    int byTime(_SentPost a, _SentPost b) =>
+        (a.when ?? DateTime(0)).compareTo(b.when ?? DateTime(0));
+
+    final ahead = [
+      for (final post in rows)
+        if (post.tile == 'scheduled') post,
+    ]..sort(byTime);
+    final byDay = <DateTime, List<_SentPost>>{};
+    for (final post in rows) {
+      if (post.tile == 'scheduled') continue;
+      final when = post.when ?? DateTime(0);
+      byDay
+          .putIfAbsent(DateTime(when.year, when.month, when.day), () => [])
+          .add(post);
+    }
+    for (final list in byDay.values) {
+      list.sort((a, b) => byTime(b, a));
+    }
+    final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    String heading(DateTime day) => day.year == 0
+        ? 'Earlier'
+        : switch (_daysFromToday(day)) {
+            0 => 'Today',
+            -1 => 'Yesterday',
+            _ => _shortDay(day),
+          };
+
+    return DashboardCard(
+      title: 'Timeline',
+      icon: Icons.timeline,
+      controls: onNew == null
+          ? null
+          : FilledButton.icon(
+              key: const ValueKey('tour-marketing-new-post'),
+              onPressed: onNew,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New post'),
+            ),
+      child: rows.isEmpty
+          ? DashboardNote(
+              filter == null
+                  ? 'Nothing posted or scheduled yet. What you publish is '
+                        'listed here.'
+                  : 'No posts here.',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (ahead.isNotEmpty) ...[
+                  _DayHeading('Coming up'),
+                  for (final post in ahead) _row(post, phone: phone),
+                ],
+                for (final day in days) ...[
+                  _DayHeading(heading(day)),
+                  for (final post in byDay[day]!) _row(post, phone: phone),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _row(_SentPost post, {required bool phone}) {
+    final retry = onRetry;
+    final retryable =
+        retry != null &&
+        post.targets.any((t) => t.status == 'failed' && t.id != null);
+
+    return _TimelineRow(
+      post: post,
+      formats: formats,
+      phone: phone,
+      onOpen: () => onOpen(post),
+      onRetry: retryable ? () => retry(post) : null,
+    );
+  }
+
+  /// Each page: whether it can post, and why not when it cannot.
+  Widget _accounts(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = connections.length;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return DashboardCard(
+      title: 'Accounts',
+      icon: Icons.link_outlined,
+      controls: TextButton(onPressed: onConnect, child: const Text('Connect')),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            count == 0
+                ? 'No pages connected in $viewName yet'
+                : count == 1
+                ? '1 page connected'
+                : '$count pages connected',
+            style: muted,
+          ),
+          for (final page in connections)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SocialNetworkMark(network: page.provider, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          page.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          page.canPublish || page.cannotPublishBecause == null
+                              ? page.providerLabel
+                              : '${page.providerLabel} · '
+                                    '${page.cannotPublishBecause}',
+                          style: muted,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  page.canPublish
+                      ? const StatusPill('Can post', tone: Tone.ok)
+                      : const StatusPill('Cannot post', tone: Tone.neutral),
+                ],
+              ),
+            ),
+          if (onAccounts != null && count > 0) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: onAccounts,
+                child: const Text('Manage accounts'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A post's pill: "Failed", or "1 failed" when others took it.
+(String, Tone) _statusOf(_SentPost post) {
+  final failed = post.targets.where((t) => t.status == 'failed').length;
+  if (failed > 0) {
+    final label = failed == post.targets.length ? 'Failed' : '$failed failed';
+    return (label, Tone.bad);
+  }
+
+  return switch (post.tone) {
+    Tone.neutral => ('Sending', Tone.neutral),
+    Tone.info => ('Scheduled', Tone.info),
+    _ => ('Sent', Tone.ok),
+  };
+}
+
+class _DayHeading extends StatelessWidget {
+  const _DayHeading(this.text);
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final count = connections.length;
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      alignment: WrapAlignment.spaceBetween,
-      children: [
-        Wrap(
-          spacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text('Compose'),
-              selected: !calendar,
-              onSelected: (_) => onCalendar(false),
-            ),
-            ChoiceChip(
-              label: const Text('Calendar'),
-              selected: calendar,
-              onSelected: (_) => onCalendar(true),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 2),
+      child: Text(
+        text.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          letterSpacing: 0.8,
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
-        Wrap(
-          spacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+      ),
+    );
+  }
+}
+
+/// One post on the timeline: when, its words, and every account's answer as
+/// a dot — a refusal in the network's own words, two lines of it, under the
+/// accounts that took it.
+class _TimelineRow extends StatelessWidget {
+  const _TimelineRow({
+    required this.post,
+    required this.formats,
+    required this.phone,
+    required this.onOpen,
+    this.onRetry,
+  });
+
+  final _SentPost post;
+  final DisplayFormats formats;
+
+  /// The time above the words rather than in a column of its own.
+  final bool phone;
+  final VoidCallback onOpen;
+  final VoidCallback? onRetry;
+
+  static Tone _toneOf(_SentTarget target) => switch (target.status) {
+    'failed' => Tone.bad,
+    'scheduled' => Tone.info,
+    'queued' => Tone.neutral,
+    _ => Tone.ok,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final when = post.when;
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final bad = ToneColours.of(context, Tone.bad).ink;
+    final failed = [
+      for (final t in post.targets)
+        if (t.status == 'failed') t,
+    ];
+    String name(_SentTarget t) => t.account.isEmpty ? t.providerLabel : t.account;
+
+    Widget dot(Tone tone) => Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: ToneColours.of(context, tone).ink,
+        shape: BoxShape.circle,
+      ),
+    );
+
+    // A promise is said as it was made: the wall time the server filed and
+    // the clock it is on, never re-read through this device's own.
+    final wall = post.scheduledFor;
+    final String time;
+    if (wall != null && post.tile == 'scheduled') {
+      time = 'Goes out $wall${clockSuffix(post.scheduledTimezone)}';
+    } else if (when == null) {
+      time = '';
+    } else {
+      time = formats.formatTime(when.hour, when.minute);
+    }
+    final (status, tone) = _statusOf(post);
+
+    return InkWell(
+      key: ValueKey('social-post-${post.id}'),
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              count == 0
-                  ? 'No pages connected in $viewName yet'
-                  : count == 1
-                  ? '1 page connected'
-                  : '$count pages connected',
-              style: theme.textTheme.bodySmall,
-            ),
-            for (final page in connections)
-              Tooltip(
-                message: '${page.displayName} · ${page.providerLabel}',
-                child: SocialNetworkMark(network: page.provider, size: 16),
+            if (!phone) ...[
+              SizedBox(
+                width: 132,
+                child: Text(time, maxLines: 3, style: small),
               ),
-            TextButton(onPressed: onConnect, child: const Text('Connect')),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (phone && time.isNotEmpty) Text(time, style: small),
+                  Text(
+                    post.preview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      // The word as well as the dots: a colour alone says
+                      // nothing to somebody who cannot tell red from green.
+                      StatusPill(status, tone: tone),
+                      for (final target in post.targets)
+                        if (target.status != 'failed')
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              dot(_toneOf(target)),
+                              const SizedBox(width: 5),
+                              Text(name(target), style: small),
+                            ],
+                          ),
+                    ],
+                  ),
+                  // The failure sentence is the server's. A status word on
+                  // its own says something is wrong and nothing about what to
+                  // do; Open shows the rest of a long one.
+                  for (final target in failed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5),
+                            child: dot(Tone.bad),
+                          ),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              target.failure == null
+                                  ? '${name(target)} · refused it'
+                                  : '${name(target)} · ${target.failure}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: bad,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (onRetry != null)
+              OutlinedButton(
+                key: ValueKey('social-retry-${post.id}'),
+                onPressed: onRetry,
+                child: const Text('Retry'),
+              )
+            else
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
           ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -922,6 +1348,11 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   bool _sending = false;
   String? _error;
 
+  /// A file is held over the composer (UI queue 76): the pane says where it
+  /// will land. [_dropRefused] is why the last drop attached nothing.
+  bool _dropping = false;
+  String? _dropRefused;
+
   /// Object URL for the picked video, and the player over it. Both live only
   /// as long as the attachment does — see `_clearMedia`.
   String? _mediaUrl;
@@ -930,10 +1361,6 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   /// Wall clock in this view's timezone, `YYYY-MM-DD HH:MM`, empty for "now".
   final TextEditingController _when = TextEditingController();
   bool _scheduling = false;
-
-  /// The network the preview draws; the first ticked one when unset or
-  /// unticked since.
-  String? _previewNet;
 
   /// The ticked accounts, one per network: the counter and the preview are
   /// about the network's rules, which two pages on it share.
@@ -1101,13 +1528,17 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     );
   }
 
-  Future<void> _attach() async {
-    final picked = await widget.pickMedia();
+  /// Attach what was picked, or [dropped] onto the composer.
+  Future<void> _attach({PickedBytes? dropped}) async {
+    final picked = dropped ?? await widget.pickMedia();
     if (picked == null || !mounted) return;
 
     _releaseMedia();
 
-    setState(() => _media = picked);
+    setState(() {
+      _media = picked;
+      _dropRefused = null;
+    });
 
     if (_looksLikeImage(picked.name)) return;
 
@@ -1239,7 +1670,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   Widget build(BuildContext context) {
     final landing = widget.landing;
     if (landing != null) {
-      return DashboardCard(
+      final outcome = DashboardCard(
         title: 'New post',
         icon: Icons.edit_outlined,
         child: _PostOutcome(
@@ -1254,6 +1685,10 @@ class _ComposeColumnState extends State<_ComposeColumn> {
               ? null
               : (target) => widget.onRetry!(landing, target),
         ),
+      );
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: outcome,
       );
     }
 
@@ -1351,8 +1786,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           TextField(
             controller: _body,
             enabled: !_sending,
-            minLines: 5,
-            maxLines: 10,
+            minLines: 8,
+            maxLines: 16,
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               hintText: 'What should go out?',
@@ -1379,35 +1814,66 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           const SizedBox(height: 14),
           label('When'),
           _scheduleRow(context),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Refused(
-              reason: refusal,
-              child: FilledButton(
-                onPressed: refusal == null ? _publish : null,
-                child: Text(_sendLabel),
-              ),
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            DashboardNote(_error!),
-          ],
         ],
       ),
     );
 
     final preview = _PreviewCard(
       networks: networks,
-      picked: _previewNet,
-      onPick: (provider) => setState(() => _previewNet = provider),
       body: _words,
       media: _media,
       when: _scheduling && when.isNotEmpty ? 'Scheduled $when' : 'Now',
     );
 
-    return LayoutBuilder(
+    // Publish stays in sight however long the post (UI queue 76): the bar
+    // under the scrolling form says where it goes and when, beside the button.
+    final picked = _picked.length;
+    final bar = DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_error != null) ...[
+              DashboardNote(_error!),
+              const SizedBox(height: 8),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    picked == 0
+                        ? 'No account ticked yet'
+                        : '${picked == 1 ? 'Going to 1 account' : 'Going to $picked accounts'}'
+                              '${_scheduling && when.isNotEmpty ? ' · $when' : ' · now'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Refused(
+                  reason: refusal,
+                  child: FilledButton(
+                    onPressed: refusal == null ? _publish : null,
+                    child: Text(_sendLabel),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final form = LayoutBuilder(
       builder: (context, box) {
         if (box.maxWidth < _PostsPane._stackBelow) {
           return Column(
@@ -1419,12 +1885,65 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(flex: 3, child: composer),
+            Expanded(flex: 4, child: composer),
             const SizedBox(width: 12),
-            Expanded(flex: 2, child: preview),
+            Expanded(flex: 5, child: preview),
           ],
         );
       },
+    );
+
+    final pane = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: form,
+          ),
+        ),
+        bar,
+      ],
+    );
+
+    // A picture or video dropped anywhere on the composer attaches as Attach
+    // does, the way Suggestions takes files (UI queue 76).
+    return DropTarget(
+      enable: !_sending,
+      onDragEntered: (_) => setState(() => _dropping = true),
+      onDragExited: (_) => setState(() => _dropping = false),
+      onDragDone: (details) => _drop(details.files),
+      child: Stack(
+        children: [
+          Positioned.fill(child: pane),
+          if (_dropping)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  key: const Key('social-drop-hint'),
+                  margin: const EdgeInsets.all(12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withValues(
+                      alpha: 0.85,
+                    ),
+                    border: Border.all(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    'Drop a picture or video to attach it',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1461,17 +1980,58 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     );
   }
 
+  /// The first picture or video of a drop, attached the way Attach does: a
+  /// post carries one file, so the rest are not taken.
+  Future<void> _drop(List<DropItem> items) async {
+    setState(() => _dropping = false);
+
+    for (final item in items) {
+      if (item is DropItemDirectory) continue;
+      if (!_looksLikeImage(item.name) && !_looksLikeVideo(item.name)) continue;
+
+      final bytes = await item.readAsBytes();
+      if (!mounted) return;
+
+      await _attach(dropped: PickedBytes(item.name, bytes));
+      return;
+    }
+
+    setState(() => _dropRefused = 'Only a picture or a video can be attached.');
+  }
+
   Widget _attachment(BuildContext context) {
     final media = _media;
+    final theme = Theme.of(context);
 
     if (media == null) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: _sending ? null : _attach,
-          icon: const Icon(Icons.image_outlined, size: 18),
-          label: const Text('Attach a picture or video'),
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          OutlinedButton.icon(
+            onPressed: _sending ? null : _attach,
+            icon: const Icon(Icons.image_outlined, size: 18),
+            label: const Text('Attach a picture or video'),
+          ),
+          // Not on a phone, where nothing is dragged.
+          if (MediaQuery.sizeOf(context).width >= 600) ...[
+            const SizedBox(height: 4),
+            Text(
+              'or drag one onto this page',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          if (_dropRefused != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _dropRefused!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: ToneColours.of(context, Tone.bad).ink,
+              ),
+            ),
+          ],
+        ],
       );
     }
 
@@ -1619,6 +2179,13 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     );
   }
 
+  static bool _looksLikeVideo(String name) => const [
+    'mp4',
+    'mov',
+    'webm',
+    'm4v',
+  ].contains(name.toLowerCase().split('.').last);
+
   static bool _looksLikeImage(String name) {
     final ext = name.toLowerCase().split('.').last;
     return const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif']
@@ -1639,8 +2206,6 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 class _PreviewCard extends StatelessWidget {
   const _PreviewCard({
     required this.networks,
-    required this.picked,
-    required this.onPick,
     required this.body,
     required this.media,
     required this.when,
@@ -1648,62 +2213,153 @@ class _PreviewCard extends StatelessWidget {
 
   /// One ticked account per network.
   final List<_SocialConnection> networks;
-  final String? picked;
-  final ValueChanged<String> onPick;
   final String body;
   final PickedBytes? media;
   final String when;
 
   @override
   Widget build(BuildContext context) {
-    final current = networks.isEmpty
-        ? null
-        : networks.firstWhere(
-            (n) => n.provider == picked,
-            orElse: () => networks.first,
-          );
+    Widget likeness(_SocialConnection network) => _PostLikeness(
+      account: network,
+      body: body,
+      media: media,
+      when: when,
+    );
 
     return DashboardCard(
+      // Every ticked network at once (UI queue 76, Jose's pick 2), so the one
+      // that cuts the words short is seen without clicking through the rest.
       title: 'How it will look',
       icon: Icons.visibility_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (current == null)
+          if (networks.isEmpty)
             const DashboardNote(
               'Tick an account to see the post the way it will look there.',
             )
-          else ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final network in networks)
-                  ChoiceChip(
-                    key: ValueKey('social-preview-${network.provider}'),
-                    showCheckmark: false,
-                    avatar: SocialNetworkMark(
-                      network: network.provider,
-                      size: 16,
-                    ),
-                    label: Text(network.providerLabel),
-                    selected: network == current,
-                    onSelected: (_) => onPick(network.provider),
-                  ),
-              ],
+          else
+            LayoutBuilder(
+              builder: (context, box) {
+                // A phone swipes between them: side by side, each would be
+                // too narrow to read.
+                if (box.maxWidth < 360 && networks.length > 1) {
+                  return _PreviewPager(
+                    children: [for (final n in networks) likeness(n)],
+                  );
+                }
+
+                const gap = 10.0;
+                final across = (box.maxWidth / 220).floor().clamp(
+                  1,
+                  networks.length.clamp(1, 3),
+                );
+                final width = (box.maxWidth - gap * (across - 1)) / across;
+
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (final network in networks)
+                      SizedBox(width: width, child: likeness(network)),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 12),
-            _PostLikeness(
-              account: current,
-              body: body,
-              media: media,
-              when: when,
-            ),
-          ],
           const SizedBox(height: 10),
           const DashboardNote(
             'A close likeness drawn here; each network has the last word on '
             'how it looks.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Likenesses a thumb swipes through, one to a screen, with a dot for each.
+class _PreviewPager extends StatefulWidget {
+  const _PreviewPager({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  State<_PreviewPager> createState() => _PreviewPagerState();
+}
+
+class _PreviewPagerState extends State<_PreviewPager> {
+  final ScrollController _scroll = ScrollController();
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      final width = _scroll.position.viewportDimension;
+      final page = width == 0 ? 0 : (_scroll.offset / width).round();
+      if (page != _page) setState(() => _page = page);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Not a PageView: that needs a height, and a likeness is as tall as
+          // its words and picture make it.
+          SingleChildScrollView(
+            key: const ValueKey('social-preview-pager'),
+            controller: _scroll,
+            scrollDirection: Axis.horizontal,
+            physics: const PageScrollPhysics(),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final child in widget.children)
+                  SizedBox(width: box.maxWidth, child: child),
+              ],
+            ),
+          ),
+          const SizedBox(height: 2),
+          // A dot is also a way there: a mouse cannot swipe a Flutter
+          // scroller on the web, and a narrow desktop window lands here too.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 0; i < widget.children.length; i++)
+                GestureDetector(
+                  key: ValueKey('social-preview-dot-$i'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _scroll.animateTo(
+                    i * box.maxWidth,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOut,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _page
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.outlineVariant,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -1873,206 +2529,6 @@ class _PostLikeness extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Every post, under tiles that count and filter it (Mia, 2026-10-02,
-/// layout A) — what was the "Sent" receipt under the composer.
-///
-/// The tiles are the server's counts across everything this view can see;
-/// the rows are the twenty newest, or the picked tile's twenty newest.
-class _PostsTable extends StatelessWidget {
-  const _PostsTable({
-    required this.rows,
-    required this.tiles,
-    required this.filter,
-    required this.onFilter,
-    required this.stillWaiting,
-    required this.formats,
-    required this.onOpen,
-    this.onRetry,
-  });
-
-  final List<_SentPost> rows;
-  final Map<String, int> tiles;
-  final String? filter;
-  final ValueChanged<String?> onFilter;
-
-  /// The queue stopped answering before anything left `queued`. Said out loud
-  /// rather than drawn as an indefinite wait — see `_watchPending`.
-  final bool stillWaiting;
-  final DisplayFormats formats;
-  final void Function(_SentPost) onOpen;
-
-  /// Null without the right to post: a failure then offers Open only.
-  final void Function(_SentPost)? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Posts', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 10),
-        if (stillWaiting) ...[
-          const DashboardNote(
-            'Something is still waiting to send and the queue has stopped '
-            'answering. Nothing is lost — but nothing is going out either '
-            'until somebody looks at the send queue.',
-          ),
-          const SizedBox(height: 10),
-        ],
-        FilterTiles(
-          prefix: 'social-posts',
-          picked: filter,
-          onPick: onFilter,
-          tiles: [
-            FilterTile(
-              key: 'scheduled',
-              label: 'Scheduled',
-              count: tiles['scheduled'],
-              note: 'waiting for their time',
-              tone: Tone.info,
-            ),
-            FilterTile(
-              key: 'sent',
-              label: 'Sent',
-              count: tiles['sent'],
-              note: 'went out',
-              tone: Tone.ok,
-            ),
-            FilterTile(
-              key: 'failed',
-              label: 'Failed',
-              count: tiles['failed'],
-              note: 'an account refused it',
-              tone: Tone.bad,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (rows.isEmpty)
-          DashboardNote(
-            filter == null
-                ? 'Nothing posted or scheduled yet. What you publish is '
-                      'listed here.'
-                : 'No posts here.',
-          )
-        else
-          ListTable(
-            columns: const [
-              ListColumn('Post', flex: 5),
-              ListColumn('Accounts', flex: 2),
-              ListColumn('When', flex: 3),
-              ListColumn('Status', flex: 2),
-              ListColumn('', flex: 2, end: true),
-            ],
-            rowKey: (i) => ValueKey('social-post-${rows[i].id}'),
-            onTap: (i) => onOpen(rows[i]),
-            rows: [for (final post in rows) _cells(context, post)],
-          ),
-      ],
-    );
-  }
-
-  List<Widget> _cells(BuildContext context, _SentPost post) {
-    final theme = Theme.of(context);
-    final bad = ToneColours.of(context, Tone.bad).ink;
-    final (status, tone) = _statusOf(post);
-    final failed = [
-      for (final t in post.targets)
-        if (t.status == 'failed') t,
-    ];
-    final networks = <String, List<String>>{};
-    for (final t in post.targets) {
-      final provider = t.provider;
-      if (provider == null) continue;
-      networks.putIfAbsent(provider, () => []).add(t.account);
-    }
-    final retry = onRetry;
-
-    return [
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            post.preview,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          // The failure sentence is the server's, shown whole. A status word
-          // on its own tells somebody something is wrong and nothing about
-          // what to do.
-          for (final target in failed)
-            if (target.failure != null)
-              Text(
-                '${target.account.isEmpty ? target.providerLabel : target.account}'
-                    ' · ${target.failure}',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(color: bad),
-              ),
-        ],
-      ),
-      Wrap(
-        spacing: 4,
-        children: [
-          for (final entry in networks.entries)
-            Tooltip(
-              message: entry.value.join(', '),
-              child: SocialNetworkMark(network: entry.key, size: 14),
-            ),
-        ],
-      ),
-      Text(_whenLabel(post, formats), style: theme.textTheme.bodySmall),
-      StatusPill(status, tone: tone),
-      if (failed.any((t) => t.id != null) && retry != null)
-        TextButton(
-          key: ValueKey('social-retry-${post.id}'),
-          onPressed: () => retry(post),
-          child: const Text('Retry'),
-        )
-      else
-        TextButton(onPressed: () => onOpen(post), child: const Text('Open')),
-    ];
-  }
-}
-
-/// A post's pill: "Failed", or "1 failed" when others took it.
-(String, Tone) _statusOf(_SentPost post) {
-  final failed = post.targets.where((t) => t.status == 'failed').length;
-  if (failed > 0) {
-    final label = failed == post.targets.length ? 'Failed' : '$failed failed';
-    return (label, Tone.bad);
-  }
-
-  return switch (post.tone) {
-    Tone.neutral => ('Sending', Tone.neutral),
-    Tone.info => ('Scheduled', Tone.info),
-    _ => ('Sent', Tone.ok),
-  };
-}
-
-/// When, for the table: a promise names its clock; otherwise the day it went.
-String _whenLabel(_SentPost post, DisplayFormats formats) {
-  final wall = post.scheduledFor;
-  if (wall != null) {
-    final zone = clockSuffix(post.scheduledTimezone);
-    return post.tile == 'scheduled' ? 'Goes out $wall$zone' : '$wall$zone';
-  }
-
-  final when = post.when;
-  if (when == null) return '';
-
-  final day = _dayWord(when);
-
-  return '${day[0].toUpperCase()}${day.substring(1)} '
-      '${formats.formatTime(when.hour, when.minute)}';
 }
 
 class _CalendarsColumn extends StatefulWidget {

@@ -1,0 +1,395 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tab walkthrough and video</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.hdr{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.ib{width:28px;height:28px;border-radius:50%;border:1px solid #b9c7cd;background:#fff;display:inline-flex;align-items:center;justify-content:center;color:var(--pri);font-weight:800;font-size:13px;flex:0 0 auto}
+.ib.play{font-size:10px}
+.offer{display:flex;align-items:center;gap:10px;background:var(--pric);border-radius:var(--r);padding:8px 12px;font-size:12.5px;color:var(--prid);flex:0 0 auto}
+.offer b{color:var(--prid)}
+/* the week behind */
+.wk{flex:1;min-height:0;background:#fff;border:1px solid var(--line);border-radius:var(--r);display:grid;grid-template-columns:54px repeat(5,minmax(0,1fr));grid-template-rows:30px repeat(6,1fr);overflow:hidden;position:relative}
+.wk > div{border-left:1px solid var(--line2);border-top:1px solid var(--line2);font-size:11px;color:var(--muted);padding:4px 6px}
+.wk .dh{font-weight:700;color:var(--neu);border-top:0}
+.ev{position:absolute;border-radius:7px;padding:4px 7px;font-size:11px;font-weight:700;line-height:1.3;overflow:hidden}
+.e1{background:#d6edf5;color:#00485c}.e2{background:#e1f2e5;color:#16662d}.e3{background:#fff0d2;color:#734600}.e4{background:#eee5fa;color:#5a3290}
+.toolbar{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+/* the spotlight */
+.dim{position:absolute;inset:0;pointer-events:none}
+.spot{position:relative;z-index:5;border-radius:8px;background:#fff;box-shadow:0 0 0 3px var(--pri),0 0 0 9999px rgba(6,8,8,.58)}
+.step,.pcard{z-index:6}
+.step{position:absolute;width:300px;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(6,8,8,.28);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.step .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--pri)}
+.step b{font-size:14px}
+.step p{margin:0;font-size:12.5px;color:#2b3a41}
+.dots{display:flex;gap:5px}.dots i{width:7px;height:7px;border-radius:50%;background:#c9d4d9}.dots i.on{background:var(--pri)}
+.step .ft{display:flex;align-items:center;gap:6px}
+.try{font-size:11.5px;color:var(--ok);font-weight:700}
+/* video */
+.vid{aspect-ratio:16/9;border-radius:10px;background:linear-gradient(135deg,#0d2a33,#1d4f5e);display:flex;align-items:center;justify-content:center;color:#fff;position:relative;flex:0 0 auto}
+.vid .pb2{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.92);color:var(--prid);display:flex;align-items:center;justify-content:center;font-size:16px}
+.vid .bar2{position:absolute;left:10px;right:10px;bottom:8px;height:4px;border-radius:2px;background:rgba(255,255,255,.3)}
+.vid .bar2 i{display:block;width:34%;height:100%;border-radius:2px;background:#fff}
+.vid .tm{position:absolute;left:10px;bottom:16px;font-size:10.5px;font-weight:700}
+.vid .cc{position:absolute;right:10px;bottom:16px;font-size:10px;font-weight:800;border:1px solid #fff;border-radius:3px;padding:0 4px}
+.chap{display:flex;flex-direction:column}
+.chap div{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.chap div:first-child{border-top:0}
+.chap span{font:700 11px ui-monospace,Consolas,monospace;color:var(--pri);width:36px}
+.chap .on{font-weight:700}
+.mini{position:absolute;right:16px;bottom:16px;width:300px;background:#fff;border-radius:12px;box-shadow:0 12px 30px rgba(6,8,8,.25);padding:8px;display:flex;flex-direction:column;gap:6px}
+.mini .vid{aspect-ratio:16/9}
+.mini .vid .pb2{width:34px;height:34px;font-size:12px}
+.mini .r{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700}
+.menu{position:absolute;background:#fff;border-radius:10px;box-shadow:0 10px 26px rgba(6,8,8,.2);padding:6px 0;width:230px;display:flex;flex-direction:column}
+.menu span{padding:8px 14px;font-size:12.5px;display:flex;gap:10px;align-items:center}
+.menu span.dis{color:#9aa6ad}
+.menu hr{border:0;border-top:1px solid var(--line2);margin:4px 0}
+.hl{display:flex;flex-direction:column;gap:2px}
+.hl div{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.hl div:first-child{border-top:0}
+.hl .n2{width:20px;height:20px;border-radius:50%;background:var(--pric);color:var(--prid);font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.hl .n2.ok{background:var(--okc);color:var(--ok)}
+.new{font-size:10px;font-weight:800;color:var(--cau);background:var(--cauc);border-radius:999px;padding:0 6px}
+.staff{width:900px;height:auto}
+.trow2{display:grid;grid-template-columns:200px minmax(0,1fr) 110px 120px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.trow2.h{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-top:0}
+.pcard{position:absolute;left:10px;right:10px;bottom:12px;background:#fff;border-radius:14px;box-shadow:0 -6px 26px rgba(6,8,8,.25);padding:14px;display:flex;flex-direction:column;gap:8px}
+.pcard b{font-size:14px}.pcard p{margin:0;font-size:12.5px;color:#2b3a41}
+.plist .ev{position:static;display:block;margin-bottom:6px}
+</style>
+
+<div class="wrap">
+<h1>A walkthrough and a how-to video beside every tab's title</h1>
+<p class="sub">Jose, 2026-10-13: A1 Tools had a <b>(?)</b> and a <b>▶</b> next to each main tab's title. He wants both back in
+EzBizi. The <b>walkthrough</b> runs inside the app: it highlights each part of the tab, dims the rest and says what each part
+does. The <b>video</b> is a voiced how-to that we record for each tab. It is app-level, the same for every organization. The
+pictures use Scheduling, because its video is the first one being made. Every name and job here is invented.</p>
+<p class="need"><b>The same in every option.</b> A tab's walkthrough is a short list of steps, kept beside the tab's code. Each
+step names the control it points at, a title, a sentence or two and, optionally, "try it" (the tour waits until you do the
+thing). Each walkthrough carries a version. A step whose control you can't see is skipped, for example when your role lacks
+it or the module is off, so the tour never points at nothing. Whether you have seen a tab's walkthrough is stored for you on
+the server, so it follows you to the phone. When a release raises a tab's version, the tab offers only the new steps as
+<b>What's new here</b>. The video button shows only on a tab that has a video. EzBizi staff keep the list of which tab has
+which video, so a new video needs no release. Nothing opens as a dialog. <b>Esc</b> ends a walkthrough on a computer.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Two buttons beside the title; the video plays in the side panel <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The <b>(?)</b> and <b>▶</b> from A1 Tools return next to the title, with tooltips: "Walk me through Scheduling"
+and "Watch how Scheduling works · 2:40". The first time you open a tab, one line under the title offers the walkthrough.
+It never starts by itself, because you may have come to do a job. "Not now" hides the offer, and (?) keeps the walkthrough.
+The video plays in the side panel, so the tab stays beside it to follow along. Chapters jump to a part, captions are on by
+default, and <b>Keep it small</b> shrinks it to a corner while you try.</p>
+
+<div class="lab">First visit · the offer</div>
+<div class="win" style="height:430px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="hdr"><span class="t">Scheduling</span><span class="ib" title="Walk me through Scheduling">?</span><span class="ib play" title="Watch how Scheduling works · 2:40">▶</span></div>
+ <div class="offer"><span>👋</span><span><b>New to Scheduling?</b> A one-minute walkthrough shows the week, booking a job and moving a visit.</span><span class="sp"></span><span class="btn f sm">Walk me through</span><span class="btn t sm" style="color:var(--prid)">Not now</span></div>
+ <div class="tabs"><span class="on">Calendar</span><span>Map</span><span>Unscheduled · 4</span></div>
+ <div class="wk">
+  <div></div><div class="dh">Mon 13</div><div class="dh">Tue 14</div><div class="dh">Wed 15</div><div class="dh">Thu 16</div><div class="dh">Fri 17</div>
+  <div>8 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>10 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>12 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>2 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>4 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>6 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <span class="ev e1" style="left:62px;top:40px;width:150px;height:46px">Cap install · Oak Park<br><span style="font-weight:500">Omar</span></span>
+  <span class="ev e2" style="left:280px;top:96px;width:150px;height:40px">Inspection · Elm St</span>
+  <span class="ev e3" style="left:500px;top:40px;width:150px;height:70px">Liner · Lakeview</span>
+  <span class="ev e4" style="left:720px;top:150px;width:150px;height:40px">Sweep · Maple Ave</span>
+ </div>
+</div></div></div>
+
+<div class="lab">A step · everything but the control dimmed</div>
+<div class="win" style="height:430px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="hdr"><span class="t">Scheduling</span><span class="ib">?</span><span class="ib play">▶</span></div>
+ <div class="tabs"><span class="on">Calendar</span><span>Map</span><span class="spot">Unscheduled · 4</span></div>
+ <div class="wk">
+  <div></div><div class="dh">Mon 13</div><div class="dh">Tue 14</div><div class="dh">Wed 15</div><div class="dh">Thu 16</div><div class="dh">Fri 17</div>
+  <div>8 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>10 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>12 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>2 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>4 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <span class="ev e1" style="left:62px;top:40px;width:150px;height:46px">Cap install · Oak Park<br><span style="font-weight:500">Omar</span></span>
+  <span class="ev e3" style="left:500px;top:40px;width:150px;height:70px">Liner · Lakeview</span>
+ </div>
+</div>
+<div class="step" style="left:400px;top:64px"><span class="k">Step 2 of 5</span><b>Jobs waiting for a day</b><p>Booked jobs with no visit yet wait here. Drag one onto the calendar to give it a day and a crew.</p><span class="try">✓ Try it: open Unscheduled</span><div class="ft"><div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i></div><span class="sp"></span><span class="btn t sm">Skip tour</span><span class="btn sm">Back</span><span class="btn f sm">Next</span></div></div>
+</div></div>
+
+<div class="lab">The video, in the side panel</div>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="hdr"><span class="t">Scheduling</span><span class="ib">?</span><span class="ib play" style="background:var(--pric)">▶</span></div>
+ <div class="tabs"><span class="on">Calendar</span><span>Map</span><span>Unscheduled · 4</span></div>
+ <div class="wk" style="margin-right:440px">
+  <div></div><div class="dh">Mon 13</div><div class="dh">Tue 14</div><div class="dh">Wed 15</div><div class="dh">Thu 16</div><div class="dh">Fri 17</div>
+  <div>8 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>10 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>12 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>2 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <span class="ev e1" style="left:62px;top:40px;width:80px;height:46px">Cap install</span>
+ </div>
+</div>
+<div class="panel"><div class="phd"><b>How Scheduling works</b><span class="tiny">2:40</span><span class="sp"></span><span class="muted">✕</span></div>
+ <div class="pbd">
+  <div class="vid"><span class="pb2">❚❚</span><span class="tm">0:54 / 2:40</span><span class="cc">CC</span><span class="bar2"><i></i></span></div>
+  <div class="chap"><div><span>0:00</span>The week, the day and the crew lanes</div><div class="on"><span>0:42</span>Booking a job from a lead</div><div><span>1:25</span>Moving a visit, and who gets told</div><div><span>2:05</span>Unscheduled jobs</div></div>
+  <p class="tiny" style="margin:0">Made by EzBizi for every organization. The words in it are captioned.</p>
+ </div>
+ <div class="pf"><span class="btn t sm">Walk me through instead</span><span class="btn sm">Keep it small</span></div>
+</div>
+</div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>One Help button with a menu; the video floats in a corner</h2>
+<p class="cap">A single <b>(?)</b> opens a menu with Walk me through, Watch the video (2:40), and What's new here when there
+is something new. One button takes less room beside long titles, but the video is a click further away than A1 Tools had it.
+The video plays in a small player in the corner over the tab, so you can watch and click at once. It can be dragged and made
+bigger.</p>
+<div class="win" style="height:430px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="hdr"><span class="t">Scheduling</span><span class="ib" style="background:var(--pric)">?</span></div>
+ <div class="tabs"><span class="on">Calendar</span><span>Map</span><span>Unscheduled · 4</span></div>
+ <div class="wk">
+  <div></div><div class="dh">Mon 13</div><div class="dh">Tue 14</div><div class="dh">Wed 15</div><div class="dh">Thu 16</div><div class="dh">Fri 17</div>
+  <div>8 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>10 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>12 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>2 PM</div><div></div><div></div><div></div><div></div><div></div>
+  <span class="ev e1" style="left:62px;top:40px;width:150px;height:46px">Cap install · Oak Park</span>
+  <span class="ev e3" style="left:500px;top:40px;width:150px;height:70px">Liner · Lakeview</span>
+ </div>
+</div>
+<div class="menu" style="left:200px;top:52px"><span>🧭 Walk me through Scheduling</span><span>▶ Watch the video · 2:40</span><hr><span>✨ What's new here <span class="new">2 new</span></span></div>
+<div class="mini"><div class="vid"><span class="pb2">❚❚</span><span class="bar2"><i></i></span></div><div class="r">How Scheduling works<span class="sp"></span><span class="muted">⤢</span><span class="muted">✕</span></div></div>
+</div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>A Help panel per tab: the video, then the steps you can replay one by one</h2>
+<p class="cap"><b>(?)</b> opens the side panel with everything about the tab: the video at the top, then the walkthrough as a
+checklist. <b>Show me</b> on any line highlights only that control, so somebody who wants just the one thing doesn't sit
+through five steps. Done steps are ticked. This is the most thorough option but the slowest for a first visit, because the
+walkthrough is no longer one click.</p>
+<div class="win" style="height:580px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="hdr"><span class="t">Scheduling</span><span class="ib" style="background:var(--pric)">?</span></div>
+ <div class="tabs"><span class="on">Calendar</span><span>Map</span><span>Unscheduled · 4</span></div>
+ <div class="wk" style="margin-right:440px">
+  <div></div><div class="dh">Mon 13</div><div class="dh">Tue 14</div><div class="dh">Wed 15</div><div class="dh">Thu 16</div><div class="dh">Fri 17</div>
+  <div>8 AM</div><div></div><div></div><div></div><div></div><div></div>
+  <div>10 AM</div><div></div><div></div><div></div><div></div><div></div>
+ </div>
+</div>
+<div class="panel"><div class="phd"><b>Help · Scheduling</b><span class="sp"></span><span class="muted">✕</span></div>
+ <div class="pbd">
+  <div class="vid" style="aspect-ratio:auto;height:170px"><span class="pb2">▶</span><span class="tm">2:40</span><span class="cc">CC</span></div>
+  <div class="foot"><b style="font-size:13px">Walk me through</b><span class="sp"></span><span class="btn f sm">Start from the top</span></div>
+  <div class="hl">
+   <div><span class="n2 ok">✓</span>The week and the crew lanes<span class="sp"></span><span class="btn t sm">Show me</span></div>
+   <div><span class="n2 ok">✓</span>Jobs waiting for a day<span class="sp"></span><span class="btn t sm">Show me</span></div>
+   <div><span class="n2">3</span>Moving a visit<span class="sp"></span><span class="btn t sm">Show me</span></div>
+   <div><span class="n2">4</span>Who gets told when it moves <span class="new">new</span><span class="sp"></span><span class="btn t sm">Show me</span></div>
+   <div><span class="n2">5</span>The map<span class="sp"></span><span class="btn t sm">Show me</span></div>
+  </div>
+ </div>
+</div>
+</div></div>
+
+<!-- ───────────────────────── staff ───────────────────────── -->
+<h2>In every option · where the videos are kept (EzBizi staff only)</h2>
+<p class="cap">A list under Staff with every tab, its video link and length, and its walkthrough's version and step count. A video
+is a link to a file we host. Changing the link is enough to update a video, with no release. Tenants can't see or change it.</p>
+<div class="win staff"><div class="page" style="padding:16px 20px">
+ <div class="t" style="font-size:16px">Help videos</div>
+ <div class="card" style="padding:6px 16px">
+  <div class="trow2 h"><span>Tab</span><span>Video</span><span>Length</span><span>Walkthrough</span></div>
+  <div class="trow2"><b>Scheduling</b><span class="muted">help/scheduling-v1.mp4 · captions ✓</span><span>2:40</span><span>v2 · 5 steps</span></div>
+  <div class="trow2"><b>Leads</b><span class="muted">— none yet · ▶ hidden</span><span>—</span><span>v1 · 6 steps</span></div>
+  <div class="trow2"><b>Task Board</b><span class="muted">— none yet · ▶ hidden</span><span>—</span><span>v1 · 4 steps</span></div>
+ </div>
+</div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">(?) and ▶ sit in the app bar. A step dims the screen around its control and explains it in a card along the
+bottom, where a thumb reaches Next. Swiping the card moves between steps. The video plays full width in the panel with its
+chapters under it.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">A step</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span><span class="sp"></span><span class="ib">?</span><span class="ib play">▶</span></div><div class="pb plist">
+  <div class="tabs"><span class="on">Day</span><span>Week</span><span class="spot">Unscheduled · 4</span></div>
+  <span class="ev e1">8:00 · Cap install · Oak Park<br><span style="font-weight:500">Omar</span></span>
+  <span class="ev e3">10:30 · Liner · Lakeview</span>
+  <span class="ev e2">1:00 · Inspection · Elm St</span>
+ </div>
+ <div class="pcard"><span class="tiny" style="font-weight:800;color:var(--pri)">STEP 2 OF 5</span><b>Jobs waiting for a day</b><p>Booked jobs with no visit yet wait here. Tap one to give it a day and a crew.</p><div class="foot"><div class="dots"><i></i><i class="on"></i><i></i><i></i><i></i></div><span class="sp"></span><span class="btn t sm">Skip</span><span class="btn f sm">Next</span></div></div>
+ </div></div>
+ <div class="pcol"><span class="pl">The video</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">How Scheduling works</span></div><div class="pb">
+  <div class="vid"><span class="pb2">❚❚</span><span class="tm">0:54 / 2:40</span><span class="cc">CC</span><span class="bar2"><i></i></span></div>
+  <div class="chap"><div><span>0:00</span>The day and the crew</div><div class="on"><span>0:42</span>Booking a job from a lead</div><div><span>1:25</span>Moving a visit</div><div><span>2:05</span>Unscheduled jobs</div></div>
+  <span class="btn sm" style="align-self:flex-start">Walk me through instead</span>
+ </div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">One (?) in the app bar opens the menu, and the video docks small above the bottom of the screen.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span><span class="sp"></span><span class="ib">?</span></div><div class="pb plist">
+  <div class="tabs"><span class="on">Day</span><span>Week</span><span>Unscheduled · 4</span></div>
+  <span class="ev e1">8:00 · Cap install · Oak Park</span><span class="ev e3">10:30 · Liner · Lakeview</span>
+ </div>
+ <div class="mini" style="left:10px;right:10px;width:auto;bottom:12px;flex-direction:row;align-items:center"><div class="vid" style="width:120px"><span class="pb2">❚❚</span></div><div class="r" style="flex:1">How Scheduling works<span class="sp"></span><span class="muted">✕</span></div></div>
+</div></div></div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">(?) opens Help as the tab's next page: the video, then the steps with Show me.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Help · Scheduling</span></div><div class="pb">
+  <div class="vid"><span class="pb2">▶</span><span class="tm">2:40</span><span class="cc">CC</span></div>
+  <div class="hl"><div><span class="n2 ok">✓</span>The day and the crew<span class="sp"></span><span class="btn t sm">Show me</span></div><div><span class="n2">2</span>Jobs waiting for a day<span class="sp"></span><span class="btn t sm">Show me</span></div><div><span class="n2">3</span>Moving a visit<span class="sp"></span><span class="btn t sm">Show me</span></div></div>
+ </div></div></div></div>
+
+<p class="cap" style="margin-top:30px">Owner: UI/UX builds the walkthrough engine, the buttons and the staff list. Each module owner
+writes and refreshes its own tab's steps. The desk makes the videos, starting with Scheduling.</p>
+</div>

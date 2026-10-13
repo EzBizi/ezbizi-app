@@ -42,10 +42,10 @@ class SocialPostsApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
-        // Holds the Posts TAB so the refusal under test is the publish one.
+        // Holds the Compose TAB so the refusal under test is the publish one.
         // Without it the tab gate answers first with a different sentence,
         // and a test asserting only a 403 would stay green for the wrong reason.
-        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.posts.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.compose.view']);
 
         $this->signedInAs($reader)
             ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Hello'])
@@ -90,7 +90,7 @@ class SocialPostsApiTest extends TestCase
         $row = $this->connection($t, 'franchise', $sibling->id, 'Illinois', 'il-page', 'facebook_page');
         Http::fake();
 
-        $this->signedInAs($this->userWithRole($t, 'Branch', ['marketing.view', 'marketing.posts.view', 'marketing.edit'], onlyAt: $t['franchise']))
+        $this->signedInAs($this->userWithRole($t, 'Branch', ['marketing.view', 'marketing.compose.view', 'marketing.edit'], onlyAt: $t['franchise']))
             ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Posting as a sibling'])
             ->assertStatus(422)
             ->assertJsonPath('errors.connections.0', fn (string $m) => str_contains($m, 'not connected in this view'));

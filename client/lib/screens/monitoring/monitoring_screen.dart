@@ -104,6 +104,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-monitoring-tabs'),
             labels: [for (final tab in shown) (tab.$2, tab.$3)],
             selected: shown.indexWhere((tab) => tab.$1 == active),
             onSelected: (i) => setState(() => _active = shown[i].$1),

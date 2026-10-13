@@ -15,6 +15,29 @@ import 'package:http/testing.dart';
 /// Book is disabled until somebody says who this is. Attaching a job to the
 /// wrong existing customer looks exactly like getting it right.
 void main() {
+  test('a website form fills the address, a state name becomes its code', () {
+    final a = addressFromForm([
+      '\u{1F464}First Name: tes\n\n\u{2709}\u{FE0F}Email Address: john@test.com\n\n'
+          '\u{1F4CD}Address Line 1: 12 Elm St\n\n\u{1F4CD}Address Line 2 (Optional): Apt 4\n\n'
+          '\u{1F4CD}City: Tempe\n\n\u{1F4CD}State: Arizona\n\n\u{1F4CD}Zip Code: 85281',
+    ]);
+    expect(a.line1, '12 Elm St');
+    expect(a.line2, 'Apt 4');
+    expect(a.city, 'Tempe');
+    expect(a.state, 'AZ');
+    expect(a.postal, '85281');
+    expect(addressFromForm(['Hi, my chimney leaks']).line1, '');
+
+    // The condensed form (2026-10-12): the address on one line.
+    final c = addressFromForm([
+      '👤 Nora Vale\n📍 123 Elm St Apt 4, Tempe, Arizona 85281\n🛠️ Cap',
+    ]);
+    expect(c.line1, '123 Elm St Apt 4');
+    expect(c.city, 'Tempe');
+    expect(c.state, 'AZ');
+    expect(c.postal, '85281');
+  });
+
   testWidgets('with matches nothing is chosen and Book waits; choosing '
       'answers it', (tester) async {
     await _pump(tester, matches: _twoMatches);

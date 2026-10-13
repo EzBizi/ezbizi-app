@@ -168,6 +168,12 @@ final class MetaMessages
                 $lead->forceFill(['connection_id' => $connection->getKey()])->save();
             }
 
+            // Enquiries from before names were read get theirs on the next
+            // message. Only a blank is filled: staff may have typed the real one.
+            if ($lead->contact_name === null && ($name = $this->nameOf($connection, $senderId)) !== null) {
+                $lead->forceFill(['contact_name' => $name])->save();
+            }
+
             return $lead;
         }
 
@@ -189,14 +195,10 @@ final class MetaMessages
             // (META_FORM) have no producer yet.
             'lead_type' => LeadNotificationText::META_TEXT,
             'remote_id' => $senderId,
-            /*
-             * No name, no phone, no email, and that is not a gap to fill later.
-             * Meta gives a scoped id and nothing else until the person says
-             * something; asking the Graph API for a profile needs a permission
-             * we have not requested and would be reading a stranger's name
-             * because they messaged a shop. The thread carries what they chose
-             * to tell us.
-             */
+            // The name they message under, so the list stops reading
+            // "Unnamed enquiry" (Jose, 2026-10-12). No phone or email: Meta
+            // has none to give.
+            'contact_name' => $this->nameOf($connection, $senderId),
             'summary' => $connection->display_name,
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
@@ -211,6 +213,58 @@ final class MetaMessages
         ]);
 
         return $lead;
+    }
+
+    /**
+     * The sender's display name, or null when Meta will not say.
+     *
+     * Messenger: read from the conversation's participants, which
+     * pages_messaging covers. The direct `GET /{PSID}` profile needs Business
+     * Asset User Profile Access, which this app does not hold - measured
+     * 2026-10-12, it refuses with code 100 for every real customer.
+     * Instagram: the IGSID profile; a name, else the @username.
+     */
+    public function nameOf(SocialConnection $connection, string $senderId): ?string
+    {
+        $token = $connection->credentials['access_token'] ?? null;
+
+        if (! is_string($token) || $token === '') {
+            return null;
+        }
+
+        try {
+            if ($connection->provider === SocialProvider::InstagramProfessional->value) {
+                $profile = Http::timeout(self::TIMEOUT)
+                    ->get('https://graph.instagram.com/v21.0/'.$senderId, [
+                        'fields' => 'name,username',
+                        'access_token' => $token,
+                    ])->json();
+
+                $name = trim((string) ($profile['name'] ?? ''));
+                $username = trim((string) ($profile['username'] ?? ''));
+
+                return $name !== '' ? $name : ($username !== '' ? '@'.$username : null);
+            }
+
+            $participants = Http::timeout(self::TIMEOUT)
+                ->get(WhatsAppCloud::endpoint().'/'.$connection->remote_id.'/conversations', [
+                    'user_id' => $senderId,
+                    'fields' => 'participants',
+                    'access_token' => $token,
+                ])->json('data.0.participants.data');
+
+            foreach ((array) $participants as $person) {
+                if (is_array($person) && (string) ($person['id'] ?? '') === $senderId) {
+                    $name = trim((string) ($person['name'] ?? ''));
+
+                    return $name !== '' ? $name : null;
+                }
+            }
+        } catch (ConnectionException) {
+            // Unnamed is better than no lead at all.
+        }
+
+        return null;
     }
 
     /**

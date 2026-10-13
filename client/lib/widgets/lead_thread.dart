@@ -15,6 +15,7 @@ import '../screens/phone/call_tab.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import '../screens/scheduling/availability_pane.dart';
+import 'ai_mark.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
 import 'side_panel.dart';
@@ -186,6 +187,10 @@ class _LeadThreadState extends State<LeadThread> {
   List<Map<String, dynamic>> _templates = const [];
   bool _suggesting = false;
 
+  /// The words Suggest put in the box. Marked as AI's while the box still
+  /// holds exactly them; the first change makes them the person's.
+  String? _aiDraft;
+
   /// How often an OPEN conversation re-reads itself.
   ///
   /// Faster than the list beside it, because this is somebody mid-conversation
@@ -293,7 +298,10 @@ class _LeadThreadState extends State<LeadThread> {
         return;
       }
       final text = (response.data as Map?)?['text'] as String? ?? '';
-      if (text.isNotEmpty) _compose.text = text;
+      if (text.isNotEmpty) {
+        _compose.text = text;
+        _aiDraft = text;
+      }
     });
   }
 
@@ -327,6 +335,7 @@ class _LeadThreadState extends State<LeadThread> {
         (response.data as Map<String, dynamic>? ?? const {}),
       ];
       _compose.clear();
+      _aiDraft = null;
       _emoji = false;
     });
 
@@ -523,12 +532,21 @@ class _LeadThreadState extends State<LeadThread> {
       (lead['phone'] as String?)?.isNotEmpty == true &&
       (widget.session?.me?.permissions.contains('phone.phone.view') ?? false);
 
+  /// In a panel of its own, narrow enough that Call shows only its pad with
+  /// the number typed in. Handed to showSidePanel bare, the whole three-pane
+  /// Communication screen filled the window with no background, over Leads
+  /// (Jose, 2026-10-12).
   Future<void> _call(String phone) => showSidePanel<void>(
     context,
-    builder: (_) => CallTab(
-      api: widget.api,
-      session: widget.session!,
-      initialNumber: phone,
+    builder: (_) => SidePanel(
+      title: 'Call',
+      subtitle: phone,
+      scrollable: false,
+      child: CallTab(
+        api: widget.api,
+        session: widget.session!,
+        initialNumber: phone,
+      ),
     ),
   );
 
@@ -546,6 +564,11 @@ class _LeadThreadState extends State<LeadThread> {
       session: widget.session!,
       lead: _lead,
       matches: _matches,
+      said: [
+        for (final c in _conversations)
+          if (c['from'] != 'ADVERTISER' && c['text'] is String)
+            c['text'] as String,
+      ],
       onBooked: (result) async {
         Navigator.of(context).pop();
         final fresh = await widget.onBooked!(result);
@@ -614,6 +637,13 @@ class _LeadThreadState extends State<LeadThread> {
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),
+                                if (leadNameIsAi(lead)) ...[
+                                  const SizedBox(width: 6),
+                                  const AiMark(
+                                    key: ValueKey('thread-ai-name'),
+                                    tooltip: aiNameTooltip,
+                                  ),
+                                ],
                                 const SizedBox(width: 8),
                                 // What it is, said as a pill: the corner
                                 // field that read as a search box is gone
@@ -622,6 +652,17 @@ class _LeadThreadState extends State<LeadThread> {
                                   lead['status'],
                                   key: const ValueKey('thread-status'),
                                 ),
+                                if (leadAiHolds(lead, 'status')) ...[
+                                  const SizedBox(width: 4),
+                                  AiMark(
+                                    key: const ValueKey('thread-ai-status'),
+                                    tooltip: [
+                                      'Status set by AI from the '
+                                          'conversation. Change it to override.',
+                                      ?(lead['ai_reason'] as String?),
+                                    ].join('\n'),
+                                  ),
+                                ],
                                 if (widget.onStar != null)
                                   IconButton(
                                     key: const ValueKey('thread-star'),
@@ -709,6 +750,8 @@ class _LeadThreadState extends State<LeadThread> {
                             fontStyle: FontStyle.italic,
                           ),
                         ),
+                      if (lead['credit'] is Map)
+                        _creditLine(theme, lead['credit'] as Map),
                       if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
                       if (_booking != null) _bookingBlock(theme),
                       if (!narrow || _showDetails) ...[
@@ -913,6 +956,19 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
+        if (_aiDraft != null && _compose.text == _aiDraft)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: AiMark.badge(
+                'Draft by AI',
+                key: ValueKey('reply-ai-draft'),
+                tooltip: 'Written by AI. Read it before sending: nothing goes '
+                    'until you press Send.',
+              ),
+            ),
+          ),
         Row(
           // Bottom-aligned, and every control is a one-line box tall, so
           // they line up with the box and stay by its last line as it grows
@@ -923,6 +979,9 @@ class _LeadThreadState extends State<LeadThread> {
               child: TextField(
                 key: const ValueKey('reply-box'),
                 controller: _compose,
+                // Redrawn only while a draft is marked: the mark goes the
+                // moment the words change.
+                onChanged: _aiDraft == null ? null : (_) => setState(() {}),
                 // The phone's own spell check and suggestions (Jose,
                 // 2026-09-30: "hellu" was not corrected). Windows and the
                 // web build have no native checker Flutter can call.
@@ -1496,6 +1555,63 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// A Google Local Services lead AI thinks Google should refund (Jose,
+  /// 2026-10-13): AI's reason, and a button a person presses to ask Google.
+  Widget _creditLine(ThemeData theme, Map credit) {
+    final reason = creditReasonWord(credit['reason'] as String?);
+    final requested = credit['requested_at'] != null;
+    final colours = ToneColours.of(context, requested ? Tone.neutral : Tone.caution);
+    return Padding(
+      key: const ValueKey('lead-credit'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _pill(
+            requested
+                ? 'Credit requested · ${creditDecisionWord(credit['decision'] as String?)}'
+                : 'Google credit? $reason',
+            colours,
+            icon: Icons.money_off_outlined,
+          ),
+          if (!requested) ...[
+            const AiMark(tooltip: 'AI read the conversation and thinks Google '
+                'should refund this lead. Nothing is sent until you press '
+                'Request credit.'),
+            TextButton(
+              key: const ValueKey('lead-credit-request'),
+              onPressed: _requestingCredit ? null : () => _requestCredit(credit['reason'] as String),
+              child: const Text('Request credit'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  bool _requestingCredit = false;
+
+  Future<void> _requestCredit(String reason) async {
+    setState(() => _requestingCredit = true);
+    final response = await widget.api.post(
+      '/leads/${widget.lead['id']}/google-credit',
+      {'reason': reason},
+    );
+    if (!mounted) return;
+    setState(() {
+      _requestingCredit = false;
+      if (response.ok && response.data is Map) {
+        _lead = Map<String, dynamic>.from(response.data as Map);
+      }
+    });
+    if (!response.ok) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+    }
+  }
+
   Future<void> _decideBooking(String decision) async {
     // Two literal paths, so ClientCallsRealRoutesTest can match each route.
     final response = decision == 'approve'
@@ -1579,13 +1695,32 @@ class _LeadThreadState extends State<LeadThread> {
             ],
           )
         else if (address != null || zip != null)
-          Text(
-            [
-              ?address,
-              if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
-            ].join(' · '),
-            key: const ValueKey('lead-address'),
-            style: theme.textTheme.bodySmall,
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  [
+                    ?address,
+                    if (zip != null && !(address ?? '').contains(zip))
+                      'ZIP $zip',
+                  ].join(' · '),
+                  key: const ValueKey('lead-address'),
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              // Only when the ZIP shown is the one AI wrote: a ZIP from
+              // Google's own details is not AI's, whatever AI also guessed.
+              if (zip != null &&
+                  leadAiHolds(lead, 'postal_code') &&
+                  lead['postal_code'] == zip) ...[
+                const SizedBox(width: 6),
+                const AiMark(
+                  key: ValueKey('lead-ai-zip'),
+                  tooltip: 'ZIP filled in by AI from what the customer said. '
+                      'Edit it to change it.',
+                ),
+              ],
+            ],
           ),
         if (mayCheck)
           Align(
@@ -1628,6 +1763,33 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
+  /// "IVR menu:", "Dispatcher:" and "Customer:" in bold, where Grok has
+  /// divided the call by speaker (Jose, 2026-10-12).
+  static final _bySpeaker = RegExp(
+    r'^(IVR menu|Dispatcher|Customer): ',
+    multiLine: true,
+  );
+
+  static TextSpan _speakers(String text) {
+    final label = RegExp(r'^(IVR menu|Dispatcher|Customer): ');
+    final lines = text.split('\n');
+    return TextSpan(
+      children: [
+        for (var i = 0; i < lines.length; i++) ...[
+          if (label.firstMatch(lines[i]) case final m?) ...[
+            TextSpan(
+              text: m.group(0),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(text: lines[i].substring(m.end)),
+          ] else
+            TextSpan(text: lines[i]),
+          if (i < lines.length - 1) const TextSpan(text: '\n'),
+        ],
+      ],
+    );
+  }
+
   /// Transcripts opened to their full length, by conversation id.
   final _openTranscripts = <String>{};
 
@@ -1657,14 +1819,27 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
           const SizedBox(height: 2),
-          open
-              ? SelectableText(text, style: theme.textTheme.bodySmall)
-              : Text(
-                  text,
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
+          if (!_bySpeaker.hasMatch(text))
+            open
+                ? SelectableText(text, style: theme.textTheme.bodySmall)
+                : Text(
+                    text,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  )
+          else
+            open
+                ? SelectableText.rich(
+                    _speakers(text),
+                    style: theme.textTheme.bodySmall,
+                  )
+                : Text.rich(
+                    _speakers(text),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
+                  ),
           if (text.length > 240)
             Align(
               alignment: Alignment.centerLeft,
@@ -1682,6 +1857,89 @@ class _LeadThreadState extends State<LeadThread> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Taken off the Follow up list in this view.
+  bool _followedUp = false;
+
+  /// Asked the price or a day, nothing booked: what puts a lead on Follow up.
+  static bool _asksForFollowUp(Map c) {
+    final s = c['signals'];
+    if (s is! Map) return false;
+    return (s['asked_price'] == true || s['asked_availability'] == true) &&
+        s['booked'] == false;
+  }
+
+  /// Grok's one line on the call first, the transcript one tap away (Jose,
+  /// 2026-10-12: "summary should show first with the option to see the full
+  /// transcript"; UI queue 77 placement 1).
+  Widget _callSummary(ThemeData theme, String id, Map c) {
+    final open = _openTranscripts.contains('full-$id');
+    final next = c['next_step'] as String?;
+    final transcript = c['transcript'] as String?;
+    return Column(
+      key: ValueKey('call-summary-$id'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        const AiMark.badge(
+          'Summary by AI',
+          tooltip:
+              'Written by AI from the call recording. Check the transcript for the exact words.',
+        ),
+        const SizedBox(height: 4),
+        Text(c['summary'] as String, style: theme.textTheme.bodyMedium),
+        if (next != null && next.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Next: $next',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        if (_asksForFollowUp(c) && !_followedUp)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: ValueKey('followed-up-$id'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+              ),
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Followed up'),
+              onPressed: () async {
+                setState(() => _followedUp = true);
+                await widget.api.post(
+                  '/leads/${widget.lead['id']}/follow-up-handled',
+                  const {},
+                );
+              },
+            ),
+          ),
+        if (transcript != null && transcript.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: ValueKey('full-transcript-toggle-$id'),
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 32),
+              ),
+              onPressed: () => setState(() {
+                open
+                    ? _openTranscripts.remove('full-$id')
+                    : _openTranscripts.add('full-$id');
+              }),
+              child: Text(open ? 'Hide transcript' : 'Show full transcript'),
+            ),
+          ),
+          if (open) _transcript(theme, id, transcript),
+        ],
+      ],
     );
   }
 
@@ -1938,14 +2196,17 @@ class _LeadThreadState extends State<LeadThread> {
           Positioned(
             top: 4,
             right: 4,
+            // Solid green so it stands out on any photo (Jose, 2026-10-13:
+            // "too transparent, make it colorful ... like green").
             child: Material(
-              color: theme.colorScheme.surface.withValues(alpha: 0.85),
+              color: ToneColours.of(context, Tone.ok).ink,
               shape: const CircleBorder(),
               child: IconButton(
                 key: ValueKey('attachment-outside-$n'),
                 tooltip: 'Open in the browser',
                 visualDensity: VisualDensity.compact,
                 iconSize: 16,
+                color: ToneColours.of(context, Tone.ok).fill,
                 icon: const Icon(Icons.open_in_new),
                 onPressed: outside,
               ),
@@ -2043,7 +2304,9 @@ class _LeadThreadState extends State<LeadThread> {
                 // The words, right under the recording (Jose, 2026-09-29): both
                 // voices in one text, machine-transcribed on our own server - so it
                 // is labelled as a transcript, not quoted. Four lines, then Show all.
-          if ((c['transcript'] as String?)?.isNotEmpty ?? false)
+          if ((c['summary'] as String?)?.isNotEmpty ?? false)
+            _callSummary(theme, id, c)
+          else if ((c['transcript'] as String?)?.isNotEmpty ?? false)
             _transcript(theme, id, c['transcript'] as String)
           else if (c['transcript_pending'] == true)
             Padding(
@@ -2092,6 +2355,38 @@ bool showsNumberLine(Map<String, dynamic> lead) {
       phone.isNotEmpty &&
       leadTitle(lead) != formatPhoneNumber(phone);
 }
+
+/// Google's credit reason, in words.
+String creditReasonWord(String? reason) => switch (reason) {
+      'SPAM' => 'Spam',
+      'SOLICITATION' => 'Someone selling',
+      'JOB_TYPE_MISMATCH' => 'Service we do not offer',
+      'GEO_MISMATCH' => 'Outside our area',
+      'DUPLICATE' => 'Duplicate',
+      _ => 'Other',
+    };
+
+/// Google's creditIssuanceDecision, in words.
+String creditDecisionWord(String? decision) => switch (decision) {
+      'SUCCESS_NOT_REACHED_THRESHOLD' || 'SUCCESS_REACHED_THRESHOLD' =>
+        'credited',
+      'FAIL_OVER_THRESHOLD' => 'refused, credit limit reached',
+      'FAIL_NOT_ELIGIBLE' => 'refused, not eligible',
+      _ => 'sent',
+    };
+
+/// Whether [field] still holds the value AI wrote: the API's `ai` list,
+/// which drops a field once a person changes it (UI queue 77).
+bool leadAiHolds(Map<String, dynamic> lead, String field) =>
+    (lead['ai'] as List?)?.contains(field) == true;
+
+/// The title is the name AI filled in, rather than a number or a customer.
+bool leadNameIsAi(Map<String, dynamic> lead) =>
+    leadAiHolds(lead, 'contact_name') &&
+    (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
+
+const String aiNameTooltip =
+    'Name filled in by AI from what the customer said. Edit it to change it.';
 
 /// The title of a lead: the name, or the number somebody would call back.
 String leadTitle(Map<String, dynamic> lead) {
@@ -2178,7 +2473,7 @@ String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
 /// Web Management's website chat and forms are their own sources.
 String sourceWord(String? source) => switch (source) {
   'website_chat' => 'Website chat',
-  'facebook' => 'Facebook Messenger',
+  'facebook' => 'Facebook',
   'instagram' => 'Instagram',
   'website_form' => 'Website form',
   'website_booking' => 'Online booking',

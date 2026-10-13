@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Support\Audit\AuditLogger;
+use App\Support\Auth\FactorAttempts;
+use App\Support\Auth\TotpEnrolment;
+use App\Support\Auth\TwoFactorPolicy;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -109,9 +112,79 @@ class FilesController extends Controller
     /** The SECURITY exemption's refusal sentence — the same wording every screen-reaching guard uses. */
     private const EXEMPT_REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
 
+    /**
+     * How long one authenticator code keeps Files open for a manager — sliding:
+     * every file request restarts it, so it only lapses after 15 quiet minutes.
+     * Jose, 2026-10-12: "have the files system require the authenticator code
+     * as well for extra security."
+     */
+    private const UNLOCK_TTL_SECONDS = 15 * 60;
+
+    private const LOCKED_REFUSAL = 'Enter a current code from your authenticator to open files.';
+
     public function __construct(
         private readonly AuditLogger $audit,
+        private readonly TotpEnrolment $totp,
+        private readonly FactorAttempts $attempts,
+        private readonly TwoFactorPolicy $twoFactor,
     ) {}
+
+    /**
+     * POST /api/v1/monitoring/files/unlock — MAIN group.
+     *
+     * A current authenticator code opens Files for UNLOCK_TTL_SECONDS. Six
+     * digits only: TotpEnrolment::verify() would otherwise BURN a recovery code
+     * on anything else, and a recovery code is for getting back into an
+     * account, not for browsing a desk. Throttled by the same per-account
+     * budget as sign-in (FactorAttempts), so this is not a second place to
+     * guess codes.
+     */
+    public function unlock(Request $request)
+    {
+        $this->authorize('files', MonitoredDevice::class);
+
+        $data = $request->validate(
+            ['code' => ['required', 'string', 'digits:6']],
+            ['code.digits' => 'Enter the 6-digit code from your authenticator.'],
+        );
+
+        $user = $request->user();
+
+        // The SAME authenticator the person signs in with. For someone linked
+        // to an EzBizi staff account (Jose, Bar) that factor lives on the
+        // PlatformStaff row, not the tenant user — asking the user alone told
+        // them to "set one up" while they signed in with it daily (2026-10-13).
+        $subject = $this->twoFactor->subjectFor($user);
+
+        if (! $subject->hasTotp()) {
+            return response()->json([
+                'message' => 'Set up an authenticator on your account first.',
+                'code' => 'no_authenticator',
+            ], 422);
+        }
+
+        $verified = $this->attempts->verify(
+            $subject,
+            $data['code'],
+            fn () => $this->totp->verify($subject, $data['code']),
+        );
+
+        if (! $verified) {
+            // verifyKeyNewer refuses a code already spent (e.g. the one just
+            // used to sign in), so "wait for the next one" is the honest advice.
+            return response()->json([
+                'message' => 'That code did not verify. If you just used it, wait for the next one.',
+            ], 422);
+        }
+
+        Cache::put($this->unlockKey($user->getKey()), true, self::UNLOCK_TTL_SECONDS);
+
+        $this->audit->log('monitoring.files.unlocked', $user);
+
+        return response()->json(['data' => [
+            'unlocked_until' => now()->addSeconds(self::UNLOCK_TTL_SECONDS)->toIso8601String(),
+        ]]);
+    }
 
     /**
      * POST /api/v1/monitoring/devices/{id}/files — MAIN group.
@@ -125,6 +198,19 @@ class FilesController extends Controller
     public function request(Request $request, string $id)
     {
         $this->authorize('files', MonitoredDevice::class);
+
+        // Locked until a current authenticator code is entered (unlock()).
+        // `code` lets the screen show the code prompt rather than an error.
+        $unlockKey = $this->unlockKey($request->user()->getKey());
+
+        if (! Cache::has($unlockKey)) {
+            return response()->json([
+                'message' => self::LOCKED_REFUSAL,
+                'code' => 'files_locked',
+            ], 403);
+        }
+
+        Cache::put($unlockKey, true, self::UNLOCK_TTL_SECONDS); // sliding
 
         $device = MonitoredDevice::query()->visibleTo($request->user())->find($id);
 
@@ -177,7 +263,12 @@ class FilesController extends Controller
             ['path' => $path, 'device' => $device->label],
         );
 
-        return response()->json(['data' => ['request_id' => $requestId]]);
+        // The server's own clock for the sliding unlock, so the screen's
+        // "Unlocked · N min" never disagrees with what the server will do.
+        return response()->json(['data' => [
+            'request_id' => $requestId,
+            'unlocked_until' => now()->addSeconds(self::UNLOCK_TTL_SECONDS)->toIso8601String(),
+        ]]);
     }
 
     /**
@@ -276,6 +367,13 @@ class FilesController extends Controller
             'entries.*.size_bytes' => ['nullable', 'integer'],
             'entries.*.modified_at' => ['nullable', 'string', 'max:64'],
 
+            // The roots answer from agents built after 2026-10-12 also names the signed-in
+            // user's Desktop, Documents, Downloads... — Explorer's Quick access.
+            // Older agents send none.
+            'quick_links' => ['sometimes', 'array', 'max:20'],
+            'quick_links.*.label' => ['required_with:quick_links', 'string', 'max:64'],
+            'quick_links.*.path' => ['required_with:quick_links', 'string', 'max:4096'],
+
             // op:download
             'name' => ['sometimes', 'string', 'max:1024'],
             'size' => ['sometimes', 'integer', 'min:0'],
@@ -345,6 +443,10 @@ class FilesController extends Controller
                     'size_bytes' => isset($e['size_bytes']) && $e['size_bytes'] >= 0 ? $e['size_bytes'] : null,
                     'modified_at' => ($e['modified_at'] ?? null) === self::UNSTATABLE_MODIFIED ? null : ($e['modified_at'] ?? null),
                 ], $data['entries'] ?? []),
+                'quick_links' => array_map(fn (array $q) => [
+                    'label' => $q['label'],
+                    'path' => $q['path'],
+                ], $data['quick_links'] ?? []),
             ];
         }
 
@@ -361,6 +463,25 @@ class FilesController extends Controller
     private static function base64Ceiling(): int
     {
         return intdiv(self::MAX_DOWNLOAD_BYTES + 2, 3) * 4;
+    }
+
+    /**
+     * DELETE /api/v1/monitoring/files/unlock — MAIN group. "Lock now": ends
+     * the unlock on the SERVER, so a manager stepping away from a browser
+     * really is locked, not just showing a locked screen.
+     */
+    public function lock(Request $request)
+    {
+        $this->authorize('files', MonitoredDevice::class);
+
+        Cache::forget($this->unlockKey($request->user()->getKey()));
+
+        return response()->noContent();
+    }
+
+    private function unlockKey(int|string $userId): string
+    {
+        return 'monitoring-files-unlock:'.$userId;
     }
 
     private function requestQueueKey(string $deviceId): string

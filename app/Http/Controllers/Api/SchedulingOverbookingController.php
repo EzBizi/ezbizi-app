@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Console\Commands\SchedulingWarnOverbooking;
 use App\Models\Automation;
+use App\Models\Customer;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
@@ -64,6 +65,78 @@ class SchedulingOverbookingController extends Controller
                 'fully_booked' => $check->fullyBooked($areas, $tomorrow, self::FULL_DAYS),
             ],
         ]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/overbooking/jobs?date=Y-m-d&area_id= | &franchise_id=
+     *
+     * The jobs behind one overbooked row, each with its client and its
+     * appointment (Bar, via Jose, 2026-10-12: "make everything clickable to
+     * show its full information"). The rows are Openings' own, so the list is
+     * exactly what the row counted: placed jobs, Workiz jobs not projected
+     * yet, and website bookings still holding a seat.
+     */
+    public function jobs(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'area_id' => ['required_without:franchise_id', 'nullable', 'uuid'],
+            'franchise_id' => ['required_without:area_id', 'nullable', 'uuid'],
+        ]);
+        $inView = ViewScope::forUser($request->user())->franchiseIds();
+        $date = CarbonImmutable::parse($data['date']);
+        $openings = app(Openings::class);
+
+        if (isset($data['area_id'])) {
+            $area = ServiceArea::query()->whereIn('franchise_id', $inView)->findOrFail($data['area_id']);
+            $rows = $openings->jobsOn($area, $date);
+        } else {
+            abort_unless(in_array($data['franchise_id'], $inView, true), 404);
+            $rows = $openings->franchiseJobsOn($request->user()->organization_id, $data['franchise_id'], $date);
+        }
+
+        $customers = Customer::query()->whereIn('id', $rows->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
+
+        return response()->json(['data' => $rows
+            ->map(fn (object $row) => $this->detail($row, $customers[$row->customer_id ?? ''] ?? null))
+            ->sortBy(fn (array $j) => $j['time'] ?? '99:99')
+            ->values()->all()]);
+    }
+
+    /** One job as the Overbooking list shows it: the client, then the appointment. */
+    public static function detail(object $row, ?Customer $customer): array
+    {
+        $p = is_string($row->payload ?? null) ? (json_decode($row->payload, true) ?: []) : [];
+        $hhmm = fn (?string $at) => $at === null || strlen($at) < 16 || substr($at, 11, 5) === '00:00' ? null : substr($at, 11, 5);
+        $text = fn (mixed $v) => is_scalar($v) && trim((string) $v) !== '' ? trim((string) $v) : null;
+        $booking = $row->kind === 'booking';
+        $workizName = trim(($p['FirstName'] ?? '').' '.($p['LastName'] ?? ''));
+
+        $street = $text($row->address ?? null) ?? $text($p['Address'] ?? null) ?? $customer?->address_line1;
+        $city = $text($row->city ?? null) ?? $text($p['City'] ?? null) ?? $customer?->city;
+        $zip = $text($row->postal_code ?? null) ?? $text($p['PostalCode'] ?? null) ?? $customer?->postal_code;
+
+        return [
+            'kind' => $row->kind,
+            'job_id' => $row->job_id ?? null,
+            'lead_id' => $row->lead_id ?? null,
+            'number' => $text($p['SerialId'] ?? null),
+            'status' => $booking ? 'Online booking' : $row->status,
+            'time' => $hhmm((string) $row->scheduled_for),
+            'end_time' => $booking ? ($row->end_time ? substr((string) $row->end_time, 0, 5) : null) : $hhmm($p['JobEndDateTime'] ?? null),
+            'service' => $text($p['JobType'] ?? null),
+            'technicians' => array_values(array_filter(array_map(
+                fn ($t) => is_array($t) ? $text($t['Name'] ?? null) : null,
+                is_array($p['Team'] ?? null) ? $p['Team'] : [],
+            ))),
+            'notes' => $text(implode("\n", array_filter([$text($p['JobNotes'] ?? null), $text($p['Notes'] ?? null)]))),
+            'customer' => [
+                'name' => $customer?->name ?? ($workizName !== '' ? $workizName : $text($row->contact_name ?? null)),
+                'phone' => $text($p['Phone'] ?? null) ?? $customer?->phone ?? $text($row->phone ?? null),
+                'email' => $text($p['Email'] ?? null) ?? $customer?->email ?? $text($row->email ?? null),
+                'address' => implode(', ', array_filter([$street, trim(($city ?? '').' '.($zip ?? ''))])) ?: null,
+            ],
+        ];
     }
 
     /**

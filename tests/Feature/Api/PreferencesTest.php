@@ -231,11 +231,12 @@ class PreferencesTest extends TestCase
     {
         $this->as()->patchJson('/api/v1/me/preferences', [
             'preferences' => [
-                'navigation.order' => ['dashboard', 'tasks', 'customers'],
+                'navigation.order' => ['dashboard', 'retired_module', 'customers'],
             ],
         ])->assertOk();
 
-        // `tasks` was a real module and was deleted. Refusing would leave
+        // `retired_module` stands for a deleted module (`tasks` was the example
+        // until Task Board reused the key). Refusing would leave
         // anybody who had it in their saved order unable to save their sidebar
         // ever again, over a module that no longer exists — so it is dropped,
         // the same way an out-of-range width is clamped rather than rejected.

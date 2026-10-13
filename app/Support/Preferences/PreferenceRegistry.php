@@ -217,6 +217,19 @@ class PreferenceRegistry
                 'help' => 'Set by No thanks on the Dashboard card or the phone banner.',
             ],
 
+            /*
+             * Which version of each tab's walkthrough this person has been
+             * through or declined (UI queue 81), keyed by module. Per person,
+             * so it follows them to the phone; a release that raises a tab's
+             * version offers only the new steps.
+             */
+            'help.tours_seen' => [
+                'label' => 'Walkthroughs seen',
+                'type' => 'versions',
+                'default' => [],
+                'help' => "Set by finishing or declining a tab's walkthrough.",
+            ],
+
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',
@@ -350,6 +363,7 @@ class PreferenceRegistry
                     implode(', ', $definition['options']),
                 )),
             'order' => $this->cleanOrder($value),
+            'versions' => $this->cleanVersions($value),
             default => (string) $value,
         };
     }
@@ -399,6 +413,30 @@ class PreferenceRegistry
         }
 
         return $out;
+    }
+
+    /**
+     * Module key => a walkthrough version. Corrected rather than refused, as
+     * the sidebar order is: a key that is not a plausible module key, or a
+     * version that is not a small whole number, is dropped, and what is left
+     * is always readable.
+     */
+    private function cleanVersions(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $key => $version) {
+            if (is_string($key) && preg_match('/^[a-z0-9_]{1,64}$/', $key) && is_int($version) && $version >= 0 && $version <= 10000) {
+                $out[$key] = $version;
+            }
+        }
+
+        // Empty goes out as [] (PHP has no empty object here); the client
+        // reads either as nothing seen.
+        return array_slice($out, 0, 200, preserve_keys: true);
     }
 
     /**

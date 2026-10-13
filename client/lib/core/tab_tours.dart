@@ -1,0 +1,940 @@
+/// Each tab's walkthrough (UI queue 81; Jose: "as u recommend" — 1 and 4).
+///
+/// Data, not code: a tab's owner adds or rewrites its steps here and the
+/// engine in `widgets/tab_help.dart` does the rest. A step points at the
+/// widget carrying `ValueKey<String>(anchor)`. A step whose widget is not on
+/// screen (a role without it, a module switched off) is skipped, so a tour
+/// never points at nothing.
+///
+/// Raise [Tour.version] when steps are added, and mark the new ones with
+/// [TourStep.since]: somebody who saw the old version is offered only those,
+/// as "What's new here".
+class TourStep {
+  const TourStep({
+    required this.anchor,
+    required this.title,
+    required this.body,
+    this.since = 1,
+  });
+
+  final String anchor;
+  final String title;
+
+  /// One or two sentences: what the part is for, in the person's words.
+  final String body;
+
+  /// The [Tour.version] that added this step.
+  final int since;
+}
+
+class Tour {
+  const Tour({required this.version, required this.steps});
+
+  final int version;
+  final List<TourStep> steps;
+}
+
+/// By module key, as `module_screens.dart` keys its screens.
+const Map<String, Tour> tabTours = {
+  'tasks': Tour(
+    // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'tasks-boards',
+        title: 'Your boards',
+        body:
+            "Pick a board here. My board is yours alone; each company's "
+            "board and its franchises' sit under the company, with how many "
+            'open tasks are yours.',
+      ),
+      TourStep(
+        anchor: 'tasks-view',
+        title: 'Table or Kanban',
+        body:
+            'The same tasks, as a table by group or as a column for each '
+            'status.',
+      ),
+      TourStep(
+        anchor: 'tasks-search',
+        title: 'Find a task',
+        body:
+            'Searches the task, who owns it, its status and what it is about.',
+      ),
+      TourStep(
+        anchor: 'tasks-groups',
+        title: 'Groups and tasks',
+        body:
+            'Click a group to fold it, and Add task at its foot to add one '
+            "there. Click a status to change it, ▸ for a task's subtasks, or "
+            'a task to open it.',
+      ),
+      TourStep(
+        anchor: 'column-add',
+        title: 'Your own columns',
+        since: 2,
+        body:
+            'Add a column of text, numbers, a status, a date, a person, a '
+            "dropdown or a checkbox. Click a column's name to rename it, "
+            'change its options, move or hide it.',
+      ),
+      TourStep(
+        anchor: 'tasks-statuses',
+        title: 'Your own statuses',
+        since: 2,
+        body:
+            'Name the statuses this board uses, give each a colour, and mark '
+            'which count as done.',
+      ),
+    ],
+  ),
+  'leads': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Your sources',
+        body:
+            'All first, then each source with how many are unread. A red mark '
+            'means that source has stopped delivering.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Your sources',
+        body: 'All, or one source at a time, with how many are unread.',
+      ),
+      TourStep(
+        anchor: 'tour-leads-search',
+        title: 'Find a lead',
+        body: 'Searches names, phone numbers and messages as you type.',
+      ),
+      TourStep(
+        anchor: 'tour-leads-status',
+        title: 'Status',
+        body: 'New, Booked, Archived, Completed, Lost and the rest.',
+      ),
+      TourStep(
+        anchor: 'tour-leads-filters',
+        title: 'Quick filters',
+        body:
+            'Unread, Unreplied, Overdue, Follow up and Starred narrow the list '
+            'together. Mark all read sits at the end.',
+      ),
+      TourStep(
+        anchor: 'leads-fetch',
+        title: 'Fetch new leads',
+        body: 'Asks every source now instead of waiting for the next check.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'The list',
+        body:
+            'Every source in one list. A dot and bold text mean unread; the '
+            'star keeps one to hand.',
+      ),
+      TourStep(
+        anchor: 'thread-header',
+        title: 'The conversation',
+        body:
+            'The open lead, beside the list: change its status, Book it into '
+            'a customer and a job, or reply below.',
+      ),
+      TourStep(
+        anchor: 'sources-manage',
+        title: 'Manage sources',
+        body: 'Where advertising and lead accounts are connected.',
+      ),
+    ],
+  ),
+  'jobs': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-jobs-tabs',
+        title: 'Jobs and Estimates',
+        body: 'Both stay open as you switch, so nothing half-typed is lost.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-add',
+        title: 'Add a job',
+        body: 'Opens a new job beside the list.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-search',
+        title: 'Find a job',
+        body: 'By job number, title or customer; press Enter to search.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-status',
+        title: 'Status',
+        body:
+            'Each chip narrows the list, with how many are in it, and doubles '
+            'as the legend for the coloured pills.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-money',
+        title: 'Money',
+        body: 'Narrows to jobs by where their money stands, with counts.',
+      ),
+      TourStep(
+        anchor: 'jobs-where',
+        title: 'Where',
+        body: 'Anywhere, not placed yet, one franchise, or one area.',
+      ),
+      TourStep(
+        anchor: 'jobs-window',
+        title: 'When',
+        body: 'Upcoming, Past or All.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-list',
+        title: 'The jobs',
+        body: 'Grouped by day. Click one to open it beside the list.',
+      ),
+    ],
+  ),
+  'customers': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-customers-tabs',
+        title: 'Customers and Memberships',
+        body: 'Your customers, and the membership program beside them.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-add',
+        title: 'Add a customer',
+        body:
+            'If the new one looks like someone already here, it says so; it '
+            'never merges them.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-duplicates',
+        title: 'Possible duplicates',
+        body: 'Customers that look alike across the organization, to check.',
+      ),
+      TourStep(
+        anchor: 'data-transfer',
+        title: 'Import and export',
+        body: 'Customers in and out as a CSV file.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-segments',
+        title: 'Who to show',
+        body: 'All, repeat customers, or those with no jobs yet.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-search',
+        title: 'Find a customer',
+        body: 'By name, email, phone or number.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-franchise',
+        title: 'Franchise',
+        body: 'Narrows the list to one franchise.',
+      ),
+      TourStep(
+        anchor: 'tour-customers-list',
+        title: 'The customers',
+        body:
+            'Click a heading to sort, or a customer to open them beside the '
+            'list. Each row says whose customer they are.',
+      ),
+    ],
+  ),
+  'scheduling': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-scheduling-tabs',
+        title: 'Scheduling',
+        body:
+            'Availability, the Schedule, Overbooking, Locations and Settings, '
+            'as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-scheduling-modes',
+        title: 'Three ways to look',
+        body:
+            'By zip or address, by area to see every area in a franchise, or '
+            'a month on the calendar.',
+      ),
+      TourStep(
+        anchor: 'availability-search',
+        title: 'Zip or address',
+        body: 'Type a zip, an address, a city or an area name.',
+      ),
+      TourStep(
+        anchor: 'tour-scheduling-check',
+        title: 'Check',
+        body:
+            'Shows the first open day and its windows: green has 3 or more '
+            'spots, yellow 2, red 1, grey is full.',
+      ),
+    ],
+  ),
+  'dashboard': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-dashboard-period',
+        title: 'The period',
+        body: 'Day, week, month, quarter or year, for every box at once.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-customize',
+        title: 'Customize',
+        body:
+            'Drag the boxes into your own order, pick each one\'s size, or hide it.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-refresh',
+        title: 'Refresh',
+        body: 'Reloads every box now.',
+      ),
+      TourStep(
+        anchor: 'tour-dashboard-boxes',
+        title: 'Your boxes',
+        body:
+            'One box for each part of EzBizi you can open, grouped as the '
+            'sidebar is. A box\'s menu can show it as a chart or as words.',
+      ),
+    ],
+  ),
+  'work_hours': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-tabs',
+        title: 'Work Hours',
+        body:
+            'General, Paid Time Off, Reports and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-week',
+        title: 'The week',
+        body:
+            'Which week you are looking at; the arrows move a week either way.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-search',
+        title: 'Find someone',
+        body: 'Narrows the list to people whose name matches.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-role',
+        title: 'Role',
+        body: 'Shows one role at a time.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-people',
+        title: 'The people',
+        body:
+            'Each person with their total for the week. A green dot means on '
+            'the clock right now. Click one for their week, day by day.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-everyone',
+        title: 'Everyone',
+        body:
+            'Only people who clocked in that week are listed until you ask for everyone.',
+      ),
+      TourStep(
+        anchor: 'correction-requests',
+        title: 'Corrections',
+        body:
+            'Changes people asked for that wait on you, to approve or decline.',
+      ),
+    ],
+  ),
+  'phone': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-phone-tabs',
+        title: 'Communication',
+        body:
+            'Phone, Users, Records, Reports, Alerts and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-sections',
+        title: 'Dial, Team, Messages, Voicemail',
+        body: 'The phone itself, your team, texts, and the voicemail boxes.',
+      ),
+      TourStep(
+        anchor: 'phone-call-history',
+        title: 'Recent calls',
+        body:
+            'Grouped by day, with names. Clicking one puts the number on the '
+            'pad; it never dials by itself.',
+      ),
+      TourStep(
+        anchor: 'phone-open-keypad',
+        title: 'Keypad',
+        body: 'Opens the dial pad.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-calling-as',
+        title: 'Calling as',
+        body:
+            'Whether you are ready to take calls, and the line you call from.',
+      ),
+      TourStep(
+        anchor: 'tour-phone-number',
+        title: 'Name or number',
+        body: 'Type a number, or letters to find a customer or a teammate.',
+      ),
+      TourStep(
+        anchor: 'phone-call-pad',
+        title: 'Dial pad',
+        body: 'The keys, then Call.',
+      ),
+    ],
+  ),
+  'email': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-email-tabs',
+        title: 'Email',
+        body: 'The inbox, and its settings.',
+      ),
+      TourStep(
+        anchor: 'tour-email-inboxes',
+        title: 'Your inboxes',
+        body:
+            'All inboxes together, or one at a time, with how many are unread, '
+            'then its folders.',
+      ),
+      TourStep(
+        anchor: 'tour-email-inbox-bar',
+        title: 'Where you are',
+        body: 'The inbox you are reading, by its address.',
+      ),
+      TourStep(
+        anchor: 'tour-email-search',
+        title: 'Search mail',
+        body: 'Press Enter to search; the × clears it.',
+      ),
+      TourStep(
+        anchor: 'tour-email-compose',
+        title: 'New message',
+        body: 'Writes from the inbox you have open.',
+      ),
+      TourStep(
+        anchor: 'tour-email-unread',
+        title: 'Unread',
+        body: 'Shows only what has not been read.',
+      ),
+      TourStep(
+        anchor: 'tour-email-list',
+        title: 'The messages',
+        body: 'Click one to read it. Older messages load at the end.',
+      ),
+    ],
+  ),
+  'services': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-services-tabs',
+        title: 'Services',
+        body: 'The catalogue of work this company sells, and its settings.',
+      ),
+      TourStep(
+        anchor: 'tour-services-add',
+        title: 'Add a service',
+        body: 'Opens a new service beside the list.',
+      ),
+      TourStep(
+        anchor: 'tour-services-search',
+        title: 'Find a service',
+        body: 'By name or number.',
+      ),
+      TourStep(
+        anchor: 'inventory-list',
+        title: 'The catalogue',
+        body:
+            'Each service with its price, number and owner. Click one to open it.',
+      ),
+    ],
+  ),
+  'inspection': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-inspection-tabs',
+        title: 'Inspection',
+        body:
+            'Start a new inspection, read the finished reports, or build the forms.',
+      ),
+      TourStep(
+        anchor: 'tour-inspection-search',
+        title: 'Start here',
+        body:
+            'Search a client by name or a job by its number, then pick the '
+            'inspection to start.',
+      ),
+      TourStep(
+        anchor: 'inspection-resume-panel',
+        title: 'Resume',
+        body: 'Carries on the draft you have in progress, or starts it again.',
+      ),
+      TourStep(
+        anchor: 'tour-inspection-reports-search',
+        title: 'Find a report',
+        body:
+            'Searches the finished reports. Archived ones stay hidden until you ask.',
+      ),
+      TourStep(
+        anchor: 'inspection-reports-list',
+        title: 'The reports',
+        body: 'Click one to read it beside the list and download its PDF.',
+      ),
+    ],
+  ),
+  'field': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-field-tabs',
+        title: 'Field',
+        body: 'Dashboard, Map, Route and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-field-sos',
+        title: 'You, and SOS',
+        body:
+            'Whether your location is being shared right now. SOS takes two '
+            'taps, so it is never sent by accident.',
+      ),
+      TourStep(
+        anchor: 'tour-field-counts',
+        title: 'Right now',
+        body:
+            'Who is tracked, reporting, at a job, stopped too long or out of '
+            'signal, and how many alerts are open.',
+      ),
+      TourStep(
+        anchor: 'tour-field-alerts',
+        title: 'Alerts',
+        body:
+            'What needs a look. Acknowledge one once it is handled, if your role allows.',
+      ),
+    ],
+  ),
+  'fleet_management': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-fleet_management-tabs',
+        title: 'Fleet',
+        body:
+            'General for the overview, and Vehicles for the list, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'fleet-general-vehicles',
+        title: 'The fleet in figures',
+        body:
+            'Vehicles, active, in the shop, out of service, and those nobody '
+            'has the keys to. Click a figure for the vehicles behind it.',
+      ),
+      TourStep(
+        anchor: 'fleet-general-spending',
+        title: 'Spending',
+        body: 'What the fleet cost, by category.',
+      ),
+      TourStep(
+        anchor: 'tour-fleet_management-period',
+        title: 'The period',
+        body: 'Which stretch of time Spending covers.',
+      ),
+      TourStep(
+        anchor: 'tour-fleet_management-attention',
+        title: 'Needs attention',
+        body: 'Anything about a vehicle that wants a look.',
+      ),
+      TourStep(
+        anchor: 'fleet-list',
+        title: 'The vehicles',
+        body: 'Click one to open it beside the list.',
+      ),
+    ],
+  ),
+  'inventory': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-inventory-tabs',
+        title: 'Inventory',
+        body:
+            'General, Stock, Items, Orders and Locations, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'inventory-general-items',
+        title: 'Inventory in figures',
+        body:
+            'Items, stock value, below reorder, out of stock, locations and '
+            'open purchase orders. Click a figure for what is behind it.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-movement',
+        title: 'Movement',
+        body: 'What came in and went out.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-period',
+        title: 'The period',
+        body: 'Which stretch of time Movement covers.',
+      ),
+      TourStep(
+        anchor: 'tour-inventory-attention',
+        title: 'Needs attention',
+        body: 'Anything in stock that wants a look.',
+      ),
+      TourStep(
+        anchor: 'inventory-list',
+        title: 'The list',
+        body: 'Click a row to open it beside the list.',
+      ),
+    ],
+  ),
+  'marketing': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-marketing-tabs',
+        title: 'Marketing',
+        body:
+            'Newsletter, Social Media Management, and the modules inside '
+            'Marketing, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-newsletter-panes',
+        title: 'Newsletter',
+        body: 'Dashboard, Composer and Settings.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-new-newsletter',
+        title: 'New newsletter',
+        body: 'Opens the composer on a new one.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-status-tiles',
+        title: 'Sent, Scheduled, Drafts',
+        body: 'Each one narrows the list, with how many are in it.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-social-panes',
+        title: 'Social Media Management',
+        body:
+            'Dashboard, Compose, Calendar, Accounts and QR Codes, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-social-tiles',
+        title: 'Your posts',
+        body: 'Scheduled, Sent and Failed narrow the timeline, with counts.',
+      ),
+      TourStep(
+        anchor: 'tour-marketing-new-post',
+        title: 'New post',
+        body: 'Write a post once, for the pages you pick.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-tabs',
+        title: 'Web Management',
+        body: 'SEO and Widgets, for each of your websites.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-sites',
+        title: 'Your websites',
+        body: 'Every website and subdomain, each with its own details.',
+      ),
+      TourStep(
+        anchor: 'tour-web_management-add-site',
+        title: 'Add a website',
+        body: 'Adds another website or subdomain to the list.',
+      ),
+      TourStep(
+        anchor: 'seo-sections',
+        title: 'Its details',
+        body: "The open website's details, one part at a time.",
+      ),
+    ],
+  ),
+  'training': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-training-tabs',
+        title: 'Training',
+        body: 'Learn, then Dashboard and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'learn-continue',
+        title: 'Continue',
+        body: 'The guide you were reading, at the page you left it.',
+      ),
+      TourStep(
+        anchor: 'learn-assigned',
+        title: 'Assigned to you',
+        body: 'What you have been given to read or take.',
+      ),
+      TourStep(
+        anchor: 'learn-search',
+        title: 'Find a guide or test',
+        body: 'Narrows the library as you type.',
+      ),
+      TourStep(
+        anchor: 'learn-library',
+        title: 'The library',
+        body: 'Everything you can read. Click one to open it.',
+      ),
+    ],
+  ),
+  'a1leads_gbp': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-a1leads_gbp-source',
+        title: 'How fresh this is',
+        body:
+            'Where these reviews were read from, and when. It warns you when '
+            'the data has stopped refreshing.',
+      ),
+      TourStep(
+        anchor: 'tour-a1leads_gbp-filters',
+        title: 'Narrow the reviews',
+        body: 'By rating, reply, period and whether a customer was matched.',
+      ),
+      TourStep(
+        anchor: 'tour-a1leads_gbp-view-toggle',
+        title: 'Board or Table',
+        body: 'The same reviews as cards or as rows.',
+      ),
+      TourStep(
+        anchor: 'gbp-panel',
+        title: 'The review',
+        body: 'The open review, beside the list.',
+      ),
+    ],
+  ),
+  'ai_assistance': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-ai_assistance-tabs',
+        title: 'AI Assistance',
+        body: 'AI, Library, WhatsApp groups and Settings, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-ai_assistance-ask',
+        title: 'Ask',
+        body: 'A question in your own words, or a city, state or branch code.',
+      ),
+      TourStep(
+        anchor: 'assistant-answer',
+        title: 'From the Library',
+        body: 'The Library entry that answers it.',
+      ),
+      TourStep(
+        anchor: 'assistant-ai-answer',
+        title: "AI's answer",
+        body: 'AI reads the Library and answers in its own words.',
+      ),
+    ],
+  ),
+  'customer_experience': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'customer-experience-tabs',
+        title: 'Customer Experience',
+        body: 'Reviews and Business Profile, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-unanswered',
+        title: 'Unanswered',
+        body: 'Only the reviews nobody has replied to, with how many.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-rating',
+        title: 'Rating',
+        body: 'One star rating at a time.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-fetch',
+        title: 'Fetch new',
+        body: 'Reads new reviews now instead of waiting for the next check.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-reviews',
+        title: 'The reviews',
+        body: 'Click one to read it and write the reply.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-check-google',
+        title: 'Check Google',
+        body: 'Reads the profiles from Google again.',
+      ),
+    ],
+  ),
+  'reports': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-reports-tabs',
+        title: 'Reports',
+        body:
+            'Your reports, the Builder, Performance and the rest, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-new',
+        title: 'New report',
+        body: 'Opens the Builder on a new report.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-library',
+        title: 'Your reports',
+        body: 'Each saved report, what it covers, and when it was sent.',
+      ),
+      TourStep(
+        anchor: 'ads-refresh',
+        title: 'Read again',
+        body: 'Reads the figures from Google again.',
+      ),
+      TourStep(
+        anchor: 'ads-account-search',
+        title: 'Find an account',
+        body: 'Narrows the accounts as you type.',
+      ),
+      TourStep(
+        anchor: 'ads-accounts',
+        title: 'Accounts',
+        body:
+            'Managers stand out in their own colour, above the accounts in them.',
+      ),
+      TourStep(
+        anchor: 'ads-account-figures',
+        title: 'The account',
+        body: 'Cost, clicks and the rest, for the dates chosen.',
+      ),
+      TourStep(
+        anchor: 'ads-campaign-search',
+        title: 'Find a campaign',
+        body: 'Narrows the campaigns as you type.',
+      ),
+      TourStep(
+        anchor: 'tour-reports-pl-controls',
+        title: 'Profit & Loss',
+        body: 'Where the figures come from, and which week.',
+      ),
+    ],
+  ),
+  'monitoring': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-monitoring-tabs',
+        title: 'Monitoring',
+        body:
+            'General, Map, PC Specs, Files, Camera Monitoring and Desktop '
+            'Monitoring, as your role allows.',
+      ),
+      TourStep(
+        anchor: 'floor-plan-picker',
+        title: 'Floor plan',
+        body: 'Which floor plan you are looking at.',
+      ),
+      TourStep(
+        anchor: 'floor-plan-canvas',
+        title: 'The plan',
+        body: 'Each machine where it sits, with its status.',
+      ),
+      TourStep(
+        anchor: 'general-refresh',
+        title: 'Refresh status',
+        body: 'Reads every status again.',
+      ),
+      TourStep(
+        anchor: 'camera-monitoring-add-button',
+        title: 'Add a camera',
+        body: 'Adds a camera by its address.',
+      ),
+      TourStep(
+        anchor: 'camera-monitoring-grid',
+        title: 'Cameras',
+        body: 'Every camera you can see, side by side.',
+      ),
+    ],
+  ),
+  'automations': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-automations-tabs',
+        title: 'Automations',
+        body: 'Your automations, and Build.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-new',
+        title: 'New automation',
+        body: 'A rule: when something happens, what EzBizi does.',
+      ),
+      TourStep(
+        anchor: 'automations-search',
+        title: 'Find a rule',
+        body: 'By its name.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-live',
+        title: 'Live',
+        body: 'Switches a rule on or off.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-menu',
+        title: 'More',
+        body:
+            'Edit, duplicate, test, run it now, its run history, or delete it.',
+      ),
+    ],
+  ),
+  'hr': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-tabs',
+        title: 'Human Resources',
+        body:
+            'Dashboard, Records, Contracts, Invitations and Onboarding, as '
+            'your role allows.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-period',
+        title: 'The period',
+        body: 'Day, week, month, quarter or year.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-refresh',
+        title: 'Refresh',
+        body: 'Reads the dashboard again.',
+      ),
+      TourStep(
+        anchor: 'hr-right-now',
+        title: 'Right now',
+        body:
+            'Who is on the clock, who is away today, and what is due for retaking.',
+      ),
+      TourStep(
+        anchor: 'hr-by-month',
+        title: 'Joined and left',
+        body: 'People who joined and left, month by month over the last year.',
+      ),
+      TourStep(
+        anchor: 'hr-places',
+        title: 'Where people work',
+        body: 'How many people work at each place.',
+      ),
+    ],
+  ),
+};

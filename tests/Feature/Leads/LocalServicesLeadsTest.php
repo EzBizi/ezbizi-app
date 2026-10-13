@@ -278,6 +278,29 @@ class LocalServicesLeadsTest extends TestCase
         $this->assertSame(Lead::STATUS_NEW, $lead->status);
     }
 
+    /** 2026-10-13: a booking Google sends without a customer keeps the one EzBizi filled in. */
+    public function test_a_resync_without_a_name_keeps_the_customer_ezbizi_filled_in(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+        $this->connected($t);
+        $this->fakeGoogle(['results' => [['localServicesLead' => [
+            'id' => 'lead-88', 'leadType' => 'BOOKING', 'leadStatus' => 'BOOKED',
+            'creationDateTime' => '2026-09-01 14:22:00', 'contactDetails' => [],
+        ]]]]);
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+        $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail()->forceFill([
+            'contact_name' => 'Mary Ciccolini', 'phone' => '+13306063475', 'phone_digits' => '13306063475',
+        ])->save());
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame('Mary Ciccolini', $lead->contact_name);
+        $this->assertSame('+13306063475', $lead->phone);
+    }
+
     /**
      * A reconnected account must reclaim the enquiries it lost.
      *

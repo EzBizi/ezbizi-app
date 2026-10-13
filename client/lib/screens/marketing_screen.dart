@@ -162,6 +162,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-marketing-tabs'),
             labels: [for (final tab in tabs) (tab.$1, tab.$2)],
             selected: selected,
             onSelected: (tab) => setState(() => _tab = tabs[tab].$1),

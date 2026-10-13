@@ -101,6 +101,36 @@ void main() {
     },
   );
 
+  test('the roots answer carries quick links; a folder answer does not', () async {
+    final reader = _FakeReader(
+      listing: {
+        '': [
+          {'name': r'C:\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
+        ],
+        r'C:\': const [],
+      },
+      links: const [
+        {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
+      ],
+    );
+    final it = harness(requests: [
+      {'id': 'roots', 'op': 'list', 'path': ''},
+      {'id': 'drive', 'op': 'list', 'path': r'C:\'},
+    ]);
+
+    final service = build(it.api, reader);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    service.dispose();
+
+    final roots = it.bodies.firstWhere((b) => b['path'] == '');
+    expect(roots['quick_links'], [
+      {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
+    ]);
+    final drive = it.bodies.firstWhere((b) => b['path'] == r'C:\');
+    expect(drive.containsKey('quick_links'), isFalse,
+        reason: 'Quick links belong to This PC only.');
+  });
+
   test('a download request posts the file back as base64 under op:download',
       () async {
     final reader = _FakeReader(
@@ -198,7 +228,10 @@ class _FakeReader implements FileAccessReader {
     this.downloads = const {},
     this.errors = const {},
     this.throwArbitrary = false,
+    this.links = const [],
   });
+
+  final List<Map<String, String>> links;
 
   final Map<String, List<Map<String, Object?>>> listing;
   final Map<String, Map<String, Object?>> downloads;
@@ -223,4 +256,7 @@ class _FakeReader implements FileAccessReader {
     if (errors.containsKey(path)) throw FileAccessException(errors[path]!);
     return downloads[path] ?? const {};
   }
+
+  @override
+  Future<List<Map<String, String>>> quickLinks() async => links;
 }

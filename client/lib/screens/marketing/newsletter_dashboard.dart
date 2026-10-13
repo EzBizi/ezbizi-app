@@ -126,6 +126,7 @@ class NewsletterDashboard extends StatelessWidget {
         Refused(
           reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
           child: FilledButton.icon(
+            key: const ValueKey('tour-marketing-new-newsletter'),
             onPressed: can ? onNew : null,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('New newsletter'),
@@ -143,6 +144,7 @@ class NewsletterDashboard extends StatelessWidget {
   /// would filter nothing.
   Widget _tiles(BuildContext context) {
     final filters = FilterTiles(
+      key: const ValueKey('tour-marketing-status-tiles'),
       prefix: 'newsletters',
       picked: status,
       onPick: onStatus,
@@ -173,14 +175,14 @@ class NewsletterDashboard extends StatelessWidget {
     // Named for what it is. The provider reports what happens after it takes
     // the mailing; EzBizi knows only what was accepted, and calling this
     // "delivered" would be a claim it cannot stand behind.
-    final reached = _FactTile(
+    final reached = FactTile(
       key: const Key('newsletters-fact-reached'),
       label: 'Addresses reached',
       value: '${stats.recipients}',
       note: 'accepted by the mailing account',
     );
     final lastAt = DateTime.tryParse(stats.lastSentAt ?? '')?.toLocal();
-    final last = _FactTile(
+    final last = FactTile(
       key: const Key('newsletters-fact-last'),
       label: 'Last one went out',
       value: lastAt == null
@@ -288,67 +290,6 @@ class NewsletterDashboard extends StatelessWidget {
     'scheduled' => 'scheduled',
     _ => 'drafts',
   };
-}
-
-/// A tile that states a number and filters nothing: FilterTile's look, with
-/// no tap. Private to this screen because list_table.dart is shared and has
-/// no such tile.
-class _FactTile extends StatelessWidget {
-  const _FactTile({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.note,
-  });
-
-  final String label;
-  final String value;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-        border: Border.all(color: EzBiziTheme.edge(context)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall?.copyWith(
-              letterSpacing: 0.8,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Text(
-            note,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// One line of the table, from a GET /newsletters row.

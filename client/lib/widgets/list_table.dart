@@ -34,6 +34,7 @@ class FilterTiles extends StatelessWidget {
     required this.tiles,
     required this.picked,
     required this.onPick,
+    this.facts = const [],
   });
 
   /// Keys each tile `<prefix>-tile-<key>`, `all` for the null one.
@@ -42,12 +43,19 @@ class FilterTiles extends StatelessWidget {
   final String? picked;
   final ValueChanged<String?> onPick;
 
+  /// Tiles that state a number and filter nothing ([FactTile]), after [tiles]
+  /// and at their width, so a fact never reads as a filter that does nothing.
+  final List<Widget> facts;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, box) {
         const gap = 10.0;
-        final across = (box.maxWidth / 170).floor().clamp(2, tiles.length);
+        final across = (box.maxWidth / 170).floor().clamp(
+          2,
+          tiles.length + facts.length,
+        );
         final width = (box.maxWidth - gap * (across - 1)) / across;
 
         return Wrap(
@@ -56,6 +64,7 @@ class FilterTiles extends StatelessWidget {
           children: [
             for (final tile in tiles)
               SizedBox(width: width, child: _tile(context, tile)),
+            for (final fact in facts) SizedBox(width: width, child: fact),
           ],
         );
       },
@@ -117,6 +126,70 @@ class FilterTiles extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A tile that states a number and filters nothing: [FilterTiles]' look, with
+/// no tap. The Newsletter's dashboard and Social's (UI queue 76) both say
+/// facts beside their filters, and two private copies would drift apart.
+class FactTile extends StatelessWidget {
+  const FactTile({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.note,
+  });
+
+  final String label;
+  final String value;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // 11 and not the filter tiles' 12: a Container's border is laid out inside
+    // its size, where a Material's outline is not, and a fact sat 2 px taller
+    // than the filters beside it.
+    return Container(
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+        border: Border.all(color: EzBiziTheme.edge(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.8,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            note,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }

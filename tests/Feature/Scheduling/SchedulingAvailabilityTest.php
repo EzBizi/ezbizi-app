@@ -711,6 +711,224 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('Dallas', $this->first($tenant, 'zip='.urlencode('75201-1234'))['area_name']);
     }
 
+    /**
+     * An overbooked row opens to the jobs it counted, each with its client and
+     * appointment (Bar, via Jose, 2026-10-12). The list is the count: four
+     * booked of three lists four, and a cancelled job is in neither.
+     */
+    public function test_an_overbooked_row_lists_the_jobs_it_counted_with_their_details(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 4]);
+
+        foreach (['07:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Canceled');
+        WorkizJob::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => 'RICH01',
+            'service_area' => 'Dallas',
+            'postal_code' => '75201',
+            'city' => 'Dallas',
+            'address' => '1430 Red Oaks Dr',
+            'status' => 'Submitted',
+            'scheduled_for' => '2026-10-05 08:00:00',
+            'payload' => [
+                'Tags' => [], 'SerialId' => 600012, 'FirstName' => 'John', 'LastName' => 'Lynch',
+                'Phone' => '2145550100', 'Email' => 'john@example.com', 'JobType' => 'Chimney Inspection',
+                'JobEndDateTime' => '2026-10-05 11:00:00', 'JobNotes' => 'Gate code 4411',
+                'Team' => [['id' => 'USR-1', 'Name' => 'Ivan Sharkov']],
+            ],
+            'synced_at' => now(),
+        ]);
+
+        $row = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/overbooking')->json('data.overbooked'))
+            ->first(fn ($r) => $r['level'] === 'area' && $r['date'] === '2026-10-05');
+        $this->assertSame(4, $row['booked']);
+
+        $jobs = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount($row['booked'], $jobs, 'The list is exactly what the row counted.');
+        $this->assertSame(['07:00', '08:00', '11:00', '12:00'], array_column($jobs, 'time'));
+        $this->assertSame([
+            'number' => '600012', 'status' => 'Submitted', 'time' => '08:00', 'end_time' => '11:00',
+            'service' => 'Chimney Inspection', 'technicians' => ['Ivan Sharkov'], 'notes' => 'Gate code 4411',
+            'customer' => ['name' => 'John Lynch', 'phone' => '2145550100', 'email' => 'john@example.com', 'address' => '1430 Red Oaks Dr, Dallas 75201'],
+        ], array_intersect_key($jobs[1], array_flip(['number', 'status', 'time', 'end_time', 'service', 'technicians', 'notes', 'customer'])));
+
+        // A franchise row lists the franchise's jobs that day.
+        $this->assertCount(4, $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&franchise_id={$tenant['franchise']->id}")
+            ->assertOk()->json('data'));
+
+        // Another tenant's area and franchise are not found, and a caller
+        // without the Overbooking tab cannot ask.
+        $other = $this->provisionTenant('Beta');
+        $this->signedInAs($other['admin'])->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")->assertNotFound();
+        $this->signedInAs($other['admin'])->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&franchise_id={$tenant['franchise']->id}")->assertNotFound();
+        $caller = $this->userWithRole($tenant, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
+        $this->signedInAs($caller)->getJson("/api/v1/scheduling/overbooking/jobs?date=2026-10-05&area_id={$dallas->id}")->assertForbidden();
+    }
+
+    /** A Workiz job with a place on the map, for the nearby suggestion. */
+    private function located(array $tenant, string $at, float $lat, float $lng, string $zip = '75201', string $tech = 'Ivan Sharkov'): void
+    {
+        app(TenantContext::class)->set($tenant['org']);
+        WorkizJob::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'service_area' => 'Dallas',
+            'postal_code' => $zip,
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'status' => 'Submitted',
+            'scheduled_for' => $at,
+            'payload' => ['Tags' => [], 'Team' => [['id' => 'USR-1', 'Name' => $tech]], 'FirstName' => 'Dana', 'LastName' => 'Reyes', 'JobType' => 'Chimney Sweep', 'SerialId' => '4417'],
+            'synced_at' => now(),
+        ]);
+    }
+
+    /**
+     * Jose, 2026-10-13: suggest the day with work already booked nearby. The
+     * earliest Monday has only a job 230 miles off; the next one has a job two
+     * blocks away at 11, so it is suggested, in the window beside it, and
+     * names the technician already there.
+     */
+    public function test_a_zip_is_suggested_the_day_with_booked_work_nearby(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        // A past job in 75201 gives the zip its place; one Workiz could not
+        // place (-1,-1) must not drag the zip's centre to Africa.
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-08-10 08:00:00', -1.0, -1.0);
+        // Oct 5: one job, far away (Houston).
+        $this->located($tenant, '2026-10-05 07:00:00', 29.7600, -95.3700, '77002', 'Harry Jenkins');
+        // Oct 12: one job a few blocks from the customer, in the 11-2 window.
+        $this->located($tenant, '2026-10-12 11:00:00', 32.7900, -96.8010);
+
+        $data = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(30.0, (float) $data['radius_miles']);
+        $this->assertSame('2026-10-05', $data['earliest']['date']);
+        $this->assertSame(0, $data['earliest']['nearby']);
+        $this->assertGreaterThan(200, $data['earliest']['nearest_miles']);
+
+        $this->assertSame('2026-10-12', $data['suggested']['date']);
+        // That job fills 11-2 (it takes one), so the window right before it.
+        $this->assertSame('07:00', $data['suggested']['window']['start_time'], 'The window beside the nearby job.');
+        $this->assertSame(1, $data['suggested']['nearby']);
+        // The day in Availability's own shape, and which window is meant.
+        $this->assertSame(['07:00', '11:00'], array_column($data['suggested']['day']['windows'], 'start_time'));
+        $this->assertSame(0, $data['suggested']['window_index']);
+        $this->assertSame(['Ivan Sharkov'], $data['suggested']['technicians']);
+        $this->assertFalse($data['suggested']['same_as_earliest']);
+        $this->assertLessThan(1, $data['suggested']['jobs'][0]['miles']);
+        // What its dot on the map says when hovered.
+        $this->assertSame(['Dana Reyes', 'Chimney Sweep', '4417', 'Submitted'], [
+            $data['suggested']['jobs'][0]['customer'], $data['suggested']['jobs'][0]['service'],
+            $data['suggested']['jobs'][0]['number'], $data['suggested']['jobs'][0]['status'],
+        ]);
+        $this->assertEqualsWithDelta(32.788, $data['origin']['latitude'], 0.002, 'The centre of the zip from its jobs.');
+
+        // A wider radius from Settings changes nothing here, a 1-mile one still
+        // finds the job, and nothing nearby means no suggestion at all.
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.suggest_radius_miles', $tenant['org'], 1);
+        $this->assertSame('2026-10-12', $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested.date'));
+        app(TenantContext::class)->set($tenant['org']);
+        DB::table('workiz_jobs')->where('scheduled_for', '2026-10-12 11:00:00')->update(['latitude' => 29.7601, 'longitude' => -95.3701]);
+        $this->assertNull($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested'));
+    }
+
+    /**
+     * Found on production 2026-10-13 (Atlanta): a later, farther day won
+     * because its open window sat next to the job. The day is chosen first,
+     * closest work then earliest; the window beside the job only picks within it.
+     */
+    public function test_a_closer_earlier_day_beats_a_later_one_with_an_adjacent_window(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        // Oct 5: ~2.8 miles off, at 11, which fills 11-2; only 7-11 is open.
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8270, -96.7990, '75204');
+        // Oct 12: ~4 miles off, at 8, inside the open 7-11.
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7290, -96.7990, '75215');
+
+        $suggested = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')
+            ->assertOk()
+            ->json('data.suggested');
+
+        $this->assertSame('2026-10-05', $suggested['date']);
+        $this->assertSame('07:00', $suggested['window']['start_time']);
+    }
+
+    /**
+     * Jose, 2026-10-13: Re-Scheduling lists booked jobs that a technician
+     * drives to alone, with the day beside other work they could move to.
+     * Two lone jobs near each other on different days are ONE suggestion,
+     * not each sent to the other's day; a job already paired on its day, or
+     * with nothing near it on any day, is not listed.
+     */
+    public function test_a_lone_job_is_suggested_a_day_beside_other_work(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        // Mondays and Wednesdays, 7-11 for two and 11-2 for one.
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+            ['weekday' => 3, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+            ['weekday' => 3, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
+        ]])->assertOk();
+        // Mon Oct 5: A downtown, alone. Mon Oct 12: C two blocks from A, alone.
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7900, -96.8010);
+        // Wed Oct 7: B alone in Houston with nothing near it on any day, and
+        // D+E together in Denton, 38 miles off. That fills the day.
+        $this->located($tenant, '2026-10-07 07:00:00', 29.7600, -95.3700, '77002');
+        $this->located($tenant, '2026-10-07 08:00:00', 33.2150, -97.1330, '76201');
+        $this->located($tenant, '2026-10-07 11:00:00', 33.2160, -97.1340, '76201');
+        // Mon Oct 12: F near D+E, filling 7-11. D is already paired, so it is
+        // not offered F's day even though F sits next to it.
+        $this->located($tenant, '2026-10-12 07:30:00', 33.2170, -97.1330, '76201');
+        // Two jobs Workiz could not place (-1,-1): "0 miles apart", not a pair.
+        $this->located($tenant, '2026-10-05 12:00:00', -1.0, -1.0, '75202');
+        $this->located($tenant, '2026-10-14 08:00:00', -1.0, -1.0, '75202');
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/reschedules')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows, json_encode(array_map(fn ($r) => [$r['job']['date'], $r['job']['time']], $rows)));
+        $this->assertSame('Dallas', $rows[0]['area_name']);
+        // A and C save the same; the earlier one moves beside the other, into
+        // Oct 12's only open window, and C stays put. F is alone too, but Oct 7
+        // is full.
+        $this->assertSame(['2026-10-05', '08:00'], [$rows[0]['job']['date'], $rows[0]['job']['time']]);
+        $this->assertNull($rows[0]['current_nearest_miles'], 'Nothing else booked on Oct 5.');
+        // The id POST scheduling/board/jobs/{job}/reschedule takes.
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame('2026-10-05 08:00', substr((string) WorkizJob::findOrFail($rows[0]['job']['workiz_job_id'])->getRawOriginal('scheduled_for'), 0, 16));
+        $this->assertSame('2026-10-12', $rows[0]['suggested']['date']);
+        $this->assertSame('11:00', $rows[0]['suggested']['window']['start_time']);
+        $this->assertSame(1, $rows[0]['suggested']['nearby']);
+        $this->assertLessThan(1, $rows[0]['suggested']['nearest_miles']);
+    }
+
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */
     public function test_the_overbooking_tab_shows_one_picked_date(): void
     {

@@ -117,6 +117,20 @@ final class CallReconciliation
          */
         $calls = array_values(array_filter($calls, fn (array $call) => $this->outcome($call) !== 'spam'));
 
+        /*
+         * OUTBOUND CALLS NOBODY PICKED UP (Jose, 2026-10-12: "on missed calls
+         * i want also to differentiate between inbound and outbound calls").
+         * Listed beside the missed calls, never counted with them: a customer
+         * who did not answer us is not a customer we missed. RingCentral says
+         * "Call connected" when the other side or its voicemail picked up, and
+         * Hang Up / No Answer / Busy / Call Failed when nobody did.
+         */
+        $unansweredOut = array_values(array_filter(
+            $calls,
+            fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Outbound' && ($call['result'] ?? null) !== 'Call connected',
+        ));
+        $calls = array_values(array_filter($calls, fn (array $call) => ($call['direction'] ?? 'Inbound') === 'Inbound'));
+
         $booked = $this->jobsCreatedBetween($jobs, $from, $to);
 
         /*
@@ -295,6 +309,7 @@ final class CallReconciliation
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
                 'not_booked' => $notBooked,
+                'outbound_unanswered' => count($unansweredOut),
 
                 'avg_talk_seconds' => array_sum($talkCalls) > 0
                     ? (int) round(array_sum($talkSeconds) / array_sum($talkCalls))
@@ -320,8 +335,10 @@ final class CallReconciliation
              * a row labelled with whatever canonical() made of it, and the two
              * would look like different people.
              */
-            'calls' => array_map(fn (array $call): array => [
+            'calls' => [...array_map(fn (array $call): array => [
                 'id' => $call['id'] ?? null,
+                'direction' => 'Inbound',
+                'to_number' => $call['to_number'] ?? null,
                 'started_at' => $call['started_at'] ?? null,
                 'from' => $call['from'] ?? null,
                 'caller_label' => $call['caller_label'] ?? null,
@@ -337,7 +354,25 @@ final class CallReconciliation
                     fn ($person) => $this->canonical($person),
                     $call['rang'] ?? [],
                 ))),
-            ], $calls),
+            ], $calls), ...array_map(fn (array $call): array => [
+                'id' => $call['id'] ?? null,
+                'direction' => 'Outbound',
+                'to_number' => $call['to_number'] ?? null,
+                'started_at' => $call['started_at'] ?? null,
+                // The number we dialled, where an inbound call has the caller's.
+                'from' => $call['to_number'] ?? null,
+                'caller_label' => null,
+                'queue' => null,
+                'result' => $call['result'] ?? null,
+                'outcome' => 'no_answer',
+                'booked' => false,
+                'converted' => false,
+                'talk_seconds' => null,
+                'recording_id' => null,
+                'answered_by' => null,
+                'placed_by' => $this->canonical($call['caller_label'] ?? null),
+                'rang' => [],
+            ], $unansweredOut)],
         ];
     }
 

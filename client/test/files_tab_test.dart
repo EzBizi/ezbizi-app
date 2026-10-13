@@ -34,8 +34,12 @@ void main() {
     required List<Map<String, dynamic>> devices,
     required Map<String, Map<String, dynamic>> answers,
     List<Map<String, dynamic>>? requestLog,
+    // Behind the authenticator (UI queue 79): 123456 opens it, any other
+    // code is refused in the server's words, and DELETE locks it again.
+    bool locked = false,
   }) {
     var nextId = 0;
+    var isLocked = locked;
     final pathOf = <String, String>{}; // request_id -> path
     final polled = <String>{}; // request_ids polled at least once
 
@@ -73,15 +77,46 @@ void main() {
           );
         }
 
+        if (path.endsWith('/monitoring/files/unlock')) {
+          if (request.method == 'DELETE') {
+            isLocked = true;
+            return http.Response('', 204);
+          }
+          final code = (jsonDecode(request.body) as Map)['code'];
+          if (code != '123456') {
+            return http.Response(
+              jsonEncode({'message': 'That code did not verify.'}),
+              422,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          isLocked = false;
+          return http.Response(
+            jsonEncode({'data': {'unlocked_until': '2026-10-12T19:00:00Z'}}),
+            200,
+            headers: const {'content-type': 'application/json'},
+          );
+        }
+
         // POST a file request → mint an id, remember its path.
         final reqMatch = RegExp(r'/monitoring/devices/[^/]+/files$');
         if (reqMatch.hasMatch(path) && request.method == 'POST') {
+          if (isLocked) {
+            return http.Response(
+              jsonEncode({'message': 'Locked.', 'code': 'files_locked'}),
+              403,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           requestLog?.add(body);
           final id = 'req-${nextId++}';
           pathOf[id] = body['path'] as String? ?? '';
           return http.Response(
-            jsonEncode({'data': {'request_id': id}}),
+            jsonEncode({'data': {
+              'request_id': id,
+              'unlocked_until': '2026-10-12T19:00:00Z',
+            }}),
             200,
             headers: const {'content-type': 'application/json'},
           );
@@ -188,7 +223,11 @@ void main() {
     await tester.tap(find.text('Toula Elwell'));
     await tester.pumpAndSettle();
 
+    // A file is chosen first, as in Explorer (UI queue 79); Download is in
+    // what it shows.
     await tester.tap(find.byKey(const ValueKey('files-entry-invoice.pdf')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('files-download-invoice.pdf')));
     // No animated spinner rides a download (the tray shows a static state), so
     // pumpAndSettle has nothing to advance the poll timers with — step the two
     // ~900ms polls explicitly.
@@ -203,6 +242,198 @@ void main() {
     // The tray shows it, ready.
     expect(find.byKey(const Key('files-downloads-tray')), findsOneWidget);
     expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+  });
+
+  // UI queue 79: Explorer's panes once a computer is chosen.
+  testWidgets('a chosen picture is fetched and shown beside the list, a '
+      'PDF is not fetched, and the list sorts by size', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // A 1×1 PNG, so Image.memory has something real to decode.
+    const png =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    final log = <Map<String, dynamic>>[];
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': 'cap.png', 'is_dir': false, 'size_bytes': 70, 'modified_at': '2026-10-11'},
+          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
+        ]},
+        'cap.png': {'status': 'ready', 'op': 'download', 'name': 'cap.png',
+          'size': 70, 'content_base64': png},
+      },
+      requestLog: log,
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    // The rail folded into the picker, and the list has its headings.
+    expect(find.byKey(const Key('files-device-rail')), findsNothing);
+    expect(find.byKey(const Key('files-device-picker')), findsOneWidget);
+    expect(find.text('Choose a file to see it here.'), findsOneWidget);
+
+    // Size, largest first: the PDF above the picture.
+    await tester.tap(find.byKey(const ValueKey('files-sort-size')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('files-sort-size')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('files-entry-estimate.pdf'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('files-entry-cap.png'))).dy,
+      ),
+    );
+
+    // A PDF shows what it is and is not fetched.
+    await tester.tap(find.byKey(const ValueKey('files-entry-estimate.pdf')));
+    await tester.pumpAndSettle();
+    expect(find.text('PDF document'), findsOneWidget);
+    expect(log.where((r) => r['op'] == 'download'), isEmpty);
+
+    // A picture is fetched once and shown.
+    await tester.tap(find.byKey(const ValueKey('files-entry-cap.png')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(log.where((r) => r['op'] == 'download' && r['path'] == 'cap.png'),
+        hasLength(1));
+    expect(find.byKey(const ValueKey('files-preview-image-cap.png')),
+        findsOneWidget);
+    expect(find.text('Opening a preview counts as a download in the log.'),
+        findsOneWidget);
+  });
+
+  testWidgets('on a phone a chosen file stands in for the list, with the way '
+      'back', (tester) async {
+    tester.view.physicalSize = const Size(380, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('files-entry-estimate.pdf')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-listing')), findsNothing);
+    expect(find.byKey(const ValueKey('files-download-estimate.pdf')),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('files-preview-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-listing')), findsOneWidget);
+  });
+
+  // UI queue 79: Files behind the person's own authenticator.
+  testWidgets('a locked Files asks for the code in place, a good one opens '
+      'it, and Lock now locks it again', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      locked: true,
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
+          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    // Asked for where the files were, never as a raw "locked".
+    expect(find.byKey(const Key('files-lock-card')), findsOneWidget);
+    expect(find.byKey(const Key('files-listing')), findsNothing);
+    expect(find.text('locked'), findsNothing);
+
+    await tester.enterText(find.byKey(const Key('files-unlock-code')), '000000');
+    await tester.tap(find.byKey(const Key('files-unlock-submit')));
+    await tester.pumpAndSettle();
+    expect(find.text('That code did not verify.'), findsOneWidget);
+    expect(find.byKey(const Key('files-lock-card')), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('files-unlock-code')), '123456');
+    await tester.tap(find.byKey(const Key('files-unlock-submit')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-lock-card')), findsNothing);
+    expect(find.byKey(const ValueKey('files-entry-C:\\')), findsOneWidget);
+    expect(find.byKey(const Key('files-unlocked-pill')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('files-lock-now')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('files-lock-card')), findsOneWidget);
+  });
+
+  testWidgets('quick links come first and open their folder by name', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = fakeServer(
+      devices: [
+        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+      ],
+      answers: {
+        '': {'status': 'ready', 'op': 'list', 'path': '', 'quick_links': [
+          {'label': 'Downloads', 'path': 'C:\\Users\\toula\\Downloads'},
+        ], 'entries': [
+          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
+        ]},
+        'C:\\Users\\toula\\Downloads': {'status': 'ready', 'op': 'list',
+          'path': 'C:\\Users\\toula\\Downloads', 'entries': [
+          {'name': 'quote.pdf', 'is_dir': false, 'size_bytes': 4000, 'modified_at': '2026-10-11'},
+        ]},
+      },
+    );
+
+    await tester.pumpWidget(wrap(api, await signedIn(api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Toula Elwell'));
+    await tester.pumpAndSettle();
+
+    final link = find.byKey(const ValueKey('files-quick-Downloads'));
+    final drive = find.byKey(const ValueKey('files-quick-C:\\'));
+    expect(tester.getTopLeft(link).dy, lessThan(tester.getTopLeft(drive).dy));
+
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('files-entry-quote.pdf')), findsOneWidget);
+    // The crumbs read This PC › Downloads, not the whole path.
+    expect(find.widgetWithText(TextButton, 'Downloads'), findsOneWidget);
   });
 
   testWidgets('access_denied on a folder reads as a sentence, not a spinner',

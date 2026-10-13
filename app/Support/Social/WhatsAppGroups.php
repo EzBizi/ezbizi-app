@@ -60,7 +60,7 @@ final class WhatsAppGroups
 
         return $this->fanOut($purpose, $title, [
             'type' => 'document',
-            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => $title],
+            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4C4} *".$title.'*'],
         ], $title, $mediaId, $filename);
     }
 

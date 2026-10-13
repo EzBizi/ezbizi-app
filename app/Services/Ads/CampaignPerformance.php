@@ -118,8 +118,11 @@ class CampaignPerformance
         Carbon $from,
         Carbon $to,
         bool $withCampaigns = true,
+        ?string $token = null,
     ): array {
-        $token = GoogleToken::forConnection($connection, 'google_ads');
+        // A manager's token reads its clients too; the roll-up passes it for a
+        // client with no row of its own.
+        $token ??= GoogleToken::forConnection($connection, 'google_ads');
 
         // Dates are the ACCOUNT's, not the server's. segments.date is evaluated
         // in the customer's own time zone, so a range built from a UTC "today"
@@ -332,6 +335,41 @@ class CampaignPerformance
     }
 
     /**
+     * Cost, clicks and conversions split LOCAL_SERVICES / everything else,
+     * read at campaign-channel level and summed: one query per account
+     * (Reports' ad cost vs Workiz jobs, 2026-10-12: "LS Ads" and "PPC").
+     *
+     * @return array{currency: ?string, lsa: array{cost_minor: int, clicks: int, conversions: float}, ppc: array{cost_minor: int, clicks: int, conversions: float}}
+     *
+     * @throws RuntimeException
+     */
+    public function channelCost(SocialConnection $connection, Carbon $from, Carbon $to): array
+    {
+        $rows = $this->search($connection, GoogleToken::forConnection($connection, 'google_ads'), sprintf(
+            "SELECT customer.currency_code, campaign.advertising_channel_type, metrics.cost_micros, "
+            ."metrics.clicks, metrics.conversions FROM campaign WHERE segments.date BETWEEN '%s' AND '%s'",
+            $from->format('Y-m-d'),
+            $to->format('Y-m-d'),
+        ));
+
+        $out = ['currency' => null];
+        foreach (['lsa', 'ppc'] as $k) {
+            $out[$k] = ['cost_minor' => 0, 'clicks' => 0, 'conversions' => 0.0];
+        }
+        foreach ($rows as $row) {
+            $out['currency'] ??= $row['customer']['currencyCode'] ?? null;
+            $k = ($row['campaign']['advertisingChannelType'] ?? '') === 'LOCAL_SERVICES' ? 'lsa' : 'ppc';
+            $m = $row['metrics'] ?? [];
+            // micros to cents: 10,000 micros a cent.
+            $out[$k]['cost_minor'] += intdiv((int) ($m['costMicros'] ?? 0), 10_000);
+            $out[$k]['clicks'] += (int) ($m['clicks'] ?? 0);
+            $out[$k]['conversions'] += (float) ($m['conversions'] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
      * The accounts beneath a manager, as GOOGLE understands them.
      *
      * Not from our own `login_customer_id` column, and the difference matters.
@@ -345,7 +383,7 @@ class CampaignPerformance
      * on is the intersection with the accounts we actually hold a token for,
      * which is a smaller set and is stated on screen rather than implied.
      *
-     * @return list<array{id: string, name: string}>
+     * @return list<array{id: string, name: string, status: string}>
      */
     public function childrenOf(SocialConnection $connection): array
     {
@@ -374,7 +412,11 @@ class CampaignPerformance
                 continue;
             }
 
-            $out[] = ['id' => $id, 'name' => (string) ($client['descriptiveName'] ?? $id)];
+            $out[] = [
+                'id' => $id,
+                'name' => (string) ($client['descriptiveName'] ?? $id),
+                'status' => (string) ($client['status'] ?? 'ENABLED'),
+            ];
         }
 
         return $out;

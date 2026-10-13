@@ -47,7 +47,7 @@ const _sources = <({String word, String source, String? leadType})>[
   (word: 'Thumbtack', source: 'thumbtack', leadType: null),
   (word: 'Chat', source: 'website_chat', leadType: null),
   (word: 'Form', source: 'website_form', leadType: null),
-  (word: 'Messenger', source: 'facebook', leadType: null),
+  (word: 'Facebook', source: 'facebook', leadType: null),
   (word: 'Instagram', source: 'instagram', leadType: null),
   (word: 'Workiz', source: 'workiz', leadType: null),
   (word: 'WhatsApp', source: 'whatsapp', leadType: null),

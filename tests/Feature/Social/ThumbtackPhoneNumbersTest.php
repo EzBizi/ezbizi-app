@@ -121,6 +121,23 @@ class ThumbtackPhoneNumbersTest extends TestCase
             ]);
     }
 
+    /** 2026-10-11: after the batch went up, the invalid number was the only new one, on the single path. */
+    public function test_a_lone_number_thumbtack_calls_invalid_is_skipped_not_fatal(): void
+    {
+        Http::fake([
+            '*associate-phone-numbers' => Http::sequence()
+                ->push(['phoneNumbers' => []])
+                ->push(['type' => 'about:blank', 'status' => 422, 'detail' => 'invalid phone number: +15552345678'], 422),
+        ]);
+
+        $result = (new ThumbtackAssociatePhoneNumbers)->reconcile($this->connection(), [
+            '(555) 234-5678' => 'Ada Sweep',
+        ]);
+
+        $this->assertSame(0, $result['created']);
+        $this->assertSame(['+15552345678'], $result['skipped']);
+    }
+
     public function test_a_single_new_number_uses_the_plain_endpoint_not_the_bulk_one(): void
     {
         Http::fake([

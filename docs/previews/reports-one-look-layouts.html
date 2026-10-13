@@ -1,0 +1,346 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reports, one look</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:740px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chips{display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
+.chips span{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a;white-space:nowrap}
+.chips span.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.datebar{display:inline-flex;align-items:center;gap:6px}
+.datebar .dd{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600}
+.datebar .dd b{font-weight:800}
+.datebar i{font-style:normal;color:var(--muted);font-weight:700;padding:0 4px}
+.figs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.figs.f4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.fig{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:1px}
+.fig .k{font-size:11px;color:var(--muted);font-weight:600}
+.fig .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.fig .s{font-size:11px;color:var(--muted)}
+.up{color:var(--ok);font-weight:700}.dn{color:var(--bad);font-weight:700}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.tbl table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+.tbl th{position:sticky;top:0;background:#f3f6f8;text-align:right;font-weight:700;color:#33404a;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.tbl th.l,.tbl td.l{text-align:left}
+.tbl td.pin,.tbl th.pin{position:sticky;left:0;background:inherit;box-shadow:1px 0 0 var(--line)}
+.tbl tr{background:#fff}
+.tbl tr:hover{background:#f7fafb}
+.tbl tr.tot td{background:#eef4f6;font-weight:800;border-top:1px solid var(--line);border-bottom:0}
+.tbl td.neg{color:var(--bad);font-weight:700}
+.tbl td.mut{color:#9aa6ad}
+.tbl .cap2{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.scrollhint{display:flex;align-items:center;justify-content:flex-end;gap:6px;font-size:11px;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line2)}
+.empty{background:var(--paper);border:1px dashed #b9c7cd;border-radius:var(--r);padding:26px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.empty .ic{width:40px;height:40px;border-radius:12px;background:var(--pric);color:var(--prid);display:flex;align-items:center;justify-content:center;font-size:18px}
+.empty b{font-size:14px}
+.rail{width:200px;flex:0 0 auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:8px;display:flex;flex-direction:column;gap:1px;font-size:12.5px}
+.rail .g{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#93a3ab;padding:8px 8px 3px}
+.rail span{padding:6px 10px;border-radius:8px;font-weight:600;color:#33404a}
+.rail span.on{background:var(--pric);color:var(--prid)}
+.chart{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.chart svg{width:100%;height:150px}
+.spark{width:100%;height:24px}
+.rowcard{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.rowcard .t{display:flex;justify-content:space-between;font-weight:700;font-size:13px}
+.rowcard .nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;font-size:11px;color:var(--muted)}
+.rowcard .nums b{display:block;font-size:13px;color:var(--ink);font-variant-numeric:tabular-nums}
+.picker{display:flex;align-items:center;justify-content:space-between;height:40px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-weight:700;font-size:13.5px}
+.fade{position:relative}
+.fade:after{content:"";position:absolute;right:0;top:0;bottom:0;width:36px;background:linear-gradient(90deg,rgba(245,248,250,0),var(--ground))}
+.bugs{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px 16px;margin:10px 0 0;font-size:12.5px;max-width:1080px}
+.bugs li{margin:3px 0}
+</style>
+
+<div class="wrap">
+<h1>Reports: one look for every tab</h1>
+<p class="subt">Jose asked to look at every tab in Reports, the new ones and the old, and make them better visually. Every tab and sub-tab was drawn with invented data on a computer and a phone (110 pictures). The tabs work, but each one is laid out its own way: there are three date controls, five table styles, four kinds of empty page, money written three ways, and side padding that changes from tab to tab. These options put every tab in one frame. Every name and number here is invented.</p>
+<p class="cap"><b>The frame, in every option:</b> the tab strip, then <b>one toolbar</b> (the same date control on every tab, the tab's filters as small pickers, its actions on the right), then <b>figures</b> (equal tiles: money as $32,520.77, the change against the dates before), then <b>one table style</b>: plain-English headings, numbers right-aligned in even columns, the naming columns pinned while you scroll sideways, a <b>Total</b> row, losses in red, a dash for "none". A row opens in a panel beside the table. Empty pages are one kind: what is missing, and the one place to fix it.</p>
+<div class="bugs"><b>Fixed whichever option is picked</b> (they are bugs, not looks):<ul>
+<li>On a phone, Marketing, Meta and Thumbtack went blank when the dates were opened. <b>Already fixed</b> (in Scoring's build).</li>
+<li>A saved report's run showed money as raw cents ("29320"); the Builder's preview of the same column says $1,708.20.</li>
+<li>Performance wrote call times as 13:33 with the 12-hour setting on.</li>
+<li>Google Ads wrote money as "32520.77 USD", with no thousands separator.</li></ul></div>
+
+<!-- ───────── Desktop 1 ───────── -->
+<h2><span class="n">1</span> One frame: toolbar, figures, one table <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Marketing, as every tab would read. The date control is Performance's, now used everywhere, Google Ads and Profit &amp; Loss included. Branch and Source stay put while the other twelve columns scroll. Total sits at the bottom, net profit is red when it is a loss, and the grey "Scroll for 6 more columns ›" says the table goes on.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Reports <span class="tiny" style="font-weight:600">ⓘ ▶</span></div>
+ <div class="chips"><span>▤ Reports</span><span>🔧 Report Builder</span><span>⚗ Performance</span><span>🏅 Scoring</span><span class="on">📣 Marketing</span><span>📣 Meta</span><span>📄 Thumbtack</span><span>📈 Google Ads</span><span>🏛 Profit &amp; Loss</span></div>
+ <div class="bar2"><span class="datebar"><i>‹</i><span class="dd">📅 <b>Last week</b> Oct 5 – Oct 11 ▾</span><i>›</i></span><span class="drop" style="height:32px;font-size:12px">All branches ▾</span><span class="drop" style="height:32px;font-size:12px">All sources ▾</span><span class="sp"></span><span class="btn sm t">↻ Refresh</span><span class="btn sm">⤓ Export</span></div>
+ <div class="figs">
+  <div class="fig"><span class="k">Ad cost</span><span class="v">$23,461</span><span class="s"><span class="dn">▲ 12%</span> vs the week before</span></div>
+  <div class="fig"><span class="k">Leads</span><span class="v">297</span><span class="s"><span class="up">▲ 8%</span></span></div>
+  <div class="fig"><span class="k">Jobs from leads</span><span class="v">71</span><span class="s">23.9% of leads</span></div>
+  <div class="fig"><span class="k">Gross sales</span><span class="v">$23,829</span><span class="s"><span class="up">▲ 4%</span></span></div>
+  <div class="fig"><span class="k">Net profit</span><span class="v" style="color:var(--bad)">−$7,169</span><span class="s">after ad cost and job costs</span></div>
+ </div>
+ <div class="tbl" style="flex:1">
+  <table>
+   <tr><th class="l pin" style="width:110px">Branch</th><th class="l pin" style="left:110px">Source</th><th>Clicks</th><th>Conversions</th><th>Ad cost</th><th>Leads</th><th>Leads → jobs</th><th>Jobs</th><th>Cost per job</th><th>Gross sales</th></tr>
+   <tr><td class="l pin">Hartford</td><td class="l pin" style="left:110px">GMB / SEO</td><td class="mut">—</td><td class="mut">—</td><td class="mut">—</td><td>9</td><td>22.2%</td><td>2</td><td class="mut">—</td><td>$806.00</td></tr>
+   <tr><td class="l pin">Hartford</td><td class="l pin" style="left:110px">Referral</td><td class="mut">—</td><td class="mut">—</td><td class="mut">—</td><td>37</td><td>8.1%</td><td>3</td><td class="mut">—</td><td>$418.00</td></tr>
+   <tr><td class="l pin">Stamford</td><td class="l pin" style="left:110px">LS Ads</td><td>620</td><td>58</td><td>$9,479.00</td><td>37</td><td>2.7%</td><td>1</td><td>$9,479.00</td><td>$519.00</td></tr>
+   <tr><td class="l pin">Stamford</td><td class="l pin" style="left:110px">PPC</td><td>471</td><td>24</td><td>$1,603.00</td><td>3</td><td>0%</td><td>0</td><td class="mut">—</td><td>$0.00</td></tr>
+   <tr><td class="l pin">Stamford</td><td class="l pin" style="left:110px">GMB / SEO</td><td class="mut">—</td><td class="mut">—</td><td class="mut">—</td><td>36</td><td>50%</td><td>18</td><td class="mut">—</td><td>$3,576.00</td></tr>
+   <tr><td class="l pin">New Haven</td><td class="l pin" style="left:110px">PPC</td><td>119</td><td>21</td><td>$8,539.00</td><td>22</td><td>36.4%</td><td>8</td><td>$1,067.38</td><td>$1,342.00</td></tr>
+   <tr><td class="l pin">New Haven</td><td class="l pin" style="left:110px">Thumbtack</td><td class="mut">—</td><td class="mut">—</td><td class="mut">—</td><td>38</td><td>44.7%</td><td>17</td><td class="mut">—</td><td>$7,545.00</td></tr>
+   <tr><td class="l pin">Newark</td><td class="l pin" style="left:110px">PPC</td><td>356</td><td>56</td><td>$3,840.00</td><td>29</td><td>24.1%</td><td>7</td><td>$548.57</td><td>$1,088.00</td></tr>
+   <tr class="tot"><td class="l pin">Total</td><td class="l pin" style="left:110px">14 rows</td><td>1,566</td><td>159</td><td>$23,461.00</td><td>297</td><td>23.9%</td><td>71</td><td>$330.44</td><td>$23,829.00</td></tr>
+  </table>
+  <div class="scrollhint">Scroll for 6 more columns ›</div>
+ </div>
+</div></div></div>
+
+<div class="lab">1 · the same frame on Google Ads, and an empty tab</div>
+<div class="win" style="height:470px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="chips"><span>▤ Reports</span><span>🔧 Report Builder</span><span>⚗ Performance</span><span>🏅 Scoring</span><span>📣 Marketing</span><span>📣 Meta</span><span>📄 Thumbtack</span><span class="on">📈 Google Ads</span><span>🏛 Profit &amp; Loss</span></div>
+ <div class="bar2"><span class="datebar"><i>‹</i><span class="dd">📅 <b>Today</b> Tue, Oct 13 ▾</span><i>›</i></span><span class="drop" style="height:32px;font-size:12px">Hartford · 4100000000 ▾</span><span class="sp"></span><span class="btn sm t">↻ Read again from Google</span></div>
+ <div style="display:flex;gap:12px;flex:1;min-height:0">
+  <div style="flex:1;display:flex;flex-direction:column;gap:10px">
+   <div class="figs">
+    <div class="fig"><span class="k">Cost</span><span class="v">$32,520.77</span></div><div class="fig"><span class="k">Clicks</span><span class="v">6,734</span></div><div class="fig"><span class="k">Impressions</span><span class="v">155,818</span></div><div class="fig"><span class="k">Conversions</span><span class="v">317</span></div><div class="fig"><span class="k">All conversions</span><span class="v">523</span></div>
+   </div>
+   <div class="tbl"><table><tr><th class="l">Channel</th><th>Spend</th><th>Clicks</th><th>Conversions</th><th>Cost per conversion</th></tr>
+    <tr><td class="l">Local Services</td><td>$2,900.50</td><td>143</td><td>31</td><td>$93.56</td></tr>
+    <tr><td class="l">Search (PPC)</td><td>$1,840.25</td><td>920</td><td>22</td><td>$83.65</td></tr>
+    <tr><td class="l">Performance Max</td><td>$610.00</td><td>301</td><td>4</td><td>$152.50</td></tr>
+    <tr class="tot"><td class="l">Total</td><td>$5,350.75</td><td>1,364</td><td>57</td><td>$93.87</td></tr></table></div>
+  </div>
+  <div class="empty" style="width:330px;flex:0 0 auto;justify-content:center"><span class="ic">📣</span><b>No Meta account connected</b><span class="tiny">Meta shows ad spend once a Facebook ad account is connected.</span><span class="btn sm f">Connect in Settings › Integrations</span><span class="tiny" style="margin-top:6px">(the one empty page, as Meta would show it)</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Desktop 2 ───────── -->
+<h2><span class="n">2</span> Figures and a chart first, the table folded</h2>
+<p class="cap">The most visual take. Each tab opens on its figures and one chart over the dates; the table is one click down ("Show the 14 rows"). It is quicker to read and slower to dig into.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="chips"><span>▤ Reports</span><span>🔧 Report Builder</span><span>⚗ Performance</span><span>🏅 Scoring</span><span class="on">📣 Marketing</span><span>📣 Meta</span><span>📄 Thumbtack</span><span>📈 Google Ads</span><span>🏛 Profit &amp; Loss</span></div>
+ <div class="bar2"><span class="datebar"><i>‹</i><span class="dd">📅 <b>Last 30 days</b> Sep 14 – Oct 13 ▾</span><i>›</i></span><span class="drop" style="height:32px;font-size:12px">All branches ▾</span><span class="sp"></span><span class="btn sm t">↻</span></div>
+ <div class="figs f4">
+  <div class="fig"><span class="k">Ad cost</span><span class="v">$94,210</span><svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="0,16 15,14 30,15 45,10 60,12 75,8 90,9 100,6" fill="none" stroke="#00708f" stroke-width="2"/></svg></div>
+  <div class="fig"><span class="k">Leads</span><span class="v">1,206</span><svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="0,18 15,15 30,16 45,12 60,10 75,11 90,7 100,8" fill="none" stroke="#00708f" stroke-width="2"/></svg></div>
+  <div class="fig"><span class="k">Cost per job</span><span class="v">$331</span><svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="0,8 15,9 30,7 45,10 60,12 75,11 90,13 100,14" fill="none" stroke="#16662d" stroke-width="2"/></svg></div>
+  <div class="fig"><span class="k">Net profit</span><span class="v" style="color:var(--bad)">−$7,169</span><svg class="spark" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline points="0,10 15,12 30,9 45,14 60,16 75,13 90,17 100,18" fill="none" stroke="#9f1d1d" stroke-width="2"/></svg></div>
+ </div>
+ <div style="display:flex;gap:12px;flex:1;min-height:0">
+  <div class="chart" style="flex:1"><div class="bar2"><b>Ad cost against gross sales, by week</b><span class="sp"></span><span class="seg"><span class="on">By week</span><span>By branch</span><span>By source</span></span></div>
+   <svg viewBox="0 0 600 150" preserveAspectRatio="none"><g fill="#a9d3e1"><rect x="20" y="60" width="40" height="90"/><rect x="170" y="45" width="40" height="105"/><rect x="320" y="70" width="40" height="80"/><rect x="470" y="40" width="40" height="110"/></g><g fill="#16662d"><rect x="64" y="50" width="40" height="100"/><rect x="214" y="62" width="40" height="88"/><rect x="364" y="55" width="40" height="95"/><rect x="514" y="58" width="40" height="92"/></g></svg>
+   <div class="bar2 tiny"><span>■ Ad cost</span><span style="color:var(--ok)">■ Gross sales</span><span class="sp"></span><span>Sep 14 · Sep 21 · Sep 28 · Oct 5</span></div></div>
+  <div class="card" style="width:330px;flex:0 0 auto"><h3>Where it went</h3>
+   <div class="srow"><span class="m">Stamford · LS Ads</span><span class="w">$9,479</span></div><div class="srow"><span class="m">New Haven · PPC</span><span class="w">$8,539</span></div><div class="srow"><span class="m">Newark · PPC</span><span class="w">$3,840</span></div><div class="srow"><span class="m">Stamford · PPC</span><span class="w">$1,603</span></div>
+   <span class="btn sm">Show the 14 rows ▾</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Desktop 3 ───────── -->
+<h2><span class="n">3</span> The tabs as a grouped rail</h2>
+<p class="cap">Nine tabs no longer fit one strip on a laptop. Here they become a rail beside the report, grouped by what they answer (saved reports, calls, advertising, money). The report on the right uses the frame from option 1.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page" style="flex-direction:row;gap:14px">
+ <div class="rail"><div class="g">Saved</div><span>Reports</span><span>Report Builder</span><div class="g">Calls</div><span>Performance</span><span>Scoring</span><div class="g">Advertising</div><span class="on">Marketing</span><span>Meta</span><span>Thumbtack</span><span>Google Ads</span><div class="g">Money</div><span>Profit &amp; Loss</span></div>
+ <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+  <div class="t">Marketing</div>
+  <div class="bar2"><span class="datebar"><i>‹</i><span class="dd">📅 <b>Last week</b> Oct 5 – Oct 11 ▾</span><i>›</i></span><span class="drop" style="height:32px;font-size:12px">All branches ▾</span><span class="sp"></span><span class="btn sm">⤓ Export</span></div>
+  <div class="figs f4"><div class="fig"><span class="k">Ad cost</span><span class="v">$23,461</span></div><div class="fig"><span class="k">Leads</span><span class="v">297</span></div><div class="fig"><span class="k">Gross sales</span><span class="v">$23,829</span></div><div class="fig"><span class="k">Net profit</span><span class="v" style="color:var(--bad)">−$7,169</span></div></div>
+  <div class="tbl" style="flex:1"><table>
+   <tr><th class="l">Branch</th><th class="l">Source</th><th>Ad cost</th><th>Leads</th><th>Jobs</th><th>Cost per job</th><th>Gross sales</th><th>Net profit</th></tr>
+   <tr><td class="l">Stamford</td><td class="l">LS Ads</td><td>$9,479.00</td><td>37</td><td>1</td><td>$9,479.00</td><td>$519.00</td><td class="neg">−$8,960.00</td></tr>
+   <tr><td class="l">New Haven</td><td class="l">PPC</td><td>$8,539.00</td><td>22</td><td>8</td><td>$1,067.38</td><td>$1,342.00</td><td class="neg">−$7,197.00</td></tr>
+   <tr><td class="l">New Haven</td><td class="l">Thumbtack</td><td class="mut">—</td><td>38</td><td>17</td><td class="mut">—</td><td>$7,545.00</td><td>$7,545.00</td></tr>
+   <tr><td class="l">Newark</td><td class="l">PPC</td><td>$3,840.00</td><td>29</td><td>7</td><td>$548.57</td><td>$1,088.00</td><td class="neg">−$2,752.00</td></tr>
+   <tr><td class="l">Stamford</td><td class="l">GMB / SEO</td><td class="mut">—</td><td>36</td><td>18</td><td class="mut">—</td><td>$3,576.00</td><td>$3,576.00</td></tr>
+   <tr class="tot"><td class="l">Total</td><td class="l">14 rows</td><td>$23,461.00</td><td>297</td><td>71</td><td>$330.44</td><td>$23,829.00</td><td class="neg">−$7,169.00</td></tr>
+  </table></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Phones ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> Phone</h2>
+<p class="cap">Today on a phone, "New report" takes the strip's width, so only "Reports" and a clipped "Repor…" show. The other tabs hide behind a sideways scroll with no hint, and tables are wider than the screen. <b>4</b> (recommended): one <b>Reports ▾</b> picker naming the tab you are on and listing all nine; the date as a full-width button; two figures a row; each table row as a card with its three main numbers, a tap opening the rest. <b>5</b>: the strip kept, with a fade where it continues, and the table kept, its naming column pinned. <b>6</b>: figures and the top five rows only, then "See all 14 rows".</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · picker, figures, row cards <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="picker"><span>📣 Marketing</span><span>▾</span></div>
+   <div class="picker" style="font-weight:600;font-size:12.5px;height:36px"><span>📅 Last week · Oct 5 – Oct 11</span><span>‹ ›</span></div>
+   <div class="figs" style="grid-template-columns:1fr 1fr"><div class="fig"><span class="k">Ad cost</span><span class="v">$23,461</span></div><div class="fig"><span class="k">Leads</span><span class="v">297</span></div><div class="fig"><span class="k">Gross sales</span><span class="v">$23,829</span></div><div class="fig"><span class="k">Net profit</span><span class="v" style="color:var(--bad)">−$7,169</span></div></div>
+   <div class="rowcard"><div class="t"><span>Stamford · LS Ads</span><span style="color:var(--bad)">−$8,960</span></div><div class="nums"><span>Ad cost<b>$9,479</b></span><span>Leads<b>37</b></span><span>Jobs<b>1</b></span></div></div>
+   <div class="rowcard"><div class="t"><span>New Haven · PPC</span><span style="color:var(--bad)">−$7,197</span></div><div class="nums"><span>Ad cost<b>$8,539</b></span><span>Leads<b>22</b></span><span>Jobs<b>8</b></span></div></div>
+   <div class="rowcard"><div class="t"><span>New Haven · Thumbtack</span><span style="color:var(--ok)">$7,545</span></div><div class="nums"><span>Ad cost<b>—</b></span><span>Leads<b>38</b></span><span>Jobs<b>17</b></span></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · the picker open</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="picker" style="border-color:var(--pri)"><span>📣 Marketing</span><span>▴</span></div>
+   <div class="lst">
+    <div class="li"><div class="g"><b>▤ Reports</b><span>23 saved · New report</span></div></div>
+    <div class="li"><div class="g"><b>🔧 Report Builder</b></div></div>
+    <div class="li"><div class="g"><b>⚗ Performance</b><span>calls and people</span></div></div>
+    <div class="li"><div class="g"><b>🏅 Scoring</b></div></div>
+    <div class="li" style="background:var(--pric);margin:0 -12px;padding:0 12px"><div class="g"><b>📣 Marketing</b></div><span>✓</span></div>
+    <div class="li"><div class="g"><b>📣 Meta</b></div></div>
+    <div class="li"><div class="g"><b>📄 Thumbtack</b></div></div>
+    <div class="li"><div class="g"><b>📈 Google Ads</b></div></div>
+    <div class="li"><div class="g"><b>🏛 Profit &amp; Loss</b></div></div>
+   </div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · the strip kept, a pinned table</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="fade"><div class="chips"><span>Performance</span><span>Scoring</span><span class="on">Marketing</span><span>Meta</span><span>Thumb…</span></div></div>
+   <div class="picker" style="font-weight:600;font-size:12.5px;height:36px"><span>📅 Last week · Oct 5 – Oct 11</span><span>‹ ›</span></div>
+   <div class="tbl"><table style="font-size:11px"><tr><th class="l pin">Branch · Source</th><th>Ad cost</th><th>Leads</th><th>Jobs</th></tr>
+    <tr><td class="l pin">Stamford · LS Ads</td><td>$9,479</td><td>37</td><td>1</td></tr><tr><td class="l pin">New Haven · PPC</td><td>$8,539</td><td>22</td><td>8</td></tr><tr><td class="l pin">Newark · PPC</td><td>$3,840</td><td>29</td><td>7</td></tr><tr><td class="l pin">Stamford · PPC</td><td>$1,603</td><td>3</td><td>0</td></tr>
+    <tr class="tot"><td class="l pin">Total</td><td>$23,461</td><td>297</td><td>71</td></tr></table><div class="scrollhint">5 more columns ›</div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · summary first</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="picker"><span>📣 Marketing</span><span>▾</span></div>
+   <div class="fig"><span class="k">Net profit, last week</span><span class="v" style="color:var(--bad);font-size:26px">−$7,169</span><span class="s">$23,461 of ads against $23,829 of sales</span></div>
+   <div class="lab" style="margin:4px 0 0">Biggest spend</div>
+   <div class="lst"><div class="li"><div class="g"><b>Stamford · LS Ads</b><span>1 job from 37 leads</span></div><b>$9,479</b></div><div class="li"><div class="g"><b>New Haven · PPC</b><span>8 jobs from 22 leads</span></div><b>$8,539</b></div><div class="li"><div class="g"><b>Newark · PPC</b><span>7 jobs from 29 leads</span></div><b>$3,840</b></div></div>
+   <span class="btn">See all 14 rows</span>
+  </div></div></div>
+</div>
+</div>

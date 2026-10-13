@@ -50,10 +50,11 @@ class MarketingModuleTest extends TestCase
         $this->assertSame('Marketing', $module->label);
 
         // Reaching the tab is `view`. Connecting a page is `edit`. Since
-        // 2026-09-29 the two panes are grantable one at a time as well (Jose:
-        // tabs grantable "like all the others"), in the order the strip draws.
+        // 2026-09-29 the panes are grantable one at a time as well (Jose: tabs
+        // grantable "like all the others"), in the order the strip draws;
+        // Posts became Dashboard, Compose and Calendar on 2026-10-12.
         $this->assertSame(
-            ['marketing.view', 'marketing.edit', 'marketing.posts.view', 'marketing.accounts.view', 'marketing.qr_codes.view'],
+            ['marketing.view', 'marketing.edit', 'marketing.dashboard.view', 'marketing.compose.view', 'marketing.calendar.view', 'marketing.accounts.view', 'marketing.qr_codes.view'],
             $module->permissionKeys(),
         );
 

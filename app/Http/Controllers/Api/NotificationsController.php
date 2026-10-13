@@ -260,15 +260,78 @@ class NotificationsController extends Controller
     }
 
     /**
-     * Where a notification points: a module, and what to narrow it to.
+     * The module a notification WITHOUT an event belongs to, by its subject.
+     *
+     * Bar, 2026-10-12 (via Jose and the deploy desk): tapping a notification
+     * must open the exact thing it is about. Measured on production: system
+     * notifications — "Your Work Hours correction was declined", "Your
+     * suggestion was approved", an SOS, onboarding paperwork — carry a subject
+     * but no event, so they derived no module at all and a tap went nowhere.
+     *
+     * Every key here is a real module (asserted by a test) except
+     * `suggestions`, which is the shell's own pinned destination; the client
+     * shell routes that one key to its pinned rail.
+     *
+     * @var array<class-string, string>
+     */
+    private const SUBJECT_MODULES = [
+        \App\Models\Suggestion::class => 'suggestions',
+        \App\Models\Lead::class => 'leads',
+        \App\Models\TimeClockCorrectionRequest::class => 'work_hours',
+        \App\Models\Automation::class => self::AUTOMATIONS_MODULE,
+        \App\Models\FieldAlert::class => 'field',
+        \App\Models\Onboarding::class => 'hr',
+        \App\Models\Mailbox::class => 'email',
+    ];
+
+    /**
+     * Where a notification points: a module, what to narrow it to, and the
+     * exact record to open.
      *
      * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events
-     * @return array{module: ?string, filter: ?string}
+     * @return array{module: ?string, filter: ?string, record: ?array{type: string, id: string, mailbox?: ?string}}
      */
     private function destination(Notification $notification, $events): array
     {
         $event = $notification->event_id === null ? null : $events->get($notification->event_id);
+        $destination = $this->destinationModuleAndFilter($notification, $event);
+        $destination['record'] = $this->recordFor($notification, $event);
 
+        return $destination;
+    }
+
+    /**
+     * The exact thing a tap should open, as {type, id} — or null.
+     *
+     * Usually the notification's subject. Two exceptions, both measured: a new
+     * email's subject is the MAILBOX, but Bar's example is that it should open
+     * "that email", so the message comes from the event (email.received
+     * carries message_id and the mailbox address); and a missed call has no
+     * subject at all, so its call comes from the event's call_id.
+     */
+    private function recordFor(Notification $notification, ?AutomationEvent $event): ?array
+    {
+        if ($event?->event_key === 'email.received' && is_string($id = data_get($event->payload, 'message_id'))) {
+            return ['type' => 'email_message', 'id' => $id, 'mailbox' => data_get($event->payload, 'address')];
+        }
+
+        if ($event?->event_key === 'reports.call.missed' && is_string($id = data_get($event->payload, 'call_id'))) {
+            return ['type' => 'call', 'id' => $id];
+        }
+
+        if ($notification->subject_type === null || $notification->subject_id === null) {
+            return null;
+        }
+
+        return [
+            'type' => \Illuminate\Support\Str::snake(class_basename($notification->subject_type)),
+            'id' => (string) $notification->subject_id,
+        ];
+    }
+
+    /** @return array{module: ?string, filter: ?string} */
+    private function destinationModuleAndFilter(Notification $notification, ?AutomationEvent $event): array
+    {
         $module = $event !== null
             ? $this->modules->moduleKeyOfTrigger($event->event_key)
             /*
@@ -280,7 +343,9 @@ class NotificationsController extends Controller
              * the `emits` mistake: this is not a guess about ownership, it is
              * the meaning of the column. A test asserts it names a real module.
              */
-            : ($notification->automation_id === null ? null : self::AUTOMATIONS_MODULE);
+            : ($notification->automation_id === null
+                ? (self::SUBJECT_MODULES[$notification->subject_type] ?? null)
+                : self::AUTOMATIONS_MODULE);
 
         return ['module' => $module, 'filter' => $this->filterFor($module, $event)];
     }

@@ -187,6 +187,80 @@ void main() {
     expect(find.byWidgetPredicate((w) => w is SelectableText && w.data == long), findsOneWidget);
   });
 
+  /// Jose, 2026-10-12: "summary should show first with the option to see
+  /// the full transcript".
+  testWidgets('a call with a summary shows it first, marked AI, and the '
+      'transcript behind Show full transcript', (tester) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callSummary: 'Fireplace smokes; wants an inspection Thursday.',
+      callNextStep: 'Call back with a time',
+    );
+    expect(
+      find.text('Fireplace smokes; wants an inspection Thursday.'),
+      findsOneWidget,
+    );
+    expect(find.text('Next: Call back with a time'), findsOneWidget);
+    expect(find.text('Summary by AI'), findsOneWidget);
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('full-transcript-toggle-c-call')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('transcript-c-call')), findsOneWidget);
+  });
+
+  testWidgets('a call that asked the price with nothing booked can be marked '
+      'followed up', (tester) async {
+    _followUpPosts.clear();
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callSummary: 'Asked the price of a sweep.',
+      callSignals: {
+        'complaint': false,
+        'asked_price': true,
+        'asked_availability': false,
+        'booked': false,
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('followed-up-c-call')));
+    await tester.pumpAndSettle();
+    expect(_followUpPosts, ['/api/v1/leads/lead-1/follow-up-handled']);
+    expect(find.byKey(const ValueKey('followed-up-c-call')), findsNothing);
+  });
+
+  /// Jose, 2026-10-12: "IVR Menu: / Dispatcher: / Customer:", the labels bold.
+  testWidgets('a transcript divided by speaker shows each label in bold', (
+    tester,
+  ) async {
+    const labelled =
+        'IVR menu: Press 1 for service.\n\nDispatcher: A1 Chimney, this is Ana.'
+        '\n\nCustomer: I saw you are hiring.';
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      callTranscript: labelled,
+    );
+    final text = tester.widget<Text>(
+      find.byWidgetPredicate(
+        (w) => w is Text && w.textSpan?.toPlainText() == labelled,
+      ),
+    );
+    final bold = <String>[];
+    text.textSpan!.visitChildren((span) {
+      if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
+        bold.add(span.text!);
+      }
+      return true;
+    });
+    expect(bold, ['IVR menu: ', 'Dispatcher: ', 'Customer: ']);
+  });
+
   // The dispatchers, via Jose, 2026-09-29: copy and paste.
   /// Jose, 2026-10-01: the website visitor sees "Lenin is typing…", and the
   /// dispatcher sees the visitor typing. Only on a live website chat.
@@ -520,6 +594,94 @@ void main() {
       'Hi, yes we can inspect it. Which day suits you?',
     );
     expect(_sent, isEmpty, reason: 'a draft is not a send');
+  });
+
+  // UI queue 77: what AI wrote says so, until a person changes it.
+  testWidgets("a suggestion is marked as AI's until the words change", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      suggestion: 'Hi, yes we can inspect it. Which day suits you?',
+    );
+
+    final mark = find.byKey(const ValueKey('reply-ai-draft'));
+    expect(mark, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('reply-suggest')));
+    await tester.pumpAndSettle();
+    expect(mark, findsOneWidget);
+    expect(find.text('Draft by AI'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reply-box')),
+      'Hi, yes we can inspect it. Does Thursday suit you?',
+    );
+    await tester.pumpAndSettle();
+    expect(mark, findsNothing);
+  });
+
+  // UI queue 77: a value AI set says so until a person changes it. The API's
+  // `ai` list is what says which values are still AI's.
+  testWidgets('the name, status and ZIP AI set carry the AI mark', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      ai: const ['contact_name', 'status', 'postal_code'],
+      postalCode: '46360',
+      details: const {'zip': '46360'},
+    );
+
+    expect(find.byKey(const ValueKey('thread-ai-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('thread-ai-status')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-ai-zip')), findsOneWidget);
+  });
+
+  // The control: a lead whose values a person set carries none of it, and a
+  // ZIP from Google's own details is not AI's whatever AI guessed.
+  testWidgets('values a person set, or Google gave, carry no AI mark', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      ai: const ['postal_code'],
+      postalCode: '06103',
+      details: const {'zip': '46360'},
+    );
+
+    expect(find.byKey(const ValueKey('thread-ai-name')), findsNothing);
+    expect(find.byKey(const ValueKey('thread-ai-status')), findsNothing);
+    expect(find.byKey(const ValueKey('lead-ai-zip')), findsNothing);
+  });
+
+  // Jose, 2026-10-13: AI suggests a Google credit; only a person's press asks.
+  testWidgets('a Google credit is suggested by AI and asked for by a person', (
+    tester,
+  ) async {
+    _creditPosts.clear();
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      credit: const {'reason': 'SPAM', 'requested_at': null, 'decision': null},
+    );
+
+    expect(find.text('Google credit? Spam'), findsOneWidget);
+    expect(_creditPosts, isEmpty, reason: 'nothing goes to Google on its own');
+
+    await tester.tap(find.byKey(const ValueKey('lead-credit-request')));
+    await tester.pumpAndSettle();
+
+    expect(_creditPosts.single, contains('SPAM'));
+    expect(find.text('Credit requested · credited'), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-credit-request')), findsNothing);
   });
 
   testWidgets('without the model there is no Suggest button', (tester) async {
@@ -914,6 +1076,8 @@ void main() {
 
 final _sent = <String>[];
 final _typingPosts = <String>[];
+final _creditPosts = <String>[];
+final _followUpPosts = <String>[];
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -926,6 +1090,9 @@ Future<void> _pump(
   Map<String, dynamic>? customer,
   Map<String, dynamic>? details,
   String? callTranscript = 'Hi, my fireplace smokes when I light it.',
+  String? callSummary,
+  String? callNextStep,
+  Map<String, dynamic>? callSignals,
   bool transcriptPending = false,
   List<Map<String, dynamic>>? conversations,
   List<String> viewers = const [],
@@ -937,6 +1104,9 @@ Future<void> _pump(
   String? source,
   bool visitorTyping = false,
   Map<String, dynamic>? booking,
+  List<String>? ai,
+  String? postalCode,
+  Map<String, dynamic>? credit,
 }) async {
   _sent.clear();
   _typingPosts.clear();
@@ -996,6 +1166,36 @@ Future<void> _pump(
         );
       }
 
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/follow-up-handled')) {
+        _followUpPosts.add(request.url.path);
+        return http.Response(
+          '{}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/google-credit')) {
+        _creditPosts.add(request.body);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'lead-1',
+              'status': 'not_a_lead',
+              'credit': {
+                ...?credit,
+                'requested_at': '2026-10-13T18:00:00Z',
+                'decision': 'SUCCESS_NOT_REACHED_THRESHOLD',
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.method == 'POST' && request.url.path.endsWith('/typing')) {
         _typingPosts.add(request.url.path);
         return http.Response('{}', 200, headers: {'content-type': 'application/json'});
@@ -1023,6 +1223,7 @@ Future<void> _pump(
               'viewers': viewers,
               'visitor_typing': visitorTyping,
               'booking': booking,
+              'credit': credit,
               'reply_templates': templates,
               'conversations': conversations ?? [
                 {
@@ -1033,6 +1234,9 @@ Future<void> _pump(
                   'duration_ms': 125000,
                   'text': null,
                   'transcript': callTranscript,
+                      'summary': callSummary,
+                      'next_step': callNextStep,
+                      'signals': callSignals,
                   'transcript_pending': transcriptPending,
                   'attachments': <String>[],
                   'has_recording': true,
@@ -1089,6 +1293,9 @@ Future<void> _pump(
             'franchise': const {'id': 'f-1', 'name': 'Connecticut'},
             'company': ?company,
             'source': ?source,
+            'ai': ?ai,
+            'postal_code': ?postalCode,
+            'credit': ?credit,
           },
           onStatusChanged: (_) async {},
           onRead: onRead,

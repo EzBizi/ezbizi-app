@@ -297,6 +297,7 @@ class _ReportsTabState extends State<ReportsTab> {
               children: [
                 Expanded(
                   child: TextField(
+                    key: const ValueKey('tour-inspection-reports-search'),
                     controller: _search,
                     decoration: const InputDecoration(
                       hintText: 'Client name or job number',

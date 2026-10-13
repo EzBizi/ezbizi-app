@@ -102,7 +102,7 @@ class LeadsDailyDigest extends Command
             $source === Lead::SOURCE_WEBSITE_FORM => 'forms',
             $source === Lead::SOURCE_WEBSITE_BOOKING => 'online bookings',
             $source === Lead::SOURCE_WEBSITE_CHAT => 'chats',
-            $source === Lead::SOURCE_FACEBOOK => 'Messenger',
+            $source === Lead::SOURCE_FACEBOOK => 'Facebook',
             default => ucfirst($source),
         };
     }

@@ -24,6 +24,7 @@ import '../screens/profit_loss_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
+import '../screens/task_board_screen.dart';
 import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
 import '../screens/work_hours_screen.dart';
@@ -144,6 +145,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'services': ModuleScreen(
     Icons.handyman_outlined,
     (api, session) => ServicesScreen(api: api, session: session),
+  ),
+  'tasks': ModuleScreen(
+    Icons.view_kanban_outlined,
+    (api, session) => TaskBoardScreen(api: api, session: session),
   ),
   'monitoring': ModuleScreen(
     Icons.desktop_windows_outlined,

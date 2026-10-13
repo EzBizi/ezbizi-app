@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import 'ai_assistance/whatsapp_groups_tab.dart';
@@ -128,6 +129,7 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-ai_assistance-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
             onSelected: (i) => setState(() {
@@ -242,6 +244,11 @@ class _AssistantTabState extends State<AssistantTab> {
   String? _askError;
   bool _asking = false;
 
+  /// Grok's answer from the Library for the last question, and whether it is
+  /// still being asked (Jose, 2026-10-12: "Grok answers in own words").
+  String? _aiReply;
+  bool _aiAsking = false;
+
   /// Newest first.
   final List<_Asked> _asked = [];
 
@@ -331,6 +338,23 @@ class _AssistantTabState extends State<AssistantTab> {
       _pages
         ..clear()
         ..add('results');
+    });
+    _askAi(q);
+  }
+
+  /// Asked after the matches show, since Grok takes seconds. A later question
+  /// replaces it; a stale answer is dropped.
+  Future<void> _askAi(String q) async {
+    setState(() {
+      _aiReply = null;
+      _aiAsking = true;
+    });
+    final response = await widget.api.get('/ai-assistance/answer', {'q': q});
+    if (!mounted || _current?.query != q) return;
+    setState(() {
+      _aiAsking = false;
+      final data = response.ok ? response.data : null;
+      _aiReply = data is Map ? data['reply'] as String? : null;
     });
   }
 
@@ -652,6 +676,7 @@ class _AssistantTabState extends State<AssistantTab> {
   );
 
   Widget _askField(BuildContext context) => Row(
+    key: const ValueKey('tour-ai_assistance-ask'),
     children: [
       Expanded(
         child: TextField(
@@ -693,9 +718,41 @@ class _AssistantTabState extends State<AssistantTab> {
                 },
               ].join(' '));
     if (text == null) return const SizedBox.shrink();
+    final reply = _aiReply;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Text(text, style: theme.textTheme.bodySmall),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: theme.textTheme.bodySmall),
+          if (_aiAsking)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'AI is reading the Library…',
+                key: const Key('assistant-ai-asking'),
+                style: theme.textTheme.bodySmall,
+              ),
+            )
+          else if (reply != null && reply.isNotEmpty)
+            Padding(
+              key: const Key('assistant-ai-answer'),
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AiMark.badge(
+                    'Answer by AI',
+                    tooltip:
+                        'Written by AI from your Library. Open the matching answers to check it.',
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(reply, style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 

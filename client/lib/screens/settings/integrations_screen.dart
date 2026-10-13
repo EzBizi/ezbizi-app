@@ -250,7 +250,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'No mailing account connected in $_viewName. A newsletter is '
               'sent through the company\'s own account, so one has to be '
               'connected before anything can go out.',
-          where: 'Marketing › Newsletter',
         ),
         const SizedBox(height: 12),
         _family(
@@ -261,7 +260,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           providers: providers,
           byProvider: byProvider,
           empty: 'No social account connected in $_viewName.',
-          where: 'Marketing › Social Media Management › Accounts',
         ),
         const SizedBox(height: 12),
         _family(
@@ -272,7 +270,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           providers: providers,
           byProvider: byProvider,
           empty: 'No advertising account connected in $_viewName.',
-          where: 'Leads',
         ),
         const SizedBox(height: 12),
         _family(
@@ -408,55 +405,55 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required Set<String> providers,
     required Map<String, List<IntegrationConnection>> byProvider,
     required String empty,
-    String? where,
     bool canName = false,
   }) {
-    final all = providers.where((p) => _familyOf(p) == family).toList();
-
     /*
-     * WHAT YOU HAVE, NOT WHAT EXISTS — except where the card is the only door.
+     * EVERY PROVIDER, connected or not (Jose, 2026-10-13; UI queue 82).
      *
-     * The software offers seventeen providers and a business connects three.
-     * Drawing a card for every one put THIRTEEN "Set up" cards on screen next
-     * to two real ones (measured), which is the four-pages-of-scrolling Jose
-     * photographed wearing different clothes: a screen mostly about things you
-     * do not have.
-     *
-     * The boundary is not taste, it is whether the card DOES anything. Three
-     * families connect elsewhere and say so in a sentence at the foot of this
-     * block, so an unconnected card there is a second copy of that sentence
-     * shaped like a control. Reporting has no `where`: its connect form lives
-     * inside the provider screen, reachable only by tapping the card, so
-     * hiding an unconnected Airtable would remove the only way to add one.
+     * This used to draw only what a business has, with the rest as an "Also
+     * available" row of chips, because thirteen "Set up" cards beside two
+     * real ones read as a catalogue. Jose's words reverse it: "i should be
+     * able to see all the options so i can connected them all if i wanted."
+     * So every provider is a card. The ones not connected look lighter and
+     * carry Connect, and the connected ones still come first.
      */
-    final mine =
-        (where == null
-                ? all
-                : all.where((p) => (byProvider[p] ?? const []).isNotEmpty))
-            .toList()
-          ..sort((a, b) {
-            // Connected first, then alphabetically. What a business HAS is the
-            // thing it came to look at; what it could have is a catalogue.
-            final byCount = (byProvider[b]?.length ?? 0).compareTo(
-              byProvider[a]?.length ?? 0,
-            );
+    final mine = providers.where((p) => _familyOf(p) == family).toList()
+      ..sort((a, b) {
+        // Connected first, then alphabetically. What a business HAS is the
+        // thing it came to look at; what it could have follows it.
+        final byCount = (byProvider[b]?.length ?? 0).compareTo(
+          byProvider[a]?.length ?? 0,
+        );
 
-            return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
-          });
+        return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
+      });
+    final connected = mine.where((p) => (byProvider[p] ?? const []).isNotEmpty);
+    final phone = MediaQuery.sizeOf(context).width < 600;
 
     return DashboardCard(
-      title: title,
+      title: mine.isEmpty
+          ? title
+          : '$title · ${connected.length} of ${mine.length} connected',
       icon: icon,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (mine.isEmpty)
-            DashboardNote(empty)
-          else
-            // A grid that reflows rather than a fixed column count: this pane
-            // is 1400pt on a desktop window and 380pt on a phone, and a card
-            // narrower than its own provider name is not a card.
-            Wrap(
+      child: mine.isEmpty
+          ? DashboardNote(empty)
+          // A phone gets a list with the action on the right (UI queue 82,
+          // option 4). Wider, a grid that reflows: this pane is 1400pt on a
+          // desktop window, and a card narrower than its provider's name is
+          // not a card.
+          : phone
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final provider in mine)
+                  _providerRow(
+                    context,
+                    provider: provider,
+                    rows: byProvider[provider] ?? const [],
+                  ),
+              ],
+            )
+          : Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
@@ -465,43 +462,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     context,
                     provider: provider,
                     rows: byProvider[provider] ?? const [],
-                    where: where,
                     canName: canName,
                   ),
               ],
             ),
-          const SizedBox(height: 8),
-
-          // Named rather than merely absent, so somebody can still discover
-          // that EzBizi speaks TikTok without a card each for the fifteen it
-          // speaks and they do not use. Each name OPENS its pane, which offers
-          // Connect: this used to end in "Connect and disconnect under
-          // Marketing › Newsletter", a path written as text (UI review,
-          // 2026-10-08) to a place this screen can now do the job itself.
-          if (where != null && all.length > mine.length)
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  'Also available:',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                for (final provider
-                    in all
-                        .where((p) => (byProvider[p] ?? const []).isEmpty)
-                        .toList()
-                      ..sort((a, b) => _label(a).compareTo(_label(b))))
-                  ActionChip(
-                    key: ValueKey('available:$provider'),
-                    label: Text(_label(provider)),
-                    onPressed: () => setState(() => _open = provider),
-                  ),
-              ],
-            ),
-        ],
-      ),
     );
   }
 
@@ -525,19 +489,86 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           )
           .providerLabel;
 
+  /// One line on what each provider is for, on a card with nothing
+  /// connected yet. A provider this build does not know says nothing.
+  static const _purpose = {
+    'mailchimp': 'Sends your newsletters from your own account.',
+    'facebook_page': 'Post to your Facebook page.',
+    'instagram_professional': 'Post to your Instagram account.',
+    'threads': 'Post to Threads.',
+    'linkedin': 'Post to your LinkedIn page.',
+    'tiktok': 'Post videos to TikTok.',
+    'pinterest': 'Pin to your Pinterest boards.',
+    'youtube': 'Post videos to YouTube.',
+    'x': 'Post to X.',
+    'bluesky': 'Post to Bluesky.',
+    'google_business_profile': 'Your listing, its reviews and its messages.',
+    'google_ads': 'Leads and spend from your Google Ads.',
+    'facebook_ads': 'Leads and spend from your Facebook ads.',
+    'thumbtack': 'Leads and messages from Thumbtack.',
+    'workiz': 'Jobs and calls from Workiz, for reports.',
+    'airtable': 'A base read by Profit & Loss.',
+  };
+
+  /// What a card with nothing connected offers: Connect where connecting can
+  /// work, otherwise why not, so the button never leads nowhere.
+  ///
+  /// Connect opens the provider's own page, which already knows every way
+  /// in: the sign-in, the reporting forms, or the module that connects it.
+  Widget _offer(BuildContext context, String provider) {
+    final theme = Theme.of(context);
+    final entry = _catalogue[provider];
+    final why = entry?['unusable_because'] as String?;
+    final note = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w600,
+    );
+
+    if (entry?['usable'] == false) {
+      return Text(
+        why == null || why.isEmpty ? 'Not available on EzBizi yet.' : why,
+        key: ValueKey('unavailable:$provider'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: note,
+      );
+    }
+    // Reporting is gated by its own forms (see [_formsFor]); the rest by the
+    // catalogue's permission.
+    final may = _familyOf(provider) == 'reporting'
+        ? _formsFor(provider) != null
+        : _mayConnectProvider(provider);
+    if (!may) {
+      return Text(
+        'Ask an administrator to connect it.',
+        key: ValueKey('ask:$provider'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: note,
+      );
+    }
+    return FilledButton.tonal(
+      key: ValueKey('connect-card:$provider'),
+      onPressed: () => setState(() => _open = provider),
+      child: const Text('Connect'),
+    );
+  }
+
   /// One provider, and what this view has of it.
   Widget _providerCard(
     BuildContext context, {
     required String provider,
     required List<IntegrationConnection> rows,
-    String? where,
     bool canName = false,
   }) {
     final theme = Theme.of(context);
     final broken = rows.where((r) => !r.connected).length;
+    final none = rows.isEmpty;
 
+    // One height for every card in the grid, whatever it holds.
     return SizedBox(
       width: 240,
+      height: 168,
       child: InkWell(
         key: ValueKey('provider:$provider'),
         borderRadius: BorderRadius.circular(12),
@@ -549,7 +580,14 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
+            // Lighter when nothing is connected, so a glance tells what this
+            // business has from what it could have.
+            color: none ? theme.colorScheme.surfaceContainerLow : null,
+            border: Border.all(
+              color: none
+                  ? theme.colorScheme.outlineVariant.withValues(alpha: 0.6)
+                  : theme.colorScheme.outlineVariant,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,13 +597,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                   SocialNetworkMark(network: provider, size: 28),
                   const Spacer(),
                   // Flexible, because the pill is the only thing on this card
-                  // that can grow. Its three labels fit English comfortably in
-                  // a 240pt card -- about 66pt of slack on the longest -- and
-                  // that slack is the ONLY thing preventing an overflow. A
-                  // fourth status word, or the same words in another language,
-                  // spends it with no warning: a RenderFlex overflow is a
-                  // paint-time exception, so nothing that merely reads the
-                  // text would notice.
+                  // that can grow; a fourth status word, or another language,
+                  // would otherwise overflow at paint time with no warning.
                   Flexible(
                     child: _pill(theme, rows: rows, broken: broken),
                   ),
@@ -581,15 +614,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               const SizedBox(height: 2),
               Text(
                 /*
-                 * WHAT IT IS CONNECTED AT, not just how many.
-                 *
-                 * "53 connected" is the number Jose's screenshot already made
-                 * useless — fifty-three rows that each said "this company".
-                 * The scope words are what an administrator is deciding about,
-                 * and the detail screen behind this card names the companies
-                 * and branches themselves.
+                 * WHAT IT IS CONNECTED AT, not just how many: "53 connected"
+                 * was the number Jose's screenshot made useless. The detail
+                 * screen behind this card names the companies and branches.
                  */
-                _beneath(rows),
+                none ? (_purpose[provider] ?? '') : _beneath(rows),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -598,8 +627,62 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                       : theme.colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (none) ...[const Spacer(), _offer(context, provider)],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The same, as one line of a phone's list.
+  Widget _providerRow(
+    BuildContext context, {
+    required String provider,
+    required List<IntegrationConnection> rows,
+  }) {
+    final theme = Theme.of(context);
+    final broken = rows.where((r) => !r.connected).length;
+    final none = rows.isEmpty;
+
+    return InkWell(
+      key: ValueKey('provider:$provider'),
+      onTap: () => setState(() => _open = provider),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            SocialNetworkMark(network: provider, size: 26),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _label(provider),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  Text(
+                    none ? 'Not connected' : _beneath(rows),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: broken > 0
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (none)
+              Flexible(child: _offer(context, provider))
+            else
+              _pill(theme, rows: rows, broken: broken),
+          ],
         ),
       ),
     );
@@ -635,7 +718,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required int broken,
   }) {
     final (label, colour) = switch ((rows.isEmpty, broken > 0)) {
-      (true, _) => ('Set up', theme.colorScheme.onSurfaceVariant),
+      (true, _) => ('Not connected', theme.colorScheme.onSurfaceVariant),
       (false, true) => ('Needs attention', theme.colorScheme.error),
       (false, false) => ('Connected', theme.colorScheme.primary),
     };

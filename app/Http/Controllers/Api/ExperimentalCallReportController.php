@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
 use App\Models\CallReportLabel;
+use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\SavedReport;
+use App\Models\WorkizCall;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
@@ -188,7 +190,7 @@ class ExperimentalCallReportController extends Controller
             ]);
         }
 
-        $legs = $calls->forPeriod($start, $end);
+        $legs = $calls->forPeriod($start, $end, outbound: true);
 
         $conversions = CallReportConversion::query()
             ->with('converter:id,name')
@@ -231,6 +233,27 @@ class ExperimentalCallReportController extends Controller
 
             'period' => $period,
 
+            // Workiz's own AI read of its phone calls, per person (Jose, via
+            // Grok AI, 2026-10-12): shown beside our call scores. Only the
+            // branches Workiz scores (DMV, Illinois, New York) have any.
+            // called_at is the account's wall clock, so dates, not instants.
+            'workiz_scores' => (object) WorkizCall::query()
+                ->whereBetween('called_at', [$start->toDateString().' 00:00:00', $end->toDateString().' 23:59:59'])
+                ->whereNotNull('dispatcher_score')
+                ->whereNotNull('user_name')
+                ->groupBy('user_name')
+                ->selectRaw('user_name, count(*) calls, avg(dispatcher_score) score, avg(booked) booked_rate,
+                    avg(pricing_discussed) pricing, avg(sentiment in (?, ?)) positive', ['great', 'positive'])
+                ->get()
+                ->mapWithKeys(fn ($r) => [$r->user_name => [
+                    'calls' => (int) $r->calls,
+                    'score' => round((float) $r->score),
+                    'booked' => $r->booked_rate === null ? null : round($r->booked_rate * 100),
+                    'pricing' => $r->pricing === null ? null : round($r->pricing * 100),
+                    'positive' => round((float) $r->positive * 100),
+                ]])
+                ->all(),
+
             // Who marked which call as booked in this period, newest first:
             // the not-booked-to-booked history.
             'conversions' => $conversions->map(fn (CallReportConversion $c) => [
@@ -260,7 +283,10 @@ class ExperimentalCallReportController extends Controller
     {
         $ids = array_column($day['calls'] ?? [], 'id');
 
-        $words = CallReportTranscript::query()->whereIn('call_id', $ids)->pluck('transcript', 'call_id');
+        // Split by speaker when Grok has done it; the raw words until then.
+        $words = CallReportTranscript::query()->whereIn('call_id', $ids)
+            ->get(['call_id', 'transcript', 'transcript_labelled'])
+            ->mapWithKeys(fn ($row) => [$row->call_id => $row->transcript_labelled ?: $row->transcript]);
 
         // Each provider's label for the call, side by side for comparing.
         $labels = [];
@@ -268,10 +294,24 @@ class ExperimentalCallReportController extends Controller
             $labels[$row->call_id][$row->provider] = $row->label;
         }
 
+        // AI's coaching read of the call (ezbizi:score-report-calls), if any.
+        $scores = CallReportScore::query()->whereIn('call_id', $ids)->whereNotNull('score')
+            ->get(['call_id', 'score', 'checks', 'strength', 'improve'])
+            ->keyBy('call_id');
+
+        // Our number the call was on, by RingCentral's own label for it
+        // ("DFW - LS Ads"): Bar, via Jose, 2026-10-12, wants a missed call's
+        // row to say which line was rung.
+        $lines = app(RingCentralCallLog::class)->numberNames();
+
         $day['calls'] = array_map(
             fn (array $call) => $call + [
+                'to_name' => $lines[$call['to_number'] ?? ''] ?? $call['queue'] ?? null,
                 'transcript' => $words[$call['id']] ?? null,
                 'labels' => (object) ($labels[$call['id']] ?? []),
+                'score' => isset($scores[$call['id']])
+                    ? $scores[$call['id']]->only(['score', 'checks', 'strength', 'improve'])
+                    : null,
             ],
             $day['calls'] ?? [],
         );

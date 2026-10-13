@@ -510,6 +510,55 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         return $row;
     }
 
+    /**
+     * Ask Google to credit a charged lead (Jose, 2026-10-13, Rodrigo's LSA
+     * triage): lead feedback, VERY_DISSATISFIED with Google's own reason.
+     * Google answers with its creditIssuanceDecision (SUCCESS_REACHED_THRESHOLD,
+     * FAIL_NOT_ELIGIBLE ...), which is returned as Google wrote it. Once per
+     * lead: Google refuses a second feedback.
+     *
+     * @throws RuntimeException with a sentence for the screen
+     */
+    public function requestCredit(Lead $lead, string $reason, string $comment = ''): string
+    {
+        $connection = $lead->connection
+            ?? throw new RuntimeException('The account this enquiry came through is no longer connected.');
+
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders([
+                    'developer-token' => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    GoogleAdsOAuth::endpoint()."/customers/{$customerId}/localServicesLeads/{$lead->remote_id}:provideLeadFeedback",
+                    ['surveyAnswer' => 'VERY_DISSATISFIED', 'surveyDissatisfied' => array_filter([
+                        'surveyDissatisfiedReason' => $reason,
+                        'otherReasonComment' => mb_substr($comment, 0, 1000),
+                    ])],
+                );
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer. The credit was not requested.');
+        }
+
+        if ($response->failed()) {
+            $detail = (string) ($response->json('error.message') ?? '');
+            Log::warning('Google refused a Local Services credit request.', [
+                'http_status' => $response->status(),
+                'detail' => mb_substr($detail, 0, 300),
+            ]);
+
+            throw new RuntimeException(sprintf('Google refused the credit request (HTTP %d)%s', $response->status(),
+                $detail !== '' ? ': '.mb_substr($detail, 0, 200) : '.'));
+        }
+
+        return (string) ($response->json('creditIssuanceDecision') ?? 'UNSPECIFIED');
+    }
+
     private function conversationsSince(SocialConnection $connection): Carbon
     {
         $newest = LeadConversation::query()
@@ -990,6 +1039,16 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
                         ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
                             ? $connection->scope_id
                             : null);
+                }
+
+                // Google sends no name or number for a booking (and often
+                // none for a call): its silence must not blank what EzBizi
+                // filled from Workiz, a booking email or Grok. Before
+                // 2026-10-13 every resync of a booking wiped them.
+                foreach (['contact_name', 'phone', 'phone_digits', 'email'] as $field) {
+                    if ($fromSource[$field] === null) {
+                        unset($fromSource[$field]);
+                    }
                 }
 
                 // `status` is absent from $fromSource, which is the point.

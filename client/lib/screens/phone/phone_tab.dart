@@ -80,6 +80,7 @@ class _PhoneTabState extends State<PhoneTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Wrap(
+            key: const ValueKey('tour-phone-sections'),
             spacing: 8,
             runSpacing: 8,
             children: [

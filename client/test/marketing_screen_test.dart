@@ -105,13 +105,17 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsOneWidget);
+      // UI queue 76 (Jose's pick 2): one row of tabs, opening on Dashboard,
+      // where the Accounts card says what is connected.
+      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, 'Dashboard'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
-      // Layout A (Mia, 2026-10-02): the Pages card is a line in the bar, and
-      // the calendars sit behind Calendar.
       expect(find.text('No pages connected in Everdoors yet'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Connect'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
+      expect(find.text('Publish now'), findsNothing);
+
+      await _openCompose(tester);
       expect(find.text('How it will look'), findsOneWidget);
       expect(find.text('Publish now'), findsOneWidget);
       expect(find.text('Weekly Calendar'), findsNothing);
@@ -174,6 +178,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
+      await _openCompose(tester);
 
       final publish = tester.widget<FilledButton>(
         find.widgetWithText(FilledButton, 'Publish now'),
@@ -498,6 +503,7 @@ void main() {
       );
       await tester.tap(find.widgetWithText(ChoiceChip, 'Social Media Management'));
       await tester.pumpAndSettle();
+      await _openCompose(tester);
 
       expect(tester.takeException(), isNull);
       expect(find.widgetWithText(ChoiceChip, 'Compose'), findsOneWidget);
@@ -571,6 +577,7 @@ void main() {
       // The default role here holds marketing.view and nothing else.
       await _pumpScreen(tester, _handler(connections: const [_pinterestBoard]));
       await _openPosts(tester);
+      await _openCompose(tester);
 
       expect(
         _publishRefusal(tester),
@@ -586,6 +593,7 @@ void main() {
         _handler(canEdit: true, connections: const [_facebookPage]),
       );
       await _openPosts(tester);
+      await _openCompose(tester);
 
       // The tickbox is present and dead rather than absent: somebody looking
       // for the Facebook page they just connected finds it, and finds out why.
@@ -620,6 +628,7 @@ void main() {
         _handler(canEdit: true, connections: const [_pinterestBoard]),
       );
       await _openPosts(tester);
+      await _openCompose(tester);
 
       expect(_publishRefusal(tester), contains('Tick at least one account'));
 
@@ -646,6 +655,7 @@ void main() {
         ),
       );
       await _openPosts(tester);
+      await _openCompose(tester);
 
       await tester.enterText(
         find.widgetWithText(TextField, 'What should go out?'),
@@ -695,6 +705,7 @@ void main() {
         ),
       );
       await _openPosts(tester);
+      await _openCompose(tester);
 
       await tester.enterText(
         find.widgetWithText(TextField, 'What should go out?'),
@@ -799,6 +810,62 @@ void main() {
   ///
   /// A failure displayed as progress is the worst shape available: an error
   /// sends somebody looking, a spinner tells them to wait.
+  /// UI queue 76 (Jose, 2026-10-12, "2 definitely"): Social opens on a
+  /// dashboard whose timeline puts what is coming above each day's posts.
+  group('the social dashboard', () {
+    testWidgets('what is coming sits above today, and a refusal is said with '
+        'its Retry', (tester) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            {
+              ..._landed('failed', failure: 'That account has no boards.'),
+              'id': 'f1',
+              'body': 'A look inside a flue camera inspection',
+            },
+            {
+              ..._landed('sent'),
+              'id': 's1',
+              'body': 'Chimney season is here',
+            },
+            {
+              ..._landed('scheduled', scheduledFor: '2099-03-04 09:00'),
+              'id': 'c1',
+              'body': 'Free inspection week',
+            },
+          ],
+        ),
+      );
+
+      final today = tester.getRect(find.text('TODAY')).top;
+      expect(tester.getRect(find.text('COMING UP')).top, lessThan(today));
+      expect(
+        tester.getRect(find.text('Free inspection week')).top,
+        lessThan(today),
+      );
+      expect(
+        tester.getRect(find.text('Chimney season is here')).top,
+        greaterThan(today),
+      );
+      expect(find.textContaining('Goes out 2099-03-04 09:00'), findsOneWidget);
+
+      // The network's sentence and a Retry on the refused post only.
+      expect(find.textContaining('That account has no boards.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('social-retry-f1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('social-retry-s1')), findsNothing);
+      expect(find.widgetWithText(StatusPill, 'Scheduled'), findsOneWidget);
+
+      // A fact beside the filters, and the composer one tab away.
+      expect(find.text('it can post'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'New post'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(FilledButton, 'Publish now'), findsOneWidget);
+    });
+  });
+
   group('a queued post is followed until the queue answers', () {
     testWidgets('a target that fails is shown failing, not still waiting', (
       tester,
@@ -898,6 +965,7 @@ void main() {
           },
         ),
       );
+      await _openCompose(tester);
 
       await _write(tester);
       await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
@@ -950,6 +1018,7 @@ void main() {
                 ],
         ),
       );
+      await _openCompose(tester);
 
       await _write(tester);
       await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
@@ -983,6 +1052,7 @@ void main() {
           ),
         ),
       );
+      await _openCompose(tester);
 
       await _write(tester);
       await tester.tap(find.widgetWithText(ChoiceChip, 'Later'));
@@ -1035,6 +1105,7 @@ void main() {
         ),
         size: const Size(375, 900),
       );
+      await _openCompose(tester);
 
       await _write(tester);
       final publish = find.widgetWithText(FilledButton, 'Publish now');
@@ -1045,7 +1116,8 @@ void main() {
 
       expect(find.text('Posting to your accounts'), findsOneWidget);
       expect(find.text('0 / 1'), findsOneWidget);
-      expect(find.text('Compose'), findsNothing);
+      // The pane, not the tabs above it: the form is gone while it lands.
+      expect(find.widgetWithText(FilledButton, 'Publish now'), findsNothing);
 
       await _tick(tester);
       await tester.pumpAndSettle();
@@ -1200,6 +1272,7 @@ void main() {
         tester,
         _handler(canEdit: true, connections: const [_tiktokDrafts]),
       );
+      await _openCompose(tester);
 
       // The server's sentence, on the row, while the post can still be changed.
       expect(
@@ -1217,6 +1290,7 @@ void main() {
         pickMedia: () async =>
             PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
       );
+      await _openCompose(tester);
       await tester.tap(find.byKey(const ValueKey('social-account-conn-7')));
       await tester.pumpAndSettle();
       await tester.tap(
@@ -1279,6 +1353,7 @@ void main() {
         _handler(canEdit: true, connections: const [_pinterestBoard]),
         pickMedia: () async => PickedBytes('flue.png', _onePixelPng),
       );
+      await _openCompose(tester);
 
       expect(find.byType(Image), findsNothing);
 
@@ -1300,6 +1375,7 @@ void main() {
         pickMedia: () async =>
             PickedBytes('sweep.mp4', List<int>.filled(2048, 7)),
       );
+      await _openCompose(tester);
 
       await tester.tap(
         find.widgetWithText(OutlinedButton, 'Attach a picture or video'),
@@ -1325,6 +1401,7 @@ void main() {
         tester,
         _handler(canEdit: true, connections: const [_pinterestBoard]),
       );
+      await _openCompose(tester);
 
       // Hidden until asked for: most posts go now, and a date field on every
       // one of them is a question nobody asked.
@@ -1350,6 +1427,7 @@ void main() {
           onPublish: (request) => sent = request,
         ),
       );
+      await _openCompose(tester);
 
       await tester.enterText(
         find.widgetWithText(TextField, 'What should go out?'),
@@ -1510,6 +1588,7 @@ void main() {
           connections: [xPostable, _pinterestBoard],
         ),
       );
+      await _openCompose(tester);
 
       await tester.tap(find.widgetWithText(FilterChip, 'Everdoors HQ'));
       await tester.tap(find.widgetWithText(FilterChip, 'Everdoors Boards'));
@@ -1547,7 +1626,7 @@ void main() {
       expect(_publishRefusal(tester), isNull);
     });
 
-    testWidgets('the preview draws the network its chip picks', (tester) async {
+    testWidgets('the preview draws every ticked network at once', (tester) async {
       await _pumpSocial(
         tester,
         _handler(
@@ -1555,6 +1634,7 @@ void main() {
           connections: const [_pinterestBoard, linkedInPostable],
         ),
       );
+      await _openCompose(tester);
 
       expect(find.textContaining('Tick an account to see'), findsOneWidget);
 
@@ -1566,7 +1646,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The first ticked network by default, in its own shape.
+      // Each ticked network in its own shape, side by side (UI queue 76).
       final pinterest = find.byKey(const ValueKey('social-likeness-pinterest'));
       expect(pinterest, findsOneWidget);
       expect(
@@ -1574,11 +1654,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.tap(find.byKey(const ValueKey('social-preview-linkedin')));
-      await tester.pumpAndSettle();
-
       final linkedIn = find.byKey(const ValueKey('social-likeness-linkedin'));
-      expect(pinterest, findsNothing);
       expect(linkedIn, findsOneWidget);
       expect(
         find.descendant(
@@ -1720,9 +1796,12 @@ void main() {
       );
 
       expect(find.widgetWithText(ChoiceChip, 'Accounts'), findsOneWidget);
-      expect(find.widgetWithText(ChoiceChip, 'Posts'), findsNothing);
+      // The three that were Posts (UI queue 76).
+      for (final pane in ['Dashboard', 'Compose', 'Calendar']) {
+        expect(find.widgetWithText(ChoiceChip, pane), findsNothing);
+      }
       expect(paths.where((p) => p.endsWith('/social/posts')), isEmpty,
-          reason: 'The post list was requested without the Posts pane.');
+          reason: 'The post list was requested without a post pane.');
     });
 
     // The control for the test above, in its own test: a second pump in the
@@ -1732,6 +1811,22 @@ void main() {
       final paths = <String>[];
       await _pumpSocial(tester, recording(_handler(), paths));
 
+      expect(paths.where((p) => p.endsWith('/social/posts')), isNotEmpty);
+    });
+
+    // Each of the three post panes is its own grant since UI queue 76, and
+    // each reads the list; the dashboard offers New post only with Compose.
+    testWidgets('with only Dashboard the list is read and New post is not '
+        'offered', (tester) async {
+      final paths = <String>[];
+      await _pumpSocial(
+        tester,
+        recording(_handler(tabs: const ['marketing.dashboard.view']), paths),
+      );
+
+      expect(find.widgetWithText(ChoiceChip, 'Compose'), findsNothing);
+      expect(find.text('Timeline'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'New post'), findsNothing);
       expect(paths.where((p) => p.endsWith('/social/posts')), isNotEmpty);
     });
 
@@ -2618,6 +2713,13 @@ Future<void> _openPosts(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Social → Compose. Social opens on its Dashboard since UI queue 76, so a
+/// test about writing a post walks there the way a person would.
+Future<void> _openCompose(WidgetTester tester) async {
+  await tester.tap(find.widgetWithText(ChoiceChip, 'Compose'));
+  await tester.pumpAndSettle();
+}
+
 /// Posts → Calendar, where the week and month calendars (or the phone's
 /// agenda) live since layout A (Mia, 2026-10-02).
 Future<void> _openCalendar(WidgetTester tester) async {
@@ -3054,7 +3156,10 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
 /// Every Marketing and Newsletter pane, which is what a role holding each
 /// module's view has after the 2026-09-29 grant migration.
 const _allTabs = [
-  'marketing.posts.view',
+  // Posts split into three in UI queue 76.
+  'marketing.dashboard.view',
+  'marketing.compose.view',
+  'marketing.calendar.view',
   'marketing.accounts.view',
   'newsletter.dashboard.view',
   'newsletter.composer.view',

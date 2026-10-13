@@ -2965,6 +2965,266 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 87 · Reports · one look for every tab — **Jose: "yes, as u recommend" — desktop 1, phone 4** — building (`docs/previews/reports-one-look-layouts.html`)
+
+Jose 2026-10-13, verbatim: *"Please whenever you can take a look at all the tabs in reports, specially the new ones ( also
+the old ones ) and see how you can improve them visually for UI-UX"*. Every tab and sub-tab was rendered with invented data,
+desktop and phone, 110 shots (`scratchpad/reports_audit/shots`). There are three date controls, five table styles, four
+empty-page styles, money written three ways, and padding of 16 or 32 depending on the tab. On a phone the strip clips to
+"Reports, Repor…" and the tables are wider than the screen. The frame proposed for every option: one toolbar (Performance's
+date control everywhere, filters as pickers, actions right), equal figure tiles with the change against the dates before,
+and one table style (sentence-case headings, numbers right-aligned in tabular figures, the naming columns pinned while the
+rest scroll, a Total row, losses in red, a dash for none). A row opens a panel beside the table. One empty page: what is
+missing, and the one place to fix it. Desktop **1** (recommended): that frame, shown on Marketing, on Google Ads, and on an
+empty tab. **2**: figures with sparklines and a chart first, the table folded. **3**: the nine tabs as a grouped rail.
+Phone **4** (recommended): a Reports ▾ picker listing all nine, the date as a full-width button, figures two to a row, rows
+as cards; **5**: the strip with a fade and a pinned-column table; **6**: summary first, then "See all rows". Bugs fixed
+whatever is picked: the phone date-panel blank on Marketing, Meta and Thumbtack (fixed in 0ba978af); a saved report's run
+printing raw cents; Performance writing 13:33 with 12-hour time; Google Ads writing "32520.77 USD".
+
+### 86 · Scheduling › Re-Scheduling, and the Availability map's dots — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, map 7** — **BUILT** b5f42548 (session/uiux-resched, carries Scheduling's 42e4981b) (`docs/previews/scheduling-rescheduling-layouts.html`)
+
+Relayed by Scheduling, Jose 2026-10-13: *"a separate tab in scheduling called Re-Scheduling where it shows such suggestions
+and what to replace them for, to better fit a comprehensive route for the technicians"*; on the map: *"when hovering or
+click on the dot i would like to get the information from the job, like customer name, type of job, etc, see how it can
+look better, also we want zoom buttons too"*; and *"make it so i can change that in the app as well on the scheduling
+settings"* (the radius). Server: Scheduling's `GET /scheduling/reschedules` (42e4981b, held at the desk for this screen).
+Moving changes the customer's appointment, so every option shows the suggestion first and Move is a separate confirmed
+step on the existing reschedule call, for schedule editors only. Desktop **1** (recommended): rows of from → to with the
+nearest job now and after and the miles saved, a map, before/after panels and Move beside the picked row. **2**: before-
+and-after cards with area chips. **3**: the current and suggested day drawn side by side. Phone **4** (recommended): rows
+as cards, a tap opening the job in the tab with the map; **5**: by area, folded; **6**: one at a time. Map **7**
+(recommended): a hover/tap card per dot (customer, service, number, time, technicians, status, address, miles), pinned on
+click, + − ⤢ top-right; **8**: label on hover, card on click; **9**: the dot picks its row in the list. Settings: the radius
+and look-ahead as a Suggestions sub-tab of Scheduling › Settings, the stock settings control, built without a vote.
+
+### 85 · Reports › Scoring · a card per person, a ranking, and Grok's read — **no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** 0ba978af (session/uiux-scoring) (`docs/previews/reports-scoring-layouts.html`)
+
+Jose 2026-10-13, verbatim: *"I also want you to build an extra tab related to performance, but more focused on the Scoring
+and Performance of each employee ... name it Scoring or something ... i want to see the employees as cards, and clicking on
+them shows me the current analysis that the Grok AI has given them, their score, etc, and outside of that i want to see sort
+of like a ranking system, talk to grok ai, reports, etc to figure it out, i want this to be very visual"*. Built on what
+Performance already holds per call (AI's score /10, the seven checks, the "to improve" note, Workiz's own /100 where Workiz
+scores the branch). A person is ranked after 10 scored calls in the dates chosen; every card repeats "a guide for coaching,
+not a verdict". Desktop **1** (recommended): four team figures, the ranking as bars on the left, cards with a score ring,
+trend, sparkline and seven check marks on the right; a card opens in the tab (back arrow) with the score by week, the
+checks against the team, Grok's read and the "to improve" notes, the ranking staying beside it. **2**: a podium for the top
+three, cards below, detail in a side panel. **3**: the cards are the ranking; one opens into a wide row in place. Phone
+**4** (recommended): team figure, ranked cards, a tap opens the person in the tab; **5**: podium and a ranking list;
+**6**: one card at a time, swiped. Needs: a person-list/ranking endpoint and a per-person Grok read (Reports and Grok AI
+asked); scoring itself is off until Grok AI's notice and privacy steps are done. UI/UX builds the client.
+
+### 81 · App-wide · a walkthrough and a how-to video beside every tab's title — **Jose: "as u recommend" — 1 and 4** — **BUILT** (`docs/previews/tab-walkthrough-video-layouts.html`)
+
+Jose 2026-10-13, via the desk: *"on a1tools for each main tab we had this ... a walkthrough and how to use video buttons, so
+im wondering if we can put those back ... 1 - Clicking the Walkthrough icon would basically help the user navigate the tab
+for the first time, highlighting parts of the app and giving description as to what does what ... using color highlighing.
+obscuring the rest of the app ... 2 - The video would basically be something manual we'll be making for each tab ... voiced
+... this is an app level feature, not tied to any organizations or companies btw."*
+
+The same in every option: a tab's walkthrough is a short list of steps beside its code (the control it points at, a title,
+a sentence or two, an optional "try it"), with a version. A step whose control you can't see is skipped. Seen is stored per
+person on the server. A raised version offers only the new steps as What's new here. The video button shows only on a tab
+with a video. EzBizi staff keep the tab → video list, so a new video needs no release. Nothing opens as a dialog.
+
+Desktop **1** (recommended): (?) and ▶ beside the title, as in A1 Tools. A first visit offers the walkthrough in one line and
+never starts it by itself. The spotlight dims everything but the control and puts the step card beside it (Back / Next /
+Skip, dots). The video plays in the side panel with chapters and captions, and Keep it small shrinks it to a corner. **2**:
+one (?) with a menu, and the video floats in a corner. **3**: (?) opens a Help panel with the video and the steps, each with
+Show me. Phone **4** (recommended): both icons in the app bar, the step card along the bottom, and the video full width;
+**5**: menu and a docked mini player; **6**: a Help page. Owner: UI/UX builds the engine, the buttons and the staff list.
+Module owners write their own tab's steps. The desk makes the videos, Scheduling first.
+
+Built (4fcd185a). Walkthroughs are data in `client/lib/core/tab_tours.dart`, keyed by module: steps name the
+`ValueKey<String>` they point at, and the Task Board has the first one. The (?) and ▶ sit beside the title in
+`ModulePageHeader(beside:)`, and the offer sits under it. Seen is stored as the `help.tours_seen` preference (module →
+version). Videos come from `GET help/videos` (table `platform_help_videos`), set in Staff › Help videos with link, length,
+chapters ("0:42 Booking a job", one a line) and an optional .vtt. A video with burned-in captions needs no .vtt. They play in
+the side panel, Keep it small moves them to a corner, and where a platform has no player (Windows) Open the video uses the
+browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
+steps `since:` to offer them as What's new.
+
+### 84 · Task Board v2 · subtasks, your own columns and statuses, a board picker — **Jose: "Love it go with ur recommendations" — 1 and 4** — **BUILT** 828e7bf6 (`docs/previews/task-board-v2-layouts.html`)
+
+Jose 2026-10-13, via Task Board, on the live 0.0.0418 screen: *"I feel like this can be drastically Improve, tasks should
+have sub tasks as well, i should be able to make custom columns, etc, please take the time to look at workiz and their UI,
+i should also be able to make custom status, and columns, with options wether they are text based, numerical, status,
+etc."* In the organization view the board tabs wrap to four rows of about 80, many identical ("Main · 0" ×20). The same in
+every option: a board picker grouped company › franchise (My board first, search, open counts) replaces the flat tabs.
+Columns are per board in seven types: Text, Number (unit), Status (own labels and colours), Date, Person, Dropdown (own
+options) and Checkbox, each added, renamed, moved, hidden. Statuses are per board, each marked done or not. Subtasks open
+under their task, like Workiz's job checklists, with "2 / 5" on the task. Desktop **1** (recommended): one Board ▾ button
+with the grouped list, + at the end of the header to add a column, ⋮ per column, ▸ opening subtasks in place, Statuses…
+in a side panel. **2**: a rail tree of boards and a Customize board panel. **3**: Company ▾ Franchise ▾ pickers and
+subtasks as a checklist in the task panel. Phone **4** (recommended): a full-width picker opening a board list page, cards
+with custom columns as lines and subtasks under the card; **5**: a Boards tree page; **6**: two pickers. Owner: Task Board
+(backend); UI/UX builds the screens.
+
+### 83 · Scheduling › Availability · earliest and suggested, with the route — **Jose: "go ahea with ur recommendations" — 1 and 4** — **BUILT** 8eee5ae3 (`docs/previews/scheduling-suggested-availability-layouts.html`)
+
+Jose 2026-10-13, via Scheduling: a zip search shows **Earliest** and **Suggested** availability. Suggested is the open
+window nearest booked work, so a technician does both, with *"a small map with an animation of the route being drawn
+between the selected zip code and the other jobs it's analyzed for the suggestion"*. The radius is a setting. The same in
+every option: Earliest names its nearest booked job's distance, the trade-off. Suggested says how many jobs are within the
+radius, the nearest, and who is already there. `same_as_earliest` gives one line instead of two cards, and no suggestion
+gives a sentence. The map draws a line from the zip to each analyzed job, nearest first; those in the radius ring light
+green and the rest stay grey. It plays once, then Replay, and reduced motion shows the finished state. Field's street map
+sits behind it once Google Maps is set up, otherwise a schematic. Miles are straight-line and say so, and with no `origin`
+there is no map. Desktop **1** (recommended): the two cards side by side, the map under both. **2**: Suggested large with
+"Sooner" as a line, the map beside. **3**: a 14-day strip with both marked, the map for the picked day. Phone and the Leads
+side panel **4** (recommended): stacked, map under; **5**: Suggested first, map behind Show why; **6**: the strip. Owner:
+Scheduling (server, settings, `availability_pane.dart`). UI/UX builds the screen half once the endpoint lands.
+
+### 82 · Settings › Integrations · every option, connected or not (`docs/previews/integrations-all-options-layouts.html`)
+
+Jose 2026-10-13, via the desk: *"going into Settings - Integrations only shows the currently connected, when it should also
+show the currently not connected and allow to be connected from there, we are also missing the workiz and airtable logos.
+So basically i should be able to see all the options so i can connected them all if i wanted."* The same in every option:
+each section lists every provider the server's catalogue offers, logos throughout (workiz.svg and airtable.svg were in the
+app but never mapped), and Connect on the card in the current view. Connect is drawn only where it works; otherwise the
+card shows the server's "not ready" reason, or "Ask an administrator" without the permission. Desktop **1** (recommended):
+every provider a full card, connected ones solid and first, the rest dashed with a line on what they're for and Connect.
+**2**: connected cards, then small "+ Connect" logo tiles. **3**: one list with All / Connected / Not connected. Phone **4**
+(recommended): a list per section with Connect on the right; **5**: tiles; **6**: the filtered list. Owner: UI/UX
+(`integrations_screen.dart`).
+
+### 80 · Task Board · boards for every company, franchise and person — **Jose: "as you recommend" — 1 and 4** (`docs/previews/task-board-layouts.html`)
+
+From the Task Board session, relaying Jose: *a "Task Board" tab, Monday.com-style. Tied to Organization → Company →
+Franchise. Every Company, every Franchise, and every user automatically gets its own board, assigned to them. Must work with
+Automations and Reports.*
+
+The same in every option:
+- Task Board is its own sidebar module.
+- The top-bar view decides which boards show (my own, the view's franchise and its company; or a company and its franchises).
+- A board is coloured, foldable groups of tasks. Each task has an owner, a status (Not started / Working on it / Stuck / Done,
+  in words as well as colour), a due date (late in red) and an About link to a job, lead or customer.
+- A task opens in the side panel, with its updates and history; "+ Add task" sits at the foot of each group.
+- Automations get task created / status changed / overdue, and create / change status / assign. Reports get tasks by status,
+  owner and board, and overdue.
+
+Desktop **1** (recommended): the boards as tabs (My board · the franchise · the company, each with a count), Table or Kanban.
+**2**: a rail of boards, like Monday's workspace. **3**: "My work" across every board, plus a board picker. Phone **4**
+(recommended): scrolling tabs, then cards with a status edge, grouped; **5**: the board list first; **6**: My work. Owner:
+the Task Board session (backend, Automations, Reports); UI/UX builds the screens.
+
+Built (`task_board_screen.dart`, on the Task Board backend). The boards in the view are underlined tabs, My board first,
+each with your open count. Under them sit Table or Kanban and a search over task, owner, status and About. Table: each
+group is a foldable card with its colour down its rows (an all-done group opens folded), with Task · Owner · Status · Due ·
+About · Updates. The status cell wears the pill's colours, and a click changes it in place. Due reads Today / Tomorrow /
+Yesterday or the organization's date, red when late and not done. "Add task" at a group's foot opens a box: Enter adds it
+(yours on My board) and keeps the box open. Kanban: a column per status. The side panel has the name, status chips, owner,
+due (Late under the label), About, Made by (an automation by name), updates with a box to write one, and a two-step Delete.
+A board you can only read says View only and has no Add. Below 760 px each task is a card with its status down its edge.
+Not built yet: the Owner and Status filter menus (search covers both), dragging between Kanban columns, opening the About
+record, and @mentions. The Owner picker offers you and the people already on the board until the board sends who can be
+given tasks (asked of Task Board).
+
+### 79 · Monitoring · Files · like Windows Explorer, behind the authenticator — **Jose: "as u recommend on everything" — 1 and 4** (`docs/previews/monitoring-files-explorer-layouts.html`)
+
+Jose 2026-10-12, via Monitoring: *"have the files system require the authenticator code as well for extra security, and also
+if possible, can we make it sort of like windows explorer, where for example it shows previews of pictures, etc ? as well as
+quicklinks like desktop download, etc."* Monitoring is building the server half:
+- an unlock by authenticator code that lasts 15 minutes and slides with use (403 files_locked, then asked for again in place);
+- quick_links, only the folders that exist;
+- a preview on select (up to 5 MB, logged as a download), with no thumbnail grid.
+
+Desktop **1** (recommended): once chosen, the computer folds into a picker at the top. Explorer's three panes follow: Quick
+access and drives, a details list (Name, Modified, Size, sortable, type icons) and a preview pane. A green "Unlocked · 14 min"
+pill and Lock now sit in the toolbar, and the lock card stands in the pane in place of the files. **2**: the rail stays,
+quick links become chips, and the preview opens in a side panel. **3**: one tree, computers with their quick links under
+them. Phone **4** (recommended): the code, the computer, quick-link tiles, the list, then a picture full width; **5**: chips;
+**6**: tree. Owner: Monitoring (`files_tab.dart`); built once the server lands.
+
+Built, first pass, on today's service (the lock and quick links follow once Monitoring's server lands). Once chosen, the
+computer is a picker (MenuAnchor) over three panes. Quick access lists This PC and the drives remembered from the roots. The
+details list has Name / Modified / Size, sorting by column with folders first, type icons, and dates in the viewer's format.
+The preview pane beside it from 1000 px: choosing a picture fetches it once (≤5 MB, logged as a download) and shows it;
+anything else shows its type, size, date, where it is, and Download. Below 1000 px, and on a phone, the chosen file stands in
+for the list with "Back to <folder>". Tapping a file now chooses it, as in Explorer, and Download is the button in what it
+shows.
+
+Built, second pass, on top of Monitoring's server half (fa31bbd5, so the two ship as one release). When the server answers
+`locked`, the lock card stands in for the panes: one 6-digit field, Unlock, the server's sentence under it, and "the same
+one you sign in with" (Monitoring confirmed it is the person's own TOTP). Once open, the picker bar shows "Unlocked until
+3:42 PM" from the server's `unlocked_until`, which every request refreshes; it is never a client-side countdown. **Lock now**
+locks on the server (DELETE) and drops the fetched pictures. Quick access lists the quick links above This PC and the
+drives; on a phone they come first at This PC. An older agent sends none, and nothing is drawn.
+
+### 78 · Reports · Performance · tables instead of sentences — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (`docs/previews/reports-performance-tables-layouts.html`)
+
+Jose 2026-10-12, with a screenshot of Calls: *"look at all of the available tabs and options and see how you can improve the
+UI, maybe add some more columns, cause the stuff we keep adding keeps overflowing."* Calls draws each call as a sentence
+with no headings: direction, client and result share a 230 px badge box and wrap, and every row has a second line for "Not
+transcribed yet" or "Claude: — · Grok: ETA". The same in every option: Calls becomes a table with pinned headings, like People.
+Each fact gets its own column, a row is one line, and the details open on demand; the Claude/Grok switch moves into the
+filter bar, and a search box is added. Desktop **1** (recommended): Time · In/Out · Caller · Line called · Client · Result ·
+Answered by · Reason ✦AI · Talk · ▶, with a row opening in place (transcript, recording, both AIs, numbers, Mark booked).
+**2**: the same table, with the row opening in a side panel. **3**: a list with the call beside it. People gains Missed and
+Answer rate in every option; Overview is unchanged. Phone **4** (recommended): three-line cards that open in place; **5**
+rows that open a page; **6** grouped by hour. Owner: Reports (`experimental_call_report.dart`).
+
+Built: Calls is a table under pinned headings (`_callsHeader`; `_cells()` lays out the headings and every row from one list).
+The columns are Time · In/Out · Caller · **Number** · Client · Result · Answered by · Reason ✦AI · Talk · play/open. **Line
+called** stayed inside the opened row rather than becoming a column: on a tracking number RingCentral's caller label already
+names the market and source, so the column would mostly repeat the Caller. Any row opens on tap. A missed call shows its
+numbers and voicemail. An answered one shows its words (folded to the first line), both AIs' readings, the numbers, and
+Convert to booked where allowed. "Not transcribed yet" shows only inside an opened row. "Reasons by Claude / Grok" moved into
+the bar, the reason counts sit above the table, and a search finds a caller, number or person. Below 1000 px each call is a
+three-line card. People gains **Not picked up** (rang − answered) and **Answer rate**, both sortable.
+
+### 77 · AI · one marker, and where each AI feature lives — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **MARKER BUILT** (`docs/previews/ai-marker-placements-layouts.html`)
+
+From the Grok AI session, 2026-10-12, which relayed that Jose approved an AI program today. It asks where eight AI features
+live and how a person can tell what AI decided or wrote. The features: call summary and next step, the asked-but-didn't-book
+follow-up, the complaint alert, dispatcher scoring and coaching, the AI-filled name and ZIP with lead sort and flags (these
+exist, unmarked), the Performance call labels (exist, unmarked), draft replies (half exist), and the weekly report. The same
+rules hold in every option: the existing `auto_awesome` glyph, the word AI never left to colour alone, a tooltip saying where
+it came from and how to change it, the marker gone once a person edits the value, nothing sent to a customer without a person,
+and guesses worded as guesses with a one-tap "not right". Marker **1** (recommended) is a chip after a value plus a badge on
+an AI-written card; **2** a tint and dotted underline; **3** the glyph only. Desktop **1** (recommended) puts each feature
+where the work already is: the summary at the top of the call card with Show full transcript under it, a complaint strip on
+the lead, a Follow up view in Leads, and a Call score column with a Coaching panel in Performance › People. **2** puts AI in
+one place (an AI tab on the lead). **3** is 1's placement with the glyph. Phone **4** (recommended) as 1, plus the weekly
+WhatsApp report; **5** as 2; **6** as 3. Build: `AiMark` in `client/lib/widgets/` (UI/UX); each feature's owner places it.
+
+Built: `AiMark` (`client/lib/widgets/ai_mark.dart`): the chip, and `AiMark.badge(label)`, with a tooltip. It is placed on what
+exists today and can be shown to be AI's: Leads' **Suggest** reply ("Draft by AI" until the words change), A1Leads GBP's
+**Draft with AI** (the same), and Performance's call reasons (the chip before the counts and before each call's "Claude: … ·
+Grok: …"). **Not marked yet:** the AI-filled name and ZIP. LeadsRead fills them without recording that AI did, so Leads
+were asked for a per-field flag. Features 1–4 and 8 are new; the Grok AI session places the mark as each one lands.
+
+### 76 · Marketing · Social posts · a dashboard and a full composer — **Jose: "2 definitely" — 2 and 5** — **BUILT** (`docs/previews/social-posts-dashboard-composer-layouts.html`)
+
+Jose 2026-10-12: *"Now that we got the META Approval i believe we ought to improve this a bit and divide posts between a
+Dashboard that shows all of the data and a full fledged composer."* Today Posts is the composer with the tiles and the
+twenty newest under it, and Calendar behind a second chip; failures print the network's raw answer in red. **No likes,
+reach or followers in any option:** the Meta review declared that EzBizi does not read followers, comments or analytics
+(`docs/meta-app-review-submission.md`, pages_read_engagement and Instagram), so reading them needs a new App Review first.
+Desktop **1** (recommended) Posts → Dashboard · Composer · Calendar like the Newsletter. The dashboard has the tiles plus
+Pages and Next one goes out, Needs attention with Retry, All posts, Coming up and Accounts. The composer takes the full
+width with a drop zone, a large preview and the publish bar fixed at the bottom. **2** one tab row fewer: Dashboard ·
+Compose · Calendar · Accounts · QR Codes, a timeline with a dot per account, every network's preview at once (needs a
+permission split). **3** a card per account with sent and failed counts (needs a server count), accounts down the side
+of the composer. Phone **4** (recommended) as 1; **5** as 2; **6** as 3, with a three-step composer. Owner: Marketing
+(`client/lib/screens/marketing/social_media_tab.dart`).
+
+Built (client, `social_media_tab.dart`): Social Media Management's tabs are **Dashboard · Compose · Calendar · Accounts
+· QR Codes**, opening on Dashboard. **Permissions split (Marketing, server):** sharing `marketing.posts.view` across
+three tabs failed `module_tabs_registry_test`, rightly, because Roles would have said "Posts" for tabs nobody can
+find. So each is its own grant (`marketing.{dashboard,compose,calendar}.view`). Migration `2026_10_12_400000` gives
+every holder of the old key all three. GET posts takes any of them, POST needs Compose, retry needs Dashboard or
+Compose, and New post shows only with Compose. Dashboard: the server's
+Scheduled / Sent / Failed tiles (they still filter) plus a **Pages** fact (`FactTile`, now shared in `list_table.dart`
+with the Newsletter; `FilterTiles(facts:)` lays it at the tiles' width). The timeline puts Coming up first ("Goes out"
+and the promised wall time and clock), then each day newest first. A row has its status word as well as a dot per
+account, the network's refusal (2 lines) and Retry; tapping it opens the post panel. The Accounts card shows Can post /
+Cannot post with the server's reason, plus Connect and Manage accounts. Compose: the full pane; every ticked network's
+likeness side by side (a swipe pager with tappable dots below 360 px); a bigger words box; a picture or video
+dropped anywhere on the pane attaches (`desktop_drop`, first image/video only); and the publish bar fixed at the
+bottom ("Going to 3 accounts · now" beside Publish). Now / Later stays in the form, so the date picker can open
+downward. **Not built:** "Change" on a scheduled post (no edit endpoint), and per-account sent/failed counts (option 3's).
+
 ### 75 · A-1 booking page · more modern — **no answer in 10 min — went with the recommendation (Jose's standing rule) — 1 and 4** — **BUILT** (plugin 1.26.11) (`docs/previews/a1-booking-page-layouts.html`)
 
 Jose 2026-10-09: *"How can we make this look more modern"* (a-1chimney.com/booking, the plugin's `[ezbizi_booking]`).

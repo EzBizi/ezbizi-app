@@ -243,6 +243,7 @@ class _DashboardTabState extends State<DashboardTab> {
             children: [
               Expanded(
                 child: Wrap(
+                  key: const ValueKey('tour-hr-period'),
                   spacing: MediaQuery.sizeOf(context).width < 600 ? 6 : 8,
                   runSpacing: 8,
                   children: [
@@ -271,6 +272,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 ),
               ),
               IconButton(
+                key: const ValueKey('tour-hr-refresh'),
                 onPressed: _load,
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',

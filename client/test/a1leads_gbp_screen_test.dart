@@ -352,6 +352,28 @@ void main() {
     expect(requests.where((r) => r.url.path.endsWith('/a1leads-gbp/reply') && r.method == 'POST'), isEmpty);
   });
 
+  /// UI queue 77: the draft says it is AI's until somebody changes it.
+  testWidgets('a draft with AI is marked until the words change', (tester) async {
+    await _pump(tester, _handler(replyAvailable: true, replyGranted: true, opsAvailable: true));
+    await _board(tester);
+    await tester.tap(find.text('Reply on Google'));
+    await tester.pumpAndSettle();
+
+    final mark = find.byKey(const ValueKey('gbp-reply-ai-draft'));
+    expect(mark, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('gbp-reply-draft')));
+    await tester.pumpAndSettle();
+    expect(mark, findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Public reply'),
+      'Hi Dana, thank you. We are sorry about the delay.',
+    );
+    await tester.pumpAndSettle();
+    expect(mark, findsNothing);
+  });
+
   /// The card's status is set from the board, one change per request.
   testWidgets('a card status is set from the review', (tester) async {
     final requests = <http.Request>[];

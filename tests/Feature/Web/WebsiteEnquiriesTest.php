@@ -94,7 +94,14 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertSame('Dana Reyes', $lead->contact_name);
         $this->assertSame('5550100100', $lead->phone_digits);
         $this->assertCount(1, $rows);
-        $this->assertStringContainsString('Service: Chimney sweep', $rows->first()->text);
+        $this->assertSame(
+            "👤 Dana Reyes
+📞 (555) 010-0100
+✉️ dana@example.com
+📅 Next week if possible
+🛠️ Chimney sweep",
+            $rows->first()->text,
+        );
 
         // An empty field is not a line saying it was empty.
         $this->assertStringNotContainsString('Notes:', $rows->first()->text);
@@ -496,6 +503,39 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertNull($lead->marketing_consent_at, 'an Elementor form records no marketing consent');
     }
 
+    /** Bar via Jose, 2026-10-12: condensed, values only, in the order a dispatcher reads them. */
+    public function test_a_form_is_condensed_to_one_line_per_thing_in_order(): void
+    {
+        $lines = WebsiteEnquiries::condensed([
+            'Service Need' => 'Chimney Cap Installation',
+            'Email Address' => 'john@test.com',
+            'Last Name' => 'Vale',
+            'First Name' => 'Nora',
+            'Phone Number' => '7542366981',
+            'Appointment Date' => '2026-10-20',
+            'Appointment Time' => '13:00',
+            'Address Line 1' => '123 Elm St',
+            'Address Line 2 (Optional)' => '',
+            'City' => 'Tempe',
+            'State' => 'Arizona',
+            'Zip Code' => '85281',
+            'Message' => 'Cap blew off',
+            'How did you hear about us?' => 'Google',
+            'cf-turnstile-response' => 'token',
+        ]);
+
+        $this->assertSame([
+            '👤 Nora Vale',
+            '📞 (754) 236-6981',
+            '✉️ john@test.com',
+            '📅 2026-10-20 13:00',
+            '📍 123 Elm St, Tempe, Arizona 85281',
+            '🛠️ Chimney Cap Installation',
+            '📝 Cap blew off',
+            '▫️ How did you hear about us?: Google',
+        ], $lines);
+    }
+
     /** Jose, 2026-10-09: no captcha token in the thread; a field per line with its mark; ratings named. */
     public function test_a_form_reads_field_by_field_without_the_robot_check(): void
     {
@@ -512,7 +552,7 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->inTenant($tenant['org'], function () {
             $text = LeadConversation::query()->orderBy('created_at')->orderBy('id')->pluck('text')->all();
-            $this->assertContains("👤 First Name: Laura\n\n📞 Phone Number: 2162245383", $text);
+            $this->assertContains("👤 Laura\n📞 (216) 224-5383", $text);
             $this->assertStringNotContainsString('turnstile', implode(' ', $text));
             $this->assertSame(['BAD_RATING'], Lead::query()->whereNotNull('lead_type')->pluck('lead_type')->all());
         });

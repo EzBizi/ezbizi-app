@@ -543,6 +543,30 @@ void main() {
     expect(find.text('Marcus Bell'), findsWidgets);
   });
 
+  /// Jose, 2026-10-13: a dispatcher's note shows on the row, not only inside.
+  testWidgets('a lead with a note wears a note mark that reads it', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          ..._lead('lead-1', ''),
+          'note': 'i called cx no answer i left voicemail',
+          'note_by': {'id': 'u-1', 'name': 'Briana'},
+        },
+        _lead('lead-2', ''),
+      ],
+      connections: const [],
+    );
+
+    final mark = find.byKey(const ValueKey('note-mark-lead-1'));
+    expect(mark, findsOneWidget);
+    expect(
+      tester.widget<Tooltip>(find.ancestor(of: mark, matching: find.byType(Tooltip)).first).message,
+      'Note · Briana\ni called cx no answer i left voicemail',
+    );
+    expect(find.byKey(const ValueKey('note-mark-lead-2')), findsNothing);
+  });
+
   /// A specimen from `ezbizi:thumbtack-test-lead` is a real row with a real
   /// Thumbtack id. It stays in the list — seeing it is how somebody knows the
   /// pipe works — and it says what it is, because on 2026-09-10 one of these
@@ -808,7 +832,7 @@ void main() {
     // than in an inbox of their own. Each is its OWN chip: they arrive in one
     // webhook envelope and are told apart only by Meta's `object`, so a single
     // "social" chip would put one of them somewhere nobody can reach.
-    for (final word in ['Messenger', 'Instagram']) {
+    for (final word in ['Facebook', 'Instagram']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
         findsOneWidget,
@@ -833,7 +857,7 @@ void main() {
       permissions: const ['leads.view', 'leads.facebook.view'],
     );
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Messenger'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Facebook'));
     await tester.pumpAndSettle();
 
     // The chip label and the API value are different strings, and the mapping

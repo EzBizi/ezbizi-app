@@ -9,6 +9,7 @@ import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
+import '../widgets/ai_mark.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
@@ -118,6 +119,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   /// Only the red, overdue rows (Jose, 2026-10-08).
   bool _overdue = false;
+
+  /// Asked the price or a day on a call, nothing booked - AI's read (Jose,
+  /// 2026-10-12).
+  bool _followUp = false;
   bool _starred = false;
 
   /// The source chip, as the API spells it. Null is every source.
@@ -183,7 +188,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
     ('website_booking', 'Online Booking'),
-    ('facebook', 'Messenger'),
+    ('facebook', 'Facebook'),
     ('instagram', 'Instagram'),
     ('workiz', 'Workiz'),
     ('whatsapp', 'WhatsApp'),
@@ -405,6 +410,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     if (_unreplied) 'unreplied': '1',
     if (_unread) 'unread': '1',
     if (_overdue) 'overdue': '1',
+    if (_followUp) 'follow_up': '1',
     if (_starred) 'starred': '1',
     'source': ?_source,
     'sources': ?_allSources,
@@ -815,6 +821,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   // ── the list's own controls ──────────────────────────────────────
 
   Widget _searchField() => TextField(
+    key: const ValueKey('tour-leads-search'),
     controller: _search,
     onSubmitted: (_) {
       _searchDebounce?.cancel();
@@ -846,6 +853,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   // Bounded by its caller: an InputDecorator in a Row with no width
   // constraint asserts rather than shrinking to fit.
   Widget _statusPicker() => SearchPickerField<String>(
+    key: const ValueKey('tour-leads-status'),
     value: _status,
     isDense: true,
     options: [
@@ -886,6 +894,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   Widget _filterRow(ThemeData theme, {required bool withStatus}) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
     child: Wrap(
+      key: const ValueKey('tour-leads-filters'),
       spacing: 6,
       runSpacing: 4,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -916,6 +925,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
           selected: _overdue,
           visualDensity: VisualDensity.compact,
           onSelected: (on) => _setFilters(overdue: on),
+        ),
+        FilterChip(
+          key: const ValueKey('filter-follow-up'),
+          // The AI mark's glyph (AiMark): the list is AI's read of the calls.
+          avatar: Icon(
+            Icons.auto_awesome,
+            size: 16,
+            color: theme.colorScheme.primary,
+            semanticLabel: 'AI',
+          ),
+          tooltip:
+              'AI read the call: they asked the price or a day and nothing was booked.',
+          label: const Text('Follow up'),
+          showCheckmark: false,
+          selected: _followUp,
+          visualDensity: VisualDensity.compact,
+          onSelected: (on) => _setFilters(followUp: on),
         ),
         FilterChip(
           key: const ValueKey('filter-starred'),
@@ -1264,19 +1290,22 @@ class _LeadsScreenState extends State<LeadsScreen> {
     bool? unreplied,
     bool? starred,
     bool? overdue,
+    bool? followUp,
   }) {
     final next = (
       unread ?? _unread,
       unreplied ?? _unreplied,
       starred ?? _starred,
       overdue ?? _overdue,
+      followUp ?? _followUp,
     );
-    if (next == (_unread, _unreplied, _starred, _overdue)) return;
+    if (next == (_unread, _unreplied, _starred, _overdue, _followUp)) return;
     setState(() {
       _unread = next.$1;
       _unreplied = next.$2;
       _starred = next.$3;
       _overdue = next.$4;
+      _followUp = next.$5;
     });
     _load();
   }
@@ -1701,6 +1730,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            if (leadNameIsAi(lead)) ...[
+                              const SizedBox(width: 4),
+                              AiMark(
+                                key: ValueKey('lead-ai-name-${lead['id']}'),
+                                tooltip: aiNameTooltip,
+                              ),
+                            ],
                             // The badges wrap under each other rather than push the
                             // row past its edge: at half a desktop screen the list
                             // pane is ~300px and a Customer + Text + Awaiting reply +
@@ -1718,6 +1754,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 if (lead['is_test'] == true) ...[
                                   _Badge('Test', key: ValueKey('test-badge-$id')),
                                 ],
+                                // AI thinks Google should refund it, not yet asked.
+                                if (lead['credit'] is Map &&
+                                    (lead['credit'] as Map)['requested_at'] == null)
+                                  _Badge('Credit?', key: ValueKey('credit-badge-$id')),
                                 // Only when it is not New: 43,184 of 43,190 are,
                                 // and a pill on every row would say nothing.
                                 if ((lead['status'] ?? 'new') != 'new')
@@ -1764,6 +1804,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                     key: ValueKey('customer-badge-$id'),
                                   ),
                                 ],
+                                // A dispatcher left a note: seen from the list, read on
+                                // hover (Jose, 2026-10-13: "u can't tell a note is
+                                // there unless u enter the lead").
+                                if ((lead['note'] as String?)?.trim().isNotEmpty ?? false)
+                                  Tooltip(
+                                    message: [
+                                      if ((lead['note_by'] as Map?)?['name'] != null)
+                                        'Note · ${(lead['note_by'] as Map)['name']}',
+                                      '${lead['note']}',
+                                    ].join('\n'),
+                                    child: Icon(
+                                      Icons.sticky_note_2,
+                                      key: ValueKey('note-mark-$id'),
+                                      size: 17,
+                                      color: ToneColours.of(context, Tone.caution).ink,
+                                    ),
+                                  ),
                                 // Replied or not, and ONLY where a reply is possible.
                                 //
                                 // `can_reply` is the channel's own answer, not a guess
@@ -1780,6 +1837,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',
                                     key: ValueKey('reply-badge-$id'),
+                                    alert: !mine,
                                   ),
                                 ],
                                 // Waited too long: the customer spoke last over ten
@@ -1916,7 +1974,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
-  'facebook' => 'Messenger',
+  'facebook' => 'Facebook',
   'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
@@ -1988,7 +2046,8 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Thumbtack' => PersonColours.hue(context, 5), // orange
   'Chat' => PersonColours.hue(context, 4), // gold
   'Form' => PersonColours.hue(context, 7), // brown
-  'Messenger' => PersonColours.hue(context, 6), // coral
+  // Named and coloured by Jose, 2026-10-12: "Messenger is too broad"; blue.
+  'Facebook' => PersonColours.hue(context, 10), // sky
   'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
   _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
@@ -1996,10 +2055,14 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
 
 /// "Call" or "Text". Never PHONE_CALL, never "LS Ads".
 class _Badge extends StatelessWidget {
-  const _Badge(this.text, {super.key, this.call = false});
+  const _Badge(this.text, {super.key, this.call = false, this.alert = false});
 
   final String text;
   final bool call;
+
+  /// Solid red: somebody is owed an answer (Jose, 2026-10-13: Awaiting reply
+  /// "should be a different color, maybe bright red").
+  final bool alert;
 
   @override
   Widget build(BuildContext context) {
@@ -2010,14 +2073,22 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(
         // Call is the primary family, Text the secondary. tertiaryContainer
         // is off limits: it would be the first purple in the app.
-        color: call ? scheme.primaryContainer : scheme.secondaryContainer,
+        color: alert
+            ? scheme.error
+            : call
+            ? scheme.primaryContainer
+            : scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontWeight: FontWeight.w700,
-          color: call ? scheme.onPrimaryContainer : scheme.onSecondaryContainer,
+          color: alert
+              ? scheme.onError
+              : call
+              ? scheme.onPrimaryContainer
+              : scheme.onSecondaryContainer,
         ),
       ),
     );

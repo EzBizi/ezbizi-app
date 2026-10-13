@@ -161,6 +161,7 @@ class _DataTransferState extends State<DataTransfer> {
     final refusedExport = entry['export_refusal'] as String?;
 
     return Wrap(
+      key: const ValueKey('data-transfer'),
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,

@@ -7,7 +7,11 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\MonitoredDevice;
 use App\Models\PlatformStaff;
+use App\Models\PlatformStaffLink;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use PragmaRX\Google2FA\Google2FA;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -26,6 +30,13 @@ class FilesTest extends TestCase
     use BuildsTenants, RefreshDatabase;
 
     private const REFUSAL = 'This device belongs to a Lead Developer and is exempt from screen monitoring.';
+
+    /** Files is locked behind an authenticator code; the lock itself is
+     * covered by the unlock tests below, so the rest open it directly. */
+    private function unlockFiles($user): void
+    {
+        Cache::put('monitoring-files-unlock:'.$user->getKey(), true, 900);
+    }
 
     private function beat($user, string $deviceKey = 'dk-1'): void
     {
@@ -61,6 +72,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         // Manager asks for a listing.
         $requestId = $this->signedInAs($manager)
@@ -125,6 +137,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
@@ -165,6 +178,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
@@ -201,6 +215,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
@@ -227,6 +242,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
@@ -259,6 +275,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', [
@@ -314,6 +331,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
@@ -340,6 +358,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
@@ -365,6 +384,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\Users'])
@@ -392,6 +412,224 @@ class FilesTest extends TestCase
 
     // ── gating: monitoring.files.view is its own grant ───────────────
 
+    public function test_the_roots_answer_carries_quick_links_and_older_agents_send_none(): void
+    {
+        // Explorer's Quick access (Jose, 2026-10-12): the agent names the
+        // signed-in user's own Desktop, Downloads... with the drive list.
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
+
+        $ask = fn () => $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->json('data.request_id');
+        $answer = fn (string $rid, array $extra) => $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$rid, [
+                'device_key' => 'dk-1', 'status' => 'ready', 'op' => 'list', 'path' => '',
+                'entries' => [['name' => 'C:\\', 'is_dir' => true]],
+            ] + $extra)
+            ->assertNoContent();
+        $collect = fn (string $rid) => $this->signedInAs($manager)
+            ->getJson('/api/v1/monitoring/devices/'.$device->id.'/files/'.$rid);
+
+        $rid = $ask();
+        $answer($rid, ['quick_links' => [
+            ['label' => 'Desktop', 'path' => 'C:\\Users\\hyanne\\OneDrive\\Desktop'],
+            ['label' => 'Downloads', 'path' => 'C:\\Users\\hyanne\\Downloads'],
+        ]]);
+        $collect($rid)
+            ->assertJsonPath('data.quick_links.0.label', 'Desktop')
+            ->assertJsonPath('data.quick_links.0.path', 'C:\\Users\\hyanne\\OneDrive\\Desktop')
+            ->assertJsonPath('data.quick_links.1.label', 'Downloads');
+
+        // A shipped agent that predates quick links: an empty list, not a 422.
+        $rid = $ask();
+        $answer($rid, []);
+        $collect($rid)->assertJsonPath('data.status', 'ready')->assertJsonPath('data.quick_links', []);
+    }
+
+    // ── the authenticator lock (Jose, 2026-10-12) ─────────────────────
+
+    private function withAuthenticator(array $tenant, $user): string
+    {
+        $secret = app(Google2FA::class)->generateSecretKey(32);
+        $this->inTenant($tenant['org'], fn () => $user->forceFill([
+            'totp_secret' => $secret, 'totp_confirmed_at' => now(),
+        ])->save());
+
+        return $secret;
+    }
+
+    public function test_files_stay_locked_until_a_current_authenticator_code_opens_them(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $secret = $this->withAuthenticator($alpha, $manager);
+
+        // Locked: the screen gets a code it can turn into the prompt.
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'files_locked');
+
+        // Nothing was queued for the agent while locked.
+        $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertJsonCount(0, 'requests');
+
+        // A wrong code does not open it.
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', ['code' => '000000'])
+            ->assertStatus(422);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', [
+                'code' => app(Google2FA::class)->getCurrentOtp($secret),
+            ])
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['unlocked_until']]);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertOk();
+
+        $this->assertTrue(
+            AuditEvent::query()->where('action', 'monitoring.files.unlocked')->exists(),
+            'Each unlock is recorded, alongside every listing and download.',
+        );
+    }
+
+    public function test_the_unlock_slides_with_use_and_lapses_after_fifteen_quiet_minutes(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $secret = $this->withAuthenticator($alpha, $manager);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', ['code' => app(Google2FA::class)->getCurrentOtp($secret)])
+            ->assertOk();
+
+        $list = fn () => $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => '']);
+
+        // In use at 10 and 20 minutes: still open, because each request
+        // restarts the 15.
+        $this->travel(10)->minutes();
+        $list()->assertOk();
+        $this->travel(10)->minutes();
+        $list()->assertOk();
+
+        // 16 quiet minutes: locked again.
+        $this->travel(16)->minutes();
+        $list()->assertForbidden()->assertJsonPath('code', 'files_locked');
+    }
+
+    public function test_lock_now_ends_the_unlock_on_the_server_and_requests_report_the_expiry(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
+
+        // Each request reports the server's sliding expiry, 15 minutes out.
+        $until = $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertOk()
+            ->json('data.unlocked_until');
+        $this->assertEqualsWithDelta(
+            now()->addMinutes(15)->getTimestamp(),
+            Carbon::parse($until)->getTimestamp(),
+            5,
+        );
+
+        // "Lock now" locks for real, not just on the screen.
+        $this->signedInAs($manager)
+            ->deleteJson('/api/v1/monitoring/files/unlock')
+            ->assertNoContent();
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'files_locked');
+    }
+
+    public function test_a_manager_who_signs_in_through_a_staff_account_unlocks_with_that_authenticator(): void
+    {
+        // Jose and Bar, 2026-10-13: "it says i need to set it up, when it's
+        // already set up". Their sign-in factor lives on the linked
+        // PlatformStaff account, not on the tenant user — TwoFactorPolicy::
+        // subjectFor() is what sign-in asks, and unlock() must ask the same.
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+
+        $staff = $this->leadStaff('manager-staff@ezbizi.test');
+        $secret = app(Google2FA::class)->generateSecretKey(32);
+        $staff->forceFill(['totp_secret' => $secret, 'totp_confirmed_at' => now()])->save();
+        PlatformStaffLink::create(['staff_id' => $staff->getKey(), 'user_id' => $manager->getKey()]);
+
+        // The tenant user itself has no authenticator — exactly their case.
+        $this->assertFalse($manager->fresh()->hasTotp());
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', [
+                'code' => app(Google2FA::class)->getCurrentOtp($secret),
+            ])
+            ->assertOk();
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => ''])
+            ->assertOk();
+    }
+
+    public function test_only_a_six_digit_code_unlocks_so_no_recovery_code_is_spent(): void
+    {
+        // TotpEnrolment::verify() consumes a recovery code for anything that is
+        // not six digits. A recovery code is for getting back into an account;
+        // browsing a desk must never burn one.
+        $alpha = $this->provisionTenant('Alpha');
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->withAuthenticator($alpha, $manager);
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', ['code' => 'ABCD-1234'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('code');
+    }
+
+    public function test_unlocking_without_an_authenticator_says_to_set_one_up(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->inTenant($alpha['org'], fn () => $manager->forceFill([
+            'totp_secret' => null, 'totp_confirmed_at' => null,
+        ])->save());
+
+        $this->signedInAs($manager)
+            ->postJson('/api/v1/monitoring/files/unlock', ['code' => '123456'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'no_authenticator');
+    }
+
+    public function test_unlocking_needs_the_files_permission(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $other = $this->userWithRole($alpha, 'Driver', ['monitoring.control']);
+        $secret = $this->withAuthenticator($alpha, $other);
+
+        $this->signedInAs($other)
+            ->postJson('/api/v1/monitoring/files/unlock', ['code' => app(Google2FA::class)->getCurrentOtp($secret)])
+            ->assertForbidden();
+    }
+
     public function test_files_without_the_permission_is_refused_with_a_sentence(): void
     {
         $alpha = $this->provisionTenant('Alpha');
@@ -414,6 +652,7 @@ class FilesTest extends TestCase
 
         // Control: the grant opens it.
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
         $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
             ->assertOk();
@@ -442,6 +681,7 @@ class FilesTest extends TestCase
         $manager = $this->userWithRole(
             $alpha, 'Branch Manager', ['monitoring.files.view'], onlyAt: $alpha['franchise'],
         );
+        $this->unlockFiles($manager);
 
         $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$theirDevice->id.'/files', ['op' => 'list', 'path' => 'C:\\'])
@@ -463,6 +703,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         // The manager cannot open a request over the exempt machine.
         $this->signedInAs($manager)
@@ -485,6 +726,7 @@ class FilesTest extends TestCase
         $this->beat($alpha['admin']);
         $device = $this->deviceFor($alpha['admin']);
         $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
 
         $requestId = $this->signedInAs($manager)
             ->postJson('/api/v1/monitoring/devices/'.$device->id.'/files', ['op' => 'download', 'path' => 'C:\\big.iso'])

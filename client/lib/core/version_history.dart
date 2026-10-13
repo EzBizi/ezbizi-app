@@ -14,6 +14,188 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0424',
+      date: '13 Oct 2026',
+      items: [
+        'Walkthroughs: every main tab now has a (?) beside its title that walks you through each part of the tab.',
+        'Fleet: in a narrow vehicle list on a computer, the search and filters scroll with the vehicles instead of filling the pane.',
+        'Reports: call reasons show Grok\'s reading by default.',
+        'Reports: calls AI says were booked but have no Workiz job get their own list in Calls, and a daily alert you can route in Automations.',
+        'WhatsApp: AI answers and the bot\'s own messages are easier to read, with titles, emojis and one fact per line.',
+        'Scheduling: a Re-Scheduling tab lists booked jobs that would sit better beside other work, with a confirmed Move. On the Availability map, hover or tap a dot for the job, and zoom with + −. The suggestion radius is in Scheduling › Settings › Suggestions.',
+        'Reports: Scoring shows each dispatcher as a card ranked by AI\'s call score, with AI\'s daily and weekly analysis; for Administrators and Lead Managers.',
+        'Reports: on a phone, Marketing, Meta and Thumbtack no longer go blank when the dates are opened.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0423',
+      date: '13 Oct 2026',
+      items: [
+        'Scheduling: suggested availability looks for booked work within 30 miles instead of 5; you can still change this in Settings › Scheduling. Jobs Workiz could not place on the map no longer show as dots in Africa.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0422',
+      date: '13 Oct 2026',
+      items: [
+        'Leads: AI marks a lead Booked when a day was agreed on the call, and shows why.',
+        'Leads: Google leads that look like spam or a service we don\'t offer show "Credit?", and Request credit asks Google for a refund.',
+        'WhatsApp: staff with Reports access can ask the staff line for figures, for example "how much did MA sell last week".',
+        'Leads: Google LS calls no longer count as unread, since there is nothing to reply to.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0421',
+      date: '13 Oct 2026',
+      items: [
+        'Reports: calls can be tagged Cancel, Confirmation or Service question, and new calls are split by speaker for coaching.',
+        'AI: only calls and leads from Oct 13 onward are read, summarized and scored.',
+        'Email: the Inbox tab lists only the inboxes a person may open.',
+        'Monitoring › Files: the authenticator code now works for people who sign in through an EzBizi staff account.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0420',
+      date: '13 Oct 2026',
+      items: [
+        'Scheduling › Availability: a zip search shows the earliest opening beside a suggested one near work already booked, with a small map of the route. The radius is in Settings › Scheduling.',
+        'Leads: a lead with a note shows a note mark in the list; hover it to read the note.',
+        'Leads: Awaiting reply is now solid red.',
+        'Leads: Google bookings and calls keep the customer’s name and phone once EzBizi has found them.',
+        'A1Leads GBP: each Google review shows once, even when it is reachable through more than one Google account.',
+        'Task Board: choose a board from a list grouped by company, and set up your own statuses, columns and groups. Tasks can have subtasks.',
+        'Reports: task reports show each board’s own statuses and whether a task is a subtask.',
+        'Automations: "Change the status" on a task works with each board’s own statuses.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0419',
+      date: '13 Oct 2026',
+      items: [
+        'Reports: Performance › Calls has a Score column, AI’s score out of 10 for each call.',
+        'Reports: new Thumbtack tab, with lead spend, cost per lead and cost per booked job by category and branch.',
+        'Reports: Marketing, Meta and Thumbtack have the from–to date picker. Marketing loads faster and says when the P&L is not filled in for the dates.',
+        'AI Assistance answers questions in its own words from your Library, in the app and on WhatsApp for staff.',
+        'AI Assistance: the welcome message shows in full in Settings, and WhatsApp group chips no longer cut off on a phone.',
+        'Every tab can now have a walkthrough and a how-to video, shown as (?) and ▶ beside its title. The Task Board has the first walkthrough.',
+        'Settings › Integrations now shows every provider, connected or not, with its logo and a Connect button on the card.',
+        'Leads: Google bookings that were still "Booking through Google" now get the customer\'s name, phone, email and ZIP from Workiz\'s booking email.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0418',
+      date: '13 Oct 2026',
+      items: [
+        'Reports: Performance › People can show an AI call score and coaching notes per dispatcher.',
+        'Task Board: a new Task Board tab. Every company, franchise and person has a board, shown as a table or a kanban, with each task opening in a side panel and as cards on a phone.',
+        'Reports: Task Board tasks can be reported in the Report Builder.',
+        'Automations: rules can add a task, give it to somebody and change its status.',
+        'Automations: a rule can notify, email, text or WhatsApp whoever a task is given to.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0417',
+      date: '13 Oct 2026',
+      items: [
+        'AI: fewer calls are flagged as complaints by mistake; a confirmed or moved booking is no longer a complaint.',
+        'Leads: the button that opens a customer\'s photo in the browser is now solid green, so it stands out.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0416',
+      date: '12 Oct 2026',
+      items: [
+        'AI: calls are read much faster, so call summaries and speaker splits appear sooner.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0415',
+      date: '12 Oct 2026',
+      items: [
+        'Reports › Meta: AI suggests a service category for each Facebook ad campaign; a person confirms it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0414',
+      date: '12 Oct 2026',
+      items: [
+        'Workiz: each branch\'s Workiz phone calls and Workiz\'s call scores now come into EzBizi (for Reports).',
+        'Reports: Performance › People shows Workiz\'s own call scores beside EzBizi\'s, for branches Workiz scores (DMV, Illinois, New York).',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0413',
+      date: '12 Oct 2026',
+      items: [
+        'AI: call summaries first in the lead, a Follow up list, complaint alerts, Draft with AI for reviews, smarter name filling, and a Monday AI summary.',
+        'Fleet: the vehicle list opens one state at a time, with a button per state and an All states option.',
+        'AI: new leads are read faster, several at a time.',
+        'Monitoring › Files works like Windows Explorer: drives on the left, a sortable list (name, modified, size) in the middle and a preview of the chosen file beside it.',
+        'Monitoring › Files asks for your authenticator code to open, shows until when it stays open, has Lock now, and lists Desktop, Downloads and the rest under Quick access (once that computer has this update).',
+        'Reports: new Marketing tab (ad cost against jobs, sales and estimated profit per branch and source) and Meta tab (Facebook ad spend by campaign, state and category).',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0412',
+      date: '12 Oct 2026',
+      items: [
+        'Performance › Calls is a table: one line per call with its own columns, and a search. Open a call for its words and recording. People shows who didn\'t pick up and their answer rate.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0411',
+      date: '12 Oct 2026',
+      items: [
+        'Anything AI wrote or sorted now says so: a ✦ AI mark on suggested replies and on Performance\'s call reasons.',
+        'Performance: the AI\'s call reasons gain Estimate question, Job status, Confirmation, Not a customer and No conversation, so fewer calls land in Other.',
+        'Reports › Google Ads: every manager account (MCC) now opens as an overview of the accounts under it, and manager accounts have their own colour in the list.',
+        'Reports › Google Ads: a manager\'s overview includes every active account under it; canceled accounts are counted separately instead of as not connected.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0410',
+      date: '12 Oct 2026',
+      items: [
+        'Reports: a role given the Performance tab can open it without also needing Build.',
+        'Performance › Missed: tap a call to see the caller, the line they called, and the voicemail when they left one.',
+        'Leads: call transcripts are split into IVR menu, Dispatcher and Customer, with the menu shown once.',
+        'Scheduling › Overbooking: tap any overbooked day to see every job behind it: time, service, job number, client, phone, email, address, technician and notes.',
+        'Performance: call transcripts are split into IVR menu, Dispatcher and Customer, like in Leads.',
+        'Notifications: tapping one, on desktop or on a phone push (even when the app was closed), now opens the exact email, missed call, suggestion, automation rule, Field alert or onboarding it is about, and a time-clock correction opens that person\'s week in Work Hours.',
+        'Grok AI: if Grok stops answering for 30 minutes, the operations address gets an email.',
+        'Leads: a website form now reads one line per detail (name, phone, email, appointment, address, service, note), each with its emoji, leaving out empty ones.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0409',
+      date: '12 Oct 2026',
+      items: [
+        'Leads: Facebook Messenger enquiries now show the customer\'s name instead of "Unnamed enquiry".',
+        'Performance › Calls › Missed: each call now says Inbound or Outbound, with a filter. Outbound calls nobody answered are listed but not counted as missed customers.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0408',
+      date: '12 Oct 2026',
+      items: [
+        'Leads: Call opens a dial pad with the number already typed in, instead of the whole Communication screen over Leads.',
+        'Leads: Book fills in the street, unit, city, state and ZIP from the customer\'s website form.',
+        'Leads: Messenger is now called Facebook and has a blue tag.',
+        'Marketing › Social Media: Posts is now three tabs, Dashboard, Compose and Calendar, each grantable per role. Everyone who had Posts keeps all three.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0407',
+      date: '12 Oct 2026',
+      items: [
+        'Meta approved EzBizi on 11 October for Facebook Pages, Instagram publishing and WhatsApp.',
+        'Marketing › Social Media Management: publish or schedule posts to your Facebook Page, and photo posts to Instagram.',
+        'Leads: Facebook Messenger messages to your Page arrive in Leads (Messenger filter), and you can reply from EzBizi.',
+        'Leads: older Google bookings now show the customer\'s name too, and older leads that became jobs are marked Completed.',
+        'Thumbtack: the nightly phone-number sync now also skips a number Thumbtack rejects when it is the only new one, instead of failing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0406',
       date: '12 Oct 2026',
       items: [

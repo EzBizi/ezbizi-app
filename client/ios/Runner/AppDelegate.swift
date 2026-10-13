@@ -38,6 +38,18 @@ import UserNotifications
   // whether the check was broken.
   private var apnsFailure: String?
 
+  // ── Push taps: open the exact thing, not just the app ──────────────
+  //
+  // The server puts the bell row's id beside `aps` as "notification_id".
+  // A tap that cold-starts the app lands here before Dart is listening, so
+  // the id is held until Dart asks `initialTap`, once; after that, taps go
+  // straight to `tapped`. Invoking `tapped` before Dart had a handler would
+  // drop the cold-start tap, which is the one that matters most.
+  private static let tapChannelName = "com.ezbizi.app/notification_tap"
+  private var tapChannel: FlutterMethodChannel?
+  private var pendingTapId: String?
+  private var dartTakesTaps = false
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -163,6 +175,30 @@ import UserNotifications
       application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    // Only remote pushes carry notification_id. A local notification's tap
+    // has none and is flutter_local_notifications' to handle, through super.
+    if let id = response.notification.request.content.userInfo["notification_id"] as? String,
+      !id.isEmpty
+    {
+      if dartTakesTaps, let channel = tapChannel {
+        channel.invokeMethod("tapped", arguments: id)
+      } else {
+        pendingTapId = id
+      }
+    }
+
+    // super always: FlutterAppDelegate forwards to every plugin registered
+    // for it, flutter_local_notifications included, and it calls the
+    // completion handler. Calling it here as well would call it twice.
+    super.userNotificationCenter(
+      center, didReceive: response, withCompletionHandler: completionHandler)
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
@@ -197,6 +233,22 @@ import UserNotifications
     }
 
     apnsChannel = channel
+
+    let taps = FlutterMethodChannel(
+      name: AppDelegate.tapChannelName,
+      binaryMessenger: engineBridge.applicationRegistrar.messenger())
+    taps.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "initialTap" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      // Answered once: the id is handed over and forgotten, and every tap
+      // from here on is pushed as `tapped`.
+      result(self?.pendingTapId)
+      self?.pendingTapId = nil
+      self?.dartTakesTaps = true
+    }
+    tapChannel = taps
 
     // The token can arrive before this handler exists, so replay it. Without
     // this, a launch where registration wins the race leaves Dart waiting for

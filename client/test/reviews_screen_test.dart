@@ -82,6 +82,27 @@ void main() {
     );
   });
 
+  /// Jose, 2026-10-12, AI item 11: AI drafts, a person edits and publishes.
+  testWidgets('Draft with AI fills the box, marked as AI until edited',
+      (tester) async {
+    await _pump(
+      tester,
+      reviews: [_review(reply: null)],
+      connections: _connected,
+    );
+    await tester.tap(find.text('Write a reply'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Draft with AI'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Thank you, Dana!'), findsOneWidget);
+    expect(find.text('Draft by AI'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Thank you so much, Dana!');
+    await tester.pumpAndSettle();
+    expect(find.text('Draft by AI'), findsNothing);
+  });
+
   testWidgets('a published reply is shown as published and offers no editor',
       (tester) async {
     await _pump(
@@ -170,6 +191,16 @@ Future<void> _pump(
               'unanswered': reviews.where((r) => r['reply'] == null).length,
               'connections': connections,
             },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.url.path.endsWith('/reply/suggest')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'body': 'Thank you, Dana!'},
           }),
           200,
           headers: {'content-type': 'application/json'},

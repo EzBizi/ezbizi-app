@@ -8,11 +8,13 @@ use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Ads\CampaignPerformance;
 use App\Support\Audit\AuditLogger;
+use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response as Status;
 
@@ -95,7 +97,7 @@ class AdsPerformanceController extends Controller
                 'connection_id' => $c->getKey(),
                 'customer_id' => $c->remote_id,
                 'name' => $c->display_name,
-                'is_manager' => in_array((string) $c->remote_id, $managerIds, true),
+                'is_manager' => $c->is_manager || in_array((string) $c->remote_id, $managerIds, true),
             ])->all(),
         ]);
     }
@@ -209,19 +211,42 @@ class AdsPerformanceController extends Controller
         $refused = [];
         $unreadable = 0;
 
+        // A canceled or closed account cannot spend and cannot be connected:
+        // counted apart, not as "not connected" (Jose, 2026-10-12: 27 of the
+        // Ads Manager's 63 were exactly these).
+        $closed = array_filter($children, fn ($c) => in_array($c['status'], ['CANCELED', 'CLOSED'], true));
+        $children = array_values(array_diff_key($children, $closed));
+        $managerToken = null;
+
         foreach ($children as $child) {
             $row = $connected->get($child['id']);
+            $token = null;
 
             if ($row === null) {
-                $unreadable++;
+                // Not connected here yet: read through the manager, which
+                // reaches every client (leads:adopt-manager-clients connects
+                // it within a day).
+                try {
+                    $managerToken ??= GoogleToken::forConnection($manager, 'google_ads');
+                } catch (RuntimeException) {
+                    $unreadable++;
 
-                continue;
+                    continue;
+                }
+                $token = $managerToken;
+                $row = (new SocialConnection)->forceFill([
+                    'id' => (string) Str::uuid(),   // matches no lead
+                    'provider' => SocialProvider::GoogleAds->value,
+                    'remote_id' => $child['id'],
+                    'login_customer_id' => preg_replace('/\D/', '', (string) $manager->remote_id),
+                    'display_name' => $child['name'],
+                ]);
             }
 
             try {
-                $report = $this->performance->forConnection($row, $from, $to, withCampaigns: false);
+                $report = $this->performance->forConnection($row, $from, $to, withCampaigns: false, token: $token);
                 $accounts[] = [
-                    'connection_id' => $row->getKey(),
+                    'connection_id' => $token === null ? $row->getKey() : null,
                     ...self::withLeads($row, $report['account'], $from, $to),
                 ];
             } catch (RuntimeException $e) {
@@ -238,6 +263,7 @@ class AdsPerformanceController extends Controller
             'refused' => $refused,
             'children_total' => count($children),
             'not_connected' => $unreadable,
+            'canceled' => count($closed),
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
         ]);

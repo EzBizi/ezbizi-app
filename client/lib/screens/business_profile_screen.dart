@@ -139,6 +139,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               ),
               const Spacer(),
               FilledButton.tonalIcon(
+                key: const ValueKey('tour-customer_experience-check-google'),
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing
                     ? const SizedBox(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/timestamps.dart';
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/module_screens.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -11,8 +12,12 @@ import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
+import 'reports/marketing_report.dart';
+import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
+import 'reports/scoring_report.dart';
+import 'reports/thumbtack_report.dart';
 import 'reports/report_run_view.dart';
 import 'reports/work_hours_report_panel.dart';
 
@@ -97,9 +102,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
   bool get _seesScheduling =>
       widget.session.me?.can('scheduling.overbooking.view') ?? false;
 
+  /// The call a missed-call notification was about, opened in Performance
+  /// (Bar, via Jose, 2026-10-12: a notification opens "the exact thing").
+  String? _openCall;
+
   @override
   void initState() {
     super.initState();
+    _takeLink();
+    DeepLinks.pending.addListener(_linkArrived);
     // Only somebody holding the library tab asks for the library. Asking
     // anyway drew the server's refusal in a pane they were never given.
     if (_mayOpen('library')) {
@@ -108,6 +119,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _loading = false;
     }
   }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_linkArrived);
+    super.dispose();
+  }
+
+  /// A notification's call, if one is waiting for Reports: to Performance,
+  /// when this person holds it, with that call open. Without the tab the link
+  /// is still consumed, so it cannot open later behind their back.
+  void _takeLink() {
+    final link = DeepLinks.take('reports');
+    if (link?.type != 'call') return;
+
+    final canExperiment = widget.session.me?.can('reports.build') ?? false;
+    final performance = _indexOf(
+      'Performance',
+      canBuildHere: canExperiment,
+      canExperiment: canExperiment,
+    );
+    if (performance == null) return;
+
+    _chip = performance;
+    _openCall = link!.id;
+  }
+
+  void _linkArrived() => setState(_takeLink);
 
   Future<void> _load() async {
     setState(() {
@@ -194,6 +232,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   Expanded(
                     child: TabBarLike(
+                      key: const ValueKey('tour-reports-tabs'),
                       labels: _chipLabels(
                         canBuildHere: canBuildHere,
                         canExperiment: canExperiment,
@@ -272,8 +311,57 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (_mayOpen('library')) ('Reports', Icons.list_alt_outlined, null),
       if (canBuildHere && _mayOpen('builder'))
         ('Report Builder', Icons.build_outlined, null),
-      if (canExperiment && _mayOpen('experimental'))
+      // The tab alone (Jose, 2026-10-12: a Lead Manager given Performance
+      // could not see it, because it also asked for Build). What inside it
+      // changes data asks for Build itself: ExperimentalCallReport.canEdit.
+      if (_mayOpen('experimental'))
         ('Performance', Icons.science_outlined, null),
+      // Each dispatcher as a card, ranked by AI's call score (Jose,
+      // 2026-10-13; UI queue 85). Its own grant: Administrator and Lead
+      // Manager only, for now (Jose).
+      if (_mayOpen('scoring'))
+        (
+          'Scoring',
+          Icons.leaderboard_outlined,
+          () => ScoringReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Ad cost against jobs and profit (Jose, 2026-10-12). Its profit is the
+      // P&L's margin, so it goes where the P&L can.
+      if (_mayOpen('marketing') &&
+          (me?.reachableModules.any((m) => m.key == 'profit_loss') ?? false))
+        (
+          'Marketing',
+          Icons.campaign_outlined,
+          () => MarketingReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Facebook ad spend (Jose, 2026-10-12). Editing the campaign mapping
+      // asks for Build, as the server does.
+      if (_mayOpen('meta'))
+        (
+          'Meta',
+          Icons.campaign_outlined,
+          () => MetaAdsReport(
+            api: widget.api,
+            canEdit: canBuildHere,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
+      // Thumbtack lead spend (Jose, 2026-10-13).
+      if (_mayOpen('thumbtack'))
+        (
+          'Thumbtack',
+          Icons.request_quote_outlined,
+          () => ThumbtackReport(
+            api: widget.api,
+            formats: widget.session.me?.display ?? DisplayFormats.fallback,
+          ),
+        ),
       if (me != null)
         for (final module in me.reachableModules)
           if (module.parent == 'reports')
@@ -381,6 +469,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Padding(
       padding: const EdgeInsets.only(left: 12),
       child: FilledButton.icon(
+        key: const ValueKey('tour-reports-new'),
         // To the Builder by NAME. `_chip = 1` was the Builder only while the
         // library sat at 0 (deploy desk audit, 2026-09-29).
         onPressed: () => setState(() {
@@ -437,7 +526,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       case 'Performance':
         return ExperimentalCallReport(
+          // A new link starts the report over on that call.
+          key: ValueKey('performance-$_openCall'),
+          openCall: _openCall,
           api: widget.api,
+          canEdit: canExperiment,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,
         );
 
@@ -733,6 +826,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         );
 
     return Container(
+      key: const ValueKey('tour-reports-library'),
       decoration: BoxDecoration(
         color: scheme.surface,
         border: Border.all(color: scheme.outlineVariant),

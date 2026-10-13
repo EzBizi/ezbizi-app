@@ -34,6 +34,9 @@ class TranscribeLeadCallsTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow('2026-09-28T12:00:00Z');
+        // These calls predate GROK_AI_SINCE's default (2026-10-13); the cut-off
+        // has its own test below.
+        config(['services.grok_cli.since' => '2026-01-01']);
         $this->t = $this->provisionTenant('A1-Group');
 
         config([
@@ -126,6 +129,18 @@ class TranscribeLeadCallsTest extends TestCase
 
         $this->assertSame([], $this->speechCalls);
         $this->assertNull($this->fresh($row)->transcript_operation);
+    }
+
+    /** Jose, 2026-10-13: "just new stuff from now on" - nothing before the cut-off is transcribed. */
+    public function test_a_call_before_the_ai_cut_off_is_not_transcribed(): void
+    {
+        config(['services.grok_cli.since' => '2026-09-28']);
+        $row = $this->recordedCall('old', '2026-09-27T15:00:00Z', 95000);
+
+        $this->artisan('ezbizi:transcribe-lead-calls')->assertSuccessful();
+
+        $this->assertSame([], $this->speechCalls);
+        $this->assertNull($this->fresh($row)->transcript);
     }
 
     public function test_an_answered_call_is_transcribed_once_and_its_words_kept(): void

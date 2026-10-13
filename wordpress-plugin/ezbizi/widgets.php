@@ -386,9 +386,10 @@ function ezbizi_preset_fallback($widget) {
         'sad_title' => 'We are sorry we missed the mark',
         'sad_text' => 'Tell us what went wrong and how we can make it right.',
         'submit' => 'Send feedback',
-        'thanks' => 'Thank you! We have received your feedback and will be in touch shortly.',
+        'thanks' => "Thank you for letting us know, and we're sorry this wasn't the experience you expected. We have received your feedback and will investigate the issue. We may contact you to provide further support.",
         'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
-        'ask_public' => true,
+        // Off: after a complaint the page apologises and stops (Jose, 2026-10-13).
+        'ask_public' => false,
     );
 
     return isset($fallbacks[$widget]) ? $fallbacks[$widget] : array();
@@ -1899,7 +1900,8 @@ function ezbizi_street_view_shortcode($atts) {
 /**
  * [ezbizi_review_faces] — A1 Tools' smiley widget, answered from EzBizi.
  *
- * Happy sends the visitor to the site's `review_link`. Sad opens a short form
+ * Happy sends the visitor straight to the Google review link, no step
+ * between (Jose, 2026-10-13). Sad opens a short form
  * that posts to the same public endpoint as [ezbizi_form], so the complaint
  * lands in Leads with this site's host on it instead of on Google.
  *
@@ -1983,6 +1985,7 @@ function ezbizi_review_faces_shortcode($atts) {
         . 'body:has(' . $s . ') .ezbizi-chat-launch-text{display:none}'
         . $s . ' form{text-align:left}'
         . $s . ' label{display:block;margin:10px 0 4px;font-weight:600}'
+        . $s . ' .ezbizi-rf-hint{display:block;margin:-2px 0 6px;font-size:.85em;opacity:.8}'
         . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:12px;font:inherit;min-height:48px}'
         . $s . ' .ezbizi-rf-hp{position:absolute;left:-9999px}'
         . '</style>';
@@ -1998,13 +2001,15 @@ function ezbizi_review_faces_shortcode($atts) {
             . '<path d="' . $mouth . '" fill="none" stroke="' . $colour . '" stroke-width="4" stroke-linecap="round"/></svg>';
     };
 
-    $field = function ($name, $label, $type) use ($id) {
+    $field = function ($name, $label, $type, $hint = '') use ($id) {
         $fid = $id . '-' . $name;
+        $described = $hint === '' ? '' : ' aria-describedby="' . $fid . '-hint"';
         $input = $type === 'textarea'
-            ? '<textarea id="' . $fid . '" name="' . $name . '" rows="4" required></textarea>'
-            : '<input id="' . $fid . '" name="' . $name . '" type="' . $type . '" required />';
+            ? '<textarea id="' . $fid . '" name="' . $name . '" rows="4" required' . $described . '></textarea>'
+            : '<input id="' . $fid . '" name="' . $name . '" type="' . $type . '" required' . $described . ' />';
 
-        return '<label for="' . $fid . '">' . esc_html($label) . '</label>' . $input;
+        return '<label for="' . $fid . '">' . esc_html($label) . '</label>'
+            . ($hint === '' ? '' : '<small class="ezbizi-rf-hint" id="' . $fid . '-hint">' . esc_html($hint) . '</small>') . $input;
     };
 
     $out .= '<div class="ezbizi-review-faces" id="' . esc_attr($id) . '">'
@@ -2013,7 +2018,9 @@ function ezbizi_review_faces_shortcode($atts) {
         . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . '<span>' . $t('sad_label')
         . '<small>' . esc_html__('Tell us what to fix', 'ezbizi') . '</small></span></button>'
         . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . '<span>' . $t('happy_label')
-        . '<small>' . esc_html__('Happy with the visit', 'ezbizi') . '</small></span></button>'
+        // With a Google link the green face IS the way to Google (Jose, 2026-10-13).
+        . '<small>' . ($link === '' ? esc_html__('Happy with the visit', 'ezbizi')
+            : esc_html__('Tap to share it on Google', 'ezbizi')) . '</small></span></button>'
         . '</div></div>'
         /*
          * Jose, 2026-10-05: a good review can bring a thank-you and the
@@ -2035,7 +2042,8 @@ function ezbizi_review_faces_shortcode($atts) {
         . $field('name', 'Your name', 'text')
         . $field('phone', 'Phone', 'tel')
         . $field('email', 'Email', 'email')
-        . $field('feedback', 'What happened?', 'textarea')
+        // Jose, 2026-10-13: ask for detail, so the office can act on it.
+        . $field('feedback', 'What happened?', 'textarea', __('Please be as descriptive as possible.', 'ezbizi'))
         . '<input class="ezbizi-rf-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />'
         . ezbizi_turnstile_box()
         . '<p><button type="submit" class="ezbizi-rf-btn">' . $t('submit') . '</button></p>'
@@ -2048,10 +2056,10 @@ function ezbizi_review_faces_shortcode($atts) {
     $out .= "<script>(function(){
 var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
 function show(n){Array.prototype.forEach.call(w.querySelectorAll('[data-step]'),function(d){d.hidden=d.getAttribute('data-step')!==n;});}
-var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ";
+var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ",google=" . wp_json_encode($link) . ";
 var c='';try{c=new URLSearchParams(location.search).get('c')||'';}catch(x){}
 // The review itself, for the customer's record and the Membership offer. Never waited on.
-function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
+function tell(v){v.key=key;if(c)v.c=c;try{fetch(api+'/api/v1/web/review',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)}).catch(function(){});}catch(x){}}
 // A link that names the customer: the sad form stops asking for their name,
 // phone and email, once the server confirms the link (Jose, 2026-10-08).
 if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+encodeURIComponent(c),{headers:{'Accept':'application/json'}})
@@ -2061,6 +2069,9 @@ if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+enco
 function who(raw){var s=String(raw||'').trim(),o={};if(!s)return o;if(s.indexOf('@')>-1)o.email=s;else o.phone=s;return o;}
 Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){
   var go=b.getAttribute('data-go');
+  // Jose, 2026-10-13: the green face goes straight to Google, no step between.
+  // Without a Google link it keeps the old path rather than a dead end.
+  if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}
   if(go==='happy'){if(c){tell({rating:'happy'});show('happy');}else show('ask');return;}
   show(go);
 });});

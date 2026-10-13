@@ -387,6 +387,7 @@ class _SeoTabState extends State<SeoTab> {
 
   Widget _rail({required Future<void> Function(Map<String, dynamic>) onOpen}) {
     return ListView(
+      key: const ValueKey('tour-web_management-sites'),
       padding: const EdgeInsets.all(16),
       children: [
         // No headline: the module title above already says where this is
@@ -398,6 +399,7 @@ class _SeoTabState extends State<SeoTab> {
               'number.',
           action: _canEdit && !_adding
               ? FilledButton.icon(
+                  key: const ValueKey('tour-web_management-add-site'),
                   onPressed: () => setState(() => _adding = true),
                   icon: const Icon(Icons.add),
                   label: const Text('Add a website'),

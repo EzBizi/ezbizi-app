@@ -5,8 +5,10 @@ namespace App\Services\Leads;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\NameDecision;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -85,52 +87,125 @@ class LeadInsights
      * by reading the transcript or their zip code"). Null when nothing has
      * been said yet.
      *
-     * @return array{classification: string, summary: string, name: ?string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool}|null
+     * @return array{classification: string, summary: string, name: ?string, name_basis: string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool, booked: bool, reason: string, google_credit: ?string}|null
      *
      * @throws \RuntimeException when Grok fails, so the caller retries later
      */
     public function read(Lead $lead): ?array
     {
-        $thread = $this->thread($lead);
+        $read = $this->readMany([$lead])[0];
 
-        if ($thread === '' || ! self::grok()) {
-            return null;
+        if ($read instanceof RuntimeException) {
+            throw $read;
         }
 
-        $json = GrokCli::ask(
-            "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
-            ."inspections). Calls are machine transcripts and start with the business's own phone "
-            ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
-            ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
-            ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
-            ."a vendor selling something, a hang-up, or nothing to act on).\n"
-            ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
-            ."- name: the CUSTOMER's own full name only if they clearly say it; never a staff member, "
-            ."never the business; null if not said.\n"
-            ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
-            ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
-            ."something, a robocall, or a wrong number. A real person asking about any "
-            ."service, even one we may not offer, or who declined a price, is false.\n"
-            ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
-            ."- lost: true when a real customer will not book: they declined the price or said no, or "
-            ."want a service a chimney/fireplace/garage-door company does not do. False otherwise."
-            ."\n\n".$thread,
-            [
-                'type' => 'object',
-                'properties' => [
-                    'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
-                    'summary' => ['type' => 'string'],
-                    'name' => ['type' => ['string', 'null']],
-                    'zip' => ['type' => ['string', 'null']],
-                    'not_a_lead' => ['type' => 'boolean'],
-                    'lost' => ['type' => 'boolean'],
-                    'job_applicant' => ['type' => 'boolean'],
-                ],
-                'required' => ['classification', 'summary', 'name', 'zip', 'not_a_lead', 'lost', 'job_applicant'],
-                'additionalProperties' => false,
-            ],
-        );
+        return $read;
+    }
 
+    /**
+     * read() for several leads side by side (GrokCli::askMany, Jose's AI item
+     * 4). A failure stays with its lead, which the caller leaves unread.
+     *
+     * @param  list<Lead>  $leads
+     * @return list<array|RuntimeException|null> in order; null: nothing said yet, or Grok off
+     */
+    public function readMany(array $leads): array
+    {
+        $threads = array_map(fn (Lead $lead) => self::grok() ? $this->thread($lead) : '', $leads);
+        $asked = array_filter($threads, fn ($t) => $t !== '');
+        $answers = $asked === [] ? [] : array_combine(array_keys($asked),
+            GrokCli::askMany(array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA));
+
+        return array_map(fn ($i) => match (true) {
+            ! isset($answers[$i]) => null,
+            $answers[$i] instanceof RuntimeException => $answers[$i],
+            default => self::gate(self::parseRead($answers[$i]), $threads[$i]),
+        }, array_keys($leads));
+    }
+
+    private const READ_PROMPT = "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
+        ."inspections). Calls are machine transcripts and start with the business's own phone "
+        ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
+        ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
+        ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
+        ."a vendor selling something, a hang-up, or nothing to act on).\n"
+        ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
+        ."- name: the CUSTOMER's own name, as they gave it (keep accents, hyphens, apostrophes; "
+        ."one name is fine), only from: the customer introducing themselves (\"My name is ...\", "
+        ."\"This is ...\"), the customer's answer when asked their name, a \"Name:\" line they "
+        ."wrote, or the customer spelling or correcting it (use the spelled form). NEVER a "
+        ."dispatcher, technician, the phone menu, the business, a review author, or someone "
+        ."the customer mentions (\"my husband Mark\", \"ask for Andy\"); never made from an "
+        ."email handle. Null if not given.\n"
+        ."- name_basis: how the name was given: self_introduction, answer_to_name_question, "
+        ."spelled_or_corrected, or none when name is null.\n"
+        ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
+        ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
+        ."something, a robocall, or a wrong number. A real person asking about any "
+        ."service, even one we may not offer, or who declined a price, is false.\n"
+        ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
+        ."- lost: true when a real customer will not book: they declined the price or said no, or "
+        ."want a service a chimney/fireplace/garage-door company does not do. False otherwise.\n"
+        ."- booked: true ONLY when the business and the customer agreed a specific day for the visit "
+        ."(\"Thursday between 9 and 12\") and the customer accepted it. A quote, a price, a callback, "
+        ."or the customer saying they will check and call back is false.\n"
+        ."- reason: one short sentence on why booked, lost, not_a_lead or job_applicant is true, "
+        ."quoting what was said; empty when all are false.\n"
+        ."- google_credit: whether Google should refund this lead: SPAM (a bot, a silent or dead call, "
+        ."a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks "
+        ."only for a service a chimney/fireplace/garage-door company does not do), or null. A real "
+        ."customer who simply did not book is null."
+        ."\n\n";
+
+    /** Google's own SurveyDissatisfiedReason values AI may suggest for a credit. */
+    public const CREDIT_REASONS = ['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH'];
+
+    /**
+     * Rodrigo's booking gate (a1leads booking-gate.js, deferral.js): a model
+     * says "booked" on a call that ended "let me check with my wife and call
+     * you back". The last words win. ponytail: a phrase list over the last
+     * 400 characters; Rodrigo's speaker-aware version if the weekly AI check
+     * shows people un-booking leads AI booked.
+     */
+    private const DEFERRALS = "/\\b(call (you|u) back|get back to you|check with my|talk (to|with) my|think about it|let me (check|think)|i'?ll (call|let you know)|not (sure|ready) yet)\\b/i";
+
+    public static function deferred(string $thread): bool
+    {
+        return preg_match(self::DEFERRALS, mb_substr($thread, -400)) === 1;
+    }
+
+    /** A booking the customer put off at the end is not a booking. */
+    private static function gate(array $read, string $thread): array
+    {
+        if ($read['booked'] && self::deferred($thread)) {
+            $read['booked'] = false;
+        }
+
+        return $read;
+    }
+
+    private const READ_SCHEMA = [
+        'type' => 'object',
+        'properties' => [
+            'classification' => ['type' => 'string', 'enum' => self::CLASSIFICATIONS],
+            'summary' => ['type' => 'string'],
+            'name' => ['type' => ['string', 'null']],
+            'name_basis' => ['type' => 'string', 'enum' => NameDecision::BASES],
+            'zip' => ['type' => ['string', 'null']],
+            'not_a_lead' => ['type' => 'boolean'],
+            'lost' => ['type' => 'boolean'],
+            'job_applicant' => ['type' => 'boolean'],
+            'booked' => ['type' => 'boolean'],
+            'reason' => ['type' => 'string'],
+            'google_credit' => ['type' => ['string', 'null'], 'enum' => [...self::CREDIT_REASONS, null]],
+        ],
+        'required' => ['classification', 'summary', 'name', 'name_basis', 'zip', 'not_a_lead', 'lost', 'job_applicant', 'booked', 'reason', 'google_credit'],
+        'additionalProperties' => false,
+    ];
+
+    /** @param  array<string, mixed>  $json */
+    private static function parseRead(array $json): array
+    {
         $class = strtoupper(trim((string) ($json['classification'] ?? '')));
         $name = trim((string) ($json['name'] ?? ''));
         $zip = trim((string) ($json['zip'] ?? ''));
@@ -139,10 +214,15 @@ class LeadInsights
             'classification' => in_array($class, self::CLASSIFICATIONS, true) ? $class : self::SUPPORT,
             'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
             'name' => $name !== '' ? mb_substr($name, 0, 120) : null,
+            'name_basis' => in_array($json['name_basis'] ?? null, NameDecision::BASES, true)
+                ? $json['name_basis'] : ($name !== '' ? 'self_introduction' : 'none'),
             'zip' => preg_match('/^\d{5}$/', $zip) === 1 ? $zip : null,
             'not_a_lead' => ($json['not_a_lead'] ?? false) === true,
             'lost' => ($json['lost'] ?? false) === true,
             'job_applicant' => ($json['job_applicant'] ?? false) === true,
+            'booked' => ($json['booked'] ?? false) === true,
+            'reason' => mb_substr(trim((string) ($json['reason'] ?? '')), 0, 255),
+            'google_credit' => in_array($json['google_credit'] ?? null, self::CREDIT_REASONS, true) ? $json['google_credit'] : null,
         ];
     }
 

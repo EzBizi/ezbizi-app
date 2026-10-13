@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Support\Leads\AddressCheck;
+use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
+use App\Support\Scheduling\Reschedules;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
@@ -48,6 +51,62 @@ class SchedulingAvailabilityController extends Controller
      * life of a test, and SettingsResolver caches per request — held here it
      * would answer a later request from an earlier one's cache.
      */
+
+    /**
+     * GET /api/v1/scheduling/availability/suggestion?zip=
+     *
+     * The earliest open window for a zip, and the one nearest work already
+     * booked, with the jobs it weighed so the screen can draw them on a map
+     * (Jose, 2026-10-13). See App\Support\Scheduling\NearbySuggestion.
+     */
+    public function suggestion(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate(['zip' => ['required', 'string', 'max:16']]);
+        $zip = $this->zip5((string) $data['zip']);
+        $area = $this->areaForZip($zip, ViewScope::forUser($request->user())->franchiseIds());
+
+        if ($area === null || ! Openings::hasCapacity($area)) {
+            return response()->json(['data' => null]);
+        }
+
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
+
+        return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
+            + app(NearbySuggestion::class)->for($area, $zip, $from)]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/reschedules[?area_id=]
+     *
+     * Scheduling › Re-Scheduling (Jose, 2026-10-13): booked jobs alone on
+     * their day, each with the open window beside other work it could move
+     * to. One area, or every area in view. See App\Support\Scheduling\Reschedules.
+     */
+    public function reschedules(Request $request): JsonResponse
+    {
+        $data = $request->validate(['area_id' => ['nullable', 'uuid']]);
+        $inView = ViewScope::forUser($request->user())->franchiseIds();
+        $areas = ServiceArea::query()->whereIn('franchise_id', $inView)->whereNull('shares_with_id')
+            ->when($data['area_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->orderBy('name')->get()
+            ->filter(fn (ServiceArea $a) => Openings::hasCapacity($a));
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $request->user()->organization));
+
+        $found = $areas->flatMap(fn (ServiceArea $a) => collect(app(Reschedules::class)->for($a, $from))
+            ->map(fn (array $r) => $r + ['area' => $a]));
+        $customers = Customer::query()->whereIn('id', $found->pluck('row.customer_id')->filter()->unique())->get()->keyBy('id');
+
+        return response()->json(['data' => $found->map(fn (array $r) => [
+            'area_id' => $r['area']->id,
+            'area_name' => $r['area']->name,
+            'job' => SchedulingOverbookingController::detail($r['row'], $customers[$r['row']->customer_id ?? ''] ?? null)
+                // What POST scheduling/board/jobs/{job}/reschedule takes.
+                + ['workiz_job_id' => $r['row']->workiz_job_id ?? null, 'date' => $r['current']['date'], 'latitude' => (float) $r['row']->latitude, 'longitude' => (float) $r['row']->longitude],
+            'current_nearest_miles' => $r['current']['nearest_miles'],
+            'suggested' => $r['suggested'],
+        ])->values()->all()]);
+    }
 
     /** GET /api/v1/scheduling/availability */
     public function show(Request $request): JsonResponse

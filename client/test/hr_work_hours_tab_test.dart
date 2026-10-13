@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/work_hours_screen.dart';
@@ -1214,6 +1215,59 @@ void main() {
 
     expect(find.byTooltip('Shift actions'), findsNothing);
     expect(find.byTooltip('Day actions'), findsNothing);
+  });
+
+  /// Notifications, 2026-10-12: tapping a correction notification "should
+  /// open the exact thing". The approver lands on the requester, at the
+  /// week of the asked-for clock-in. The control is the first load, which
+  /// selects the first person and asks for this week.
+  testWidgets('a tapped correction notification opens its person and week', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    DeepLinks.open(
+      const DeepLink(
+        module: 'work_hours',
+        type: 'time_clock_correction_request',
+        id: 'r-1',
+      ),
+    );
+    addTearDown(() => DeepLinks.pending.value = null);
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (uri, _) {
+        asked.add(uri);
+
+        return {
+          ..._week(
+            people: [
+              _person(),
+              _person(id: 'u-9', name: 'Jon Park'),
+            ],
+          ),
+          'correction_requests': [
+            {
+              'id': 'r-1',
+              'user': {'id': 'u-9', 'name': 'Jon Park'},
+              'clocked_in': '2026-08-10 07:30',
+              'clocked_out': '2026-08-10 15:00',
+              'reason': 'Forgot to clock in.',
+              'status': 'pending',
+            },
+          ],
+        };
+      },
+    );
+
+    expect(asked.first.queryParameters['on'], isNull);
+    expect(asked.last.queryParameters['on'], '2026-08-10');
+    // List row, the waiting card, and the detail pane: three only when he
+    // is the one selected (Bea is first, and would otherwise be).
+    expect(find.text('Jon Park'), findsNWidgets(3));
+    expect(DeepLinks.pending.value, isNull, reason: 'taken, once');
   });
 
   testWidgets('a manager sees waiting requests on the week and approves one', (

@@ -1888,15 +1888,24 @@ check('light by default', str_contains($faces, 'color:#fff}'), false);
 // Jose, 2026-10-05: a review reaches the customer's record for the Membership offer.
 check('the review is told to EzBizi', str_contains($faces, "/api/v1/web/review'"), true);
 check('with the personal link when the page has one', str_contains($faces, "get('c')") && str_contains($faces, 'if(c)v.c=c'), true);
-check('a happy face with a link goes straight to Google', str_contains($faces, "if(c){tell({rating:'happy'});show('happy');}else show('ask')"), true);
+// Jose, 2026-10-13: the green face goes straight to Google, with no step between.
+check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}"), true);
+check('to the review link', str_contains($faces, 'google="https:\/\/g.page\/r\/a1chimney\/review"'), true);
+check('and says so', str_contains($faces, 'Tap to share it on Google'), true);
+check('the review is told even as the page leaves', str_contains($faces, 'keepalive:true'), true);
 check('and no membership offer on the page (Jose, 2026-10-08: it is a text of its own)', str_contains($faces, "'/api/v1/web/membership/join'"), false);
 check('without one it asks, and can be skipped', str_contains($faces, 'data-step="ask"') && str_contains($faces, 'ezbizi-rf-skip'), true);
 check('a sad face is told too, with what happened', str_contains($faces, "tell({rating:'sad'"), true);
+// Jose, 2026-10-13: ask for detail, then apologise and stop; no Google offer after a complaint.
+check('the sad form asks for detail', str_contains($faces, 'Please be as descriptive as possible.'), true);
+check('after a complaint, no review button', (bool) preg_match('~data-step="sent".*?ezbizi-rf-btn~s', $faces), false);
+check('and the thanks apologises', str_contains($faces, 'investigate the issue'), true);
 
 reset_site();
 serve_preset_payload([], [], ['public_key' => 'pk_testkey']);
 $no_link = $GLOBALS['sc']['ezbizi_review_faces']([]);
 check('no review link, no button to nowhere', str_contains($no_link, 'ezbizi-rf-btn" href'), false);
+check('no review link: the green face keeps the old path', str_contains($no_link, 'google=""') && str_contains($no_link, 'Happy with the visit'), true);
 
 // On the reviews page itself, a review link to that page is not a way out.
 reset_site();

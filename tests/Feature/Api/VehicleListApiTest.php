@@ -137,4 +137,62 @@ class VehicleListApiTest extends TestCase
         $this->assertContains($dueId, $listedIds);
         $this->assertCount(1, $listedIds);
     }
+
+    /**
+     * One state at a time (Eve, 2026-10-12). The list narrows to a state,
+     * and `meta.places` names every state the register spans with its count
+     * — counted before the state filter, so the chips keep their numbers.
+     */
+    public function test_the_list_opens_one_state_and_names_every_state_with_its_count(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+
+        $other = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $other = Franchise::create([
+                'organization_id' => $tenant['org']->id,
+                'company_id' => $tenant['company']->id,
+                'name' => 'Alpha Connecticut',
+                'timezone' => 'America/New_York',
+                'currency' => 'USD',
+                'is_active' => true,
+            ]);
+
+            $van = fn (?string $franchise, string $plate, string $status = 'active') => Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $franchise,
+                'plate' => $plate,
+                'status' => $status,
+            ]);
+
+            $van($tenant['franchise']->id, 'F1-A');
+            $van($tenant['franchise']->id, 'F1-B');
+            $van($other->id, 'CT-A');
+            $van(null, 'POOL-A');
+            // Sold is off the default list, so it is off the counts too.
+            $van($other->id, 'CT-SOLD', 'sold');
+
+            return $other;
+        });
+
+        $body = $this->signedInAs($admin)
+            ->getJson('/api/v1/vehicles?franchise_id='.$other->id)
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(['CT-A'], collect($body['data'])->pluck('plate')->all());
+
+        $this->assertSame([
+            ['id' => $other->id, 'name' => 'Alpha Connecticut', 'count' => 1],
+            ['id' => $tenant['franchise']->id, 'name' => $tenant['franchise']->name, 'count' => 2],
+            ['id' => 'general', 'name' => 'General', 'count' => 1],
+        ], $body['meta']['places']);
+
+        $general = $this->signedInAs($admin)
+            ->getJson('/api/v1/vehicles?franchise_id=general')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(['POOL-A'], collect($general)->pluck('plate')->all());
+    }
 }

@@ -47,9 +47,12 @@
 /// average, and none of them can be worked out here.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/deep_links.dart';
 import '../../core/theme.dart';
 import '../../core/ui_strings.dart';
 import '../../core/session.dart';
@@ -117,10 +120,57 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// `work_hours.manage`.
   List<Map<String, dynamic>> _requests = const [];
 
+  /// The first load, which a tapped notification waits for.
+  late Future<void> _firstLoad;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _firstLoad = _load();
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
+    super.dispose();
+  }
+
+  /// A tapped correction notification opens that request's person at the
+  /// week of its clock-in (Notifications, 2026-10-12: "open the exact
+  /// thing"). An approver finds it among the waiting requests on the week;
+  /// whoever asked finds it among their own. Gone or decided elsewhere: the
+  /// tab just stays where it is.
+  void _takeLink() {
+    final link = DeepLinks.take('work_hours');
+    if (link == null || link.type != 'time_clock_correction_request') return;
+    unawaited(_openRequest(link.id));
+  }
+
+  Future<void> _openRequest(String id) async {
+    await _firstLoad;
+    Map<String, dynamic>? row;
+    bool same(Object? r) => r is Map && '${r['id']}' == id;
+    for (final r in _requests) {
+      if (same(r)) row = r;
+    }
+    if (row == null) {
+      final mine = await widget.api.get('/time-clock/corrections');
+      for (final r
+          in (mine.ok ? mine.body['data'] as List? : null) ?? const []) {
+        if (same(r)) row = Map<String, dynamic>.from(r as Map);
+      }
+    }
+    if (!mounted || row == null) return;
+
+    final person = (row['user'] as Map?)?['id']?.toString();
+    final day = '${row['clocked_in'] ?? ''}'.split(' ').first;
+    setState(() {
+      _personId = person ?? _personId;
+      _phoneOpenId = person;
+    });
+    await _load(on: day.isEmpty ? null : day);
   }
 
   Map<String, String>? get _onQuery => _on == null ? null : {'on': _on!};
@@ -585,6 +635,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: TextField(
+            key: const ValueKey('tour-work_hours-search'),
             decoration: InputDecoration(
               isDense: true,
               prefixIcon: const Icon(Icons.search, size: 18),
@@ -597,6 +648,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             child: SearchPickerField<String?>(
+              key: const ValueKey('tour-work_hours-role'),
               isDense: true,
               value: _roles.containsKey(_roleId) ? _roleId : null,
               options: [
@@ -616,6 +668,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(4, 0, 12, 4),
               child: TextButton(
+                key: const ValueKey('tour-work_hours-everyone'),
                 onPressed: () => setState(() => _everyone = !_everyone),
                 child: Text(
                   _everyone
@@ -636,6 +689,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                   ),
                 )
               : ListView.builder(
+                  key: const ValueKey('tour-work_hours-people'),
                   itemCount: people.length,
                   itemBuilder: (context, i) => _PersonRow(
                     api: widget.api,
@@ -678,6 +732,7 @@ class _WeekBar extends StatelessWidget {
     final w = week;
 
     return Container(
+      key: const ValueKey('tour-work_hours-week'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),

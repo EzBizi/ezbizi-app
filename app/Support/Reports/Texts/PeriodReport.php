@@ -43,6 +43,9 @@ final class PeriodReport
     /** @var array<string, list<array<string,mixed>>|null> rows per table, for one consolidated run */
     private array $tables = [];
 
+    /** @var array<string, list<string>> each base's table names, asked once per run */
+    private array $baseTables = [];
+
     public function __construct(
         private readonly AirtableBase $airtable,
         private readonly AirtablePnl $pnl,
@@ -185,7 +188,7 @@ final class PeriodReport
     /**
      * @return array{created: array, closed: array, techs: list<array>}
      */
-    private function figures(Franchise $branch, string $from, string $to): array
+    public function figures(Franchise $branch, string $from, string $to): array
     {
         $range = [$from.' 00:00:00', $to.' 23:59:59'];
         $jobs = fn () => DB::table('workiz_jobs')->where('franchise_id', $branch->getKey());
@@ -252,7 +255,7 @@ final class PeriodReport
      *
      * @return array{weeks: list<array>, missing: list<string>, income: ?float, costs: ?float, net: ?float, why: string, monthly: bool}
      */
-    private function profitAndLoss(Franchise $branch, string $from, string $to): array
+    public function profitAndLoss(Franchise $branch, string $from, string $to): array
     {
         $none = fn (string $why) => ['weeks' => [], 'missing' => [], 'income' => null, 'costs' => null, 'net' => null, 'why' => $why, 'monthly' => false];
         $code = self::PNL_TABLES[$branch->name] ?? null;
@@ -307,7 +310,11 @@ final class PeriodReport
             $token = (string) (($c->credentials ?? [])['api_token'] ?? '');
 
             try {
-                if (! in_array($code, $this->airtable->verify($token, (string) $c->remote_id)['tables'], true)) {
+                // Asked once per base per run: the Marketing tab reads every
+                // branch, and asking each time cost a round trip per branch.
+                $tables = $this->baseTables[$c->getKey()] ??= $this->airtable->verify($token, (string) $c->remote_id)['tables'];
+
+                if (! in_array($code, $tables, true)) {
                     continue;
                 }
 

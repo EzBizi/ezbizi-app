@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\SocialConnection;
 use App\Services\Leads\CallTranscripts;
 use App\Support\Phone\NumberNames;
+use App\Support\Reports\Experimental\CallReconciliation;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -69,7 +70,8 @@ class TranscribeReportCalls extends Command
 
         $zone = (string) config('app.timezone');
         $end = CarbonImmutable::now($zone);
-        $start = $end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
+        // Only calls from LabelReportCalls::aiSince() on (Jose, 2026-10-13).
+        $start = max($end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay(), LabelReportCalls::aiSince());
         $until = now()->addMinutes((int) $this->option('minutes'));
 
         $queues = [RingCentralCallLog::NEW_CLIENT_QUEUE, RingCentralCallLog::EXISTING_CLIENT_QUEUE];
@@ -104,6 +106,10 @@ class TranscribeReportCalls extends Command
                     'call_id' => $call['id'],
                     'transcript' => $words,
                     'source' => $source,
+                    // Who took it and when, for per-person scoring (Grok AI,
+                    // 2026-10-13), named as the report names them.
+                    'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
+                    'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
                 ]);
 
                 $done[$source]++;

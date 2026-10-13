@@ -157,7 +157,9 @@
             "label": "Marketing",
             "parent": null,
             "tabs": [
-                "Posts",
+                "Dashboard",
+                "Compose",
+                "Calendar",
                 "Accounts",
                 "QR Codes"
             ]
@@ -225,7 +227,11 @@
             "tabs": [
                 "Reports",
                 "Report Builder",
-                "Performance"
+                "Performance",
+                "Scoring",
+                "Marketing",
+                "Meta",
+                "Thumbtack"
             ]
         },
         "reviews": {
@@ -245,6 +251,7 @@
                 "Availability",
                 "Schedule",
                 "Overbooking",
+                "Re-Scheduling",
                 "Locations",
                 "Settings"
             ]
@@ -256,6 +263,11 @@
                 "Catalogue",
                 "Settings"
             ]
+        },
+        "tasks": {
+            "label": "Task Board",
+            "parent": null,
+            "tabs": []
         },
         "time_clock": {
             "label": "Clock in",
@@ -412,8 +424,10 @@
         "leads.whatsapp.view",
         "leads.workiz.view",
         "marketing.accounts.view",
+        "marketing.calendar.view",
+        "marketing.compose.view",
+        "marketing.dashboard.view",
         "marketing.edit",
-        "marketing.posts.view",
         "marketing.qr_codes.view",
         "marketing.view",
         "memberships.create",
@@ -461,6 +475,10 @@
         "reports.experimental.view",
         "reports.export",
         "reports.library.view",
+        "reports.marketing.view",
+        "reports.meta.view",
+        "reports.scoring.view",
+        "reports.thumbtack.view",
         "reports.view",
         "reviews.create",
         "reviews.delete",
@@ -477,6 +495,7 @@
         "scheduling.edit",
         "scheduling.locations.view",
         "scheduling.overbooking.view",
+        "scheduling.rescheduling.view",
         "scheduling.schedule.view",
         "scheduling.settings.view",
         "scheduling.view",
@@ -486,6 +505,8 @@
         "services.edit",
         "services.settings.view",
         "services.view",
+        "tasks.edit",
+        "tasks.view",
         "time_clock.lock_screen",
         "time_clock.view",
         "training.assign",

@@ -626,6 +626,12 @@ class CampaignPerformanceTest extends TestCase
         $rows = collect($body['data'])->keyBy('customer_id');
 
         $this->assertTrue($rows['9998887776']['is_manager']);
+
+        // Google's word, kept on the row, marks a manager nothing is read
+        // through (A1 Chimney - Philadelphia (MCC), 2026-10-12).
+        $this->inTenant($t['org'], fn () => $child->forceFill(['login_customer_id' => null, 'is_manager' => true])->save());
+        $again = collect($this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/accounts')->json('data'))->keyBy('customer_id');
+        $this->assertTrue($again['4051729356']['is_manager']);
         $this->assertFalse(
             $rows['4051729356']['is_manager'],
             'an account offered a roll-up of itself asks Google for a tree it is not the root of',
@@ -667,9 +673,11 @@ class CampaignPerformanceTest extends TestCase
                 ->push(['results' => [
                     ['customerClient' => ['id' => '9998887776', 'descriptiveName' => 'A1 Chimney - Ads Manager', 'manager' => true]],
                     ['customerClient' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Cleveland']],
-                    ['customerClient' => ['id' => '1112223334', 'descriptiveName' => 'Somebody Else']],
+                    ['customerClient' => ['id' => '1112223334', 'descriptiveName' => 'Somebody Else', 'status' => 'ENABLED']],
+                    ['customerClient' => ['id' => '7778889990', 'descriptiveName' => 'Old Branch', 'status' => 'CANCELED']],
                     ['customerClient' => ['id' => '5556667778', 'descriptiveName' => 'Nested MCC', 'manager' => true]],
                 ]], 200)
+                ->push(['results' => [$this->customerRow()]], 200)
                 ->push(['results' => [$this->customerRow()]], 200),
         ]);
 
@@ -678,8 +686,12 @@ class CampaignPerformanceTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertCount(1, $body['data']);
+        // Jose, 2026-10-12: every account in the report. The one with no row
+        // of its own is read through the manager's token.
+        $this->assertCount(2, $body['data']);
         $this->assertSame($child->getKey(), $body['data'][0]['connection_id']);
+        $this->assertNull($body['data'][1]['connection_id'], 'read through the manager, no row of its own');
+        $this->assertSame(0, $body['data'][1]['leads'], 'a stand-in row matches no lead');
         $this->assertEquals(412, $body['data'][0]['clicks']);
 
         foreach (self::REQUIRED as $field) {
@@ -690,15 +702,13 @@ class CampaignPerformanceTest extends TestCase
             );
         }
 
-        // Two children, one readable. The manager's own row and the nested
+        // Two live children, both read. The manager's own row and the nested
         // manager are not children - counting them would inflate both numbers
-        // and imply spend that is already counted underneath.
+        // and imply spend that is already counted underneath. A canceled
+        // account is counted apart: it cannot spend or be connected.
         $this->assertSame(2, $body['children_total']);
-        $this->assertSame(
-            1,
-            $body['not_connected'],
-            'a roll-up that silently omits accounts reads as a complete total',
-        );
+        $this->assertSame(0, $body['not_connected']);
+        $this->assertSame(1, $body['canceled']);
     }
 
     /**

@@ -113,17 +113,19 @@ void main() {
     expect(find.textContaining('needs to connect'), findsOneWidget);
   });
 
-  testWidgets('a provider with nothing connected opens from its name', (
-    tester,
-  ) async {
+  testWidgets('a provider with nothing connected is a card that opens its '
+      'pane', (tester) async {
     /*
      * The foot of a family used to say "Connect and disconnect under Marketing
      * › Social Media Management › Accounts" — a path as text (UI review,
-     * 2026-10-08). The name now opens the pane, which is where Connect is.
+     * 2026-10-08), then an "Also available" chip. Since Jose's 2026-10-13
+     * ruling every provider is a card, and the card opens the pane, which is
+     * where Connect is.
      */
     await _pump(tester);
 
-    await tester.tap(find.byKey(const ValueKey('available:facebook')));
+    expect(find.byKey(const ValueKey('available:facebook')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('provider:facebook')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('integration-back')), findsOneWidget);

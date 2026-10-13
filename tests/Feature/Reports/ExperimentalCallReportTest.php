@@ -203,6 +203,36 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertFalse($byId['c-open']['booked']);
     }
 
+    /**
+     * Jose, 2026-10-12: "on missed calls i want also to differentiate between
+     * inbound and outbound calls". An outbound call nobody picked up is listed
+     * with its direction and who placed it, and is not a missed customer call;
+     * an outbound call that connected is not listed at all.
+     */
+    public function test_an_unanswered_outbound_call_is_listed_but_not_counted_as_missed(): void
+    {
+        $this->fakeCallLog([
+            array_merge($this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE), ['result' => 'Missed']),
+            ['id' => 'out-1', 'direction' => 'Outbound', 'result' => 'No Answer', 'startTime' => '2026-09-14T15:00:00Z',
+                'from' => ['phoneNumber' => '+15550001111', 'name' => 'Trey Brannan'], 'to' => ['phoneNumber' => '+12125551212'],
+                'legs' => [['legType' => 'SipToPstnUnmetered', 'result' => 'No Answer']]],
+            ['id' => 'out-2', 'direction' => 'Outbound', 'result' => 'Call connected', 'startTime' => '2026-09-14T16:00:00Z',
+                'from' => ['phoneNumber' => '+15550001111', 'name' => 'Trey Brannan'], 'to' => ['phoneNumber' => '+12125550000'],
+                'legs' => [['legType' => 'SipToPstnUnmetered', 'result' => 'Call connected']]],
+        ]);
+
+        $log = app(RingCentralCallLog::class);
+        $day = app(CallReconciliation::class)->forRange($log->forDate('x', 'y'), [], '2026-09-14', '2026-09-14');
+
+        $this->assertSame(1, $day['totals']['reached_nobody']);
+        $this->assertSame(1, $day['totals']['calls']);
+        $this->assertSame(1, $day['totals']['outbound_unanswered']);
+
+        $out = array_column($day['calls'], null, 'id')['out-1'];
+        $this->assertSame(['Outbound', 'no_answer', '+12125551212', 'Trey Brannan'], [$out['direction'], $out['outcome'], $out['from'], $out['placed_by']]);
+        $this->assertArrayNotHasKey('out-2', array_column($day['calls'], null, 'id'));
+    }
+
     // ── new versus existing ──────────────────────────────────────
 
     /** The split is the queue the caller chose, not a guess from their number. */

@@ -41,6 +41,7 @@ class BookLeadPanel extends StatefulWidget {
     required this.lead,
     required this.matches,
     required this.onBooked,
+    this.said = const [],
   });
 
   final ApiClient api;
@@ -54,6 +55,10 @@ class BookLeadPanel extends StatefulWidget {
   /// The server's answer to the booking: lead, customer, customer_created,
   /// job. The caller closes the panel.
   final void Function(Map<String, dynamic> result) onBooked;
+
+  /// What the customer wrote, oldest first: a website form's Address, City,
+  /// State and Zip fill the address (Jose, 2026-10-12).
+  final List<String> said;
 
   @override
   State<BookLeadPanel> createState() => _BookLeadPanelState();
@@ -78,11 +83,16 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
   // The customer's address in the parts a customer has, found with the
   // lookup (Jose, 2026-09-30: "it should use the address suggestions"; "we
   // should also have more field for the address, city, state, zip code").
-  final _line1 = TextEditingController();
-  final _line2 = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
-  final _postal = TextEditingController();
+  late final _form = addressFromForm(widget.said);
+  late final _line1 = TextEditingController(text: _form.line1);
+  late final _line2 = TextEditingController(text: _form.line2);
+  late final _city = TextEditingController(text: _form.city);
+  late final _state = TextEditingController(text: _form.state);
+  late final _postal = TextEditingController(
+    text: _form.postal.isNotEmpty
+        ? _form.postal
+        : (widget.lead['postal_code'] as String?) ?? '',
+  );
 
   late String? _franchiseId =
       (widget.lead['franchise'] as Map?)?['id'] as String?;
@@ -415,3 +425,106 @@ String formatJobWhen(String? iso) {
   return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}, '
       '$h12$minutes $ampm';
 }
+
+/// The address a website form gave, from its "Label: value" lines. A later
+/// message wins over an earlier one; a label it cannot place is ignored.
+({String line1, String line2, String city, String state, String postal})
+addressFromForm(Iterable<String> said) {
+  var line1 = '', line2 = '', city = '', state = '', postal = '';
+  for (final text in said) {
+    for (final raw in text.split('\n')) {
+      // Since 2026-10-12 a form says the address on one line, values only:
+      // "📍 123 Elm St Apt 4, Tempe, Arizona 85281".
+      if (raw.startsWith('📍 ')) {
+        final parts = raw.substring('📍 '.length).split(', ');
+        if (parts.length >= 3) {
+          final last = RegExp(
+            r'^(.*?)\s*(\d{5}(?:-\d{4})?)?$',
+          ).firstMatch(parts.last)!;
+          line1 = parts.sublist(0, parts.length - 2).join(', ');
+          city = parts[parts.length - 2];
+          final st = last.group(1)!.trim();
+          state = _stateCodes[st.toLowerCase()] ?? st;
+          postal = last.group(2) ?? postal;
+        }
+        continue;
+      }
+      final at = raw.indexOf(':');
+      if (at < 0) continue;
+      // Each field starts with an emoji mark; the label is the letters after it.
+      final label = raw
+          .substring(0, at)
+          .replaceFirst(RegExp(r'^[^A-Za-z]+'), '')
+          .toLowerCase();
+      final value = raw.substring(at + 1).trim();
+      if (value.isEmpty) continue;
+      if (RegExp(r'zip|postal').hasMatch(label)) {
+        postal = value;
+      } else if (label.contains('city')) {
+        city = value;
+      } else if (label == 'state' || label.startsWith('state ')) {
+        state = _stateCodes[value.toLowerCase()] ?? value;
+      } else if (RegExp(r'line ?2|suite|apt|unit').hasMatch(label)) {
+        line2 = value;
+      } else if (RegExp(r'^(address|street)').hasMatch(label) &&
+          !label.contains('email')) {
+        line1 = value;
+      }
+    }
+  }
+  return (line1: line1, line2: line2, city: city, state: state, postal: postal);
+}
+
+const _stateCodes = {
+  'alabama': 'AL',
+  'alaska': 'AK',
+  'arizona': 'AZ',
+  'arkansas': 'AR',
+  'california': 'CA',
+  'colorado': 'CO',
+  'connecticut': 'CT',
+  'delaware': 'DE',
+  'district of columbia': 'DC',
+  'florida': 'FL',
+  'georgia': 'GA',
+  'hawaii': 'HI',
+  'idaho': 'ID',
+  'illinois': 'IL',
+  'indiana': 'IN',
+  'iowa': 'IA',
+  'kansas': 'KS',
+  'kentucky': 'KY',
+  'louisiana': 'LA',
+  'maine': 'ME',
+  'maryland': 'MD',
+  'massachusetts': 'MA',
+  'michigan': 'MI',
+  'minnesota': 'MN',
+  'mississippi': 'MS',
+  'missouri': 'MO',
+  'montana': 'MT',
+  'nebraska': 'NE',
+  'nevada': 'NV',
+  'new hampshire': 'NH',
+  'new jersey': 'NJ',
+  'new mexico': 'NM',
+  'new york': 'NY',
+  'north carolina': 'NC',
+  'north dakota': 'ND',
+  'ohio': 'OH',
+  'oklahoma': 'OK',
+  'oregon': 'OR',
+  'pennsylvania': 'PA',
+  'rhode island': 'RI',
+  'south carolina': 'SC',
+  'south dakota': 'SD',
+  'tennessee': 'TN',
+  'texas': 'TX',
+  'utah': 'UT',
+  'vermont': 'VT',
+  'virginia': 'VA',
+  'washington': 'WA',
+  'west virginia': 'WV',
+  'wisconsin': 'WI',
+  'wyoming': 'WY',
+};

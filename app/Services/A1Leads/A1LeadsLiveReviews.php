@@ -38,7 +38,9 @@ class A1LeadsLiveReviews
     public function source(): array
     {
         $state = (array) Cache::get(A1LeadsDeltaSync::STATE, []);
-        $asOf = $state['source_as_of'] ?? $state['synced_at'] ?? null;
+        // When EzBizi last read the feed. A1's generated_at is a projection
+        // time and certifies nothing about Google (Rodrigo, 01a13160).
+        $asOf = $state['synced_at'] ?? null;
 
         return [
             'configured' => true,

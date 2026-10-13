@@ -314,40 +314,9 @@ final class Openings
      */
     private function taken(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $start = $from->toDateString().' 00:00:00';
-        $end = $to->toDateString().' 00:00:00';
-
-        // The pool: the area and every area sharing its availability.
-        $pool = ServiceArea::query()->where('shares_with_id', $area->id)->get()->push($area);
-        $names = $pool->map(fn (ServiceArea $a) => mb_strtolower(trim($a->name)))->unique()->values()->all();
-
-        $placed = DB::table('jobs')
-            ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
-            ->whereIn('jobs.service_area_id', $pool->pluck('id'))
-            ->whereNull('jobs.deleted_at')
-            ->where('jobs.scheduled_for', '>=', $start)
-            ->where('jobs.scheduled_for', '<', $end)
-            ->get(['jobs.scheduled_for', 'jobs.status', 'workiz_jobs.payload']);
-
-        // Mirrored, not projected yet — see "Where the jobs come from".
-        $pending = DB::table('workiz_jobs')
-            ->whereNull('job_id')
-            ->where('organization_id', $area->organization_id)
-            ->where('franchise_id', $area->franchise_id)
-            ->whereIn(DB::raw('LOWER(TRIM(service_area))'), $names)
-            ->where('scheduled_for', '>=', $start)
-            ->where('scheduled_for', '<', $end)
-            ->get(['scheduled_for', 'status', 'payload']);
-
-        $online = $this->bookings()
-            ->whereIn('web_bookings.service_area_id', $pool->pluck('id'))
-            ->where('web_bookings.date', '>=', $from->toDateString())
-            ->where('web_bookings.date', '<', $to->toDateString())
-            ->get();
-
         $byDay = [];
 
-        foreach ($this->seats($placed->concat($pending)->concat($online)) as $job) {
+        foreach ($this->seats($this->areaRows($area, $from, $to)) as $job) {
             $at = (string) $job->scheduled_for;
             $day = substr($at, 0, 10);
             $time = substr($at, 11, 5);
@@ -366,6 +335,94 @@ final class Openings
     }
 
     /**
+     * The jobs holding a seat in the area's pool on one day: the very rows
+     * days() counts, so a list of them can never disagree with the number
+     * (Scheduling › Overbooking, opened on a row). A member reads its lead's.
+     *
+     * @return Collection<int, object> kind (job|workiz|booking), job_id,
+     *         customer_id, remote_id, lead_id, scheduled_for, status, payload,
+     *         address, city, postal_code, contact_name, phone, email, end_time
+     */
+    public function jobsOn(ServiceArea $area, CarbonImmutable $date): Collection
+    {
+        if ($area->shares_with_id !== null) {
+            $area = ServiceArea::find($area->shares_with_id) ?? $area;
+        }
+
+        return $this->seats($this->areaRows($area, $date, $date->addDay()))->values();
+    }
+
+    /** The jobs holding a seat in the area's pool from $from up to $to (NearbySuggestion). */
+    public function jobsBetween(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        if ($area->shares_with_id !== null) {
+            $area = ServiceArea::find($area->shares_with_id) ?? $area;
+        }
+
+        return $this->seats($this->areaRows($area, $from, $to))->values();
+    }
+
+    /** The jobs holding a seat in a whole franchise on one day, as franchiseBooked() counts them. */
+    public function franchiseJobsOn(string $organizationId, string $franchiseId, CarbonImmutable $date): Collection
+    {
+        return $this->seats($this->franchiseRows($organizationId, $franchiseId, $date, $date->addDay()))->values();
+    }
+
+    /** Every booking in the area's pool between two dates, seat-holding or not. */
+    private function areaRows(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        $start = $from->toDateString().' 00:00:00';
+        $end = $to->toDateString().' 00:00:00';
+
+        // The pool: the area and every area sharing its availability.
+        $pool = ServiceArea::query()->where('shares_with_id', $area->id)->get()->push($area);
+        $names = $pool->map(fn (ServiceArea $a) => mb_strtolower(trim($a->name)))->unique()->values()->all();
+
+        $placed = DB::table('jobs')
+            ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
+            ->whereIn('jobs.service_area_id', $pool->pluck('id'))
+            ->whereNull('jobs.deleted_at')
+            ->where('jobs.scheduled_for', '>=', $start)
+            ->where('jobs.scheduled_for', '<', $end)
+            ->get(self::JOB_COLUMNS);
+
+        // Mirrored, not projected yet — see "Where the jobs come from".
+        $pending = DB::table('workiz_jobs')
+            ->whereNull('job_id')
+            ->where('organization_id', $area->organization_id)
+            ->where('franchise_id', $area->franchise_id)
+            ->whereIn(DB::raw('LOWER(TRIM(service_area))'), $names)
+            ->where('scheduled_for', '>=', $start)
+            ->where('scheduled_for', '<', $end)
+            ->get(self::MIRROR_COLUMNS);
+
+        $online = $this->bookings()
+            ->whereIn('web_bookings.service_area_id', $pool->pluck('id'))
+            ->where('web_bookings.date', '>=', $from->toDateString())
+            ->where('web_bookings.date', '<', $to->toDateString())
+            ->get();
+
+        return $this->kinds($placed, $pending, $online);
+    }
+
+    /** What a placed job row carries, for counting and for showing it. */
+    private const JOB_COLUMNS = [
+        'jobs.id as job_id', 'workiz_jobs.id as workiz_job_id', 'jobs.customer_id', 'workiz_jobs.remote_id', 'jobs.scheduled_for', 'jobs.status',
+        'workiz_jobs.payload', 'workiz_jobs.address', 'workiz_jobs.city', 'workiz_jobs.postal_code',
+        'workiz_jobs.latitude', 'workiz_jobs.longitude',
+    ];
+
+    /** What a mirrored, not yet projected Workiz row carries. */
+    private const MIRROR_COLUMNS = ['id as workiz_job_id', 'remote_id', 'scheduled_for', 'status', 'payload', 'address', 'city', 'postal_code', 'latitude', 'longitude'];
+
+    private function kinds(Collection $placed, Collection $pending, Collection $online): Collection
+    {
+        $tag = fn (string $kind) => fn (object $row) => tap($row, fn ($r) => $r->kind = $kind);
+
+        return $placed->map($tag('job'))->concat($pending->map($tag('workiz')))->concat($online->map($tag('booking')));
+    }
+
+    /**
      * Seat-holding jobs of the area's whole FRANCHISE per day, for its daily
      * limit: EzBizi's jobs of that franchise, placed in an area or not, plus
      * mirrored Workiz jobs not projected yet. Midnight counts: a job with no
@@ -375,34 +432,39 @@ final class Openings
      */
     private function franchiseBooked(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): array
     {
+        return $this->seats($this->franchiseRows($area->organization_id, $area->franchise_id, $from, $to))
+            ->countBy(fn ($job) => substr((string) $job->scheduled_for, 0, 10))
+            ->all();
+    }
+
+    private function franchiseRows(string $organizationId, string $franchiseId, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
         $start = $from->toDateString().' 00:00:00';
         $end = $to->toDateString().' 00:00:00';
 
-        $jobs = DB::table('jobs')
-            ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
-            ->where('jobs.organization_id', $area->organization_id)
-            ->where('jobs.franchise_id', $area->franchise_id)
-            ->whereNull('jobs.deleted_at')
-            ->where('jobs.scheduled_for', '>=', $start)
-            ->where('jobs.scheduled_for', '<', $end)
-            ->get(['jobs.scheduled_for', 'jobs.status', 'workiz_jobs.payload'])
-            ->concat(DB::table('workiz_jobs')
+        return $this->kinds(
+            DB::table('jobs')
+                ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
+                ->where('jobs.organization_id', $organizationId)
+                ->where('jobs.franchise_id', $franchiseId)
+                ->whereNull('jobs.deleted_at')
+                ->where('jobs.scheduled_for', '>=', $start)
+                ->where('jobs.scheduled_for', '<', $end)
+                ->get(self::JOB_COLUMNS),
+            DB::table('workiz_jobs')
                 ->whereNull('job_id')
-                ->where('organization_id', $area->organization_id)
-                ->where('franchise_id', $area->franchise_id)
+                ->where('organization_id', $organizationId)
+                ->where('franchise_id', $franchiseId)
                 ->where('scheduled_for', '>=', $start)
                 ->where('scheduled_for', '<', $end)
-                ->get(['scheduled_for', 'status', 'payload']))
-            ->concat($this->bookings()
+                ->get(self::MIRROR_COLUMNS),
+            $this->bookings()
                 ->join('service_areas', 'service_areas.id', '=', 'web_bookings.service_area_id')
-                ->where('service_areas.franchise_id', $area->franchise_id)
+                ->where('service_areas.franchise_id', $franchiseId)
                 ->where('web_bookings.date', '>=', $from->toDateString())
                 ->where('web_bookings.date', '<', $to->toDateString())
-                ->get());
-
-        return $this->seats($jobs)
-            ->countBy(fn ($job) => substr((string) $job->scheduled_for, 0, 10))
-            ->all();
+                ->get(),
+        );
     }
 
     /** Website bookings still holding a seat, shaped like a job row. */
@@ -412,7 +474,9 @@ final class Openings
             ->join('leads', 'leads.id', '=', 'web_bookings.lead_id')
             ->whereIn('web_bookings.status', WebBooking::HOLDING)
             ->whereNull('leads.job_id')
-            ->selectRaw("CONCAT(web_bookings.date, ' ', web_bookings.start_time) as scheduled_for, 'booking' as status, NULL as payload");
+            ->selectRaw("CONCAT(web_bookings.date, ' ', web_bookings.start_time) as scheduled_for, 'booking' as status, NULL as payload")
+            // Who asked, for Scheduling › Overbooking's list of a day.
+            ->addSelect(['web_bookings.lead_id', 'web_bookings.end_time', 'leads.contact_name', 'leads.phone', 'leads.email', 'leads.postal_code']);
     }
 
     /** The jobs that hold a seat: not a free status, not an excluded tag. */

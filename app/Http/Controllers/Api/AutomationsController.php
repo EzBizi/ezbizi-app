@@ -119,6 +119,8 @@ class AutomationsController extends Controller
         // whoever owns each rule - Fleet's VehicleAssignments, and the User
         // model's own canActOnFranchise.
         'assign_to_user',
+        'task.create',
+        'task.assign',
         'unassign',
 
         // HR's, through App\Support\Hr\InvitationActions so the screen and the
@@ -1925,6 +1927,8 @@ class AutomationsController extends Controller
                 // and the two lists add up rather than intersect. Named people
                 // are how somebody reaches a name their roles do not cover.
                 $parameter('user_ids', 'And these people by name', 'people', false),
+                // Task Board (Jose, 2026-10-13): only means anything on a task trigger.
+                $parameter('to_assignee', "Also tell whoever the task is given to", 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
@@ -2086,6 +2090,14 @@ class AutomationsController extends Controller
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
 
+            // Task Board (2026-10-13). A task's status is "Change the status".
+            $type('task.create', 'Add a task', true, [
+                $parameter('title', 'Task', 'text', variables: true),
+                $parameter('assignee', 'Give it to', 'person', false, true),
+            ]),
+            $type('task.assign', 'Give the task to somebody', true, [
+                $parameter('user_field', 'Give it to', 'person_or_field'),
+            ]),
             $type('assign_to_user', 'Assign to a person', true, [
                 // A PERSON OR A FIELD. It was field-only, which meant a rule
                 // could hand work to whoever the event named and could not hand

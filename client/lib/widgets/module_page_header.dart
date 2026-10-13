@@ -35,6 +35,7 @@ class ModulePageHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.actions = const [],
+    this.beside,
   });
 
   /// The module's name, as the SERVER spells it. Never a literal.
@@ -44,6 +45,10 @@ class ModulePageHeader extends StatelessWidget {
   final String? subtitle;
 
   final List<Widget> actions;
+
+  /// Drawn right after the title rather than at the far end: the tab's (?)
+  /// and ▶ (UI queue 81), which belong to the title, not to the page.
+  final Widget? beside;
 
   /// Below this the phone layout applies: smaller title, and no subtitle.
   ///
@@ -77,17 +82,28 @@ class ModulePageHeader extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      // headlineMedium is the theme's own, and the only heading
-                      // token it defined before this work. On a phone the same
-                      // token at 22 rather than a fifth hardcoded size.
-                      style: phone
-                          ? theme.textTheme.headlineMedium?.copyWith(
-                              fontSize: 22,
-                              letterSpacing: -0.5,
-                            )
-                          : theme.textTheme.headlineMedium,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            // headlineMedium is the theme's own, and the only
+                            // heading token it defined before this work. On a
+                            // phone the same token at 22 rather than a fifth
+                            // hardcoded size.
+                            style: phone
+                                ? theme.textTheme.headlineMedium?.copyWith(
+                                    fontSize: 22,
+                                    letterSpacing: -0.5,
+                                  )
+                                : theme.textTheme.headlineMedium,
+                          ),
+                        ),
+                        if (beside != null) ...[
+                          const SizedBox(width: 6),
+                          beside!,
+                        ],
+                      ],
                     ),
                     if (showSubtitle) ...[
                       const SizedBox(height: 5),

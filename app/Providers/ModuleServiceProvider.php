@@ -26,6 +26,7 @@ use App\Models\TrainingAssignment;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
+use App\Models\Task;
 use App\Models\Vehicle;
 use App\Models\WebSite;
 use App\Support\Modules\ActionDefinition;
@@ -1299,6 +1300,9 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jose, 2026-09-29: "a new tab on scheduling that warns me
                     // about all the overbookings call it Overbooking".
                     new TabDefinition('overbooking', 'Overbooking'),
+                    // Jose, 2026-10-13: booked jobs that would sit better on
+                    // another day, beside other work (App\Support\Scheduling\Reschedules).
+                    new TabDefinition('rescheduling', 'Re-Scheduling'),
                     // Jovanni, 2026-10-01: company branches and the closest
                     // one to an address, for new dispatchers (queue 49).
                     new TabDefinition('locations', 'Locations'),
@@ -1562,7 +1566,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * refused server-side without `connectPermission()` regardless.
                  */
                 tabs: [
-                    new TabDefinition('posts', 'Posts'),
+                    // Posts split into its three tabs (Jose, 2026-10-12, UI queue 76).
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('compose', 'Compose'),
+                    new TabDefinition('calendar', 'Calendar'),
                     new TabDefinition('accounts', 'Accounts'),
                     // Dynamic QR codes (Jose, 2026-10-05). Enforced on its routes.
                     new TabDefinition('qr_codes', 'QR Codes'),
@@ -2178,6 +2185,62 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * Task Board (Jose, 2026-10-13, UI queue 80) — one board for every
+             * company, franchise and person, created automatically.
+             *
+             * Two actions only: `view` sees the team boards in the current view,
+             * `edit` writes them (create and delete travel with edit). Your own
+             * board needs neither — it is always yours.
+             *
+             * The three automation actions are catalogued here; their runner
+             * arms belong to the Automations owner and go through
+             * TaskWriter (app/Support/Tasks). Until then the builder shows them
+             * as not built (AutomationsController's built list).
+             */
+            new ModuleDefinition(
+                key: 'tasks',
+                label: 'Task Board',
+                actions: ['view', 'edit'],
+                subject: new AutomationSubject(Task::class, 'Task'),
+                emits: [Task::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'task.created',
+                        label: 'Task added',
+                        description: 'A task was added to a board, by a person or a rule.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.status_changed',
+                        label: 'Task status changed',
+                        description: 'A task moved from one status to another, for example to '
+                            .'Stuck or Done. It carries the old status as well as the new one.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'task.overdue',
+                        label: 'Task overdue',
+                        description: 'A task that is not done passed its due date. Raised once '
+                            .'per task; changing the due date lets it be raised again.',
+                    ),
+                ],
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'task.create',
+                        label: 'Add a task',
+                        description: 'Adds a task to a board, optionally owned by somebody and '
+                            .'about the record the rule fired on.',
+                        // EXPLICIT: derived, this would be the bare `create`.
+                        executionType: 'task.create',
+                    ),
+                    new ActionDefinition(
+                        key: 'task.assign',
+                        label: 'Give the task to somebody',
+                        description: 'Makes a person the owner of the task the rule fired on.',
+                        executionType: 'task.assign',
+                    ),
+                ],
+            ),
+
+            /*
              * Inventory — the register, buying, and issuing. Quantity lives on
              * (item, location); movements post balances. The tab is one list
              * with chips; money never travels with edit.
@@ -2600,6 +2663,14 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A lead was read and categorised — what kind of work it is '
                             .'about, and whether it looks like a real enquiry at all. It fires '
                             .'after "Lead received", once any recording has been transcribed.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'lead.call_complaint',
+                        label: 'A call sounded like a complaint',
+                        description: 'AI read a call transcript and the caller sounded unhappy - '
+                            .'with work done, a no-show, a charge or how they were treated. It '
+                            .'carries the AI one-line summary, plus the caller name and phone.',
+                        composedFields: ['summary'],
                     ),
                     new TriggerDefinition(
                         key: 'lead.status_changed',
@@ -3857,6 +3928,29 @@ class ModuleServiceProvider extends ServiceProvider
                             .'one. It carries the caller\'s number, the line they rang and the company.',
                         isRaised: true,
                     ),
+                    // Jose, 2026-10-13 ("Yes", via Grok AI): calls AI read as booked
+                    // with no Workiz job, daily for a manager. ezbizi:ai-booked-no-job.
+                    new TriggerDefinition(
+                        key: 'reports.ai_booked_no_job',
+                        label: 'Calls AI says were booked have no job',
+                        description: 'Each morning, the calls from the day before that AI read as booked but that '
+                            .'have no job in Workiz, so a manager can follow up. Raised only when there are any. '
+                            .'It carries the count, the day and a list: time, line, the caller\'s number, who answered.',
+                        composedFields: ['summary'],
+                    ),
+                    // Jose, 2026-10-12: a weekly plain-English report by WhatsApp
+                    // and email. ezbizi:ai-weekly-summary, Monday 7:00 New York.
+                    new TriggerDefinition(
+                        key: 'reports.ai_summary_ready',
+                        label: 'Weekly AI summary is ready',
+                        description: 'Every Monday morning AI reads the figures for last week (jobs, '
+                            .'sales, deposits, profit and call reasons, per branch) and writes a '
+                            .'short plain-English summary with what to do this week. It carries '
+                            .'a headline, the summary and the dates it covers. It CONTAINS MONEY '
+                            .'FIGURES (sales, deposits, profit and loss) that the app keeps behind '
+                            .'the financials permissions: send it only to people who may see them.',
+                        composedFields: ['summary'],
+                    ),
                 ],
                 tabs: [
                     new TabDefinition('library', 'Reports'),
@@ -3865,6 +3959,19 @@ class ModuleServiceProvider extends ServiceProvider
                     // stay, so no role loses a grant.
                     new TabDefinition('builder', 'Report Builder'),
                     new TabDefinition('experimental', 'Performance'),
+                    // Each dispatcher as a card, ranked by AI's call score
+                    // (Jose, 2026-10-13). Granted to Administrator and Lead
+                    // Manager only (Jose: "right now only administrators and
+                    // lead manager").
+                    new TabDefinition('scoring', 'Scoring'),
+                    // Ad cost against jobs and profit (Jose, 2026-10-12); the
+                    // server also asks for profit_loss.view, its profit being
+                    // the P&L's margin.
+                    new TabDefinition('marketing', 'Marketing'),
+                    // Facebook ad spend by campaign, state and category.
+                    new TabDefinition('meta', 'Meta'),
+                    // Thumbtack lead spend by category and branch (2026-10-13).
+                    new TabDefinition('thumbtack', 'Thumbtack'),
                 ],
                 actionRequires: [
                     'build' => ['reports.view'],

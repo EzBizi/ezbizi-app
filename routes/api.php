@@ -111,6 +111,10 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\MarketingReportController;
+use App\Http\Controllers\Api\MetaAdsReportController;
+use App\Http\Controllers\Api\ScoringReportController;
+use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
@@ -803,6 +807,25 @@ Route::prefix('v1')
 
         Route::apiResource('jobs', JobsController::class);
 
+        // Task Board (UI queue 80). Visibility and writes are decided per board
+        // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
+        Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
+        Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
+        Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
+        Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);
+        Route::post('task-boards/{taskBoard}/columns', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeColumn']);
+        Route::patch('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateColumn']);
+        Route::delete('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyColumn']);
+        Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
+        Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
+        Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
+        Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
+        Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
+        Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
+        Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
+        Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
+
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);
@@ -864,6 +887,7 @@ Route::prefix('v1')
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
+        Route::post('reviews/{review}/reply/suggest', [ReviewsController::class, 'suggestReply']);
         Route::post('reviews/{review}/reply/publish', [ReviewsController::class, 'publishReply']);
         // Business Profile — the listings the public sees on Maps.
         //
@@ -929,9 +953,11 @@ Route::prefix('v1')
         Route::post('leads/{lead}/messages', [LeadsController::class, 'reply']);
         Route::post('leads/{lead}/suggest-reply', [LeadsController::class, 'suggestReply']);
         Route::post('leads/{lead}/read', [LeadsController::class, 'read']);
+        Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
+        Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
@@ -1215,6 +1241,21 @@ Route::prefix('v1')
          */
         Route::get('reports/profit-loss/sources', [ProfitLossController::class, 'sources']);
         Route::get('reports/profit-loss', [ProfitLossController::class, 'show']);
+        // Ad cost against jobs and sales per source; same grant as the P&L.
+        Route::get('reports/marketing', [MarketingReportController::class, 'show'])->middleware('permission:reports.marketing.view');
+        // Facebook ad spend per campaign (Jose, 2026-10-12), and the campaign
+        // mapping (state, category, branch) staff keep for it.
+        // Each person's AI call scores, ranked (Jose, 2026-10-13). Performance's
+        // grant until the Scoring tab's own lands with its screen.
+        // Its own tab (Jose: "right now only administrators and lead manager").
+        Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
+        // Thumbtack lead spend (Jose, 2026-10-13).
+        Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
+        Route::middleware('permission:reports.meta.view')->group(function () {
+            Route::get('reports/meta', [MetaAdsReportController::class, 'show']);
+            Route::get('reports/meta/campaigns', [MetaAdsReportController::class, 'campaigns']);
+            Route::put('reports/meta/campaigns/{campaign}', [MetaAdsReportController::class, 'update'])->middleware('permission:reports.build');
+        });
 
         /*
          * ── apiResource SPLIT BY AUDIENCE, deliberately ────────────
@@ -1288,8 +1329,11 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.settings.view')->group(function () {
             Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
         });
+        Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])
+            ->middleware('permission:scheduling.rescheduling.view');
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
+            Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);
             Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
 
@@ -1306,6 +1350,7 @@ Route::prefix('v1')
 
         Route::middleware('permission:scheduling.availability.view')->group(function () {
             Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
+            Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion']);
 
             // Suggest is Availability's search box and has no other caller
             // (grepped across client/lib). It answers with area names, city
@@ -1600,6 +1645,7 @@ Route::prefix('v1')
         Route::middleware('permission:ai_assistance.ai.view')->group(function () {
             Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
+        Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
@@ -1900,14 +1946,17 @@ Route::prefix('v1')
         Route::post('newsletter/mailchimp/connect', [MailchimpConnectController::class, 'store']);
         Route::get('newsletter/mailchimp/lists', [MailchimpConnectController::class, 'lists']);
 
-        // Social Media Management's Posts tab. Accounts is gated on the screen
+        // Social Media Management's post tabs. Accounts is gated on the screen
         // only: the connection routes below serve Integrations, Leads, Reports
         // and Newsletter too.
-        Route::middleware('permission:marketing.posts.view')->group(function () {
-            Route::get('social/posts', [SocialPostsController::class, 'index']);
-            Route::post('social/posts', [SocialPostsController::class, 'store']);
-            Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
-        });
+        // The list is drawn by all three post tabs; writing is Compose's;
+        // Retry sits on the Dashboard and in Compose's sent list.
+        Route::get('social/posts', [SocialPostsController::class, 'index'])
+            ->middleware('permission:marketing.dashboard.view,marketing.compose.view,marketing.calendar.view');
+        Route::post('social/posts', [SocialPostsController::class, 'store'])
+            ->middleware('permission:marketing.compose.view');
+        Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry'])
+            ->middleware('permission:marketing.dashboard.view,marketing.compose.view');
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);
@@ -2619,6 +2668,9 @@ Route::prefix('v1')
         // downloading files IS navigation — the request and the poll that
         // collects its answer both keep the session's idle window open. The
         // agent's poll lives in the idle-less group below. See FilesController.
+        // One authenticator code opens Files for 15 sliding minutes (Jose, 2026-10-12).
+        Route::post('monitoring/files/unlock', [MonitoringFilesController::class, 'unlock']);
+        Route::delete('monitoring/files/unlock', [MonitoringFilesController::class, 'lock']);
         Route::post('monitoring/devices/{id}/files', [MonitoringFilesController::class, 'request']);
         Route::get('monitoring/devices/{id}/files/{requestId}', [MonitoringFilesController::class, 'result']);
 
@@ -2767,6 +2819,10 @@ Route::prefix('v1')
         // the categories must not be merged into one toggle system.
         Route::get('me/preferences', [PreferencesController::class, 'index']);
         Route::patch('me/preferences', [PreferencesController::class, 'update']);
+
+        // Each tab's how-to video (UI queue 81): platform-wide, kept by staff,
+        // the same for everybody signed in.
+        Route::get('help/videos', [\App\Http\Controllers\Api\HelpVideosController::class, 'index']);
 
         // ── Your own second factor (§6) ──────────────────────────
         //
@@ -3195,6 +3251,12 @@ Route::prefix('v1/staff')
 
         Route::get('client-versions', [StaffClientVersionsController::class, 'index']);
         Route::put('client-versions/{platform}', [StaffClientVersionsController::class, 'update']);
+
+        // Which tab has which how-to video (UI queue 81). Platform-wide like the
+        // client versions: a new video is a save, not a release.
+        Route::get('help-videos', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'index']);
+        Route::put('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'update']);
+        Route::delete('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'destroy']);
 
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);

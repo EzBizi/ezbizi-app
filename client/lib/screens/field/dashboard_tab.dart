@@ -14,10 +14,15 @@ class FieldDashboardTab extends StatefulWidget {
     super.key,
     required this.api,
     required this.canAcknowledge,
+    this.focusAlertId,
   });
 
   final ApiClient api;
   final bool canAcknowledge;
+
+  /// An alert a notification was tapped for: reloaded, shown selected and
+  /// scrolled to.
+  final String? focusAlertId;
 
   @override
   State<FieldDashboardTab> createState() => _FieldDashboardTabState();
@@ -46,11 +51,24 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     super.dispose();
   }
 
+  final _focused = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void didUpdateWidget(FieldDashboardTab old) {
+    super.didUpdateWidget(old);
+    if (widget.focusAlertId != old.focusAlertId) _load();
+  }
+
+  void _reveal() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    final target = _focused.currentContext;
+    if (target != null) Scrollable.ensureVisible(target, alignment: 0.3);
+  });
 
   Future<void> _load() async {
     setState(() => _error = null);
@@ -60,6 +78,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
       _loading = false;
       if (response.ok) {
         _data = response.body['data'] as Map<String, dynamic>;
+        if (widget.focusAlertId != null) _reveal();
       } else {
         _error = response.message;
       }
@@ -164,6 +183,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
           children: [
             if (me['tracked'] == true) ...[
               Card(
+                key: const ValueKey('tour-field-sos'),
                 child: ListTile(
                   leading: Icon(
                     me['should_track'] == true
@@ -210,6 +230,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                     : 2;
                 final width = (box.maxWidth - 8 * (columns - 1)) / columns;
                 return Wrap(
+                  key: const ValueKey('tour-field-counts'),
                   spacing: 8,
                   runSpacing: 8,
                   children: [
@@ -240,7 +261,7 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Alerts', style: theme.textTheme.titleMedium),
+            Text(key: const ValueKey('tour-field-alerts'), 'Alerts', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             if (alerts.isEmpty)
               Padding(
@@ -254,7 +275,12 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               ),
             for (final a in alerts)
               Card(
+                key: a['id'] == widget.focusAlertId ? _focused : null,
+                color: a['id'] == widget.focusAlertId
+                    ? theme.colorScheme.secondaryContainer
+                    : null,
                 child: ListTile(
+                  selected: a['id'] == widget.focusAlertId,
                   leading: Icon(
                     a['kind'] == 'sos' ? Icons.sos : Icons.warning_amber,
                     color: a['acknowledged_at'] == null

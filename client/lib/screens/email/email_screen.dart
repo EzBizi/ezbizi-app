@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/deep_links.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -203,11 +204,13 @@ class _EmailScreenState extends State<EmailScreen> {
   @override
   void initState() {
     super.initState();
+    DeepLinks.pending.addListener(_followLink);
     _loadMailboxes();
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_followLink);
     _search.dispose();
     super.dispose();
   }
@@ -237,10 +240,12 @@ class _EmailScreenState extends State<EmailScreen> {
 
       final data = response.data;
 
+      // Jose, 2026-10-13: Eve was given 10 inboxes and saw all 30 -- the
+      // rest were ones she may manage but not open. Only openable ones here.
       _mailboxes = [
         for (final entry in (data is List ? data : const []))
           if (entry is Map<String, dynamic>) Mailbox.fromJson(entry),
-      ];
+      ].where((mailbox) => mailbox.mayRead).toList();
 
       // Two or more inboxes land on All inboxes so mail in the second
       // one is not hidden behind a pick. One inbox is that inbox —
@@ -259,6 +264,41 @@ class _EmailScreenState extends State<EmailScreen> {
     final landedOn = _selected;
 
     if (landedOn != null) _loadFolders(landedOn);
+
+    // A notification tapped before the inboxes were known waited for them.
+    _followLink();
+  }
+
+  /// Opens the exact email a notification is about (Bar via Jose,
+  /// 2026-10-12: "a new email notification should open that email").
+  ///
+  /// Taken only once the inboxes are known -- the link names the inbox by
+  /// address. An inbox this person cannot open is not in the list, so the
+  /// link is dropped and they stay on Email's home, as before.
+  void _followLink() {
+    if (_loadingMailboxes || DeepLinks.pending.value?.module != 'email') return;
+
+    final link = DeepLinks.take('email');
+    final address = link?.mailbox?.toLowerCase();
+
+    if (link == null || link.type != 'email_message' || address == null) return;
+
+    final mailbox = _mailboxes.where((m) => m.address.toLowerCase() == address).firstOrNull;
+
+    if (mailbox == null) return;
+
+    _openMessage(MessageHeader(
+      id: link.id,
+      fromName: '',
+      fromAddress: '',
+      subject: '',
+      preview: '',
+      receivedAt: null,
+      unread: true,
+      hasAttachments: false,
+      seenBy: const [],
+      mailboxId: mailbox.id,
+    ));
   }
 
   Future<void> _loadMessages({int page = 1, String? cursor}) async {
@@ -928,6 +968,7 @@ class _EmailScreenState extends State<EmailScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-email-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: (index) => setState(() {
@@ -1051,6 +1092,7 @@ class _EmailScreenState extends State<EmailScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InboxBar(
+          key: const ValueKey('tour-email-inbox-bar'),
           mailbox: barMailbox,
           allInboxes: combinedBar,
           allAddresses: [
@@ -1097,6 +1139,7 @@ class _EmailScreenState extends State<EmailScreen> {
       };
 
   Widget _rail() => MailboxRail(
+    key: const ValueKey('tour-email-inboxes'),
     mailboxes: _mailboxes,
     selectedId: _selected?.id,
     onSelected: _select,
@@ -1115,6 +1158,7 @@ class _EmailScreenState extends State<EmailScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: TextField(
+            key: const ValueKey('tour-email-search'),
             controller: _search,
             textInputAction: TextInputAction.search,
             onSubmitted: _runSearch,
@@ -1166,11 +1210,13 @@ class _EmailScreenState extends State<EmailScreen> {
                     // refuse is the shape the house rule forbids.
                     if (_selected != null && mailbox.canReply)
                       FilledButton.tonalIcon(
+                        key: const ValueKey('tour-email-compose'),
                         onPressed: () => _compose(mailbox),
                         icon: const Icon(Icons.edit_outlined, size: 18),
                         label: const Text('New message'),
                       ),
                     FilterChip(
+                      key: const ValueKey('tour-email-unread'),
                       label: const Text('Unread'),
                       selected: _unreadOnly,
                       onSelected: (selected) {
@@ -1200,6 +1246,7 @@ class _EmailScreenState extends State<EmailScreen> {
   }
 
   Widget _list(Mailbox mailbox) => MessageListPane(
+    key: const ValueKey('tour-email-list'),
     mailbox: mailbox,
     messages: _messages,
     loading: _loadingList,

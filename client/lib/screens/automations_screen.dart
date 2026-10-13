@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -98,7 +99,25 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   @override
   void initState() {
     super.initState();
+    DeepLinks.pending.addListener(_openLinked);
     _load();
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_openLinked);
+    super.dispose();
+  }
+
+  /// A tapped notification about a rule opens that rule (Notifications,
+  /// 2026-10-12). Taken only once the list is in, so the rule can be found;
+  /// one this person's view does not list stays on the list.
+  void _openLinked() {
+    if (_automations.isEmpty) return;
+    final link = DeepLinks.take('automations');
+    if (link == null || link.type != 'automation') return;
+    final rule = _automations.where((a) => a['id'] == link.id).firstOrNull;
+    if (rule != null) _open(rule);
   }
 
   Future<void> _load() async {
@@ -135,6 +154,9 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       }
 
       _automations = List<Map<String, dynamic>>.from(automations.data as List);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openLinked();
+      });
       // The catalogue is what makes the builder possible at all; without it the
       // create button would offer nothing, so its failure is worth saying.
       if (catalogue == null) {
@@ -193,6 +215,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   // broken, and never that their role is missing one grant.
                   reason: noCreate,
                   child: FilledButton.icon(
+                    key: const ValueKey('tour-automations-new'),
                     onPressed: (noCreate != null || _catalogue == null)
                         ? null
                         : _new,
@@ -205,6 +228,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           Material(
             color: Theme.of(context).colorScheme.surface,
             child: TabBarLike(
+              key: const ValueKey('tour-automations-tabs'),
               labels: [for (final tab in _tabs) (tab.$2, tab.$3)],
               selected: _tabs.indexWhere((tab) => tab.$1 == _tab),
               onSelected: (i) => setState(() => _tab = _tabs[i].$1),
@@ -523,6 +547,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       // reader has no reason to read as belonging to it.
                       label: 'Live — ${automation['name']}',
                       child: Switch(
+                        key: const ValueKey('tour-automations-live'),
                         value: automation['is_active'] as bool? ?? false,
                         onChanged: noEdit != null
                             ? null
@@ -531,6 +556,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     ),
                   ),
                   PopupMenuButton<String>(
+                    key: const ValueKey('tour-automations-menu'),
                     // Every menu on this screen is drawn from the same icon, so
                     // "Show menu" — the framework's default — is what a screen
                     // reader reads for all of them.

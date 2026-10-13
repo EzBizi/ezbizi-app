@@ -392,6 +392,10 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 .'wrote it — a second copy of the same personal data, and erased with it. '
                 .'`postal_code` is the ZIP they gave, which says roughly where they live.',
                 Erasure::erase()),
+            new PersonalDataEntry('ai_set', PersonalDataEntry::IDENTITY,
+                'The name, ZIP code or status AI filled in, kept beside the field so the '
+                .'app can mark it as set by AI until a person changes it.',
+                Erasure::erase()),
             new PersonalDataEntry('summary', PersonalDataEntry::CONTENT,
                 'What the person said they wanted, in their own words or transcribed from '
                 .'what they said. Free text, so it can contain anything they mentioned — an '
@@ -446,7 +450,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits', 'postal_code',
         'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
-        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
+        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 
@@ -454,6 +458,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         return [
             'is_test' => 'boolean',
+            'ai_set' => 'array',
             'received_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
@@ -462,6 +467,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
             'classified_at' => 'datetime',
+            'credit_requested_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
         ];
     }
@@ -767,7 +773,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             self::SOURCE_WEBSITE_CHAT => 'Chat',
             self::SOURCE_WEBSITE_FORM => 'Form',
             self::SOURCE_WEBSITE_BOOKING => 'Online Booking',
-            self::SOURCE_FACEBOOK => 'Messenger',
+            self::SOURCE_FACEBOOK => 'Facebook',
             self::SOURCE_WHATSAPP => 'WhatsApp',
             default => ucfirst((string) $this->source),
         };

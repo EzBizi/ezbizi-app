@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -655,17 +656,38 @@ void main() {
     // Absent, not disabled - a chip leading to a refusal tells somebody the
     // app is for other people.
     expect(find.widgetWithText(ChoiceChip, 'Report Builder'), findsNothing);
-    // Experimental goes too, and for the same reason: its endpoint is gated on
-    // `reports.build` because the report names every member of staff and how
-    // many calls they took. It used to be shown to everyone, which was right
-    // while the pane was an empty placeholder and became wrong the moment it
-    // had contents.
-    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsNothing);
   });
 
-  testWidgets('a phone reaches Performance beside the Builder', (
+  testWidgets('a missed-call notification opens Performance', (tester) async {
+    // Bar, via Jose, 2026-10-12: a notification opens "the exact thing".
+    DeepLinks.open(
+      const DeepLink(module: 'reports', type: 'call', id: 'call-1'),
+    );
+    addTearDown(() => DeepLinks.pending.value = null);
+
+    await _pumpReports(tester, reports: [_report]);
+
+    final chip = tester.widget<ChoiceChip>(
+      find.widgetWithText(ChoiceChip, 'Performance'),
+    );
+    expect(chip.selected, isTrue);
+    // Consumed: a later rebuild does not open it again.
+    expect(DeepLinks.pending.value, isNull);
+  });
+
+  testWidgets('the Performance tab alone opens Performance, without Build', (
     tester,
   ) async {
+    // Jose, 2026-10-12: a Lead Manager role given Reports › Performance still
+    // could not see it, because the chip also asked for reports.build. The
+    // server reads Performance on reports.experimental.view alone; only what
+    // changes data inside it (Convert, a person's tag) asks for Build.
+    await _pumpReports(tester, reports: [_report], permissions: _runner);
+
+    expect(find.widgetWithText(ChoiceChip, 'Performance'), findsOneWidget);
+  });
+
+  testWidgets('a phone reaches Performance beside the Builder', (tester) async {
     // This was "Experimental is still reachable when Builder is absent", with
     // Builder dropped by WIDTH. A phone has the Builder since UI queue 72, so
     // nothing shifts by width any more; what stays is that the chip is found

@@ -1,0 +1,356 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scheduling › Re-Scheduling</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+
+<div class="wrap">
+<h1>Scheduling › Re-Scheduling, and the Availability map</h1>
+<p class="subt">Two of Jose's asks from today. The new <b>Re-Scheduling</b> tab lists booked jobs that would sit better on another day, beside other work. The Availability map gets a card for each dot and zoom buttons. Every name, address and number here is invented.</p>
+<p class="cap">The server is Scheduling's (<code>GET /scheduling/reschedules</code>). Each row is one booked job, with the day and window it would fit better, how near the closest other job is now (or that it is alone that day), how near it would be, and the jobs it would sit beside. Rows come biggest saving first. Moving a job changes the customer's appointment, so in every option the suggestion is shown first and <b>Move</b> is a separate, confirmed step. It uses the existing reschedule call and only appears for people who can edit the schedule.</p>
+
+<!-- ───────── Re-Scheduling desktop 1 ───────── -->
+<h2><span class="n">1</span> A list of moves beside a map <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">One row per suggestion: the job, <b>from → to</b>, how near it is now and how near it would be, and the miles saved. Pick a row and the right side shows that job on the suggested day's map with its new neighbours, the before and after, and Move.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span><span>Settings</span></div>
+ <div class="bar2"><span class="drop">All areas ▾</span><span class="tiny">14 suggestions · biggest saving first</span><span class="sp"></span><span class="btn sm t">↻ Refresh</span></div>
+ <div class="cols">
+  <div class="card" style="flex:1;padding:6px 6px;gap:0;overflow:hidden">
+   <div class="hdr"><span>Job</span><span>Move</span><span>Nearest job</span><span style="text-align:right">Saves</span></div>
+   <div class="mv sel"><div class="g"><b>#4127 · Chimney sweep</b><span>Ana Ruiz · Maple Grove</span></div><div class="arrow"><span class="from">Tue 14 · 8–10</span>→<span class="to">Thu 16 · 10–12</span></div><div class="g"><b>alone → 0.8 mi</b><span>beside 3 jobs</span></div><div class="save">alone</div></div>
+   <div class="mv"><div class="g"><b>#4133 · Dryer vent</b><span>Ben Okafor · Cedar Falls</span></div><div class="arrow"><span class="from">Wed 15 · 12–2</span>→<span class="to">Wed 22 · 8–10</span></div><div class="g"><b>14.2 → 1.1 mi</b><span>beside 2 jobs</span></div><div class="save">13.1 mi</div></div>
+   <div class="mv"><div class="g"><b>#4140 · Inspection</b><span>Clara Moss · Riverbend</span></div><div class="arrow"><span class="from">Mon 20 · 2–4</span>→<span class="to">Fri 17 · 12–2</span></div><div class="g"><b>11.7 → 0.4 mi</b><span>beside 4 jobs</span></div><div class="save">11.3 mi</div></div>
+   <div class="mv"><div class="g"><b>#4108 · Cap install</b><span>Dmitri Volkov · Maple Grove</span></div><div class="arrow"><span class="from">Thu 16 · 2–4</span>→<span class="to">Tue 21 · 10–12</span></div><div class="g"><b>9.8 → 2.0 mi</b><span>beside 1 job</span></div><div class="save">7.8 mi</div></div>
+   <div class="mv"><div class="g"><b>#4151 · Chimney sweep</b><span>Esther Lindgren · Oakridge</span></div><div class="arrow"><span class="from">Fri 17 · 8–10</span>→<span class="to">Mon 20 · 8–10</span></div><div class="g"><b>8.1 → 1.6 mi</b><span>beside 2 jobs</span></div><div class="save">6.5 mi</div></div>
+   <div class="mv"><div class="g"><b>#4119 · Dryer vent</b><span>Farid Nasser · Cedar Falls</span></div><div class="arrow"><span class="from">Tue 21 · 4–6</span>→<span class="to">Wed 22 · 12–2</span></div><div class="g"><b>6.9 → 1.3 mi</b><span>beside 3 jobs</span></div><div class="save">5.6 mi</div></div>
+   <div class="mv"><div class="g"><b>#4160 · Inspection</b><span>Gwen Abernathy-Coleridge · Riverbend</span></div><div class="arrow"><span class="from">Wed 15 · 10–12</span>→<span class="to">Thu 16 · 8–10</span></div><div class="g"><b>5.2 → 0.9 mi</b><span>beside 2 jobs</span></div><div class="save">4.3 mi</div></div>
+   <div class="mv"><div class="g"><b>#4162 · Waterproofing</b><span>Hiro Tanaka · Oakridge</span></div><div class="arrow"><span class="from">Thu 23 · 12–2</span>→<span class="to">Tue 21 · 2–4</span></div><div class="g"><b>4.4 → 1.0 mi</b><span>beside 1 job</span></div><div class="save">3.4 mi</div></div>
+  </div>
+  <div class="side" style="width:440px">
+   <div class="map" style="height:250px">
+    <svg class="bg" viewBox="0 0 440 250" preserveAspectRatio="none"><path d="M0 70 L440 40 M0 180 L440 210 M120 0 L150 250 M300 0 L280 250" stroke="#fff" stroke-width="7"/><path d="M0 120 C120 100 260 150 440 125" stroke="#f6e7b8" stroke-width="9" fill="none"/><path d="M200 0 L230 250" stroke="#fff" stroke-width="4"/></svg>
+    <span class="dot me" style="left:52%;top:46%"></span><span class="dot j" style="left:58%;top:38%"></span><span class="dot j" style="left:47%;top:58%"></span><span class="dot j" style="left:61%;top:55%"></span>
+    <div class="zoom"><span>+</span><span>−</span><span>⤢</span></div>
+    <div class="tip small" style="left:12px;bottom:10px">● this job · ● Thu 16's jobs nearby</div>
+   </div>
+   <div class="card">
+    <h3>#4127 · Chimney sweep <span class="pill p-neu">Ana Ruiz</span></h3>
+    <span class="tiny">1180 Larkspur Ln, Maple Grove · 555-0142 · Sam, Theo</span>
+    <div class="ba">
+     <div class="day"><span class="k">Now</span><b>Tue Oct 14 · 8–10</b><span class="muted">no other job that day</span></div>
+     <div class="ar">→</div>
+     <div class="day to"><span class="k">Suggested</span><b>Thu Oct 16 · 10–12</b><span>0.8 mi from #4102, beside 3 jobs · 2 spots left</span></div>
+    </div>
+    <div class="foot"><span class="tiny">Moving changes Ana Ruiz's appointment.</span><span class="sp"></span><span class="btn">Open the job</span><span class="btn f">Move…</span></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Re-Scheduling desktop 2 ───────── -->
+<h2><span class="n">2</span> Before-and-after cards</h2>
+<p class="cap">Each suggestion is a card with two day panels, now and suggested, and the window's spots drawn as a strip. Areas are chips across the top. No map until a card is opened.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span><span>Settings</span></div>
+ <div class="pills"><span class="pill2 on">All · 14</span><span class="pill2">Maple Grove · 4</span><span class="pill2">Cedar Falls · 3</span><span class="pill2">Riverbend · 3</span><span class="pill2">Oakridge · 4</span></div>
+ <div class="grid2">
+  <div class="rc sel"><div class="hd"><b>#4127 · Chimney sweep · Ana Ruiz</b><span class="sp"></span><span class="pill p-ok">was alone that day</span></div>
+   <div class="ba"><div class="day"><span class="k">Now</span><b>Tue Oct 14 · 8–10</b><span class="muted">no other job that day</span><div class="slots"><i class="cur"></i><i></i><i></i><i></i></div></div><div class="ar">→</div><div class="day to"><span class="k">Suggested</span><b>Thu Oct 16 · 10–12</b><span>0.8 mi · beside 3 jobs</span><div class="slots"><i class="on"></i><i class="on"></i><i></i><i></i></div></div></div>
+   <div class="foot"><span class="tiny">Maple Grove · Sam, Theo</span><span class="sp"></span><span class="btn sm">Show on map</span><span class="btn sm f">Move…</span></div></div>
+  <div class="rc"><div class="hd"><b>#4133 · Dryer vent · Ben Okafor</b><span class="sp"></span><span class="pill p-ok">saves 13.1 mi</span></div>
+   <div class="ba"><div class="day"><span class="k">Now</span><b>Wed Oct 15 · 12–2</b><span class="muted">nearest job 14.2 mi</span><div class="slots"><i></i><i class="cur"></i><i></i><i></i></div></div><div class="ar">→</div><div class="day to"><span class="k">Suggested</span><b>Wed Oct 22 · 8–10</b><span>1.1 mi · beside 2 jobs</span><div class="slots"><i class="on"></i><i></i><i></i><i></i></div></div></div>
+   <div class="foot"><span class="tiny">Cedar Falls · Rosa</span><span class="sp"></span><span class="btn sm">Show on map</span><span class="btn sm f">Move…</span></div></div>
+  <div class="rc"><div class="hd"><b>#4140 · Inspection · Clara Moss</b><span class="sp"></span><span class="pill p-ok">saves 11.3 mi</span></div>
+   <div class="ba"><div class="day"><span class="k">Now</span><b>Mon Oct 20 · 2–4</b><span class="muted">nearest job 11.7 mi</span></div><div class="ar">→</div><div class="day to"><span class="k">Suggested</span><b>Fri Oct 17 · 12–2</b><span>0.4 mi · beside 4 jobs</span></div></div>
+   <div class="foot"><span class="tiny">Riverbend · Sam</span><span class="sp"></span><span class="btn sm">Show on map</span><span class="btn sm f">Move…</span></div></div>
+  <div class="rc"><div class="hd"><b>#4108 · Cap install · Dmitri Volkov</b><span class="sp"></span><span class="pill p-ok">saves 7.8 mi</span></div>
+   <div class="ba"><div class="day"><span class="k">Now</span><b>Thu Oct 16 · 2–4</b><span class="muted">nearest job 9.8 mi</span></div><div class="ar">→</div><div class="day to"><span class="k">Suggested</span><b>Tue Oct 21 · 10–12</b><span>2.0 mi · beside 1 job</span></div></div>
+   <div class="foot"><span class="tiny">Maple Grove · Theo</span><span class="sp"></span><span class="btn sm">Show on map</span><span class="btn sm f">Move…</span></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Re-Scheduling desktop 3 ───────── -->
+<h2><span class="n">3</span> The two days side by side</h2>
+<p class="cap">A short list on the left. The picked job is drawn in the day it sits in now (alone, or far from the rest) and in the suggested day, where it would slot in among the jobs already booked, as on the Schedule.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span><span>Settings</span></div>
+ <div class="cols">
+  <div class="lst" style="width:300px;flex:0 0 auto;padding:0 8px">
+   <div class="li" style="background:var(--pric);margin:4px -4px;padding:0 8px;border-radius:8px"><div class="g"><b>#4127 · Ana Ruiz</b><span>Tue 14 → Thu 16 · was alone</span></div></div>
+   <div class="li"><div class="g"><b>#4133 · Ben Okafor</b><span>Wed 15 → Wed 22 · saves 13.1 mi</span></div></div>
+   <div class="li"><div class="g"><b>#4140 · Clara Moss</b><span>Mon 20 → Fri 17 · saves 11.3 mi</span></div></div>
+   <div class="li"><div class="g"><b>#4108 · Dmitri Volkov</b><span>Thu 16 → Tue 21 · saves 7.8 mi</span></div></div>
+   <div class="li"><div class="g"><b>#4151 · Esther Lindgren</b><span>Fri 17 → Mon 20 · saves 6.5 mi</span></div></div>
+   <div class="li"><div class="g"><b>#4119 · Farid Nasser</b><span>Tue 21 → Wed 22 · saves 5.6 mi</span></div></div>
+  </div>
+  <div class="cols2">
+   <div class="lane"><h4>Now · Tue Oct 14 <span class="pill p-cau">alone that day</span></h4>
+    <div class="jb new" style="border-color:#c08a2b;background:var(--cauc)"><span class="t">8–10</span>#4127 Chimney sweep · Ana Ruiz · Maple Grove</div>
+    <div class="jb ghost"><span class="t">10–12</span>nothing within 30 mi</div>
+    <div class="jb ghost"><span class="t">12–2</span>nothing within 30 mi</div>
+    <div class="jb ghost"><span class="t">2–4</span>nothing within 30 mi</div>
+   </div>
+   <div class="lane"><h4>Suggested · Thu Oct 16 <span class="pill p-ok">beside 3 jobs</span></h4>
+    <div class="jb"><span class="t">8–10</span>#4102 Inspection · Maple Grove · 0.8 mi</div>
+    <div class="jb new"><span class="t">10–12</span><b>#4127 Chimney sweep · Ana Ruiz</b> · 2 spots left</div>
+    <div class="jb"><span class="t">12–2</span>#4111 Dryer vent · Maple Grove · 1.4 mi</div>
+    <div class="jb"><span class="t">2–4</span>#4115 Chimney sweep · Elm Park · 2.2 mi</div>
+    <div class="foot" style="margin-top:auto"><span class="sp"></span><span class="btn">Open the job</span><span class="btn f">Move to Thu 16, 10–12…</span></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Re-Scheduling phones ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> Re-Scheduling on a phone</h2>
+<p class="cap"><b>4</b> (recommended): the same rows as cards, from → to, a tap opening the job in the tab with the map and Move. <b>5</b>: grouped by area, folded. <b>6</b>: one suggestion at a time with the before-and-after panels.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · rows as cards <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span></div>
+   <span class="drop" style="height:32px;font-size:12px">All areas · 14 ▾</span>
+   <div class="rc"><div class="hd"><b>#4127 · Ana Ruiz</b><span class="sp"></span><span class="pill p-ok">was alone</span></div><div class="arrow"><span class="from">Tue 14 · 8–10</span>→<span class="to">Thu 16 · 10–12</span></div><span class="tiny">Chimney sweep · Maple Grove · beside 3 jobs</span></div>
+   <div class="rc"><div class="hd"><b>#4133 · Ben Okafor</b><span class="sp"></span><span class="pill p-ok">13.1 mi</span></div><div class="arrow"><span class="from">Wed 15 · 12–2</span>→<span class="to">Wed 22 · 8–10</span></div><span class="tiny">Dryer vent · Cedar Falls · beside 2 jobs</span></div>
+   <div class="rc"><div class="hd"><b>#4140 · Clara Moss</b><span class="sp"></span><span class="pill p-ok">11.3 mi</span></div><div class="arrow"><span class="from">Mon 20 · 2–4</span>→<span class="to">Fri 17 · 12–2</span></div><span class="tiny">Inspection · Riverbend · beside 4 jobs</span></div>
+   <div class="rc"><div class="hd"><b>#4108 · Dmitri Volkov</b><span class="sp"></span><span class="pill p-ok">7.8 mi</span></div><div class="arrow"><span class="from">Thu 16 · 2–4</span>→<span class="to">Tue 21 · 10–12</span></div><span class="tiny">Cap install · Maple Grove · beside 1 job</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · one opened</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <span class="back">← Re-Scheduling</span>
+   <div class="map" style="height:190px"><svg class="bg" viewBox="0 0 300 190" preserveAspectRatio="none"><path d="M0 50 L300 30 M0 140 L300 160 M90 0 L110 190 M210 0 L195 190" stroke="#fff" stroke-width="6"/><path d="M0 95 C90 80 180 115 300 95" stroke="#f6e7b8" stroke-width="8" fill="none"/></svg>
+    <span class="dot me" style="left:50%;top:48%"></span><span class="dot j" style="left:58%;top:36%"></span><span class="dot j" style="left:44%;top:62%"></span><span class="dot j" style="left:63%;top:58%"></span><div class="zoom"><span>+</span><span>−</span></div></div>
+   <b>#4127 · Chimney sweep · Ana Ruiz</b><span class="tiny">1180 Larkspur Ln, Maple Grove · Sam, Theo</span>
+   <div class="day"><span class="k">Now</span><b>Tue Oct 14 · 8–10</b><span class="muted">no other job that day</span></div>
+   <div class="day to"><span class="k">Suggested</span><b>Thu Oct 16 · 10–12</b><span>0.8 mi · beside 3 jobs · 2 spots left</span></div>
+   <span class="btn f">Move…</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · by area</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span></div>
+   <div class="lst"><div class="li"><div class="g"><b>Maple Grove</b><span>4 suggestions · up to 9.8 mi saved</span></div><span>▾</span></div>
+    <div class="li" style="padding-left:10px"><div class="g"><b>#4127 Ana Ruiz</b><span>Tue 14 → Thu 16 · was alone</span></div></div>
+    <div class="li" style="padding-left:10px"><div class="g"><b>#4108 Dmitri Volkov</b><span>Thu 16 → Tue 21 · 7.8 mi</span></div></div>
+    <div class="li"><div class="g"><b>Cedar Falls</b><span>3 suggestions · up to 13.1 mi</span></div><span>▸</span></div>
+    <div class="li"><div class="g"><b>Riverbend</b><span>3 suggestions · up to 11.3 mi</span></div><span>▸</span></div>
+    <div class="li"><div class="g"><b>Oakridge</b><span>4 suggestions · up to 6.5 mi</span></div><span>▸</span></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · one at a time</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Locations</span></div>
+   <div class="bar2"><span class="tiny b">1 of 14</span><span class="sp"></span><span class="btn sm">‹</span><span class="btn sm">›</span></div>
+   <div class="rc"><b>#4127 · Chimney sweep · Ana Ruiz</b><span class="tiny">Maple Grove · Sam, Theo</span>
+    <div class="day"><span class="k">Now</span><b>Tue Oct 14 · 8–10</b><span class="muted">no other job that day</span></div>
+    <div style="text-align:center;color:var(--muted)">↓</div>
+    <div class="day to"><span class="k">Suggested</span><b>Thu Oct 16 · 10–12</b><span>0.8 mi · beside 3 jobs</span></div>
+    <div class="foot"><span class="btn sm">Skip</span><span class="sp"></span><span class="btn sm f">Move…</span></div></div>
+  </div></div></div>
+</div>
+
+<!-- ───────── Map dots ───────── -->
+<h2><span class="n">7</span> Availability map: a card on each dot <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Hover a dot (or tap it on a phone) and a card shows the job: customer, service, Workiz number, the time and technicians, its status ("Online booking" for a web hold), the address and how far it is. A click keeps the card open until you click elsewhere. <b>+ − ⤢</b> sit in the map's top-right corner (⤢ fits every dot again). The same card and buttons go on Re-Scheduling's map.</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap">
+ <div class="map" style="width:600px;height:340px">
+  <svg class="bg" viewBox="0 0 600 340" preserveAspectRatio="none"><path d="M0 90 L600 60 M0 250 L600 280 M170 0 L200 340 M420 0 L395 340" stroke="#fff" stroke-width="8"/><path d="M0 170 C170 140 360 210 600 175" stroke="#f6e7b8" stroke-width="10" fill="none"/><path d="M290 0 L310 340" stroke="#fff" stroke-width="4"/></svg>
+  <span class="dot me" style="left:48%;top:52%"></span><span class="dot j hov" style="left:58%;top:38%"></span><span class="dot j" style="left:40%;top:64%"></span><span class="dot web" style="left:66%;top:60%"></span><span class="dot j" style="left:30%;top:34%"></span>
+  <div class="zoom"><span>+</span><span>−</span><span>⤢</span></div>
+  <div class="tip" style="left:104px;top:22px"><b>Marta Silva</b><span>Chimney sweep · #4102</span><span class="r">🕘 Thu Oct 16 · 8–10 · Sam, Theo</span><span class="r">📍 22 Birch Ct, Maple Grove · 0.8 mi</span><span><span class="pill p-neu">Scheduled</span></span></div>
+ </div>
+ <div style="display:flex;flex-direction:column;gap:12px;width:560px">
+  <div class="lab" style="margin:0">8 · only a label on hover, the card on click</div>
+  <div class="map" style="height:150px"><svg class="bg" viewBox="0 0 560 150" preserveAspectRatio="none"><path d="M0 40 L560 25 M0 115 L560 130 M160 0 L180 150" stroke="#fff" stroke-width="7"/></svg>
+   <span class="dot j hov" style="left:44%;top:46%"></span><span class="dot j" style="left:60%;top:60%"></span><div class="tip small" style="left:258px;top:38px">Marta Silva · Chimney sweep · 8–10</div><div class="zoom"><span>+</span><span>−</span></div></div>
+  <div class="lab" style="margin:0">9 · the dot picks its row in the job list under the map</div>
+  <div class="map" style="height:110px"><svg class="bg" viewBox="0 0 560 110" preserveAspectRatio="none"><path d="M0 30 L560 20 M0 85 L560 95" stroke="#fff" stroke-width="7"/></svg><span class="dot j hov" style="left:40%;top:50%"></span><div class="zoom" style="flex-direction:row"><span style="border-top:0">+</span><span style="border-top:0;border-left:1px solid var(--line)">−</span></div></div>
+  <div class="lst"><div class="li" style="background:var(--pric);margin:0 -12px;padding:0 12px"><div class="g"><b>Marta Silva · Chimney sweep · #4102</b><span>Thu 16 · 8–10 · 22 Birch Ct · 0.8 mi</span></div></div><div class="li"><div class="g"><b>Leo Brandt · Inspection · #4111</b><span>Thu 16 · 12–2 · 1.4 mi</span></div></div></div>
+ </div>
+</div>
+<p class="cap" style="margin-top:10px"><b>Settings:</b> the nearby radius (1–30 miles, 30 by default) and the look-ahead (7–30 days) go on Scheduling › Settings as a <b>Suggestions</b> tab, the same control as in Settings, per company or per franchise. That one is built without a vote.</p>
+</div>

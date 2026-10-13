@@ -1,0 +1,316 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Suggested availability</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.res{display:flex;gap:12px;flex:0 0 auto}
+.ac{flex:1;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.ac .k{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ac .d{font-size:19px;font-weight:800;color:var(--ok)}
+.ac.sg{border-color:#93c4d3;box-shadow:0 0 0 2px var(--pric)}
+.ac.sg .k{color:var(--pri)}
+.ac .w{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;background:var(--okc);color:var(--ok);border-radius:8px;padding:3px 9px;align-self:flex-start}
+.ac .why{font-size:12px;color:#2b3a41}
+.ac .why b{color:var(--ink)}
+.ac .far{font-size:12px;color:var(--cau);font-weight:600}
+.techs{display:flex;gap:6px;flex-wrap:wrap}
+.tech{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;background:var(--neuc);color:var(--neu);border-radius:999px;padding:2px 8px 2px 3px}
+.tech i{width:18px;height:18px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-size:9px;font-weight:800;font-style:normal;display:inline-flex;align-items:center;justify-content:center}
+.mapbox{background:#eef3f5;border:1px solid var(--line);border-radius:var(--r);position:relative;overflow:hidden;flex:0 0 auto}
+.mapbox svg{display:block;width:100%;height:100%}
+.mapbox .leg{position:absolute;left:10px;bottom:8px;display:flex;gap:10px;font-size:10.5px;color:var(--neu);background:rgba(255,255,255,.9);border-radius:8px;padding:3px 8px}
+.mapbox .leg span{display:inline-flex;align-items:center;gap:4px}
+.mapbox .leg i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.mapbox .rp{position:absolute;right:10px;top:8px;font-size:11px;font-weight:700;color:var(--pri);background:#fff;border-radius:8px;padding:2px 8px;border:1px solid #93c4d3}
+.mapbox .note{position:absolute;right:10px;bottom:8px;font-size:10px;color:var(--muted)}
+.route{stroke-dasharray:400;stroke-dashoffset:400;animation:draw 0.9s ease-out forwards}
+.r2{animation-delay:.9s}.r3{animation-delay:1.8s}.r4{animation-delay:2.7s}.r5{animation-delay:3.6s}
+.pop{opacity:0;animation:pop .35s ease-out forwards}
+.p1{animation-delay:.8s}.p2{animation-delay:1.7s}.p3{animation-delay:2.6s}.p4{animation-delay:3.5s}.p5{animation-delay:4.4s}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+.pop{transform-box:fill-box;transform-origin:center}
+@media (prefers-reduced-motion: reduce){.route{animation:none;stroke-dashoffset:0}.pop{animation:none;opacity:1}}
+.same{background:var(--okc);border:1px solid #9fd0ad;border-radius:var(--r);padding:10px 14px;font-size:12.5px;color:var(--ok);font-weight:600;flex:0 0 auto}
+.strip{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;flex:0 0 auto}
+.strip div{background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 2px;text-align:center;font-size:10px;color:var(--muted);display:flex;flex-direction:column;gap:3px;align-items:center}
+.strip div b{font-size:11px;color:var(--ink)}
+.strip div i{width:8px;height:8px;border-radius:50%;background:#c9d4d9;display:inline-block}
+.strip div.e{border-color:var(--ok)}.strip div.s{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.strip div.x{opacity:.45}
+.searchrow{display:flex;gap:8px;align-items:center;flex:0 0 auto}
+</style>
+
+<div class="wrap">
+<h1>Scheduling › Availability: earliest and suggested, with the route</h1>
+<p class="sub">Jose, 2026-10-13, via Scheduling: a zip search should show the <b>Earliest availability</b> and a
+<b>Suggested availability</b>, the open window nearest work already booked, so a technician can do both. He also wants
+<i>"a small map with an animation of the route being drawn between the selected zip code and the other jobs it's analyzed
+for the suggestion"</i>. The radius is a setting. It appears in Scheduling › Availability and wherever the availability pane
+opens (the Leads side panel). Names, zips and jobs are invented.</p>
+<p class="need"><b>The same in every option.</b> Earliest says how far its nearest booked job is ("nearest job 23 mi away"),
+which is the trade-off. Suggested says why: how many jobs are within the radius, how near the nearest is, and who is already
+there. When the earliest day is also the best fit, one line says so instead of two cards. When nothing is within the radius
+in the look-ahead, there is no suggestion and a line says why. The map draws a line from the zip to each job looked at,
+nearest first. Jobs within the radius light up green inside the radius ring, and the rest stay grey. It plays once when the
+answer arrives, Replay plays it again, and with reduced motion the finished picture shows. The street map behind it is
+Field's (Google's, once set up); without it the map is a plain schematic. Distances are straight lines, and a note says so.
+With no job ever booked in that zip there is no map. Radius (default 5 mi) and look-ahead (default 14 days) are in
+Settings › Scheduling.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Earliest and Suggested side by side, the map under both <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The two answers sit beside each other, so the choice reads at a glance: sooner, or nearer the crew. Suggested has
+the stronger edge, since it is usually the one to book. The map below shows the reasoning, drawn as the answer arrives. It
+is 190 px tall, enough to see without pushing the windows out of view.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:10px">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Calendar</span><span class="on">Availability</span><span>Unscheduled · 4</span></div>
+ <div class="searchrow"><span class="in" style="width:160px">60614</span><span class="btn f sm">Check</span><span class="tiny">Lakeview · Chimney</span></div>
+ <div class="res">
+  <div class="ac"><span class="k">Earliest</span><span class="d">Tomorrow, Tue Oct 14</span><span class="w">● 8 – 11 AM · 2 left</span><span class="far">Nearest booked job that day: 23 mi away</span></div>
+  <div class="ac sg"><span class="k">Suggested · near booked work</span><span class="d">Thu, Oct 16</span><span class="w">● 12 – 3 PM · 1 left</span><span class="why"><b>3 jobs within 5 mi</b> that day, the nearest 1.2 mi away.</span><div class="techs"><span class="tech"><i>OF</i>Omar is already there</span><span class="tech"><i>LB</i>Lena</span></div></div>
+ </div>
+ <div class="mapbox" style="height:190px">
+  <svg viewBox="0 0 1100 190" preserveAspectRatio="none">
+   <defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#dfe7ea" stroke-width="1"/></pattern></defs>
+   <rect width="1100" height="190" fill="url(#g)"/>
+   <path d="M0 140 C200 120 300 160 520 130 S900 100 1100 120" stroke="#cfdde3" stroke-width="10" fill="none"/>
+   <circle cx="520" cy="95" r="70" fill="rgba(22,102,45,.07)" stroke="#9fd0ad" stroke-dasharray="4 4"/>
+   <line class="route" x1="520" y1="95" x2="560" y2="80" stroke="#16662d" stroke-width="3"/>
+   <line class="route r2" x1="520" y1="95" x2="470" y2="125" stroke="#16662d" stroke-width="3"/>
+   <line class="route r3" x1="520" y1="95" x2="575" y2="140" stroke="#16662d" stroke-width="3"/>
+   <line class="route r4" x1="520" y1="95" x2="760" y2="40" stroke="#93a3ab" stroke-width="2" stroke-dasharray="5 4"/>
+   <line class="route r5" x1="520" y1="95" x2="250" y2="150" stroke="#93a3ab" stroke-width="2" stroke-dasharray="5 4"/>
+   <circle class="pop p1" cx="560" cy="80" r="8" fill="#16662d"/>
+   <circle class="pop p2" cx="470" cy="125" r="8" fill="#16662d"/>
+   <circle class="pop p3" cx="575" cy="140" r="8" fill="#16662d"/>
+   <circle class="pop p4" cx="760" cy="40" r="7" fill="#93a3ab"/>
+   <circle class="pop p5" cx="250" cy="150" r="7" fill="#93a3ab"/>
+   <circle cx="520" cy="95" r="10" fill="#00708f" stroke="#fff" stroke-width="3"/>
+   <text x="534" y="70" font-size="12" font-weight="700" fill="#00485c">60614</text>
+   <text x="572" y="76" font-size="11" fill="#16662d">1.2 mi · 9 AM</text>
+   <text x="408" y="128" font-size="11" fill="#16662d">2.8 mi</text>
+   <text x="590" y="150" font-size="11" fill="#16662d">4.1 mi</text>
+   <text x="772" y="40" font-size="11" fill="#5b6672">11 mi</text>
+   <text x="190" y="168" font-size="11" fill="#5b6672">17 mi</text>
+  </svg>
+  <span class="rp">↻ Replay</span>
+  <div class="leg"><span><i style="background:#00708f"></i>60614</span><span><i style="background:#16662d"></i>Within 5 mi</span><span><i style="background:#93a3ab"></i>Farther</span></div>
+  <span class="note">Straight-line miles · Thu, Oct 16's booked jobs</span>
+ </div>
+</div></div></div>
+
+<div class="lab">When the earliest day is already the best fit</div>
+<div class="win" style="height:auto;padding-bottom:16px;width:760px"><div class="page" style="gap:10px">
+ <div class="res"><div class="ac sg"><span class="k">Earliest · and the best fit</span><span class="d">Tomorrow, Tue Oct 14</span><span class="w">● 8 – 11 AM · 2 left</span><span class="why"><b>2 jobs within 5 mi</b> that day, the nearest 0.8 mi away.</span></div></div>
+ <div class="same">✓ Nothing later is nearer booked work, so the earliest window is the one to book.</div>
+</div></div>
+<div class="lab">When nothing is within the radius</div>
+<div class="win" style="height:auto;padding-bottom:16px;width:760px"><div class="page" style="gap:10px">
+ <div class="res"><div class="ac"><span class="k">Earliest</span><span class="d">Tomorrow, Tue Oct 14</span><span class="w">● 8 – 11 AM · 2 left</span><span class="far">Nearest booked job that day: 23 mi away</span></div></div>
+ <div class="tiny">No suggestion: no booked job is within 5 mi of 60614 in the next 14 days. The radius is in Settings › Scheduling.</div>
+</div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>Suggested first and large, Earliest a line under it, map beside</h2>
+<p class="cap">This leads with the recommendation. Earliest becomes "Sooner: Tue 8 – 11 AM, but nearest job 23 mi". The map sits to the
+right of the cards rather than under them. It is the most opinionated option, and when somebody needs "the soonest" the sooner
+day is a smaller target.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:10px">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Calendar</span><span class="on">Availability</span><span>Unscheduled · 4</span></div>
+ <div class="res">
+  <div class="ac sg" style="flex:0 0 420px"><span class="k">Suggested · near booked work</span><span class="d" style="font-size:24px">Thu, Oct 16</span><span class="w">● 12 – 3 PM · 1 left</span><span class="why"><b>3 jobs within 5 mi</b>, the nearest 1.2 mi. Omar is already there.</span><div style="border-top:1px solid var(--line2);padding-top:6px;font-size:12px">Sooner: <b>Tue 8 – 11 AM</b> <span class="far">but the nearest job is 23 mi away</span></div></div>
+  <div class="mapbox" style="flex:1;height:200px">
+   <svg viewBox="0 0 600 200" preserveAspectRatio="none"><rect width="600" height="200" fill="#eef3f5"/>
+    <circle cx="300" cy="100" r="66" fill="rgba(22,102,45,.07)" stroke="#9fd0ad" stroke-dasharray="4 4"/>
+    <line class="route" x1="300" y1="100" x2="335" y2="80" stroke="#16662d" stroke-width="3"/>
+    <line class="route r2" x1="300" y1="100" x2="262" y2="130" stroke="#16662d" stroke-width="3"/>
+    <line class="route r3" x1="300" y1="100" x2="500" y2="40" stroke="#93a3ab" stroke-width="2" stroke-dasharray="5 4"/>
+    <circle class="pop p1" cx="335" cy="80" r="8" fill="#16662d"/><circle class="pop p2" cx="262" cy="130" r="8" fill="#16662d"/><circle class="pop p3" cx="500" cy="40" r="7" fill="#93a3ab"/>
+    <circle cx="300" cy="100" r="10" fill="#00708f" stroke="#fff" stroke-width="3"/></svg>
+   <span class="rp">↻ Replay</span>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>The look-ahead as a strip of days, Earliest and Suggested marked</h2>
+<p class="cap">The 14 days sit in one strip. Each shows an open window and a dot sized by how much booked work is nearby. Earliest
+has a green edge and Suggested a blue one, and picking any day draws its map. It shows the most, but it asks the most of
+somebody on a call.</p>
+<div class="win" style="height:auto;padding-bottom:16px"><div class="top"><span class="logo">EzBizi</span><span class="org">A-1 Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:10px">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Calendar</span><span class="on">Availability</span><span>Unscheduled · 4</span></div>
+ <div class="strip">
+  <div class="e"><b>Tue 14</b>8–11<i></i>Earliest</div><div><b>Wed 15</b>full<i></i></div><div class="s"><b>Thu 16</b>12–3<i style="width:16px;height:16px;background:#16662d"></i>Suggested</div><div><b>Fri 17</b>8–11<i style="width:11px;height:11px;background:#16662d"></i></div><div class="x"><b>Sat 18</b>closed</div><div class="x"><b>Sun 19</b>closed</div><div><b>Mon 20</b>3–6<i></i></div><div><b>Tue 21</b>8–11<i></i></div><div><b>Wed 22</b>12–3<i style="width:10px;height:10px;background:#16662d"></i></div><div><b>Thu 23</b>8–11<i></i></div><div><b>Fri 24</b>full<i></i></div><div class="x"><b>Sat 25</b>closed</div><div class="x"><b>Sun 26</b>closed</div><div><b>Mon 27</b>8–11<i></i></div>
+ </div>
+ <div class="mapbox" style="height:150px"><svg viewBox="0 0 1100 150" preserveAspectRatio="none"><rect width="1100" height="150" fill="#eef3f5"/><circle cx="520" cy="75" r="56" fill="rgba(22,102,45,.07)" stroke="#9fd0ad" stroke-dasharray="4 4"/><line class="route" x1="520" y1="75" x2="556" y2="60" stroke="#16662d" stroke-width="3"/><line class="route r2" x1="520" y1="75" x2="480" y2="100" stroke="#16662d" stroke-width="3"/><circle class="pop p1" cx="556" cy="60" r="8" fill="#16662d"/><circle class="pop p2" cx="480" cy="100" r="8" fill="#16662d"/><circle cx="520" cy="75" r="10" fill="#00708f" stroke="#fff" stroke-width="3"/></svg><span class="rp">↻ Replay</span></div>
+</div></div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone, and the Leads side panel · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The two cards stack, Suggested second, with the map full width under them. The Leads side panel (440 px) gets
+the same layout.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+ <div class="searchrow"><span class="in" style="flex:1">60614</span><span class="btn f sm">Check</span></div>
+ <div class="ac"><span class="k">Earliest</span><span class="d" style="font-size:16px">Tomorrow, Tue Oct 14</span><span class="w">● 8 – 11 AM · 2 left</span><span class="far">Nearest job that day: 23 mi</span></div>
+ <div class="ac sg"><span class="k">Suggested · near booked work</span><span class="d" style="font-size:16px">Thu, Oct 16</span><span class="w">● 12 – 3 PM · 1 left</span><span class="why"><b>3 jobs within 5 mi</b>, nearest 1.2 mi.</span><div class="techs"><span class="tech"><i>OF</i>Omar is there</span></div></div>
+ <div class="mapbox" style="height:150px"><svg viewBox="0 0 320 150" preserveAspectRatio="none"><rect width="320" height="150" fill="#eef3f5"/><circle cx="160" cy="75" r="48" fill="rgba(22,102,45,.07)" stroke="#9fd0ad" stroke-dasharray="4 4"/><line class="route" x1="160" y1="75" x2="186" y2="62" stroke="#16662d" stroke-width="3"/><line class="route r2" x1="160" y1="75" x2="134" y2="98" stroke="#16662d" stroke-width="3"/><line class="route r3" x1="160" y1="75" x2="280" y2="30" stroke="#93a3ab" stroke-width="2" stroke-dasharray="5 4"/><circle class="pop p1" cx="186" cy="62" r="7" fill="#16662d"/><circle class="pop p2" cx="134" cy="98" r="7" fill="#16662d"/><circle class="pop p3" cx="280" cy="30" r="6" fill="#93a3ab"/><circle cx="160" cy="75" r="9" fill="#00708f" stroke="#fff" stroke-width="3"/></svg><span class="rp">↻</span></div>
+</div></div></div></div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">The suggested card comes first, with "Sooner" as a line under it and the map behind "Show why".</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+ <div class="ac sg"><span class="k">Suggested</span><span class="d" style="font-size:18px">Thu, Oct 16</span><span class="w">● 12 – 3 PM · 1 left</span><span class="why"><b>3 jobs within 5 mi</b></span><div style="font-size:12px">Sooner: <b>Tue 8 – 11</b> <span class="far">· 23 mi</span></div><span class="btn sm" style="align-self:flex-start">Show why on the map</span></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">The day strip scrolls sideways above the map.</p>
+<div class="phones"><div class="pcol"><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+ <div class="strip" style="grid-template-columns:repeat(5,minmax(0,1fr))"><div class="e"><b>Tue</b>8–11<i></i></div><div><b>Wed</b>full<i></i></div><div class="s"><b>Thu</b>12–3<i style="width:14px;height:14px;background:#16662d"></i></div><div><b>Fri</b>8–11<i></i></div><div class="x"><b>Sat</b>closed</div></div>
+</div></div></div></div>
+
+<p class="cap" style="margin-top:30px">Owner: Scheduling (server, settings, <code>availability_pane.dart</code>). UI/UX builds the
+screen half once the endpoint lands.</p>
+</div>

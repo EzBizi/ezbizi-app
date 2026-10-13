@@ -1,0 +1,385 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Task Board layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12px;font-weight:600;color:#33404a;white-space:nowrap}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:20px;border-bottom:1px solid var(--line);padding:0 2px;flex:0 0 auto}
+.under span{padding:6px 0 7px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:9px;overflow:hidden;background:#fff}
+.seg span{padding:4px 11px;font-size:11.5px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.rowb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}
+.win.tall{height:720px}
+.view{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:var(--neuc);color:var(--neu);font-size:11px;font-weight:700}
+.srch2{height:28px;border:1px solid #b9c7cd;border-radius:8px;display:inline-flex;align-items:center;padding:0 10px;color:#8a969e;font-size:11.5px;background:#fff;width:200px}
+/* the board */
+.board{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0;overflow:hidden}
+.grp{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.gh{display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:13px;font-weight:800}
+.gh .c{font-size:11px;font-weight:600;color:var(--muted)}
+.trow{display:grid;grid-template-columns:6px minmax(0,1fr) 116px 126px 92px 120px 64px;align-items:stretch;border-top:1px solid var(--line2);font-size:12.5px;min-height:36px}
+.trow.h{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-height:28px;background:#fafcfd}
+.trow > span{display:flex;align-items:center;padding:0 10px;border-left:1px solid var(--line2);min-width:0}
+.trow > span:first-child{padding:0;border-left:0}
+.trow > span:nth-child(2){border-left:0}
+.trow .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.trow .add{color:var(--muted);font-weight:500}
+.stc{justify-content:center;color:#fff!important;font-weight:700;font-size:11.5px;padding:0!important}
+.s-done{background:#2f9a4c}.s-work{background:#d9930d}.s-stuck{background:#c53b3b}.s-new{background:#8e9ba3}
+.due{gap:6px}.due.late{color:var(--bad);font-weight:700}
+.av{width:22px;height:22px;font-size:9.5px}
+.own{gap:6px}
+.lnk2{color:var(--pri);font-weight:700;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-g{background:#00708f}.bar-o{background:#d9930d}.bar-p{background:#7a4fb5}.bar-d{background:#2f9a4c}
+.upd{color:var(--muted);font-size:11px;gap:4px}
+/* kanban */
+.kan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex:1;min-height:0}
+.kcol{background:#eef3f5;border-radius:var(--r);padding:8px;display:flex;flex-direction:column;gap:8px}
+.kcol .kh{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:2px 4px}
+.kcol .kh i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.kc{background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.kc b{font-size:12.5px}
+.kc .m{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}
+/* boards rail */
+.rail{width:220px;flex:0 0 auto;background:#fff;border:1px solid var(--line);border-radius:var(--r);display:flex;flex-direction:column;padding:6px 0}
+.rail .sec{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 12px 3px}
+.rail .it{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:#33404a}
+.rail .it.on{background:var(--pric);color:var(--prid);font-weight:700}
+.rail .it .n{margin-left:auto;font-size:11px;color:var(--muted)}
+.cols{display:flex;gap:12px;min-height:0;flex:1}
+/* side panel */
+.tp{position:absolute;top:0;right:0;bottom:0;width:400px;background:#fff;box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.tp .hd{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.tp .hd b{font-size:15px}
+.tp .bd{padding:12px 16px;display:flex;flex-direction:column;gap:10px;font-size:12.5px}
+.kv{display:grid;grid-template-columns:86px 1fr;gap:6px 10px;align-items:center}
+.kv span:nth-child(odd){color:var(--muted);font-size:11.5px}
+.stp{display:inline-flex;align-items:center;justify-content:center;height:24px;padding:0 12px;border-radius:6px;color:#fff;font-size:11.5px;font-weight:700}
+.upd2{border-top:1px solid var(--line2);padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.ui{display:flex;gap:8px;font-size:12px}
+.ui .t{font-size:10.5px;color:var(--muted)}
+.box{border:1px solid #b9c7cd;border-radius:var(--r);padding:8px 10px;font-size:12px;color:#8a969e;background:#fff}
+/* phones */
+.phn .pb{gap:8px}
+.pc{background:#fff;border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:5px 1fr;overflow:hidden}
+.pc .in{padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:12px}
+.pc .in b{font-size:13px}
+.pc .in .m{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.hd2{font-size:11px;font-weight:800;color:#33404a;display:flex;align-items:center;gap:6px;padding:4px 2px 0}
+.hd2 i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:12.5px;font-weight:700}
+</style>
+<div class="wrap">
+<h1>Task Board · boards for every company, franchise and person</h1>
+<p class="sub">From the Task Board session, relaying Jose: <i>a "Task Board" tab, Monday.com-style. Tied to Organization → Company →
+Franchise. Every Company, every Franchise, and every user automatically gets its own board, assigned to them. Must work with
+Automations (triggers/actions) and Reports.</i> They will build the backend and wire Automations and Reports to whichever layout
+Jose picks.</p>
+<p class="need"><b>Same in every option.</b>
+<ul class="need" style="margin:4px 0 0;padding-left:28px">
+<li><b>Task Board</b> is its own module in the sidebar, with an icon, the way Jobs is.</li>
+<li>The <b>top-bar view decides which boards show</b>. With a franchise chosen, you see your own board, that franchise's board,
+and its company's. With a company chosen, you see the company's board and the franchise boards under it. A board outside the
+view never shows.</li>
+<li>A board is <b>groups</b> (coloured, foldable sections such as This week, Next week, Done) of <b>tasks</b>. Each task has an
+owner, a status coloured the way Monday does it (Not started / Working on it / Stuck / Done, always with the word as well as the
+colour), a due date (late in red), and a <b>link to an EzBizi record</b> (job, lead or customer), so a task can say what it is
+about.</li>
+<li>A task opens in the side panel: its fields, its updates (comments) and its history. You add a task by typing on the
+"+ Add task" row at the foot of a group.</li>
+<li><b>Automations</b> can be triggered when a task is created, changes status, or passes its due date, and can create a task,
+change its status or assign it. <b>Reports</b> get tasks by status, owner and board, plus overdue. The Task Board session
+builds those; the screens below are where their results appear.</li>
+</ul>
+Names, tasks and dates are invented.</p>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2><span class="n">1</span>Boards as tabs across the top, table or kanban <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The boards in this view are a row of tabs: <b>My board</b> first (where Task Board opens), then the franchise, then
+the company. Each tab shows how many open tasks are yours. Under them, <b>Table</b> (Monday's main view) or <b>Kanban</b> by
+status. Switching the top-bar view swaps which franchise and company tabs show, and My board stays.</p>
+<div class="lab">Table</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Task Board</div>
+ <div class="under"><span class="on">My board · 6</span><span>Lakeview franchise · 14</span><span>Northside Chimney · 9</span></div>
+ <div class="rowb"><div class="seg"><span class="on">Table</span><span>Kanban</span></div><span class="srch2">🔍 Find a task</span><span class="pill2">Owner: anyone ▾</span><span class="pill2">Status: open ▾</span><span class="sp"></span><span class="btn f sm">＋ New task</span></div>
+ <div class="board">
+  <div class="grp">
+   <div class="gh" style="color:#00708f">▾ This week <span class="c">4 tasks</span></div>
+   <div class="trow h"><span></span><span>Task</span><span>Owner</span><span>Status</span><span>Due</span><span>About</span><span>Updates</span></div>
+   <div class="trow"><span class="bar-g"></span><span class="nm">Call back Dana Whitfield about the cap quote</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-work">Working on it</span><span class="due">Today</span><span><span class="lnk2">Lead · Dana Whitfield</span></span><span class="upd">💬 2</span></div>
+   <div class="trow"><span class="bar-g"></span><span class="nm">Order liner parts for the Oak Park job</span><span class="own"><span class="av">OF</span>Omar</span><span class="stc s-stuck">Stuck</span><span class="due late">Yesterday</span><span><span class="lnk2">Job #1042</span></span><span class="upd">💬 4</span></div>
+   <div class="trow"><span class="bar-g"></span><span class="nm">Confirm Thursday's crew for the inspection week</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-new">Not started</span><span class="due">Thu, Oct 16</span><span class="m" style="color:var(--muted)">—</span><span class="upd"></span></div>
+   <div class="trow"><span class="bar-g"></span><span class="nm">Renew the van insurance</span><span class="own"><span class="av">LB</span>Lena</span><span class="stc s-done">Done</span><span class="due">Mon, Oct 13</span><span><span class="lnk2">Vehicle · Van 3</span></span><span class="upd">💬 1</span></div>
+   <div class="trow"><span class="bar-g" style="opacity:.3"></span><span class="add">＋ Add task</span><span></span><span></span><span></span><span></span><span></span></div>
+  </div>
+  <div class="grp">
+   <div class="gh" style="color:#d9930d">▾ Next week <span class="c">2 tasks</span></div>
+   <div class="trow"><span class="bar-o"></span><span class="nm">Follow up the three price-only callers</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-new">Not started</span><span class="due">Mon, Oct 20</span><span><span class="lnk2">Leads · Follow up</span></span><span class="upd"></span></div>
+   <div class="trow"><span class="bar-o"></span><span class="nm">Train Theo on the new booking page</span><span class="own"><span class="av">TG</span>Theo</span><span class="stc s-new">Not started</span><span class="due">Wed, Oct 22</span><span class="m" style="color:var(--muted)">—</span><span class="upd"></span></div>
+  </div>
+  <div class="grp"><div class="gh" style="color:#2f9a4c">▸ Done <span class="c">12 tasks</span></div></div>
+ </div>
+</div></div></div>
+
+<div class="lab">A task, opened in the side panel</div>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Task Board</div>
+ <div class="under"><span>My board · 6</span><span class="on">Lakeview franchise · 14</span><span>Northside Chimney · 9</span></div>
+ <div class="board"><div class="grp"><div class="gh" style="color:#00708f">▾ This week <span class="c">7 tasks</span></div>
+  <div class="trow"><span class="bar-g"></span><span class="nm">Order liner parts for the Oak Park job</span><span class="own"><span class="av">OF</span>Omar</span><span class="stc s-stuck">Stuck</span><span class="due late">Yesterday</span><span><span class="lnk2">Job #1042</span></span><span class="upd">💬 4</span></div>
+ </div></div>
+ <div class="tp"><div class="hd"><b>Order liner parts for the Oak Park job</b><span class="tiny">Lakeview franchise · This week</span></div>
+  <div class="bd">
+   <div class="kv"><span>Status</span><span><span class="stp s-stuck">Stuck</span></span><span>Owner</span><span><span class="av">OF</span> Omar Feld</span><span>Due</span><span style="color:var(--bad);font-weight:700">Yesterday, Oct 12</span><span>About</span><span><span class="lnk2">Job #1042 · Oak Park liner install</span></span><span>Made by</span><span class="tiny">Automation "Liner job booked" · Oct 9</span></div>
+   <div class="upd2"><b style="font-size:12px">Updates</b>
+    <div class="ui"><span class="av">OF</span><div><b>Omar</b> <span class="t">Oct 12, 3:10 PM</span><br>Supplier is out of 6" stainless until Friday.</div></div>
+    <div class="ui"><span class="av">LB</span><div><b>Lena</b> <span class="t">Oct 12, 4:02 PM</span><br>Try the Elgin warehouse, they had some last week.</div></div>
+    <div class="box">Write an update… @ to mention someone</div></div>
+  </div></div>
+</div></div></div>
+
+<div class="lab">Kanban, the same board</div>
+<div class="win" style="height:440px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Task Board</div>
+ <div class="under"><span class="on">My board · 6</span><span>Lakeview franchise · 14</span><span>Northside Chimney · 9</span></div>
+ <div class="rowb"><div class="seg"><span>Table</span><span class="on">Kanban</span></div></div>
+ <div class="kan">
+  <div class="kcol"><div class="kh"><i class="s-new"></i>Not started · 2</div><div class="kc"><b>Confirm Thursday's crew</b><div class="m"><span class="av">MR</span>Thu, Oct 16</div></div><div class="kc"><b>Follow up the price-only callers</b><div class="m"><span class="av">MR</span>Mon, Oct 20</div></div></div>
+  <div class="kcol"><div class="kh"><i class="s-work"></i>Working on it · 1</div><div class="kc"><b>Call back Dana Whitfield</b><div class="m"><span class="av">MR</span>Today · <span class="lnk2">Lead</span></div></div></div>
+  <div class="kcol"><div class="kh"><i class="s-stuck"></i>Stuck · 1</div><div class="kc"><b>Order liner parts</b><div class="m" style="color:var(--bad)"><span class="av">OF</span>Yesterday · Job #1042</div></div></div>
+  <div class="kcol"><div class="kh"><i class="s-done"></i>Done · 12</div><div class="kc"><b>Renew the van insurance</b><div class="m"><span class="av">LB</span>Mon, Oct 13</div></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>A rail of boards on the left, like Monday's workspace</h2>
+<p class="cap">The boards are a list down the left: <b>Mine</b>, then each <b>franchise</b> and <b>company</b> in the view, each with its
+count. This is Monday's own layout and it handles many boards (a company view with eight franchises), but the rail takes 220 px
+the table could use.</p>
+<div class="win" style="height:560px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Task Board</div>
+ <div class="cols">
+  <div class="rail"><div class="sec">Mine</div><div class="it on">👤 My board <span class="n">6</span></div><div class="sec">Company</div><div class="it">🏢 Northside Chimney <span class="n">9</span></div><div class="sec">Franchises</div><div class="it">📍 Lakeview <span class="n">14</span></div><div class="it">📍 Riverside <span class="n">8</span></div><div class="it">📍 Elgin <span class="n">5</span></div><div class="it">📍 Oak Park <span class="n">11</span></div></div>
+  <div class="board">
+   <div class="rowb"><div class="seg"><span class="on">Table</span><span>Kanban</span></div><span class="sp"></span><span class="btn f sm">＋ New task</span></div>
+   <div class="grp"><div class="gh" style="color:#00708f">▾ This week <span class="c">4 tasks</span></div>
+    <div class="trow h"><span></span><span>Task</span><span>Owner</span><span>Status</span><span>Due</span><span>About</span><span>Updates</span></div>
+    <div class="trow"><span class="bar-g"></span><span class="nm">Call back Dana Whitfield</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-work">Working on it</span><span class="due">Today</span><span><span class="lnk2">Lead</span></span><span class="upd">💬 2</span></div>
+    <div class="trow"><span class="bar-g"></span><span class="nm">Order liner parts</span><span class="own"><span class="av">OF</span>Omar</span><span class="stc s-stuck">Stuck</span><span class="due late">Yesterday</span><span><span class="lnk2">Job #1042</span></span><span class="upd">💬 4</span></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>"My work" across every board, and a board picker</h2>
+<p class="cap">It opens on <b>My work</b>: every task assigned to you on any board in the view, grouped by board. A board picker
+("Lakeview franchise ▾") opens one board in full. This is best for "what do I do today", but a board's own groups only show
+once that board is picked.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northside Chimney · Lakeview ▾</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page" style="gap:8px">
+ <div class="t">Task Board</div>
+ <div class="rowb"><span class="sel">My work ▾</span><span class="tiny">Every task on you, from every board in Lakeview</span><span class="sp"></span><span class="btn f sm">＋ New task</span></div>
+ <div class="board">
+  <div class="grp"><div class="gh">👤 My board <span class="c">3</span></div>
+   <div class="trow"><span class="bar-g"></span><span class="nm">Call back Dana Whitfield</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-work">Working on it</span><span class="due">Today</span><span><span class="lnk2">Lead</span></span><span class="upd">💬 2</span></div>
+  </div>
+  <div class="grp"><div class="gh">📍 Lakeview franchise <span class="c">2</span></div>
+   <div class="trow"><span class="bar-o"></span><span class="nm">Confirm Thursday's crew</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-new">Not started</span><span class="due">Thu, Oct 16</span><span class="m" style="color:var(--muted)">—</span><span class="upd"></span></div>
+  </div>
+  <div class="grp"><div class="gh">🏢 Northside Chimney <span class="c">1</span></div>
+   <div class="trow"><span class="bar-p"></span><span class="nm">Send the October numbers to the owners</span><span class="own"><span class="av">MR</span>Maya</span><span class="stc s-new">Not started</span><span class="due">Fri, Oct 31</span><span><span class="lnk2">Report · October</span></span><span class="upd"></span></div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────────────────── phones ───────────────────────── -->
+<h2><span class="n">4</span>Phone · as 1 <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">The board tabs scroll sideways. Each task is a card with its status colour down its edge, the status in words,
+the owner and the due date, under its group's heading. Tapping a card opens the task.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">My board</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+  <div class="under" style="gap:14px;overflow:hidden"><span class="on">My board · 6</span><span>Lakeview · 14</span><span>Northside…</span></div>
+  <div class="rowb"><div class="seg"><span class="on">Table</span><span>Kanban</span></div><span class="sp"></span><span class="btn f sm">＋ Task</span></div>
+  <div class="hd2"><i style="background:#00708f"></i>This week · 4</div>
+  <div class="pc"><span class="s-work"></span><div class="in"><b>Call back Dana Whitfield</b><div class="m"><span class="stp s-work" style="height:18px;font-size:10px;padding:0 7px">Working on it</span><span class="av">MR</span>Today</div></div></div>
+  <div class="pc"><span class="s-stuck"></span><div class="in"><b>Order liner parts for the Oak Park job</b><div class="m"><span class="stp s-stuck" style="height:18px;font-size:10px;padding:0 7px">Stuck</span><span class="av">OF</span><span style="color:var(--bad);font-weight:700">Yesterday</span></div></div></div>
+  <div class="pc"><span class="s-new"></span><div class="in"><b>Confirm Thursday's crew</b><div class="m"><span class="stp s-new" style="height:18px;font-size:10px;padding:0 7px">Not started</span><span class="av">MR</span>Thu, Oct 16</div></div></div>
+  <div class="hd2"><i style="background:#d9930d"></i>Next week · 2</div>
+  <div class="pc"><span class="s-new"></span><div class="in"><b>Follow up the price-only callers</b><div class="m"><span class="stp s-new" style="height:18px;font-size:10px;padding:0 7px">Not started</span><span class="av">MR</span>Mon, Oct 20</div></div></div>
+ </div></div></div>
+ <div class="pcol"><span class="pl">A task</span><div class="phn"><div class="sb"></div><div class="ab"><span>‹</span><span class="t">Task</span></div><div class="pb">
+  <b style="font-size:15px">Order liner parts for the Oak Park job</b>
+  <div class="kv"><span>Status</span><span><span class="stp s-stuck">Stuck</span></span><span>Owner</span><span>Omar Feld</span><span>Due</span><span style="color:var(--bad);font-weight:700">Yesterday</span><span>About</span><span class="lnk2">Job #1042</span></div>
+  <div class="upd2"><b style="font-size:12px">Updates</b><div class="ui"><span class="av">OF</span><div><b>Omar</b> <span class="t">3:10 PM</span><br>Supplier is out until Friday.</div></div><div class="box">Write an update…</div></div>
+ </div></div></div>
+</div>
+
+<h2><span class="n">5</span>Phone · as 2</h2>
+<p class="cap">The list of boards first, then the chosen board, with a back arrow.</p>
+<div class="phones"><div class="pcol"><span class="pl">Boards</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+ <div class="rail" style="width:auto"><div class="sec">Mine</div><div class="it">👤 My board <span class="n">6</span></div><div class="sec">Company</div><div class="it">🏢 Northside Chimney <span class="n">9</span></div><div class="sec">Franchises</div><div class="it">📍 Lakeview <span class="n">14</span></div><div class="it">📍 Riverside <span class="n">8</span></div></div>
+</div></div></div></div>
+
+<h2><span class="n">6</span>Phone · as 3</h2>
+<p class="cap">My work, grouped by board.</p>
+<div class="phones"><div class="pcol"><span class="pl">My work</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Task Board</span></div><div class="pb">
+ <span class="sel">My work ▾</span>
+ <div class="hd2">👤 My board · 3</div>
+ <div class="pc"><span class="s-work"></span><div class="in"><b>Call back Dana Whitfield</b><div class="m">Working on it · Today</div></div></div>
+ <div class="hd2">📍 Lakeview franchise · 2</div>
+ <div class="pc"><span class="s-new"></span><div class="in"><b>Confirm Thursday's crew</b><div class="m">Not started · Thu, Oct 16</div></div></div>
+</div></div></div></div>
+
+<p class="need" style="margin-top:28px"><b>Recommendation: 1 and 4.</b> The boards a view can reach sit one tap apart, in the tab style
+the rest of the app uses, and the table is the board people know from Monday. Kanban is one switch away, and a task opens in
+the same side panel as a job or a lead. Owner: the Task Board session (backend, Automations, Reports). I build the screens
+on their API.</p>
+</div>

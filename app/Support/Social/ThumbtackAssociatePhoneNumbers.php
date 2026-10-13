@@ -143,7 +143,19 @@ final class ThumbtackAssociatePhoneNumbers
     {
         if (count($numbers) === 1) {
             $number = array_key_first($numbers);
-            $this->create($connection, (string) $number, $numbers[$number]);
+
+            try {
+                $this->create($connection, (string) $number, $numbers[$number]);
+            } catch (RuntimeException $e) {
+                // Once the batch has gone up, the number Thumbtack calls invalid
+                // is the only new one left, and it comes here every night.
+                if (! str_contains($e->getMessage(), 'invalid phone number: '.$number)) {
+                    throw $e;
+                }
+                $rejected[] = (string) $number;
+
+                return 0;
+            }
 
             return 1;
         }

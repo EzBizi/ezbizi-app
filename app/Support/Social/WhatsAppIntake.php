@@ -72,8 +72,8 @@ final class WhatsAppIntake
             }
 
             $this->text($number, $contact->counterparty, $kind === WhatsAppContact::KIND_LEAD
-                ? 'Thanks! We passed your request to our team and someone will reach out shortly. Text MENU any time for more.'
-                : 'Thanks for your interest in working with us! We passed your details to our hiring team. Text MENU any time for more.');
+                ? "\u{2705} *Thanks!*\n\n\u{1F4E8} We passed your request to our team.\n\u{1F4DE} Someone will reach out shortly.\n\n\u{1F4CB} Text *MENU* any time for more."
+                : "\u{1F91D} *Thanks for your interest in working with us!*\n\n\u{1F4E8} We passed your details to our hiring team.\n\n\u{1F4CB} Text *MENU* any time for more.");
 
             return true;
         }
@@ -175,7 +175,7 @@ final class WhatsAppIntake
 
     private function ask(WhatsAppNumber $number, string $to): void
     {
-        $body = 'Thanks for writing to us! How can we help?';
+        $body = "\u{1F44B} *Thanks for writing to us!*\n\nHow can we help? Choose below \u{1F447}";
 
         $this->cloud->replyFreeForm($number, $to, [
             'type' => 'interactive',

@@ -28,6 +28,8 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 // week or a month opens without waiting on RingCentral's rate limit.
 Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
+// Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
+Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Everything else's retention (§10), read off each model's own declaration.
 //
@@ -102,6 +104,8 @@ Schedule::command('ezbizi:close-ended-shifts')->everyMinute()->withoutOverlappin
 // asks why their van phone shows as an unknown number. This reads their list
 // and sends the difference, so it repairs drift instead of adding to it.
 Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->withoutOverlapping(30);
+// Each Thumbtack lead's price and refund state, for Reports' Thumbtack tab (2026-10-13).
+Schedule::command('ezbizi:thumbtack-lead-costs')->dailyAt('04:50')->withoutOverlapping(30);
 
 // A Thumbtack grant left unused for ~15 days is refused; exchange it daily.
 Schedule::command('ezbizi:thumbtack-keep-alive')->dailyAt('04:30')->withoutOverlapping(10);
@@ -162,6 +166,7 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  * what changed, about eight calls a branch, well under the key's burst limit.
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
+Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlapping(30);
 
 /*
  * Who booked each new job, which only v1 says (Reports, 2026-10-06): a few
@@ -349,6 +354,10 @@ Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlappin
 // background check), once a morning before the day's calls - an account that
 // lapses stops showing ads and nobody is told.
 Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('America/New_York')->withoutOverlapping(30);
+// Every enabled account under a connected Google Ads manager connected, and
+// which rows are managers, kept true daily (Jose, 2026-10-12: the Ads report
+// and Leads should agree as accounts are added to the managers).
+Schedule::command('leads:adopt-manager-clients')->dailyAt('07:30')->timezone('America/New_York')->withoutOverlapping(30);
 
 // The nightly Same-Day Reports on WhatsApp (docs/REPLACING-RODRIGO-BOT.md),
 // after Workiz's evening sync; the second run catches a branch that failed.
@@ -360,8 +369,25 @@ Schedule::command('ezbizi:whatsapp-period-reports week')->weeklyOn(3, '08:00')->
 Schedule::command('ezbizi:whatsapp-period-reports week')->weeklyOn(3, '12:00')->timezone('America/New_York')->withoutOverlapping(30);
 Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '09:00')->timezone('America/New_York')->withoutOverlapping(30);
 Schedule::command('ezbizi:whatsapp-period-reports month')->monthlyOn(2, '13:00')->timezone('America/New_York')->withoutOverlapping(30);
+// Facebook Ads spend and results for Reports' Meta tab; the last 3 days, which
+// Meta still revises. A new connection backfills itself.
+Schedule::command('ezbizi:meta-ads-sync')->dailyAt('05:30')->timezone('America/New_York')->withoutOverlapping(120);
+// AI suggests each new campaign's category (SuggestMetaCategories); a person confirms.
+Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
+// One batch of 4 side by side per run: the scheduler runs a minute's
+// commands in sequence, so a long run would hold the others behind it.
+Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()->withoutOverlapping(15);
+// Last week in plain English from Grok (AiWeeklySummary); Automations sends it.
+Schedule::command('ezbizi:ai-weekly-summary')->weeklyOn(1, '07:00')->timezone('America/New_York')->withoutOverlapping(60);
+// Coaching scores for answered calls (ScoreReportCalls); off until REPORT_CALL_SCORING.
+Schedule::command('ezbizi:score-report-calls')->everyTenMinutes()->withoutOverlapping(15);
+// Grok's daily and weekly read per employee for the Scoring tab (AiPersonReviews).
+Schedule::command('ezbizi:ai-person-reviews daily')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
+Schedule::command('ezbizi:ai-person-reviews weekly')->weeklyOn(1, '06:45')->timezone('America/New_York')->withoutOverlapping(30);
+// Grok failing for 30 minutes mails the ops address (CheckGrokHealth).
+Schedule::command('ezbizi:check-grok')->everyFifteenMinutes();
 // Rodrigo's 06:30 Daily Account Review (docs/REPLACING-RODRIGO-BOT.md row D).
 Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('America/New_York')->withoutOverlapping(30);
 
@@ -380,6 +406,9 @@ Schedule::command('ezbizi:ads-campaign-watch')->hourlyAt(20)->withoutOverlapping
 // A customer left waiting 10 minutes for an answer raises lead.reply_overdue,
 // once per message, so a rule can warn the dispatchers.
 Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlapping(5);
+
+// Task Board: a task past its due date raises task.overdue, once per task.
+Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
 
 // A customer who went quiet after the automatic first reply raises
 // lead.follow_up_due once, so a rule can send the one follow-up.

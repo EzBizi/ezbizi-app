@@ -40,7 +40,20 @@ class VehicleList extends StatelessWidget {
     required this.pageError,
     required this.onMore,
     required this.organizationName,
+    this.places = const [],
+    this.place,
+    this.onPlace,
   });
+
+  /// The states the register spans, from the server's `meta.places`:
+  /// `{id, name, count}`. Eve, 2026-10-12, as in A-1 Tools: "I click
+  /// Connecticut and I see all of Connecticut". Drawn only when there is more
+  /// than one, since a single state has nothing to choose between.
+  final List<Map<String, dynamic>> places;
+
+  /// The open state's id, or null for every state at once.
+  final String? place;
+  final ValueChanged<String?>? onPlace;
 
   final List<Map<String, dynamic>> vehicles;
   final TextEditingController search;
@@ -80,8 +93,38 @@ class VehicleList extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _build(context, box.maxWidth),
+  );
+
+  Widget _build(BuildContext context, double width) {
+    final total = places.fold<int>(
+      0,
+      (sum, p) => sum + ((p['count'] as num?)?.toInt() ?? 0),
+    );
+
     final filters = [
+      if (places.length > 1 && onPlace != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final p in places)
+                ChoiceChip(
+                  label: Text('${p['name']}  ${p['count']}'),
+                  selected: place == p['id'],
+                  onSelected: (_) => onPlace!(p['id'] as String?),
+                ),
+              ChoiceChip(
+                label: Text('All states  $total'),
+                selected: place == null,
+                onSelected: (_) => onPlace!(null),
+              ),
+            ],
+          ),
+        ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: TextField(
@@ -152,7 +195,10 @@ class VehicleList extends StatelessWidget {
     // On a phone the search and the nine chips scroll with the rows. Standing
     // above them they took three lines of chips and 200 of the screen's 800
     // pixels; see HeaderAboveList, which scrolls the header above them away.
-    if (MediaQuery.sizeOf(context).width < 600) {
+    // The list's own width, not the screen's: a narrow list pane on a computer
+    // wraps the chips as tall as a phone does (512px at 265 wide), above rows
+    // left with no room.
+    if (width < 600) {
       return ListView.builder(
         padding: const EdgeInsets.only(bottom: 24),
         itemCount: filters.length + (vehicles.isEmpty ? 1 : count),

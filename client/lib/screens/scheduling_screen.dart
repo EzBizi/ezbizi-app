@@ -7,8 +7,10 @@ import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/locations_pane.dart';
 import 'scheduling/overbooking_pane.dart';
+import 'scheduling/rescheduling_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_links.dart';
+import 'settings_screen.dart';
 
 /// Scheduling: Availability, the Schedule board, and Settings.
 ///
@@ -65,6 +67,16 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'Overbooking',
       Icons.warning_amber_outlined,
       () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
+    ),
+    (
+      'rescheduling',
+      'Re-Scheduling',
+      Icons.swap_horiz,
+      () => ReschedulingPane(
+        api: widget.api,
+        session: widget.session,
+        visible: _visible('rescheduling'),
+      ),
     ),
     (
       // Every branch, the closest one, who to call (UI queue 49).
@@ -171,6 +183,7 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-scheduling-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: selected,
             onSelected: _select,
@@ -246,6 +259,15 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
           session: widget.session,
           visible: widget.visible && _tab == 2,
         ),
+      // The suggested-availability radius and look-ahead (Jose, 2026-10-13:
+      // "make it so i can change that in the app as well on the scheduling
+      // settings"): the Settings rows of the scheduling group, as Field's
+      // Settings tab draws its own.
+      () => SettingsScreen(
+        api: widget.api,
+        session: widget.session,
+        onlyGroup: 'scheduling',
+      ),
     ];
 
     return Column(
@@ -257,6 +279,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
             ('Availability', Icons.event_available_outlined),
             ('Schedule', Icons.engineering_outlined),
             if (notes) ('Locations', Icons.place_outlined),
+            ('Suggestions', Icons.near_me_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() {

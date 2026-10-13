@@ -55,6 +55,7 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
         return [
             'credentials'     => 'encrypted:array',
             'last_reached_at' => 'datetime',
+            'is_manager'      => 'boolean',
         ];
     }
 

@@ -2,11 +2,13 @@
 
 namespace App\Support\Social;
 
+use App\Jobs\AnswerWhatsAppWithAi;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\GrokCli;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Support\Collection;
 
@@ -111,8 +113,9 @@ final class WhatsAppStaffBot
     {
         if ($choice === self::FIND_LOCATION) {
             $this->text($number, $to,
-                'Text a city or state and I\'ll send that location\'s phone, address and '
-                .'service area - for example *Chicago* or *NJ*.');
+                "\u{1F4CD} *Find a location*\n\n"
+                ."Text a city or state and I'll send its phone, address and service area.\n\n"
+                ."\u{1F4AC} For example *Chicago* or *NJ*");
 
             return;
         }
@@ -149,7 +152,7 @@ final class WhatsAppStaffBot
      */
     private function refuse(WhatsAppNumber $number, string $to): void
     {
-        $this->text($number, $to, 'That option is for staff only. Text MENU to see what is available.');
+        $this->text($number, $to, "\u{1F512} That option is for staff only.\n\n\u{1F4CB} Text *MENU* to see what is available.");
     }
 
     private function answer(WhatsAppNumber $number, string $to, AssistantEntry $entry): void
@@ -163,7 +166,7 @@ final class WhatsAppStaffBot
     {
         $section = (string) $entries->first()->section;
 
-        $this->answerList($number, $to, $section, 'Choose a topic.', $entries);
+        $this->answerList($number, $to, $section, "\u{1F4DA} Choose a topic below.", $entries);
     }
 
     /** @param  Collection<int, AssistantEntry>  $entries */
@@ -205,7 +208,7 @@ final class WhatsAppStaffBot
          * having noticed. The short prompt carries on from the explanation.
          */
         $body = mb_substr($lead !== null
-            ? $lead."\n\nPlease choose an option below."
+            ? $lead."\n\n\u{1F447} Choose an option below."
             : $this->brain->welcome($organization), 0, 1024);
 
         // One row per section, leaving room for Find a location.
@@ -326,6 +329,14 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // A question about the figures goes to AI before the Library's word
+        // match, which answered "how much did we sell" with the CSIA entry.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
+            AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         $answers = mb_strlen($query) > 3 ? $this->brain->search($viewer, $query) : collect();
 
         if ($answers->count() === 1) {
@@ -335,7 +346,7 @@ final class WhatsAppStaffBot
         }
 
         if ($answers->isNotEmpty()) {
-            $this->answerList($number, $to, 'Answers', 'These answers match "'.mb_substr($query, 0, 40).'".', $answers);
+            $this->answerList($number, $to, 'Answers', "\u{1F50E} These answers match *".mb_substr($query, 0, 40).'*', $answers);
 
             return;
         }
@@ -344,7 +355,15 @@ final class WhatsAppStaffBot
         $matches = $this->brain->locations($organization, $query);
 
         if ($matches->isEmpty()) {
-            $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
+            // Grok reads the Library in the background: it takes seconds, and
+            // the webhook must answer Meta at once (Jose, 2026-10-12).
+            // Staff only: strangers have the intake, and each ask is an xAI call.
+            if ($viewer !== null && GrokCli::configured() && mb_strlen($query) > 3) {
+                AnswerWhatsAppWithAi::dispatch($number->id, $to, $viewer?->getKey(), $query);
+
+                return;
+            }
+            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
 
             return;
         }
@@ -355,28 +374,39 @@ final class WhatsAppStaffBot
             ->implode("\n\n");
 
         if ($matches->count() > self::MAX_LOCATIONS) {
-            $reply .= "\n\n_Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
+            $reply .= "\n\n\u{2139}\u{FE0F} _Showing ".self::MAX_LOCATIONS.' of '.$matches->count()
                 .'. Text a city for fewer._';
         }
 
         $this->text($number, $to, $reply);
     }
 
+    /**
+     * Sounds like the business's figures. ponytail: a word list; AI still
+     * decides (ReportAsk), and a miss falls back to the Library's AI answer.
+     */
+    public static function asksFigures(string $query): bool
+    {
+        return preg_match('/\b(sales?|sell|sold|revenue|gross|profit|jobs?|leads?|deposits?|cancel\w*|how (much|many)|numbers|report|last (week|month)|this (week|month)|yesterday|today)\b/i', $query) === 1;
+    }
+
     /** @param  array<string, string>  $site */
     private static function describe(array $site, string $fallbackName): string
     {
-        $lines = ['*'.($site['company_name'] ?? $fallbackName).'*'];
+        $lines = ["\u{1F3E2} *".($site['company_name'] ?? $fallbackName).'*'];
 
+        // One fact per line with its emoji: the voice GrokCli::WHATSAPP_STYLE
+        // gives AI replies (Jose, 2026-10-13).
         foreach ([
-            'phone' => 'Phone',
-            'address' => 'Address',
-            'service_area' => 'Serves',
-            'maps_url' => 'Map',
-        ] as $key => $label) {
+            'phone' => "\u{1F4DE}",
+            'address' => "\u{1F4CD}",
+            'service_area' => "\u{1F5FA}\u{FE0F}",
+            'maps_url' => "\u{1F517}",
+        ] as $key => $emoji) {
             $value = trim((string) ($site[$key] ?? ''));
 
             if ($value !== '') {
-                $lines[] = $label.': '.$value;
+                $lines[] = $emoji.' '.$value;
             }
         }
 
@@ -392,5 +422,40 @@ final class WhatsAppStaffBot
             'type' => 'text',
             'text' => ['preview_url' => $preview, 'body' => $body],
         ], $body);
+    }
+
+    /** AnswerWhatsAppWithAi's half: Grok's answer, or the usual "nothing matched" menu. */
+    public function aiReply(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
+    {
+        $organization = Organization::findOrFail($number->organization_id);
+
+        // A question about the figures, from someone who may read Reports
+        // (Jose, 2026-10-13, Rodrigo's report-on-request). The whole reply
+        // fits the job's 75 s (AnswerWhatsAppWithAi): the Library gets what
+        // the figures left, and nothing when under 10 s remain.
+        $started = microtime(true);
+        if ($viewer?->hasPermission('reports.view')) {
+            $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
+            if ($figures !== null) {
+                $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
+
+                return;
+            }
+        }
+
+        $left = min(60, 70 - (int) ceil(microtime(true) - $started));
+        try {
+            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left, forWhatsApp: true) : null;
+        } catch (\RuntimeException) {
+            $answer = null;
+        }
+
+        if ($answer === null) {
+            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
+
+            return;
+        }
+
+        $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
     }
 }

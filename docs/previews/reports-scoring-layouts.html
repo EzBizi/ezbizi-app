@@ -1,0 +1,473 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Reports › Scoring</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:760px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.tile .k{font-size:11px;color:var(--muted);font-weight:600}
+.tile .v{font-size:20px;font-weight:800;line-height:1.2}
+.tile .s{font-size:11px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;position:relative;min-width:0}
+.pc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.pc .hd{display:flex;align-items:center;gap:8px;min-width:0}
+.pc .nm{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .rl{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc .mid{display:flex;align-items:center;gap:10px}
+.rank{position:absolute;top:10px;right:10px;font-size:11px;font-weight:800;color:var(--neu);background:var(--neuc);border-radius:999px;padding:1px 8px}
+.rank.g1{background:#fbe7a8;color:#6b4a00}.rank.g2{background:#e3e8ec;color:#33404a}.rank.g3{background:#f3d9c4;color:#6a3a14}
+.ring{position:relative;width:60px;height:60px;flex:0 0 auto}
+.ring svg{width:60px;height:60px;transform:rotate(-90deg)}
+.ring b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}
+.ring.big{width:110px;height:110px}.ring.big svg{width:110px;height:110px}.ring.big b{font-size:30px}
+.ring.sm{width:44px;height:44px}.ring.sm svg{width:44px;height:44px}.ring.sm b{font-size:13px}
+.trend{font-size:11.5px;font-weight:700}
+.up{color:var(--ok)}.dn{color:var(--cau)}.fl{color:var(--muted)}
+.dots{display:flex;gap:3px}
+.dots i{width:14px;height:6px;border-radius:3px;background:#dfe6ea;display:block}
+.dots i.y{background:var(--ok)}.dots i.h{background:var(--caue)}
+.spark{width:100%;height:26px}
+.rlist{display:flex;flex-direction:column}
+.rr{display:grid;grid-template-columns:18px 26px minmax(0,1fr) 84px 30px;gap:8px;align-items:center;height:34px;border-top:1px solid var(--line2);font-size:12px}
+.rr:first-child{border-top:0}
+.rr .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.rr .n{font-weight:800;color:var(--muted);text-align:right}
+.rr .sc{font-weight:800;text-align:right}
+.track{height:8px;border-radius:4px;background:#e8ecf0;overflow:hidden}
+.track i{display:block;height:100%;border-radius:4px;background:var(--pri)}
+.track i.ok{background:var(--ok)}.track i.cau{background:var(--caue)}
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:10px;padding-top:4px}
+.pod div{display:flex;flex-direction:column;align-items:center;gap:4px;width:96px}
+.pod .step{width:100%;border-radius:8px 8px 0 0;display:flex;align-items:flex-start;justify-content:center;padding-top:6px;font-weight:800;font-size:18px}
+.pod .s1{height:70px;background:#fbe7a8;color:#6b4a00}.pod .s2{height:50px;background:#e3e8ec;color:#33404a}.pod .s3{height:38px;background:#f3d9c4;color:#6a3a14}
+.pod .av{width:38px;height:38px;font-size:13px}
+.pod .nm{font-size:11.5px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+.chk{display:grid;grid-template-columns:196px minmax(0,1fr) 40px;gap:8px;align-items:center;font-size:12px;height:22px}
+.chk .track{position:relative;overflow:visible}
+.chk .track u{position:absolute;top:-3px;width:2px;height:14px;background:var(--ink);opacity:.55;border-radius:1px}
+.chk .pct{text-align:right;font-weight:700}
+.ai{background:linear-gradient(0deg,#f4f9fb,#f4f9fb);border:1px solid var(--edge);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.ai .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;color:var(--prid)}
+.ai .hd .mk{width:20px;height:20px;border-radius:6px;background:var(--prid);color:#fff;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+.ai p{margin:0;font-size:12.5px}
+.ai ul{margin:0;padding-left:18px;font-size:12.5px}
+.cav{font-size:11px;color:var(--muted);font-style:italic}
+.back{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:var(--neu)}
+.line{width:100%;height:64px}
+.unr{opacity:.62}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;background:var(--okc);color:var(--ok)}
+.badge.c{background:var(--cauc);color:var(--cau)}
+.flip{grid-column:1/-1;background:var(--paper);border:1px solid var(--pri);border-radius:var(--r);padding:14px;display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:18px}
+.carousel{display:flex;gap:10px;overflow:hidden}
+.carousel .pc{flex:0 0 280px}
+.pager{display:flex;gap:5px;justify-content:center}
+.pager i{width:6px;height:6px;border-radius:50%;background:#c9d4d9;display:block}.pager i.on{background:var(--pri);width:16px;border-radius:3px}
+</style>
+
+<div class="wrap">
+<h1>Reports › Scoring</h1>
+<p class="subt">A tab beside Performance for how each person handles calls: a card per person with AI's score, a ranking, and AI's read of their calls when you open one. Every name and number here is invented.</p>
+<p class="cap">Built on what Performance already has per call: AI's score out of 10, the seven checks (greeted with the company name, got the name, got the address, asked what the problem is, offered a time, explained the price, asked to book), AI's "to improve" note, and Workiz's own score where Workiz scores that branch. In every option a person is ranked only after <b>10 scored calls</b> in the dates chosen; below that the card says how many more are needed. Each card and detail repeats Performance's line: <i>a guide for coaching, not a verdict</i>.</p>
+<div class="need"><b>What is real today:</b> scoring is live since 2026-10-13 (only calls from that day on). Each scored call has a score 1–10, the seven checks, one strength and one thing to improve; who answered comes from the call log. <b>Being built by Grok AI:</b> a Daily and a Weekly read per person (Jose: "Daily and Weekly") with a summary, two strengths, two things to work on and the trend. <b>Who sees it:</b> its own permission, granted today to Administrator and Lead Manager only (Jose). Ranked within a role (Dispatcher, Remote Dispatcher) over the last 30 days, after 10 scored calls.</div>
+
+<!-- ───────────── Desktop 1 ───────────── -->
+<h2><span class="n">1</span> Ranking beside the cards <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Four figures across the top, the ranking down the left as bars, and the cards on the right in the same order. <b>Click a card</b> and its detail replaces the cards inside the tab (next image), with a back arrow; the ranking stays where it is, so you can step from one person to the next.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Reports</div>
+ <div class="tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span class="on">Scoring</span><span>Marketing</span><span>Meta</span><span>Thumbtack</span></div>
+ <div class="bar2"><span class="drop">📅 Last 30 days ▾</span><span class="drop">All branches ▾</span><span class="drop">Dispatcher ▾</span><span class="sp"></span><span class="seg"><span class="on">Score</span><span>Most improved</span><span>Booked</span></span></div>
+ <div class="tiles">
+  <div class="tile"><span class="k">Team score</span><span class="v">7.6 <span class="trend up">▲ 0.3</span></span><span class="s">over 412 scored calls</span></div>
+  <div class="tile"><span class="k">Ranked</span><span class="v">8 of 9</span><span class="s">Sam Wu needs 6 more calls</span></div>
+  <div class="tile"><span class="k">Most improved</span><span class="v">Omar Haddad</span><span class="s">5.9 → 6.6</span></div>
+  <div class="tile"><span class="k">Weakest check, team-wide</span><span class="v">Explained the price</span><span class="s">met on 64% of calls</span></div>
+ </div>
+ <div class="cols">
+  <div class="card" style="width:330px;flex:0 0 auto"><h3>Ranking</h3>
+   <div class="rlist">
+    <div class="rr"><span class="n">1</span><span class="av">MO</span><span class="nm">Maya Ortiz</span><span class="track"><i class="ok" style="width:87%"></i></span><span class="sc">8.7</span></div>
+    <div class="rr"><span class="n">2</span><span class="av">DR</span><span class="nm">Daniel Reyes</span><span class="track"><i class="ok" style="width:83%"></i></span><span class="sc">8.3</span></div>
+    <div class="rr"><span class="n">3</span><span class="av">PN</span><span class="nm">Priya Nair</span><span class="track"><i style="width:79%"></i></span><span class="sc">7.9</span></div>
+    <div class="rr"><span class="n">4</span><span class="av">TB</span><span class="nm">Tom Becker</span><span class="track"><i style="width:74%"></i></span><span class="sc">7.4</span></div>
+    <div class="rr"><span class="n">5</span><span class="av">LF</span><span class="nm">Lena Fischer</span><span class="track"><i style="width:71%"></i></span><span class="sc">7.1</span></div>
+    <div class="rr"><span class="n">6</span><span class="av">OH</span><span class="nm">Omar Haddad</span><span class="track"><i style="width:66%"></i></span><span class="sc">6.6</span></div>
+    <div class="rr"><span class="n">7</span><span class="av">GK</span><span class="nm">Grace Kim</span><span class="track"><i class="cau" style="width:62%"></i></span><span class="sc">6.2</span></div>
+    <div class="rr"><span class="n">8</span><span class="av">VL</span><span class="nm">Victor Lindqvist-Montgomery</span><span class="track"><i class="cau" style="width:58%"></i></span><span class="sc">5.8</span></div>
+    <div class="rr unr"><span class="n">–</span><span class="av">SW</span><span class="nm">Sam Wu</span><span class="tiny">4 of 10 calls</span><span class="sc">–</span></div>
+   </div>
+   <span class="cav">A guide for coaching, not a verdict: the transcript can mishear, and some calls cannot be won.</span>
+  </div>
+  <div class="main" style="overflow:hidden">
+   <div class="grid g3">
+    <div class="pc"><span class="rank g1">#1</span><div class="hd"><span class="av">MO</span><div style="min-width:0"><div class="nm">Maya Ortiz</div><div class="rl">Dispatcher · Lakeview</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-linecap="round" stroke-dasharray="142 163"/></svg><b>8.7</b></div>
+      <div style="flex:1;min-width:0"><div class="trend up">▲ 0.4 vs last 30 days</div><div class="tiny">46 scored calls · 61% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,18 14,16 28,17 42,12 56,11 70,9 84,8 100,6" fill="none" stroke="#16662d" stroke-width="2"/></svg></div></div>
+     <div class="dots" title="the seven checks"><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="h"></i><i class="y"></i></div></div>
+    <div class="pc"><span class="rank g2">#2</span><div class="hd"><span class="av">DR</span><div style="min-width:0"><div class="nm">Daniel Reyes</div><div class="rl">Dispatcher · Northside</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-linecap="round" stroke-dasharray="136 163"/></svg><b>8.3</b></div>
+      <div style="flex:1;min-width:0"><div class="trend fl">— same as last 30 days</div><div class="tiny">58 scored calls · 55% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,9 14,10 28,8 42,9 56,10 70,8 84,9 100,9" fill="none" stroke="#16662d" stroke-width="2"/></svg></div></div>
+     <div class="dots"><i class="y"></i><i class="y"></i><i class="h"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i></div></div>
+    <div class="pc"><span class="rank g3">#3</span><div class="hd"><span class="av">PN</span><div style="min-width:0"><div class="nm">Priya Nair</div><div class="rl">Remote Dispatcher · Capitol</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-linecap="round" stroke-dasharray="129 163"/></svg><b>7.9</b></div>
+      <div style="flex:1;min-width:0"><div class="trend up">▲ 0.2</div><div class="tiny">31 scored calls · 52% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,14 14,15 28,13 42,13 56,12 70,12 84,11 100,10" fill="none" stroke="#00708f" stroke-width="2"/></svg></div></div>
+     <div class="dots"><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="h"></i><i class="h"></i><i class="y"></i></div></div>
+    <div class="pc"><span class="rank">#4</span><div class="hd"><span class="av">TB</span><div style="min-width:0"><div class="nm">Tom Becker</div><div class="rl">Dispatcher · Lakeview</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-linecap="round" stroke-dasharray="121 163"/></svg><b>7.4</b></div>
+      <div style="flex:1;min-width:0"><div class="trend dn">▼ 0.3</div><div class="tiny">40 scored calls · 47% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,8 14,9 28,10 42,12 56,11 70,13 84,14 100,13" fill="none" stroke="#00708f" stroke-width="2"/></svg></div></div>
+     <div class="dots"><i class="y"></i><i class="h"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="h"></i><i class="h"></i></div></div>
+    <div class="pc"><span class="rank">#5</span><div class="hd"><span class="av">LF</span><div style="min-width:0"><div class="nm">Lena Fischer</div><div class="rl">Remote Dispatcher · Northside</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-linecap="round" stroke-dasharray="116 163"/></svg><b>7.1</b></div>
+      <div style="flex:1;min-width:0"><div class="trend up">▲ 0.1</div><div class="tiny">22 scored calls · 45% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,15 14,14 28,15 42,14 56,13 70,14 84,13 100,13" fill="none" stroke="#00708f" stroke-width="2"/></svg></div></div>
+     <div class="dots"><i class="y"></i><i class="y"></i><i class="h"></i><i class="y"></i><i class="h"></i><i class="h"></i><i class="y"></i></div></div>
+    <div class="pc"><span class="rank">#6</span><div class="hd"><span class="av">OH</span><div style="min-width:0"><div class="nm">Omar Haddad</div><div class="rl">Dispatcher · Capitol</div></div></div>
+     <div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-linecap="round" stroke-dasharray="108 163"/></svg><b>6.6</b></div>
+      <div style="flex:1;min-width:0"><div class="trend up">▲ 0.7 <span class="badge">Most improved</span></div><div class="tiny">35 scored calls · 41% booked</div>
+      <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,22 14,21 28,19 42,18 56,16 70,15 84,13 100,12" fill="none" stroke="#00708f" stroke-width="2"/></svg></div></div>
+     <div class="dots"><i class="y"></i><i class="h"></i><i class="h"></i><i class="y"></i><i class="y"></i><i class="h"></i><i class="h"></i></div></div>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<div class="lab">1 · a card opened</div>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Reports</div>
+ <div class="tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span class="on">Scoring</span><span>Marketing</span><span>Meta</span><span>Thumbtack</span></div>
+ <div class="bar2"><span class="back">← All people</span><span class="sp"></span><span class="drop">📅 Last 30 days ▾</span></div>
+ <div class="cols">
+  <div class="card" style="width:330px;flex:0 0 auto"><h3>Ranking</h3>
+   <div class="rlist">
+    <div class="rr" style="background:var(--pric);border-radius:8px;padding:0 4px"><span class="n">1</span><span class="av">MO</span><span class="nm">Maya Ortiz</span><span class="track"><i class="ok" style="width:87%"></i></span><span class="sc">8.7</span></div>
+    <div class="rr"><span class="n">2</span><span class="av">DR</span><span class="nm">Daniel Reyes</span><span class="track"><i class="ok" style="width:83%"></i></span><span class="sc">8.3</span></div>
+    <div class="rr"><span class="n">3</span><span class="av">PN</span><span class="nm">Priya Nair</span><span class="track"><i style="width:79%"></i></span><span class="sc">7.9</span></div>
+    <div class="rr"><span class="n">4</span><span class="av">TB</span><span class="nm">Tom Becker</span><span class="track"><i style="width:74%"></i></span><span class="sc">7.4</span></div>
+    <div class="rr"><span class="n">5</span><span class="av">LF</span><span class="nm">Lena Fischer</span><span class="track"><i style="width:71%"></i></span><span class="sc">7.1</span></div>
+    <div class="rr"><span class="n">6</span><span class="av">OH</span><span class="nm">Omar Haddad</span><span class="track"><i style="width:66%"></i></span><span class="sc">6.6</span></div>
+    <div class="rr"><span class="n">7</span><span class="av">GK</span><span class="nm">Grace Kim</span><span class="track"><i class="cau" style="width:62%"></i></span><span class="sc">6.2</span></div>
+    <div class="rr"><span class="n">8</span><span class="av">VL</span><span class="nm">Victor Lindqvist-Montgomery</span><span class="track"><i class="cau" style="width:58%"></i></span><span class="sc">5.8</span></div>
+   </div>
+  </div>
+  <div class="main" style="flex-direction:row;gap:12px">
+   <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:12px">
+    <div class="card" style="flex-direction:row;align-items:center;gap:16px">
+     <div class="ring big"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="5"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="5" stroke-linecap="round" stroke-dasharray="142 163"/></svg><b>8.7</b></div>
+     <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><div style="font-size:18px;font-weight:800">Maya Ortiz <span class="rank g1" style="position:static">#1 of 8</span></div>
+      <div class="tiny">Dispatcher · Lakeview · 46 scored calls in the last 30 days</div>
+      <div class="bar2"><span class="trend up">▲ 0.4 vs the 30 days before</span><span class="pill p-ok">61% booked · team 48%</span><span class="pill p-neu">Workiz 82 / 100</span></div></div>
+    </div>
+    <div class="card"><h3>Score by week</h3>
+     <svg class="line" viewBox="0 0 400 120" preserveAspectRatio="none"><line x1="0" y1="48" x2="400" y2="48" stroke="#5b6672" stroke-dasharray="4 4" stroke-width="1" opacity=".5"/><text x="4" y="44" font-size="9" fill="#5b6672">team 7.6</text><polyline points="0,62 57,58 114,55 171,44 228,40 285,36 342,30 400,26" fill="none" stroke="#16662d" stroke-width="2.5"/><g fill="#16662d"><circle cx="0" cy="62" r="3"/><circle cx="57" cy="58" r="3"/><circle cx="114" cy="55" r="3"/><circle cx="171" cy="44" r="3"/><circle cx="228" cy="40" r="3"/><circle cx="285" cy="36" r="3"/><circle cx="342" cy="30" r="3"/><circle cx="400" cy="26" r="3"/></g></svg>
+     <div class="bar2 tiny"><span>Aug 24</span><span class="sp"></span><span>Oct 12</span></div></div>
+    <div class="card"><h3>The seven checks <span class="tiny" style="font-weight:400">· the mark is the team</span></h3>
+     <div class="chk"><span>Greeted with the company name</span><span class="track"><i class="ok" style="width:98%"></i><u style="left:90%"></u></span><span class="pct">98%</span></div>
+     <div class="chk"><span>Got the caller's name</span><span class="track"><i class="ok" style="width:95%"></i><u style="left:86%"></u></span><span class="pct">95%</span></div>
+     <div class="chk"><span>Got the address</span><span class="track"><i class="ok" style="width:91%"></i><u style="left:84%"></u></span><span class="pct">91%</span></div>
+     <div class="chk"><span>Asked what the problem is</span><span class="track"><i class="ok" style="width:96%"></i><u style="left:88%"></u></span><span class="pct">96%</span></div>
+     <div class="chk"><span>Offered a time</span><span class="track"><i class="ok" style="width:88%"></i><u style="left:79%"></u></span><span class="pct">88%</span></div>
+     <div class="chk"><span>Explained the price</span><span class="track"><i class="cau" style="width:72%"></i><u style="left:64%"></u></span><span class="pct">72%</span></div>
+     <div class="chk"><span>Asked to book</span><span class="track"><i class="ok" style="width:84%"></i><u style="left:76%"></u></span><span class="pct">84%</span></div>
+    </div>
+   </div>
+   <div style="width:360px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px">
+    <div class="ai"><div class="hd"><span class="mk">AI</span>Grok's read of Maya's calls<span class="sp"></span><span class="seg" style="font-weight:600"><span>Daily</span><span class="on">Weekly</span></span></div><span class="tiny">Week of Oct 6 · from 46 calls · ▲ better than the week before</span>
+     <p>Maya runs a tidy call: name, address, then the problem, and callers rarely repeat themselves. Price is where her calls stall.</p><p><b>Strengths:</b> opens with the company name every time; gets the address before the problem.</p>
+     <p><b>Work on:</b> say the visit fee before offering times (13 of 46 calls); ask for the gate code before ending.</p>
+     <p><b>Try:</b> "The inspection is $89 and it goes toward the work. I have Thursday at 10 or 2."</p>
+    </div>
+    <div class="card"><h3>To improve, from her calls</h3>
+     <div class="srow"><span class="m">"Confirm the gate code before ending the call."</span><span class="w">Oct 11</span></div>
+     <div class="srow"><span class="m">"Say the visit fee before the time slots."</span><span class="w">Oct 9</span></div>
+     <div class="srow"><span class="m">"Ask whether the chimney has a cap."</span><span class="w">Oct 6</span></div>
+     <div class="foot"><span class="btn sm">Her calls in Performance →</span></div>
+    </div>
+    <span class="cav">Scored by AI from the transcript. A guide for coaching, not a verdict: the transcript can mishear, and some calls cannot be won.</span>
+   </div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────── Desktop 2 ───────────── -->
+<h2><span class="n">2</span> Podium, then the cards</h2>
+<p class="cap">The top three stand on a podium with the team's figures beside them; every card sits below in ranked order. A card opens its detail in a panel on the right of the tab, over the cards.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page" style="position:relative">
+ <div class="t">Reports</div>
+ <div class="tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span class="on">Scoring</span><span>Marketing</span><span>Meta</span><span>Thumbtack</span></div>
+ <div class="bar2"><span class="drop">📅 Last 30 days ▾</span><span class="drop">All branches ▾</span><span class="sp"></span><span class="tiny">Ranked after 10 scored calls</span></div>
+ <div style="display:flex;gap:12px">
+  <div class="card" style="flex:0 0 380px"><h3>Top three</h3>
+   <div class="pod">
+    <div><span class="av">DR</span><span class="nm">Daniel Reyes</span><span class="step s2">8.3</span></div>
+    <div><span class="av">MO</span><span class="nm">Maya Ortiz</span><span class="step s1">8.7</span></div>
+    <div><span class="av">PN</span><span class="nm">Priya Nair</span><span class="step s3">7.9</span></div>
+   </div></div>
+  <div class="tiles" style="flex:1;grid-template-columns:repeat(2,minmax(0,1fr))">
+   <div class="tile"><span class="k">Team score</span><span class="v">7.6 <span class="trend up">▲ 0.3</span></span><span class="s">412 scored calls</span></div>
+   <div class="tile"><span class="k">Most improved</span><span class="v">Omar Haddad</span><span class="s">5.9 → 6.6</span></div>
+   <div class="tile"><span class="k">Weakest check</span><span class="v">Explained the price</span><span class="s">64% of calls</span></div>
+   <div class="tile"><span class="k">Not ranked yet</span><span class="v">1</span><span class="s">Sam Wu · 4 of 10 calls</span></div>
+  </div>
+ </div>
+ <div class="grid">
+  <div class="pc"><span class="rank">#4</span><div class="hd"><span class="av">TB</span><div style="min-width:0"><div class="nm">Tom Becker</div><div class="rl">Dispatcher · Lakeview</div></div></div><div class="mid"><div class="ring sm"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="7"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="7" stroke-dasharray="121 163"/></svg><b>7.4</b></div><div><div class="trend dn">▼ 0.3</div><div class="tiny">40 calls</div></div></div></div>
+  <div class="pc"><span class="rank">#5</span><div class="hd"><span class="av">LF</span><div style="min-width:0"><div class="nm">Lena Fischer</div><div class="rl">Remote Dispatcher · Northside</div></div></div><div class="mid"><div class="ring sm"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="7"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="7" stroke-dasharray="116 163"/></svg><b>7.1</b></div><div><div class="trend up">▲ 0.1</div><div class="tiny">22 calls</div></div></div></div>
+  <div class="pc sel"><span class="rank">#6</span><div class="hd"><span class="av">OH</span><div style="min-width:0"><div class="nm">Omar Haddad</div><div class="rl">Dispatcher · Capitol</div></div></div><div class="mid"><div class="ring sm"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="7"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="7" stroke-dasharray="108 163"/></svg><b>6.6</b></div><div><div class="trend up">▲ 0.7</div><div class="tiny">35 calls</div></div></div></div>
+  <div class="pc"><span class="rank">#7</span><div class="hd"><span class="av">GK</span><div style="min-width:0"><div class="nm">Grace Kim</div><div class="rl">Remote Dispatcher · Capitol</div></div></div><div class="mid"><div class="ring sm"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="7"/><circle cx="30" cy="30" r="26" fill="none" stroke="#e9c27a" stroke-width="7" stroke-dasharray="101 163"/></svg><b>6.2</b></div><div><div class="trend fl">—</div><div class="tiny">19 calls</div></div></div></div>
+ </div>
+ <div class="panel" style="width:420px">
+  <div class="phd"><span class="av">OH</span><b>Omar Haddad</b><span class="rank" style="position:static">#6 of 8</span><span class="sp"></span><span>✕</span></div>
+  <div class="pbd">
+   <div style="display:flex;align-items:center;gap:14px"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="108 163"/></svg><b>6.6</b></div><div><div class="trend up">▲ 0.7 · most improved</div><div class="tiny">35 scored calls · 41% booked · team 48%</div></div></div>
+   <div class="ai"><div class="hd"><span class="mk">AI</span>Grok's read<span class="sp"></span><span class="tiny">from 35 calls</span></div><p><b>Better:</b> he now gets the address on almost every call (52% → 89%).</p><p><b>Work on:</b> asking to book. He explains the price well, then waits for the caller to suggest a day.</p></div>
+   <div class="chk"><span>Asked to book</span><span class="track"><i class="cau" style="width:48%"></i><u style="left:76%"></u></span><span class="pct">48%</span></div>
+   <div class="chk"><span>Explained the price</span><span class="track"><i class="ok" style="width:80%"></i><u style="left:64%"></u></span><span class="pct">80%</span></div>
+   <div class="chk"><span>Got the address</span><span class="track"><i class="ok" style="width:89%"></i><u style="left:84%"></u></span><span class="pct">89%</span></div>
+   <span class="tiny">+ four more checks · his calls in Performance →</span>
+   <span class="cav">A guide for coaching, not a verdict.</span>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────────── Desktop 3 ───────────── -->
+<h2><span class="n">3</span> A card wall that opens in place</h2>
+<p class="cap">No separate ranking: the cards themselves are the ranking, biggest score first, three to a row. A card opens into a wide row under its own row of cards (score, the seven checks, Grok's read), and the cards close up around it again.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Reports</div>
+ <div class="tabs"><span>Reports</span><span>Report Builder</span><span>Performance</span><span class="on">Scoring</span><span>Marketing</span><span>Meta</span><span>Thumbtack</span></div>
+ <div class="bar2"><span class="drop">📅 Last 30 days ▾</span><span class="drop">All branches ▾</span><span class="sp"></span><span class="pill p-neu">Team 7.6 ▲ 0.3</span><span class="pill p-neu">412 scored calls</span></div>
+ <div class="grid g3">
+  <div class="pc sel"><span class="rank g1">#1</span><div class="hd"><span class="av">MO</span><div style="min-width:0"><div class="nm">Maya Ortiz</div><div class="rl">Dispatcher · Lakeview</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-dasharray="142 163"/></svg><b>8.7</b></div><div><div class="trend up">▲ 0.4</div><div class="tiny">46 calls · 61% booked</div></div></div></div>
+  <div class="pc"><span class="rank g2">#2</span><div class="hd"><span class="av">DR</span><div style="min-width:0"><div class="nm">Daniel Reyes</div><div class="rl">Dispatcher · Northside</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-dasharray="136 163"/></svg><b>8.3</b></div><div><div class="trend fl">—</div><div class="tiny">58 calls · 55% booked</div></div></div></div>
+  <div class="pc"><span class="rank g3">#3</span><div class="hd"><span class="av">PN</span><div style="min-width:0"><div class="nm">Priya Nair</div><div class="rl">Remote Dispatcher · Capitol</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="129 163"/></svg><b>7.9</b></div><div><div class="trend up">▲ 0.2</div><div class="tiny">31 calls · 52% booked</div></div></div></div>
+  <div class="flip">
+   <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div class="ring big"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="5"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="5" stroke-dasharray="142 163"/></svg><b>8.7</b></div><span class="tiny">46 scored calls</span><span class="pill p-neu">Workiz 82 / 100</span></div>
+   <div style="display:flex;flex-direction:column;gap:2px"><div class="b" style="margin-bottom:4px">The seven checks</div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Greeted</span><span class="track"><i class="ok" style="width:98%"></i><u style="left:90%"></u></span><span class="pct">98%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Got the name</span><span class="track"><i class="ok" style="width:95%"></i><u style="left:86%"></u></span><span class="pct">95%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Got the address</span><span class="track"><i class="ok" style="width:91%"></i><u style="left:84%"></u></span><span class="pct">91%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Asked the problem</span><span class="track"><i class="ok" style="width:96%"></i><u style="left:88%"></u></span><span class="pct">96%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Offered a time</span><span class="track"><i class="ok" style="width:88%"></i><u style="left:79%"></u></span><span class="pct">88%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Explained price</span><span class="track"><i class="cau" style="width:72%"></i><u style="left:64%"></u></span><span class="pct">72%</span></div>
+    <div class="chk" style="grid-template-columns:120px minmax(0,1fr) 36px"><span>Asked to book</span><span class="track"><i class="ok" style="width:84%"></i><u style="left:76%"></u></span><span class="pct">84%</span></div>
+   </div>
+   <div class="ai"><div class="hd"><span class="mk">AI</span>Grok's read<span class="sp"></span><span class="tiny">from 46 calls</span></div><p><b>Strong at:</b> openings and getting the address first.</p><p><b>Work on:</b> saying the visit fee before the time slots: 13 of 46 calls.</p><span class="cav">A guide for coaching, not a verdict.</span></div>
+  </div>
+  <div class="pc"><span class="rank">#4</span><div class="hd"><span class="av">TB</span><div style="min-width:0"><div class="nm">Tom Becker</div><div class="rl">Dispatcher · Lakeview</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="121 163"/></svg><b>7.4</b></div><div><div class="trend dn">▼ 0.3</div><div class="tiny">40 calls</div></div></div></div>
+  <div class="pc"><span class="rank">#5</span><div class="hd"><span class="av">LF</span><div style="min-width:0"><div class="nm">Lena Fischer</div><div class="rl">Remote Dispatcher · Northside</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="116 163"/></svg><b>7.1</b></div><div><div class="trend up">▲ 0.1</div><div class="tiny">22 calls</div></div></div></div>
+  <div class="pc"><span class="rank">#6</span><div class="hd"><span class="av">OH</span><div style="min-width:0"><div class="nm">Omar Haddad</div><div class="rl">Dispatcher · Capitol</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="108 163"/></svg><b>6.6</b></div><div><div class="trend up">▲ 0.7</div><div class="tiny">35 calls</div></div></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────────── Phones ───────────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> Phone</h2>
+<p class="cap"><b>4</b> (recommended): the team figure, then a card per person in ranked order; a tap opens the person in the tab with a back arrow (second phone). <b>5</b>: the ranking as a list of bars, a tap opening the same detail. <b>6</b>: one big card at a time, swiped, with the ranking strip above it.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · cards <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Performance</span><span class="on">Scoring</span><span>Marketing</span></div>
+   <div class="bar2"><span class="drop" style="height:32px;font-size:12px">📅 Last 30 days ▾</span><span class="drop" style="height:32px;font-size:12px">All branches ▾</span></div>
+   <div class="tile"><span class="k">Team score</span><span class="v">7.6 <span class="trend up">▲ 0.3</span></span><span class="s">412 scored calls · ranked after 10</span></div>
+   <div class="pc"><span class="rank g1">#1</span><div class="hd"><span class="av">MO</span><div style="min-width:0"><div class="nm">Maya Ortiz</div><div class="rl">Dispatcher · Lakeview</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-dasharray="142 163"/></svg><b>8.7</b></div><div style="flex:1"><div class="trend up">▲ 0.4</div><div class="tiny">46 calls · 61% booked</div><div class="dots" style="margin-top:4px"><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="h"></i><i class="y"></i></div></div></div></div>
+   <div class="pc"><span class="rank g2">#2</span><div class="hd"><span class="av">DR</span><div style="min-width:0"><div class="nm">Daniel Reyes</div><div class="rl">Dispatcher · Northside</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-dasharray="136 163"/></svg><b>8.3</b></div><div style="flex:1"><div class="trend fl">—</div><div class="tiny">58 calls · 55% booked</div><div class="dots" style="margin-top:4px"><i class="y"></i><i class="y"></i><i class="h"></i><i class="y"></i><i class="y"></i><i class="y"></i><i class="y"></i></div></div></div></div>
+   <div class="pc"><span class="rank g3">#3</span><div class="hd"><span class="av">PN</span><div style="min-width:0"><div class="nm">Priya Nair</div><div class="rl">Remote Dispatcher · Capitol</div></div></div><div class="mid"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#00708f" stroke-width="6" stroke-dasharray="129 163"/></svg><b>7.9</b></div><div style="flex:1"><div class="trend up">▲ 0.2</div><div class="tiny">31 calls · 52% booked</div></div></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · a person opened</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <span class="back">← All people</span>
+   <div style="display:flex;align-items:center;gap:12px"><div class="ring"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="6"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="6" stroke-dasharray="142 163"/></svg><b>8.7</b></div><div><div class="b" style="font-size:15px">Maya Ortiz</div><div class="tiny">#1 of 8 · 46 calls · ▲ 0.4</div></div></div>
+   <div class="ai"><div class="hd"><span class="mk">AI</span>Grok's read</div><p><b>Strong at:</b> openings, and the address before the problem.</p><p><b>Work on:</b> the price before the time slots (13 of 46 calls).</p></div>
+   <div class="card" style="gap:4px;padding:10px 12px">
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Greeted</span><span class="track"><i class="ok" style="width:98%"></i><u style="left:90%"></u></span><span class="pct">98%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Got the name</span><span class="track"><i class="ok" style="width:95%"></i><u style="left:86%"></u></span><span class="pct">95%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Got the address</span><span class="track"><i class="ok" style="width:91%"></i><u style="left:84%"></u></span><span class="pct">91%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Asked the problem</span><span class="track"><i class="ok" style="width:96%"></i><u style="left:88%"></u></span><span class="pct">96%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Offered a time</span><span class="track"><i class="ok" style="width:88%"></i><u style="left:79%"></u></span><span class="pct">88%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Explained price</span><span class="track"><i class="cau" style="width:72%"></i><u style="left:64%"></u></span><span class="pct">72%</span></div>
+    <div class="chk" style="grid-template-columns:110px minmax(0,1fr) 34px"><span>Asked to book</span><span class="track"><i class="ok" style="width:84%"></i><u style="left:76%"></u></span><span class="pct">84%</span></div>
+   </div>
+   <span class="cav">A guide for coaching, not a verdict.</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · ranking list</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Performance</span><span class="on">Scoring</span><span>Marketing</span></div>
+   <div class="pod" style="padding-top:8px">
+    <div style="width:84px"><span class="av">DR</span><span class="nm">Daniel</span><span class="step s2">8.3</span></div>
+    <div style="width:84px"><span class="av">MO</span><span class="nm">Maya</span><span class="step s1">8.7</span></div>
+    <div style="width:84px"><span class="av">PN</span><span class="nm">Priya</span><span class="step s3">7.9</span></div>
+   </div>
+   <div class="lst">
+    <div class="rr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">4</span><span class="av">TB</span><span class="nm">Tom Becker</span><span class="track"><i style="width:74%"></i></span><span class="sc">7.4</span></div>
+    <div class="rr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">5</span><span class="av">LF</span><span class="nm">Lena Fischer</span><span class="track"><i style="width:71%"></i></span><span class="sc">7.1</span></div>
+    <div class="rr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">6</span><span class="av">OH</span><span class="nm">Omar Haddad</span><span class="track"><i style="width:66%"></i></span><span class="sc">6.6</span></div>
+    <div class="rr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">7</span><span class="av">GK</span><span class="nm">Grace Kim</span><span class="track"><i class="cau" style="width:62%"></i></span><span class="sc">6.2</span></div>
+    <div class="rr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">8</span><span class="av">VL</span><span class="nm">Victor Lindqvist-Montgomery</span><span class="track"><i class="cau" style="width:58%"></i></span><span class="sc">5.8</span></div>
+    <div class="rr unr" style="grid-template-columns:18px 26px minmax(0,1fr) 70px 30px"><span class="n">–</span><span class="av">SW</span><span class="nm">Sam Wu</span><span class="tiny">4 of 10</span><span class="sc">–</span></div>
+   </div>
+   <span class="cav">A guide for coaching, not a verdict.</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · one card at a time</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Reports</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Performance</span><span class="on">Scoring</span><span>Marketing</span></div>
+   <div style="display:flex;gap:6px;overflow:hidden"><span class="chip"><span class="av">MO</span>8.7</span><span class="chip" style="background:var(--neuc);color:var(--neu)"><span class="av">DR</span>8.3</span><span class="chip" style="background:var(--neuc);color:var(--neu)"><span class="av">PN</span>7.9</span><span class="chip" style="background:var(--neuc);color:var(--neu)"><span class="av">TB</span>7.4</span></div>
+   <div class="pc" style="padding:16px;gap:10px"><span class="rank g1">#1</span><div class="hd"><span class="av">MO</span><div><div class="nm">Maya Ortiz</div><div class="rl">Dispatcher · Lakeview</div></div></div>
+    <div style="display:flex;justify-content:center"><div class="ring big"><svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="26" fill="none" stroke="#e8ecf0" stroke-width="5"/><circle cx="30" cy="30" r="26" fill="none" stroke="#16662d" stroke-width="5" stroke-dasharray="142 163"/></svg><b>8.7</b></div></div>
+    <div style="text-align:center" class="trend up">▲ 0.4 · 46 calls · 61% booked</div>
+    <div class="ai"><div class="hd"><span class="mk">AI</span>Grok's read</div><p><b>Work on:</b> the price before the time slots.</p></div>
+    <span class="btn sm">The seven checks ▾</span>
+   </div>
+   <div class="pager"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+   <span class="cav">A guide for coaching, not a verdict.</span>
+  </div></div></div>
+</div>
+</div>

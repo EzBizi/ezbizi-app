@@ -99,6 +99,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-training-tabs'),
             labels: [for (final tab in _tabs) (tab.$1, tab.$2)],
             selected: _tab,
             onSelected: _select,
