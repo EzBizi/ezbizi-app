@@ -3,9 +3,12 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\User;
 use App\Observers\JobThumbtackObserver;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -23,6 +26,7 @@ use App\Support\Social\MetaMessageReplies;
 use App\Support\Social\WhatsAppReplies;
 use App\Support\Social\MetaMessages;
 use App\Support\Subscriptions\SubscriptionGuard;
+use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteChatReplies;
 use Aws\BedrockRuntime\BedrockRuntimeClient;
@@ -235,6 +239,12 @@ class AppServiceProvider extends ServiceProvider
          * right when a person clicks and wrong when a rule does.
          */
         Job::observe(JobThumbtackObserver::class);
+
+        // Task Board: every company, franchise and person gets their own board
+        // the moment they exist (ezbizi:backfill-task-boards covers older rows).
+        foreach ([Company::class, Franchise::class, User::class] as $owner) {
+            $owner::created(fn ($model) => app(TaskBoards::class)->ensureFor($model));
+        }
 
         /*
          * `attachments.attachable_type` holds `jobs`, not `App\Models\Job`.

@@ -805,6 +805,16 @@ Route::prefix('v1')
 
         Route::apiResource('jobs', JobsController::class);
 
+        // Task Board (UI queue 80). Visibility and writes are decided per board
+        // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
+        Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
+        Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
+        Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
+        Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
+        Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
+        Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
+
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.
         Route::post('jobs/{job}/lines', [JobLinesController::class, 'store']);

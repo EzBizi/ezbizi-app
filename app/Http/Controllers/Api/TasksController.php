@@ -1,0 +1,171 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Automation;
+use App\Models\Customer;
+use App\Models\Job;
+use App\Models\Lead;
+use App\Models\Task;
+use App\Models\TaskBoard;
+use App\Models\TaskUpdate;
+use App\Models\User;
+use App\Models\Vehicle;
+use App\Support\Tasks\TaskWriter;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+
+/** Task Board tasks. Every write goes through TaskWriter. */
+class TasksController extends Controller
+{
+    public function __construct(private readonly TaskWriter $writer) {}
+
+    public function show(Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $task->load(['assignee:id,name', 'creator:id,name', 'updates.user:id,name'])->loadCount('updates');
+
+        return response()->json(['data' => self::present($task) + [
+            'updates' => $task->updates->map(fn (TaskUpdate $u) => [
+                'id' => $u->id,
+                'body' => $u->body,
+                'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
+                'created_at' => $u->created_at?->toIso8601String(),
+            ])->all(),
+        ]]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $input = $request->validate(['board_id' => ['required', 'uuid']] + $this->rules(required: true));
+        $board = TaskBoard::query()->findOrFail($input['board_id']);
+        $this->authorize('update', $board);
+        $this->checkReferences($input);
+
+        $task = $this->writer->create($board, $this->toColumns($input), $request->user());
+
+        return response()->json(['data' => self::present($task->fresh(['assignee', 'creator'])->loadCount('updates'))], 201);
+    }
+
+    public function update(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('update', $task);
+        $input = $request->validate($this->rules(required: false));
+        $this->checkReferences($input);
+
+        $task = $this->writer->update($task, $this->toColumns($input), $request->user());
+
+        return response()->json(['data' => self::present($task->fresh(['assignee', 'creator'])->loadCount('updates'))]);
+    }
+
+    public function destroy(Request $request, Task $task): Response
+    {
+        $this->authorize('delete', $task);
+        $this->writer->delete($task, $request->user());
+
+        return response()->noContent();
+    }
+
+    public function storeUpdate(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('update', $task);
+        $input = $request->validate(['body' => ['required', 'string', 'max:5000']]);
+        $update = $this->writer->comment($task, $request->user(), $input['body']);
+
+        return response()->json(['data' => [
+            'id' => $update->id,
+            'body' => $update->body,
+            'author' => ['id' => $request->user()->id, 'name' => $request->user()->name],
+            'created_at' => $update->created_at?->toIso8601String(),
+        ]], 201);
+    }
+
+    public static function present(Task $task): array
+    {
+        $about = $task->aboutRecord();
+
+        return [
+            'id' => $task->id,
+            'board_id' => $task->board_id,
+            'group_id' => $task->group_id,
+            'title' => $task->title,
+            'status' => $task->status,
+            'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
+            'due_on' => $task->due_on?->toDateString(),
+            'completed_at' => $task->completed_at?->toIso8601String(),
+            'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
+            'updates_count' => (int) ($task->updates_count ?? 0),
+            'created_by' => match (true) {
+                $task->created_by_automation_id !== null => [
+                    'type' => 'automation',
+                    'label' => Automation::query()->find($task->created_by_automation_id)?->name ?? 'An automation',
+                ],
+                $task->creator !== null => ['type' => 'user', 'label' => $task->creator->name],
+                default => null,
+            },
+        ];
+    }
+
+    private static function aboutLabel(Model $about): string
+    {
+        return match (true) {
+            $about instanceof Job => 'Job #'.$about->number,
+            $about instanceof Lead => $about->contact_name ?: 'A lead',
+            $about instanceof Customer => $about->name ?: 'A customer',
+            $about instanceof Vehicle => trim("{$about->year} {$about->make} {$about->model}") ?: ($about->plate ?? 'A vehicle'),
+            default => '',
+        };
+    }
+
+    private function rules(bool $required): array
+    {
+        $sometimes = $required ? [] : ['sometimes'];
+
+        return [
+            'title' => [...$sometimes, 'required', 'string', 'max:255'],
+            'group_id' => ['sometimes', 'nullable', 'uuid'],
+            'status' => ['sometimes', 'nullable', Rule::in(array_keys(Task::STATUSES))],
+            'assignee_user_id' => ['sometimes', 'nullable', 'uuid'],
+            'due_on' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'about' => ['sometimes', 'nullable', 'array'],
+            'about.type' => ['required_with:about', Rule::in(array_keys(Task::ABOUT))],
+            'about.id' => ['required_with:about', 'uuid'],
+            'priority' => ['sometimes', 'nullable', 'string', 'max:16'],
+            'estimate_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000'],
+        ];
+    }
+
+    /** Assignee and "about" must be records of this organization (tenant-scoped finds). */
+    private function checkReferences(array $input): void
+    {
+        if (! empty($input['assignee_user_id']) && ! User::query()->whereKey($input['assignee_user_id'])->exists()) {
+            throw ValidationException::withMessages(['assignee_user_id' => 'That person is not in this organization.']);
+        }
+
+        if (! empty($input['about'])) {
+            $class = Task::ABOUT[$input['about']['type']];
+            if (! $class::query()->whereKey($input['about']['id'])->exists()) {
+                throw ValidationException::withMessages(['about.id' => 'That record was not found.']);
+            }
+        }
+    }
+
+    private function toColumns(array $input): array
+    {
+        if (array_key_exists('about', $input)) {
+            $input['about_type'] = $input['about']['type'] ?? null;
+            $input['about_id'] = $input['about']['id'] ?? null;
+            unset($input['about']);
+        }
+        if (array_key_exists('status', $input) && $input['status'] === null) {
+            unset($input['status']);
+        }
+        unset($input['board_id']);
+
+        return $input;
+    }
+}

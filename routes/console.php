@@ -400,6 +400,9 @@ Schedule::command('ezbizi:ads-campaign-watch')->hourlyAt(20)->withoutOverlapping
 // once per message, so a rule can warn the dispatchers.
 Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlapping(5);
 
+// Task Board: a task past its due date raises task.overdue, once per task.
+Schedule::command('ezbizi:tasks-overdue')->everyFifteenMinutes()->withoutOverlapping(10);
+
 // A customer who went quiet after the automatic first reply raises
 // lead.follow_up_due once, so a rule can send the one follow-up.
 Schedule::command('ezbizi:leads-follow-up-due')->everyFiveMinutes()->withoutOverlapping(5);
