@@ -27,6 +27,12 @@ final class GrokCli
     private const TIMEOUT = 300;
 
 
+    /** The oldest call or lead AI reads (GROK_AI_SINCE): nothing before it is worth a Grok call. */
+    public static function since(): \Carbon\CarbonImmutable
+    {
+        return \Carbon\CarbonImmutable::parse((string) config('services.grok_cli.since', '2026-10-13'))->startOfDay();
+    }
+
     public static function configured(): bool
     {
         return filled(config('services.grok_cli.home'));

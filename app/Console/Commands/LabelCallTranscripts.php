@@ -34,7 +34,7 @@ class LabelCallTranscripts extends Command
             // read() always sets signals: null means not read yet, including calls
             // 0.0.0410 split by speaker before summaries existed.
             ->whereNull('call_signals')
-            ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
+            ->where('occurred_at', '>=', max(now()->subDays((int) $this->option('days')), GrokCli::since()))
             ->orderByDesc('occurred_at')
             ->limit((int) $this->option('limit'))
             ->get();

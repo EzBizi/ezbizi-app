@@ -33,7 +33,7 @@ class LeadsRead extends Command
         $leads = Lead::query()->withoutGlobalScopes()
             ->whereNull('classification')
             ->where('is_test', false)
-            ->where('received_at', '>=', now()->subDays(3))
+            ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since()))
             // Something said in words: a message, or a call already transcribed.
             ->whereExists(fn ($q) => $q->from('lead_conversations')
                 ->whereColumn('lead_conversations.lead_id', 'leads.id')

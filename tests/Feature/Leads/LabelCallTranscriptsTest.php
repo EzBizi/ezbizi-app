@@ -28,6 +28,7 @@ class LabelCallTranscriptsTest extends TestCase
         $this->t = $this->provisionTenant('A1-Group');
         config()->set('ezbizi.leads_ai_grok', true);
         config()->set('services.grok_cli.home', '/var/lib/ezbizi-grok');
+        config()->set('services.grok_cli.since', now()->subMonth()->toDateString());
     }
 
     private function aCall(): LeadConversation
@@ -204,5 +205,19 @@ class LabelCallTranscriptsTest extends TestCase
             [['speaker' => 'IVR menu', 'text' => 'Press 1 for service.'], ['speaker' => 'IVR menu', 'text' => 'Press 1 for service.']],
             'Press 1 for service. Press 1 for service.',
         ));
+    }
+
+    /** Jose, 2026-10-13: "just new stuff from now on" - nothing before GROK_AI_SINCE is read. */
+    public function test_a_call_before_the_ai_start_date_is_never_read(): void
+    {
+        config()->set('services.grok_cli.since', now()->toDateString());
+        Process::fake();
+        $row = $this->aCall();
+        $this->inTenant($this->t['org'], fn () => $row->forceFill(['occurred_at' => now()->subDays(2)])->save());
+
+        $this->artisan('ezbizi:label-call-transcripts')->assertSuccessful();
+
+        Process::assertNothingRan();
+        $this->assertNull($this->reread($row)->call_signals);
     }
 }
