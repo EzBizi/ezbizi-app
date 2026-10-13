@@ -18,6 +18,7 @@ class VersionHistory {
       date: '13 Oct 2026',
       items: [
         'Walkthroughs: the (?) beside the title on Leads, Jobs, Customers, Scheduling, Dashboard, Work Hours, Communication, Email, Services and Inspection now walks you through each part of the tab.',
+        'Reports: call reasons show Grok\'s reading by default.',
       ],
     ),
     VersionRelease(
