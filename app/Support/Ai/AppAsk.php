@@ -125,9 +125,11 @@ final class AppAsk
                 parse_str(ltrim((string) ($call['query'] ?? ''), '?'), $query);
                 $response = InternalRequest::send($as, 'GET', '/api/v1/'.$path.($query ? '?'.http_build_query($query) : ''));
                 $raw = (string) $response->getContent();
+                // Only JSON reaches Grok: audio, files and pages (an LSA recording) never do.
+                $json = str_contains((string) $response->headers->get('Content-Type'), 'json');
                 $out[$path] = $response->getStatusCode() >= 400
                     ? 'HTTP '.$response->getStatusCode()
-                    : self::cut(self::withoutLocalServices(json_decode($raw, true) ?? $raw));
+                    : ($json ? self::cut(self::withoutLocalServices(json_decode($raw, true) ?? $raw)) : 'not readable here');
             }
 
             return $out;
