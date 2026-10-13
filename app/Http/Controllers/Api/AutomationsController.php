@@ -121,6 +121,7 @@ class AutomationsController extends Controller
         'assign_to_user',
         'task.create',
         'task.assign',
+        'task.move_group',
         'alert.send',
         'lead.text',
         'unassign',
@@ -2108,6 +2109,10 @@ class AutomationsController extends Controller
             ]),
             $type('task.assign', 'Give the task to somebody', true, [
                 $parameter('user_field', 'Give it to', 'person_or_field'),
+            ]),
+            $type('task.move_group', 'Move the task to a group', true, [
+                // A group id on the task's own board; Task Board's recipes fill it.
+                $parameter('group_id', 'Group', 'text'),
             ]),
             $type('assign_to_user', 'Assign to a person', true, [
                 // A PERSON OR A FIELD. It was field-only, which meant a rule
