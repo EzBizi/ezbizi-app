@@ -38,25 +38,61 @@ final class NearbySuggestion
     /** @return array<string, mixed> */
     public function for(ServiceArea $area, string $zip, CarbonImmutable $from): array
     {
-        $franchise = Franchise::query()->find($area->franchise_id);
-        $radius = (float) $this->settings->get(self::RADIUS, $franchise);
-        $span = (int) $this->settings->get(self::DAYS, $franchise);
+        $look = $this->load($area, $from);
         $origin = $this->centre($area->organization_id, $zip);
+        $out = ['radius_miles' => $look['radius'], 'days' => $look['span'], 'origin' => $origin, 'earliest' => null, 'suggested' => null];
 
-        $out = ['radius_miles' => $radius, 'days' => $span, 'origin' => $origin, 'earliest' => null, 'suggested' => null];
-
-        $days = collect($this->openings->days($area, $from, $span))
-            ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
-            ->values();
-
-        if ($days->isEmpty()) {
+        $candidates = $this->candidates($look['days'], $look['jobs'], $origin, $look['radius']);
+        if ($candidates === []) {
             return $out;
         }
 
-        $jobs = $this->openings->jobsBetween($area, $from, $from->addDays($span))
-            ->filter(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null) && (float) $j->latitude != 0.0)
-            ->groupBy(fn (object $j) => substr((string) $j->scheduled_for, 0, 10));
+        $earliest = $candidates[0];
+        $out['earliest'] = $this->shown($earliest);
+        $best = $origin === null ? null : self::best($candidates);
 
+        if ($best !== null) {
+            $out['suggested'] = $this->shown($best) + [
+                'same_as_earliest' => $best['date'] === $earliest['date'] && $best['window'] === $earliest['window'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * What a suggestion weighs, read once so Reschedules can weigh every job
+     * of an area against it without a query per job.
+     *
+     * @return array{radius: float, span: int, days: Collection, jobs: Collection}
+     */
+    public function load(ServiceArea $area, CarbonImmutable $from): array
+    {
+        $franchise = Franchise::query()->find($area->franchise_id);
+        $radius = (float) $this->settings->get(self::RADIUS, $franchise);
+        $span = (int) $this->settings->get(self::DAYS, $franchise);
+
+        return [
+            'radius' => $radius,
+            'span' => $span,
+            'days' => collect($this->openings->days($area, $from, $span))
+                ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
+                ->values(),
+            'jobs' => $this->openings->jobsBetween($area, $from, $from->addDays($span))
+                ->filter(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
+                    && self::inUs((float) $j->latitude, (float) $j->longitude))
+                ->groupBy(fn (object $j) => substr((string) $j->scheduled_for, 0, 10)),
+        ];
+    }
+
+    /**
+     * Every open window, scored against $origin, earliest first.
+     *
+     * @param  ?array{latitude: float, longitude: float}  $origin
+     * @return array<int, array<string, mixed>>
+     */
+    public function candidates(Collection $days, Collection $jobs, ?array $origin, float $radius): array
+    {
         $candidates = [];
         foreach ($days as $d) {
             $here = $this->placed($jobs[$d['date']] ?? collect(), $d['windows'], $origin, $radius);
@@ -83,33 +119,28 @@ final class NearbySuggestion
             }
         }
 
-        $earliest = $candidates[0];
-        $out['earliest'] = $this->shown($earliest);
+        return $candidates;
+    }
 
-        if ($origin === null) {
-            return $out;
-        }
-
-        // The day first (nearby and nearest_miles are per-day), then the window
-        // beside the job within it: gap before date let a later, farther day
-        // win on production (Atlanta, 2026-10-13).
-        $best = collect($candidates)
+    /**
+     * The window to suggest, or null when no day has work nearby. The day
+     * first (nearby and nearest_miles are per-day), then the window beside
+     * the job within it: gap before date let a later, farther day win on
+     * production (Atlanta, 2026-10-13).
+     *
+     * @param  array<int, array<string, mixed>>  $candidates
+     */
+    public static function best(array $candidates): ?array
+    {
+        return collect($candidates)
             ->filter(fn ($c) => $c['nearby'] > 0)
             ->sort(fn ($a, $b) => [-$a['nearby'], $a['nearest_miles'], $a['date'], $a['gap'], $a['window']['start_time']]
                 <=> [-$b['nearby'], $b['nearest_miles'], $b['date'], $b['gap'], $b['window']['start_time']])
             ->first();
-
-        if ($best !== null) {
-            $out['suggested'] = $this->shown($best) + [
-                'same_as_earliest' => $best['date'] === $earliest['date'] && $best['window'] === $earliest['window'],
-            ];
-        }
-
-        return $out;
     }
 
     /** @param  array<string, mixed>  $c */
-    private function shown(array $c): array
+    public function shown(array $c): array
     {
         return array_intersect_key($c, array_flip(['date', 'day', 'window', 'window_index', 'nearby', 'nearest_miles', 'technicians', 'jobs']));
     }
@@ -120,11 +151,12 @@ final class NearbySuggestion
      * @param  array<int, array<string, mixed>>  $windows
      * @param  ?array{latitude: float, longitude: float}  $origin
      */
-    private function placed(Collection $jobs, array $windows, ?array $origin, float $radius): Collection
+    public function placed(Collection $jobs, array $windows, ?array $origin, float $radius): Collection
     {
         return $jobs->map(function (object $j) use ($windows, $origin, $radius) {
             $time = substr((string) $j->scheduled_for, 11, 5);
             $payload = is_string($j->payload ?? null) ? (json_decode($j->payload, true) ?: []) : [];
+            $text = fn (mixed $v) => is_scalar($v) && trim((string) $v) !== '' ? trim((string) $v) : null;
             $window = null;
             foreach ($windows as $i => $w) {
                 if ($time !== '00:00' && $time >= $w['start_time'] && $time < $w['end_time']) {
@@ -147,6 +179,13 @@ final class NearbySuggestion
                     fn ($t) => is_array($t) ? ($t['Name'] ?? null) : null,
                     is_array($payload['Team'] ?? null) ? $payload['Team'] : [],
                 ))),
+                // What a dot on the map says when hovered (Jose, 2026-10-13:
+                // "customer name, type of job, etc").
+                'customer' => $text(trim(($payload['FirstName'] ?? '').' '.($payload['LastName'] ?? ''))) ?? $text($j->contact_name ?? null),
+                'service' => $text($payload['JobType'] ?? null),
+                'number' => $text($payload['SerialId'] ?? null),
+                'status' => ($j->kind ?? null) === 'booking' ? 'Online booking' : ($j->status ?? null),
+                'address' => $text($j->address ?? null) ?? $text($payload['Address'] ?? null),
             ];
         });
     }
@@ -161,12 +200,27 @@ final class NearbySuggestion
         $row = DB::table('workiz_jobs')
             ->where('organization_id', $organizationId)
             ->where('postal_code', 'like', $zip.'%')
-            ->whereNotNull('latitude')->where('latitude', '!=', 0)
+            ->whereBetween('latitude', self::US_LATITUDE)->whereBetween('longitude', self::US_LONGITUDE)
             ->selectRaw('AVG(latitude) lat, AVG(longitude) lng, COUNT(*) n')
             ->first();
 
         return $row === null || (int) $row->n === 0 ? null
             : ['zip' => $zip, 'latitude' => round((float) $row->lat, 5), 'longitude' => round((float) $row->lng, 5)];
+    }
+
+    /**
+     * Workiz writes -1,-1 (and 0,0 elsewhere) for an address it could not
+     * place; on production 16 upcoming jobs sat on -1,-1 and paired with each
+     * other "0 miles apart". A US box (Puerto Rico to Alaska) keeps them out.
+     */
+    private const US_LATITUDE = [17, 72];
+
+    private const US_LONGITUDE = [-180, -64];
+
+    public static function inUs(float $lat, float $lng): bool
+    {
+        return $lat >= self::US_LATITUDE[0] && $lat <= self::US_LATITUDE[1]
+            && $lng >= self::US_LONGITUDE[0] && $lng <= self::US_LONGITUDE[1];
     }
 
     /** Great-circle miles. */
