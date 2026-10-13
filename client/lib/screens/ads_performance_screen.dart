@@ -4,8 +4,12 @@ import '../core/api_client.dart';
 import '../core/job_money.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import '../core/theme.dart';
 import '../widgets/dashboard_chart.dart';
+import '../widgets/date_range_picker.dart';
+import '../widgets/report_grid.dart';
+import 'reports/report_dates.dart';
 
 /// What the Google Ads accounts spent, and what came back for it.
 ///
@@ -536,8 +540,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _header(theme),
-          const SizedBox(height: 12),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => constraints.maxWidth >= 860
@@ -560,33 +562,6 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _header(ThemeData theme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Google Ads', style: theme.textTheme.headlineSmall),
-              Text(
-                'What each connected account spent, and what it produced.',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-        if (_selected != null)
-          IconButton(
-            key: const ValueKey('ads-refresh'),
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Read again from Google',
-            onPressed: _loadingReport ? null : _loadReport,
-          ),
-      ],
     );
   }
 
@@ -747,7 +722,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       return ListView(
         children: [
           _freshness(theme),
-          _rangeChips(theme),
+          _dates(theme),
           const SizedBox(height: 12),
           _rollupCard(theme),
           if (_refused.isNotEmpty) ...[
@@ -786,7 +761,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _freshness(theme),
-              _rangeChips(theme),
+              _dates(theme),
               const SizedBox(height: 12),
               _accountCard(theme, account, currency),
               if ((_report!['channels'] as List?)?.isNotEmpty ?? false) ...[
@@ -847,45 +822,39 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 
-  Widget _rangeChips(ThemeData theme) {
+  /// The date control every Reports tab has (UI queue 87), where this tab
+  /// alone drew preset chips, the dates as raw text and a pop-up calendar.
+  /// Today is still where it opens (Jose, 2026-09-24); any other span is
+  /// asked for by its dates, and Refresh sits at the end of the row.
+  Widget _dates(ThemeData theme) {
     final (from, to) = _window();
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return Row(
       children: [
-        for (var i = 0; i < _ranges.length; i++)
-          ChoiceChip(
-            key: ValueKey('ads-range-$i'),
-            label: Text(_ranges[i].label),
-            selected: _range == i,
-            onSelected: (on) async {
-              if (!on) return;
-              if (_ranges[i].days == null) {
-                // Opens on TODAY rather than empty (Jose, 2026-09-24:
-                // "Custom date select automatically today's date"), and today
-                // is selectable - it could not be while ranges ended yesterday.
-                final now = DateTime.now();
-                final today = DateTime(now.year, now.month, now.day);
-                final picked = await showDateRangePicker(
-                  context: context,
-                  firstDate: today.subtract(const Duration(days: 400)),
-                  lastDate: today,
-                  initialDateRange: _custom ?? DateTimeRange(start: today, end: today),
-                );
-                if (picked == null || !mounted) return;
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: ReportDates(
+              key: ValueKey('ads-dates-${_d(from)}-${_d(to)}'),
+              initial: DateSpan(from, to),
+              today: DateSpan.single(DateTime.now()).from,
+              formats: widget.session.me?.display ?? DisplayFormats.fallback,
+              onChanged: (span) {
                 setState(() {
-                  _custom = picked;
-                  _range = i;
+                  _custom = DateTimeRange(start: span.from, end: span.to);
+                  _range = _ranges.length - 1;
                 });
-              } else {
-                setState(() => _range = i);
-              }
-              _loadReport();
-            },
+                _loadReport();
+              },
+            ),
           ),
-        Text('${_d(from)} to ${_d(to)}', style: theme.textTheme.bodySmall),
+        ),
+        IconButton(
+          key: const ValueKey('ads-refresh'),
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Read again from Google',
+          onPressed: _loadingReport ? null : _loadReport,
+        ),
       ],
     );
   }
@@ -911,8 +880,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             // R.10, the Account level. All five, every time.
             Wrap(
               key: const ValueKey('ads-account-figures'),
-              spacing: 28,
-              runSpacing: 12,
+              spacing: 10,
+              runSpacing: 10,
               children: [
                 _figure(theme, 'Cost', _money(account['cost'], currency)),
                 _figure(theme, 'Clicks', _number(account['clicks'])),
@@ -1003,73 +972,52 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     rows.sort(
       (a, b) => ((b['cost'] as num?) ?? 0).compareTo((a['cost'] as num?) ?? 0),
     );
-    final head = theme.textTheme.labelSmall?.copyWith(
-      fontWeight: FontWeight.w800,
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    Widget cell(String text, {bool end = true, TextStyle? style}) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-      child: Text(
-        text,
-        textAlign: end ? TextAlign.end : TextAlign.start,
-        style: style,
-      ),
-    );
+    num sum(String key) =>
+        rows.fold<num>(0, (t, c) => t + ((c[key] as num?) ?? 0));
+    final spend = sum('cost');
+    final conversions = sum('conversions');
 
-    return Card(
+    return Column(
       key: const ValueKey('ads-channels'),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('By channel', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Table(
-              columnWidths: const {0: FlexColumnWidth(2)},
-              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-              children: [
-                TableRow(
-                  children: [
-                    cell('CHANNEL', end: false, style: head),
-                    cell('SPEND', style: head),
-                    cell('CLICKS', style: head),
-                    cell('CONVERSIONS', style: head),
-                    cell('COST / CONV.', style: head),
-                  ],
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('By channel', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        // The one Reports table (UI queue 87), with the Total it lacked.
+        ReportGrid(
+          columns: const [
+            GridColumn('Channel', pinned: true),
+            GridColumn('Spend', numeric: true, main: true),
+            GridColumn('Clicks', numeric: true, main: true),
+            GridColumn('Conversions', numeric: true, main: true),
+            GridColumn('Cost per conversion', numeric: true),
+          ],
+          rows: [
+            for (final c in rows)
+              [
+                GridCell(
+                  '${c['label'] ?? c['channel']}',
+                  key: ValueKey('ads-channel-${c['channel']}'),
                 ),
-                for (final c in rows)
-                  TableRow(
-                    key: ValueKey('ads-channel-${c['channel']}'),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                      ),
-                    ),
-                    children: [
-                      cell(
-                        '${c['label'] ?? c['channel']}',
-                        end: false,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      cell(_money(c['cost'], currency)),
-                      cell(_number(c['clicks'])),
-                      cell(_number(c['conversions'])),
-                      cell(
-                        c['cost_per_conversion'] == null
-                            ? '—'
-                            : _money(c['cost_per_conversion'], currency),
-                      ),
-                    ],
-                  ),
+                GridCell(_money(c['cost'], currency)),
+                GridCell(_number(c['clicks'])),
+                GridCell(_number(c['conversions'])),
+                c['cost_per_conversion'] == null
+                    ? const GridCell.none()
+                    : GridCell(_money(c['cost_per_conversion'], currency)),
               ],
-            ),
+          ],
+          total: [
+            const GridCell('Total'),
+            GridCell(_money(spend, currency)),
+            GridCell(_number(sum('clicks'))),
+            GridCell(_number(conversions)),
+            conversions > 0
+                ? GridCell(_money(spend / conversions, currency))
+                : const GridCell.none(),
           ],
         ),
-      ),
+      ],
     );
   }
 
@@ -1079,14 +1027,30 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     String value, {
     String? hint,
   }) {
-    final text = Column(
+    // Equal tiles, as every Reports tab's figures (UI queue 87).
+    final text = Container(
+      width: 168,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      ),
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: theme.textTheme.bodySmall),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
             if (hint != null) ...[
               const SizedBox(width: 4),
               Icon(
@@ -1099,11 +1063,15 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         ),
         Text(
           value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
       ],
+      ),
     );
 
     return hint == null ? text : Tooltip(message: hint, child: text);
@@ -1690,6 +1658,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   DataColumn _sortable(String label, String key) {
     return DataColumn(
       label: Text(label),
+      // Figures right-aligned, as in every Reports table (UI queue 87).
+      numeric: key != 'name',
       onSort: (columnIndex, ascending) => _sortOn(key),
     );
   }

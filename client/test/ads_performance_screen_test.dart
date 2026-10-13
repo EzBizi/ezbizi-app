@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ads_performance_screen.dart';
+import 'package:ezbizi_client/widgets/date_range_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -518,21 +519,24 @@ void main() {
     );
   });
 
-  /// Custom opens on today rather than empty - Jose, 2026-09-24.
-  testWidgets('custom opens with today already chosen', (tester) async {
+  /// The dates open on today rather than empty (Jose, 2026-09-24), in the
+  /// date control every Reports tab has now (UI queue 87) instead of the
+  /// preset chips and the pop-up calendar.
+  testWidgets('the dates open with today already chosen', (tester) async {
     await pump(tester, accounts: twoAccounts(), report: report());
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Custom'));
+    await tester.tap(find.byKey(const Key('date-range-button')));
     await tester.pumpAndSettle();
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final dialog = tester.widget<DateRangePickerDialog>(find.byType(DateRangePickerDialog));
+    final panel = tester.widget<DateRangePanel>(find.byType(DateRangePanel));
 
-    expect(dialog.initialDateRange, DateTimeRange(start: today, end: today));
-    expect(dialog.lastDate, today, reason: 'today must be selectable, or it could not be pre-filled');
+    expect(panel.initial, DateSpan(today, today));
+    expect(panel.today, today, reason: 'today must be selectable, or it could not be pre-filled');
+    expect(find.byType(DateRangePickerDialog), findsNothing);
   });
 
   testWidgets('searching the sidebar narrows it and keeps the rest reachable', (
