@@ -17,6 +17,10 @@ use App\Models\InspectionReport;
 use App\Models\WorkizJob;
 use App\Support\Workiz\WorkizJobWriter;
 use App\Models\Job;
+use App\Models\Task;
+use App\Models\TaskBoard;
+use App\Support\Tasks\TaskBoards;
+use App\Support\Tasks\TaskWriter;
 use App\Models\Lead;
 use App\Support\Reports\SendSavedReport;
 use App\Models\SavedReport;
@@ -257,6 +261,9 @@ class ActionRunner
                 'job_applicant' => 'Job applicant',
             ],
         ],
+        Task::class => [
+            'status' => Task::STATUSES,
+        ],
         Vehicle::class => [
             'body_type' => VehicleBodyType::class,
             'fuel_type' => VehicleFuelType::class,
@@ -325,7 +332,7 @@ class ActionRunner
      */
     public static function canChangeStatus(?string $model): bool
     {
-        return $model === Job::class || $model === Vehicle::class;
+        return $model === Job::class || $model === Vehicle::class || $model === Task::class;
     }
 
     /**
@@ -405,7 +412,7 @@ class ActionRunner
 
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
-            'change_status' => $this->changeStatus($action, $event, $subject),
+            'change_status' => $this->changeStatus($action, $event, $subject, $automation),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
             'notify' => $this->notify($action, $event, $subject),
             'notify_administrators' => $this->notifyAdministrators($action, $event, $subject),
@@ -440,6 +447,9 @@ class ActionRunner
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
             'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
+
+            'task.create' => $this->createTask($action, $event, $subject, $automation),
+            'task.assign' => $this->assignTask($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -2256,7 +2266,7 @@ class ActionRunner
      * VehicleStatus::apply so a rule cannot mark a rental sold without the same
      * 422 a person saving would see.
      */
-    private function changeStatus(array $action, AutomationEvent $event, ?Model $subject): array
+    private function changeStatus(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation = null): array
     {
         if ($subject === null) {
             return ['type' => 'change_status', 'ok' => false, 'detail' => 'The record no longer exists.'];
@@ -2277,6 +2287,18 @@ class ActionRunner
             $result['type'] = 'change_status';
 
             return $result;
+        }
+
+        if ($subject instanceof Task) {
+            if (! array_key_exists((string) $value, Task::STATUSES)) {
+                return ['type' => 'change_status', 'ok' => false, 'detail' => "'{$value}' is not a task status."];
+            }
+
+            return $this->onTaskBoard('change_status', $automation, $subject->board, function (User $actor) use ($subject, $value) {
+                app(TaskWriter::class)->update($subject, ['status' => (string) $value], $actor);
+
+                return 'Moved the task to '.Task::STATUSES[(string) $value].'.';
+            });
         }
 
         if (! $subject instanceof Vehicle) {
@@ -3189,5 +3211,103 @@ class ActionRunner
 
         return (string) (is_scalar($a) || $a === null ? $a : json_encode($a))
             === (string) (is_scalar($b) || $b === null ? $b : json_encode($b));
+    }
+    /**
+     * A task step, written as the rule's creator standing in the rule's own
+     * place (Task Board, 2026-10-13): TaskBoards::canEdit reads write authority
+     * from the current view, and a queued run has none, so the rule's scope is
+     * put in front of it as the view for the length of the step. A board the
+     * creator could not edit by hand is refused the same way.
+     *
+     * @param  callable(User): string  $write  returns the run-log sentence
+     */
+    private function onTaskBoard(string $type, ?Automation $automation, ?TaskBoard $board, callable $write): array
+    {
+        if ($board === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'There is no task board to write to.'];
+        }
+
+        [$actor] = $this->taskContext($automation);
+        $previous = app('request');
+        $request = \Illuminate\Http\Request::create('/');
+        $request->setUserResolver(fn () => $actor);
+        $request->headers->set('X-EzBizi-View', $automation?->scope_type
+            ? $automation->scope_type.':'.$automation->scope_id
+            : ViewScope::ORGANIZATION);
+        app()->instance('request', $request);
+
+        try {
+            if (! app(TaskBoards::class)->canEdit($actor, $board)) {
+                return ['type' => $type, 'ok' => false, 'detail' => 'The person who made this rule cannot change that task board.'];
+            }
+
+            return ['type' => $type, 'ok' => true, 'detail' => $write($actor)];
+        } catch (ValidationException $e) {
+            return ['type' => $type, 'ok' => false, 'detail' => collect($e->errors())->flatten()->first() ?? $e->getMessage()];
+        } finally {
+            app()->instance('request', $previous);
+        }
+    }
+
+    /** A task on the assignee's board, else the event's franchise's, else its company's; about the rule's record. */
+    private function createTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $title = trim($this->interpolate((string) ($action['title'] ?? ''), $event, $subject));
+        if ($title === '') {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'The task needs a title.'];
+        }
+
+        $assignee = $this->userFromStored($action['assignee'] ?? null);
+        $scope = $event->scope_snapshot ?? [];
+        $owner = $assignee
+            ?? (($scope['type'] ?? null) === 'franchise' ? Franchise::query()->find($scope['id'] ?? null) : null)
+            ?? (($scope['type'] ?? null) === 'company' ? Company::query()->find($scope['id'] ?? null) : null)
+            ?? ($subject?->getAttribute('franchise_id') ? Franchise::query()->find($subject->getAttribute('franchise_id')) : null);
+
+        if ($owner === null) {
+            return ['type' => 'task.create', 'ok' => false, 'detail' => 'No board to put the task on: give it to somebody, or use a trigger about a place.'];
+        }
+
+        $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
+        $board = app(TaskBoards::class)->ensureFor($owner);
+
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $assignee, $about, $subject, $automation) {
+            app(TaskWriter::class)->create($board, [
+                'title' => mb_substr($title, 0, 255),
+                'assignee_user_id' => $assignee?->getKey(),
+                'about_type' => $about === false ? null : $about,
+                'about_id' => $about === false ? null : $subject->getKey(),
+            ], $actor, $automation?->getKey());
+
+            return 'Added the task "'.$title.'".';
+        });
+    }
+
+    private function assignTask(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        if (! $subject instanceof Task) {
+            return ['type' => 'task.assign', 'ok' => false, 'detail' => 'This step needs a trigger about a task.'];
+        }
+
+        $stored = (string) ($action['user_field'] ?? '');
+        $user = $this->userFromStored($stored)
+            ?? User::query()->where('is_active', true)->find($this->valueFromEvent($stored, $event));
+        if ($user === null) {
+            return ['type' => 'task.assign', 'ok' => false, 'detail' => 'Nobody to give the task to.'];
+        }
+
+        return $this->onTaskBoard('task.assign', $automation, $subject->board, function (User $actor) use ($subject, $user) {
+            app(TaskWriter::class)->update($subject, ['assignee_user_id' => $user->getKey()], $actor);
+
+            return 'Gave the task to '.$user->name.'.';
+        });
+    }
+
+    /** `user:<id>` as the pickers store it, an active person, or null. */
+    private function userFromStored(mixed $stored): ?User
+    {
+        return is_string($stored) && str_starts_with($stored, 'user:')
+            ? User::query()->where('is_active', true)->find(substr($stored, 5))
+            : null;
     }
 }
