@@ -12,6 +12,7 @@ use App\Support\Scoping\OwnedScope;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * Which boards exist, and which ones a person sees and may write.
@@ -65,6 +66,26 @@ class TaskBoards
 
             return $board;
         });
+    }
+
+    /**
+     * People who may own a task on this board: the owner of a personal board,
+     * otherwise everyone whose reach covers the board's place.
+     *
+     * @return Collection<int, User>
+     */
+    public function assignable(TaskBoard $board): Collection
+    {
+        if ($board->kind === TaskBoard::KIND_USER) {
+            return User::query()->whereKey($board->owner_user_id)->get(['id', 'name']);
+        }
+
+        // ponytail: per-user reach check over the org's users; fine at ~100 users, push into SQL if orgs grow large.
+        $place = $board->franchise ?? $board->company;
+
+        return User::query()->orderBy('name')->get()
+            ->filter(fn (User $u) => $place instanceof Franchise ? $u->canActOnFranchise($place) : $u->canActOnCompany($place))
+            ->values();
     }
 
     /** @return Builder<TaskBoard> */
