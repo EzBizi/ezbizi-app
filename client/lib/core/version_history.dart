@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0426',
+      date: '13 Oct 2026',
+      items: [
+        'AI Assistance: a Staff bot tab gives each group of roles its own menu on the staff WhatsApp line, with each topic linked to its Training guide section or Library entry, so editing the guide changes what the bot says.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0425',
       date: '13 Oct 2026',
       items: [
