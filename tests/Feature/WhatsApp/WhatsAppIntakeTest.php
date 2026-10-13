@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Support\Leads\LeadReplies;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Social\LeadWhatsApp;
 use App\Support\Social\WhatsAppIntake;
 use App\Support\Social\WhatsAppReplies;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -49,6 +50,14 @@ class WhatsAppIntakeTest extends TestCase
 
         $n = 0;
         Http::fake(function ($request) use (&$n) {
+            // The approved list LeadWhatsApp renders a sent template from.
+            if (str_contains($request->url(), 'message_templates')) {
+                return Http::response(['data' => [[
+                    'name' => 'booking_confirmation', 'status' => 'APPROVED', 'category' => 'UTILITY', 'language' => 'en_US',
+                    'components' => [['type' => 'BODY', 'text' => 'Hi {{1}}, see you {{2}}.']],
+                ]]]);
+            }
+
             $n++;
             $this->sent[] = $request->data();
 
@@ -136,6 +145,29 @@ class WhatsAppIntakeTest extends TestCase
             ['Can you come at 3 instead?', 'Thanks!'],
             LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $lead->id)->orderBy('occurred_at')->orderBy('id')->pluck('text')->all(),
         );
+    }
+
+    public function test_a_template_sent_to_a_lead_is_on_its_thread_and_the_reply_comes_back_to_it(): void
+    {
+        $make = fn (string $id, string $at) => $this->inTenant($this->t['org'], fn () => Lead::query()->create([
+            'organization_id' => $this->t['org']->id, 'source' => Lead::SOURCE_THUMBTACK, 'remote_id' => $id,
+            'phone' => '(305) 555-0123', 'phone_digits' => '3055550123', 'status' => Lead::STATUS_NEW, 'received_at' => $at,
+        ]));
+        $booked = $make('neg-old', '2026-10-01 10:00:00');
+        $make('neg-new', '2026-10-10 10:00:00');   // newer, same phone
+
+        $row = $this->inTenant($this->t['org'], fn () => app(LeadWhatsApp::class)
+            ->sendTemplate($booked, 'booking_confirmation', ['John', 'Tuesday'], automatic: true));
+
+        // What the customer read, filled in, and marked as the business's.
+        $this->assertSame('Hi John, see you Tuesday.', $row->text);
+        $this->assertSame(LeadConversation::FROM_ADVERTISER, $row->participant);
+        $this->assertSame('booking_confirmation', $this->sent[0]['template']['name']);
+
+        // The reply goes to the booked lead, not the newest one with that phone.
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'Perfect, thanks']], 'wamid.IN1')->assertOk();
+        $this->assertEqualsCanonicalizing(['Hi John, see you Tuesday.', 'Perfect, thanks'],
+            LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $booked->id)->pluck('text')->all());
     }
 
     public function test_a_whatsapp_lead_is_answered_from_leads_on_the_number_they_wrote_to(): void
