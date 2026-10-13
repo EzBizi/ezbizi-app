@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Support\Audit\AuditLogger;
 use App\Support\Auth\FactorAttempts;
 use App\Support\Auth\TotpEnrolment;
+use App\Support\Auth\TwoFactorPolicy;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -125,6 +126,7 @@ class FilesController extends Controller
         private readonly AuditLogger $audit,
         private readonly TotpEnrolment $totp,
         private readonly FactorAttempts $attempts,
+        private readonly TwoFactorPolicy $twoFactor,
     ) {}
 
     /**
@@ -148,7 +150,13 @@ class FilesController extends Controller
 
         $user = $request->user();
 
-        if (! $user->hasTotp()) {
+        // The SAME authenticator the person signs in with. For someone linked
+        // to an EzBizi staff account (Jose, Bar) that factor lives on the
+        // PlatformStaff row, not the tenant user — asking the user alone told
+        // them to "set one up" while they signed in with it daily (2026-10-13).
+        $subject = $this->twoFactor->subjectFor($user);
+
+        if (! $subject->hasTotp()) {
             return response()->json([
                 'message' => 'Set up an authenticator on your account first.',
                 'code' => 'no_authenticator',
@@ -156,9 +164,9 @@ class FilesController extends Controller
         }
 
         $verified = $this->attempts->verify(
-            $user,
+            $subject,
             $data['code'],
-            fn () => $this->totp->verify($user, $data['code']),
+            fn () => $this->totp->verify($subject, $data['code']),
         );
 
         if (! $verified) {
