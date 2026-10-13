@@ -2995,7 +2995,7 @@ the side panel, Keep it small moves them to a corner, and where a platform has n
 browser. Adding a tab's steps: give its controls keys and add a `Tour` under its module key; raise `version` and mark new
 steps `since:` to offer them as What's new.
 
-### 84 · Task Board v2 · subtasks, your own columns and statuses, a board picker (`docs/previews/task-board-v2-layouts.html`)
+### 84 · Task Board v2 · subtasks, your own columns and statuses, a board picker — **Jose: "Love it go with ur recommendations" — 1 and 4** (`docs/previews/task-board-v2-layouts.html`)
 
 Jose 2026-10-13, via Task Board, on the live 0.0.0418 screen: *"I feel like this can be drastically Improve, tasks should
 have sub tasks as well, i should be able to make custom columns, etc, please take the time to look at workiz and their UI,
@@ -3011,7 +3011,7 @@ subtasks as a checklist in the task panel. Phone **4** (recommended): a full-wid
 with custom columns as lines and subtasks under the card; **5**: a Boards tree page; **6**: two pickers. Owner: Task Board
 (backend); UI/UX builds the screens.
 
-### 83 · Scheduling › Availability · earliest and suggested, with the route — **Jose: "go ahea with ur recommendations" — 1 and 4** (`docs/previews/scheduling-suggested-availability-layouts.html`)
+### 83 · Scheduling › Availability · earliest and suggested, with the route — **Jose: "go ahea with ur recommendations" — 1 and 4** — **BUILT** 8eee5ae3 (`docs/previews/scheduling-suggested-availability-layouts.html`)
 
 Jose 2026-10-13, via Scheduling: a zip search shows **Earliest** and **Suggested** availability. Suggested is the open
 window nearest booked work, so a technician does both, with *"a small map with an animation of the route being drawn
