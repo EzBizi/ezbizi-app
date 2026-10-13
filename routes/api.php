@@ -1247,7 +1247,8 @@ Route::prefix('v1')
         // mapping (state, category, branch) staff keep for it.
         // Each person's AI call scores, ranked (Jose, 2026-10-13). Performance's
         // grant until the Scoring tab's own lands with its screen.
-        Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.experimental.view');
+        // Its own tab (Jose: "right now only administrators and lead manager").
+        Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         Route::middleware('permission:reports.meta.view')->group(function () {

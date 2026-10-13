@@ -15,6 +15,15 @@ class ScoringReportTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_performance_alone_does_not_open_scoring(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->signedInAs($this->userWithRole($t, 'Dispatcher', ['reports.experimental.view']))
+            ->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-14')
+            ->assertForbidden();
+    }
+
     public function test_people_are_averaged_and_ranked_from_the_ai_start_day(): void
     {
         config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);
@@ -41,7 +50,7 @@ class ScoringReportTest extends TestCase
             }
         });
 
-        $people = $this->signedInAs($this->userWithRole($t, 'Lead Manager', ['reports.experimental.view']))
+        $people = $this->signedInAs($this->userWithRole($t, 'Lead Manager', ['reports.scoring.view']))
             ->getJson('/api/v1/reports/scoring?from=2026-10-01&to=2026-10-14')
             ->assertOk()
             ->assertJsonPath('data.from', '2026-10-13')

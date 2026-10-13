@@ -11,63 +11,76 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 /// Reports › Scoring (UI queue 85, desktop 1 and phone 4): a card per person
-/// with AI's call score, a ranking after ten scored calls, and the person's
-/// checks and notes when a card is opened. Built from Performance's
-/// `GET /reports/experimental/calls`. Every name here is invented.
+/// with AI's call score, the server's ranking, and the person's checks,
+/// notes and Grok's Daily and Weekly read when a card is opened. Built on
+/// Reports' `GET /reports/scoring`. Every name here is invented.
 void main() {
-  Map<String, dynamic> call(
-    String who,
-    num? score, {
-    String day = '2026-10-13',
-    bool booked = false,
-    bool priced = true,
-    String? improve,
-    String? strength,
-  }) => {
-    'id': 'c-${who.hashCode}-${score.hashCode}-$day-$improve',
-    'answered_by': who,
-    'started_at': '${day}T15:00:00Z',
-    'booked': booked,
-    'score': score == null
-        ? null
-        : {
-            'score': score,
-            'checks': {
-              'greeted': true,
-              'got_name': true,
-              'got_address': true,
-              'found_need': true,
-              'offered_time': true,
-              'gave_price': priced,
-              'asked_for_booking': true,
-            },
-            'strength': strength,
-            'improve': improve,
-          },
+  Map<String, dynamic> checks({int price = 60}) => {
+    'greeted': 100,
+    'got_name': 95,
+    'got_address': 90,
+    'found_need': 96,
+    'offered_time': 88,
+    'gave_price': price,
+    'asked_for_booking': 84,
   };
 
-  List<Map<String, dynamic>> now() => [
-    for (var i = 0; i < 12; i++)
-      call(
-        'Maya Ortiz',
-        i.isEven ? 9 : 8,
-        day: '2026-10-${10 + i % 3}',
-        booked: i < 7,
-        improve: i == 0 ? 'Say the visit fee before the time slots.' : null,
-        strength: i == 1 ? 'Opens with the company name.' : null,
-      ),
-    for (var i = 0; i < 11; i++)
-      call('Tom Becker', 7, priced: i < 3, booked: i < 4),
-    for (var i = 0; i < 4; i++) call('Sam Wu', 6),
-    // Answered, not scored: counts toward booked, not toward the score.
-    call('Tom Becker', null, booked: true),
+  List<Map<String, dynamic>> people() => [
+    {
+      'person': 'Maya Ortiz',
+      'calls_scored': 12,
+      'avg_score': 8.5,
+      'checks': checks(price: 75),
+      'strengths': ['Opens with the company name'],
+      'improve': ['Say the visit fee before the time slots'],
+      'workiz': {'calls': 30, 'score': 82},
+      'review_daily': null,
+      'review_weekly': {
+        'from': '2026-10-05',
+        'to': '2026-10-11',
+        'calls': 9,
+        'avg_score': 8.4,
+        'summary': 'Tidy calls: name, address, then the problem.',
+        'strengths': [
+          'Greets every caller by the company name',
+          'Gets the address first',
+        ],
+        'work_on': ['The price before the times', 'The gate code'],
+        'trend': 'up',
+      },
+      'rank': 1,
+    },
+    {
+      'person': 'Tom Becker',
+      'calls_scored': 11,
+      'avg_score': 7.0,
+      'checks': checks(price: 27),
+      'strengths': <String>[],
+      'improve': ['Explain the price'],
+      'workiz': null,
+      'review_daily': null,
+      'review_weekly': null,
+      'rank': 2,
+    },
+    {
+      'person': 'Sam Wu',
+      'calls_scored': 2,
+      'avg_score': 6.0,
+      'checks': checks(),
+      'strengths': <String>[],
+      'improve': <String>[],
+      'workiz': null,
+      'review_daily': null,
+      'review_weekly': null,
+      'rank': null,
+    },
   ];
 
   late int reads;
 
   Future<void> pump(
     WidgetTester tester, {
-    List<Map<String, dynamic>>? calls,
+    List<Map<String, dynamic>>? data,
     double width = 1440,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
@@ -83,24 +96,23 @@ void main() {
 
     final api = ApiClient(
       client: MockClient((request) async {
-        if (!request.url.path.endsWith('/reports/experimental/calls')) {
+        if (!request.url.path.endsWith('/reports/scoring')) {
           return json({'data': null});
         }
         reads++;
-        final from = request.url.queryParameters['from'];
+        final q = request.url.queryParameters;
         // The 30 days before: Tom scored lower then, so he is "most improved".
-        if (from == '2026-08-15') {
-          return json({
-            'calls': [for (var i = 0; i < 10; i++) call('Tom Becker', 5)],
-            'people': const [],
-            'workiz_scores': const {},
-          });
-        }
+        final before = q['from'] == '2026-08-15';
         return json({
-          'calls': calls ?? now(),
-          'people': const [],
-          'workiz_scores': {
-            'Maya Ortiz': {'calls': 30, 'score': 82},
+          'data': {
+            'from': q['from'],
+            'to': q['to'],
+            'min_calls_to_rank': 3,
+            'people': before
+                ? [
+                    {...people()[1], 'avg_score': 5.0},
+                  ]
+                : (data ?? people()),
           },
         });
       }),
@@ -121,35 +133,33 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a card per person, ranked after ten scored calls', (
-    tester,
-  ) async {
+  testWidgets("a card per person, in the server's ranking", (tester) async {
     await pump(tester);
 
     expect(reads, 2, reason: 'these 30 days and the 30 before, for the trend');
     for (final name in ['Maya Ortiz', 'Tom Becker', 'Sam Wu']) {
       expect(find.byKey(ValueKey('scoring-card-$name')), findsOneWidget);
     }
-    // Maya 8.5 over 12, Tom 7.0 over 11; Sam's 4 calls rank nobody.
     expect(find.text('#1'), findsOneWidget);
     expect(find.text('#2'), findsOneWidget);
-    expect(find.text('4 of 10 calls'), findsOneWidget);
-    expect(find.text('8.5'), findsWidgets);
+    expect(find.text('not enough calls yet'), findsOneWidget);
     expect(find.text('2 of 3'), findsOneWidget);
-    expect(find.text('Sam Wu needs 6 more calls'), findsOneWidget);
-    // Tom went from 5.0 to 7.0.
-    expect(find.text('Most improved'), findsWidgets);
+    expect(find.text('1 with fewer than 3 scored calls'), findsOneWidget);
+    // Team: (8.5 × 12 + 7 × 11 + 6 × 2) / 25 = 7.6.
+    expect(find.text('7.6'), findsOneWidget);
+    expect(find.text('over 25 scored calls'), findsOneWidget);
     expect(find.text('5.0 → 7.0'), findsOneWidget);
-    // The price is the team's weakest check: Tom gave it on 3 of 11.
     expect(find.text('Explained the price'), findsOneWidget);
-    // Booked counts every answered call, scored or not: Tom 5 of 12.
-    expect(find.text('11 scored calls · 42% booked'), findsOneWidget);
+    // The week's summary reads on the card.
+    expect(
+      find.text('Tidy calls: name, address, then the problem.'),
+      findsOneWidget,
+    );
     expect(
       find.textContaining('A guide for coaching, not a verdict'),
       findsOneWidget,
     );
 
-    // The ranking reads top down.
     final maya = tester.getTopLeft(
       find.byKey(const ValueKey('scoring-rank-Maya Ortiz')),
     );
@@ -159,7 +169,7 @@ void main() {
     expect(maya.dy, lessThan(tom.dy));
   });
 
-  testWidgets('a card opens the person in the tab: checks, notes, way back', (
+  testWidgets('a card opens the person: checks, notes, AI analysis', (
     tester,
   ) async {
     await pump(tester);
@@ -173,15 +183,31 @@ void main() {
     );
     expect(find.text('#1 of 2'), findsOneWidget);
     expect(find.text('12 scored calls in these dates'), findsOneWidget);
-    expect(find.text("Workiz's score 82 / 100"), findsOneWidget);
-    expect(find.text('Got the address'), findsOneWidget);
     expect(
-      find.text('“Say the visit fee before the time slots.”'),
+      find.text("Workiz's own score 82 / 100 over 30 calls"),
       findsOneWidget,
     );
-    expect(find.text('“Opens with the company name.”'), findsOneWidget);
+    expect(find.text('Got the address'), findsOneWidget);
+    expect(
+      find.text('• Say the visit fee before the time slots'),
+      findsOneWidget,
+    );
+
+    // Weekly first.
+    expect(find.text('Oct 5 – Oct 11 · from 9 calls'), findsOneWidget);
+    expect(find.text('• The price before the times'), findsOneWidget);
+    expect(find.text('Better than the period before.'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('scoring-review-period')),
+        matching: find.text('Daily'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('scoring-review-none')), findsOneWidget);
+    expect(find.text('• The price before the times'), findsNothing);
+
     // The ranking stays beside it, so the next person is one click away.
-    expect(find.byKey(const Key('scoring-ranking')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('scoring-rank-Tom Becker')));
     await tester.pumpAndSettle();
     expect(
@@ -240,7 +266,7 @@ void main() {
   });
 
   testWidgets('no scored calls says so', (tester) async {
-    await pump(tester, calls: [call('Sam Wu', null)]);
+    await pump(tester, data: const []);
 
     expect(find.byKey(const Key('scoring-empty')), findsOneWidget);
   });

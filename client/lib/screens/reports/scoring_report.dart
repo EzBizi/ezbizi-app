@@ -12,19 +12,17 @@ import 'report_dates.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
-/// current analysis ... sort of like a ranking system ... very visual"; UI
-/// queue 85, desktop 1 and phone 4).
+/// current analysis that the Grok AI has given them, their score, etc ...
+/// sort of like a ranking system ... very visual"; UI queue 85, desktop 1
+/// and phone 4).
 ///
-/// Built from the calls Performance reads (`GET /reports/experimental/calls`):
-/// each scored call carries AI's score out of 10, the seven checks, one
-/// strength and one thing to improve; who answered comes from the call log.
-/// A person is ranked after [rankedAfter] scored calls in the dates chosen
-/// (Grok AI's rule, 2026-10-13), and every view says what the score is: a
-/// guide for coaching, not a verdict.
-///
-/// ponytail: averaged here, as People does; a server endpoint and Grok's
-/// Daily and Weekly read per person (being built by Grok AI) slot in beside
-/// [_Person] when they exist.
+/// Reports' `GET /reports/scoring` (08436069): each person's average AI call
+/// score out of 10, the seven checks as shares, a few strengths and things to
+/// improve from their calls, Workiz's own score where it scores them, the
+/// server's rank (none below `min_calls_to_rank` scored calls), and Grok's
+/// latest Daily and Weekly read. The dates before are asked too, for the
+/// trend. Every view says what the score is: a guide for coaching, not a
+/// verdict.
 class ScoringReport extends StatefulWidget {
   const ScoringReport({
     super.key,
@@ -36,8 +34,6 @@ class ScoringReport extends StatefulWidget {
   final ApiClient api;
   final DisplayFormats formats;
   final DateTime Function()? now;
-
-  static const rankedAfter = 10;
 
   @override
   State<ScoringReport> createState() => _ScoringReportState();
@@ -58,67 +54,68 @@ const _caveat =
     'Scored by AI from the transcript. A guide for coaching, not a verdict: '
     'the transcript can mishear, and some calls cannot be won.';
 
-class _Note {
-  const _Note(this.text, this.day);
-  final String text;
-  final String day;
-}
+List<String> _strings(Object? v) => [
+  for (final s in (v as List?) ?? const [])
+    if (s is String && s.trim().isNotEmpty) s,
+];
 
 class _Person {
-  _Person(this.name);
+  _Person(Map<String, dynamic> row)
+    : name = '${row['person']}',
+      n = (row['calls_scored'] as num?)?.toInt() ?? 0,
+      avg = (row['avg_score'] as num?)?.toDouble() ?? 0,
+      rank = (row['rank'] as num?)?.toInt(),
+      checks = {
+        for (final key in _checks.keys)
+          key: (((row['checks'] as Map?)?[key] as num?) ?? 0) / 100,
+      },
+      strengths = _strings(row['strengths']),
+      improve = _strings(row['improve']),
+      workiz = (row['workiz'] as Map?)?.cast<String, dynamic>(),
+      daily = (row['review_daily'] as Map?)?.cast<String, dynamic>(),
+      weekly = (row['review_weekly'] as Map?)?.cast<String, dynamic>();
 
   final String name;
-  final scores = <double>[];
-  final checks = <String, int>{};
-  final improve = <_Note>[];
-  final strengths = <_Note>[];
-  final byDay = <String, List<double>>{};
-  int answered = 0;
-  int booked = 0;
+  final int n;
+  final double avg;
+  final int? rank;
+  final Map<String, double> checks;
+  final List<String> strengths;
+  final List<String> improve;
+  final Map<String, dynamic>? workiz;
+  final Map<String, dynamic>? daily;
+  final Map<String, dynamic>? weekly;
   double? before;
-  Map<String, dynamic>? workiz;
-  int rank = 0;
 
-  int get n => scores.length;
-  double get avg => scores.reduce((a, b) => a + b) / n;
-  bool get ranked => n >= ScoringReport.rankedAfter;
+  bool get ranked => rank != null;
   double? get change => before == null ? null : avg - before!;
-  double? get bookedRate => answered == 0 ? null : booked / answered;
-  double rate(String check) => n == 0 ? 0 : (checks[check] ?? 0) / n;
 
-  String get initials {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    return [
-      for (final p in parts.take(2))
-        if (p.isNotEmpty) p[0].toUpperCase(),
-    ].join();
-  }
+  String get initials => [
+    for (final p in name.trim().split(RegExp(r'\s+')).take(2))
+      if (p.isNotEmpty) p[0].toUpperCase(),
+  ].join();
 }
 
 class _Team {
-  _Team(this.people, this.calls);
+  _Team(this.people, this.minCalls);
 
   final List<_Person> people;
-  final List<double> calls;
+  final int minCalls;
   double? before;
 
-  double? get avg =>
-      calls.isEmpty ? null : calls.reduce((a, b) => a + b) / calls.length;
+  int get calls => people.fold(0, (s, p) => s + p.n);
 
-  double rate(String check) {
-    final n = people.fold<int>(0, (s, p) => s + p.n);
-    if (n == 0) return 0;
-    return people.fold<int>(0, (s, p) => s + (p.checks[check] ?? 0)) / n;
-  }
+  double? get avg => calls == 0
+      ? null
+      : people.fold<double>(0, (s, p) => s + p.avg * p.n) / calls;
 
-  double? get bookedRate {
-    final answered = people.fold<int>(0, (s, p) => s + p.answered);
-    if (answered == 0) return null;
-    return people.fold<int>(0, (s, p) => s + p.booked) / answered;
-  }
+  double rate(String check) => calls == 0
+      ? 0
+      : people.fold<double>(0, (s, p) => s + (p.checks[check] ?? 0) * p.n) /
+            calls;
 }
 
-enum _Sort { score, improved, booked }
+enum _Sort { score, improved }
 
 class _ScoringReportState extends State<ScoringReport> {
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
@@ -150,11 +147,11 @@ class _ScoringReportState extends State<ScoringReport> {
 
     final before = _span.shift(-1);
     final responses = await Future.wait([
-      widget.api.get('/reports/experimental/calls', {
+      widget.api.get('/reports/scoring', {
         'from': _span.fromKey,
         'to': _span.toKey,
       }),
-      widget.api.get('/reports/experimental/calls', {
+      widget.api.get('/reports/scoring', {
         'from': before.fromKey,
         'to': before.toKey,
       }),
@@ -169,7 +166,7 @@ class _ScoringReportState extends State<ScoringReport> {
         return;
       }
       final team = _read(now.body);
-      // The dates before, for the trend; a failure there only costs the arrow.
+      // The dates before only feed the arrows; failing there costs nothing else.
       if (responses[1].ok) {
         final earlier = _read(responses[1].body);
         final byName = {for (final p in earlier.people) p.name: p};
@@ -183,71 +180,23 @@ class _ScoringReportState extends State<ScoringReport> {
     });
   }
 
-  static _Team _read(Map<String, dynamic> report) {
-    final people = <String, _Person>{};
-    final all = <double>[];
-    for (final c in (report['calls'] as List? ?? const [])) {
-      if (c is! Map) continue;
-      final name = c['answered_by'];
-      if (name is! String || name.trim().isEmpty) continue;
-      final p = people.putIfAbsent(name, () => _Person(name));
-      p.answered++;
-      if (c['booked'] == true) p.booked++;
-
-      final score = c['score'];
-      if (score is! Map || score['score'] is! num) continue;
-      final value = (score['score'] as num).toDouble();
-      final day = '${c['started_at'] ?? ''}'.split('T').first;
-      p.scores.add(value);
-      all.add(value);
-      (p.byDay[day] ??= []).add(value);
-      final checks = score['checks'];
-      if (checks is Map) {
-        for (final key in _checks.keys) {
-          if (checks[key] == true) p.checks[key] = (p.checks[key] ?? 0) + 1;
-        }
-      }
-      for (final (field, into) in [
-        ('improve', p.improve),
-        ('strength', p.strengths),
-      ]) {
-        final text = '${score[field] ?? ''}'.trim();
-        if (text.isNotEmpty) into.add(_Note(text, day));
-      }
-    }
-
-    final workiz = (report['workiz_scores'] as Map?) ?? const {};
-    final scored = [
-      for (final p in people.values)
-        if (p.n > 0)
-          p..workiz = (workiz[p.name] as Map?)?.cast<String, dynamic>(),
-    ];
-    for (final p in scored) {
-      p.improve.sort((a, b) => b.day.compareTo(a.day));
-      p.strengths.sort((a, b) => b.day.compareTo(a.day));
-    }
-    final ranked = scored.where((p) => p.ranked).toList()
-      ..sort((a, b) => b.avg.compareTo(a.avg));
-    for (final (i, p) in ranked.indexed) {
-      p.rank = i + 1;
-    }
-
-    return _Team(scored, all);
+  static _Team _read(Map<String, dynamic> body) {
+    final data = (body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return _Team([
+      for (final row in (data['people'] as List?) ?? const [])
+        if (row is Map && row['person'] is String)
+          _Person(row.cast<String, dynamic>()),
+    ], (data['min_calls_to_rank'] as num?)?.toInt() ?? 3);
   }
 
   List<_Person> _sorted(_Team team) {
     final ranked = team.people.where((p) => p.ranked).toList();
     final rest = team.people.where((p) => !p.ranked).toList()
       ..sort((a, b) => b.n.compareTo(a.n));
-    switch (_sort) {
-      case _Sort.score:
-        ranked.sort((a, b) => a.rank.compareTo(b.rank));
-      case _Sort.improved:
-        ranked.sort((a, b) => (b.change ?? -99).compareTo(a.change ?? -99));
-      case _Sort.booked:
-        ranked.sort(
-          (a, b) => (b.bookedRate ?? -1).compareTo(a.bookedRate ?? -1),
-        );
+    if (_sort == _Sort.score) {
+      ranked.sort((a, b) => a.rank!.compareTo(b.rank!));
+    } else {
+      ranked.sort((a, b) => (b.change ?? -99).compareTo(a.change ?? -99));
     }
     return [...ranked, ...rest];
   }
@@ -284,7 +233,7 @@ class _ScoringReportState extends State<ScoringReport> {
             padding: const EdgeInsets.all(24),
             child: Text(
               'No scored calls in these dates. AI scores a call once it is '
-              'transcribed; only calls from October 13, 2026 on are scored.',
+              'transcribed, and only calls from October 13, 2026 on.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -293,13 +242,13 @@ class _ScoringReportState extends State<ScoringReport> {
           body = _Detail(
             person: open,
             team: team,
-            span: _span,
             phone: phone,
             onBack: () => setState(() => _open = null),
             ranking: phone
                 ? null
                 : _Ranking(
                     people: _sorted(team),
+                    team: team,
                     selected: open.name,
                     onOpen: (p) => setState(() => _open = p.name),
                   ),
@@ -336,7 +285,6 @@ class _ScoringReportState extends State<ScoringReport> {
                         value: _Sort.improved,
                         label: Text('Most improved'),
                       ),
-                      ButtonSegment(value: _Sort.booked, label: Text('Booked')),
                     ],
                     selected: {_sort},
                     onSelectionChanged: (v) => setState(() => _sort = v.first),
@@ -356,16 +304,16 @@ class _ScoringReportState extends State<ScoringReport> {
 
 String _one(double v) => v.toStringAsFixed(1);
 
-String _pct(double? rate) => rate == null ? '—' : '${(rate * 100).round()}%';
+String _pct(double rate) => '${(rate * 100).round()}%';
 
-Tone _toneOf(double score) => score >= 8
-    ? Tone.ok
-    : score >= 6.5
-    ? Tone.info
-    : Tone.caution;
-
-Color _scoreColour(BuildContext context, double score) =>
-    ToneColours.of(context, _toneOf(score)).ink;
+Color _scoreColour(BuildContext context, double score) => ToneColours.of(
+  context,
+  score >= 8
+      ? Tone.ok
+      : score >= 6.5
+      ? Tone.info
+      : Tone.caution,
+).ink;
 
 Widget _trend(BuildContext context, double? change, {String? suffix}) {
   final theme = Theme.of(context);
@@ -379,11 +327,10 @@ Widget _trend(BuildContext context, double? change, {String? suffix}) {
   }
   final flat = change.abs() < 0.05;
   final tone = flat ? Tone.neutral : (change > 0 ? Tone.ok : Tone.caution);
-  final text = flat
-      ? '— same as before'
-      : '${change > 0 ? '▲' : '▼'} ${_one(change.abs())}${suffix ?? ''}';
   return Text(
-    text,
+    flat
+        ? '— same as before'
+        : '${change > 0 ? '▲' : '▼'} ${_one(change.abs())}${suffix ?? ''}',
     style: theme.textTheme.bodySmall?.copyWith(
       color: ToneColours.of(context, tone).ink,
       fontWeight: FontWeight.w700,
@@ -429,9 +376,10 @@ class _Ring extends StatelessWidget {
 }
 
 class _Rank extends StatelessWidget {
-  const _Rank(this.person, {this.of});
+  const _Rank(this.person, {required this.team, this.of});
 
   final _Person person;
+  final _Team team;
   final int? of;
 
   @override
@@ -443,9 +391,6 @@ class _Rank extends StatelessWidget {
       3 => ToneColours.of(context, Tone.review),
       _ => null,
     };
-    final text = person.ranked
-        ? '#${person.rank}${of == null ? '' : ' of $of'}'
-        : '${person.n} of ${ScoringReport.rankedAfter} calls';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
@@ -453,7 +398,9 @@ class _Rank extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        text,
+        person.ranked
+            ? '#${person.rank}${of == null ? '' : ' of $of'}'
+            : 'not enough calls yet',
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
@@ -486,60 +433,6 @@ class _Avatar extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A line through each day's average, with the team's as a dashed rule.
-class _Line extends CustomPainter {
-  _Line(this.points, {required this.colour, this.team, this.rule});
-
-  final List<double> points;
-  final Color colour;
-  final double? team;
-  final Color? rule;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-    double y(double v) => size.height - (v / 10) * size.height;
-    if (team != null && rule != null) {
-      final paint = Paint()
-        ..color = rule!
-        ..strokeWidth = 1;
-      for (var x = 0.0; x < size.width; x += 8) {
-        canvas.drawLine(
-          Offset(x, y(team!)),
-          Offset(math.min(x + 4, size.width), y(team!)),
-          paint,
-        );
-      }
-    }
-    final step = points.length == 1 ? 0.0 : size.width / (points.length - 1);
-    final path = Path();
-    for (final (i, v) in points.indexed) {
-      final at = Offset(points.length == 1 ? size.width / 2 : i * step, y(v));
-      i == 0 ? path.moveTo(at.dx, at.dy) : path.lineTo(at.dx, at.dy);
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = colour
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.2
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_Line old) =>
-      old.points != points || old.colour != colour || old.team != team;
-}
-
-List<double> _daily(_Person p) {
-  final days = p.byDay.keys.toList()..sort();
-  return [
-    for (final d in days)
-      p.byDay[d]!.reduce((a, b) => a + b) / p.byDay[d]!.length,
-  ];
 }
 
 class _Tile extends StatelessWidget {
@@ -598,6 +491,17 @@ class _Tile extends StatelessWidget {
   }
 }
 
+Widget _equalTiles(List<Widget> tiles, int columns) => LayoutBuilder(
+  builder: (context, box) {
+    final width = (box.maxWidth - 10 * (columns - 1)) / columns;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [for (final t in tiles) SizedBox(width: width, child: t)],
+    );
+  },
+);
+
 class _Overview extends StatelessWidget {
   const _Overview({
     required this.team,
@@ -613,6 +517,7 @@ class _Overview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final ranked = people.where((p) => p.ranked).toList();
     final unranked = people.where((p) => !p.ranked).toList();
     final improved = [
@@ -632,15 +537,15 @@ class _Overview extends StatelessWidget {
           context,
           team.before == null ? null : avg - team.before!,
         ),
-        note: 'over ${team.calls.length} scored calls',
+        note: 'over ${team.calls} scored calls',
       ),
       _Tile(
         label: 'Ranked',
         value: '${ranked.length} of ${people.length}',
         note: unranked.isEmpty
-            ? 'everyone has ${ScoringReport.rankedAfter} scored calls'
-            : '${unranked.first.name} needs '
-                  '${ScoringReport.rankedAfter - unranked.first.n} more calls',
+            ? 'everyone has ${team.minCalls} scored calls'
+            : '${unranked.length} with fewer than ${team.minCalls} '
+                  'scored calls',
       ),
       _Tile(
         label: 'Most improved',
@@ -677,20 +582,12 @@ class _Overview extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LayoutBuilder(
-          builder: (context, box) {
-            final columns = phone ? 1 : (box.maxWidth >= 900 ? 4 : 2);
-            final shown = phone ? tiles.take(1).toList() : tiles;
-            final width = (box.maxWidth - 10 * (columns - 1)) / columns;
-            return Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final t in shown) SizedBox(width: width, child: t),
-              ],
-            );
-          },
-        ),
+        phone
+            ? _equalTiles(tiles.take(1).toList(), 1)
+            : LayoutBuilder(
+                builder: (context, box) =>
+                    _equalTiles(tiles, box.maxWidth >= 900 ? 4 : 2),
+              ),
         const SizedBox(height: 12),
         if (phone)
           cards
@@ -700,7 +597,7 @@ class _Overview extends StatelessWidget {
             children: [
               SizedBox(
                 width: 320,
-                child: _Ranking(people: people, onOpen: onOpen),
+                child: _Ranking(people: people, team: team, onOpen: onOpen),
               ),
               const SizedBox(width: 12),
               Expanded(child: cards),
@@ -709,8 +606,8 @@ class _Overview extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           _caveat,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
             fontStyle: FontStyle.italic,
           ),
         ),
@@ -720,9 +617,15 @@ class _Overview extends StatelessWidget {
 }
 
 class _Ranking extends StatelessWidget {
-  const _Ranking({required this.people, required this.onOpen, this.selected});
+  const _Ranking({
+    required this.people,
+    required this.team,
+    required this.onOpen,
+    this.selected,
+  });
 
   final List<_Person> people;
+  final _Team team;
   final ValueChanged<_Person> onOpen;
   final String? selected;
 
@@ -801,7 +704,7 @@ class _Ranking extends StatelessWidget {
                                     ),
                                   )
                                 : Text(
-                                    '${p.n} of ${ScoringReport.rankedAfter}',
+                                    '${p.n} of ${team.minCalls} calls',
                                     style: theme.textTheme.bodySmall,
                                   ),
                           ),
@@ -828,6 +731,31 @@ class _Ranking extends StatelessWidget {
   }
 }
 
+/// The seven checks as marks: green where this person meets it at least as
+/// often as the team does.
+Widget _marks(BuildContext context, _Person p, _Team team) => Row(
+  children: [
+    for (final key in _checks.keys)
+      Tooltip(
+        message: '${_checks[key]}: ${_pct(p.checks[key]!)}',
+        child: Container(
+          width: 16,
+          height: 6,
+          margin: const EdgeInsets.only(right: 3),
+          decoration: BoxDecoration(
+            color: p.checks[key]! >= team.rate(key)
+                ? ToneColours.of(context, Tone.ok).ink
+                : ToneColours.of(
+                    context,
+                    Tone.caution,
+                  ).ink.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+      ),
+  ],
+);
+
 class _Card extends StatelessWidget {
   const _Card({required this.person, required this.team, required this.onTap});
 
@@ -838,12 +766,10 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final p = person;
     final muted = theme.textTheme.bodySmall?.copyWith(
-      color: scheme.onSurfaceVariant,
+      color: theme.colorScheme.onSurfaceVariant,
     );
-    final daily = _daily(p);
 
     return Card(
       margin: EdgeInsets.zero,
@@ -868,7 +794,7 @@ class _Card extends StatelessWidget {
                       style: theme.textTheme.titleSmall,
                     ),
                   ),
-                  _Rank(p),
+                  _Rank(p, team: team),
                 ],
               ),
               const SizedBox(height: 10),
@@ -882,51 +808,25 @@ class _Card extends StatelessWidget {
                       children: [
                         _trend(context, p.change),
                         Text(
-                          '${p.n} scored ${p.n == 1 ? 'call' : 'calls'} · '
-                          '${_pct(p.bookedRate)} booked',
+                          '${p.n} scored ${p.n == 1 ? 'call' : 'calls'}',
                           style: muted,
                         ),
-                        const SizedBox(height: 4),
-                        SizedBox(
-                          height: 24,
-                          width: double.infinity,
-                          child: CustomPaint(
-                            painter: _Line(
-                              daily,
-                              colour: _scoreColour(context, p.avg),
-                            ),
+                        if (p.weekly?['summary'] case final String s) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            s,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              // The seven checks as marks: green where this person meets it
-              // at least as often as the team does.
-              Row(
-                children: [
-                  for (final key in _checks.keys)
-                    Tooltip(
-                      message: '${_checks[key]}: ${_pct(p.rate(key))}',
-                      child: Container(
-                        width: 16,
-                        height: 6,
-                        margin: const EdgeInsets.only(right: 3),
-                        decoration: BoxDecoration(
-                          color: p.rate(key) >= team.rate(key)
-                              ? ToneColours.of(context, Tone.ok).ink
-                              : ToneColours.of(
-                                  context,
-                                  Tone.caution,
-                                ).ink.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              _marks(context, p, team),
             ],
           ),
         ),
@@ -935,11 +835,10 @@ class _Card extends StatelessWidget {
   }
 }
 
-class _Detail extends StatelessWidget {
+class _Detail extends StatefulWidget {
   const _Detail({
     required this.person,
     required this.team,
-    required this.span,
     required this.phone,
     required this.onBack,
     this.ranking,
@@ -947,16 +846,35 @@ class _Detail extends StatelessWidget {
 
   final _Person person;
   final _Team team;
-  final DateSpan span;
   final bool phone;
   final VoidCallback onBack;
   final Widget? ranking;
 
   @override
+  State<_Detail> createState() => _DetailState();
+}
+
+class _DetailState extends State<_Detail> {
+  /// Weekly first: a week of calls says more than one day's.
+  bool _weekly = true;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _day(Object? ymd) {
+    final d = ymd is String ? DateTime.tryParse(ymd) : null;
+    return d == null ? '' : '${_months[d.month - 1]} ${d.day}';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final p = person;
+    final p = widget.person;
+    final team = widget.team;
+    final phone = widget.phone;
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: scheme.onSurfaceVariant,
     );
@@ -1005,52 +923,29 @@ class _Detail extends StatelessWidget {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      _Rank(p, of: ranked),
+                      _Rank(p, team: team, of: ranked),
                     ],
                   ),
                   Text(
-                    '${p.n} scored ${p.n == 1 ? 'call' : 'calls'} in these dates',
+                    '${p.n} scored ${p.n == 1 ? 'call' : 'calls'} in these '
+                    'dates',
                     style: muted,
                   ),
                   const SizedBox(height: 4),
                   _trend(context, p.change, suffix: ' vs the dates before'),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      _Chip(
-                        '${_pct(p.bookedRate)} booked · team '
-                        '${_pct(team.bookedRate)}',
-                        tone: Tone.ok,
-                      ),
-                      if (workiz != null && workiz['score'] != null)
-                        _Chip("Workiz's score ${workiz['score']} / 100"),
-                    ],
-                  ),
+                  if (workiz != null && workiz['score'] != null) ...[
+                    const SizedBox(height: 4),
+                    _Chip(
+                      "Workiz's own score ${workiz['score']} / 100 over "
+                      "${workiz['calls']} calls",
+                    ),
+                  ],
                 ],
               ),
             ),
           ],
         ),
       ),
-    );
-
-    final daily = _daily(p);
-    final line = section(
-      'Score by day',
-      SizedBox(
-        height: 70,
-        child: CustomPaint(
-          painter: _Line(
-            daily,
-            colour: _scoreColour(context, p.avg),
-            team: team.avg,
-            rule: scheme.onSurfaceVariant.withValues(alpha: 0.6),
-          ),
-        ),
-      ),
-      trailing: Text('dashed: the team, ${_one(team.avg!)}', style: muted),
     );
 
     final checks = section(
@@ -1080,15 +975,15 @@ class _Detail extends StatelessWidget {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
-                              value: p.rate(key),
+                              value: p.checks[key],
                               minHeight: 8,
                               backgroundColor: scheme.surfaceContainerHighest,
-                              color: p.rate(key) >= team.rate(key)
+                              color: p.checks[key]! >= team.rate(key)
                                   ? ToneColours.of(context, Tone.ok).ink
                                   : ToneColours.of(context, Tone.caution).ink,
                             ),
                           ),
-                          // The team's rate, as a mark on the bar.
+                          // The team's share, as a mark on the bar.
                           Positioned(
                             left: (box.maxWidth * team.rate(key) - 1).clamp(
                               0,
@@ -1107,7 +1002,7 @@ class _Detail extends StatelessWidget {
                   SizedBox(
                     width: 44,
                     child: Text(
-                      _pct(p.rate(key)),
+                      _pct(p.checks[key]!),
                       textAlign: TextAlign.end,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w700,
@@ -1122,46 +1017,97 @@ class _Detail extends StatelessWidget {
       trailing: Text('mark: the team', style: muted),
     );
 
-    Widget notes(String title, List<_Note> list) => list.isEmpty
+    Widget list(String title, List<String> items) => items.isEmpty
         ? const SizedBox.shrink()
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: theme.textTheme.labelLarge),
-              for (final note in list.take(3))
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '“${note.text}”',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_shortDay(note.day), style: muted),
-                    ],
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(title, style: theme.textTheme.labelLarge),
+                for (final item in items)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('• $item', style: theme.textTheme.bodyMedium),
                   ),
-                ),
-              const SizedBox(height: 10),
-            ],
+              ],
+            ),
           );
 
-    final read = section(
+    // Grok's read of the person (Grok AI, ezbizi:ai-person-reviews).
+    final review = _weekly ? p.weekly : p.daily;
+    final trend = switch (review?['trend']) {
+      'up' => 'Better than the period before.',
+      'down' => 'Below the period before.',
+      'flat' => 'About the same as the period before.',
+      _ => null,
+    };
+    final analysis = section(
+      'Analysis by AI',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<bool>(
+              key: const Key('scoring-review-period'),
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: const [
+                ButtonSegment(value: false, label: Text('Daily')),
+                ButtonSegment(value: true, label: Text('Weekly')),
+              ],
+              selected: {_weekly},
+              onSelectionChanged: (v) => setState(() => _weekly = v.first),
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (review == null)
+            Text(
+              _weekly
+                  ? 'No weekly read yet. AI writes one each Monday for the '
+                        'week before, for anyone with 3 scored calls in it.'
+                  : 'No daily read yet. AI writes one each morning for the '
+                        'day before, for anyone with 3 scored calls that day.',
+              key: const Key('scoring-review-none'),
+              style: muted,
+            )
+          else ...[
+            Text(
+              [
+                if (_day(review['from']) case final from when from.isNotEmpty)
+                  review['from'] == review['to']
+                      ? from
+                      : '$from – ${_day(review['to'])}',
+                if (review['calls'] is num) 'from ${review['calls']} calls',
+              ].join(' · '),
+              style: muted,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${review['summary'] ?? ''}',
+              key: const Key('scoring-review-summary'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            list('Strengths', _strings(review['strengths'])),
+            list('Work on', _strings(review['work_on'])),
+            if (trend != null) Text(trend, style: muted),
+          ],
+        ],
+      ),
+      trailing: const AiMark.badge('Analysis by AI'),
+    );
+
+    final notes = section(
       'From their calls',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          notes('Strong at', p.strengths),
-          notes('To improve', p.improve),
+          list('Strong at', p.strengths),
+          list('To improve', p.improve),
           Text(_caveat, style: muted?.copyWith(fontStyle: FontStyle.italic)),
         ],
-      ),
-      trailing: const AiMark.badge(
-        'AI',
-        tooltip: 'Written by AI from each scored call.',
       ),
     );
 
@@ -1169,26 +1115,18 @@ class _Detail extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
         key: const Key('scoring-back'),
-        onPressed: onBack,
+        onPressed: widget.onBack,
         icon: const Icon(Icons.arrow_back),
         label: const Text('All people'),
       ),
     );
 
+    const gap = SizedBox(height: 10);
     if (phone) {
       return Column(
         key: ValueKey('scoring-detail-${p.name}'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          back,
-          head,
-          const SizedBox(height: 10),
-          read,
-          const SizedBox(height: 10),
-          checks,
-          const SizedBox(height: 10),
-          line,
-        ],
+        children: [back, head, gap, analysis, gap, checks, gap, notes],
       );
     }
 
@@ -1200,50 +1138,33 @@ class _Detail extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (ranking != null) ...[
-              SizedBox(width: 320, child: ranking),
+            if (widget.ranking != null) ...[
+              SizedBox(width: 320, child: widget.ranking),
               const SizedBox(width: 12),
             ],
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  head,
-                  const SizedBox(height: 10),
-                  line,
-                  const SizedBox(height: 10),
-                  checks,
-                ],
+                children: [head, gap, checks, gap, notes],
               ),
             ),
             const SizedBox(width: 12),
-            SizedBox(width: 340, child: read),
+            SizedBox(width: 360, child: analysis),
           ],
         ),
       ],
     );
   }
-
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
-  static String _shortDay(String ymd) {
-    final d = DateTime.tryParse(ymd);
-    return d == null ? '' : '${_months[d.month - 1]} ${d.day}';
-  }
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip(this.text, {this.tone = Tone.neutral});
+  const _Chip(this.text);
 
   final String text;
-  final Tone tone;
 
   @override
   Widget build(BuildContext context) {
-    final colours = ToneColours.of(context, tone);
+    final colours = ToneColours.of(context, Tone.neutral);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
