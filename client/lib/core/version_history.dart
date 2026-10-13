@@ -31,6 +31,8 @@ class VersionHistory {
         'Automations: a task made by a rule goes on the place\'s board and is given to the person.',
         'Leads: after hours, auto replies can carry a booking link that books onto the same lead; an approved online booking can send the customer a confirmation with the number to call; the Online Booking card shows the best-fit window for the dispatcher.',
         'AI Assistance: answers in the app and on the WhatsApp staff line also draw on your role\'s training guide, with its video links.',
+        'Reports: a caller who already has a job shows Existing job or Rescheduled instead of Not booked; the nightly Same-Day WhatsApp report is easier to read.',
+        'Automations: a rule can send a Communication pop-up alert; an auto reply\'s "Book online now" line is left out when the branch has no booking page.',
       ],
     ),
     VersionRelease(
