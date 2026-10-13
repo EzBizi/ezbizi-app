@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Reports: Performance › Calls has a Score column, AI’s score out of 10 for each call.',
         'Reports: new Thumbtack tab, with lead spend, cost per lead and cost per booked job by category and branch.',
+        'Reports: Marketing, Meta and Thumbtack have the from–to date picker. Marketing loads faster and says when the P&L is not filled in for the dates.',
         'AI Assistance answers questions in its own words from your Library, in the app and on WhatsApp for staff.',
         'Every tab can now have a walkthrough and a how-to video, shown as (?) and ▶ beside its title. The Task Board has the first walkthrough.',
         'Leads: Google bookings that were still "Booking through Google" now get the customer\'s name, phone, email and ZIP from Workiz\'s booking email.',
