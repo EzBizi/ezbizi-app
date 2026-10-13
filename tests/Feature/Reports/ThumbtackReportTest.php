@@ -30,7 +30,7 @@ class ThumbtackReportTest extends TestCase
             DB::table('leads')->insert([
                 'id' => (string) Str::uuid(), 'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
                 'franchise_id' => $t['franchise']->id, 'source' => 'thumbtack', 'is_test' => false,
-                'remote_id' => Str::random(8), 'category' => 'Chimney Sweep', 'charge_status' => $charge,
+                'remote_id' => Str::random(8), 'category' => 'Chimney Sweep', 'service_state' => 'CT', 'charge_status' => $charge,
                 'lead_cost_minor' => $cost, 'job_id' => $jobId, 'received_at' => $at,
                 'created_at' => now(), 'updated_at' => now(),
             ]);
@@ -42,11 +42,17 @@ class ThumbtackReportTest extends TestCase
             ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07')
             ->assertOk()
             ->assertJsonPath('data.rows.0', [
-                'category' => 'Chimney Sweep', 'branch' => $t['franchise']->name, 'leads' => 3, 'charged' => 2,
+                'category' => 'Chimney Sweep', 'state' => 'CT', 'branch' => $t['franchise']->name, 'leads' => 3, 'charged' => 2,
                 'credited' => 1, 'spend_minor' => 4000, 'cost_per_lead_minor' => 2000, 'booked' => 1,
                 'cost_per_booked_minor' => 4000,
             ])
-            ->assertJsonPath('data.categories', ['Chimney Sweep']);
+            ->assertJsonPath('data.categories', ['Chimney Sweep'])
+            ->assertJsonPath('data.states', ['CT']);
+
+        $this->signedInAs($user)
+            ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07&state=NJ')
+            ->assertOk()
+            ->assertJsonPath('data.rows', []);
 
         $this->signedInAs($this->userWithRole($t, 'Tech', []))
             ->getJson('/api/v1/reports/thumbtack?from=2026-10-01&to=2026-10-07')

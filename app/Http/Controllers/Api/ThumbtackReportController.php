@@ -25,6 +25,7 @@ class ThumbtackReportController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
             'category' => ['nullable', 'string', 'max:191'],
             'branch' => ['nullable', 'string', 'max:64'],
+            'state' => ['nullable', 'string', 'size:2'],
         ]);
 
         $leads = fn () => DB::table('leads')
@@ -36,9 +37,10 @@ class ThumbtackReportController extends Controller
             ->leftJoin('franchises as f', 'f.id', '=', 'leads.franchise_id')
             ->whereBetween('leads.received_at', [$q['from'].' 00:00:00', $q['to'].' 23:59:59'])
             ->when($q['category'] ?? null, fn ($w, $c) => $w->where('leads.category', $c))
+            ->when($q['state'] ?? null, fn ($w, $s) => $w->where('leads.service_state', $s))
             ->when($q['branch'] ?? null, fn ($w, $b) => $b === 'none' ? $w->whereNull('leads.franchise_id') : $w->where('leads.franchise_id', $b))
-            ->groupBy('leads.category', 'f.name')
-            ->selectRaw("leads.category, f.name branch, count(*) leads,
+            ->groupBy('leads.category', 'leads.service_state', 'f.name')
+            ->selectRaw("leads.category, leads.service_state state, f.name branch, count(*) leads,
                 sum(leads.charge_status = 'CHARGED') charged,
                 sum(leads.charge_status = 'CREDITED') credited,
                 sum(case when leads.charge_status = 'CHARGED' then leads.lead_cost_minor else 0 end) spend_minor,
@@ -47,6 +49,7 @@ class ThumbtackReportController extends Controller
             ->get()
             ->map(fn ($r) => [
                 'category' => $r->category,
+                'state' => $r->state,
                 'branch' => $r->branch,
                 'leads' => (int) $r->leads,
                 'charged' => (int) $r->charged,
@@ -59,6 +62,7 @@ class ThumbtackReportController extends Controller
 
         return response()->json(['data' => [
             'rows' => $rows,
+            'states' => $leads()->whereNotNull('service_state')->distinct()->orderBy('service_state')->pluck('service_state'),
             'categories' => $leads()->whereNotNull('category')->distinct()->orderBy('category')->pluck('category'),
             'branches' => $leads()->join('franchises as f', 'f.id', '=', 'leads.franchise_id')
                 ->distinct()->orderBy('f.name')->get(['f.id', 'f.name']),
