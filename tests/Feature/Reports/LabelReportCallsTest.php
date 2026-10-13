@@ -191,6 +191,40 @@ class LabelReportCallsTest extends TestCase
     }
 
     /**
+     * --split-only divides every transcript of the last 7 days, whatever its
+     * queue, several at a time; nothing is labelled (Grok AI, 2026-10-13:
+     * 1,728 waited, invisible to coaching).
+     */
+    public function test_split_only_divides_the_weeks_transcripts_in_batches(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true,
+            'services.grok_cli.home' => '/var/lib/ezbizi-grok', 'services.grok_cli.concurrency' => 2]);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->ringCentral([]);
+        foreach (['a', 'b', 'c', 'd', 'e'] as $id) {
+            $this->transcript($tenant, "rc-$id", 'Hello. It is 199.');
+        }
+        $this->transcript($tenant, 'rc-old', 'Hello. It is 199.');
+        CallReportTranscript::withoutGlobalScopes()->where('call_id', 'rc-old')->update(['created_at' => now()->subDays(8)]);
+        $asked = $this->fakeTaggers();
+
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => ['turns' => [
+            ['speaker' => 'Customer', 'text' => 'Hello.'],
+            ['speaker' => 'Dispatcher', 'text' => 'It is 199.'],
+        ]]]))]);
+
+        $this->artisan('ezbizi:label-report-calls', ['--organization' => $tenant['org']->id, '--split-only' => true])
+            ->expectsOutput('Split by speaker: 5')
+            ->assertSuccessful();
+
+        $this->assertSame(5, CallReportTranscript::withoutGlobalScopes()->where('transcript_labelled', 'like', '%Dispatcher: It is 199.%')->count());
+        $this->assertNull(CallReportTranscript::withoutGlobalScopes()->where('call_id', 'rc-old')->value('transcript_labelled'));
+        $this->assertSame([], $asked->questions);
+    }
+
+    /**
      * The label set grew (2026-10-12; Jose: "add them"), so the old "other"
      * rows can be asked again with --relabel=other, overwriting them; any
      * other label is left alone.
