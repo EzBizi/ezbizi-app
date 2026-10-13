@@ -61,6 +61,45 @@ final class NearbySuggestion
     }
 
     /**
+     * How well a window already picked (a website booking) sits beside booked
+     * work, and a better one if the suggestion would pick differently (Jose,
+     * 2026-10-13: bookings "inline with the new scheduling earlier or
+     * recommended"; the customer never sees this, the dispatcher does).
+     *
+     * The picked window is scored on its own day's jobs whether or not it is
+     * still open: the booking itself holds its seat.
+     *
+     * @return array<string, mixed>
+     */
+    public function fit(ServiceArea $area, string $zip, string $date, string $startTime, CarbonImmutable $from): array
+    {
+        $look = $this->load($area, $from);
+        $origin = $this->centre($area->organization_id, $zip);
+        $here = $this->placed($look['jobs'][$date] ?? collect(), [], $origin, $look['radius']);
+        $nearby = $here->where('nearby', true);
+        $chosen = [
+            'date' => $date,
+            'start_time' => $startTime,
+            'nearby' => $nearby->count(),
+            'nearest_miles' => $here->min('miles'),
+            'technicians' => $nearby->pluck('technicians')->flatten()->unique()->values()->all(),
+            'jobs' => $nearby->sortBy('miles')->values()->all(),
+        ];
+        $best = $origin === null ? null : self::best($this->candidates($look['days'], $look['jobs'], $origin, $look['radius']));
+        // Strictly better only: an equal day elsewhere (merely earlier) is no
+        // reason to call the customer back.
+        $better = $best !== null
+            && [-$best['nearby'], $best['nearest_miles']] < [-$chosen['nearby'], $chosen['nearest_miles'] ?? INF];
+
+        return [
+            'radius_miles' => $look['radius'],
+            'origin' => $origin,
+            'chosen' => $chosen,
+            'better' => $better ? $this->shown($best) : null,
+        ];
+    }
+
+    /**
      * What a suggestion weighs, read once so Reschedules can weigh every job
      * of an area against it without a query per job.
      *
