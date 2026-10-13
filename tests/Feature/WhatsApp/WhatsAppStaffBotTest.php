@@ -1020,4 +1020,10 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertSame(0, PersonalAccessToken::where('name', 'WhatsApp AI (read only)')->count(), 'the token is gone');
     }
 
+
+    public function test_signed_links_never_reach_grok(): void
+    {
+        $this->assertSame(['a' => ['url' => '[signed link removed]', 'name' => 'Ana']], \App\Support\Ai\AppAsk::withoutSignedLinks(
+            ['a' => ['url' => 'https://app.ezbizi.com/c/1?expires=9&signature=abc', 'name' => 'Ana']]));
+    }
 }
