@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 94 · ▶ How-to video: plays in the app on every platform, fullscreen and download — **sent 2026-10-14 11:20, awaiting Jose until 11:30** (`docs/previews/help-video-player-layouts.html`)
+### 94 · ▶ How-to video: plays in the app on every platform, fullscreen and download — **sent 2026-10-14 11:20; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** 8640e3b2 (session/uiux-help-video) (`docs/previews/help-video-player-layouts.html`)
 
 Jose 2026-10-14 via the desk, verbatim: *"video should be seen on desktop, mobile, etc, right not it only works on web, secondly
 the fullscreen option and also the download option all inside the app."* Windows had no player half (the panel offered "Open
