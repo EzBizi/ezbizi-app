@@ -801,6 +801,22 @@ void main() {
     expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
   });
 
+  // UI/UX tour, 2026-10-14: a Workiz lead's status read "Google: ...".
+  testWidgets("a source's own status is named after the source", (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      source: 'workiz',
+      details: {'google_status': 'Submitted'},
+    );
+
+    expect(find.text('Workiz: Submitted'), findsOneWidget);
+    expect(find.textContaining('Google:'), findsNothing);
+  });
+
   testWidgets('an address Google placed exactly is shown as Google has it', (
     tester,
   ) async {
@@ -1347,6 +1363,7 @@ void _wordTests() {
     expect(channelWord('LIVECHAT'), 'Chat');
     expect(channelWord('FORM'), 'Form');
     expect(sourceWord('local_services'), 'Google Ads');
+    expect(sourceWord('workiz'), 'Workiz');
     expect(sourceWord('website_chat'), 'Website chat');
     expect(sourceWord('website_form'), 'Website form');
   });
