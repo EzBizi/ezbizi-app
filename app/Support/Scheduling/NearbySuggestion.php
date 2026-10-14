@@ -2,8 +2,11 @@
 
 namespace App\Support\Scheduling;
 
+use App\Models\Customer;
+use App\Models\FieldGeocode;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Support\Field\FieldJobs;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -33,6 +36,7 @@ final class NearbySuggestion
     public function __construct(
         private readonly Openings $openings,
         private readonly SettingsResolver $settings,
+        private readonly FieldJobs $field,
     ) {}
 
     /** @return array<string, mixed> */
@@ -263,15 +267,29 @@ final class NearbySuggestion
     }
 
     /**
-     * Rows with no usable place get their zip's centre, from A-1's own jobs
-     * there, marked `approximate` (Grok, 2026-10-14: 35 of 37 unroutable jobs
-     * had a full address and zip, but latitude NULL or -1). ponytail: zip
-     * level, not a geocoder; geocode on save belongs to whoever writes jobs.
+     * A place for every row that has none (Grok, 2026-10-14: 35 of 37
+     * unroutable jobs had a full address and zip, but latitude NULL or -1):
+     * Field's stored geocode of the customer's address (cache only, never a
+     * call to Google), else the zip's centre from A-1's own jobs there,
+     * marked `approximate`.
      */
     public function located(Collection $rows, string $organizationId): Collection
     {
         $placed = fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
             && self::inUs((float) $j->latitude, (float) $j->longitude);
+
+        $customers = Customer::query()->whereIn('id', $rows->reject($placed)->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
+        $rows = $rows->map(function (object $j) use ($placed, $customers) {
+            $customer = $placed($j) ? null : ($customers[$j->customer_id ?? ''] ?? null);
+            $point = $customer === null ? null : $this->field->pointAt(FieldGeocode::addressOf($customer));
+            if ($point !== null && self::inUs((float) $point['lat'], (float) $point['lng'])) {
+                $j = clone $j;
+                $j->latitude = (float) $point['lat'];
+                $j->longitude = (float) $point['lng'];
+            }
+
+            return $j;
+        });
         $zips = $rows->reject($placed)->map(fn ($j) => substr(preg_replace('/\D+/', '', (string) ($j->postal_code ?? '')), 0, 5))
             ->filter(fn ($z) => strlen($z) === 5)->unique()->values();
 
