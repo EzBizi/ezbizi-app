@@ -19,7 +19,7 @@ class VersionHistory {
       items: [
         'Work Hours: a clock-out and clock-in less than 5 minutes apart are one shift, including after an edit.',
         'Task Board: New board at the foot of the Board picker; a board\'s owner, or an Administrator, adds people as Owner, Member or Viewer and sets it Open or Private; ⚡ Automate on every board saves easy task rules (assign, notify, alert, set status, move to group) as real Automations rules for that board.',
-        'Automations: a rule can move a task to another group on its board.',
+        'Automations: a rule can move a task to another group on its board, and a board\'s owner can set up its Automate rules without the Automations permission.',
         'Scheduling: Re-Scheduling now warns "Make sure to confirm with the client before rescheduling", and Move asks "Do you wish to proceed with the change?" before anything changes in Workiz.',
       ],
     ),
