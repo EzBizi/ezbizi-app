@@ -20,7 +20,7 @@ class VersionHistory {
         'Help: the how-to videos play inside the app on Windows, Mac, phones and web, with Fullscreen (Esc comes back) and Download (a Save dialog on a computer, Photos on a phone); the chapter playing is highlighted.',
         'Phone: call recordings and voicemails play on iPhone and Mac.',
         'Reports: calls on every line are now transcribed and scored, long calls are no longer misread as "no conversation", and missed calls say Missed in the Score column.',
-        'Scheduling: in Routing a technician can take two nearby jobs in the same window, so there are fewer needless extra routes, and jobs far outside the area (usually booked in the wrong one) are listed separately instead of breaking a route. Suggested availability now counts as nearby only booked jobs in the same time window or the one next to it, the same rule as Re-Scheduling.',
+        'Scheduling: in Routing a technician can take two nearby jobs in the same window, so there are fewer needless extra routes, and jobs far outside the area (usually booked in the wrong one) are listed apart as "Far outside this area — check the booking" instead of breaking a route; route miles are marked straight-line, with Google Maps giving the real drive. Suggested availability now counts as nearby only booked jobs in the same time window or the one next to it, the same rule as Re-Scheduling.',
       ],
     ),
     VersionRelease(
