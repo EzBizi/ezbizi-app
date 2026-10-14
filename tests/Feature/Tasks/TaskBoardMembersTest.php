@@ -28,6 +28,7 @@ class TaskBoardMembersTest extends TestCase
             ->assertJsonPath('data.my_role', 'owner')
             ->assertJsonPath('data.members_count', 1)
             ->assertJsonPath('data.can_manage', true)
+            ->assertJsonStructure(['data' => ['company_id', 'franchise_id']])
             ->json('data.id');
     }
 

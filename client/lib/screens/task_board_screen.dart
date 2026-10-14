@@ -847,7 +847,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// queue 89, desktop 1 and phone 4).
   List<Widget> _boardFaces({required bool phone}) {
     final custom = _board!['kind'] == 'custom';
-    final automate = widget.session.me?.can('automations.view') ?? false;
+    final automate =
+        _board!['can_manage'] == true ||
+        (widget.session.me?.can('automations.view') ?? false);
     final people = 'People · ${_board!['members_count'] ?? 0}';
     final private = _board!['visibility'] == 'private';
     if (!custom && !automate) return const [];

@@ -21,6 +21,7 @@ void main() {
     required bool manage,
     String kind = 'custom',
     bool automations = false,
+    String? franchiseId,
   }) {
     log = [];
     var boards = <Map<String, dynamic>>[
@@ -43,6 +44,7 @@ void main() {
     Map<String, dynamic> board(Map<String, dynamic> b) => {
       ...b,
       'my_role': manage ? 'owner' : 'member',
+      'franchise_id': franchiseId,
       'can_manage': manage,
       'members_count': 2,
       'statuses': [
@@ -107,6 +109,8 @@ void main() {
         }
         if (path == '/task-boards') return json({'data': boards});
         if (path == '/automations' && request.method == 'GET') {
+          // An owner without the permission and no rules yet (2798c466).
+          if (!automations) return json({'message': 'Forbidden'}, 403);
           return json({
             'data': [
               {'id': 'r-1', 'trigger_key': 'task.status_changed'},
@@ -192,6 +196,7 @@ void main() {
     String kind = 'custom',
     double width = 1400,
     bool automations = false,
+    String? franchiseId,
   }) async {
     tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1.0;
@@ -201,6 +206,7 @@ void main() {
       manage: manage,
       kind: kind,
       automations: automations,
+      franchiseId: franchiseId,
     );
     final session = Session(api);
     await session.adopt('tok');
@@ -355,6 +361,8 @@ void main() {
       'actions': [
         {'type': 'task.assign', 'user_field': 'user:u-2'},
       ],
+      'scope_type': null,
+      'scope_id': null,
     });
     sent(log[1], 'PATCH', '/automations/r-9', {'is_active': true});
 
@@ -396,8 +404,34 @@ void main() {
     ]);
   });
 
-  testWidgets('without Automations there is no Automate', (tester) async {
-    await pump(tester, kind: 'franchise');
+  testWidgets("a board's owner automates it without the Automations "
+      "permissions, scoped to the board's own place", (tester) async {
+    await pump(tester, franchiseId: 'f-1');
+
+    await tester.tap(find.byKey(const Key('tasks-automate')));
+    await tester.pumpAndSettle();
+    expect(find.text('No automations on this board yet.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('board-rule-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('board-rule-save')));
+    await tester.pumpAndSettle();
+
+    final body = log.first.$3 as Map;
+    expect(body['scope_type'], 'franchise');
+    expect(body['scope_id'], 'f-1');
+    expect(body['actions'], [
+      {
+        'type': 'notify',
+        'message': '{{title}} was added (Spring push)',
+        'to_assignee': true,
+      },
+    ]);
+  });
+
+  testWidgets('without Automations, on a board they do not manage, there is '
+      'no Automate', (tester) async {
+    await pump(tester, kind: 'franchise', manage: false);
 
     expect(find.byKey(const Key('tasks-automate')), findsNothing);
   });
