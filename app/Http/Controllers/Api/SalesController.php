@@ -35,7 +35,7 @@ class SalesController extends Controller
         $jobs = Job::query()
             ->whereIn('franchise_id', $franchises)
             ->where(fn ($q) => $q->whereRaw('LOWER(TRIM(status)) = ?', [self::PENDING])->orWhereIn('id', $worked))
-            ->with(['customer:id,name,phone,email,state', 'workizJob:id,job_id,serial_id,state'])
+            ->with(['customer:id,name,phone,email,state', 'workizJob:id,job_id,serial_id,state,payload'])
             ->latest()
             ->get();
 
@@ -77,7 +77,10 @@ class SalesController extends Controller
         return [
             'job_id'         => $job->id,
             'job_number'     => $job->workizJob?->serial_id ?? $job->number,
-            'lead_date'      => $job->created_at?->toDateString(),
+            // Workiz's own CreatedDate: jobs.created_at is when the sync copied
+            // the job in, wrong for 885 of A-1's 1,399 pending jobs (2026-10-14).
+            'lead_date'      => substr((string) ($job->workizJob?->payload['CreatedDate'] ?? ''), 0, 10)
+                ?: $job->created_at?->toDateString(),
             'name'           => $job->customer?->name,
             'phone'          => $job->customer?->phone,
             'email'          => $job->customer?->email,
