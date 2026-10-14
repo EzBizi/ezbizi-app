@@ -18,6 +18,7 @@ class VersionHistory {
       date: '14 Oct 2026',
       items: [
         'Scheduling: an opened Re-Scheduling suggestion shows both days window by window with the open spots before and after the move: the day the job leaves gains a spot, the day it moves to loses one, and each day shows its total.',
+        'Guidelines: a new Guidelines tab holds situation cards, each with step-by-step guidance, a colour and an image, plus a search bar; its Settings tab is where they are created and edited. Administrators see it, and other roles get it in Roles.',
       ],
     ),
     VersionRelease(
