@@ -1293,6 +1293,9 @@ Route::prefix('v1')
         // Its own tab (Jose: "right now only administrators and lead manager").
         Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
         Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
+        // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
+        Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
+        Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).

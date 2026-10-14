@@ -5,12 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Console\Commands\LabelReportCalls;
 use App\Console\Commands\ScoreReportCalls;
 use App\Models\CallReportPersonReview;
+use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
+use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\Scoring\ScoringWeights;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * GET /api/v1/reports/scoring?from=Y-m-d&to=Y-m-d
@@ -95,7 +99,37 @@ class ScoringReportController extends Controller
         return response()->json(['data' => $calls]);
     }
 
-    public function show(Request $request): JsonResponse
+    /** GET /api/v1/reports/scoring/weights: what each metric counts for, summing to 100. */
+    public function weights(): JsonResponse
+    {
+        return response()->json(['data' => [
+            'weights' => ScoringWeights::current(),
+            'defaults' => ScoringWeights::DEFAULTS,
+        ]]);
+    }
+
+    /** PUT /api/v1/reports/scoring/weights {weights: {metric: percent}}: refused unless they sum to 100. */
+    public function saveWeights(Request $request): JsonResponse
+    {
+        $rules = ['weights' => ['required', 'array:'.implode(',', ScoringWeights::metrics())]];
+        foreach (ScoringWeights::metrics() as $metric) {
+            $rules["weights.$metric"] = ['required', 'integer', 'between:0,100'];
+        }
+        $weights = $request->validate($rules)['weights'];
+
+        if (array_sum($weights) !== 100) {
+            throw ValidationException::withMessages(['weights' => 'The weights must add up to 100%; they add up to '.array_sum($weights).'%.']);
+        }
+
+        ReportScoringWeight::query()->updateOrCreate(
+            ['organization_id' => app(TenantContext::class)->idOrFail()],
+            ['weights' => $weights],
+        );
+
+        return $this->weights();
+    }
+
+    public function show(Request $request, PerformancePeople $performance): JsonResponse
     {
         $q = $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],
@@ -135,18 +169,31 @@ class ScoringReportController extends Controller
             'work_on' => $r->work_on, 'trend' => $r->trend,
         ];
 
-        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review) {
+        // Performance's own People rows, so the conversion rate here is the one
+        // Performance shows for the same dates (Jose, 2026-10-14).
+        $perf = $performance->for($request->user(), $from, $to);
+        $weights = ScoringWeights::current();
+
+        $people = $rows->groupBy('answered_by')->map(function ($calls, $person) use ($workiz, $review, $perf, $weights) {
             $checks = [];
             foreach (ScoreReportCalls::CHECKS as $check) {
                 $met = $calls->filter(fn ($c) => (json_decode((string) $c->checks, true)[$check] ?? false) === true)->count();
                 $checks[$check] = (int) round($met / $calls->count() * 100);
             }
             $notes = fn (string $field) => $calls->pluck($field)->filter()->unique()->take(3)->values()->all();
+            $newClient = (int) ($perf[$person]['new_client'] ?? 0);
+            $jobs = (int) ($perf[$person]['jobs'] ?? 0);
+            $conversion = $newClient > 0 ? (int) round($jobs / $newClient * 100) : null;
 
             return [
                 'person' => $person,
                 'calls_scored' => $calls->count(),
                 'avg_score' => round($calls->avg('score'), 1),
+                // The ranking's number: the weighted metrics, out of 10.
+                'score' => ScoringWeights::score(['conversion' => $conversion, ...$checks], $weights),
+                'conversion' => $conversion,
+                'new_client' => $newClient,
+                'jobs' => $jobs,
                 'checks' => $checks,
                 'strengths' => $notes('strength'),
                 'improve' => $notes('improve'),
@@ -157,7 +204,7 @@ class ScoringReportController extends Controller
                 'review_weekly' => $review($person, 'weekly'),
                 'rank' => null,
             ];
-        })->sortByDesc('avg_score')->values()->all();
+        })->sortByDesc(fn ($p) => [$p['score'] ?? -1, $p['avg_score']])->values()->all();
 
         $rank = 0;
         foreach ($people as &$p) {
@@ -170,6 +217,7 @@ class ScoringReportController extends Controller
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
             'min_calls_to_rank' => self::MIN_CALLS,
+            'weights' => $weights,
             'people' => $people,
         ]]);
     }

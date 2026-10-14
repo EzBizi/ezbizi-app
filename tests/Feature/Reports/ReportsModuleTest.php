@@ -20,7 +20,8 @@ class ReportsModuleTest extends TestCase
     }
 
     /**
-     * Three capability actions, and one per tab since 2026-09-17.
+     * Four capability actions (Scoring's weights since 2026-10-14), and one per
+     * tab since 2026-09-17.
      *
      * The tab actions are not a second list: `TabDefinition::action()` folds
      * each one into `actions`, which is what lets moduleOf(), materialise() and
@@ -38,6 +39,7 @@ class ReportsModuleTest extends TestCase
             'view',
             'build',
             'export',
+            'scoring_weights',
             'library.view',
             'builder.view',
             'experimental.view',
