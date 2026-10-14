@@ -99,7 +99,8 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'tour-report-dates',
         title: 'The dates',
-        body: 'Which days of scored calls the cards and the ranking cover.',
+        body:
+            'Which days of scored calls the cards and the ranking cover. Today, Yesterday, 1 week or 1 month in one click.',
       ),
       TourStep(
         anchor: 'scoring-sort',
@@ -114,6 +115,14 @@ const Map<String, Tour> reportsTours = {
         body:
             'Their score, calls scored and what to work on. Click a card for '
             "the AI's daily and weekly analysis.",
+      ),
+      TourStep(
+        anchor: 'scoring-calls-search',
+        title: 'Their calls',
+        body:
+            "In a person's analysis: their latest three calls and their best "
+            'and worst, each with its score. Search finds any of their calls '
+            'by number or words.',
       ),
       TourStep(
         anchor: 'scoring-ranking',
@@ -133,7 +142,8 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'tour-report-dates',
         title: 'The dates',
-        body: 'Which days of ad spend and jobs the report covers.',
+        body:
+            'Which days of ad spend and jobs the report covers. Today, Yesterday, 1 week or 1 month in one click.',
       ),
       TourStep(
         anchor: 'marketing-fact-cost',
@@ -164,7 +174,8 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'tour-report-dates',
         title: 'The dates',
-        body: 'Which days of Facebook ad spend the report covers.',
+        body:
+            'Which days of Facebook ad spend the report covers. Today, Yesterday, 1 week or 1 month in one click.',
       ),
       TourStep(
         anchor: 'meta-state',
@@ -199,7 +210,8 @@ const Map<String, Tour> reportsTours = {
       TourStep(
         anchor: 'tour-report-dates',
         title: 'The dates',
-        body: 'Which days of Thumbtack leads the report covers.',
+        body:
+            'Which days of Thumbtack leads the report covers. Today, Yesterday, 1 week or 1 month in one click.',
       ),
       TourStep(
         anchor: 'thumbtack-state',
