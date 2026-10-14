@@ -24,6 +24,7 @@ class VersionHistory {
         'Leads: website forms nobody has called back turn red like unanswered texts; new status Follow Up.',
         'Field: job addresses are now located two weeks ahead, so maps and routes have exact pins sooner.',
         'Integrations: every account type has its card, including Facebook Ads, so each can be connected from there.',
+        'Facebook: connecting your Facebook also brings your ad accounts, so ad spend shows in Reports.',
       ],
     ),
     VersionRelease(
