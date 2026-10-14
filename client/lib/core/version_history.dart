@@ -23,6 +23,7 @@ class VersionHistory {
         'WhatsApp: the staff bot\'s menus and answers start sentences with a capital and use topic emojis instead of dots.',
         'Leads: website forms nobody has called back turn red like unanswered texts; new status Follow Up.',
         'Field: job addresses are now located two weeks ahead, so maps and routes have exact pins sooner.',
+        'Integrations: every account type has its card, including Facebook Ads, so each can be connected from there.',
       ],
     ),
     VersionRelease(
