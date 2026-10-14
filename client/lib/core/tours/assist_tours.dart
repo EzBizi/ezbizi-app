@@ -8,6 +8,28 @@ import '../tab_tours.dart';
 /// `module/Tab`. A Settings tab drawn by the shared SettingsScreen has one
 /// step: that screen's rows carry no fixed keys.
 const Map<String, Tour> assistTours = {
+  'guidelines/Guidelines': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'guidelines-search',
+        title: 'Find a situation',
+        body: 'Type a word to narrow the cards: it searches titles and steps.',
+      ),
+    ],
+  ),
+  'guidelines/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'guidelines-add',
+        title: 'Add guideline',
+        body:
+            'A title, its steps one per line, a color and an image if you '
+            'want one. Click a card to change or delete it.',
+      ),
+    ],
+  ),
   'ai_assistance/Library': Tour(
     version: 1,
     steps: [

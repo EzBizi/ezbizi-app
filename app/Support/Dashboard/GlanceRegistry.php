@@ -56,6 +56,8 @@ class GlanceRegistry
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
         // Its sidebar entry arrived after the others (2026-09-24).
         'ai_assistance',
+        // Guidelines, beside AI Assistance like its sidebar entry (2026-10-14).
+        'guidelines',
 
         // Profit & Loss AFTER Google Ads, matching the order of the chips
         // inside Reports — the module registry was changed to that order
@@ -148,6 +150,11 @@ class GlanceRegistry
         'ai_assistance' => [
             'label' => 'AI Assistance',
             'sentence' => 'Answers for your team, on WhatsApp and in the app.',
+        ],
+        // Reference cards; nothing to count on the home screen.
+        'guidelines' => [
+            'label' => 'Guidelines',
+            'sentence' => 'Step-by-step answers for the situations your team meets.',
         ],
         'profit_loss' => [
             'label' => 'Profit & Loss',

@@ -19,6 +19,7 @@ IconData dashboardPanelIcon(String key) {
   'work_hours': Icons.schedule_outlined,
   // Same mark as its sidebar entry (module_screens.dart).
   'ai_assistance': Icons.smart_toy_outlined,
+  'guidelines': Icons.menu_book_outlined,
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
     'scheduling': Icons.calendar_month_outlined,

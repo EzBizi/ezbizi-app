@@ -727,6 +727,16 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'guidelines': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-guidelines-tabs',
+        title: 'Guidelines',
+        body: 'Guidelines to read and, if you can edit, Settings to write them.',
+      ),
+    ],
+  ),
   'ai_assistance': Tour(
     // 2: the AI tab as a chat (UI queue 91).
     version: 2,
