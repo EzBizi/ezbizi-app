@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18, awaiting Jose until 09:28** (`docs/previews/scheduling-routing-layouts.html`)
+### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): Routing 1 and 4, Re-Scheduling 7 and 9 — building** (`docs/previews/scheduling-routing-layouts.html`)
 
 Jose 2026-10-14 via Scheduling, verbatim: *"1 technician is able to take a max of 6 jobs per day … a suggested route where it
 says like Technician 1 - Technician 2 (amount of technicians based on the availability) … a Routing Tab where it shows the
