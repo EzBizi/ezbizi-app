@@ -53,6 +53,8 @@ IconData dashboardPanelIcon(String key) {
     // New Google reviews raised to Automations. Matches module_screens.dart,
     // so the sidebar and the dashboard agree.
     'a1leads_gbp': Icons.business_outlined,
+    // Sales pipeline; matches module_screens.dart.
+    'sales': Icons.trending_up,
     // Training is a guide somebody reads and a test they sit, so the icon is
     // the learning, not the paperwork — a certificate or a checklist would
     // read as HR, whose panel sits beside this one and counts a different

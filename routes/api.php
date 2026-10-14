@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\A1LeadsGbpController;
+use App\Http\Controllers\Api\SalesController;
 use App\Http\Controllers\Api\A1LeadsReviewOpsController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
@@ -922,6 +923,10 @@ Route::prefix('v1')
          * serves exactly one tab, which is the condition inbox 0051 sets for
          * the middleware being the right place.
          */
+        // Sales pipeline: quoted jobs awaiting approval (Jose, 2026-10-14).
+        Route::get('sales/deals', [SalesController::class, 'index'])->middleware('permission:sales.view');
+        Route::put('sales/deals/{job}', [SalesController::class, 'update'])->middleware('permission:sales.manage');
+
         Route::middleware('permission:a1leads_gbp.view')->group(function () {
             Route::get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
 

@@ -2474,6 +2474,19 @@ class ModuleServiceProvider extends ServiceProvider
              * builder where this goes; the catalogue marks it per row, so
              * nobody builds a rule on an event that cannot arrive.
             */
+            /*
+             * Sales - the sales executives' pipeline tracker (Jose, 2026-10-14),
+             * replacing their spreadsheet. Every job "done pending approval" is a
+             * deal; `manage` sets its stage, urgency, follow-up date and notes.
+             */
+            new ModuleDefinition(
+                key: 'sales',
+                label: 'Sales',
+                actions: ['view', 'manage'],
+                automationExemptBecause: 'Not yet wired: a stage change is a real trigger '
+                    .'(e.g. "deal marked Sold") and should be added when somebody asks for one.',
+            ),
+
             new ModuleDefinition(
                 key: 'leads',
                 label: 'Leads',
