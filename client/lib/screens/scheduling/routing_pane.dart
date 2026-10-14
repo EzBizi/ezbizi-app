@@ -157,7 +157,9 @@ class _RoutingPaneState extends State<RoutingPane> {
           result |= (b & 0x1f) << shift;
           shift += 5;
         }
-        at[k] += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+        // Not `~`: on the web, bitwise operators work on unsigned 32-bit
+        // values, so ~2 is 4294967293 and every westward step went east.
+        at[k] += (result & 1) != 0 ? -(result >> 1) - 1 : result >> 1;
       }
       points.add(LatLng(at[0] / 1e5, at[1] / 1e5));
     }
