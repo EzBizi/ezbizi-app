@@ -21,6 +21,7 @@ class VersionHistory {
         'Sales: a new Sales tab tracks jobs that are done but pending approval, with stage, urgency, next follow-up and notes for each; Administrators see it, and other roles get it in Roles.',
         'Leads: reconnecting Facebook or Instagram brings back that account\'s earlier enquiries.',
         'WhatsApp: the staff bot\'s menus and answers start sentences with a capital and use topic emojis instead of dots.',
+        'Leads: website forms nobody has called back turn red like unanswered texts; new status Follow Up.',
       ],
     ),
     VersionRelease(
