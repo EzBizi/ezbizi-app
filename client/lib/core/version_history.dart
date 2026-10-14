@@ -18,6 +18,7 @@ class VersionHistory {
       date: '14 Oct 2026',
       items: [
         'Scheduling: every number Routing, Re-Scheduling and the suggestions use is now a setting in Scheduling › Settings › Routing & suggestions (renamed from Suggestions): jobs per technician per day and per window, the routing distances, which time windows count as nearby, and Re-Scheduling\'s limits. Routes also carry Google\'s real road path, miles and drive time, and Routing draws them inside the app with miles and drive time in place of the Google Maps button; with no Google route it keeps the straight lines.',
+        'Task Board: every board shows People, including My board and the company and branch boards. The board picker groups boards into My boards, Shared with me, the places and, with See every board, Everyone\'s boards. Roles has three new ticks: See every board, Add people to any board and Create boards. Administrators have them all, and roles that could edit tasks keep Create boards.',
       ],
     ),
     VersionRelease(
