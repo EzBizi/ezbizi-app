@@ -923,6 +923,31 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * A job with no coordinates takes Field's stored geocode of its customer's
+     * address first (exact, not approximate); the zip's centre only after.
+     */
+    public function test_a_job_without_coordinates_takes_fields_stored_geocode_first(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($tenant['org']);
+        $customer = \App\Models\Customer::factory()->create([
+            'owning_franchise_id' => $tenant['franchise']->id,
+            'address_line1' => '712 Pacific St', 'city' => 'Baltimore', 'state' => 'MD', 'postal_code' => '21211',
+        ]);
+        \App\Models\FieldGeocode::query()->create([
+            'address_hash' => \App\Models\FieldGeocode::hash(\App\Models\FieldGeocode::addressOf($customer)),
+            'address' => \App\Models\FieldGeocode::addressOf($customer),
+            'latitude' => 39.3301, 'longitude' => -76.6301, 'status' => \App\Models\FieldGeocode::OK,
+        ]);
+
+        $row = app(\App\Support\Scheduling\NearbySuggestion::class)->located(collect([
+            (object) ['customer_id' => $customer->id, 'latitude' => '-1', 'longitude' => '-1', 'postal_code' => '21211'],
+        ]), $tenant['org']->id)->first();
+
+        $this->assertSame([39.3301, -76.6301, false], [$row->latitude, $row->longitude, $row->approximate ?? false]);
+    }
+
+    /**
      * Grok's review of the live list (2026-10-14): a reschedule must be worth
      * the phone call. Each pair below would be suggested without one rule;
      * only the Houston pair passes them all.
