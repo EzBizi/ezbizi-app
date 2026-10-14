@@ -35,9 +35,11 @@ use Illuminate\Support\Facades\Schema;
 class TaskBoards
 {
     public const DEFAULT_GROUPS = [
-        ['This week', '#579BFC'],
-        ['Next week', '#A25DDC'],
-        ['Done', '#00C875'],
+        ['Open Tasks', '#579BFC'],
+        ['Recurring Tasks', '#A25DDC'],
+        ['Completed Tasks', '#00C875'],
+        ['Company Files', '#FDAB3D'],
+        ['Guidelines', '#784BD1'],
     ];
 
     /** key, name, colour, is_done — every new board starts with these. */

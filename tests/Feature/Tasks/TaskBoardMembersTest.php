@@ -39,7 +39,7 @@ class TaskBoardMembersTest extends TestCase
         $id = $this->privateBoard($tenant, $owner);
 
         $this->inTenant($tenant['org'], function () use ($id) {
-            $this->assertSame(['This week', 'Next week', 'Done'], TaskGroup::query()->where('board_id', $id)->orderBy('position')->pluck('name')->all());
+            $this->assertSame(['Open Tasks', 'Recurring Tasks', 'Completed Tasks', 'Company Files', 'Guidelines'], TaskGroup::query()->where('board_id', $id)->orderBy('position')->pluck('name')->all());
             $this->assertSame(['not_started', 'working_on_it', 'stuck', 'done'], TaskStatus::query()->where('board_id', $id)->orderBy('position')->pluck('key')->all());
         });
 
