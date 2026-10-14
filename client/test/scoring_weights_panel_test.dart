@@ -10,10 +10,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 /// UI queue 97: what the Scoring score weighs, against Reports' 051fa5e6
-/// (GET/PUT /reports/scoring/weights; eight whole numbers that total 100).
+/// (GET/PUT /reports/scoring/weights; nine whole numbers that total 100).
 void main() {
   const labels = {
     'conversion': 'Conversion',
+    'quality': 'AI call score',
     'greeted': 'Greeted with the company name',
     'got_name': "Got the caller's name",
     'got_address': 'Got the address',
@@ -22,15 +23,17 @@ void main() {
     'gave_price': 'Explained the price',
     'asked_for_booking': 'Asked to book',
   };
+  // Reports 90e9d8a5: conversion 50, the AI call score 15, each check 5.
   const defaults = {
-    'conversion': 40,
+    'conversion': 50,
+    'quality': 15,
     'greeted': 5,
-    'got_name': 10,
-    'got_address': 10,
-    'found_need': 10,
-    'offered_time': 10,
+    'got_name': 5,
+    'got_address': 5,
+    'found_need': 5,
+    'offered_time': 5,
     'gave_price': 5,
-    'asked_for_booking': 10,
+    'asked_for_booking': 5,
   };
 
   late List<Map<String, dynamic>> put;
@@ -96,7 +99,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('scoring-weight-conversion')),
-      '35',
+      '45',
     );
     await tester.pump();
     expect(find.text('95 of 100: add 5'), findsOneWidget);
@@ -113,7 +116,7 @@ void main() {
 
     expect(put.single['weights'], {
       ...defaults,
-      'conversion': 35,
+      'conversion': 45,
       'greeted': 10,
     });
     expect(popped, isTrue);
@@ -123,7 +126,7 @@ void main() {
     await pump(tester, {
       ...defaults,
       'conversion': 20,
-      'asked_for_booking': 30,
+      'asked_for_booking': 35,
     });
 
     expect(
@@ -144,7 +147,7 @@ void main() {
           )
           .controller!
           .text,
-      '40',
+      '50',
     );
     await tester.tap(find.byKey(const Key('scoring-weights-save')));
     await tester.pumpAndSettle();

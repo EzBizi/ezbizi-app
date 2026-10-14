@@ -168,7 +168,7 @@ class _ScoringReportState extends State<ScoringReport> {
       context,
       builder: (_) => ScoringWeightsPanel(
         api: widget.api,
-        labels: {'conversion': 'Conversion', ..._checks},
+        labels: {..._metricNames, ..._checks},
       ),
     );
     if (saved == true && mounted) _load();

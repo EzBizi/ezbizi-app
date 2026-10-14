@@ -113,15 +113,16 @@ class _ScoringWeightsPanelState extends State<ScoringWeightsPanel> {
     final weights = _weights;
     final total = _total;
     final keys = widget.labels.keys.toList();
-    Color colour(String key) =>
-        EzBiziTheme.avatarPalette[keys.indexOf(key) %
-            EzBiziTheme.avatarPalette.length];
+    // Nine weights, eight palette colours: the ninth takes the theme's own.
+    final colours = [...EzBiziTheme.avatarPalette, theme.colorScheme.tertiary];
+    Color colour(String key) => colours[keys.indexOf(key) % colours.length];
 
     return SidePanel(
       title: 'What the score weighs',
       subtitle:
-          'Conversion is Performance\'s booked-from-calls rate. The other '
-          'seven are the AI\'s checks on each call. The weights add up to 100.',
+          'Conversion is Performance\'s booked-from-calls rate, the AI call '
+          'score is its mark for each call, and the rest are its checks on '
+          'each call. The weights add up to 100.',
       actions: [
         TextButton(
           key: const Key('scoring-weights-defaults'),
@@ -190,7 +191,7 @@ class _ScoringWeightsPanelState extends State<ScoringWeightsPanel> {
                         Expanded(
                           child: Text(
                             widget.labels[k]!,
-                            style: k == 'conversion'
+                            style: k == 'conversion' || k == 'quality'
                                 ? const TextStyle(fontWeight: FontWeight.w700)
                                 : null,
                           ),
