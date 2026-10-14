@@ -150,19 +150,70 @@ class TaskBoards
     /** The person's role on the board: owner, member, viewer, or null. */
     public function roleOf(User $user, TaskBoard $board): ?string
     {
-        if ($board->kind === TaskBoard::KIND_USER) {
-            return $board->owner_user_id === $user->getKey() ? TaskBoardMember::OWNER : null;
+        if ($board->kind === TaskBoard::KIND_USER && $board->owner_user_id === $user->getKey()) {
+            return TaskBoardMember::OWNER;
         }
 
         return TaskBoardMember::query()->where('board_id', $board->getKey())
             ->where('user_id', $user->getKey())->value('role');
     }
 
-    /** Owners and Administrators rename, delete, and manage members. */
+    /** Owners and Administrators rename and delete custom boards and own their rules. */
     public function canManage(User $user, TaskBoard $board): bool
     {
         return $this->canView($user, $board)
             && ($user->isAdministrator() || $this->roleOf($user, $board) === TaskBoardMember::OWNER);
+    }
+
+    /**
+     * Who adds and removes people on a board of any kind: its owner, holders
+     * of tasks.manage_members, and Administrator (who holds every key). A
+     * place board has no owner rows, so only the last two.
+     */
+    public function canManageMembers(User $user, TaskBoard $board): bool
+    {
+        return $this->canView($user, $board)
+            && ($user->hasPermission('tasks.manage_members') || $this->roleOf($user, $board) === TaskBoardMember::OWNER);
+    }
+
+    /**
+     * Who may be ADDED to a board. A custom board keeps its place's reach; an
+     * automatic board (personal, company, franchise) takes anyone in the
+     * organization, since membership itself is what lets them see and edit it.
+     *
+     * @return Collection<int, User>
+     */
+    public function candidates(TaskBoard $board): Collection
+    {
+        return $board->kind === TaskBoard::KIND_CUSTOM
+            ? $this->reach($board)
+            : User::query()->orderBy('name')->get();
+    }
+
+    /** Ids of boards the person is a member, owner or viewer of. */
+    private function membershipIds(User $user)
+    {
+        return TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id');
+    }
+
+    /**
+     * Why the board is in the person's list: mine (my personal board or one I
+     * own), shared (I am on it, not as owner), place (the current view reaches
+     * it), everyone (only tasks.view_all shows it).
+     */
+    public function sectionOf(User $user, TaskBoard $board, ?string $role): string
+    {
+        if ($role === TaskBoardMember::OWNER) {
+            return 'mine';
+        }
+        if ($role !== null) {
+            return 'shared';
+        }
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
+            return 'everyone';
+        }
+
+        return 'place';
     }
 
     /**
@@ -195,42 +246,47 @@ class TaskBoards
      */
     public function assignable(TaskBoard $board): Collection
     {
-        if ($board->kind === TaskBoard::KIND_USER) {
-            return User::query()->whereKey($board->owner_user_id)->get(['id', 'name']);
-        }
-
-        if ($board->isPrivate()) {
+        if ($board->kind === TaskBoard::KIND_USER || $board->isPrivate()) {
             return User::query()->orderBy('name')
                 ->whereIn('id', $board->members()->whereIn('role', [TaskBoardMember::OWNER, TaskBoardMember::MEMBER])->select('user_id'))
+                ->when($board->kind === TaskBoard::KIND_USER, fn ($q) => $q->orWhere('id', $board->owner_user_id))
                 ->get(['id', 'name']);
         }
 
-        return $this->reach($board);
+        return $this->reach($board)->merge(
+            User::query()->whereIn('id', $board->members()->whereIn('role', [TaskBoardMember::OWNER, TaskBoardMember::MEMBER])->select('user_id'))->get(['id', 'name'])
+        )->unique('id')->sortBy('name')->values();
     }
 
     /** @return Builder<TaskBoard> */
     public function visibleTo(User $user): Builder
     {
-        $mine = fn (Builder $q) => $q->where('kind', TaskBoard::KIND_USER)
-            ->where('owner_user_id', $user->getKey());
+        // My personal board, and any board I have been added to (of any kind,
+        // even a place my reach does not cover).
+        $mine = fn (Builder $q) => $q->where(fn (Builder $o) => $o->where('kind', TaskBoard::KIND_USER)
+            ->where('owner_user_id', $user->getKey()))
+            ->orWhereIn('id', $this->membershipIds($user));
 
         if (! $user->hasPermission('tasks.view')) {
             return TaskBoard::query()->where($mine);
         }
 
         [$companyIds, $franchiseIds] = $this->placesInView($user);
+        $all = $user->hasPermission('tasks.view_all');
 
         return TaskBoard::query()->where(fn (Builder $q) => $q
             ->where($mine)
+            // tasks.view_all: everybody's personal board.
+            ->when($all, fn (Builder $e) => $e->orWhere('kind', TaskBoard::KIND_USER))
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)->whereIn('company_id', $companyIds))
             ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)->whereIn('franchise_id', $franchiseIds))
             // A custom board: its place is in view (or it is organization-level),
-            // and it is main, or private and I am on it (or Administrator).
+            // and it is main, or private and I am on it (or I hold tasks.view_all).
             ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_CUSTOM)
                 ->where(fn (Builder $p) => $p->whereIn('company_id', $companyIds)
                     ->orWhereIn('franchise_id', $franchiseIds)
                     ->orWhere(fn (Builder $o) => $o->whereNull('company_id')->whereNull('franchise_id')))
-                ->when(! $user->isAdministrator(), fn (Builder $v) => $v->where(fn (Builder $m) => $m
+                ->when(! $all, fn (Builder $v) => $v->where(fn (Builder $m) => $m
                     ->where('visibility', TaskBoard::MAIN)
                     ->orWhereIn('id', TaskBoardMember::query()->where('user_id', $user->getKey())->select('board_id'))))));
     }
@@ -253,11 +309,24 @@ class TaskBoards
         }
 
         if ($board->kind === TaskBoard::KIND_USER) {
-            return $board->owner_user_id === $user->getKey();
+            if ($board->owner_user_id === $user->getKey()) {
+                return true;
+            }
+            $role = $this->roleOf($user, $board);
+
+            // A member writes a personal board; so does an Administrator who can see it.
+            return $this->canView($user, $board)
+                && (($role !== null && $role !== TaskBoardMember::VIEWER) || $user->isAdministrator());
         }
 
         if (! $user->hasPermission('tasks.edit') || ! $this->canView($user, $board)) {
             return false;
+        }
+
+        // A member of a place board writes it even without reach to the place.
+        if ($board->kind !== TaskBoard::KIND_CUSTOM
+            && in_array($this->roleOf($user, $board), [TaskBoardMember::OWNER, TaskBoardMember::MEMBER], true)) {
+            return true;
         }
 
         if ($board->kind === TaskBoard::KIND_CUSTOM) {

@@ -35,7 +35,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_a_custom_board_is_seeded_like_an_automatic_one(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $id = $this->privateBoard($tenant, $owner);
 
         $this->inTenant($tenant['org'], function () use ($id) {
@@ -51,7 +51,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_a_private_board_is_hidden_from_non_members_and_a_viewer_cannot_edit(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $other = $this->userWithRole($tenant, 'Other', ['tasks.view', 'tasks.edit']);
         $id = $this->privateBoard($tenant, $owner);
 
@@ -79,7 +79,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_the_last_owner_cannot_be_removed_or_demoted(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $id = $this->privateBoard($tenant, $owner);
         $other = $this->userWithRole($tenant, 'Other', ['tasks.view']);
         $local = $this->userWithRole($tenant, 'Elsewhere', ['tasks.view'], onlyAt: $this->inTenant($tenant['org'], fn () => \App\Models\Franchise::create(['company_id' => $tenant['company']->id, 'name' => 'Alpha F2'])));
@@ -100,7 +100,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_assigning_a_non_member_on_a_private_board_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $other = $this->userWithRole($tenant, 'Other Person', ['tasks.view']);
         $id = $this->privateBoard($tenant, $owner);
 
@@ -118,7 +118,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_a_board_outside_the_current_view_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $local = $this->userWithRole($tenant, 'Local', ['tasks.view', 'tasks.edit'], onlyAt: $tenant['franchise']);
+        $local = $this->userWithRole($tenant, 'Local', ['tasks.view', 'tasks.edit', 'tasks.create_boards'], onlyAt: $tenant['franchise']);
 
         // A franchise view cannot file on its company, nor on the organization.
         $this->signedInAs($local)->postJson('/api/v1/task-boards', ['name' => 'Up', 'visibility' => 'main', 'company_id' => $tenant['company']->id])
@@ -132,7 +132,7 @@ class TaskBoardMembersTest extends TestCase
     public function test_only_custom_boards_are_renamed_or_deleted_and_only_by_an_owner(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($tenant, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $other = $this->userWithRole($tenant, 'Other', ['tasks.view', 'tasks.edit']);
         $id = $this->signedInAs($owner)->postJson('/api/v1/task-boards', ['name' => 'Shared', 'visibility' => 'main'])
             ->assertCreated()->json('data.id');

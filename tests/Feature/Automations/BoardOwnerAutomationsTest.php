@@ -19,7 +19,7 @@ class BoardOwnerAutomationsTest extends TestCase
     public function test_an_owner_without_the_permission_automates_their_board_and_nothing_else(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $owner = $this->userWithRole($t, 'Owner', ['tasks.view', 'tasks.edit']);
+        $owner = $this->userWithRole($t, 'Owner', ['tasks.view', 'tasks.edit', 'tasks.create_boards']);
         $mine = $this->signedInAs($owner)->postJson('/api/v1/task-boards', [
             'name' => 'Mine', 'visibility' => 'main', 'franchise_id' => $t['franchise']->id,
         ])->assertCreated()->json('data.id');

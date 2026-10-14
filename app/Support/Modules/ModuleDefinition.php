@@ -269,6 +269,13 @@ final class ModuleDefinition
          * @var array<string, string> action => label
          */
         public readonly array $actionLabels = [],
+        /**
+         * One sentence under an action's checkbox in the roles editor, saying
+         * what ticking it hands out. Absent = no sentence.
+         *
+         * @var array<string, string> action => description
+         */
+        public readonly array $actionDescriptions = [],
     ) {
         if ($parent !== null && $parent === $key) {
             throw new InvalidArgumentException(

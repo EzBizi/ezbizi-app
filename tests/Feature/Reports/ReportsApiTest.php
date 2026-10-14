@@ -464,7 +464,9 @@ class ReportsApiTest extends TestCase
             ->assertOk()
             ->json('data.rows');
 
-        $this->assertSame(['Branch task', 'My task'], array_map(fn ($r) => array_values($r)[0], $titles));
+        // Administrator holds tasks.view_all (Jose, 2026-10-14), so a colleague's
+        // personal board is one it could open too.
+        $this->assertSame(['Branch task', 'My task', 'Their task'], array_map(fn ($r) => array_values($r)[0], $titles));
     }
 
     /** Task Board v2: a custom status reports its own name and done flag; subtasks say so. */
