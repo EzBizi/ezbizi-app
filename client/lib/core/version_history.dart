@@ -23,6 +23,8 @@ class VersionHistory {
         'Scheduling: Re-Scheduling counts as nearby only jobs in the offered time window or the one next to it, and moves a job at most 3 days.',
         'Scheduling: a new Routing tab: pick an area and a day to see a route per technician on a map, with stops in order, miles and a Google Maps button; it says when a day needs more technicians than the area has, and lists jobs with no address.',
         'Scheduling: Re-Scheduling tags repairs and redos, and opening a suggestion shows that day window by window with where the job would go.',
+        'Scheduling: a job with no pinned location uses the address Field has already located before falling back to its zip\'s centre.',
+        'Leads: a Workiz lead\'s status no longer says Google.',
       ],
     ),
     VersionRelease(
