@@ -24,6 +24,42 @@ class ScoringReportTest extends TestCase
             ->assertForbidden();
     }
 
+    /** Jose, 2026-10-14: a person's latest 3 calls, searchable, each with its score. */
+    public function test_a_persons_latest_three_scored_calls_and_a_search(): void
+    {
+        config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach ([
+                ['c1', 'Ada', 8, '2026-10-13 14:00:00', '+12145550001', 'chimney sweep price'],
+                ['c2', 'Ada', 6, '2026-10-13 15:00:00', '+12145550002', 'dryer vent'],
+                ['c3', 'Ada', 7, '2026-10-13 16:00:00', '+12145550003', 'gas logs'],
+                ['c4', 'Ada', 9, '2026-10-13 17:00:00', '+12145550004', 'masonry'],
+                ['c1x', 'Ada', 3, '2026-10-13 13:00:00', '+12145550005', 'inspection'],
+                ['b1', 'Bo', 5, '2026-10-13 18:00:00', '+12145550001', 'chimney'],
+            ] as [$id, $who, $score, $at, $number, $words]) {
+                CallReportTranscript::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'transcript' => $words,
+                    'source' => 'whisper', 'answered_by' => $who, 'call_started_at' => $at, 'caller_number' => $number, 'recording_id' => "rec-$id"]);
+                CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => $score, 'checks' => []]);
+            }
+        });
+
+        $user = $this->userWithRole($t, 'Lead Manager', ['reports.scoring.view']);
+        $get = fn (string $q) => $this->signedInAs($user)
+            ->getJson('/api/v1/reports/scoring/calls?person=Ada&from=2026-10-13&to=2026-10-14'.$q)->assertOk()->json('data');
+
+        $latest = $get('');
+        // The latest three, then the worst; the best (c4, 9) is also the latest.
+        $this->assertSame(['c4', 'c3', 'c2', 'c1x'], array_column($latest, 'call_id'));
+        $this->assertSame([9, 7, 6, 3], array_column($latest, 'score'));
+        $this->assertSame([['latest', 'best'], ['latest'], ['latest'], ['worst']], array_column($latest, 'tags'));
+        $this->assertSame('rec-c4', $latest[0]['recording_id']);
+
+        $this->assertSame(['c1'], array_column($get('&q=214-555-0001'), 'call_id'), 'by number, only Ada\'s');
+        $this->assertSame(['c3'], array_column($get('&q=gas'), 'call_id'), 'by words');
+    }
+
     public function test_people_are_averaged_and_ranked_from_the_ai_start_day(): void
     {
         config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);

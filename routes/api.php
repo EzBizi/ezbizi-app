@@ -1263,6 +1263,9 @@ Route::prefix('v1')
         // grant until the Scoring tab's own lands with its screen.
         // Its own tab (Jose: "right now only administrators and lead manager").
         Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
+        Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
+        // A scored call's recording, for Scoring alone (Performance's own needs Performance).
+        Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
