@@ -908,6 +908,18 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertOk()->json('data.routes');
         $this->assertSame([[1, false], [1, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $twelfth));
         $this->assertSame(3, $twelfth[2]['technician']);
+
+        // A job Workiz never placed, with a zip A-1 has worked: routed at the
+        // zip's centre and marked approximate, not left out.
+        $this->located($tenant, '2026-10-19 08:00:00', 0.0, 0.0);
+        app(TenantContext::class)->set($tenant['org']);
+        DB::table('workiz_jobs')->where('scheduled_for', '2026-10-19 08:00:00')->update(['latitude' => null, 'longitude' => null]);
+        $nineteenth = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-19")
+            ->assertOk()->json('data');
+        $this->assertSame([], $nineteenth['unplaced']);
+        $this->assertTrue($nineteenth['routes'][0]['stops'][0]['approximate']);
+        $this->assertEqualsWithDelta(32.79, $nineteenth['routes'][0]['stops'][0]['latitude'], 0.02);
     }
 
     /**

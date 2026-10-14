@@ -27,7 +27,7 @@ final class Routes
 
     public const NEW_ROUTE_MILES = 15.0;
 
-    public function __construct(private readonly Openings $openings) {}
+    public function __construct(private readonly Openings $openings, private readonly NearbySuggestion $nearby) {}
 
     /** @return array{capacity: int, technicians: int, routes: list<array>, unplaced: list<object>} */
     public function for(ServiceArea $area, CarbonImmutable $date): array
@@ -37,7 +37,7 @@ final class Routes
         $techs = max(1, (int) ceil($capacity / self::JOBS_PER_TECH));
 
         // Web bookings too: each is a visit a technician makes.
-        $jobs = $this->openings->jobsOn($area, $date)->values();
+        $jobs = $this->nearby->located($this->openings->jobsOn($area, $date), $area->organization_id)->values();
         [$placeable, $unplaced] = $jobs->partition(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
             && NearbySuggestion::inUs((float) $j->latitude, (float) $j->longitude));
 

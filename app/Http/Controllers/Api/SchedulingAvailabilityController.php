@@ -122,7 +122,9 @@ class SchedulingAvailabilityController extends Controller
         $rows = collect($plan['routes'])->pluck('stops')->flatten(1)->merge($plan['unplaced']);
         $customers = Customer::query()->whereIn('id', $rows->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
         $job = fn (object $row) => SchedulingOverbookingController::detail($row, $customers[$row->customer_id ?? ''] ?? null)
-            + ['latitude' => (float) $row->latitude, 'longitude' => (float) $row->longitude];
+            + ['latitude' => (float) $row->latitude, 'longitude' => (float) $row->longitude,
+                // Placed at its zip's centre: Workiz had no location for it.
+                'approximate' => $row->approximate ?? false];
 
         return response()->json(['data' => [
             'area_id' => $area->id,

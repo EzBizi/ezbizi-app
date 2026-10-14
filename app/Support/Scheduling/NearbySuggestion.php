@@ -117,7 +117,7 @@ final class NearbySuggestion
             'days' => collect($this->openings->days($area, $from, $span))
                 ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
                 ->values(),
-            'jobs' => $this->openings->jobsBetween($area, $from, $from->addDays($span))
+            'jobs' => $this->located($this->openings->jobsBetween($area, $from, $from->addDays($span)), $area->organization_id)
                 ->filter(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
                     && self::inUs((float) $j->latitude, (float) $j->longitude))
                 ->groupBy(fn (object $j) => substr((string) $j->scheduled_for, 0, 10)),
@@ -260,6 +260,44 @@ final class NearbySuggestion
     {
         return $lat >= self::US_LATITUDE[0] && $lat <= self::US_LATITUDE[1]
             && $lng >= self::US_LONGITUDE[0] && $lng <= self::US_LONGITUDE[1];
+    }
+
+    /**
+     * Rows with no usable place get their zip's centre, from A-1's own jobs
+     * there, marked `approximate` (Grok, 2026-10-14: 35 of 37 unroutable jobs
+     * had a full address and zip, but latitude NULL or -1). ponytail: zip
+     * level, not a geocoder; geocode on save belongs to whoever writes jobs.
+     */
+    public function located(Collection $rows, string $organizationId): Collection
+    {
+        $placed = fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
+            && self::inUs((float) $j->latitude, (float) $j->longitude);
+        $zips = $rows->reject($placed)->map(fn ($j) => substr(preg_replace('/\D+/', '', (string) ($j->postal_code ?? '')), 0, 5))
+            ->filter(fn ($z) => strlen($z) === 5)->unique()->values();
+
+        if ($zips->isEmpty()) {
+            return $rows;
+        }
+
+        $centres = DB::table('workiz_jobs')
+            ->where('organization_id', $organizationId)
+            ->whereIn(DB::raw('LEFT(postal_code, 5)'), $zips->all())
+            ->whereBetween('latitude', self::US_LATITUDE)->whereBetween('longitude', self::US_LONGITUDE)
+            ->groupBy(DB::raw('LEFT(postal_code, 5)'))
+            ->selectRaw('LEFT(postal_code, 5) zip, AVG(latitude) lat, AVG(longitude) lng')
+            ->get()->keyBy('zip');
+
+        return $rows->map(function (object $j) use ($placed, $centres) {
+            $c = $placed($j) ? null : ($centres[substr(preg_replace('/\D+/', '', (string) ($j->postal_code ?? '')), 0, 5)] ?? null);
+            if ($c !== null) {
+                $j = clone $j;
+                $j->latitude = (float) $c->lat;
+                $j->longitude = (float) $c->lng;
+                $j->approximate = true;
+            }
+
+            return $j;
+        });
     }
 
     /** Great-circle miles. */
