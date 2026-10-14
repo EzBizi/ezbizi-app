@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -558,6 +560,119 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
   /// capacity, the jobs already in it with their type and distance, and this
   /// job, dashed, in the window it would take (Jose, 2026-10-14: "showing the
   /// type of jobs set for that day and how the rescheduled one would fit").
+  /// "1 open", or "1 → 0 open" where the move changes it, in [ink].
+  Widget _opens(ThemeData theme, int before, {int? after, Color? ink}) {
+    final style = theme.textTheme.labelMedium?.copyWith(
+      fontWeight: FontWeight.w800,
+    );
+    if (after == null || after == before) {
+      return Text('$before open', style: style);
+    }
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$before',
+            style: TextStyle(
+              decoration: TextDecoration.lineThrough,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          TextSpan(
+            text: ' → $after open',
+            style: TextStyle(color: ink),
+          ),
+        ],
+      ),
+      style: style,
+    );
+  }
+
+  /// The day the job leaves, window by window: the one it is in gains the
+  /// spot it frees (UI queue 92, 1 and 4). Drawn only when the server sends
+  /// the current day.
+  Widget _nowPlan(ThemeData theme, Map<String, dynamic> row) {
+    final current = _map(row['current']);
+    final windows = [
+      if (current['day'] case {'windows': final List days})
+        for (final w in days)
+          if (w is Map) w.cast<String, dynamic>(),
+    ];
+    if (windows.isEmpty) return const SizedBox.shrink();
+    final at = (current['window_index'] as num?)?.toInt();
+    final info = ToneColours.of(context, Tone.info);
+    final open = windows.fold<int>(
+      0,
+      (n, w) => n + ((w['remaining'] as num?)?.toInt() ?? 0),
+    );
+    final date = _map(current['day'])['date'] ?? _map(row['job'])['date'];
+
+    return Column(
+      key: const ValueKey('rescheduling-now-plan'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                'Now · ${_day(date)} in ${row['area_name'] ?? 'this area'} · ',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            _opens(
+              theme,
+              open,
+              after: at == null ? null : open + 1,
+              ink: info.ink,
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (i, w) in windows.indexed)
+              Container(
+                key: ValueKey('rescheduling-now-window-$i'),
+                width: 150,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: i == at
+                      ? info.fill
+                      : theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                  border: i == at
+                      ? Border.all(color: info.ink, width: 2)
+                      : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      i == at
+                          ? '${_span(w['start_time'], w['end_time'])} · this job'
+                          : _span(w['start_time'], w['end_time']),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    _opens(
+                      theme,
+                      (w['remaining'] as num?)?.toInt() ?? 0,
+                      after: i == at
+                          ? ((w['remaining'] as num?)?.toInt() ?? 0) + 1
+                          : null,
+                      ink: info.ink,
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
   Widget _dayPlan(ThemeData theme, Map<String, dynamic> row) {
     final scheme = theme.colorScheme;
     final muted = theme.textTheme.bodySmall?.copyWith(
@@ -582,6 +697,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
       (n, w) => n + ((w['remaining'] as num?)?.toInt() ?? 0),
     );
     final ok = ToneColours.of(context, Tone.ok);
+    final caution = ToneColours.of(context, Tone.caution);
 
     Widget line(Map<String, dynamic> j) => Container(
       margin: const EdgeInsets.only(top: 4),
@@ -633,6 +749,14 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                 fontWeight: FontWeight.w800,
               ),
             ),
+            _opens(
+              theme,
+              (w['remaining'] as num?)?.toInt() ?? 0,
+              after: here
+                  ? math.max(0, ((w['remaining'] as num?)?.toInt() ?? 0) - 1)
+                  : null,
+              ink: caution.ink,
+            ),
             for (final j in jobs)
               if ((j['window'] as num?)?.toInt() == i) line(j),
             if (here)
@@ -667,11 +791,24 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
       key: const ValueKey('rescheduling-day-plan'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '${_day(s['date'])} in ${row['area_name'] ?? 'this area'} · '
-          '$booked ${booked == 1 ? 'job' : 'jobs'} booked · '
-          '$left ${left == 1 ? 'spot' : 'spots'} left',
-          style: theme.textTheme.titleSmall,
+        _nowPlan(theme, row),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                'Suggested · ${_day(s['date'])} in '
+                '${row['area_name'] ?? 'this area'} · '
+                '$booked ${booked == 1 ? 'job' : 'jobs'} · ',
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+            _opens(
+              theme,
+              left,
+              after: at == null ? null : math.max(0, left - 1),
+              ink: caution.ink,
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Wrap(

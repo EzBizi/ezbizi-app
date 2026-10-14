@@ -445,9 +445,10 @@ const Map<String, Tour> phoneTours = {
         anchor: 'rescheduling-day-plan',
         title: 'That day',
         body:
-            'The suggested day window by window: spots taken, the jobs in '
-            'each with their type and distance, and where this one would go. '
-            'Repairs and redos are tagged.',
+            'Both days window by window, with the open spots before → after '
+            'the move: the day it leaves gains one, the day it takes loses '
+            'one. The suggested day lists its jobs and where this one would '
+            'go. Repairs and redos are tagged.',
       ),
     ],
   ),

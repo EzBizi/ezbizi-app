@@ -388,4 +388,83 @@ void main() {
       findsOneWidget,
     );
   });
+
+  /// Jose, 2026-10-14: "the scheduling before and after for the area too, as
+  /// in the amount of spots before and after" (UI queue 92, 1 and 4).
+  testWidgets('both days show their open spots before and after the move, '
+      'window by window', (tester) async {
+    final first = rows[0];
+    Map<String, dynamic> win(String from, String to, int cap, int taken) => {
+      'start_time': from,
+      'end_time': to,
+      'capacity': cap,
+      'taken': taken,
+      'remaining': cap - taken,
+    };
+    final spots = [
+      {
+        ...first,
+        'current': {
+          'day': {
+            'date': '2026-10-14',
+            'windows': [
+              win('08:00', '11:00', 3, 2),
+              win('11:00', '14:00', 3, 2),
+            ],
+          },
+          'window_index': 0,
+        },
+        'suggested': {
+          ...first['suggested'] as Map,
+          'day': {
+            'date': '2026-10-16',
+            'windows': [
+              win('08:00', '10:00', 3, 3),
+              win('10:00', '12:00', 3, 2),
+            ],
+          },
+        },
+      },
+      rows[1],
+    ];
+    await pump(tester, data: spots);
+
+    final now = find.byKey(const ValueKey('rescheduling-now-plan'));
+    expect(now, findsOneWidget);
+    // The day it leaves: 2 open → 3, its own window 1 → 2.
+    expect(
+      find.descendant(of: now, matching: find.textContaining('→ 3 open')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-now-window-0')),
+        matching: find.textContaining('→ 2 open'),
+      ),
+      findsOneWidget,
+    );
+    // The day it takes: its window 1 → 0, the day 1 → 0.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-1')),
+        matching: find.textContaining('→ 0 open'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-0')),
+        matching: find.text('0 open'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without the current day the plan shows the suggested day only', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('rescheduling-now-plan')), findsNothing);
+  });
 }
