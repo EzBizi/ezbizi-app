@@ -2965,6 +2965,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 95 · Task Board › People on every board, and everyone's boards — **sent 2026-10-14 13:08, awaiting Jose until 13:18** (`docs/previews/task-board-people-everywhere-layouts.html`)
+
+Jose 2026-10-14 via the desk: he can't find People (it showed on custom boards only); he wants to add people to any board he
+manages, have Administrators see everyone's boards in the picker, and set in Roles who may. Picker **1** (recommended): grouped
+My boards · Shared with me · company/branch · Everyone's boards (by person, with See every board), search by board or person,
++ New board at the foot; **2**: a flat list with an owner column; **3**: a Mine · Shared · Everyone switch. Desktop **4**
+(recommended): faces + People · N beside the board's name on every board, the People panel (on My board: "adding someone shares
+it"); **5**: a Share button; **6**: People as a board tab. Phone **7** (recommended): a People chip under the picker; **8**: in ⋯
+as today; **9**: faces only. Roles **10**: Create boards · Add people to any board · See every board, Administrator only.
+Owners: Task Board (server, permissions); UI/UX builds the screens.
+
 ### 94 · ▶ How-to video: plays in the app on every platform, fullscreen and download — **sent 2026-10-14 11:20; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** 8640e3b2 (session/uiux-help-video) (`docs/previews/help-video-player-layouts.html`)
 
 Jose 2026-10-14 via the desk, verbatim: *"video should be seen on desktop, mobile, etc, right not it only works on web, secondly
