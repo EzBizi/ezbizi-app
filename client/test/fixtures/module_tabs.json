@@ -245,6 +245,11 @@
             "parent": null,
             "tabs": []
         },
+        "sales": {
+            "label": "Sales",
+            "parent": null,
+            "tabs": []
+        },
         "scheduling": {
             "label": "Scheduling",
             "parent": null,
@@ -491,6 +496,8 @@
         "roles.delete",
         "roles.edit",
         "roles.view",
+        "sales.manage",
+        "sales.view",
         "scheduling.availability.view",
         "scheduling.create",
         "scheduling.delete",
