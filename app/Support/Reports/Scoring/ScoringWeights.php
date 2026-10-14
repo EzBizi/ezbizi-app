@@ -14,16 +14,21 @@ use App\Models\ReportScoringWeight;
  */
 class ScoringWeights
 {
-    /** Conversion first, then AI's seven checks (ScoreReportCalls::CHECKS). */
+    /**
+     * Conversion first, AI's overall call score ("quality"), then its seven
+     * checks (ScoreReportCalls::CHECKS). Grok AI's proposal, 2026-10-14; Jose
+     * sets the real numbers.
+     */
     public const DEFAULTS = [
-        'conversion' => 40,
+        'conversion' => 50,
+        'quality' => 15,
         'greeted' => 5,
-        'got_name' => 10,
-        'got_address' => 10,
-        'found_need' => 10,
-        'offered_time' => 10,
+        'got_name' => 5,
+        'got_address' => 5,
+        'found_need' => 5,
+        'offered_time' => 5,
         'gave_price' => 5,
-        'asked_for_booking' => 10,
+        'asked_for_booking' => 5,
     ];
 
     /** @return array<string, int> */
@@ -40,7 +45,7 @@ class ScoringWeights
     /** @return list<string> */
     public static function metrics(): array
     {
-        return ['conversion', ...ScoreReportCalls::CHECKS];
+        return ['conversion', 'quality', ...ScoreReportCalls::CHECKS];
     }
 
     /**
