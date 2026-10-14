@@ -792,6 +792,7 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
           const SizedBox(height: 12),
         ],
         Card(
+          key: const ValueKey('tour-scheduling-reschedule-job'),
           margin: EdgeInsets.zero,
           child: Padding(
             padding: const EdgeInsets.all(14),

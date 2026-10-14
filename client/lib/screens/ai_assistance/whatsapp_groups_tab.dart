@@ -264,6 +264,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
     final unset = _unset;
 
     return ListView(
+      key: const ValueKey('tour-ai_assistance-whatsapp'),
       padding: EdgeInsets.all(narrow ? 12 : 20),
       children: [
         Text(
@@ -280,6 +281,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
           Text('No groups yet.', style: theme.textTheme.bodyMedium)
         else
           LayoutBuilder(
+            key: const ValueKey('tour-ai_assistance-whatsapp-groups'),
             builder: (context, box) {
               const gap = 12.0;
               final across = box.maxWidth >= 900 ? 2 : 1;

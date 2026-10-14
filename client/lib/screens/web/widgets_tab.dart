@@ -117,6 +117,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
     final theme = Theme.of(context);
 
     return Center(
+      key: const ValueKey('tour-widgets-no-sites'),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
@@ -140,6 +141,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
     final list = ListView(
+      key: const ValueKey('tour-widgets-sites'),
       children: [
         for (final site in _sites)
           ListTile(
@@ -566,6 +568,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                * cover: a page gone stale for a reason EzBizi never saw.
                */
               TextButton.icon(
+                key: const ValueKey('tour-widgets-rebuild'),
                 onPressed: _working ? null : _refreshEverywhere,
                 icon: const Icon(Icons.refresh, size: 18),
                 label: Text(
@@ -575,6 +578,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                 ),
               ),
               FilledButton(
+                key: const ValueKey('tour-widgets-save'),
                 onPressed: _saving ? null : _save,
                 child: Text(_saving ? 'Saving…' : 'Save'),
               ),
@@ -1322,6 +1326,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         (((style['radius'] as num?) ?? 12).toDouble()).clamp(0.0, 40.0);
 
     return ListView(
+      key: const ValueKey('tour-widgets-preview'),
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
       children: [
         Text('Preview', style: theme.textTheme.titleSmall),

@@ -412,6 +412,7 @@ class _ReportsTabState extends State<ReportsTab> {
   Widget _totalsCard(ThemeData theme) {
     if (_int(_totals, 'calls') == 0 && _int(_wholeTotals, 'calls') == 0) {
       return Card(
+        key: const ValueKey('tour-phone-report-empty'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
@@ -438,6 +439,7 @@ class _ReportsTabState extends State<ReportsTab> {
     String share(int n) => all == 0 ? '' : '${(n / all * 100).round()}%';
 
     return _ReportTiles(
+      key: const ValueKey('tour-phone-report-totals'),
       picked: _direction,
       onPick: (key) {
         setState(() => _direction = key);
@@ -795,6 +797,7 @@ class _ReportTile {
 /// filter, and here Average call is a duration and four tiles cannot filter.
 class _ReportTiles extends StatelessWidget {
   const _ReportTiles({
+    super.key,
     required this.tiles,
     required this.picked,
     required this.onPick,

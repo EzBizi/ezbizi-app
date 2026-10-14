@@ -190,6 +190,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Wrap(
+        key: const ValueKey('tour-scheduling-schedule-day'),
         spacing: 8,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -328,6 +329,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     );
 
     return SingleChildScrollView(
+      key: const ValueKey('tour-scheduling-board'),
       scrollDirection: Axis.horizontal,
       child: SizedBox(
         width: width,
@@ -451,6 +453,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     ];
 
     return Column(
+      key: const ValueKey('tour-scheduling-unassigned'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
       children: [
@@ -861,6 +864,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     ];
 
     final body = Padding(
+      key: const ValueKey('tour-scheduling-job'),
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

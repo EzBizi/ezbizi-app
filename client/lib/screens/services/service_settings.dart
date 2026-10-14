@@ -90,6 +90,7 @@ class _ServiceSettingsState extends State<ServiceSettings> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
           _TaxonomyCard(
+            key: const ValueKey('tour-services-groups'),
             api: widget.api,
             session: widget.session,
             title: 'Groups',
@@ -100,6 +101,7 @@ class _ServiceSettingsState extends State<ServiceSettings> {
           ),
           const SizedBox(height: 16),
           _TaxonomyCard(
+            key: const ValueKey('tour-services-labels'),
             api: widget.api,
             session: widget.session,
             title: 'Labels',
@@ -117,6 +119,7 @@ class _ServiceSettingsState extends State<ServiceSettings> {
 
 class _TaxonomyCard extends StatefulWidget {
   const _TaxonomyCard({
+    super.key,
     required this.api,
     required this.session,
     required this.title,

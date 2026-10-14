@@ -309,6 +309,7 @@ class _ReportsTabState extends State<ReportsTab> {
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
+                  key: const ValueKey('tour-inspection-reports-archived'),
                   label: const Text('Archived'),
                   selected: _archived,
                   onSelected: (on) {
@@ -470,6 +471,7 @@ class _ReportsTabState extends State<ReportsTab> {
               ),
               if (_mayArchive)
                 OutlinedButton(
+                  key: const ValueKey('tour-inspection-reports-archive'),
                   onPressed: _busy != null
                       ? null
                       : () => _archive(report['archived'] != true),

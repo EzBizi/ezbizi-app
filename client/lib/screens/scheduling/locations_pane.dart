@@ -667,6 +667,7 @@ class _LocationsPaneState extends State<LocationsPane> {
         Flexible(
           fit: phone ? FlexFit.loose : FlexFit.tight,
           child: ListView(
+            key: const ValueKey('tour-scheduling-branches'),
             shrinkWrap: phone,
             physics: phone ? const NeverScrollableScrollPhysics() : null,
             children: [
@@ -870,6 +871,7 @@ class _LocationsPaneState extends State<LocationsPane> {
                 ),
                 const SizedBox(width: 10),
                 SizedBox(
+                  key: const ValueKey('tour-scheduling-branch'),
                   width: 380,
                   child: _card(
                     padding: const EdgeInsets.all(16),
@@ -909,6 +911,7 @@ class _LocationsPaneState extends State<LocationsPane> {
             ),
           ),
           Padding(
+            key: const ValueKey('tour-scheduling-branch'),
             padding: const EdgeInsets.only(left: 12),
             child: _detail(context, opened, phone: true),
           ),
@@ -1068,6 +1071,7 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
       error: _error,
       onRetry: _load,
       child: ListView(
+        key: const ValueKey('tour-scheduling-dispatcher-notes'),
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
           Text(
@@ -1079,6 +1083,7 @@ class _DispatcherNotesSettingsState extends State<DispatcherNotesSettings> {
           const SizedBox(height: 12),
           if (!canEdit)
             Padding(
+              key: const ValueKey('tour-scheduling-notes-read-only'),
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
                 'Changing them takes the right to edit Scheduling.',

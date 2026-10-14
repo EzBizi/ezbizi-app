@@ -101,6 +101,7 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
         'Settings',
         Icons.tune,
         () => SettingsScreen(
+          key: const ValueKey('tour-work_hours-settings'),
           api: widget.api,
           session: widget.session,
           onlyGroup: 'work_hours',

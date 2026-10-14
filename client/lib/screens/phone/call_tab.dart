@@ -1026,6 +1026,7 @@ class _CallTabState extends State<CallTab> {
           // Whoever can fix it is told what to fix; whoever cannot is told
           // what to ask for.
           ? Center(
+              key: const ValueKey('tour-phone-no-line'),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -1481,6 +1482,7 @@ class _CallTabState extends State<CallTab> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         FilterTiles(
+          key: const ValueKey('tour-phone-team-tiles'),
           prefix: 'team',
           picked: _teamFilter,
           onPick: (key) => setState(() => _teamFilter = key),

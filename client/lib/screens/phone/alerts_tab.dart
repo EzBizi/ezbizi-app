@@ -110,6 +110,7 @@ class _AlertsTabState extends State<AlertsTab> {
               ErrorNote(_error!)
             else if (_sent.isEmpty)
               Padding(
+                key: const ValueKey('tour-phone-alerts-empty'),
                 padding: const EdgeInsets.all(8),
                 child: Text(
                   'No alerts sent yet. An alert stays on each person\'s '
@@ -119,6 +120,7 @@ class _AlertsTabState extends State<AlertsTab> {
               )
             else
               Card(
+                key: const ValueKey('tour-phone-alerts-sent'),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(

@@ -1160,6 +1160,7 @@ class _SiteDetailState extends State<_SiteDetail> {
     final theme = Theme.of(context);
 
     return Padding(
+      key: const ValueKey('tour-seo-site-detail'),
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1306,6 +1307,7 @@ class _SiteDetailState extends State<_SiteDetail> {
                                   child: const Text('Issue a new token'),
                                 ),
                                 FilledButton(
+                                  key: const ValueKey('tour-seo-save'),
                                   onPressed: _save,
                                   child: const Text('Save'),
                                 ),
@@ -1710,6 +1712,7 @@ class _SiteDetailState extends State<_SiteDetail> {
         runSpacing: 8,
         children: [
           OutlinedButton.icon(
+            key: const ValueKey('tour-seo-guide'),
             onPressed: () => showSidePanel<void>(
               context,
               builder: (_) => SidePanel(

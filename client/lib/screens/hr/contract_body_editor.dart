@@ -738,6 +738,7 @@ class ContractPagePane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
+      key: const ValueKey('tour-hr-contract-page'),
       listenable: page,
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

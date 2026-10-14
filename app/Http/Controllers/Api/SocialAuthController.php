@@ -12,6 +12,7 @@ use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
+use App\Support\Social\FacebookAdsOAuth;
 use App\Support\Social\SocialAccount;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialOAuth;
@@ -177,6 +178,23 @@ class SocialAuthController extends Controller
 
             $connections = $this->store($user, $signIn, $oauth->provider(), $grant, $accounts);
             $first = $connections[0];
+
+            /*
+             * ONE FACEBOOK CONNECT BRINGS THE AD ACCOUNTS TOO (Jose, 2026-10-14:
+             * "if i am a random business ... i connect my facebook account i
+             * should see my financials"). The same grant asks for ads_read; the
+             * ad accounts it can read become Facebook Ads connections beside the
+             * Pages. None readable (ads_read not granted, or no ad account) costs
+             * the Page connect nothing.
+             */
+            if ($oauth->provider() === SocialProvider::FacebookPage
+                && $user->hasPermission(SocialProvider::FacebookAds->connectPermission())) {
+                try {
+                    $this->store($user, $signIn, SocialProvider::FacebookAds, $grant, app(FacebookAdsOAuth::class)->identify($grant));
+                } catch (SocialOAuthRefused) {
+                    // No ad account this login can read.
+                }
+            }
 
             // The provider says what it just connected and where it lands. This
             // was two sprintf() calls here, saying "Pages" and "Social Media

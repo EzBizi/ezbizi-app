@@ -395,6 +395,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
       child: Stack(
         children: [
           FlutterMap(
+            key: const ValueKey('tour-field-map'),
             mapController: _map,
             options: MapOptions(
               initialCenter: const LatLng(39.5, -98.35), // the contiguous US
@@ -533,6 +534,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
                 ? ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: size.height * 0.6),
                     child: FieldMapPanel(
+                      key: const ValueKey('tour-field-map-panel'),
                       people: _people,
                       jobs: _jobs,
                       showJobs: widget.canSeeJobs,
@@ -582,6 +584,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
               right: 12,
               top: wide || !panelOpen ? 12 : size.height * 0.6 + 24,
               child: FieldPersonBar(
+                key: const ValueKey('tour-field-map-person'),
                 person: person,
                 colour: _colour(person, scheme),
                 onClose: () => setState(() {
@@ -597,6 +600,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
               bottom: wide ? 44 : 28,
               left: wide ? null : 12,
               child: FieldJobCard(
+                key: const ValueKey('tour-field-map-job'),
                 job: job,
                 eta: _eta,
                 route: _route,
@@ -625,6 +629,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
               bottom: 0,
               right: tiles != null ? 300 : 0,
               child: Align(
+                key: const ValueKey('tour-field-map-legend'),
                 alignment: Alignment.bottomLeft,
                 child: FieldMapLegend(showJobs: widget.canSeeJobs),
               ),
@@ -635,6 +640,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
               right: 12,
               bottom: 28,
               child: FieldMapLegend(
+                key: const ValueKey('tour-field-map-legend'),
                 showJobs: widget.canSeeJobs,
                 onClose: () => setState(() => _legendOpen = false),
               ),
@@ -644,6 +650,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
               left: 12,
               bottom: 28,
               child: ActionChip(
+                key: const ValueKey('tour-field-map-legend'),
                 avatar: const Icon(Icons.info_outline, size: 18),
                 label: const Text('Legend'),
                 onPressed: () => setState(() => _legendOpen = true),

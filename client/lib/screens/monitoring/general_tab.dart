@@ -1990,6 +1990,7 @@ class _EmptyState extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Center(
+      key: const ValueKey('tour-monitoring-map-empty'),
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(

@@ -78,6 +78,22 @@ void main() {
     expect(find.text('Questions only'), findsOneWidget);
   });
 
+  /// Jose, 2026-10-14: "we lack searchbars on the 3 last human resources
+  /// tabs". Every contract is loaded, so the search is the client's.
+  testWidgets('the search box narrows contracts by name or description', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(templates: _twoTemplates));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('tour-hr-contracts-search')),
+      'vans',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Technician, full time'), findsOneWidget);
+    expect(find.text('Weekend cover'), findsNothing);
+  });
+
   /// §2.1, and the whole point of this screen. The catalogue's types are
   /// deliberately three, in wording nobody would invent.
   testWidgets('the kinds of question come from the server, all of them', (
