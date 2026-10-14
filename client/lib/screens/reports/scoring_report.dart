@@ -205,6 +205,7 @@ class _ScoringReportState extends State<ScoringReport> {
   @override
   Widget build(BuildContext context) {
     final dates = ReportDates(
+      key: const ValueKey('tour-report-dates'),
       initial: _span,
       today: _today,
       formats: widget.formats,
@@ -565,6 +566,7 @@ class _Overview extends StatelessWidget {
         final columns = phone ? 1 : math.max(1, (box.maxWidth / 270).floor());
         final width = (box.maxWidth - 10 * (columns - 1)) / columns;
         return Wrap(
+          key: const ValueKey('tour-scoring-cards'),
           spacing: 10,
           runSpacing: 10,
           children: [

@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/tab_tours.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/widgets/tab_help.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Every walkthrough step points at something that exists (UI queue 81).
@@ -21,10 +25,12 @@ void main() {
 
   for (final MapEntry(key: module, value: tour) in tabTours.entries) {
     test('$module: a real tab, and every step names a key in the code', () {
+      // "reports/Report Builder": the module, then the tabs open in it.
+      final root = module.split('/').first;
       expect(
-        moduleScreens.containsKey(module),
+        moduleScreens.containsKey(root),
         isTrue,
-        reason: '"$module" is not a key in module_screens.dart',
+        reason: '"$root" is not a key in module_screens.dart',
       );
       expect(tour.steps, isNotEmpty);
       for (final step in tour.steps) {
@@ -40,4 +46,141 @@ void main() {
       }
     });
   }
+
+  /// Every tab the server registers has a walkthrough of its own (Jose,
+  /// 2026-10-14: "right now they only cover the first tab of each of the
+  /// main modules, when it should cover everything, all the sub tabs").
+  ///
+  /// Keyed as (?) looks it up (`tourKeyFor`): `module/Tab`, and a child
+  /// module drawn in its parent's strip as `parent/Child label/Tab`. A
+  /// module's first tab may use the module's own tour, which is what opens
+  /// there.
+  test('every registered tab has a walkthrough of its own', () {
+    final fixture =
+        jsonDecode(File('test/fixtures/module_tabs.json').readAsStringSync())
+            as Map<String, dynamic>;
+    final modules = (fixture['modules'] as Map).cast<String, dynamic>();
+    final missing = <String>[];
+    for (final MapEntry(key: module, value: m) in modules.entries) {
+      final parent = m['parent'] as String?;
+      if (!moduleScreens.containsKey(parent ?? module)) continue;
+      final base = parent == null ? module : '$parent/${m['label']}';
+      if (parent != null && !tabTours.containsKey(base)) missing.add(base);
+      for (final (i, tab) in (m['tabs'] as List).indexed) {
+        final key = '$base/$tab';
+        if (!tabTours.containsKey(key) &&
+            !(i == 0 && tabTours.containsKey(base))) {
+          missing.add(key);
+        }
+      }
+    }
+    // Written in batches (deploy desk, 2026-10-14: "Batches are fine"). Each
+    // batch takes its tabs off this list; a tour written and left on it
+    // fails too, so the list cannot go stale.
+    const pending = {
+      'ai_assistance/Library',
+      'ai_assistance/Settings',
+      'ai_assistance/Staff bot',
+      'ai_assistance/WhatsApp groups',
+      'automations/Build',
+      'customer_experience/Business Profile',
+      'customer_experience/Reviews',
+      'customers/Memberships',
+      'customers/Memberships/Dashboard',
+      'customers/Memberships/Members',
+      'customers/Memberships/Settings',
+      'email/Settings',
+      'field/Map',
+      'field/Route',
+      'field/Settings',
+      'fleet_management/Vehicles',
+      'hr/Contracts',
+      'hr/Invitations',
+      'hr/Onboarding',
+      'hr/Records',
+      'inspection/Builder',
+      'inspection/Generated Reports',
+      'inventory/Items',
+      'inventory/Locations',
+      'inventory/Orders',
+      'inventory/Stock',
+      'jobs/Estimates',
+      'jobs/Materials',
+      'leads/Chat',
+      'leads/Forms',
+      'leads/Instagram',
+      'leads/Messenger',
+      'leads/Online Booking',
+      'leads/Thumbtack',
+      'leads/WhatsApp',
+      'leads/Workiz',
+      'marketing/Accounts',
+      'marketing/Calendar',
+      'marketing/Compose',
+      'marketing/Newsletter',
+      'marketing/Newsletter/Composer',
+      'marketing/Newsletter/Dashboard',
+      'marketing/Newsletter/Settings',
+      'marketing/QR Codes',
+      'marketing/Web Management',
+      'marketing/Web Management/SEO',
+      'marketing/Web Management/Widgets',
+      'monitoring/Camera Monitoring',
+      'monitoring/Desktop Monitoring',
+      'monitoring/Files',
+      'monitoring/Map',
+      'monitoring/PC Specs',
+      'phone/Alerts',
+      'phone/Records',
+      'phone/Reports',
+      'phone/Settings',
+      'phone/Users',
+      'scheduling/Locations',
+      'scheduling/Overbooking',
+      'scheduling/Re-Scheduling',
+      'scheduling/Schedule',
+      'scheduling/Settings',
+      'services/Settings',
+      'training/Dashboard',
+      'training/Settings',
+      'work_hours/Paid Time Off',
+      'work_hours/Reports',
+      'work_hours/Settings',
+    };
+    expect(
+      missing.toSet(),
+      pending,
+      reason:
+          'No walkthrough: ${missing.where((k) => !pending.contains(k)).join(', ')}',
+    );
+  });
+
+  testWidgets('(?) runs the tour of the tab in front, its count dropped, and '
+      'falls back to the nearest one', (tester) async {
+    Widget strip(List<String> labels, int selected) => TabBarLike(
+      labels: [for (final l in labels) (l, Icons.circle_outlined)],
+      selected: selected,
+      onSelected: (_) {},
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              strip(['Reports', 'Performance'], 1),
+              strip(['Overview', 'Calls · 12'], 1),
+              // A tab kept alive behind another is not the one in front.
+              Offstage(child: strip(['Hidden'], 0)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(openTabs(), ['Performance', 'Calls']);
+    expect(tourKeyFor('reports', openTabs()), 'reports/Performance');
+    expect(tourKeyFor('reports', ['Reports']), 'reports');
+    expect(tourKeyFor('reports', ['Report Builder']), 'reports/Report Builder');
+    expect(tourKeyFor('nowhere', const []), isNull);
+  });
 }

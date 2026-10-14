@@ -8,6 +8,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/tab_tours.dart';
 import 'side_panel.dart';
+import 'tab_bar_like.dart';
 
 /// The (?) and ▶ beside a tab's title, the first-visit offer under it, the
 /// spotlight walkthrough and the how-to video (UI queue 81; Jose: "as u
@@ -89,6 +90,53 @@ List<TourStep> _due(Session session, String module) {
   ];
 }
 
+/// The tab open in each strip on screen, outermost first: Reports › Report
+/// Builder reads `['Report Builder']`, Marketing › Newsletter › Composer
+/// `['Newsletter', 'Composer']`. Read when (?) is pressed, so it is always the
+/// tab in front of the person (Jose, 2026-10-14: "they only cover the first
+/// tab of each of the main modules, when it should cover everything").
+List<String> openTabs() {
+  final out = <String>[];
+  void visit(Element e) {
+    final w = e.widget;
+    final label = switch (w) {
+      TabBarLike(:final labels, :final selected)
+          when selected >= 0 && selected < labels.length =>
+        labels[selected].$1,
+      OpenTabMark(:final label) => label,
+      _ => null,
+    };
+    // "Calls · 12" is the Calls tab: the count is not part of its name.
+    if (label != null && _shown(e)) out.add(label.split(' · ').first);
+    e.visitChildren(visit);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(visit);
+  return out;
+}
+
+/// The most specific walkthrough for where the person is: `module/A/B`, then
+/// `module/A`, then the module's own.
+String? tourKeyFor(String module, List<String> open) {
+  for (var n = open.length; n >= 0; n--) {
+    final key = [module, ...open.take(n)].join('/');
+    if (tabTours.containsKey(key)) return key;
+  }
+  return null;
+}
+
+/// Says which tab is open where a picker stands in for a [TabBarLike]
+/// (Reports on a phone), so [openTabs] still finds it.
+class OpenTabMark extends StatelessWidget {
+  const OpenTabMark(this.label, {super.key, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
+}
+
 /// (?) and ▶, beside the title. Each draws only when the tab has one.
 class TabHelpButtons extends StatelessWidget {
   const TabHelpButtons({
@@ -106,22 +154,29 @@ class TabHelpButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tour = tabTours[module];
+    final any = tabTours.keys.any(
+      (k) => k == module || k.startsWith('$module/'),
+    );
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (tour != null)
+        if (any)
           IconButton(
             key: const Key('tab-help-tour'),
             tooltip: 'Walk me through $label',
             visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.help_outline),
-            onPressed: () => startTour(
-              context,
-              steps: tour.steps,
-              onEnd: () => _markSeen(session, module, tour.version),
-            ),
+            onPressed: () {
+              final key = tourKeyFor(module, openTabs());
+              if (key == null) return;
+              final tour = tabTours[key]!;
+              startTour(
+                context,
+                steps: tour.steps,
+                onEnd: () => _markSeen(session, key, tour.version),
+              );
+            },
           ),
         FutureBuilder<Map<String, HelpVideo>>(
           future: helpVideos(api),
@@ -221,27 +276,27 @@ class TourOffer extends StatelessWidget {
 
 /// The widget carrying `ValueKey(anchor)` that is actually on screen: not in
 /// an Offstage (a tab kept alive behind another), and laid out.
+bool _shown(Element e) {
+  var visible = true;
+  e.visitAncestorElements((a) {
+    final w = a.widget;
+    if ((w is Offstage && w.offstage) || (w is Visibility && !w.visible)) {
+      visible = false;
+      return false;
+    }
+    return true;
+  });
+  final box = e.findRenderObject();
+  return visible && box is RenderBox && box.hasSize && box.attached;
+}
+
 Element? _findAnchor(String anchor) {
   final key = ValueKey<String>(anchor);
   Element? hit;
 
-  bool shown(Element e) {
-    var visible = true;
-    e.visitAncestorElements((a) {
-      final w = a.widget;
-      if ((w is Offstage && w.offstage) || (w is Visibility && !w.visible)) {
-        visible = false;
-        return false;
-      }
-      return true;
-    });
-    final box = e.findRenderObject();
-    return visible && box is RenderBox && box.hasSize && box.attached;
-  }
-
   void visit(Element e) {
     if (hit != null) return;
-    if (e.widget.key == key && shown(e)) {
+    if (e.widget.key == key && _shown(e)) {
       hit = e;
       return;
     }
