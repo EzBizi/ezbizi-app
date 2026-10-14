@@ -95,6 +95,7 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
       error: _error,
       onRetry: _load,
       header: PanelHeader(
+        key: const ValueKey('tour-training-dashboard-summary'),
         note: 'How training is going, guide by guide and test by test.',
         action: (_loading || _error != null) ? null : _SummaryStats(summary: _summary),
       ),

@@ -823,6 +823,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
   /// Everything that decides what the contract says, in order, scrolling.
   Widget _form(BuildContext context) {
     return SingleChildScrollView(
+      key: const ValueKey('tour-hr-contract-form'),
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Center(
         child: ConstrainedBox(
@@ -1883,6 +1884,7 @@ class _ContractDesignerState extends State<ContractDesigner> {
 
   Widget _footer(BuildContext context, String? blocker) {
     return Padding(
+      key: const ValueKey('tour-hr-contract-footer'),
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       child: LayoutBuilder(
         builder: (context, constraints) {

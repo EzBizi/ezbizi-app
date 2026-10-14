@@ -96,6 +96,7 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
         'Settings',
         Icons.tune,
         () => SettingsScreen(
+          key: const ValueKey('tour-ai_assistance-settings'),
           api: widget.api,
           session: widget.session,
           onlyGroup: 'ai_assistance',
@@ -1297,12 +1298,14 @@ class _LibraryTabState extends State<LibraryTab> {
       backgroundColor: Colors.transparent,
       floatingActionButton: widget.canEdit
           ? FloatingActionButton.extended(
+              key: const ValueKey('tour-ai_assistance-add-answer'),
               onPressed: () => _edit(),
               icon: const Icon(Icons.add),
               label: const Text('Add answer'),
             )
           : null,
       body: ListView(
+        key: const ValueKey('tour-ai_assistance-library'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           if (entries.isEmpty)

@@ -476,6 +476,7 @@ class _FilesTabState extends State<FilesTab> {
         );
 
     return ListView(
+      key: const ValueKey('tour-files-quick'),
       children: [
         if (_quickLinks.isNotEmpty) ...[
           heading('Quick access'),

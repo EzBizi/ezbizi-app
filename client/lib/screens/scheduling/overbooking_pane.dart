@@ -155,6 +155,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
         ],
         // Two tiles, one size (Jose: "you always make that mistake").
         IntrinsicHeight(
+          key: const ValueKey('tour-scheduling-overbooking-counts'),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -187,6 +188,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
         if (!widget.embedded) ...[
           const SizedBox(height: 16),
           Wrap(
+            key: const ValueKey('tour-scheduling-overbooking-span'),
             spacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
@@ -254,6 +256,7 @@ class _OverbookingPaneState extends State<OverbookingPane> {
         const SizedBox(height: 24),
         Text(
           'Fully booked for $fullDays days or more',
+          key: const ValueKey('tour-scheduling-fully-booked'),
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 6),

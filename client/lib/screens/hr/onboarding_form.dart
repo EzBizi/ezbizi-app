@@ -1343,6 +1343,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
         : 'Nothing answered yet.';
 
     return Container(
+      key: const ValueKey('tour-hr-onboarding-progress'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
@@ -1399,6 +1400,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final theme = Theme.of(context);
 
     return Column(
+      key: const ValueKey('tour-hr-onboarding-save'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_actionError != null) ...[
@@ -2592,6 +2594,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     ];
 
     return Column(
+      key: const ValueKey('tour-hr-onboarding-signing'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle(context, 'The document'),

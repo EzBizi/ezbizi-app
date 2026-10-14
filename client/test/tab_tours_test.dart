@@ -68,91 +68,23 @@ void main() {
       if (parent != null && !tabTours.containsKey(base)) missing.add(base);
       for (final (i, tab) in (m['tabs'] as List).indexed) {
         final key = '$base/$tab';
+        // A parent's own tabs may sit under its own pane in its strip
+        // (Marketing › Social Media Management › Compose).
+        final depth = '$base/x/$tab'.split('/').length;
+        final underPane = tabTours.keys.any(
+          (k) =>
+              k.startsWith('$base/') &&
+              k.endsWith('/$tab') &&
+              k.split('/').length == depth,
+        );
         if (!tabTours.containsKey(key) &&
+            !underPane &&
             !(i == 0 && tabTours.containsKey(base))) {
           missing.add(key);
         }
       }
     }
-    // Written in batches (deploy desk, 2026-10-14: "Batches are fine"). Each
-    // batch takes its tabs off this list; a tour written and left on it
-    // fails too, so the list cannot go stale.
-    const pending = {
-      'ai_assistance/Library',
-      'ai_assistance/Settings',
-      'ai_assistance/Staff bot',
-      'ai_assistance/WhatsApp groups',
-      'automations/Build',
-      'customer_experience/Business Profile',
-      'customer_experience/Reviews',
-      'customers/Memberships',
-      'customers/Memberships/Dashboard',
-      'customers/Memberships/Members',
-      'customers/Memberships/Settings',
-      'email/Settings',
-      'field/Map',
-      'field/Route',
-      'field/Settings',
-      'fleet_management/Vehicles',
-      'hr/Contracts',
-      'hr/Invitations',
-      'hr/Onboarding',
-      'hr/Records',
-      'inspection/Builder',
-      'inspection/Generated Reports',
-      'inventory/Items',
-      'inventory/Locations',
-      'inventory/Orders',
-      'inventory/Stock',
-      'jobs/Estimates',
-      'jobs/Materials',
-      'leads/Chat',
-      'leads/Forms',
-      'leads/Instagram',
-      'leads/Messenger',
-      'leads/Online Booking',
-      'leads/Thumbtack',
-      'leads/WhatsApp',
-      'leads/Workiz',
-      'marketing/Accounts',
-      'marketing/Calendar',
-      'marketing/Compose',
-      'marketing/Newsletter',
-      'marketing/Newsletter/Composer',
-      'marketing/Newsletter/Dashboard',
-      'marketing/Newsletter/Settings',
-      'marketing/QR Codes',
-      'marketing/Web Management',
-      'marketing/Web Management/SEO',
-      'marketing/Web Management/Widgets',
-      'monitoring/Camera Monitoring',
-      'monitoring/Desktop Monitoring',
-      'monitoring/Files',
-      'monitoring/Map',
-      'monitoring/PC Specs',
-      'phone/Alerts',
-      'phone/Records',
-      'phone/Reports',
-      'phone/Settings',
-      'phone/Users',
-      'scheduling/Locations',
-      'scheduling/Overbooking',
-      'scheduling/Re-Scheduling',
-      'scheduling/Schedule',
-      'scheduling/Settings',
-      'services/Settings',
-      'training/Dashboard',
-      'training/Settings',
-      'work_hours/Paid Time Off',
-      'work_hours/Reports',
-      'work_hours/Settings',
-    };
-    expect(
-      missing.toSet(),
-      pending,
-      reason:
-          'No walkthrough: ${missing.where((k) => !pending.contains(k)).join(', ')}',
-    );
+    expect(missing, isEmpty, reason: 'No walkthrough: ${missing.join(', ')}');
   });
 
   testWidgets('(?) runs the tour of the tab in front, its count dropped, and '

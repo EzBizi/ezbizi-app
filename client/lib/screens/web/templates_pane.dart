@@ -183,6 +183,7 @@ class _TemplatesPaneState extends State<TemplatesPane> {
             error: _error,
             onRetry: _load,
             child: ListView(
+              key: const ValueKey('tour-seo-templates'),
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               children: [
                 Text(
@@ -204,6 +205,7 @@ class _TemplatesPaneState extends State<TemplatesPane> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: TextButton.icon(
+                      key: const ValueKey('tour-seo-templates-add'),
                       onPressed: _add,
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('Add a template'),

@@ -236,6 +236,7 @@ class _SeoHelperPaneState extends State<SeoHelperPane> {
           );
 
     return DashboardCard(
+      key: const ValueKey('tour-seo-helper-health'),
       title: 'Site health',
       icon: Icons.monitor_heart_outlined,
       controls: TextButton.icon(

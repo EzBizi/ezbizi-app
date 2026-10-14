@@ -434,6 +434,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
+            key: const ValueKey('tour-marketing-social-none'),
             "None of Social Media Management's tabs are available to your role.",
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
@@ -678,6 +679,7 @@ class _PostsPane extends StatelessWidget {
         // Dashboard must open the dashboard, not the post still landing.
         if (phone && landing != null && view == 'compose') {
           return ListView(
+            key: const ValueKey('tour-marketing-compose-outcome'),
             padding: const EdgeInsets.all(16),
             children: [
               _PostOutcome(
@@ -946,6 +948,7 @@ class _PostsDashboard extends StatelessWidget {
           };
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-timeline'),
       title: 'Timeline',
       icon: Icons.timeline,
       controls: onNew == null
@@ -1003,6 +1006,7 @@ class _PostsDashboard extends StatelessWidget {
     );
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-social-accounts-card'),
       title: 'Accounts',
       icon: Icons.link_outlined,
       controls: TextButton(onPressed: onConnect, child: const Text('Connect')),
@@ -1476,6 +1480,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         // opens the time; Now forgets it, so a time typed and abandoned is
         // never sent.
         Wrap(
+          key: const ValueKey('tour-marketing-compose-when'),
           spacing: 8,
           children: [
             ChoiceChip(
@@ -1671,6 +1676,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     final landing = widget.landing;
     if (landing != null) {
       final outcome = DashboardCard(
+        key: const ValueKey('tour-marketing-compose-outcome'),
         title: 'New post',
         icon: Icons.edit_outlined,
         child: _PostOutcome(
@@ -1713,6 +1719,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     );
 
     final composer = DashboardCard(
+      key: const ValueKey('tour-marketing-compose-form'),
       title: 'New post',
       icon: Icons.edit_outlined,
       child: Column(
@@ -1829,6 +1836,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     // under the scrolling form says where it goes and when, beside the button.
     final picked = _picked.length;
     final bar = DecoratedBox(
+      key: const ValueKey('tour-marketing-compose-bar'),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(top: BorderSide(color: EzBiziTheme.edge(context))),
@@ -2227,6 +2235,7 @@ class _PreviewCard extends StatelessWidget {
     );
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-compose-preview'),
       // Every ticked network at once (UI queue 76, Jose's pick 2), so the one
       // that cuts the words short is seen without clicking through the rest.
       title: 'How it will look',
@@ -2679,6 +2688,7 @@ class _WeekCard extends StatelessWidget {
     final monday = _CalendarsColumn.mondayOf(today);
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-week'),
       title: 'Weekly Calendar',
       icon: Icons.calendar_today_outlined,
       child: Column(
@@ -2742,6 +2752,7 @@ class _MonthCard extends StatelessWidget {
     final rows = (cells / 7).ceil();
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-month'),
       title: 'Monthly Calendar',
       icon: Icons.calendar_view_month_outlined,
       expand: fill,
@@ -3025,6 +3036,7 @@ class _AccountsPane extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       children: [
         DashboardCard(
+          key: const ValueKey('tour-marketing-accounts'),
           title: 'Accounts in $viewName',
           icon: Icons.link_outlined,
           child: Column(
@@ -3074,6 +3086,7 @@ class _AccountsPane extends StatelessWidget {
               Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton(
+                  key: const ValueKey('tour-marketing-accounts-connect'),
                   onPressed: onConnect,
                   child: Text('Connect a page to $viewName'),
                 ),
@@ -3083,6 +3096,7 @@ class _AccountsPane extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Builder(
+          key: const ValueKey('tour-marketing-accounts-catalogue'),
           builder: (context) {
             /*
              * The catalogue is what is NOT connected yet.
@@ -4267,6 +4281,7 @@ class _Agenda extends StatelessWidget {
     ];
 
     return DashboardCard(
+      key: const ValueKey('tour-marketing-agenda'),
       title: 'Your posts',
       icon: Icons.view_agenda_outlined,
       child: sections.isEmpty

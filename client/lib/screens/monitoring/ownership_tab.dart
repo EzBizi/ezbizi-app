@@ -133,6 +133,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
       onRetry: _load,
       child: _rows.isEmpty
           ? Padding(
+              key: const ValueKey('tour-monitoring-ownership-empty'),
               padding: const EdgeInsets.all(24),
               child: Text(
                 OwnershipTab.emptyNote,
@@ -143,6 +144,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
           // of a phone — the UI/UX Android audit, 2026-09-28. There it is a
           // list: a name line and a detail line, the shape a phone reads.
           : LayoutBuilder(
+              key: const ValueKey('tour-monitoring-ownership'),
               builder: (context, constraints) =>
                   constraints.maxWidth < OwnershipTab.narrowBelow
                   ? _list(context)

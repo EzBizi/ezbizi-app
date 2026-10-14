@@ -13,6 +13,7 @@ import '../widgets/ai_mark.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/tab_help.dart';
 
 /// Leads — enquiries from connected advertising (EZ Leads).
 ///
@@ -598,10 +599,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // go down the side and the list keeps its own search and filters, so the
     // conversation runs from the title to the bottom. On a phone one button
     // says which source is showing and opens a page of them.
-    return LayoutBuilder(
+    final body = LayoutBuilder(
       builder: (context, constraints) =>
           constraints.maxWidth >= 900 ? _desk(theme) : _phone(theme),
     );
+    // (?) runs the open source's own walkthrough, by the server's name for
+    // its tab (Jose, 2026-10-14: walkthroughs for "all the sub tabs"). The
+    // three Local Services chips are one tab, the module's own tour.
+    final tab = const {
+      'thumbtack': 'Thumbtack',
+      'website_chat': 'Chat',
+      'website_form': 'Forms',
+      'website_booking': 'Online Booking',
+      'facebook': 'Messenger',
+      'instagram': 'Instagram',
+      'workiz': 'Workiz',
+      'whatsapp': 'WhatsApp',
+    }[_source];
+    return tab == null ? body : OpenTabMark(tab, child: body);
   }
 
   Widget _desk(ThemeData theme) => Row(

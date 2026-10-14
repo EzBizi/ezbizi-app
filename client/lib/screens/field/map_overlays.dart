@@ -244,6 +244,7 @@ class FieldMapPanel extends StatelessWidget {
             ),
             // The map's day: that day's jobs and routes.
             Padding(
+              key: const ValueKey('tour-field-map-day'),
               padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
               child: Row(
                 children: [
@@ -275,6 +276,7 @@ class FieldMapPanel extends StatelessWidget {
               ),
             ),
             Padding(
+              key: const ValueKey('tour-field-map-search'),
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
               child: TextField(
                 key: ValueKey(jobsTab),
