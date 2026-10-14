@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0433',
+      date: '14 Oct 2026',
+      items: [
+        'Scheduling: every number Routing, Re-Scheduling and the suggestions use is now a setting in Scheduling › Settings › Routing & suggestions (renamed from Suggestions): jobs per technician per day and per window, the routing distances, which time windows count as nearby, and Re-Scheduling\'s limits. Routes also carry Google\'s real road path, miles and drive time, and Routing draws them inside the app with miles and drive time in place of the Google Maps button; with no Google route it keeps the straight lines.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0432',
+      date: '14 Oct 2026',
+      items: [
+        'AI Assistance: when the Library has no answer, the AI tab answers from what you can see in EzBizi (for example how many jobs tomorrow), marked "From EzBizi, read with your access"; while it reads it says "Thinking… reading EzBizi", answers keep their line breaks and bold, and "could not answer" shows only when it really could not.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0431',
       date: '14 Oct 2026',
       items: [

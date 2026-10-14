@@ -1047,6 +1047,10 @@ class SettingRegistry
     {
         $miles = [1, 2, 3, 5, 10, 15, 20, 25, 30];
         $days = [7, 10, 14, 21, 30];
+        $enum = fn (string $key, string $label, int $default, array $options, \Closure $name, string $help) => new SettingDefinition(
+            key: $key, label: $label, type: SettingDefinition::TYPE_ENUM, default: $default, options: $options,
+            optionLabels: array_combine(array_map('strval', $options), array_map($name, $options)), help: $help,
+        );
 
         return [
             new SettingDefinition(
@@ -1064,6 +1068,41 @@ class SettingRegistry
                 optionLabels: array_combine(array_map('strval', $days), array_map(fn ($d) => "{$d} days", $days)),
                 help: 'How many days from tomorrow a suggestion may look for a day with nearby work.',
             ),
+            // Jose, 2026-10-14: "i want to be able to change all the settings
+            // in the app, like amount of jobs a technician can get for
+            // routing, etc". Every number Routing, Re-Scheduling and the
+            // suggestions decide with is one of these; enums, so none can be
+            // set to a value that breaks them.
+            $enum('scheduling.suggest_window_gap', 'Suggestions: which windows count as nearby', 1, [0, 1, 2],
+                fn ($v) => [0 => 'The same window only', 1 => 'The same window or the one beside it', 2 => 'Up to two windows away'][$v],
+                'A booked job counts as "nearby" only when it is in the offered time window, or this close to it. '
+                .'Used by the Availability suggestion and by Re-Scheduling.'),
+            $enum('scheduling.route_jobs_per_tech', 'Routing: jobs per technician per day', 6, [3, 4, 5, 6, 7, 8, 9, 10],
+                fn ($v) => "{$v} jobs",
+                'The most jobs one technician takes in a day. Routing counts technicians as the capacity of the day '
+                .'divided by this.'),
+            $enum('scheduling.route_jobs_per_window', 'Routing: jobs per technician per time window', 2, [1, 2, 3, 4],
+                fn ($v) => $v === 1 ? '1 job' : "{$v} jobs",
+                'How many jobs one technician takes in the same time window (for example 2 in the morning).'),
+            $enum('scheduling.route_pair_miles', 'Routing: two jobs in one window, at most this far apart', 10, [2, 5, 10, 15, 20, 30],
+                fn ($v) => "{$v} miles",
+                'A technician gets a second job in the same window only when it is this close to the first.'),
+            $enum('scheduling.route_new_miles', 'Routing: start another technician route beyond', 15, [5, 10, 15, 20, 30],
+                fn ($v) => "{$v} miles",
+                'A job farther than this from every route so far goes to the next technician.'),
+            $enum('scheduling.route_far_miles', 'Routing: outside the area beyond', 60, [30, 45, 60, 90, 120],
+                fn ($v) => "{$v} miles",
+                'A job this far from the other jobs that day is listed as far outside the area (usually booked in the '
+                .'wrong one) instead of being put on a route.'),
+            $enum('scheduling.reschedule_settled_days', 'Re-Scheduling: never move jobs in the next', 2, [0, 1, 2, 3, 5, 7],
+                fn ($v) => $v === 0 ? 'No limit' : ($v === 1 ? '1 day' : "{$v} days"),
+                'Jobs booked this soon are left where they are: the customer has planned for them.'),
+            $enum('scheduling.reschedule_max_shift_days', 'Re-Scheduling: move a job at most', 3, [1, 2, 3, 5, 7, 14],
+                fn ($v) => $v === 1 ? '1 day earlier or later' : "{$v} days earlier or later",
+                'How far from its booked date a job may be suggested to move.'),
+            $enum('scheduling.reschedule_max_after_miles', 'Re-Scheduling: nearest job after the move within', 10, [2, 5, 10, 15, 20, 30],
+                fn ($v) => "{$v} miles",
+                'A move is suggested only when it puts the job this close to other booked work.'),
         ];
     }
 

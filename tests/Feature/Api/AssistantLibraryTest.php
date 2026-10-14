@@ -4,8 +4,10 @@ namespace Tests\Feature\Api;
 
 use App\Models\AssistantEntry;
 use App\Models\AuditEvent;
+use App\Models\TrainingGuide;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Process;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -173,7 +175,7 @@ class AssistantLibraryTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
         $a = $this->answers($t);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => true, 'reply' => 'Your place says so.', 'entry_ids' => [$a['mine']->id, $a['sibling']->id],
         ]]))]);
         $this->signedInAs($this->userWithRole($t, 'Tech', ['ai_assistance.view', 'ai_assistance.ai.view'], onlyAt: $t['franchise']));
@@ -192,19 +194,19 @@ class AssistantLibraryTest extends TestCase
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
         $this->inTenant($t['org'], function () use ($t) {
             foreach (['Dispatcher Training Guide' => 'Complaints are logged on the board.', 'Technician Training Guide' => 'Complaints about a tech go to Eve.'] as $title => $text) {
-                \App\Models\TrainingGuide::create([
-                    'company_id' => $t['company']->id, 'title' => $title, 'status' => \App\Models\TrainingGuide::PUBLISHED,
+                TrainingGuide::create([
+                    'company_id' => $t['company']->id, 'title' => $title, 'status' => TrainingGuide::PUBLISHED,
                     'screens' => [['title' => 'Handling complaints', 'chapter' => 'Essentials', 'section' => 'Service',
                         'blocks' => [['type' => 'text', 'text' => $text], ['type' => 'video', 'url' => 'https://vimeo.com/123']]]],
                 ]);
             }
         });
         $prompts = [];
-        \Illuminate\Support\Facades\Process::fake(function ($process) use (&$prompts) {
+        Process::fake(function ($process) use (&$prompts) {
             $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
             $prompts[] = $file && is_file($file) ? file_get_contents($file) : '';
 
-            return \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+            return Process::result(json_encode(['structuredOutput' => [
                 'answered' => true, 'reply' => 'Log it on the board.', 'entry_ids' => [],
             ]]));
         });
@@ -216,5 +218,29 @@ class AssistantLibraryTest extends TestCase
         $this->assertStringContainsString('Complaints are logged on the board.', $prompts[0]);
         $this->assertStringContainsString('https://vimeo.com/123', $prompts[0]);
         $this->assertStringNotContainsString('go to Eve', $prompts[0], "a dispatcher is not given the technicians' guide");
+    }
+
+    /** Jose, 2026-10-14: "How many jobs do we have for tomorrow" in the AI tab is read from the app. */
+    public function test_a_question_the_library_misses_is_read_from_the_app(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Process::fake(function ($process) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompt = $file && is_file($file) ? file_get_contents($file) : '';
+            $out = match (true) {
+                str_contains($prompt, 'ENDPOINTS:') => ['calls' => [['path' => 'customers', 'query' => '']]],
+                str_contains($prompt, 'DATA:') => ['answered' => true, 'reply' => "*Tomorrow*\n- 12 jobs"],
+                default => ['answered' => false, 'reply' => '', 'entry_ids' => []],
+            };
+
+            return Process::result(json_encode(['structuredOutput' => $out]));
+        });
+        $this->signedInAs($t['admin']);
+
+        $this->getJson('/api/v1/ai-assistance/answer?q=how+many+jobs+do+we+have+for+tomorrow')
+            ->assertOk()
+            ->assertJsonPath('data.from_app', true)
+            ->assertJsonPath('data.reply', "🔹 *Tomorrow*\n🗓️ 12 jobs");
     }
 }

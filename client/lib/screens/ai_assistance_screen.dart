@@ -242,6 +242,13 @@ class _Turn {
   bool thinking = true;
   String? error;
 
+  /// Read from the app as the asker (Grok's AppAsk), not from the Library.
+  bool fromApp = false;
+
+  /// /answer refused (503) or sent nothing: only then is "could not answer"
+  /// true (Grok AI, 2026-10-14).
+  bool aiFailed = false;
+
   List<dynamic> get answers => found?['answers'] as List<dynamic>? ?? const [];
   List<dynamic> get sites => found?['locations'] as List<dynamic>? ?? const [];
 }
@@ -307,7 +314,9 @@ class _AssistantTabState extends State<AssistantTab> {
     setState(() {
       turn.thinking = false;
       final data = ai.ok ? ai.data : null;
+      turn.aiFailed = data is! Map;
       turn.reply = data is Map ? data['reply'] as String? : null;
+      turn.fromApp = data is Map && data['from_app'] == true;
     });
     _toBottom();
   }
@@ -522,7 +531,11 @@ class _AssistantTabState extends State<AssistantTab> {
         key: const Key('assistant-ai-answer'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AiMark.badge('Answer by AI'),
+          AiMark.badge(
+            turn.fromApp
+                ? 'From EzBizi, read with your access'
+                : 'Answer by AI',
+          ),
           const SizedBox(height: 6),
           _AnswerBody(reply),
         ],
@@ -537,12 +550,14 @@ class _AssistantTabState extends State<AssistantTab> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: 8),
-          Text('Thinking…', style: muted),
+          // A question about the business's own records is read from the
+          // app, which can take a minute and more (Grok AI, 2026-10-14).
+          Text('Thinking… reading EzBizi', style: muted),
         ],
       );
     } else if (answers.length == 1) {
       words = _AnswerBody(answers.single['body'] as String? ?? '');
-    } else if (answers.isEmpty && sites.isEmpty) {
+    } else if (answers.isEmpty && sites.isEmpty && turn.aiFailed) {
       words = Text(
         turn.error ??
             'Nothing in the Library matched that, and AI could not answer '
@@ -605,7 +620,7 @@ class _AssistantTabState extends State<AssistantTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   words,
-                  if (answers.isNotEmpty) ...[
+                  if (answers.isNotEmpty && !turn.fromApp) ...[
                     const SizedBox(height: 10),
                     Wrap(
                       key: const Key('assistant-answer'),

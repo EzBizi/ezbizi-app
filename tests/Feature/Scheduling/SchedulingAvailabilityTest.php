@@ -38,6 +38,9 @@ class SchedulingAvailabilityTest extends TestCase
     {
         parent::setUp();
         $this->travelTo(CarbonImmutable::parse('2026-09-30 10:00:00', 'America/New_York'));
+        // Routing asks Google for road paths when a key is set; a gate run on
+        // a box with a real key must not.
+        config(['services.google_maps.server_key' => '']);
     }
 
     /** Dallas works Mondays: 7–11 takes 2, 11–2 takes 1. Nothing else. */
@@ -903,6 +906,20 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([[2, false], [2, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $twelfth));
         $this->assertSame(3, $twelfth[2]['technician']);
 
+        // Both limits are Settings (Jose, 2026-10-14: "if i decide a technician
+        // can take 4 jobs instead of 3"): 3 a day makes 12 seats 4 technicians,
+        // and 1 a window gives each 8:00 job its own.
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.route_jobs_per_tech', $tenant['org'], 3);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.route_jobs_per_window', $tenant['org'], 1);
+        $reset = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-12")->json('data');
+        $this->assertSame(4, $reset['technicians']);
+        $this->assertSame([[1, false], [1, false], [1, false], [1, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $reset['routes']));
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.route_jobs_per_tech', $tenant['org'], 6);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.route_jobs_per_window', $tenant['org'], 2);
+
         // Two 8:00 jobs 12 miles apart cannot share a morning.
         $this->located($tenant, '2026-11-02 08:00:00', 32.7870, -96.7990);
         $this->located($tenant, '2026-11-02 08:00:00', 32.9600, -96.7990, '75240');
@@ -964,6 +981,55 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * Jose, 2026-10-14: the route drawn inside the app on Google's roads. Each
+     * route carries Google's path and road miles/minutes; with no key it is
+     * null and nothing is asked.
+     */
+    public function test_a_route_carries_googles_road_path(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8000, -96.8000);
+        $url = "/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-05";
+
+        // One fake for the whole test: a second Http::fake stacks behind the
+        // first rather than replacing it.
+        \Illuminate\Support\Facades\Http::fake(['routes.googleapis.com/*' => \Illuminate\Support\Facades\Http::response(['routes' => [[
+            'distanceMeters' => 3219, 'duration' => '540s', 'polyline' => ['encodedPolyline' => 'abc~def'],
+        ]]])]);
+
+        config(['services.google_maps.server_key' => '']);
+        $this->assertNull($this->signedInAs($tenant['admin'])->getJson($url)->json('data.routes.0.drive'));
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+
+        config(['services.google_maps.server_key' => 'test-key']);
+        $drive = $this->signedInAs($tenant['admin'])->getJson($url)->assertOk()->json('data.routes.0.drive');
+
+        $this->assertSame([2.0, 9, 'abc~def'], [(float) $drive['miles'], $drive['minutes'], $drive['polyline']]);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->hasHeader('X-Goog-Api-Key', 'test-key')
+            && $r['origin']['location']['latLng']['latitude'] === 32.787 && ! isset($r['intermediates']));
+    }
+
+    /** Google timing out or dropping the connection is straight lines, not a failed tab. */
+    public function test_a_route_survives_google_failing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8000, -96.8000);
+
+        config(['services.google_maps.server_key' => 'test-key']);
+        \Illuminate\Support\Facades\Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('timed out'));
+
+        $route = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-05")
+            ->assertOk()->json('data.routes.0');
+        $this->assertCount(2, $route['stops']);
+        $this->assertNull($route['drive']);
+    }
+
+    /**
      * Grok's review of the live list (2026-10-14): a reschedule must be worth
      * the phone call. Each pair below would be suggested without one rule;
      * only the Houston pair passes them all.
@@ -1015,6 +1081,13 @@ class SchedulingAvailabilityTest extends TestCase
             fn ($r) => substr((string) ($r['job']['customer']['address'] ?? ''), -5), $rows))),
             json_encode(array_map(fn ($r) => [$r['job']['date'], $r['job']['time'], $r['job']['customer']['address']], $rows)));
         $this->assertCount(1, $rows);
+
+        // The day limit is a Setting: at 14 days the Austin pair (9 apart) is
+        // worth the call too.
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.reschedule_max_shift_days', $tenant['org'], 14);
+        $wider = $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/reschedules')->json('data');
+        $this->assertSame(['77002', '78701'], collect($wider)->map(fn ($r) => substr((string) $r['job']['customer']['address'], -5))->unique()->sort()->values()->all());
     }
 
     /**
@@ -1075,6 +1148,12 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->assertSame('2026-10-05', $data['earliest']['date']);
         $this->assertNull($data['suggested'], json_encode($data['suggested']));
+
+        // How far is a Setting: at "up to two windows away" it counts.
+        app(TenantContext::class)->set($tenant['org']);
+        app(\App\Support\Settings\SettingsResolver::class)->set('scheduling.suggest_window_gap', $tenant['org'], 2);
+        $this->assertSame('13:00', $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')->json('data.suggested.window.start_time'));
     }
 
     /**

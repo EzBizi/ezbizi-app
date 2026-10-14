@@ -218,12 +218,66 @@ void main() {
       'https://x.test/?utm_medium=web_pre_qual',
     );
   });
+
+  /// Grok AI, 2026-10-14: a question the Library cannot answer is read from
+  /// the app as the asker, and says so; lines and blank lines stay.
+  testWidgets('an answer read from the app says so, keeps its lines, and '
+      'shows no Library chips', (tester) async {
+    await _pump(
+      tester,
+      grants: ['ai_assistance.ai.view'],
+      answer: {
+        'reply': '*Tomorrow*\n\n4 jobs booked\n2 in Maple Grove',
+        'entry_ids': <Object?>[],
+        'from_app': true,
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('assistant-ask')),
+      'How many jobs do we have for tomorrow',
+    );
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('From EzBizi, read with your access'), findsOneWidget);
+    expect(find.byKey(const Key('assistant-answer')), findsNothing);
+    final words = tester.widget<SelectableText>(
+      find.descendant(
+        of: find.byKey(const Key('assistant-ai-answer')),
+        matching: find.byType(SelectableText),
+      ),
+    );
+    expect(
+      words.textSpan!.toPlainText(),
+      'Tomorrow\n\n4 jobs booked\n2 in Maple Grove',
+    );
+  });
+
+  testWidgets('"could not answer" only when the answer is refused', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      grants: ['ai_assistance.ai.view'],
+      answerStatus: 503,
+      noMatches: true,
+    );
+
+    await tester.enterText(find.byKey(const Key('assistant-ask')), 'zzz qqq');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('could not answer'), findsOneWidget);
+  });
 }
 
 Future<void> _pump(
   WidgetTester tester, {
   required List<String> grants,
   Size size = const Size(1200, 1400),
+  Map<String, Object?>? answer,
+  int answerStatus = 200,
+  bool noMatches = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -272,11 +326,23 @@ Future<void> _pump(
         });
       }
       if (path.endsWith('/ai-assistance/answer')) {
+        if (answerStatus != 200) {
+          return _json({
+            'message': 'AI could not answer just now.',
+          }, answerStatus);
+        }
         return _json({
-          'data': {
-            'reply': 'Size the round flue at 1/12 of the opening.',
-            'entry_ids': ['e-1'],
-          },
+          'data':
+              answer ??
+              {
+                'reply': 'Size the round flue at 1/12 of the opening.',
+                'entry_ids': ['e-1'],
+              },
+        });
+      }
+      if (noMatches && path.endsWith('/ai-assistance/ask')) {
+        return _json({
+          'data': {'answers': <Object?>[], 'locations': <Object?>[]},
         });
       }
       if (path.endsWith('/ai-assistance/ask')) {
