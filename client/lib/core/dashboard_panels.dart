@@ -32,6 +32,7 @@ IconData dashboardPanelIcon(String key) {
     'phone': Icons.phone_outlined,
     'fleet_management': Icons.local_shipping_outlined,
     'inventory': Icons.inventory_2_outlined,
+    'financials': Icons.table_chart_outlined,
     'tasks': Icons.view_kanban_outlined,
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,

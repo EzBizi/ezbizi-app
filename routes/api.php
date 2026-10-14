@@ -171,6 +171,7 @@ use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
+use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -980,6 +981,28 @@ Route::prefix('v1')
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
+        // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
+        Route::prefix('financials')->controller(FinancialsController::class)->group(function (): void {
+            Route::get('bases', 'bases');
+            Route::post('bases', 'storeBase');
+            Route::patch('bases/{base}', 'updateBase');
+            Route::delete('bases/{base}', 'destroyBase');
+            Route::post('bases/{base}/tables', 'storeTable');
+            Route::get('tables/{table}', 'showTable');
+            Route::patch('tables/{table}', 'updateTable');
+            Route::delete('tables/{table}', 'destroyTable');
+            Route::get('tables/{table}/export', 'export');
+            Route::post('tables/{table}/import', 'import');
+            Route::post('tables/{table}/fields', 'storeField');
+            Route::patch('fields/{field}', 'updateField');
+            Route::delete('fields/{field}', 'destroyField');
+            Route::post('tables/{table}/records', 'storeRecord');
+            Route::patch('records/{record}', 'updateRecord');
+            Route::delete('records/{record}', 'destroyRecord');
+            Route::post('tables/{table}/views', 'storeView');
+            Route::patch('views/{view}', 'updateView');
+            Route::delete('views/{view}', 'destroyView');
+        });
         /*
          * NO `permission:inventory.items.view` OR `.locations.view` HERE, and
          * the omission is the decision.

@@ -87,6 +87,11 @@
                 "Settings"
             ]
         },
+        "financials": {
+            "label": "Financials",
+            "parent": null,
+            "tabs": []
+        },
         "fleet_management": {
             "label": "Fleet Management",
             "parent": null,
@@ -368,6 +373,10 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financials.create",
+        "financials.delete",
+        "financials.edit",
+        "financials.view",
         "fleet_management.assign",
         "fleet_management.create",
         "fleet_management.delete",

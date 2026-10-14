@@ -26,6 +26,7 @@ use App\Models\TrainingAssignment;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
+use App\Models\FinancialRecord;
 use App\Models\Task;
 use App\Models\Vehicle;
 use App\Models\WebSite;
@@ -2200,6 +2201,32 @@ class ModuleServiceProvider extends ServiceProvider
              * TaskWriter (app/Support/Tasks). Until then the builder shows them
              * as not built (AutomationsController's built list).
              */
+            /*
+             * Financials (Jose, 2026-10-14) — the Airtable replacement: bases of
+             * tables with typed columns, records and saved views (grid, kanban,
+             * calendar, gallery, form). Edit covers records, columns, tables
+             * and views inside a base; delete removes any of them.
+             */
+            new ModuleDefinition(
+                key: 'financials',
+                label: 'Financials',
+                auditActionPrefixes: ['financials'],
+                subject: new AutomationSubject(FinancialRecord::class, 'Record', key: 'financial_record'),
+                emits: [FinancialRecord::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'financial_record.created',
+                        label: 'Financials record added',
+                        description: 'A record was added to a Financials table. It carries the table name.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'financial_record.updated',
+                        label: 'Financials record changed',
+                        description: 'A cell in a Financials record was changed. It carries the table name.',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',
