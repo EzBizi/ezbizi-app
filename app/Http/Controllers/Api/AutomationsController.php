@@ -1082,7 +1082,10 @@ class AutomationsController extends Controller
     public function show(Automation $automation): JsonResponse
     {
         $this->assertMine($automation);
-        $this->authorize('view', $automation);
+        // A board owner may read their own board's rule (managedBoardOf).
+        if (request()->user()->hasPermission('automations.view') || $this->managedBoardOfRule(request()->user(), $automation) === null) {
+            $this->authorize('view', $automation);
+        }
 
         return response()->json(['data' => $this->present($automation, detailed: true)]);
     }
