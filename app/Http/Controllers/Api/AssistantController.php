@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\AssistantEntry;
+use App\Support\Ai\AppAsk;
 use App\Support\Assistant\AssistantBrain;
+use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -59,15 +61,34 @@ class AssistantController extends Controller
         $q = (string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:200']])['q'];
         $user = $request->user();
 
+        // Jose, 2026-10-14: same voice as WhatsApp (line breaks, emojis), and
+        // a question the Library cannot answer ("How many jobs do we have for
+        // tomorrow") is read from the app as the asker, GET only (AppAsk).
+        // Both fit nginx's 120 s: 35 s for the Library, the rest for the app.
+        $started = microtime(true);
+        $failed = false;
         try {
-            $answer = $this->brain->aiAnswer($user, $user->organization, $q);
+            $answer = $this->brain->aiAnswer($user, $user->organization, $q, 35, forWhatsApp: true);
         } catch (\RuntimeException) {
+            [$answer, $failed] = [null, true];
+        }
+
+        if ($answer === null) {
+            try {
+                $reply = AppAsk::answer($user, $q, 105 - (int) ceil(microtime(true) - $started));
+                $answer = $reply === null ? null : ['reply' => $reply, 'entry_ids' => [], 'from_app' => true];
+            } catch (\RuntimeException) {
+                $failed = true;
+            }
+        }
+
+        if ($answer === null && $failed) {
             return response()->json(['message' => 'AI could not answer just now.'], 503);
         }
 
         // Jose, 2026-10-14: the app's chat reads like the WhatsApp bot - capitals, emojis for dots.
         if (is_array($answer) && isset($answer['reply'])) {
-            $answer['reply'] = \App\Support\Social\WhatsAppStaffBot::look((string) $answer['reply']);
+            $answer['reply'] = WhatsAppStaffBot::look((string) $answer['reply']);
         }
 
         return response()->json(['data' => $answer]);
