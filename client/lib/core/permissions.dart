@@ -95,6 +95,7 @@ class PermissionAction {
     required this.grantable,
     this.requires = const [],
     this.tab = false,
+    this.description,
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -149,6 +150,10 @@ class PermissionAction {
   /// list this screen drew before tabs existed.
   final bool tab;
 
+  /// What the tick lets someone do, in a sentence, when the module says
+  /// (Task Board's "Add people to any board", UI queue 95, Roles 10).
+  final String? description;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
@@ -157,6 +162,7 @@ class PermissionAction {
         grantable: json['grantable'] != false,
         requires: (json['requires'] as List?)?.cast<String>() ?? const [],
         tab: json['tab'] == true,
+        description: json['description'] as String?,
       );
 }
 

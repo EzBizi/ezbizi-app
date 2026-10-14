@@ -1081,6 +1081,47 @@ void main() {
     expect(find.textContaining('Needs'), findsNothing);
   });
 
+  testWidgets('a tick the module describes says what it lets someone do', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpRoles(
+      tester,
+      roles: [_role('r-2', 'Manager', permissions: const [])],
+      catalogue: [
+        _catalogueModule(
+          'tasks',
+          'Task Board',
+          actions: const [('view', 'View'), ('view_all', 'See every board')],
+          descriptions: const {
+            'view_all': "Everyone's boards in their picker, grouped by person.",
+          },
+        ),
+      ],
+    );
+
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Task Board'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('action:tasks.view_all')),
+        matching: find.text(
+          "Everyone's boards in their picker, grouped by person.",
+        ),
+      ),
+      findsOneWidget,
+    );
+    // An action the module does not describe has no sentence under it.
+    expect(
+      find.byKey(const ValueKey('action-description:tasks.view')),
+      findsNothing,
+    );
+  });
+
   testWidgets('on a desktop the requirement rides the label, before any tick', (
     tester,
   ) async {
@@ -1405,6 +1446,7 @@ Map<String, dynamic> _catalogueModule(
   String? groupHint,
   String? parent,
   Map<String, List<String>> requires = const {},
+  Map<String, String> descriptions = const {},
 }) => {
   'key': key,
   'label': label,
@@ -1425,6 +1467,7 @@ Map<String, dynamic> _catalogueModule(
         'grantable': !ungrantable.contains(action),
         // The server sends this on EVERY action; almost always empty.
         'requires': requires[action] ?? const <String>[],
+        'description': ?descriptions[action],
       },
   ],
   'inboxes': ?inboxes,
