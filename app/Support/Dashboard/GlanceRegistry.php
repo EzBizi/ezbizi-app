@@ -64,6 +64,8 @@ class GlanceRegistry
         'profit_loss',
         // Field, on the end like its sidebar entry (2026-09-25).
         'field',
+        // Financials, before Task Board like its sidebar entry (2026-10-14).
+        'financials',
         // Task Board, on the end (2026-10-13).
         'tasks',
     ];
@@ -181,6 +183,11 @@ class GlanceRegistry
         'monitoring' => [
             'label' => 'Monitoring',
             'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
+        ],
+        // Financials (2026-10-14): placeholder until a live glance is built.
+        'financials' => [
+            'label' => 'Financials',
+            'sentence' => 'Your bases, tables and records live in the Financials tab. Open it to work in them.',
         ],
         // Task Board (2026-10-13): placeholder until a live glance is built.
         'tasks' => [

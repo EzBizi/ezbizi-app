@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/financials_screen.dart';
 import '../screens/ai_assistance_screen.dart';
 import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
@@ -151,6 +152,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'services': ModuleScreen(
     Icons.handyman_outlined,
     (api, session) => ServicesScreen(api: api, session: session),
+  ),
+  'financials': ModuleScreen(
+    Icons.table_chart_outlined,
+    (api, session) => FinancialsScreen(api: api, session: session),
   ),
   'tasks': ModuleScreen(
     Icons.view_kanban_outlined,
