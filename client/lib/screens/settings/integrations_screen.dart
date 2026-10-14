@@ -103,7 +103,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       'include': 'data_sources',
     });
 
-    final catalogue = await widget.api.get('/social/providers');
+    final catalogue = await widget.api.get('/social/providers', {
+      'include': 'data_sources',
+    });
 
     if (!mounted) return;
 
