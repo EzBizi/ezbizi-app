@@ -190,7 +190,7 @@ class ScoringReportController extends Controller
                 'calls_scored' => $calls->count(),
                 'avg_score' => round($calls->avg('score'), 1),
                 // The ranking's number: the weighted metrics, out of 10.
-                'score' => ScoringWeights::score(['conversion' => $conversion, ...$checks], $weights),
+                'score' => ScoringWeights::score(['conversion' => $conversion, 'quality' => $calls->avg('score') * 10, ...$checks], $weights),
                 'conversion' => $conversion,
                 'new_client' => $newClient,
                 'jobs' => $jobs,

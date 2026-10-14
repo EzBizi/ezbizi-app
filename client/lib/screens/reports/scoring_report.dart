@@ -52,6 +52,9 @@ const _checks = {
   'asked_for_booking': 'Asked to book',
 };
 
+/// The two metrics beside the checks in the weighted score.
+const _metricNames = {'conversion': 'Conversion', 'quality': 'AI call score'};
+
 const _caveat =
     'Scored by AI from the transcript. A guide for coaching, not a verdict: '
     'the transcript can mishear, and some calls cannot be won.';
@@ -981,7 +984,7 @@ class _DetailState extends State<_Detail> {
     final weights = [
       for (final e in team.weights.entries)
         if (e.value > 0)
-          '${e.key == 'conversion' ? 'Conversion' : _checks[e.key] ?? e.key} '
+          '${_metricNames[e.key] ?? _checks[e.key] ?? e.key} '
               '${e.value}%',
     ];
     final checks = section(
