@@ -61,6 +61,23 @@ class SalesPipelineTest extends TestCase
         $this->assertSame(0, $this->inTenant($t['org'], fn () => SalesDeal::count()));
     }
 
+    public function test_lead_date_is_workizs_created_date_not_the_import(): void
+    {
+        $t = $this->provisionTenant();
+        $job = $this->job($t, 'done pending approval', 100);
+        $this->inTenant($t['org'], fn () => \App\Models\WorkizJob::create([
+            'franchise_id' => $t['franchise']->id, 'remote_id' => 'w1', 'synced_at' => now(),
+            'job_id' => $job->id, 'serial_id' => '500032883', 'status' => 'done pending approval',
+            'payload' => ['CreatedDate' => '2026-07-22 09:15:00'],
+        ]));
+
+        $row = $this->signedInAs($this->userWithRole($t, 'Sales', ['sales.view']))
+            ->getJson('/api/v1/sales/deals')->json('data.0');
+
+        $this->assertSame('2026-07-22', $row['lead_date']);
+        $this->assertEquals('500032883', $row['job_number']);
+    }
+
     public function test_another_organizations_job_is_not_reachable(): void
     {
         $other = $this->job($this->provisionTenant('Beta'), 'done pending approval', 100);
