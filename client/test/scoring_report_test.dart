@@ -77,6 +77,7 @@ void main() {
   ];
 
   late int reads;
+  late List<Map<String, String>> asked;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -87,6 +88,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     reads = 0;
+    asked = [];
 
     http.Response json(Object body) => http.Response(
       jsonEncode(body),
@@ -96,13 +98,41 @@ void main() {
 
     final api = ApiClient(
       client: MockClient((request) async {
+        if (request.url.path.endsWith('/reports/scoring/calls')) {
+          asked.add(request.url.queryParameters);
+          final q = request.url.queryParameters['q'];
+          return json({
+            'data': [
+              for (final (id, score, tags) in [
+                ('c4', 9, ['latest', 'best']),
+                ('c3', 7, ['latest']),
+                ('c2', 6, ['latest']),
+                ('c1', 3, ['worst']),
+              ])
+                if (q == null || id == 'c3')
+                  {
+                    'call_id': id,
+                    'started_at': '2026-10-12T15:00:00Z',
+                    'caller_number': '+1214555000${id[1]}',
+                    'recording_id': null,
+                    'score': score,
+                    'strength': 'Greeted',
+                    'improve': 'Price first',
+                    'transcript': 'words',
+                    'tags': q == null ? tags : ['match'],
+                  },
+            ],
+          });
+        }
         if (!request.url.path.endsWith('/reports/scoring')) {
           return json({'data': null});
         }
+        asked.add(request.url.queryParameters);
         reads++;
         final q = request.url.queryParameters;
-        // The 30 days before: Tom scored lower then, so he is "most improved".
-        final before = q['from'] == '2026-08-15';
+        // The day before yesterday (the default is yesterday, Jose 2026-10-14):
+        // Tom scored lower then, so he is "most improved".
+        final before = q['from'] == '2026-10-11';
         return json({
           'data': {
             'from': q['from'],
@@ -263,6 +293,48 @@ void main() {
       find.byKey(const ValueKey('scoring-detail-Maya Ortiz')),
       findsOneWidget,
     );
+  });
+
+  testWidgets("a person's latest calls with their scores, and a search", (
+    tester,
+  ) async {
+    await pump(tester);
+    await tester.tap(find.byKey(const ValueKey('scoring-card-Maya Ortiz')));
+    await tester.pumpAndSettle();
+
+    final first = asked.lastWhere((q) => q.containsKey('person'));
+    expect(first['person'], 'Maya Ortiz');
+    expect(first['from'], '2026-10-12');
+    expect(find.byKey(const ValueKey('scoring-call-score-c4')), findsOneWidget);
+    expect(find.text('9/10'), findsOneWidget);
+    expect(find.text('6/10'), findsOneWidget);
+    expect(find.text('3/10'), findsOneWidget);
+    expect(find.byKey(const ValueKey('scoring-call-best')), findsOneWidget);
+    expect(find.byKey(const ValueKey('scoring-call-worst')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('scoring-calls-search')),
+      'gas',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(asked.last['q'], 'gas');
+    expect(asked.last['person'], 'Maya Ortiz');
+    expect(find.text('7/10'), findsOneWidget);
+    expect(find.text('9/10'), findsNothing);
+  });
+
+  testWidgets('the quick dates: yesterday by default, 1 week asks 7 days', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(asked.first['from'], '2026-10-12');
+    expect(asked.first['to'], '2026-10-12');
+
+    await tester.tap(find.byKey(const ValueKey('report-dates-1 week')));
+    await tester.pumpAndSettle();
+    final week = asked.lastWhere((q) => q['to'] == '2026-10-13');
+    expect(week['from'], '2026-10-07');
   });
 
   testWidgets('no scored calls says so', (tester) async {

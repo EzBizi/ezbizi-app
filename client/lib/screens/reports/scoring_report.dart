@@ -10,6 +10,7 @@ import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import 'report_dates.dart';
+import 'scoring_person_calls.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
@@ -121,9 +122,10 @@ enum _Sort { score, improved }
 class _ScoringReportState extends State<ScoringReport> {
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
-  late DateSpan _span = DateSpan(
-    DateTime(_today.year, _today.month, _today.day - 29),
-    _today,
+  // Yesterday by default (Jose, 2026-10-14: "have the default time be
+  // yesterday instead of 1 month").
+  late DateSpan _span = DateSpan.single(
+    DateTime(_today.year, _today.month, _today.day - 1),
   );
 
   bool _loading = true;
@@ -243,6 +245,11 @@ class _ScoringReportState extends State<ScoringReport> {
             team: team,
             phone: phone,
             onBack: () => setState(() => _open = null),
+            calls: ScoringPersonCalls(
+              api: widget.api,
+              person: open.name,
+              span: _span,
+            ),
             ranking: phone
                 ? null
                 : _Ranking(
@@ -841,6 +848,7 @@ class _Detail extends StatefulWidget {
     required this.phone,
     required this.onBack,
     this.ranking,
+    this.calls,
   });
 
   final _Person person;
@@ -848,6 +856,9 @@ class _Detail extends StatefulWidget {
   final bool phone;
   final VoidCallback onBack;
   final Widget? ranking;
+
+  /// Their latest scored calls and a search (Jose, 2026-10-14).
+  final Widget? calls;
 
   @override
   State<_Detail> createState() => _DetailState();
@@ -1110,6 +1121,10 @@ class _DetailState extends State<_Detail> {
       ),
     );
 
+    final calls = widget.calls == null
+        ? null
+        : section('Their calls', widget.calls!);
+
     final back = Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
@@ -1125,7 +1140,17 @@ class _DetailState extends State<_Detail> {
       return Column(
         key: ValueKey('scoring-detail-${p.name}'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [back, head, gap, analysis, gap, checks, gap, notes],
+        children: [
+          back,
+          head,
+          gap,
+          analysis,
+          gap,
+          checks,
+          gap,
+          notes,
+          if (calls != null) ...[gap, calls],
+        ],
       );
     }
 
@@ -1144,7 +1169,14 @@ class _DetailState extends State<_Detail> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [head, gap, checks, gap, notes],
+                children: [
+                  head,
+                  gap,
+                  checks,
+                  gap,
+                  notes,
+                  if (calls != null) ...[gap, calls],
+                ],
               ),
             ),
             const SizedBox(width: 12),
