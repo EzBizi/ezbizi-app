@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 96 · How-to videos › the opening card, with the EzBizi logo — **sent 2026-10-14 15:34** (`docs/previews/help-video-title-card-layouts.html`)
+### 96 · How-to videos › the opening card, with the EzBizi logo — **sent 2026-10-14 15:34; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): 3** — **BUILT** in `H:\Development\EzBizi-videos\kit` (Scheduling and Guidelines first) (`docs/previews/help-video-title-card-layouts.html`)
 
 Jose 2026-10-14 via the desk: "do improve the Initial Screen, use the EzBizi Logo, make it look better, cause right now it looks like
 something made on moviemaker". Each option has the real logo, Inter, the module icon and the video's tabs as chips, with 1.5 s of motion,
