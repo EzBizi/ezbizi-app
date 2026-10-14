@@ -17,7 +17,7 @@ class VersionHistory {
       version: '0.0.0433',
       date: '14 Oct 2026',
       items: [
-        'Scheduling: every number Routing, Re-Scheduling and the suggestions use is now a setting in Scheduling › Settings › Suggestions: jobs per technician per day and per window, the routing distances, which time windows count as nearby, and Re-Scheduling\'s limits. Routes also carry Google\'s real road path, miles and drive time, so the app can draw them on its own map.',
+        'Scheduling: every number Routing, Re-Scheduling and the suggestions use is now a setting in Scheduling › Settings › Routing & suggestions (renamed from Suggestions): jobs per technician per day and per window, the routing distances, which time windows count as nearby, and Re-Scheduling\'s limits. Routes also carry Google\'s real road path, miles and drive time, and Routing draws them inside the app with miles and drive time in place of the Google Maps button; with no Google route it keeps the straight lines.',
       ],
     ),
     VersionRelease(
