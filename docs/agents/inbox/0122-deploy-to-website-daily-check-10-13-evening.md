@@ -42,3 +42,7 @@ confirmed Re-Scheduling Move changes the job in Workiz.
 
 ---
 **Result (filled in after 0.0.0426 + deploy-www 320e99a1):**
+- 2026-10-14 ~12:20 UTC: 0.0.0426 (c8dbf533) is live on web: verify-web OK, staff_bot migrations Ran.
+  /privacy/ sha256 5957b2df… and /google-ads-api/ 52e4786d… both match the pin, so ff16feb1 and 5e5bacd1
+  went live with the AppAsk and recordings code. `deploy-www.sh 320e99a1` reported "site published",
+  and sitemap lastmod for both pages reads 2026-10-13.
