@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0432',
+      date: '14 Oct 2026',
+      items: [
+        'AI Assistance: when the Library has no answer, the AI tab answers from what you can see in EzBizi (for example how many jobs tomorrow), marked "From EzBizi, read with your access"; while it reads it says "Thinking… reading EzBizi", answers keep their line breaks and bold, and "could not answer" shows only when it really could not.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0431',
       date: '14 Oct 2026',
       items: [
