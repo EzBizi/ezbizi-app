@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../core/tab_tours.dart';
+import 'help_video_io.dart'
+    if (dart.library.js_interop) 'help_video_web.dart'
+    as native;
 import 'side_panel.dart';
 import 'tab_bar_like.dart';
 
@@ -655,9 +659,12 @@ class _VideoPanel extends StatefulWidget {
 }
 
 class _VideoPanelState extends State<_VideoPanel> {
-  /// Set when this platform has no player (Windows), or the file will not
-  /// play: the link opens in the browser instead.
+  /// Set when the file will not play. The panel says so and offers Download;
+  /// it never hands the video to a browser (Jose, 2026-10-14: "all inside
+  /// the app").
   bool _cannotPlay = false;
+  bool _downloading = false;
+  OverlayEntry? _full;
 
   @override
   void initState() {
@@ -672,6 +679,74 @@ class _VideoPanelState extends State<_VideoPanel> {
         .catchError((Object _) {
           if (mounted) setState(() => _cannotPlay = true);
         });
+  }
+
+  @override
+  void dispose() {
+    if (_full != null) _leaveFullscreen();
+    super.dispose();
+  }
+
+  /// The video over the whole app, the window fullscreen on a computer and
+  /// the phone sideways; Esc or ✕ comes back at the same point.
+  void _fullscreen() {
+    if (_full != null) return;
+    _full = OverlayEntry(
+      builder: (_) => _FullScreen(
+        player: widget.player,
+        onClose: () => setState(_leaveFullscreen),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(_full!);
+    unawaited(native.setHelpVideoWindowFullScreen(true));
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
+    unawaited(
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]),
+    );
+    setState(() {});
+  }
+
+  void _leaveFullscreen() {
+    _full?.remove();
+    _full = null;
+    unawaited(native.setHelpVideoWindowFullScreen(false));
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    unawaited(SystemChrome.setPreferredOrientations(const []));
+  }
+
+  /// The file itself, saved on this device: a Save dialog on a computer, the
+  /// browser's download on web, Photos on a phone.
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    String? said;
+    try {
+      final res = await http.get(Uri.parse(widget.video.url));
+      if (res.statusCode != 200) throw StateError('${res.statusCode}');
+      said = await native.saveHelpVideo(_filename, res.bodyBytes);
+    } catch (_) {
+      said = 'The video could not be downloaded just now.';
+    }
+    if (!mounted) return;
+    setState(() => _downloading = false);
+    if (said != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(said)));
+    }
+  }
+
+  String get _filename {
+    final last = Uri.parse(widget.video.url).pathSegments.lastOrNull ?? '';
+    if (last.contains('.')) return last;
+    final name = (widget.video.title ?? 'How ${widget.label} works')
+        .replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '')
+        .trim();
+    return '${name.isEmpty ? 'video' : name}.mp4';
   }
 
   @override
@@ -697,35 +772,71 @@ class _VideoPanelState extends State<_VideoPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_cannotPlay)
-            OutlinedButton.icon(
-              key: const Key('help-video-open'),
-              onPressed: () => launchUrl(
-                Uri.parse(video.url),
-                mode: LaunchMode.externalApplication,
-              ),
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Open the video'),
-            )
-          else
-            _Screen(player: widget.player),
-          const SizedBox(height: 12),
-          for (final c in video.chapters)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Text(
-                _clock(c.at),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              title: Text(c.label),
-              onTap: _cannotPlay
-                  ? null
-                  : () => widget.player.seekTo(Duration(seconds: c.at)),
+          if (_cannotPlay) ...[
+            Text(
+              'This video will not play on this device.',
+              key: const Key('help-video-cannot-play'),
+              style: muted,
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const Key('help-video-download'),
+                onPressed: _downloading ? null : _download,
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Download it'),
+              ),
+            ),
+          ] else
+            _Screen(
+              player: widget.player,
+              onFullscreen: _fullscreen,
+              onDownload: _downloading ? null : _download,
+              downloading: _downloading,
+            ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder<VideoPlayerValue>(
+            valueListenable: widget.player,
+            builder: (context, value, _) {
+              // The chapter playing now, lit (UI queue 94).
+              final now = value.position.inSeconds;
+              final playing = video.chapters
+                  .where((c) => c.at <= now)
+                  .lastOrNull
+                  ?.at;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final c in video.chapters)
+                    ListTile(
+                      key: ValueKey('help-video-chapter-${c.at}'),
+                      dense: true,
+                      selected:
+                          !_cannotPlay &&
+                          value.isInitialized &&
+                          c.at == playing,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      selectedTileColor: theme.colorScheme.primaryContainer,
+                      leading: Text(
+                        _clock(c.at),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      title: Text(c.label),
+                      onTap: _cannotPlay
+                          ? null
+                          : () => widget.player.seekTo(Duration(seconds: c.at)),
+                    ),
+                ],
+              );
+            },
+          ),
           const SizedBox(height: 8),
           Text(
             'Made by EzBizi, the same for every organization.',
@@ -737,12 +848,99 @@ class _VideoPanelState extends State<_VideoPanel> {
   }
 }
 
+/// The video over the whole app (UI queue 94, 1 and 4).
+class _FullScreen extends StatefulWidget {
+  const _FullScreen({required this.player, required this.onClose});
+
+  final VideoPlayerController player;
+  final VoidCallback onClose;
+
+  @override
+  State<_FullScreen> createState() => _FullScreenState();
+}
+
+class _FullScreenState extends State<_FullScreen> {
+  /// Taken from the panel underneath, so Esc leaves fullscreen rather than
+  /// closing the panel the video is playing in.
+  final _focus = FocusNode(debugLabel: 'help video fullscreen');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final player = widget.player;
+    final onClose = widget.onClose;
+    return CallbackShortcuts(
+      bindings: {const SingleActivator(LogicalKeyboardKey.escape): onClose},
+      child: Focus(
+        focusNode: _focus,
+        child: Material(
+          key: const Key('help-video-fullscreen-view'),
+          color: scheme.scrim,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: _Screen(
+                    player: player,
+                    fullscreen: true,
+                    onFullscreen: onClose,
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: TextButton.icon(
+                    key: const Key('help-video-exit-fullscreen'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: scheme.surface,
+                    ),
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close),
+                    label: const Text('Exit fullscreen (Esc)'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The picture, its captions, and play/pause with a scrubber.
 class _Screen extends StatelessWidget {
-  const _Screen({required this.player, this.compact = false});
+  const _Screen({
+    required this.player,
+    this.compact = false,
+    this.fullscreen = false,
+    this.onFullscreen,
+    this.onDownload,
+    this.downloading = false,
+  });
 
   final VideoPlayerController player;
   final bool compact;
+
+  /// Drawn over the whole app, where the button leaves fullscreen.
+  final bool fullscreen;
+  final VoidCallback? onFullscreen;
+  final VoidCallback? onDownload;
+  final bool downloading;
 
   @override
   Widget build(BuildContext context) {
@@ -807,7 +1005,45 @@ class _Screen extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                if (onFullscreen == null && onDownload == null)
+                                  const SizedBox(width: 12),
+                                if (onFullscreen != null)
+                                  IconButton(
+                                    key: Key(
+                                      fullscreen
+                                          ? 'help-video-fullscreen-exit'
+                                          : 'help-video-fullscreen',
+                                    ),
+                                    color: scheme.surface,
+                                    tooltip: fullscreen
+                                        ? 'Exit fullscreen'
+                                        : 'Fullscreen',
+                                    icon: Icon(
+                                      fullscreen
+                                          ? Icons.fullscreen_exit
+                                          : Icons.fullscreen,
+                                    ),
+                                    onPressed: onFullscreen,
+                                  ),
+                                if (onDownload != null || downloading)
+                                  IconButton(
+                                    key: const Key('help-video-download'),
+                                    color: scheme.surface,
+                                    tooltip: downloading
+                                        ? 'Downloading…'
+                                        : 'Download',
+                                    icon: downloading
+                                        ? SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: scheme.surface,
+                                            ),
+                                          )
+                                        : const Icon(Icons.download),
+                                    onPressed: onDownload,
+                                  ),
                               ],
                             ),
                           ),
