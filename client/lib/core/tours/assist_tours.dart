@@ -16,7 +16,8 @@ const Map<String, Tour> assistTours = {
         title: 'The answers',
         body:
             'Grouped by section, as the WhatsApp menu groups them. Each says '
-            'where it applies, and whether it is for everyone or staff only.',
+            'where it applies, and whether it is for everyone or staff only. '
+            'Click one to read it, or to change it if you can edit.',
       ),
       TourStep(
         anchor: 'tour-ai_assistance-add-answer',
