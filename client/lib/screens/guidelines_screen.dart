@@ -6,9 +6,8 @@
 /// Tabs are tracked by KEY, never by position — see work_hours_screen.dart.
 library;
 
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
 import '../core/files.dart';
@@ -111,6 +110,12 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
   String? _error;
   String _query = '';
 
+  /// Phone: the card read inside the tab (queue 93, layout 4).
+  Map<String, dynamic>? _reading;
+
+  bool get _canEdit =>
+      widget.session.me?.permissions.contains('guidelines.manage') ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -148,8 +153,37 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
     ].whereType<String>().any((s) => s.toLowerCase().contains(q));
   }
 
-  Future<void> _open(Map<String, dynamic> card) =>
-      showSidePanel<void>(context, builder: (_) => _ReadPanel(card: card));
+  Future<void> _open(Map<String, dynamic> card) async {
+    if (MediaQuery.sizeOf(context).width < 600) {
+      setState(() => _reading = card);
+      return;
+    }
+    await showSidePanel<void>(
+      context,
+      builder: (panel) => _ReadPanel(
+        card: card,
+        onEdit: _canEdit
+            ? () {
+                Navigator.of(panel).pop();
+                _edit(card);
+              }
+            : null,
+      ),
+    );
+  }
+
+  /// Settings: drag to reorder, saved as each card's position.
+  Future<void> _reorder(int from, int to) async {
+    final cards = [..._cards!];
+    if (to > from) to--;
+    cards.insert(to, cards.removeAt(from));
+    setState(() => _cards = cards);
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i]['position'] == i) continue;
+      cards[i] = {...cards[i], 'position': i};
+      await widget.api.patch('/guidelines/${cards[i]['id']}', {'position': i});
+    }
+  }
 
   Future<void> _edit([Map<String, dynamic>? card]) async {
     final saved = await showSidePanel<bool>(
@@ -166,6 +200,39 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
     if (_error != null) return Center(child: Text(_error!));
     if (cards == null) return const Center(child: CircularProgressIndicator());
     final shown = cards.where(_matches).toList();
+    final reading = _reading;
+    if (!widget.editing && reading != null) {
+      return ListView(
+        key: const ValueKey('guidelines-phone-read'),
+        padding: const EdgeInsets.fromLTRB(8, 8, 16, 32),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _reading = null),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('All guidelines'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  reading['title'] as String? ?? '',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                if ((reading['summary'] as String?)?.isNotEmpty ?? false)
+                  Text(reading['summary'] as String),
+                const SizedBox(height: 16),
+                _StepsBody(card: reading, large: true),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
 
     return Scaffold(
       floatingActionButton: widget.editing
@@ -173,7 +240,7 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
               key: const ValueKey('guidelines-add'),
               onPressed: () => _edit(),
               icon: const Icon(Icons.add),
-              label: const Text('Add guideline'),
+              label: const Text('New guideline'),
             )
           : null,
       body: CustomScrollView(
@@ -203,7 +270,7 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                       message: widget.editing
                           ? 'Add one for each situation your team needs steps for.'
                           : 'Guidelines your company writes will appear here.',
-                      actionLabel: widget.editing ? 'Add guideline' : null,
+                      actionLabel: widget.editing ? 'New guideline' : null,
                       onAction: widget.editing ? () => _edit() : null,
                     )
                   : EmptyState(
@@ -212,13 +279,44 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                       message: 'Nothing matches "$_query".',
                     ),
             )
+          else if (widget.editing)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              sliver: SliverReorderableList(
+                itemCount: shown.length,
+                // Reordering a filtered list would hide where a card lands.
+                onReorder: _query.trim().isEmpty ? _reorder : (_, _) {},
+                itemBuilder: (context, i) {
+                  final card = shown[i];
+                  final accent =
+                      ColourField.parse(card['color'] as String? ?? '') ??
+                      Theme.of(context).colorScheme.primary;
+                  final steps = (card['steps'] as List<dynamic>? ?? []).length;
+                  return Card(
+                    key: ValueKey('guideline-${card['id']}'),
+                    child: ListTile(
+                      leading: Icon(Icons.menu_book_outlined, color: accent),
+                      title: Text(card['title'] as String? ?? ''),
+                      subtitle: Text('$steps ${steps == 1 ? 'step' : 'steps'}'),
+                      trailing: ReorderableDragStartListener(
+                        index: i,
+                        child: const Icon(Icons.drag_handle),
+                      ),
+                      onTap: () => _edit(card),
+                    ),
+                  );
+                },
+              ),
+            )
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
               sliver: SliverGrid(
                 // Sibling tiles are all the same size.
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 280,
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 600
+                      ? 600
+                      : 280,
                   mainAxisExtent: 220,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
@@ -228,8 +326,7 @@ class _GuidelinesTabState extends State<GuidelinesTab> {
                   (context, i) => _CardTile(
                     card: shown[i],
                     editing: widget.editing,
-                    onTap: () =>
-                        widget.editing ? _edit(shown[i]) : _open(shown[i]),
+                    onTap: () => _open(shown[i]),
                   ),
                 ),
               ),
@@ -322,11 +419,61 @@ class _CardTile extends StatelessWidget {
   }
 }
 
-/// The card opened: image, numbered steps, notes.
+/// The card opened on desktop, over the right of the grid (queue 93, 1).
 class _ReadPanel extends StatelessWidget {
-  const _ReadPanel({required this.card});
+  const _ReadPanel({required this.card, this.onEdit});
 
   final Map<String, dynamic> card;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = (card['steps'] as List<dynamic>? ?? const []).cast<String>();
+    return SidePanel(
+      key: ValueKey('guideline-read-${card['id']}'),
+      title: card['title'] as String? ?? 'Guideline',
+      subtitle: card['summary'] as String?,
+      width: 560,
+      actions: [
+        TextButton.icon(
+          onPressed: () {
+            Clipboard.setData(
+              ClipboardData(
+                text: [
+                  card['title'],
+                  for (var i = 0; i < steps.length; i++)
+                    '${i + 1}. ${steps[i]}',
+                  if ((card['notes'] as String?)?.isNotEmpty ?? false)
+                    card['notes'],
+                ].join('\n'),
+              ),
+            );
+            ScaffoldMessenger.maybeOf(
+              context,
+            )?.showSnackBar(const SnackBar(content: Text('Copied')));
+          },
+          icon: const Icon(Icons.copy),
+          label: const Text('Copy'),
+        ),
+        if (onEdit != null)
+          FilledButton.icon(
+            key: const ValueKey('guideline-read-edit'),
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit'),
+          ),
+      ],
+      child: _StepsBody(card: card),
+    );
+  }
+}
+
+/// Image, numbered steps in the card's colour, then notes in a muted box.
+class _StepsBody extends StatelessWidget {
+  const _StepsBody({required this.card, this.large = false});
+
+  final Map<String, dynamic> card;
+  final bool large;
 
   @override
   Widget build(BuildContext context) {
@@ -337,58 +484,63 @@ class _ReadPanel extends StatelessWidget {
     final image = _images[_imageKey(card)];
     final steps = (card['steps'] as List<dynamic>? ?? const []).cast<String>();
     final notes = card['notes'] as String?;
+    final text = large ? theme.textTheme.bodyLarge : theme.textTheme.bodyMedium;
 
-    return SidePanel(
-      key: ValueKey('guideline-read-${card['id']}'),
-      title: card['title'] as String? ?? 'Guideline',
-      subtitle: card['summary'] as String?,
-      width: 560,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (image != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-                child: Image.memory(image, fit: BoxFit.cover),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (image != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+              child: Image.memory(image, fit: BoxFit.cover),
             ),
-          for (var i = 0; i < steps.length; i++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 14,
-                    backgroundColor: accent,
-                    foregroundColor: EzBiziTheme.fieldInkLight,
-                    child: Text(
-                      '${i + 1}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: EzBiziTheme.fieldInkLight,
-                      ),
+          ),
+        for (var i = 0; i < steps.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: large ? 18 : 14,
+                  backgroundColor: accent,
+                  child: Text(
+                    '${i + 1}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: EzBiziTheme.fieldInkLight,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: SelectableText(steps[i]),
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: SelectableText(steps[i], style: text),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          if (notes != null && notes.trim().isNotEmpty) ...[
-            const Divider(height: 24),
-            Text('Notes', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            SelectableText(notes),
-          ],
-        ],
-      ),
+          ),
+        if (notes != null && notes.trim().isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Notes', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                SelectableText(notes),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -411,11 +563,13 @@ class _EditPanelState extends State<_EditPanel> {
   late final _summary = TextEditingController(
     text: widget.card?['summary'] as String? ?? '',
   );
-  // ponytail: one step per line, not a reorderable list editor; add one if
-  // steps grow long enough to need several lines each.
-  late final _steps = TextEditingController(
-    text: ((widget.card?['steps'] as List<dynamic>?) ?? const []).join('\n'),
-  );
+  late final List<TextEditingController> _steps = [
+    for (final step in (widget.card?['steps'] as List<dynamic>?) ?? const [])
+      TextEditingController(text: step as String),
+    if ((widget.card?['steps'] as List<dynamic>? ?? const []).isEmpty)
+      TextEditingController(),
+  ];
+  bool _confirmDelete = false;
   late final _notes = TextEditingController(
     text: widget.card?['notes'] as String? ?? '',
   );
@@ -430,7 +584,7 @@ class _EditPanelState extends State<_EditPanel> {
 
   @override
   void dispose() {
-    for (final c in [_title, _summary, _steps, _notes, _position]) {
+    for (final c in [_title, _summary, ..._steps, _notes, _position]) {
       c.dispose();
     }
     super.dispose();
@@ -444,8 +598,8 @@ class _EditPanelState extends State<_EditPanel> {
       'summary': _summary.text.trim().isEmpty ? null : _summary.text.trim(),
       'color': _color,
       'steps': [
-        for (final line in _steps.text.split('\n'))
-          if (line.trim().isNotEmpty) line.trim(),
+        for (final c in _steps)
+          if (c.text.trim().isNotEmpty) c.text.trim(),
       ],
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       'position': int.tryParse(_position.text.trim()) ?? 0,
@@ -482,6 +636,11 @@ class _EditPanelState extends State<_EditPanel> {
   }
 
   Future<void> _delete() async {
+    // Asks once, in place: the button becomes the confirmation.
+    if (!_confirmDelete) {
+      setState(() => _confirmDelete = true);
+      return;
+    }
     setState(() => _busy = true);
     final response = await widget.api.delete(
       '/guidelines/${widget.card!['id']}',
@@ -533,13 +692,17 @@ class _EditPanelState extends State<_EditPanel> {
         (!_removeImage && widget.card?['has_image'] == true);
 
     return SidePanel(
-      title: widget.card == null ? 'Add guideline' : 'Edit guideline',
+      title: widget.card == null ? 'New guideline' : 'Edit guideline',
       width: 560,
       actions: [
         if (widget.card != null)
           TextButton(
+            key: const ValueKey('guidelines-delete'),
             onPressed: _busy ? null : _delete,
-            child: const Text('Delete'),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: Text(_confirmDelete ? 'Delete for good?' : 'Delete'),
           ),
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
@@ -561,13 +724,64 @@ class _EditPanelState extends State<_EditPanel> {
             key: const ValueKey('guidelines-title'),
           ),
           _field(_summary, 'Short description (optional)', max: 255),
-          _field(
-            _steps,
-            'Steps',
-            lines: 8,
-            help: 'One step per line, in order.',
-            key: const ValueKey('guidelines-steps'),
+          Text('Steps', style: theme.textTheme.titleSmall),
+          ReorderableListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            onReorder: (from, to) => setState(() {
+              if (to > from) to--;
+              _steps.insert(to, _steps.removeAt(from));
+            }),
+            children: [
+              for (var i = 0; i < _steps.length; i++)
+                Row(
+                  key: ObjectKey(_steps[i]),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14, right: 8),
+                      child: Text('${i + 1}.'),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        key: ValueKey('guidelines-step-$i'),
+                        controller: _steps[i],
+                        minLines: 1,
+                        maxLines: null,
+                        maxLength: 2000,
+                        decoration: const InputDecoration(counterText: ''),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove step',
+                      onPressed: _steps.length == 1
+                          ? null
+                          : () => setState(() => _steps.removeAt(i).dispose()),
+                      icon: const Icon(Icons.close),
+                    ),
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Icon(Icons.drag_handle),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('guidelines-add-step'),
+              onPressed: () =>
+                  setState(() => _steps.add(TextEditingController())),
+              icon: const Icon(Icons.add),
+              label: const Text('Add step'),
+            ),
+          ),
+          const SizedBox(height: 12),
           _field(_notes, 'Notes (optional)', lines: 3),
           ColourField(
             label: 'Color',

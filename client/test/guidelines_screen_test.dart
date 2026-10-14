@@ -35,7 +35,24 @@ void main() {
     expect(posted, isEmpty);
   });
 
-  testWidgets('a manager adds a card in Settings, one step per line', (
+  testWidgets('on a phone the card opens inside the tab, with a way back', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      grants: ['guidelines.guidelines.view'],
+      size: const Size(400, 900),
+    );
+    await tester.tap(find.text('Chimney fire'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('guidelines-phone-read')), findsOneWidget);
+    expect(find.text('Call 911'), findsOneWidget);
+    await tester.tap(find.text('All guidelines'));
+    await tester.pumpAndSettle();
+    expect(find.text('Upset customer'), findsOneWidget);
+  });
+
+  testWidgets('a manager adds a card in Settings; blank steps are dropped', (
     tester,
   ) async {
     final posted = await _pump(
@@ -56,8 +73,16 @@ void main() {
       'Gas smell',
     );
     await tester.enterText(
-      find.byKey(const ValueKey('guidelines-steps')),
-      'Leave\n\nCall the gas company',
+      find.byKey(const ValueKey('guidelines-step-0')),
+      'Leave',
+    );
+    await tester.tap(find.byKey(const ValueKey('guidelines-add-step')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('guidelines-add-step')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('guidelines-step-2')),
+      'Call the gas company',
     );
     await tester.tap(find.byKey(const ValueKey('guidelines-save')));
     await tester.pumpAndSettle();
@@ -70,8 +95,9 @@ void main() {
 Future<List<Map<String, dynamic>>> _pump(
   WidgetTester tester, {
   required List<String> grants,
+  Size size = const Size(1200, 1400),
 }) async {
-  tester.view.physicalSize = const Size(1200, 1400);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   final posted = <Map<String, dynamic>>[];
