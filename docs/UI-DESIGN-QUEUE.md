@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 93 · Guidelines, a new module — **sent 2026-10-14 10:56, awaiting Jose until 11:06** (`docs/previews/guidelines-layouts.html`)
+### 93 · Guidelines, a new module — **sent 2026-10-14 10:56; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, Settings 7** — built by the Guidelines session (12bba329), adjusted to the pick (`docs/previews/guidelines-layouts.html`)
 
 Jose 2026-10-14 via the Guidelines session: a module of situation cards, each with a colour and an optional picture, that open
 step-by-step instructions, and a Settings tab to create, edit and delete them. Desktop **1** (recommended): a searchable grid
