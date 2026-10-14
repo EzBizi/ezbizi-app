@@ -6,6 +6,7 @@ use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
+use App\Support\Social\MetaMessages;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -288,6 +289,36 @@ class MetaMessagesWebhookTest extends TestCase
         $this->inTenant($t['org'], fn () => $lead->fresh()->forceFill(['contact_name' => 'Mrs Peters'])->save());
         $this->deliver($this->body(['mid' => 'm_B3', 'text' => 'still there?']))->assertOk();
         $this->assertSame('Mrs Peters', $lead->fresh()->contact_name);
+    }
+
+    public function test_a_reconnected_page_takes_back_only_its_own_hidden_enquiries(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->pageBelongsTo($t);
+        $this->holdsToken($page, $t);
+
+        $orphan = fn (string $psid) => $this->inTenant($t['org'], fn () => Lead::query()->create([
+            'organization_id' => $t['org']->id, 'source' => Lead::SOURCE_FACEBOOK, 'remote_id' => $psid,
+            'status' => Lead::STATUS_NEW, 'received_at' => now(),
+        ]));
+        $ours = $orphan('PSID-OURS');
+        $other = $orphan('PSID-OTHER-PAGE');
+        $erred = $orphan('PSID-META-ERRED');
+
+        // A sender id is scoped to one Page: only this Page has a conversation
+        // with ours. An error answer must not read as "yes".
+        Http::fake([
+            '*user_id=PSID-OURS*' => Http::response(['data' => [['id' => 't_1']]]),
+            '*user_id=PSID-OTHER-PAGE*' => Http::response(['data' => []]),
+            '*user_id=PSID-META-ERRED*' => Http::response(['error' => ['message' => 'nope']], 400),
+        ]);
+
+        $adopted = $this->inTenant($t['org'], fn () => app(MetaMessages::class)->reclaim($page));
+
+        $this->assertSame(1, $adopted);
+        $this->assertSame($page->id, $ours->fresh()->connection_id);
+        $this->assertNull($other->fresh()->connection_id);
+        $this->assertNull($erred->fresh()->connection_id);
     }
 
     public function test_an_instagram_delivery_signed_with_the_instagram_secret_is_accepted(): void
