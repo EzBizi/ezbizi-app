@@ -36,6 +36,8 @@
 	<string>Your organization uses your location while you are working, for your safety, to see when you arrive at a job, and to suggest the fastest route between your jobs. It is also sent when you press SOS.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Your organization uses your location while you are working, for your safety, to see when you arrive at a job, and to suggest the fastest route between your jobs. It is also sent when you press SOS.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>EzBizi saves a how-to video to your Photos when you tap Download on it. It only adds that video; it never reads your photos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>CFBundleDevelopmentRegion</key>

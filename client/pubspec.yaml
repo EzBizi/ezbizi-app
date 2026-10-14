@@ -82,6 +82,16 @@ dependencies:
   printing: ^5.14.2
   desktop_drop: 0.7.1
 
+  # The how-to video in the app on Windows too (Jose, 2026-10-14: "video
+  # should be seen on desktop, mobile, etc, right not it only works on
+  # web"). video_player has no Windows half; this is one, through Media
+  # Foundation, picked up by video_player itself. Checked on Windows before
+  # it was chosen: it loaded, played and seeked a network mp4.
+  video_player_win: ^3.3.1
+  # Download on a phone: file_selector cannot save on Android or iOS, so the
+  # video goes to the gallery (Photos). Desktop and web keep Files.download.
+  gal: ^2.3.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -120,6 +130,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  video_player_platform_interface: ^6.9.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
