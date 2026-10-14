@@ -11,6 +11,8 @@ import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import 'report_dates.dart';
 import 'scoring_person_calls.dart';
+import '../../widgets/side_panel.dart';
+import 'scoring_weights_panel.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
@@ -31,11 +33,15 @@ class ScoringReport extends StatefulWidget {
     required this.api,
     required this.formats,
     this.now,
+    this.canWeigh = false,
   });
 
   final ApiClient api;
   final DisplayFormats formats;
   final DateTime Function()? now;
+
+  /// May change what the score weighs (reports.scoring_weights).
+  final bool canWeigh;
 
   @override
   State<ScoringReport> createState() => _ScoringReportState();
@@ -153,6 +159,19 @@ class _ScoringReportState extends State<ScoringReport> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// UI queue 97: the weights in a side panel; the scores are read again
+  /// once they change.
+  Future<void> _editWeights() async {
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (_) => ScoringWeightsPanel(
+        api: widget.api,
+        labels: {..._metricNames, ..._checks},
+      ),
+    );
+    if (saved == true && mounted) _load();
   }
 
   Future<void> _load() async {
@@ -316,6 +335,13 @@ class _ScoringReportState extends State<ScoringReport> {
                     ],
                     selected: {_sort},
                     onSelectionChanged: (v) => setState(() => _sort = v.first),
+                  ),
+                if (open == null && widget.canWeigh)
+                  OutlinedButton.icon(
+                    key: const Key('scoring-weights-edit'),
+                    onPressed: _editWeights,
+                    icon: const Icon(Icons.balance, size: 18),
+                    label: const Text('Weights'),
                   ),
               ],
             ),
