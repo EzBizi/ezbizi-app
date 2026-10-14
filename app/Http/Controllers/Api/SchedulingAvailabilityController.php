@@ -121,6 +121,7 @@ class SchedulingAvailabilityController extends Controller
         $plan = app(Routes::class)->for($area, CarbonImmutable::parse($data['date']));
 
         $rows = collect($plan['routes'])->pluck('stops')->flatten(1)->merge($plan['unplaced'])->merge($plan['elsewhere']);
+        $drive = app(RouteDrive::class);
         $customers = Customer::query()->whereIn('id', $rows->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
         $job = fn (object $row) => SchedulingOverbookingController::detail($row, $customers[$row->customer_id ?? ''] ?? null)
             + ['latitude' => (float) $row->latitude, 'longitude' => (float) $row->longitude,
@@ -136,7 +137,7 @@ class SchedulingAvailabilityController extends Controller
             // `drive` is Google's road path and road miles/minutes, drawn in
             // the app (null without a key: the screen draws straight lines).
             'routes' => array_map(fn (array $r) => ['stops' => array_map($job, $r['stops']),
-                'drive' => app(RouteDrive::class)->for(array_map(fn ($s) => [(float) $s->latitude, (float) $s->longitude], $r['stops']))] + $r,
+                'drive' => $drive->for(array_map(fn ($s) => [(float) $s->latitude, (float) $s->longitude], $r['stops']))] + $r,
                 $plan['routes']),
             // No place on the map (Workiz could not geocode them): listed so
             // nobody is forgotten, routed by the dispatcher.

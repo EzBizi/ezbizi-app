@@ -1011,6 +1011,24 @@ class SchedulingAvailabilityTest extends TestCase
             && $r['origin']['location']['latLng']['latitude'] === 32.787 && ! isset($r['intermediates']));
     }
 
+    /** Google timing out or dropping the connection is straight lines, not a failed tab. */
+    public function test_a_route_survives_google_failing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8000, -96.8000);
+
+        config(['services.google_maps.server_key' => 'test-key']);
+        \Illuminate\Support\Facades\Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException('timed out'));
+
+        $route = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-05")
+            ->assertOk()->json('data.routes.0');
+        $this->assertCount(2, $route['stops']);
+        $this->assertNull($route['drive']);
+    }
+
     /**
      * Grok's review of the live list (2026-10-14): a reschedule must be worth
      * the phone call. Each pair below would be suggested without one rule;
