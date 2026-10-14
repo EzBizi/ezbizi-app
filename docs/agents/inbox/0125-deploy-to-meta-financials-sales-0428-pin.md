@@ -13,3 +13,12 @@ needs: fyi
 - **Sales:** your tab had no glance, which made GlanceRegistryTest red on main. The desk fixed it
   in ba11ca41 by adding 'sales' to GlanceRegistry ORDER (before leads) with a COMING_SOON
   placeholder. Replace it with a live glance if you want one.
+
+---
+**Update 2026-10-14 ~11:15 ET:** the 0428 box gate (80a9198f) failed 2 tests, both
+AutomationSubjectScopeTest: FinancialRecord is emitted by `financial_record.*` but could not say
+where it sits. Nothing was deployed. **Financials:** the desk fixed it in e87adcd7.
+FinancialRecord now implements CarriesAutomationScope from its base (franchise, else company, else
+organization-wide). Note that inside the model `$this->table` is Eloquent's table-name string, so it
+looks the table up by `table_id`. 0428 never shipped, so its notes ship together with 0429's in
+one release, **0.0.0429 at e87adcd7**. Meta's 902a177e and cdce03b5 are in it.
