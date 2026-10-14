@@ -2,7 +2,9 @@
 
 namespace App\Support\Scheduling;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 
 /**
@@ -27,24 +29,36 @@ use Carbon\CarbonImmutable;
  */
 final class Routes
 {
-    public const JOBS_PER_TECH = 6;
+    /*
+     * Each a Setting, read per franchise (Jose, 2026-10-14: "if i decide a
+     * technician can take 4 jobs instead of 3").
+     */
+    public const JOBS_PER_TECH = 'scheduling.route_jobs_per_tech';
 
-    public const NEW_ROUTE_MILES = 15.0;
+    public const NEW_ROUTE_MILES = 'scheduling.route_new_miles';
 
-    public const PER_WINDOW = 2;
+    public const PER_WINDOW = 'scheduling.route_jobs_per_window';
 
-    public const PAIR_MILES = 10.0;
+    public const PAIR_MILES = 'scheduling.route_pair_miles';
 
-    public const FAR_MILES = 60.0;
+    public const FAR_MILES = 'scheduling.route_far_miles';
 
-    public function __construct(private readonly Openings $openings, private readonly NearbySuggestion $nearby) {}
+    public function __construct(
+        private readonly Openings $openings,
+        private readonly NearbySuggestion $nearby,
+        private readonly SettingsResolver $settings,
+    ) {}
 
     /** @return array{capacity: int, technicians: int, routes: list<array>, unplaced: list<object>, elsewhere: list<object>} */
     public function for(ServiceArea $area, CarbonImmutable $date): array
     {
         $windows = $this->openings->days($area, $date, 1)[0]['windows'] ?? [];
         $capacity = array_sum(array_column($windows, 'capacity'));
-        $techs = max(1, (int) ceil($capacity / self::JOBS_PER_TECH));
+        $franchise = Franchise::query()->find($area->franchise_id);
+        $set = fn (string $key) => (int) $this->settings->get($key, $franchise);
+        [$perTech, $newRoute, $perWindow, $pairMiles, $farMiles]
+            = [$set(self::JOBS_PER_TECH), $set(self::NEW_ROUTE_MILES), $set(self::PER_WINDOW), $set(self::PAIR_MILES), $set(self::FAR_MILES)];
+        $techs = max(1, (int) ceil($capacity / $perTech));
 
         // Web bookings too: each is a visit a technician makes.
         $jobs = $this->nearby->located($this->openings->jobsOn($area, $date), $area->organization_id)->values();
@@ -55,7 +69,7 @@ final class Routes
         // cannot drag it off.
         $median = fn (array $v) => $v === [] ? 0.0 : (sort($v) ? $v[intdiv(count($v), 2)] : 0.0);
         $centre = [$median($placeable->map(fn ($j) => (float) $j->latitude)->all()), $median($placeable->map(fn ($j) => (float) $j->longitude)->all())];
-        [$elsewhere, $placeable] = $placeable->partition(fn (object $j) => NearbySuggestion::miles($centre[0], $centre[1], (float) $j->latitude, (float) $j->longitude) > self::FAR_MILES);
+        [$elsewhere, $placeable] = $placeable->partition(fn (object $j) => NearbySuggestion::miles($centre[0], $centre[1], (float) $j->latitude, (float) $j->longitude) > $farMiles);
 
         $time = fn (object $j) => substr((string) $j->scheduled_for, 11, 5);
         $windowOf = function (string $t) use ($windows): ?int {
@@ -79,15 +93,15 @@ final class Routes
 
             foreach ($routes as $i => $r) {
                 $last = end($r['stops']);
-                $score = $last === false ? self::NEW_ROUTE_MILES
+                $score = $last === false ? $newRoute
                     : NearbySuggestion::miles((float) $last->latitude, (float) $last->longitude, (float) $job->latitude, (float) $job->longitude);
                 $inWindow = $w === null ? [] : ($r['per_window'][$w] ?? []);
-                $full = count($r['stops']) >= self::JOBS_PER_TECH
-                    || count($inWindow) >= self::PER_WINDOW
+                $full = count($r['stops']) >= $perTech
+                    || count($inWindow) >= $perWindow
                     // A second job in the window is near the first, or the
                     // technician cannot reach both in it.
                     || collect($inWindow)->contains(fn ($o) => NearbySuggestion::miles((float) $o->latitude, (float) $o->longitude,
-                        (float) $job->latitude, (float) $job->longitude) > self::PAIR_MILES);
+                        (float) $job->latitude, (float) $job->longitude) > $pairMiles);
                 if (! $full && $score < $bestScore) {
                     [$best, $bestScore] = [$i, $score];
                 }

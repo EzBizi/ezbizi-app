@@ -39,9 +39,9 @@ final class NearbySuggestion
      * a 14:00 slot its 0.4 miles, and a job in no window was taken as beside
      * every window). Availability and Re-Scheduling alike (Jose, 2026-10-14:
      * "this is all being taken into account for the Scheduling Suggestion
-     * system as well right").
+     * system as well right"). How many windows away is a Setting.
      */
-    public const MAX_WINDOW_GAP = 1;
+    public const WINDOW_GAP = 'scheduling.suggest_window_gap';
 
     public function __construct(
         private readonly Openings $openings,
@@ -63,7 +63,7 @@ final class NearbySuggestion
 
         $earliest = $candidates[0];
         $out['earliest'] = $this->shown($earliest);
-        $best = $origin === null ? null : self::best(array_map([self::class, 'windowLocal'], $candidates));
+        $best = $origin === null ? null : self::best(array_map(fn (array $c) => self::windowLocal($c, $look['gap']), $candidates));
 
         if ($best !== null) {
             $out['suggested'] = $this->shown($best) + [
@@ -117,7 +117,7 @@ final class NearbySuggestion
      * What a suggestion weighs, read once so Reschedules can weigh every job
      * of an area against it without a query per job.
      *
-     * @return array{radius: float, span: int, days: Collection, all_days: Collection, jobs: Collection}
+     * @return array{radius: float, span: int, gap: int, franchise: ?Franchise, days: Collection, all_days: Collection, jobs: Collection}
      */
     public function load(ServiceArea $area, CarbonImmutable $from): array
     {
@@ -128,6 +128,8 @@ final class NearbySuggestion
         return [
             'radius' => $radius,
             'span' => $span,
+            'gap' => (int) $this->settings->get(self::WINDOW_GAP, $franchise),
+            'franchise' => $franchise,
             'days' => ($all = collect($this->openings->days($area, $from, $span)))
                 ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
                 ->values(),
@@ -185,10 +187,10 @@ final class NearbySuggestion
      * @param  array<string, mixed>  $c
      * @return array<string, mixed>
      */
-    public static function windowLocal(array $c): array
+    public static function windowLocal(array $c, int $gap): array
     {
         $local = collect($c['jobs'])->filter(fn (array $j) => $j['window'] !== null
-            && abs($j['window'] - $c['window_index']) <= self::MAX_WINDOW_GAP);
+            && abs($j['window'] - $c['window_index']) <= $gap);
         $nearby = $local->where('nearby', true);
 
         return [
