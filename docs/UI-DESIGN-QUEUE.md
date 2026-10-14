@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 91 · AI Assistance › AI, as a chat — **sent 2026-10-14 09:32, awaiting Jose until 09:42** (`docs/previews/ai-assistance-chat-layouts.html`)
+### 91 · AI Assistance › AI, as a chat — **sent 2026-10-14 09:32; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, topics to Library (7) — building** (`docs/previews/ai-assistance-chat-layouts.html`)
 
 Jose 2026-10-14 via Grok AI, verbatim: *"i think, the "AI" tab and that menu on the left aren't really meant to be together. The
 AI tab should just be the ask bar at the bottom , sort of like here where i can ask you stuff and the reply goes on top …
