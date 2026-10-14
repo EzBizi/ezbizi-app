@@ -214,6 +214,10 @@ void main() {
     tester,
   ) async {
     await pump(tester);
+    expect(
+      find.text('Make sure to confirm with the client before rescheduling.'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('rescheduling-move')));
     await tester.pumpAndSettle();
@@ -221,6 +225,15 @@ void main() {
     expect(
       find.textContaining("Move Ana Ruiz's appointment to Fri Oct 16"),
       findsOneWidget,
+    );
+    expect(
+      find.textContaining('Do you wish to proceed with the change?'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Make sure to confirm with the client before rescheduling.'),
+      findsOneWidget,
+      reason: 'The warning stays while it asks.',
     );
 
     await tester.tap(find.byKey(const Key('rescheduling-confirm')));
