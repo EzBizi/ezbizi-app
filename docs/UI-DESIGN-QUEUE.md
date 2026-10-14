@@ -2965,6 +2965,14 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 97 · Reports › Scoring › what the score weighs — **sent 2026-10-14 18:03** (`docs/previews/scoring-weights-layouts.html`)
+
+Reports (051fa5e6): the Scoring score is now conversion plus the AI's seven call checks, weighted. There are eight whole-number weights that must total 100
+(defaults: conversion 40, greeted 5, explained the price 5, the other five 10 each), set with the new reports.scoring_weights tick. **1** (recommended):
+a ⚖ Weights button beside Score / Most improved opens a side panel with a split bar, a slider and a number for each part, a "100 of 100" total
+(amber "95 of 100: add 5" until it adds up, and Save waits), and Back to the defaults. **2**: the split as a strip on the tab, with Edit for number boxes. **3**: two steps,
+conversion against calls, then the checks rescale within the calls' share. Phone **4** (recommended) / **5** / **6** match.
+
 ### 96 · How-to videos › the opening card, with the EzBizi logo — **sent 2026-10-14 15:34; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): 3** — **BUILT** in `H:\Development\EzBizi-videos\kit` (Scheduling and Guidelines first) (`docs/previews/help-video-title-card-layouts.html`)
 
 Jose 2026-10-14 via the desk: "do improve the Initial Screen, use the EzBizi Logo, make it look better, cause right now it looks like
