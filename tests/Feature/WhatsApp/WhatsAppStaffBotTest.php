@@ -289,7 +289,7 @@ class WhatsAppStaffBotTest extends TestCase
         // Jose: "I don't want for the bot to offer links, i want the bot to be
         // able to give out the information for the codes." The requirement is
         // in the reply...
-        $this->assertStringContainsString('the property is being sold', $body);
+        $this->assertStringContainsString('🔹 The property is being sold', $body, 'Jose 10-14: a capital and an emoji, not a dot');
         $this->assertStringContainsString('lined or relined', $body);
 
         // ...and nothing sends the tech elsewhere to read it.
@@ -1020,10 +1020,18 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertSame(0, PersonalAccessToken::where('name', 'WhatsApp AI (read only)')->count(), 'the token is gone');
     }
 
-
     public function test_signed_links_never_reach_grok(): void
     {
-        $this->assertSame(['a' => ['url' => '[signed link removed]', 'name' => 'Ana']], \App\Support\Ai\AppAsk::withoutSignedLinks(
+        $this->assertSame(['a' => ['url' => '[signed link removed]', 'name' => 'Ana']], AppAsk::withoutSignedLinks(
             ['a' => ['url' => 'https://app.ezbizi.com/c/1?expires=9&signature=abc', 'name' => 'Ana']]));
+    }
+
+    /** Jose, 2026-10-14: caps at the start, emojis instead of dots. */
+    public function test_menus_and_answers_start_with_a_capital_and_an_emoji(): void
+    {
+        $bot = WhatsAppStaffBot::class;
+        $this->assertSame("🔍 *How often to inspect*\n🔹 Once a year\n🧱 Check the crown", $bot::look("*How often to inspect*\n• once a year\n- check the crown"));
+        $this->assertSame('6 topics', $bot::cap('6 topics'));
+        $this->assertSame('📍 Find a location', $bot::emojiFor('Find a location').' Find a location');
     }
 }
