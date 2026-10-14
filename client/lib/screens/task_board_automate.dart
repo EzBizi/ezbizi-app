@@ -66,7 +66,15 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
 
   String get _boardId => '${widget.board['id']}';
 
-  bool get _canCreate => widget.session.me?.can('automations.create') ?? false;
+  /// Its owners and Administrators automate their own board without the
+  /// Automations permissions (Jose, 2026-10-13: "yes they should";
+  /// Automations 2798c466 holds the server to the same rule).
+  bool get _manages => widget.board['can_manage'] == true;
+
+  bool _may(String permission) =>
+      _manages || (widget.session.me?.can(permission) ?? false);
+
+  bool get _canCreate => _may('automations.create');
 
   bool get _canAlert => widget.session.me?.can('phone.alerts.view') ?? false;
 
@@ -99,7 +107,9 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
   Future<void> _load() async {
     final res = await widget.api.get('/automations');
     if (!mounted) return;
-    if (!res.ok) {
+    // An owner with no rules of their own yet is refused the list.
+    final none = res.statusCode == 403 && _manages;
+    if (!res.ok && !none) {
       setState(() {
         _loading = false;
         _error = res.message;
@@ -107,8 +117,9 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
       return;
     }
     final ids = [
-      for (final r in (res.body['data'] as List? ?? const []))
-        if (r is Map && '${r['trigger_key']}'.startsWith('task.')) r['id'],
+      if (!none)
+        for (final r in (res.body['data'] as List? ?? const []))
+          if (r is Map && '${r['trigger_key']}'.startsWith('task.')) r['id'],
     ];
     final rules = <_Json>[];
     for (final id in ids) {
@@ -213,6 +224,16 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
         _ => _person != null && _person != _assignee,
       };
 
+  Map<String, dynamic> get _place {
+    final franchise = widget.board['franchise_id'];
+    final company = widget.board['company_id'];
+    return franchise != null
+        ? {'scope_type': 'franchise', 'scope_id': franchise}
+        : company != null
+        ? {'scope_type': 'company', 'scope_id': company}
+        : {'scope_type': null, 'scope_id': null};
+  }
+
   Future<void> _save() async {
     setState(() {
       _saving = true;
@@ -231,6 +252,9 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
         ],
       },
       'actions': [action],
+      // The board's own place, which the server checks an owner's rule
+      // against: franchise, else company, else the whole organization.
+      ..._place,
     });
     final id = (created.body['data'] as Map?)?['id'];
     // Saved off, as every rule is; a recipe here is meant on.
@@ -298,7 +322,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                       Switch(
                         key: ValueKey('board-rule-on-${r['id']}'),
                         value: r['is_active'] == true,
-                        onChanged: _canCreate
+                        onChanged: _may('automations.edit')
                             ? (v) => _write(
                                 widget.api.patch('/automations/${r['id']}', {
                                   'is_active': v,
@@ -308,7 +332,7 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
                       ),
                       const SizedBox(width: 6),
                       Expanded(child: Text(_sentence(r))),
-                      if (_canCreate)
+                      if (_may('automations.delete'))
                         IconButton(
                           key: ValueKey('board-rule-delete-${r['id']}'),
                           tooltip: 'Delete this automation',
