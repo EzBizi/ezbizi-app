@@ -852,6 +852,54 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * Grok's review of the live list (2026-10-14): a reschedule must be worth
+     * the phone call. Each pair below would be suggested without one rule;
+     * only the Houston pair passes them all.
+     */
+    public function test_a_reschedule_is_offered_only_when_worth_the_call(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $slots = [];
+        foreach ([1, 3] as $weekday) {
+            $slots[] = ['weekday' => $weekday, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 5];
+            $slots[] = ['weekday' => $weekday, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1];
+            $slots[] = ['weekday' => $weekday, 'start_time' => '14:00', 'end_time' => '17:00', 'max_jobs' => 2];
+        }
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => $slots])->assertOk();
+
+        // Within 48 hours (Thu Oct 2, tomorrow is Oct 1): never moved, though
+        // Mon Oct 5 has work next door.
+        $this->located($tenant, '2026-10-02 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7910, -96.7990);
+        // Waco: the work on Wed Oct 7 fills 2-5, and 11-2 is full too, so the
+        // only open window is 7-11, two windows from it.
+        $this->located($tenant, '2026-10-07 15:00:00', 31.5500, -97.1500, '76701');
+        $this->located($tenant, '2026-10-07 16:00:00', 31.5550, -97.1500, '76701');
+        $this->located($tenant, '2026-10-07 12:00:00', 29.4200, -98.4900, '78205');
+        $this->located($tenant, '2026-10-14 08:00:00', 31.5520, -97.1510, '76701');
+        // Tyler: the only neighbour is 12 miles off, even after the move.
+        $this->located($tenant, '2026-10-12 08:00:00', 32.3500, -95.3000, '75701');
+        $this->located($tenant, '2026-10-05 09:00:00', 32.5240, -95.3000, '75701');
+        // Austin: next door, but 9 days apart.
+        $this->located($tenant, '2026-10-14 09:00:00', 30.2700, -97.7400, '78701');
+        $this->located($tenant, '2026-10-05 10:00:00', 30.2730, -97.7400, '78701');
+        // Houston: next door, 5 days apart, same window. This one passes.
+        $this->located($tenant, '2026-10-12 09:00:00', 29.7600, -95.3700, '77002');
+        $this->located($tenant, '2026-10-07 08:00:00', 29.7630, -95.3700, '77002');
+
+        $rows = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/reschedules')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame(['77002'], array_values(array_unique(array_map(
+            fn ($r) => substr((string) ($r['job']['customer']['address'] ?? ''), -5), $rows))),
+            json_encode(array_map(fn ($r) => [$r['job']['date'], $r['job']['time'], $r['job']['customer']['address']], $rows)));
+        $this->assertCount(1, $rows);
+    }
+
+    /**
      * Jose, 2026-10-13: a website booking, seen by the dispatcher, says how it
      * sits beside booked work and names a better day if there is one. A
      * booking already beside work gets no "better".
