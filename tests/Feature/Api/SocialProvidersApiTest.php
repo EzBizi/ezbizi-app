@@ -44,6 +44,21 @@ class SocialProvidersApiTest extends TestCase
         $this->signedInAs($marketer)->getJson(self::ENDPOINT)->assertOk();
     }
 
+    public function test_integrations_gets_the_data_sources_and_the_composer_does_not(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $marketer = $this->userWithRole($t, 'Marketer', ['marketing.view']);
+
+        // Facebook Ads had no card in Integrations until it was connected,
+        // which it could only be from there (2026-10-14).
+        $all = $this->signedInAs($marketer)->getJson(self::ENDPOINT.'?include=data_sources')->assertOk()->json('data.*.value');
+        $this->assertContains('facebook_ads', $all);
+
+        $composer = $this->signedInAs($marketer)->getJson(self::ENDPOINT)->assertOk()->json('data.*.value');
+        $this->assertNotContains('facebook_ads', $composer);
+        $this->assertNotContains('google_ads', $composer);
+    }
+
     public function test_pinterest_is_in_the_catalogue_and_says_why_when_ezbizi_has_no_app(): void
     {
         config(['services.pinterest.client_id' => null, 'services.pinterest.client_secret' => null]);
