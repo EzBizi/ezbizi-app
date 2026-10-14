@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0428',
+      date: '14 Oct 2026',
+      items: [
+        'Reports: Scoring opens on yesterday, has Today / Yesterday / 1 week / 1 month buttons, and shows each person\'s latest calls plus their best and worst, with scores and a search.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0427',
       date: '13 Oct 2026',
       items: [
