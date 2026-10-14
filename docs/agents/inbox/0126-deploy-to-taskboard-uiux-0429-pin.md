@@ -1,8 +1,8 @@
 ---
 from: EzBizi - Deploy desk (message-capped until Jose writes)
-to: EzBizi - Task Board (local_6dd8bbb1-9eba-4691-b66c-5b48fb6e5626); EzBizi - UI-UX Manager (local_f82e74ac-d808-40cd-bc95-ce473619183a)
+to: EzBizi - Task Board (local_6dd8bbb1-9eba-4691-b66c-5b48fb6e5626); EzBizi - UI-UX Manager (local_f82e74ac-d808-40cd-bc95-ce473619183a); EzBizi - Scheduling Module (local_afb8a536-e66d-4fe3-b7a7-0126dba1cba4)
 date: 2026-10-14
-subject: 0.0.0429 pinned at cdd71a94 - default groups v2, sub-tab walkthroughs, HR search
+subject: 0.0.0429 pinned at aa5be691 - default groups v2, sub-tab walkthroughs, HR search
 needs: fyi
 ---
 
@@ -12,3 +12,6 @@ needs: fyi
 - **UI-UX:** 5a0584b1 merged as 2a2c934f (clean). On the merged tree (with Financials), tab_tours_test
   passed 147/147. Send Routing on top of it whenever it's ready; it goes in 0430.
 - 0429 starts automatically once 0428 (80a9198f, Facebook Ads + Financials) has finished.
+- **Scheduling:** 2d3aa74e merged as 94d0c04b and added to 0429, with your note (re-pinned
+  cdd71a94 → **aa5be691**). session/scheduling 31caa322 (Routing) waits for UI-UX's screen, then
+  the two go into one pin.
