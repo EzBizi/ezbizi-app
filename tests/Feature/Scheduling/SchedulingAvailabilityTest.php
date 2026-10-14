@@ -891,23 +891,39 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertLessThan(5, $routes['75201']['miles']);
         $this->assertCount(1, $data['unplaced']);
 
-        // Two 8:00 jobs a mile apart are still two technicians.
-        $this->located($tenant, '2026-10-12 08:00:00', 32.7870, -96.7990);
-        $this->located($tenant, '2026-10-12 08:00:00', 32.8010, -96.7990);
+        // Jose's "2 morning, mid day, 2 afternoon": two 8:00 jobs a mile
+        // apart are one technician's morning; a third goes to the second
+        // technician; two more are a technician the day does not have.
+        foreach ([32.7870, 32.8010, 32.8050, 32.8090, 32.8130] as $lat) {
+            $this->located($tenant, '2026-10-12 08:00:00', $lat, -96.7990);
+        }
         $twelfth = $this->signedInAs($tenant['admin'])
             ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-12")
             ->assertOk()->json('data.routes');
-        $this->assertSame([1, 1], array_map(fn ($r) => count($r['stops']), $twelfth));
-        $this->assertSame([false, false], array_column($twelfth, 'extra'));
-
-        // A third 8:00 job is a technician the day does not have: its own
-        // extra route, not a second 8:00 stop on someone's.
-        $this->located($tenant, '2026-10-12 08:00:00', 32.8050, -96.7990);
-        $twelfth = $this->signedInAs($tenant['admin'])
-            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-12")
-            ->assertOk()->json('data.routes');
-        $this->assertSame([[1, false], [1, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $twelfth));
+        $this->assertSame([[2, false], [2, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $twelfth));
         $this->assertSame(3, $twelfth[2]['technician']);
+
+        // Two 8:00 jobs 12 miles apart cannot share a morning.
+        $this->located($tenant, '2026-11-02 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-11-02 08:00:00', 32.9600, -96.7990, '75240');
+        $this->assertSame([1, 1], array_map(fn ($r) => count($r['stops']), $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-11-02")->json('data.routes')));
+
+        // Two stops in one window: the nearer to the stop before goes first.
+        $this->located($tenant, '2026-10-26 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-26 11:00:00', 32.7870, -96.9200);
+        $this->located($tenant, '2026-10-26 12:30:00', 32.7900, -96.8000);
+        $this->assertSame(['08:00', '12:30', '11:00'], array_column($this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-26")->json('data.routes.0.stops'), 'time'));
+
+        // A job 500 miles off (booked in the wrong area) is listed, not routed.
+        $this->located($tenant, '2026-11-09 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-11-09 11:00:00', 32.7900, -96.8000);
+        $this->located($tenant, '2026-11-09 14:00:00', 39.9600, -83.0000, '43215');
+        $ninth = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-11-09")->json('data');
+        $this->assertSame(['43215'], array_map(fn ($j) => substr((string) $j['customer']['address'], -5), $ninth['elsewhere']));
+        $this->assertSame(2, array_sum(array_map(fn ($r) => count($r['stops']), $ninth['routes'])));
 
         // A job Workiz never placed, with a zip A-1 has worked: routed at the
         // zip's centre and marked approximate, not left out.
@@ -1032,6 +1048,33 @@ class SchedulingAvailabilityTest extends TestCase
         // An equally good day that is merely earlier is not "better".
         $this->located($tenant, '2026-10-05 11:00:00', 32.7900, -96.8010);
         $this->assertNull($fit('2026-10-12')['better']);
+    }
+
+    /**
+     * Jose, 2026-10-14: the window rule holds for Availability too. A
+     * neighbour at 7:30 does not make 1-4 pm "near booked work".
+     */
+    public function test_a_suggestion_counts_only_neighbours_in_or_beside_its_window(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '10:00', 'max_jobs' => 1],
+            ['weekday' => 1, 'start_time' => '10:00', 'end_time' => '13:00', 'max_jobs' => 1],
+            ['weekday' => 1, 'start_time' => '13:00', 'end_time' => '16:00', 'max_jobs' => 1],
+        ]])->assertOk();
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        // Mon Oct 5: next door at 7:30 and Houston at 10:30; only 1-4 is open.
+        $this->located($tenant, '2026-10-05 07:30:00', 32.7900, -96.8010);
+        $this->located($tenant, '2026-10-05 10:30:00', 29.7600, -95.3700, '77002');
+        // Mon Oct 12 is empty, so Oct 5 is the only day with anything nearby.
+
+        $data = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/suggestion?zip=75201')
+            ->assertOk()->json('data');
+
+        $this->assertSame('2026-10-05', $data['earliest']['date']);
+        $this->assertNull($data['suggested'], json_encode($data['suggested']));
     }
 
     /**

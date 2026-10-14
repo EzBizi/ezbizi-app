@@ -41,36 +41,7 @@ final class Reschedules
      */
     public const MAX_AFTER_MILES = 10.0;
 
-    /**
-     * Only jobs in the offered window, or the one beside it, count as nearby
-     * (Grok's second review, 2026-10-14: the day's 8:00 neighbour was lending
-     * a 14:00 slot its 0.4 miles, and a job in no window was taken as beside
-     * every window).
-     */
-    public const MAX_WINDOW_GAP = 1;
-
     public function __construct(private readonly NearbySuggestion $nearby) {}
-
-    /**
-     * A candidate re-scored on the jobs in its own window and the ones beside
-     * it; the day's other jobs stay in `jobs` for the screen to draw.
-     *
-     * @param  array<string, mixed>  $c
-     * @return array<string, mixed>
-     */
-    private function windowLocal(array $c): array
-    {
-        $local = collect($c['jobs'])->filter(fn (array $j) => $j['window'] !== null
-            && abs($j['window'] - $c['window_index']) <= self::MAX_WINDOW_GAP);
-        $nearby = $local->where('nearby', true);
-
-        return [
-            'nearby' => $nearby->count(),
-            'nearest_miles' => $local->min('miles'),
-            'gap' => $nearby->map(fn (array $j) => abs($j['window'] - $c['window_index']))->min() ?? 99,
-            'technicians' => $nearby->pluck('technicians')->flatten()->unique()->values()->all(),
-        ] + $c;
-    }
 
     /**
      * Open spots on a day before and after the move (Jose, 2026-10-14: "the
@@ -140,7 +111,7 @@ final class Reschedules
 
                 $now = $today->min('miles');
                 $best = NearbySuggestion::best(array_filter(array_map(
-                    [$this, 'windowLocal'],
+                    [NearbySuggestion::class, 'windowLocal'],
                     $this->nearby->candidates($look['days']->reject(fn (array $d) => $d['date'] === $date), $others, $at, $radius),
                 ), fn (array $c) => $c['nearby'] > 0
                     && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= self::MAX_SHIFT_DAYS

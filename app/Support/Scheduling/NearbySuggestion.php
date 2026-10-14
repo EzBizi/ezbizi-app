@@ -33,6 +33,16 @@ final class NearbySuggestion
 
     public const DAYS = 'scheduling.suggest_days';
 
+    /**
+     * Only jobs in the offered window, or the one beside it, count as nearby
+     * (Grok's second review, 2026-10-14: the day's 8:00 neighbour was lending
+     * a 14:00 slot its 0.4 miles, and a job in no window was taken as beside
+     * every window). Availability and Re-Scheduling alike (Jose, 2026-10-14:
+     * "this is all being taken into account for the Scheduling Suggestion
+     * system as well right").
+     */
+    public const MAX_WINDOW_GAP = 1;
+
     public function __construct(
         private readonly Openings $openings,
         private readonly SettingsResolver $settings,
@@ -53,7 +63,7 @@ final class NearbySuggestion
 
         $earliest = $candidates[0];
         $out['earliest'] = $this->shown($earliest);
-        $best = $origin === null ? null : self::best($candidates);
+        $best = $origin === null ? null : self::best(array_map([self::class, 'windowLocal'], $candidates));
 
         if ($best !== null) {
             $out['suggested'] = $this->shown($best) + [
@@ -166,6 +176,27 @@ final class NearbySuggestion
         }
 
         return $candidates;
+    }
+
+    /**
+     * A candidate re-scored on the jobs in its own window and the ones beside
+     * it; the day's other jobs stay in `jobs` for the screen to draw.
+     *
+     * @param  array<string, mixed>  $c
+     * @return array<string, mixed>
+     */
+    public static function windowLocal(array $c): array
+    {
+        $local = collect($c['jobs'])->filter(fn (array $j) => $j['window'] !== null
+            && abs($j['window'] - $c['window_index']) <= self::MAX_WINDOW_GAP);
+        $nearby = $local->where('nearby', true);
+
+        return [
+            'nearby' => $nearby->count(),
+            'nearest_miles' => $local->min('miles'),
+            'gap' => $nearby->map(fn (array $j) => abs($j['window'] - $c['window_index']))->min() ?? 99,
+            'technicians' => $nearby->pluck('technicians')->flatten()->unique()->values()->all(),
+        ] + $c;
     }
 
     /**

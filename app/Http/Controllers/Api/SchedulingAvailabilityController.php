@@ -119,7 +119,7 @@ class SchedulingAvailabilityController extends Controller
             ->findOrFail($data['area_id']);
         $plan = app(Routes::class)->for($area, CarbonImmutable::parse($data['date']));
 
-        $rows = collect($plan['routes'])->pluck('stops')->flatten(1)->merge($plan['unplaced']);
+        $rows = collect($plan['routes'])->pluck('stops')->flatten(1)->merge($plan['unplaced'])->merge($plan['elsewhere']);
         $customers = Customer::query()->whereIn('id', $rows->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
         $job = fn (object $row) => SchedulingOverbookingController::detail($row, $customers[$row->customer_id ?? ''] ?? null)
             + ['latitude' => (float) $row->latitude, 'longitude' => (float) $row->longitude,
@@ -136,6 +136,9 @@ class SchedulingAvailabilityController extends Controller
             // No place on the map (Workiz could not geocode them): listed so
             // nobody is forgotten, routed by the dispatcher.
             'unplaced' => array_map($job, $plan['unplaced']),
+            // Over 60 miles from the day's centre: almost always booked in the
+            // wrong area. Listed for the dispatcher, kept out of the routes.
+            'elsewhere' => array_map($job, $plan['elsewhere']),
         ]]);
     }
 
