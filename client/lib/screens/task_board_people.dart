@@ -242,7 +242,10 @@ class _BoardPeoplePanelState extends State<BoardPeoplePanel> {
                 ),
               ],
               selected: {_visibility},
-              onSelectionChanged: _owner
+              // Open or Private is the board's own change, as rename and
+              // delete: its owners and Administrators (Task Board's
+              // can_rename), not everyone who may add people.
+              onSelectionChanged: widget.board['can_rename'] as bool? ?? _owner
                   ? (v) {
                       setState(() => _visibility = v.first);
                       _write(

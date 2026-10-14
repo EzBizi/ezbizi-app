@@ -19,6 +19,7 @@ void main() {
 
   ApiClient fakeServer({
     required bool manage,
+    bool? owner,
     String kind = 'custom',
     bool automations = false,
     String? franchiseId,
@@ -46,9 +47,10 @@ void main() {
     );
     Map<String, dynamic> board(Map<String, dynamic> b) => {
       ...b,
-      'my_role': manage ? 'owner' : 'member',
+      'my_role': owner ?? manage ? 'owner' : 'member',
       'franchise_id': franchiseId,
       'can_manage': manage,
+      'can_rename': (owner ?? manage) && kind == 'custom',
       'members_count': 2,
       'statuses': [
         {
@@ -197,6 +199,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     bool manage = true,
+    bool? owner,
     String kind = 'custom',
     double width = 1400,
     bool automations = false,
@@ -209,6 +212,7 @@ void main() {
 
     final api = fakeServer(
       manage: manage,
+      owner: owner,
       kind: kind,
       automations: automations,
       franchiseId: franchiseId,
@@ -481,6 +485,21 @@ void main() {
         'to_assignee': true,
       },
     ]);
+  });
+
+  testWidgets('Add people to any board adds people, and neither makes the '
+      'board Open nor automates it', (tester) async {
+    // tasks.manage_members: can_manage, but not the owner, so no can_rename.
+    await pump(tester, manage: true, owner: false);
+
+    expect(find.byKey(const Key('tasks-automate')), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-people')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('board-people-add')), findsOneWidget);
+
+    await tester.tap(find.text('Open'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(log.where((c) => c.$1 == 'PATCH'), isEmpty);
   });
 
   testWidgets('without Automations, on a board they do not manage, there is '

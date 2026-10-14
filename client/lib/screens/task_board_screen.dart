@@ -914,8 +914,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// queue 95, desktop 4 and phone 7).
   List<Widget> _boardFaces({required bool phone}) {
     final custom = _board!['kind'] == 'custom';
+    // Its owner, as the Automate panel (not can_manage: adding people).
     final automate =
-        _board!['can_manage'] == true ||
+        _board!['my_role'] == 'owner' ||
         (widget.session.me?.can('automations.view') ?? false);
     final private = _board!['visibility'] == 'private';
     final scheme = Theme.of(context).colorScheme;
