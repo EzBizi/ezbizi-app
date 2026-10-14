@@ -48,6 +48,10 @@ class BoardOwnerAutomationsTest extends TestCase
         $this->signedInAs($owner)->getJson("/api/v1/automations/{$id}")->assertOk()->assertJsonPath('data.id', $id);
         $this->signedInAs($owner)->getJson("/api/v1/automations/{$admin}")->assertForbidden();
         $this->signedInAs($owner)->deleteJson("/api/v1/automations/{$admin}")->assertForbidden();
+        // Adding people to any board is not owning it (Task Board, 2026-10-14).
+        $manager = $this->userWithRole($t, 'Members manager', ['tasks.view', 'tasks.edit', 'tasks.manage_members', 'tasks.view_all']);
+        $this->signedInAs($manager)->postJson('/api/v1/automations', $rule($mine))->assertForbidden();
+
         $this->signedInAs($owner)->deleteJson("/api/v1/automations/{$id}")->assertOk();
     }
 }
