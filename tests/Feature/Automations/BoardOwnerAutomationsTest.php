@@ -45,6 +45,8 @@ class BoardOwnerAutomationsTest extends TestCase
 
         $admin = $this->signedInAs($t['admin'])->postJson('/api/v1/automations', $rule($theirs))->assertCreated()->json('data.id');
         $this->assertSame([$id], collect($this->signedInAs($owner)->getJson('/api/v1/automations')->assertOk()->json('data'))->pluck('id')->all());
+        $this->signedInAs($owner)->getJson("/api/v1/automations/{$id}")->assertOk()->assertJsonPath('data.id', $id);
+        $this->signedInAs($owner)->getJson("/api/v1/automations/{$admin}")->assertForbidden();
         $this->signedInAs($owner)->deleteJson("/api/v1/automations/{$admin}")->assertForbidden();
         $this->signedInAs($owner)->deleteJson("/api/v1/automations/{$id}")->assertOk();
     }
