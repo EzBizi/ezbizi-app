@@ -180,7 +180,7 @@ class AssistantLibraryTest extends TestCase
 
         $this->getJson('/api/v1/ai-assistance/answer?q=what+does+my+place+say')
             ->assertOk()
-            ->assertJsonPath('data.reply', 'Your place says so.')
+            ->assertJsonPath('data.reply', '🔹 Your place says so.')
             ->assertJsonPath('data.entry_ids', [$a['mine']->id]);
 
     }
@@ -211,7 +211,7 @@ class AssistantLibraryTest extends TestCase
         $this->signedInAs($this->userWithRole($t, 'Remote Dispatcher', ['ai_assistance.view', 'ai_assistance.ai.view']));
 
         $this->getJson('/api/v1/ai-assistance/answer?q=how+do+I+handle+complaints')
-            ->assertOk()->assertJsonPath('data.reply', 'Log it on the board.');
+            ->assertOk()->assertJsonPath('data.reply', '🔹 Log it on the board.');
 
         $this->assertStringContainsString('Complaints are logged on the board.', $prompts[0]);
         $this->assertStringContainsString('https://vimeo.com/123', $prompts[0]);

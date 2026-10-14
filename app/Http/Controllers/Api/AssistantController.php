@@ -65,6 +65,11 @@ class AssistantController extends Controller
             return response()->json(['message' => 'AI could not answer just now.'], 503);
         }
 
+        // Jose, 2026-10-14: the app's chat reads like the WhatsApp bot - capitals, emojis for dots.
+        if (is_array($answer) && isset($answer['reply'])) {
+            $answer['reply'] = \App\Support\Social\WhatsAppStaffBot::look((string) $answer['reply']);
+        }
+
         return response()->json(['data' => $answer]);
     }
 }
