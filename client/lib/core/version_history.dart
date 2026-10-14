@@ -25,6 +25,7 @@ class VersionHistory {
         'Scheduling: Re-Scheduling tags repairs and redos, and opening a suggestion shows that day window by window with where the job would go.',
         'Scheduling: a job with no pinned location uses the address Field has already located before falling back to its zip\'s centre.',
         'Leads: a Workiz lead\'s status no longer says Google.',
+        'AI Assistance: answers in the app start sentences with a capital and use emojis instead of dots, like the WhatsApp staff bot.',
       ],
     ),
     VersionRelease(
