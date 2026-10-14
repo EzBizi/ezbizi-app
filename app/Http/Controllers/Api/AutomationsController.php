@@ -13,6 +13,8 @@ use App\Models\Automation;
 use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
 use App\Support\Scoping\ViewScope;
+use App\Models\TaskBoard;
+use App\Support\Tasks\TaskBoards;
 use App\Models\NewsletterAudience;
 use App\Models\Role;
 use App\Models\TimeClockReport;
@@ -979,7 +981,11 @@ class AutomationsController extends Controller
     /** GET /api/v1/automations */
     public function index(Request $request): JsonResponse
     {
-        $this->authorize('viewAny', Automation::class);
+        // A board owner without the permission sees only their boards' rules (below).
+        $boardOwnerOnly = ! $request->user()->hasPermission('automations.view');
+        if (! $boardOwnerOnly) {
+            $this->authorize('viewAny', Automation::class);
+        }
 
         /*
          * WHAT REACHES THIS VIEW, which is not the same as what exists.
@@ -1017,7 +1023,12 @@ class AutomationsController extends Controller
                 // person standing at the organization is the one who has to be
                 // able to find every rule in the business.
                 || $a->coversScope($view->type, $view->id, companyChain: $chain))
+            ->filter(fn (Automation $a) => ! $boardOwnerOnly || $this->managedBoardOf($request->user(), $a->trigger_key,
+                $a->activeVersion?->conditions, $a->activeVersion?->actions ?? [], $a->scope_type, $a->scope_id) !== null)
             ->values();
+        if ($boardOwnerOnly && $automations->isEmpty()) {
+            $this->authorize('viewAny', Automation::class);
+        }
 
         // The list's "last ran" and "this week" (UI/UX, 2026-10-09), in two
         // queries for the whole list. Test runs are not runs.
@@ -1079,9 +1090,17 @@ class AutomationsController extends Controller
     /** POST /api/v1/automations */
     public function store(Request $request): JsonResponse
     {
-        $this->authorize('create', Automation::class);
+        $boardOwnerOnly = ! $request->user()->hasPermission('automations.create');
+        if (! $boardOwnerOnly) {
+            $this->authorize('create', Automation::class);
+        }
 
         $input = $this->validated($request);
+
+        if ($boardOwnerOnly && (! array_key_exists('scope_type', $input) || $this->managedBoardOf($request->user(), $input['trigger_key'],
+            $input['conditions'] ?? null, $input['actions'], $input['scope_type'], $input['scope_id'] ?? null) === null)) {
+            $this->authorize('create', Automation::class);
+        }
 
         /*
          * A RULE BELONGS WHERE IT WAS MADE.
@@ -1225,11 +1244,23 @@ class AutomationsController extends Controller
     public function update(Request $request, Automation $automation): JsonResponse
     {
         $this->assertMine($automation);
-        $this->authorize('update', $automation);
+        $boardOwnerOnly = ! $request->user()->hasPermission('automations.edit');
+        if (! $boardOwnerOnly || $this->managedBoardOfRule($request->user(), $automation) === null) {
+            $this->authorize('update', $automation);
+        }
 
         // The automation itself, because an action's legality depends on the
         // trigger and a PATCH is forbidden from carrying one.
         $input = $this->validated($request, existing: $automation);
+
+        // ...and what it becomes must still be a rule for a board they manage.
+        if ($boardOwnerOnly && $this->managedBoardOf($request->user(), $automation->trigger_key,
+            array_key_exists('conditions', $input) ? $input['conditions'] : $automation->activeVersion?->conditions,
+            $input['actions'] ?? $automation->activeVersion?->actions ?? [],
+            array_key_exists('scope_type', $input) ? $input['scope_type'] : $automation->scope_type,
+            array_key_exists('scope_type', $input) ? ($input['scope_id'] ?? null) : $automation->scope_id) === null) {
+            $this->authorize('update', $automation);
+        }
 
         DB::transaction(function () use ($automation, $input, $request) {
             $automation->fill(array_intersect_key($input, array_flip([
@@ -1508,7 +1539,10 @@ class AutomationsController extends Controller
     public function destroy(Automation $automation): JsonResponse
     {
         $this->assertMine($automation);
-        $this->authorize('delete', $automation);
+        // A board owner may delete their own board's rule (managedBoardOf).
+        if (request()->user()->hasPermission('automations.delete') || $this->managedBoardOfRule(request()->user(), $automation) === null) {
+            $this->authorize('delete', $automation);
+        }
 
         DB::transaction(function () use ($automation) {
             $this->audit->log('automation.deleted', $automation);
@@ -1521,6 +1555,50 @@ class AutomationsController extends Controller
     }
 
     // ── shared ───────────────────────────────────────────────────
+
+    /** Task Board recipes may only use these (inbox 0120). */
+    private const BOARD_OWNER_STEPS = ['task.assign', 'notify', 'alert.send', 'change_status', 'task.move_group'];
+
+    /**
+     * BOARD OWNERS AUTOMATE THEIR OWN BOARD (Jose, 2026-10-13, asked whether an
+     * owner without the automations permission may: "yes they should").
+     *
+     * The board the rule is for, when $user may write it without that
+     * permission; null otherwise. All must hold: a task trigger; a top-level
+     * `board_id eq B` in `all` (under `any` or `not` it would not confine the
+     * rule); only Task Board steps; the rule scoped to B's place; and $user
+     * owns B or is an Administrator.
+     */
+    private function managedBoardOf(User $user, string $trigger, ?array $conditions, array $actions, ?string $scopeType, ?string $scopeId): ?TaskBoard
+    {
+        if (! in_array($trigger, ['task.created', 'task.status_changed', 'task.overdue'], true) || $actions === []) {
+            return null;
+        }
+        foreach ($actions as $action) {
+            if (! in_array($action['type'] ?? null, self::BOARD_OWNER_STEPS, true)) {
+                return null;
+            }
+        }
+        $boardId = collect($conditions['all'] ?? [])
+            ->first(fn ($leaf) => is_array($leaf) && ($leaf['field'] ?? null) === 'board_id' && ($leaf['op'] ?? null) === 'eq')['value'] ?? null;
+        $board = is_string($boardId) ? TaskBoard::query()->find($boardId) : null;
+        if ($board === null) {
+            return null;
+        }
+        [$placeType, $placeId] = $board->franchise_id !== null ? ['franchise', $board->franchise_id]
+            : ($board->company_id !== null ? ['company', $board->company_id] : [null, null]);
+        if ($scopeType !== $placeType || $scopeId !== $placeId) {
+            return null;
+        }
+
+        return app(TaskBoards::class)->canManage($user, $board) ? $board : null;
+    }
+
+    private function managedBoardOfRule(User $user, Automation $automation): ?TaskBoard
+    {
+        return $this->managedBoardOf($user, $automation->trigger_key, $automation->activeVersion?->conditions,
+            $automation->activeVersion?->actions ?? [], $automation->scope_type, $automation->scope_id);
+    }
 
     private function addVersion(Automation $automation, array $input, Request $request): void
     {
