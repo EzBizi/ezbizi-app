@@ -339,7 +339,7 @@ final class WhatsAppStaffBot
         }, explode("\n", $text)));
 
         // A first line with no emoji of its own gets the one its words call for.
-        return trim($out) === '' || preg_match('/^\s*\*?[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B50}]/u', $out) === 1
+        return trim($out) === '' || preg_match('/^\s*\*?[\x{1F000}-\x{1FAFF}\x{2190}-\x{2BFF}]/u', $out) === 1
             ? $out : self::emojiFor((string) strtok($out, "\n")).' '.$out;
     }
 
