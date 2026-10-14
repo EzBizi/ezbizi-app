@@ -1676,9 +1676,13 @@ class _LeadThreadState extends State<LeadThread> {
     final named = (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
     final zip = d['zip'] as String?;
     final address = d['address'] as String?;
+    // The source's own status, named after the source: a Workiz lead's
+    // status read "Google: ..." (UI/UX tour, 2026-10-14).
+    final source = lead['source'] as String?;
+    final statusFrom = source == null || source == 'local_services' ? 'Google' : sourceWord(source);
     final facts = [
       if (d['account'] is String) 'Account: ${d['account']}',
-      if (d['google_status'] is String) 'Google: ${d['google_status']}',
+      if (d['google_status'] is String) '$statusFrom: ${d['google_status']}',
     ];
     final mayCheck =
         widget.session?.me?.can('scheduling.availability.view') == true;
@@ -1705,7 +1709,7 @@ class _LeadThreadState extends State<LeadThread> {
                   ),
                 if (d['google_status'] is String)
                   _pill(
-                    'Google: ${d['google_status']}',
+                    '$statusFrom: ${d['google_status']}',
                     ToneColours.of(context, googleStatusTone(d['google_status'] as String)),
                     key: const ValueKey('lead-google-status'),
                   ),
@@ -2517,6 +2521,7 @@ String sourceWord(String? source) => switch (source) {
   'website_booking' => 'Online booking',
   'thumbtack' => 'Thumbtack',
   'whatsapp' => 'WhatsApp',
+  'workiz' => 'Workiz',
   _ => 'Google Ads',
 };
 
