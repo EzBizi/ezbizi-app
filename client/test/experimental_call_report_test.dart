@@ -60,6 +60,11 @@ void main() {
       tester.widget<Text>(find.byKey(const ValueKey('score-cell-c2'))).data,
       '—',
     );
+    // Nobody answered c3: "Missed" where the score sits (Jose, 2026-10-14).
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('score-cell-c3'))).data,
+      'Missed',
+    );
   });
 
   testWidgets('a caller with an open earlier job reads Existing job, not '

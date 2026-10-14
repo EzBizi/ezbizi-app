@@ -63,7 +63,24 @@ class TranscribeReportCallsTest extends TestCase
         $this->assertSame('failed', $rows['rc-2']->source);
         $this->assertNull($rows['rc-2']->transcript);
 
-        $this->assertFalse($rows->has('rc-3'), 'only the New and Existing client queues are transcribed');
+        // Every line, not only New and Existing (Jose, 2026-10-14).
+        $this->assertSame('failed', $rows['rc-3']->source);
+    }
+
+    /** A 6-minute call with 219 characters from Local Services was another leg's words (2026-10-14). */
+    public function test_a_lead_transcript_too_short_for_the_call_is_not_used(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-05 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'services.whisper.python' => '', 'experimental_reports.transcribe' => true]);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->leadCall($tenant, '+1 (212) 555-1212', '2026-10-05T17:01:30Z', 'Hi, I need a chimney sweep.');
+        $this->ringCentral([$this->rcCall('rc-1', '+12125551212', '2026-10-05T17:00:00Z', 'A1 - New Client', 377)]);
+
+        $this->artisan('ezbizi:transcribe-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])
+            ->assertSuccessful();
+
+        $this->assertSame('failed', CallReportTranscript::withoutGlobalScopes()->sole()->source, 'left to Whisper');
     }
 
     /** Off by default: nothing is read or written until it is switched on. */
@@ -119,7 +136,7 @@ class TranscribeReportCallsTest extends TestCase
         });
     }
 
-    private function rcCall(string $id, string $from, string $at, string $queue): array
+    private function rcCall(string $id, string $from, string $at, string $queue, int $talk = 60): array
     {
         return [
             'id' => $id,
@@ -132,7 +149,7 @@ class TranscribeReportCallsTest extends TestCase
             'legs' => [
                 ['legType' => 'Accept', 'result' => 'Accepted', 'to' => ['name' => 'Main - IVR']],
                 ['legType' => 'Accept', 'result' => 'Accepted', 'to' => ['name' => $queue]],
-                ['legType' => 'PstnToSip', 'result' => 'Call connected', 'from' => ['name' => 'Trey Brannan'], 'to' => ['extensionNumber' => '748'], 'duration' => 60],
+                ['legType' => 'PstnToSip', 'result' => 'Call connected', 'from' => ['name' => 'Trey Brannan'], 'to' => ['extensionNumber' => '748'], 'duration' => $talk],
             ],
         ];
     }
