@@ -55,6 +55,7 @@ void main() {
       },
     ],
     'unplaced': [stop('4158', 'Omar Haddad', '14:00')],
+    'elsewhere': [stop('4190', 'Ines Vardy', '09:00', lat: 43.9)],
   };
 
   late List<Map<String, String>> asked;
@@ -110,12 +111,21 @@ void main() {
     expect(asked.single, {'area_id': 'a-mg', 'date': ymd(today)});
     expect(find.byKey(const ValueKey('routing-map')), findsOneWidget);
     expect(find.text('Technician 1'), findsOneWidget);
-    expect(find.text('2 stops · 3.4 mi'), findsOneWidget);
+    expect(find.text('2 stops · ≈ 3.4 mi straight-line'), findsOneWidget);
     expect(find.text('Needs another technician'), findsOneWidget);
     expect(find.byKey(const ValueKey('routing-maps-0')), findsOneWidget);
     // No Google Maps link from the server, no button.
     expect(find.byKey(const ValueKey('routing-maps-1')), findsNothing);
     expect(find.text('No location · 1'), findsOneWidget);
+    // Booked 60+ miles from the day's other jobs: listed apart, not routed.
+    expect(find.text('Far outside this area · 1'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('routing-elsewhere')),
+        matching: find.textContaining('Ines Vardy'),
+      ),
+      findsOneWidget,
+    );
 
     // A card opens onto its stops, in order, the approximate one said so.
     await tester.tap(find.text('Technician 1'));

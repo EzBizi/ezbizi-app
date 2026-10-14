@@ -472,7 +472,8 @@ const Map<String, Tour> phoneTours = {
         anchor: 'routing-routes',
         title: 'Each technician',
         body:
-            'Stops, miles and Google Maps for the real directions. Click a '
+            'Stops, straight-line miles and Google Maps for the real drive. '
+            'Click a '
             'route for its stops. One marked Needs another technician is past '
             "the area's capacity.",
       ),
@@ -480,6 +481,13 @@ const Map<String, Tour> phoneTours = {
         anchor: 'routing-unplaced',
         title: 'No location',
         body: 'Jobs Workiz has no usable address for, on no route.',
+      ),
+      TourStep(
+        anchor: 'routing-elsewhere',
+        title: 'Far outside this area',
+        body:
+            "Jobs 60 miles or more from the day's others, usually booked in "
+            'the wrong area. Check the booking.',
       ),
       TourStep(
         anchor: 'routing-empty',
