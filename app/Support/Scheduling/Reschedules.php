@@ -72,6 +72,51 @@ final class Reschedules
         ] + $c;
     }
 
+    /**
+     * Open spots on a day before and after the move (Jose, 2026-10-14: "the
+     * scheduling before and after for the area too, as in the amount of spots
+     * before and after"), window by window, in Availability's numbers. The
+     * day a job leaves gets its seat back unless that window was over its
+     * limit anyway; the day it joins loses one.
+     *
+     * @return array{window_index: ?int, spots: ?array}
+     */
+    private static function spots(?array $day, ?int $window, int $change): array
+    {
+        if ($day === null) {
+            return ['window_index' => $window, 'spots' => null];
+        }
+
+        $windows = array_map(function (array $w, int $i) use ($window, $change) {
+            $after = $w['remaining'];
+            if ($i === $window) {
+                $after = $change > 0
+                    ? ($w['taken'] <= $w['capacity'] ? min($w['capacity'], $w['remaining'] + 1) : $w['remaining'])
+                    : max(0, $w['remaining'] - 1);
+            }
+
+            return ['start_time' => $w['start_time'], 'end_time' => $w['end_time'], 'before' => $w['remaining'], 'after' => $after];
+        }, $day['windows'], array_keys($day['windows']));
+
+        return ['window_index' => $window, 'spots' => [
+            'before' => array_sum(array_column($windows, 'before')),
+            'after' => array_sum(array_column($windows, 'after')),
+            'windows' => $windows,
+        ]];
+    }
+
+    /** The window a start time falls in, or null. */
+    private static function windowAt(?array $day, string $time): ?int
+    {
+        foreach ($day['windows'] ?? [] as $i => $w) {
+            if ($time !== '00:00' && $time >= $w['start_time'] && $time < $w['end_time']) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function for(ServiceArea $area, CarbonImmutable $from): array
     {
@@ -102,10 +147,12 @@ final class Reschedules
                     && $c['nearest_miles'] <= self::MAX_AFTER_MILES));
 
                 if ($best !== null) {
+                    $day = $look['all_days'][$date] ?? null;
                     $out[] = [
                         'row' => $job,
-                        'current' => ['date' => $date, 'nearest_miles' => $now],
-                        'suggested' => $this->nearby->shown($best),
+                        'current' => ['date' => $date, 'nearest_miles' => $now, 'day' => $day]
+                            + self::spots($day, self::windowAt($day, substr((string) $job->scheduled_for, 11, 5)), +1),
+                        'suggested' => $this->nearby->shown($best) + self::spots($best['day'], $best['window_index'], -1),
                         // The jobs it would join: they stay where they are.
                         'anchors' => $others[$best['date']]->filter(fn ($j) => NearbySuggestion::miles(
                             $at['latitude'], $at['longitude'], (float) $j->latitude, (float) $j->longitude) <= $radius)->all(),

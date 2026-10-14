@@ -1109,6 +1109,14 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('11:00', $rows[0]['suggested']['window']['start_time']);
         $this->assertSame(1, $rows[0]['suggested']['nearby']);
         $this->assertLessThan(1, $rows[0]['suggested']['nearest_miles']);
+
+        // Jose, 2026-10-14: the spots before and after, on both days. Oct 5 is
+        // full and gets A's 7-11 seat back; Oct 7's last spot, 11-2, is taken.
+        $this->assertSame([0, 1], [$rows[0]['current']['spots']['before'], $rows[0]['current']['spots']['after']]);
+        $this->assertSame([0, 1], [$rows[0]['current']['spots']['windows'][0]['before'], $rows[0]['current']['spots']['windows'][0]['after']]);
+        $this->assertSame(0, $rows[0]['current']['window_index']);
+        $this->assertSame([1, 0], [$rows[0]['suggested']['spots']['before'], $rows[0]['suggested']['spots']['after']]);
+        $this->assertSame([1, 0], [$rows[0]['suggested']['spots']['windows'][1]['before'], $rows[0]['suggested']['spots']['windows'][1]['after']]);
     }
 
     /** A picked date (Jose, 2026-09-29) is that day alone: the 5th, not the 6th. */

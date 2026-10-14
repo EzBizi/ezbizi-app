@@ -167,6 +167,9 @@ class SchedulingAvailabilityController extends Controller
                 // What POST scheduling/board/jobs/{job}/reschedule takes.
                 + ['workiz_job_id' => $r['row']->workiz_job_id ?? null, 'date' => $r['current']['date'], 'latitude' => (float) $r['row']->latitude, 'longitude' => (float) $r['row']->longitude],
             'current_nearest_miles' => $r['current']['nearest_miles'],
+            // The day it leaves, with its open spots before and after the move
+            // (suggested carries the same for the day it joins).
+            'current' => array_intersect_key($r['current'], array_flip(['date', 'day', 'window_index', 'spots'])),
             'suggested' => $r['suggested'],
         ])->values()->all()]);
     }
