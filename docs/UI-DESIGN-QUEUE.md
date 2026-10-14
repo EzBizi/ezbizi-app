@@ -2965,6 +2965,15 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 94 · ▶ How-to video: plays in the app on every platform, fullscreen and download — **sent 2026-10-14 11:20, awaiting Jose until 11:30** (`docs/previews/help-video-player-layouts.html`)
+
+Jose 2026-10-14 via the desk, verbatim: *"video should be seen on desktop, mobile, etc, right not it only works on web, secondly
+the fullscreen option and also the download option all inside the app."* Windows had no player half (the panel offered "Open
+the video"); video_player_win gives it one (checked on this machine). Desktop **1** (recommended): ⛶ Fullscreen and ⬇ Download
+in the player's own control bar; chapters under the picture, the playing one highlighted. **2**: labelled buttons under the
+picture. **3**: a ⋯ menu. Phone **4** (recommended): as 1, ⛶ turning sideways, ⬇ saving to Photos; **5**: labelled buttons;
+**6**: the ⋯ menu. UI/UX builds it in tab_help.dart.
+
 ### 93 · Guidelines, a new module — **sent 2026-10-14 10:56; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, Settings 7** — built by the Guidelines session (12bba329), adjusted to the pick (`docs/previews/guidelines-layouts.html`)
 
 Jose 2026-10-14 via the Guidelines session: a module of situation cards, each with a colour and an optional picture, that open
