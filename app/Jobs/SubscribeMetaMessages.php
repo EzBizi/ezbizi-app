@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Social\MetaMessages;
 use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
@@ -80,5 +83,13 @@ final class SubscribeMetaMessages implements ShouldQueue
                 .$connection->provider.' '.$connection->remote_id.': '
                 .($response->json('error.message') ?? 'HTTP '.$response->status()));
         }
+
+        // A reconnect is a new row: the enquiries the old one brought were
+        // hidden with it (connection_id nulled) and come back here (Jose,
+        // 2026-10-14: "the facebook messenger leads are not appearing anymore").
+        app(TenantContext::class)->run(
+            Organization::findOrFail($connection->organization_id),
+            fn () => app(MetaMessages::class)->reclaim($connection),
+        );
     }
 }
