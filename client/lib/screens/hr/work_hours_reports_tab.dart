@@ -142,6 +142,7 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
       error: _error,
       onRetry: _load,
       child: ListView(
+        key: const ValueKey('tour-work_hours-reports'),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         children: [
           Row(
@@ -159,6 +160,7 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
               if (widget.canManage) ...[
                 const SizedBox(width: 12),
                 FilledButton.icon(
+                  key: const ValueKey('tour-work_hours-reports-new'),
                   onPressed: () => _edit(),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('New report'),
@@ -169,6 +171,7 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
           const SizedBox(height: 16),
           if (_reports.isEmpty)
             Padding(
+              key: const ValueKey('tour-work_hours-reports-empty'),
               padding: const EdgeInsets.symmetric(vertical: 32),
               child: Text(
                 widget.canManage

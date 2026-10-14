@@ -322,6 +322,7 @@ class _PageEditorState extends State<PageEditor> {
             error: _error,
             onRetry: _load,
             child: ListView(
+              key: const ValueKey('tour-seo-page-editor'),
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               children: [
                 // The three the server sections as `page`. Named here rather

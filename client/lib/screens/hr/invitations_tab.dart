@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
@@ -81,6 +83,15 @@ class _InvitationsTabState extends State<InvitationsTab> {
   /// every invitation. The server filters, so the count and the rows agree.
   String? _status;
 
+  String _search = '';
+  Timer? _searchDelay;
+
+  @override
+  void dispose() {
+    _searchDelay?.cancel();
+    super.dispose();
+  }
+
   /// Each tile's count, across every page — the server's, never this page's.
   Map<String, int>? _tiles;
   int _page = 1;
@@ -109,6 +120,31 @@ class _InvitationsTabState extends State<InvitationsTab> {
     _load();
   }
 
+  /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
+  /// last human resources tabs"), as Records has one.
+  Widget _searchField() => Align(
+    alignment: Alignment.centerLeft,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: TextField(
+        key: const ValueKey('tour-hr-invitations-search'),
+        decoration: const InputDecoration(
+          hintText: 'Search by name or email',
+          prefixIcon: Icon(Icons.search),
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          _searchDelay?.cancel();
+          _searchDelay = Timer(const Duration(milliseconds: 300), () {
+            _search = value.trim();
+            _load();
+          });
+        },
+      ),
+    ),
+  );
+
   Future<void> _load({int page = 1}) async {
     if (page > 1 && _fetching) return;
 
@@ -127,6 +163,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
       widget.api.get('/hr/invitations', {
         'page': '$page',
         'status': ?_status,
+        if (_search.isNotEmpty) 'search': _search,
       }),
       // Asked again on every load rather than once: a role can be created, and
       // an administrator can widen or narrow somebody's reach, while this
@@ -220,6 +257,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
               'One person at a time. A link works once and expires after a '
               'week; “received” means they opened it.',
           action: FilledButton.icon(
+            key: const ValueKey('tour-hr-invitations-invite'),
             onPressed: _cannotInvite == null ? _invite : null,
             icon: const Icon(Icons.person_add_alt_outlined, size: 18),
             label: const Text('Invite somebody'),
@@ -232,10 +270,11 @@ class _InvitationsTabState extends State<InvitationsTab> {
           ),
         Expanded(
           child: AsyncBody(
+            key: const ValueKey('tour-hr-invitations-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _invitations.isEmpty && _status == null
+            child: _invitations.isEmpty && _status == null && _search.isEmpty
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32),
@@ -252,6 +291,7 @@ class _InvitationsTabState extends State<InvitationsTab> {
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     children: [
                       FilterTiles(
+                        key: const ValueKey('tour-hr-invitations-tiles'),
                         prefix: 'invitations',
                         picked: _status,
                         onPick: (key) {
@@ -299,11 +339,15 @@ class _InvitationsTabState extends State<InvitationsTab> {
                         ],
                       ),
                       const SizedBox(height: 12),
+                      _searchField(),
+                      const SizedBox(height: 12),
                       if (_invitations.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(24),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
                           child: Text(
-                            'No invitations in this state.',
+                            _search.isEmpty
+                                ? 'No invitations in this state.'
+                                : 'No invitations match that search.',
                             textAlign: TextAlign.center,
                           ),
                         )

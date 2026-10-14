@@ -164,6 +164,7 @@ class _StaffBotTabState extends State<StaffBotTab> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     return LayoutBuilder(
+      key: const ValueKey('tour-ai_assistance-staff-bot'),
       builder: (context, box) {
         final wide = box.maxWidth >= 1000;
         final menu = _menu;
@@ -258,6 +259,7 @@ class _StaffBotTabState extends State<StaffBotTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SizedBox(
+                      key: const ValueKey('tour-ai_assistance-staff-bot-menus'),
                       width: 280,
                       child: ListView(
                         children: [
@@ -447,6 +449,7 @@ class _StaffBotTabState extends State<StaffBotTab> {
     final roles = ((menu['role_ids'] as List?) ?? const []).cast<String>();
 
     return Card(
+      key: const ValueKey('tour-ai_assistance-staff-bot-who'),
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(12),

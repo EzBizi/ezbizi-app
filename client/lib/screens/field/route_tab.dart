@@ -87,6 +87,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
       error: _error,
       onRetry: _load,
       child: ListView(
+        key: const ValueKey('tour-field-route'),
         padding: const EdgeInsets.all(16),
         children: [
           Wrap(
@@ -96,6 +97,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
             children: [
               if (choices.length > 1)
                 SizedBox(
+                  key: const ValueKey('tour-field-route-person'),
                   width: 260,
                   child: SearchPickerField<String>(
                     label: 'Person',
@@ -115,6 +117,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
                   ),
                 ),
               ActionChip(
+                key: const ValueKey('tour-field-route-day'),
                 avatar: const Icon(Icons.event, size: 18),
                 label: Text(fieldLongDay(_day)),
                 onPressed: () async {
@@ -132,6 +135,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
                 },
               ),
               ActionChip(
+                key: const ValueKey('tour-field-route-refresh'),
                 avatar: const Icon(Icons.refresh, size: 18),
                 label: const Text('Refresh'),
                 onPressed: _load,
@@ -153,6 +157,7 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
             ),
           if (stops.isEmpty && unroutable.isEmpty)
             Padding(
+              key: const ValueKey('tour-field-route-empty'),
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
                 'No jobs on this day.',

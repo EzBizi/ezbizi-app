@@ -223,6 +223,7 @@ class _PcSpecsTabState extends State<PcSpecsTab> {
     final screen = device['screen_context'];
 
     return Card(
+      key: const ValueKey('tour-monitoring-machine-detail'),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -321,6 +322,7 @@ class _MachineGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     if (people.isEmpty) {
       return Card(
+        key: const ValueKey('tour-monitoring-machines-empty'),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
@@ -348,6 +350,7 @@ class _MachineGrid extends StatelessWidget {
     });
 
     return Wrap(
+      key: const ValueKey('tour-monitoring-machines'),
       spacing: 12,
       runSpacing: 12,
       children: [
@@ -894,6 +897,7 @@ class _GlancePanel extends StatelessWidget {
     }
 
     return Column(
+      key: const ValueKey('tour-monitoring-glance'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('AT A GLANCE', style: theme.textTheme.labelSmall),

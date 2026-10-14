@@ -438,6 +438,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
+            key: const ValueKey('tour-newsletter-none'),
             "None of Newsletter's tabs are available to your role.",
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
@@ -520,6 +521,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       child: Row(
         children: [
           Expanded(
+            key: const ValueKey('tour-newsletter-pick'),
             child: _all.isEmpty
                 ? Text('No newsletters in $_viewName yet.')
                 : DropdownButtonHideUnderline(
@@ -560,6 +562,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
                 'delete a newsletter',
               ),
               child: TextButton.icon(
+                key: const ValueKey('tour-newsletter-delete'),
                 onPressed: (widget.session.me?.can('newsletter.delete') ?? false) &&
                         _selected?.status != 'sending'
                     ? _delete
@@ -580,6 +583,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
               'write a newsletter',
             ),
             child: FilledButton.icon(
+              key: const ValueKey('tour-newsletter-new'),
               onPressed: can ? _create : null,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('New'),
@@ -592,6 +596,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
 
   Widget _empty(BuildContext context) {
     return Center(
+      key: const ValueKey('tour-newsletter-composer-empty'),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
         child: Padding(

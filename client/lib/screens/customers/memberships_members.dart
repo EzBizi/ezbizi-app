@@ -160,6 +160,7 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
       padding: EdgeInsets.all(narrow ? 16 : 24),
       children: [
         FilterTiles(
+          key: const ValueKey('tour-memberships-members-tiles'),
           prefix: 'members',
           picked: _tile,
           onPick: (tile) => setState(() => _tile = tile),
@@ -251,6 +252,7 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
 
   Widget _rowsList(ThemeData theme, List<Membership> rows) {
     return Card(
+      key: const ValueKey('tour-memberships-members-list'),
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -318,6 +320,7 @@ class _MembershipsMembersState extends State<MembershipsMembers> {
   /// right-aligned amount ran into the left-aligned column after it ("$0FL").
   Widget _table(ThemeData theme, List<Membership> rows) {
     return ListTable(
+      key: const ValueKey('tour-memberships-members-list'),
       rowKey: (i) => ValueKey('member:${rows[i].id}'),
       onTap: (i) => setState(() => _open = rows[i].id),
       columns: [
@@ -512,6 +515,7 @@ class _MembershipDetailState extends State<MembershipDetail> {
     );
 
     return ListView(
+      key: const ValueKey('tour-memberships-member'),
       padding: const EdgeInsets.fromLTRB(8, 12, 24, 24),
       children: [
         Row(

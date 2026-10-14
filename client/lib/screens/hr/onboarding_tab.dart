@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -94,6 +96,15 @@ class _OnboardingTabState extends State<OnboardingTab> {
   /// are one status each. Asked of the server: the list pages.
   String _filter = 'open';
 
+  String _search = '';
+  Timer? _searchDelay;
+
+  @override
+  void dispose() {
+    _searchDelay?.cancel();
+    super.dispose();
+  }
+
   bool get _finished => _filter == 'completed' || _filter == 'cancelled';
 
   /// Each status counted across every page, by the server.
@@ -140,6 +151,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
       widget.api.get('/hr/onboardings', {
         'page': '$page',
         if (_filter == 'open') 'state': 'open' else 'status': _filter,
+        if (_search.isNotEmpty) 'search': _search,
       }),
       widget.api.get('/hr/contracts/catalogue'),
     ]);
@@ -237,6 +249,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
                     'publishing a new version does not change a form somebody '
                     'is halfway through.',
           action: FilledButton.icon(
+            key: const ValueKey('tour-hr-onboarding-start'),
             onPressed: _cannotStart == null ? _start : null,
             icon: const Icon(Icons.how_to_reg_outlined, size: 18),
             label: const Text('Start an onboarding'),
@@ -249,12 +262,14 @@ class _OnboardingTabState extends State<OnboardingTab> {
           ),
         Expanded(
           child: AsyncBody(
+            key: const ValueKey('tour-hr-onboarding-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
             child:
                 _rows.isEmpty &&
                     _filter == 'open' &&
+                    _search.isEmpty &&
                     (_tiles?.values.every((n) => n == 0) ?? true)
                 ? Center(
                     child: Padding(
@@ -284,6 +299,8 @@ class _OnboardingTabState extends State<OnboardingTab> {
                     children: [
                       _tilesRow(),
                       const SizedBox(height: 12),
+                      _searchField(),
+                      const SizedBox(height: 12),
                       _table(context),
                     ],
                   ),
@@ -297,6 +314,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
     int? n(String status) => _tiles?[status];
 
     return FilterTiles(
+      key: const ValueKey('tour-hr-onboarding-tiles'),
       prefix: 'onboardings',
       picked: _filter,
       // A picked tile tapped again goes back to the ones still under way.
@@ -354,12 +372,39 @@ class _OnboardingTabState extends State<OnboardingTab> {
     );
   }
 
+  /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
+  /// last human resources tabs"), as Records has one.
+  Widget _searchField() => Align(
+    alignment: Alignment.centerLeft,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: TextField(
+        key: const ValueKey('tour-hr-onboarding-search'),
+        decoration: const InputDecoration(
+          hintText: 'Search by name or email',
+          prefixIcon: Icon(Icons.search),
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          _searchDelay?.cancel();
+          _searchDelay = Timer(const Duration(milliseconds: 300), () {
+            _search = value.trim();
+            _load();
+          });
+        },
+      ),
+    ),
+  );
+
   Widget _table(BuildContext context) {
     if (_rows.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
         child: Text(
-          'No onboardings in this state.',
+          _search.isEmpty
+              ? 'No onboardings in this state.'
+              : 'No onboardings match that search.',
           textAlign: TextAlign.center,
         ),
       );

@@ -437,6 +437,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     final theme = Theme.of(context);
 
     return ListView(
+      key: const ValueKey('tour-phone-settings-rail'),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       children: [
         for (var i = 0; i < _sections.length; i++) ...[
@@ -508,6 +509,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
   Widget _pane({required bool showBack}) {
     return Column(
+      key: const ValueKey('tour-phone-settings-pane'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (showBack)
@@ -700,6 +702,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     int count(String key) => places.where((p) => _stage(p) == key).length;
 
     return FilterTiles(
+      key: const ValueKey('tour-phone-connection-tiles'),
       prefix: 'connection',
       picked: _tile,
       onPick: (key) => setState(() => _tile = key),
@@ -753,6 +756,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     }
 
     return ListTable(
+      key: const ValueKey('tour-phone-connection-table'),
       columns: const [
         ListColumn('Account', flex: 5),
         ListColumn('Kind', flex: 4),

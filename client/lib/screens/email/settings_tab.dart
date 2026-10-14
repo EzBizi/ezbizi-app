@@ -347,6 +347,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
           action: Refused(
             reason: refusal,
             child: FilledButton.icon(
+              key: const ValueKey('tour-email-add-inbox'),
               onPressed: refusal == null ? _add : null,
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add an inbox'),
@@ -443,6 +444,7 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
 
   /// No inbox at all — a setup step rather than an empty list.
   Widget _nothingConnected() => Padding(
+    key: const ValueKey('tour-email-settings-empty'),
     padding: const EdgeInsets.symmetric(vertical: 32),
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 460),

@@ -1,3 +1,10 @@
+import 'tours/assist_tours.dart';
+import 'tours/leads_tours.dart';
+import 'tours/marketing_tours.dart';
+import 'tours/operations_tours.dart';
+import 'tours/phone_tours.dart';
+import 'tours/reports_tours.dart';
+
 /// Each tab's walkthrough (UI queue 81; Jose: "as u recommend" — 1 and 4).
 ///
 /// Data, not code: a tab's owner adds or rewrites its steps here and the
@@ -34,7 +41,8 @@ class Tour {
   final List<TourStep> steps;
 }
 
-/// By module key, as `module_screens.dart` keys its screens.
+/// By module key, as `module_screens.dart` keys its screens, then each sub
+/// tab's as `module/Tab` (see `tourKeyFor`).
 const Map<String, Tour> tabTours = {
   'tasks': Tour(
     // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
@@ -798,37 +806,6 @@ const Map<String, Tour> tabTours = {
         title: 'Your reports',
         body: 'Each saved report, what it covers, and when it was sent.',
       ),
-      TourStep(
-        anchor: 'ads-refresh',
-        title: 'Read again',
-        body: 'Reads the figures from Google again.',
-      ),
-      TourStep(
-        anchor: 'ads-account-search',
-        title: 'Find an account',
-        body: 'Narrows the accounts as you type.',
-      ),
-      TourStep(
-        anchor: 'ads-accounts',
-        title: 'Accounts',
-        body:
-            'Managers stand out in their own colour, above the accounts in them.',
-      ),
-      TourStep(
-        anchor: 'ads-account-figures',
-        title: 'The account',
-        body: 'Cost, clicks and the rest, for the dates chosen.',
-      ),
-      TourStep(
-        anchor: 'ads-campaign-search',
-        title: 'Find a campaign',
-        body: 'Narrows the campaigns as you type.',
-      ),
-      TourStep(
-        anchor: 'tour-reports-pl-controls',
-        title: 'Profit & Loss',
-        body: 'Where the figures come from, and which week.',
-      ),
     ],
   ),
   'monitoring': Tour(
@@ -937,4 +914,10 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  ...reportsTours,
+  ...assistTours,
+  ...operationsTours,
+  ...leadsTours,
+  ...marketingTours,
+  ...phoneTours,
 };

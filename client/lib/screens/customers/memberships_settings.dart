@@ -230,10 +230,12 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
         if (_plans.isEmpty)
           Text(
             'No plans yet. A member joins a plan, so add one first.',
+            key: const ValueKey('tour-memberships-plans'),
             style: theme.textTheme.bodyMedium,
           )
         else
           ListTable(
+            key: const ValueKey('tour-memberships-plans'),
             rowKey: (i) => ValueKey('plan:${_plans[i].id}'),
             onTap: _canEdit ? (i) => _edit(_plans[i]) : null,
             columns: [
@@ -281,6 +283,7 @@ class _MembershipsSettingsState extends State<MembershipsSettings> {
           ),
         const SizedBox(height: 16),
         Container(
+          key: const ValueKey('tour-memberships-renewal-note'),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: ToneColours.of(context, Tone.info).fill,

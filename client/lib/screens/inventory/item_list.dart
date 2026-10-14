@@ -149,6 +149,7 @@ class _ItemListState extends State<ItemList> {
             ? Refused(
                 reason: refused,
                 child: FilledButton.icon(
+                  key: const ValueKey('tour-inventory-items-add'),
                   onPressed: refused == null
                       ? () => setState(() {
                           _adding = true;
@@ -173,6 +174,7 @@ class _ItemListState extends State<ItemList> {
       children: [
         if (_tiles case final tiles?)
           Padding(
+            key: const ValueKey('tour-inventory-items-tiles'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: LayoutBuilder(
               builder: (context, box) => inventoryTiles(
@@ -189,6 +191,7 @@ class _ItemListState extends State<ItemList> {
             ),
           ),
         Padding(
+          key: const ValueKey('tour-inventory-items-search'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             controller: _search,

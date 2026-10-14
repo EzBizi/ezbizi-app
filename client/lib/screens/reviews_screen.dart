@@ -268,6 +268,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         ),
         if (_profile != null)
           ConnectedAccount(
+            key: const ValueKey('tour-reviews-profile'),
             api: widget.api,
             connection: _profile!,
             onDisconnected: _load,
@@ -318,6 +319,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     }
 
     return Center(
+      key: const ValueKey('tour-reviews-empty'),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(

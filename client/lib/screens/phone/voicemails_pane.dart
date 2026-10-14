@@ -225,6 +225,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   Widget _boxList(ThemeData theme) {
     return ListView(
+      key: const ValueKey('tour-phone-voicemail-boxes'),
       padding: const EdgeInsets.symmetric(vertical: 6),
       children: [
         Padding(
@@ -265,6 +266,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Wrap(
+        key: const ValueKey('tour-phone-voicemail-box-chips'),
         spacing: 8,
         runSpacing: 8,
         children: [
@@ -299,6 +301,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   /// list under it narrows.
   Widget _tileRow() {
     return FilterTiles(
+      key: const ValueKey('tour-phone-voicemail-tiles'),
       prefix: 'voicemail',
       picked: _tile,
       onPick: (key) {
@@ -337,6 +340,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   Widget _messageList(ThemeData theme) {
     return Column(
+      key: const ValueKey('tour-phone-voicemail-list'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(

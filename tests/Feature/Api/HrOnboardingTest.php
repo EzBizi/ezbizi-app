@@ -1321,6 +1321,29 @@ class HrOnboardingTest extends TestCase
             ->assertJsonPath('data.0.id', $id);
     }
 
+    /** The list's search box (Jose, 2026-10-14): by the person's name or email. */
+    public function test_the_list_searches_by_the_person(): void
+    {
+        [$alpha, , $id] = $this->scenario();
+
+        foreach (['Ruiz', 'marta ruiz', 'newstarter@'] as $term) {
+            $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?search='.urlencode($term))
+                ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $id);
+        }
+        $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?search=Okafor')
+            ->assertOk()->assertJsonPath('meta.total', 0);
+
+        // Narrows what the reader may reach, never widens it (HR, 2026-10-14).
+        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Alpha F2',
+        ]));
+        $elsewhere = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.edit'], onlyAt: $second);
+        $this->as($elsewhere)->getJson('/api/v1/hr/onboardings?search=Ruiz')
+            ->assertOk()->assertJsonPath('meta.total', 0);
+    }
+
     /** §4 reach: a manager at another franchise is not looking at this. */
     public function test_an_onboarding_outside_a_managers_reach_is_out_of_bounds(): void
     {

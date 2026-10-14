@@ -70,6 +70,7 @@ class NewsletterDashboard extends StatelessWidget {
         final wide = constraints.maxWidth >= 1100;
 
         final calendar = MonthCalendar(
+          key: const ValueKey('tour-newsletter-calendar'),
           title: 'Scheduled',
           entries: [
             for (final s in scheduled)
@@ -230,6 +231,7 @@ class NewsletterDashboard extends StatelessWidget {
   Widget _table(BuildContext context) {
     if (rows.isEmpty) {
       return DashboardNote(
+        key: const ValueKey('tour-newsletter-empty'),
         status == null
             ? 'No newsletters in $viewName yet. New newsletter starts one.'
             : 'None of the newsletters in $viewName are ${_tileWord(status!)}.',
@@ -240,6 +242,7 @@ class NewsletterDashboard extends StatelessWidget {
     final theme = Theme.of(context);
 
     return ListTable(
+      key: const ValueKey('tour-newsletter-table'),
       columns: const [
         ListColumn('Newsletter', flex: 4),
         ListColumn('Status', flex: 2),

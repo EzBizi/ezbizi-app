@@ -1706,6 +1706,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   Widget _templatePicker(BuildContext context) {
     return SearchPickerField<String>(
+        key: const ValueKey('tour-automations-template'),
         value: null,
         label: 'Start from a template',
         helperText: 'Fills this form in. Nothing is saved until you press the '
@@ -1865,6 +1866,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         children: [
           FieldPair(
             first: TextField(
+              key: const ValueKey('tour-automations-name'),
               controller: _name,
               enabled: !_busy,
               decoration: const InputDecoration(
@@ -1955,6 +1957,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           CataloguePicker(
+            key: const ValueKey('tour-automations-trigger'),
             groups: _triggerGroups,
             selected: chosen,
             searchHint: 'Search events',
@@ -2219,6 +2222,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ],
       ),
       action: TextButton.icon(
+        key: const ValueKey('tour-automations-add-condition'),
         onPressed: _busy
             ? null
             : () => setState(() {
@@ -2544,6 +2548,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ],
       ),
       action: TextButton.icon(
+        key: const ValueKey('tour-automations-add-step'),
         onPressed: _busy
             ? null
             : () => setState(() {
@@ -3996,6 +4001,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ],
           const SizedBox(width: 10),
           FilledButton(
+            key: const ValueKey('tour-automations-save'),
             onPressed: _busy || blocker != null ? null : _submit,
             child: Text(_isEdit ? 'Save changes' : 'Create automation'),
           ),

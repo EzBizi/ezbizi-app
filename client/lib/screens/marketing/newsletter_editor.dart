@@ -208,6 +208,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     ];
 
     return DashboardCard(
+      key: const ValueKey('tour-newsletter-blocks'),
       title: 'Add a block',
       icon: Icons.add_box_outlined,
       child: Column(
@@ -308,6 +309,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     }
 
     return DashboardCard(
+      key: const ValueKey('tour-newsletter-email'),
       title: 'What they will get',
       icon: Icons.mark_email_read_outlined,
       /*
@@ -714,6 +716,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
     );
 
     return DashboardCard(
+      key: const ValueKey('tour-newsletter-details'),
       title: 'Newsletter',
       icon: Icons.drafts_outlined,
       child: Column(
@@ -826,6 +829,7 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               Refused(
                 reason: refusal,
                 child: FilledButton.icon(
+                  key: const ValueKey('tour-newsletter-send'),
                   onPressed: refusal == null ? () => widget.onSend() : null,
                   icon: const Icon(Icons.send, size: 18),
                   label: Text(

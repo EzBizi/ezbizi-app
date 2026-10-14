@@ -165,6 +165,20 @@ class HrOnboardingsController extends Controller
                 }
             });
 
+        // A search box over the list (Jose, 2026-10-14: "we lack searchbars on
+        // the 3 last human resources tabs"): the person, by their account or by
+        // the invitation that started it. Before the tiles, so they count it.
+        if (filled($term = trim((string) $request->query('search')))) {
+            $like = "%{$term}%";
+            $query->where(fn (Builder $q) => $q
+                ->whereHas('user', fn (Builder $u) => $u->where('name', 'like', $like)
+                    ->orWhere('email', 'like', $like))
+                ->orWhereHas('invitation', fn (Builder $i) => $i->where('email', 'like', $like)
+                    ->orWhere('first_name', 'like', $like)
+                    ->orWhere('last_name', 'like', $like)
+                    ->orWhereRaw("CONCAT_WS(' ', first_name, last_name) LIKE ?", [$like])));
+        }
+
         // Every status counted across all pages, before a filter narrows the
         // list - the tiles above it (HR lists, layout A, Mia 2026-10-02).
         $tiles = (clone $query)->toBase()->reorder()

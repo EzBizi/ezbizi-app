@@ -94,6 +94,7 @@ class _WebScreenState extends State<WebScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
+            key: const ValueKey('tour-web_management-none'),
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

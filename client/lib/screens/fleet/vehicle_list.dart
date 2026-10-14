@@ -106,6 +106,7 @@ class VehicleList extends StatelessWidget {
     final filters = [
       if (places.length > 1 && onPlace != null)
         Padding(
+          key: const ValueKey('tour-fleet_management-states'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Wrap(
             spacing: 8,
@@ -126,6 +127,7 @@ class VehicleList extends StatelessWidget {
           ),
         ),
       Padding(
+        key: const ValueKey('tour-fleet_management-search'),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: TextField(
           controller: search,
@@ -145,6 +147,7 @@ class VehicleList extends StatelessWidget {
         ),
       ),
       Padding(
+        key: const ValueKey('tour-fleet_management-filters'),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: Wrap(
           spacing: 8,

@@ -221,6 +221,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
       padding: EdgeInsets.all(narrow ? 16 : 24),
       children: [
         Row(
+          key: const ValueKey('tour-marketing-qr-header'),
           children: [
             Expanded(
               child: Column(
@@ -256,6 +257,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
         const SizedBox(height: 16),
         if (_codes.isEmpty)
           Text(
+            key: const ValueKey('tour-marketing-qr-empty'),
             _canEdit
                 ? 'No QR codes yet. Make one for a van, a sign or your cards: '
                       'where it sends people can change later without reprinting.'
@@ -264,6 +266,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
           )
         else
           LayoutBuilder(
+            key: const ValueKey('tour-marketing-qr-list'),
             builder: (context, box) {
               const gap = 12.0;
               final across = box.maxWidth >= 900 ? 2 : 1;

@@ -971,6 +971,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     final areas = _filtered;
 
     return Column(
+      key: const ValueKey('tour-scheduling-areas'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -3326,6 +3327,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               label: const Text('Edit time slots'),
             ),
       child: Column(
+        key: const ValueKey('tour-scheduling-time-slots'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(

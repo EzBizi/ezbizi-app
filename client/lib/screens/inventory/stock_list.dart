@@ -147,6 +147,7 @@ class _StockListState extends State<StockList> {
           children: [
             if (me.can('inventory.create') && _may('inventory.orders.view'))
               OutlinedButton.icon(
+                key: const ValueKey('tour-inventory-stock-order'),
                 onPressed: () => setState(() {
                   _open = null;
                   _transferring = false;
@@ -159,6 +160,7 @@ class _StockListState extends State<StockList> {
               Refused(
                 reason: refused,
                 child: FilledButton.icon(
+                  key: const ValueKey('tour-inventory-stock-transfer'),
                   onPressed: refused == null ? () => _transfer() : null,
                   icon: const Icon(Icons.swap_horiz, size: 18),
                   label: const Text('Transfer'),

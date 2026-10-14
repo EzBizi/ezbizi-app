@@ -264,6 +264,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
       // settings"): the Settings rows of the scheduling group, as Field's
       // Settings tab draws its own.
       () => SettingsScreen(
+        key: const ValueKey('tour-scheduling-suggestions'),
         api: widget.api,
         session: widget.session,
         onlyGroup: 'scheduling',
@@ -274,6 +275,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
+          key: const ValueKey('tour-scheduling-settings-tabs'),
           level: TabLevel.secondary,
           labels: [
             ('Availability', Icons.event_available_outlined),

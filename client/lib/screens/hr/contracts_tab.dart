@@ -54,6 +54,7 @@ class _ContractsTabState extends State<ContractsTab> {
   int _request = 0;
 
   List<Map<String, dynamic>> _templates = const [];
+  String _query = '';
 
   /// The tile picked (layout A, Mia 2026-10-02): `written`, `questions` or
   /// `no_cover`; null is every contract. Counted here - the list is every
@@ -198,6 +199,7 @@ class _ContractsTabState extends State<ContractsTab> {
               'version; the contracts already signed keep the version that '
               'produced them.',
           action: FilledButton.icon(
+            key: const ValueKey('tour-hr-contracts-new'),
             onPressed: _mayCreate && _cannotDesign == null ? _create : null,
             icon: const Icon(Icons.add, size: 18),
             label: const Text('New contract'),
@@ -210,6 +212,7 @@ class _ContractsTabState extends State<ContractsTab> {
           ),
         Expanded(
           child: AsyncBody(
+            key: const ValueKey('tour-hr-contracts-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
@@ -235,6 +238,8 @@ class _ContractsTabState extends State<ContractsTab> {
                     children: [
                       _tiles(),
                       const SizedBox(height: 12),
+                      _searchField(),
+                      const SizedBox(height: 12),
                       _table(context),
                     ],
                   ),
@@ -249,6 +254,7 @@ class _ContractsTabState extends State<ContractsTab> {
         _templates.where(test).length;
 
     return FilterTiles(
+      key: const ValueKey('tour-hr-contracts-tiles'),
       prefix: 'contracts',
       picked: _tile,
       onPick: (key) => setState(() => _tile = key),
@@ -282,8 +288,37 @@ class _ContractsTabState extends State<ContractsTab> {
     );
   }
 
+  /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
+  /// last human resources tabs"), as Records has one.
+  Widget _searchField() => Align(
+    alignment: Alignment.centerLeft,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: TextField(
+        key: const ValueKey('tour-hr-contracts-search'),
+        decoration: const InputDecoration(
+          hintText: 'Search contracts',
+          prefixIcon: Icon(Icons.search),
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (v) => setState(() => _query = v),
+      ),
+    ),
+  );
+
   Widget _table(BuildContext context) {
-    final shown = _templates.where(_matches).toList();
+    final query = _query.trim().toLowerCase();
+    final shown = _templates
+        .where(_matches)
+        .where(
+          (t) =>
+              query.isEmpty ||
+              '${t['name'] ?? ''} ${t['description'] ?? ''}'
+                  .toLowerCase()
+                  .contains(query),
+        )
+        .toList();
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
