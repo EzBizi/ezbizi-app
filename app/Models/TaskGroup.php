@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** A column of tasks on a board: This week, Next week, Done. */
+/** A column of tasks on a board: Open Tasks, Recurring Tasks, Completed Tasks, Company Files, Guidelines by default. */
 class TaskGroup extends Model implements StatesRetention
 {
     use BelongsToTenant;
