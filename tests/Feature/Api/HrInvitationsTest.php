@@ -425,6 +425,35 @@ class HrInvitationsTest extends TestCase
         );
     }
 
+    /** The list's search box (Jose, 2026-10-14): email, either name, or both. */
+    public function test_the_list_searches_by_email_and_name(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->invite($alpha, ['email' => 'marta@example.test', 'first_name' => 'Marta', 'last_name' => 'Ruiz']);
+        $this->invite($alpha, ['email' => 'leo@example.test', 'first_name' => 'Leo', 'last_name' => 'Brandt']);
+
+        $found = fn (string $term) => collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/hr/invitations?search='.urlencode($term))->assertOk()->json('data'))
+            ->pluck('email')->all();
+
+        $this->assertSame(['marta@example.test'], $found('Marta'));
+        $this->assertSame(['marta@example.test'], $found('marta ruiz'));
+        $this->assertSame(['leo@example.test'], $found('leo@'));
+        $this->assertSame([], $found('Okafor'));
+        $this->assertSame(1, $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/hr/invitations?search=Brandt')->json('meta.tiles.sent'));
+
+        // Narrows what the reader may reach, never widens it (HR, 2026-10-14).
+        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Alpha F2',
+        ]));
+        $elsewhere = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view'], onlyAt: $second);
+        $this->assertSame([], collect($this->signedInAs($elsewhere)
+            ->getJson('/api/v1/hr/invitations?search=Marta')->assertOk()->json('data'))->all());
+    }
+
     public function test_the_list_never_carries_a_token_or_a_link(): void
     {
         $alpha = $this->provisionTenant('Alpha');

@@ -642,6 +642,26 @@ void main() {
     expect(asked.last['state'], 'open');
   });
 
+  /// Jose, 2026-10-14: "we lack searchbars on the 3 last human resources
+  /// tabs". The list pages on the server, so the search goes there.
+  testWidgets('the search box asks the server once typing stops', (
+    tester,
+  ) async {
+    final asked = <Map<String, String>>[];
+    await _pumpTab(tester, _handler(onList: asked.add));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('tour-hr-onboarding-search')),
+      'Ruiz',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(asked.last.containsKey('search'), isFalse);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(asked.last['search'], 'Ruiz');
+    expect(asked.last['state'], 'open');
+  });
+
   testWidgets('an in-progress onboarding can be cancelled', (tester) async {
     var cancelled = false;
     await _pumpTab(tester, _handler(onCancel: () => cancelled = true));
