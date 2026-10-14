@@ -694,46 +694,74 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                               'Scheduling.',
                     style: muted,
                   )
-                else if (_confirming)
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        "Move $name's appointment to ${_then(row)}? "
-                        'This changes it in Workiz.',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                      TextButton(
-                        onPressed: _moving
-                            ? null
-                            : () => setState(() => _confirming = false),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        key: const Key('rescheduling-confirm'),
-                        onPressed: _moving ? null : () => _move(row),
-                        child: Text(_moving ? 'Moving…' : 'Move'),
-                      ),
-                    ],
-                  )
-                else
+                else ...[
+                  // Jose, 2026-10-14: "Make sure to confirm with the client
+                  // before rescheduling", then "do you wish to proceed with
+                  // the change?" before anything is written.
                   Row(
+                    key: const Key('rescheduling-warning'),
                     children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: StateColour.of(context).caution,
+                      ),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          "Moving changes $name's appointment.",
-                          style: muted,
+                          'Make sure to confirm with the client before '
+                          'rescheduling.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: StateColour.of(context).caution,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      FilledButton(
-                        key: const Key('rescheduling-move'),
-                        onPressed: () => setState(() => _confirming = true),
-                        child: const Text('Move…'),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (_confirming)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          "Move $name's appointment to ${_then(row)}? "
+                          'This changes it in Workiz. '
+                          'Do you wish to proceed with the change?',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                        TextButton(
+                          onPressed: _moving
+                              ? null
+                              : () => setState(() => _confirming = false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          key: const Key('rescheduling-confirm'),
+                          onPressed: _moving ? null : () => _move(row),
+                          child: Text(_moving ? 'Moving…' : 'Yes, proceed'),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "Moving changes $name's appointment.",
+                            style: muted,
+                          ),
+                        ),
+                        FilledButton(
+                          key: const Key('rescheduling-move'),
+                          onPressed: () => setState(() => _confirming = true),
+                          child: const Text('Move…'),
+                        ),
+                      ],
+                    ),
+                ],
               ],
             ),
           ),
