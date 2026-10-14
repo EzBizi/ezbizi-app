@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 97 · Reports › Scoring › what the score weighs — **sent 2026-10-14 18:03** (`docs/previews/scoring-weights-layouts.html`)
+### 97 · Reports › Scoring › what the score weighs — **sent 2026-10-14 18:03; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT `2360c162`** (nine weights with Reports 90e9d8a5) (`docs/previews/scoring-weights-layouts.html`)
 
 Reports (051fa5e6): the Scoring score is now conversion plus the AI's seven call checks, weighted. There are eight whole-number weights that must total 100
 (defaults: conversion 40, greeted 5, explained the price 5, the other five 10 each), set with the new reports.scoring_weights tick. **1** (recommended):
