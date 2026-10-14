@@ -42,6 +42,10 @@ class _SalesScreenState extends State<SalesScreen> {
   String _query = '';
   // 'open' | 'due' | a stage key | 'all'
   String _filter = 'open';
+  // ponytail: draw 50 rows at a time; 1,401 live rows with pickers lagged
+  // (Jose, 2026-10-14). Server paging when the list itself is slow to load.
+  static const _page = 50;
+  int _shown = _page;
 
   bool get _canEdit => widget.session.me?.can('sales.manage') == true;
 
@@ -175,7 +179,10 @@ class _SalesScreenState extends State<SalesScreen> {
                 showCheckmark: false,
                 label: Text(e.value),
                 selected: _filter == e.key,
-                onSelected: (_) => setState(() => _filter = e.key),
+                onSelected: (_) => setState(() {
+                  _filter = e.key;
+                  _shown = _page;
+                }),
               ),
             ),
         ],
@@ -189,7 +196,10 @@ class _SalesScreenState extends State<SalesScreen> {
           hintText: 'Search name, phone, job #',
           isDense: true,
         ),
-        onChanged: (v) => setState(() => _query = v),
+        onChanged: (v) => setState(() {
+          _query = v;
+          _shown = _page;
+        }),
       );
 
   // A search-bar picker, not a popup menu - Jose's rule (2026-09-17).
@@ -259,8 +269,18 @@ class _SalesScreenState extends State<SalesScreen> {
 
   // ── D1: the spreadsheet, made live ───────────────────────────
 
+  Widget _more(int total) => total <= _shown
+      ? const SizedBox.shrink()
+      : Center(
+          child: TextButton(
+            onPressed: () => setState(() => _shown += _page),
+            child: Text('Show more (${total - _shown} left)'),
+          ),
+        );
+
   Widget _desktop(BuildContext context) {
-    final rows = _visible;
+    final all = _visible;
+    final rows = all.take(_shown).toList();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -316,6 +336,7 @@ class _SalesScreenState extends State<SalesScreen> {
               ],
             ),
           ),
+        _more(all.length),
       ],
     );
   }
@@ -323,7 +344,8 @@ class _SalesScreenState extends State<SalesScreen> {
   // ── M1: today's calls ────────────────────────────────────────
 
   Widget _mobile(BuildContext context) {
-    final rows = _visible;
+    final all = _visible;
+    final rows = all.take(_shown).toList();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -337,6 +359,7 @@ class _SalesScreenState extends State<SalesScreen> {
           const SizedBox(height: 8),
           if (rows.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No deals here.'))),
           for (final r in rows) _card(context, r),
+          _more(all.length),
         ],
       ),
     );

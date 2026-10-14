@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  _paging();
   testWidgets('desktop: KPI strip totals open deals and sold ones are filtered out', (tester) async {
     final puts = <Map<String, dynamic>>[];
     await _pump(tester, const Size(1400, 900), puts);
@@ -48,7 +49,19 @@ void main() {
   });
 }
 
-Future<void> _pump(WidgetTester tester, Size size, List<Map<String, dynamic>> puts) async {
+void _paging() {
+  testWidgets('a long list draws 50 rows and offers the rest', (tester) async {
+    await _pump(tester, const Size(1400, 900), [], extra: 60);
+
+    expect(find.textContaining('Bulk '), findsNWidgets(48), reason: '2 open seeded deals + 48 bulk = 50');
+    await tester.scrollUntilVisible(find.text('Show more (12 left)'), 500, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Show more (12 left)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Bulk '), findsNWidgets(60));
+  });
+}
+
+Future<void> _pump(WidgetTester tester, Size size, List<Map<String, dynamic>> puts, {int extra = 0}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -84,6 +97,7 @@ Future<void> _pump(WidgetTester tester, Size size, List<Map<String, dynamic>> pu
           _deal('j1', 'Artyom Popov', 1350000, 'follow_up', next: '2000-01-01'),
           _deal('j2', 'Mike Modabber', 215000, 'call_back'),
           _deal('j3', 'Ricardo Murph', 415000, 'sold'),
+          for (var i = 0; i < extra; i++) _deal('x$i', 'Bulk $i', 100, 'follow_up'),
         ],
       });
     }),
