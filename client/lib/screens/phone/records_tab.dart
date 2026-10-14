@@ -362,6 +362,7 @@ class _RecordsTabState extends State<RecordsTab> {
           onRetry: _load,
           child: _calls.isEmpty && _messages.isEmpty
               ? Center(
+                  key: const ValueKey('tour-phone-records-empty'),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
@@ -423,6 +424,7 @@ class _RecordsTabState extends State<RecordsTab> {
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Wrap(
+              key: const ValueKey('tour-phone-records-filter'),
               spacing: 8,
               runSpacing: 8,
               children: [
@@ -484,6 +486,7 @@ class _RecordsTabState extends State<RecordsTab> {
     int count(String key) => _calls.where((c) => _callMatches(c, key)).length;
 
     return FilterTiles(
+      key: const ValueKey('tour-phone-records-tiles'),
       prefix: 'records',
       picked: _tile,
       onPick: _pickTile,
@@ -537,6 +540,7 @@ class _RecordsTabState extends State<RecordsTab> {
         threads.where((t) => _threadMatches(t, key)).length;
 
     return FilterTiles(
+      key: const ValueKey('tour-phone-messages-tiles'),
       prefix: 'messages',
       picked: _tile,
       onPick: _pickTile,

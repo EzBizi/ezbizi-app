@@ -250,6 +250,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
+      key: const ValueKey('tour-monitoring-cameras-empty'),
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(24),

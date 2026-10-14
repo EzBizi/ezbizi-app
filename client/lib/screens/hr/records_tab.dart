@@ -381,6 +381,7 @@ class _RecordsTabState extends State<RecordsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
+          key: const ValueKey('tour-hr-records-search'),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: TextField(
             decoration: const InputDecoration(
@@ -393,6 +394,7 @@ class _RecordsTabState extends State<RecordsTab> {
           ),
         ),
         Padding(
+          key: const ValueKey('tour-hr-records-showing'),
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: Wrap(
             spacing: 6,
@@ -451,6 +453,7 @@ class _RecordsTabState extends State<RecordsTab> {
         const Divider(height: 1),
         Expanded(
           child: AsyncBody(
+            key: const ValueKey('tour-hr-records-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
@@ -576,6 +579,7 @@ class _RecordsTabState extends State<RecordsTab> {
       final theme = Theme.of(context);
 
       return Center(
+        key: const ValueKey('tour-hr-records-pick'),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
@@ -872,6 +876,7 @@ class _PersonRecordState extends State<_PersonRecord> {
           child: Align(
             alignment: Alignment.topLeft,
             child: ConstrainedBox(
+              key: const ValueKey('tour-hr-record-section'),
               constraints: const BoxConstraints(maxWidth: 760),
               child: _body(context),
             ),
@@ -903,6 +908,7 @@ class _PersonRecordState extends State<_PersonRecord> {
     final where = _RecordsTabState._where(_person);
 
     return Padding(
+      key: const ValueKey('tour-hr-record-header'),
       padding: EdgeInsets.fromLTRB(widget.onBack == null ? 24 : 8, 16, 24, 12),
       child: Row(
         children: [
@@ -1059,12 +1065,14 @@ class _PersonRecordState extends State<_PersonRecord> {
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
+          key: const ValueKey('tour-hr-record-schedule'),
           icon: const Icon(Icons.edit_calendar_outlined),
           label: const Text('Change their schedule'),
           onPressed: noEdit == null ? () => _editSchedule(days) : null,
         ),
         const SizedBox(height: 20),
         SwitchListTile(
+          key: const ValueKey('tour-hr-record-lock'),
           contentPadding: EdgeInsets.zero,
           title: Text(
             exempt
@@ -1574,6 +1582,7 @@ class _PersonalSectionState extends State<_PersonalSection> {
         const SizedBox(height: 14),
         // The lookup and the parts it fills, as on Your account.
         AddressFields(
+          key: const ValueKey('tour-hr-record-address'),
           api: widget.api,
           line1: _fields['address_line1']!,
           line2: _fields['address_line2']!,
@@ -1698,6 +1707,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
           const SizedBox(height: 16),
         ],
         SearchPickerField<String>(
+          key: const ValueKey('tour-hr-record-role'),
           label: 'Role',
           value: _role,
           // Shown and refused rather than hidden. §4: nobody hands out what
@@ -1730,6 +1740,7 @@ class _EmploymentSectionState extends State<_EmploymentSection> {
         Text('Status', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
         SegmentedButton<bool>(
+          key: const ValueKey('tour-hr-record-status'),
           segments: const [
             ButtonSegment(value: true, label: Text('Active')),
             ButtonSegment(value: false, label: Text('Inactive')),
@@ -2321,6 +2332,7 @@ class _DetailListState extends State<_DetailList> {
             child: Padding(
               padding: const EdgeInsets.only(top: 8),
               child: FilledButton.icon(
+                key: const ValueKey('tour-hr-record-add'),
                 icon: const Icon(Icons.add),
                 label: Text('Add ${widget.kind.noun}'),
                 onPressed: editable ? () => _edit() : null,

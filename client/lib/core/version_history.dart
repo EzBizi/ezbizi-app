@@ -14,13 +14,63 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0431',
+      date: '14 Oct 2026',
+      items: [
+        'Help: the how-to videos play inside the app on Windows, Mac, phones and web, with Fullscreen (Esc comes back) and Download (a Save dialog on a computer, Photos on a phone); the chapter playing is highlighted.',
+        'Phone: call recordings and voicemails play on iPhone and Mac.',
+        'Reports: calls on every line are now transcribed and scored, long calls are no longer misread as "no conversation", and missed calls say Missed in the Score column.',
+        'Scheduling: in Routing a technician can take two nearby jobs in the same window, so there are fewer needless extra routes, and jobs far outside the area (usually booked in the wrong one) are listed apart as "Far outside this area — check the booking" instead of breaking a route; route miles are marked straight-line, with Google Maps giving the real drive. Suggested availability now counts as nearby only booked jobs in the same time window or the one next to it, the same rule as Re-Scheduling.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0430',
+      date: '14 Oct 2026',
+      items: [
+        'Scheduling: an opened Re-Scheduling suggestion shows both days window by window with the open spots before and after the move: the day the job leaves gains a spot, the day it moves to loses one, and each day shows its total.',
+        'Guidelines: a new Guidelines tab holds situation cards, each with step-by-step guidance, a colour and an image, plus a search bar; its Settings tab is where they are created and edited. Administrators see it, and other roles get it in Roles.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0429',
+      date: '14 Oct 2026',
+      items: [
+        'Task Board: boards start with the groups Open Tasks, Recurring Tasks, Completed Tasks, Company Files and Guidelines; existing boards gain Company Files and Guidelines, and groups still called This week, Next week or Done take the new names.',
+        'Walkthroughs: (?) now runs the walkthrough of the sub tab you are on, and every sub tab has its own, including inner strips such as Communication › Phone and the sections of an HR record.',
+        'HR: Contracts, Invitations and Onboarding each have a search box.',
+        'Scheduling: Re-Scheduling counts as nearby only jobs in the offered time window or the one next to it, and moves a job at most 3 days.',
+        'Scheduling: a new Routing tab: pick an area and a day to see a route per technician on a map, with stops in order, miles and a Google Maps button; it says when a day needs more technicians than the area has, and lists jobs with no address.',
+        'Scheduling: Re-Scheduling tags repairs and redos, and opening a suggestion shows that day window by window with where the job would go.',
+        'Scheduling: a job with no pinned location uses the address Field has already located before falling back to its zip\'s centre.',
+        'Leads: a Workiz lead\'s status no longer says Google.',
+        'AI Assistance: the AI tab is a chat. Type at the bottom and the answer appears above it, written like the WhatsApp staff bot with capitals and emojis, followed by the Library entries it came from (click one to read it) and any branch it names, with Call and Map. The topics menu moved to Library.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0428',
+      date: '14 Oct 2026',
+      items: [
+        'Reports: Scoring opens on yesterday, has Today / Yesterday / 1 week / 1 month buttons, and shows each person\'s latest calls plus their best and worst, with scores and a search.',
+        'Sales: a new Sales tab tracks jobs that are done but pending approval, with stage, urgency, next follow-up and notes for each; Administrators see it, and other roles get it in Roles.',
+        'Leads: reconnecting Facebook or Instagram brings back that account\'s earlier enquiries.',
+        'WhatsApp: the staff bot\'s menus and answers start sentences with a capital and use topic emojis instead of dots.',
+        'Leads: website forms nobody has called back turn red like unanswered texts; new status Follow Up.',
+        'Field: job addresses are now located two weeks ahead, so maps and routes have exact pins sooner.',
+        'Integrations: every account type has its card, including Facebook Ads, so each can be connected from there.',
+        'Facebook: connecting your Facebook also brings your ad accounts, so ad spend shows in Reports.',
+        'HR: the onboarding list shows, in amber, how many required questions are still missing and on whose side; inside the form, each empty required question says Not filled in.',
+        'Financials: a new Financials tab, in place of Airtable, holds bases of tables with typed fields (currency, selects, rating, formula and more), saved views as a grid, kanban, calendar, gallery or form, CSV import and export, and starter templates; Administrators see it, and other roles get it in Roles.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0427',
       date: '13 Oct 2026',
       items: [
         'Work Hours: a clock-out and clock-in less than 5 minutes apart are one shift, including after an edit.',
         'Task Board: New board at the foot of the Board picker; a board\'s owner, or an Administrator, adds people as Owner, Member or Viewer and sets it Open or Private; ⚡ Automate on every board saves easy task rules (assign, notify, alert, set status, move to group) as real Automations rules for that board.',
-        'Automations: a rule can move a task to another group on its board.',
+        'Automations: a rule can move a task to another group on its board, and a board\'s owner can set up its Automate rules without the Automations permission.',
         'Scheduling: Re-Scheduling now warns "Make sure to confirm with the client before rescheduling", and Move asks "Do you wish to proceed with the change?" before anything changes in Workiz.',
+        'Scheduling: Re-Scheduling only suggests moves worth the call: the new slot is next to the nearby job\'s window, at most a week earlier or later, with the nearest job within 10 miles, and nothing booked in the next 48 hours is moved.',
       ],
     ),
     VersionRelease(

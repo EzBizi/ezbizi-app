@@ -34,6 +34,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!--
+      Download on a how-to video (Jose, 2026-10-14) saves it to the gallery
+      through `gal`. Android 10 and later need no permission for that; 8 and 9
+      (minSdk is 26) need this one, and only up to 29.
+    -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>
     <application
         android:label="EzBizi"
         android:name="${applicationName}"

@@ -53,6 +53,8 @@ class UiStrings {
         'Every vehicle, what it costs, and who is driving it.',
     'module.inventory.subtitle':
         'What you hold, where it is, and what it is worth.',
+    'module.financials.subtitle':
+        'Bases, tables and views for the numbers you keep yourself.',
     'module.services.subtitle':
         'What you sell, and what each one is priced at.',
     'module.monitoring.subtitle':

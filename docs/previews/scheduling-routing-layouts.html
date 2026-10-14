@@ -1,0 +1,396 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Scheduling · Routing and Re-Scheduling</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+<style>
+.rt{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--paper)}
+.rt.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rt.xtra{border-color:#c08a2b;background:#fff8ea}
+.rt .hd{display:flex;align-items:center;gap:8px;font-size:13px}
+.sw2{width:12px;height:12px;border-radius:3px;flex:0 0 auto;display:inline-block}
+.stop{display:flex;gap:8px;align-items:center;font-size:11.5px;padding:3px 0;border-top:1px dashed var(--line2)}
+.stop .n2{width:18px;height:18px;border-radius:50%;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.stop .tm{width:52px;font-weight:700;flex:0 0 auto}
+.stop .g2{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmap{font-size:11.5px;font-weight:700;color:var(--prid);white-space:nowrap}
+.miss{border:1px dashed #c08a2b;border-radius:var(--r);padding:8px 10px;font-size:12px;background:#fff8ea;display:flex;flex-direction:column;gap:3px}
+.board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;flex:1;min-height:0}
+.rtab{display:grid;grid-template-columns:150px 70px 70px minmax(0,1fr) 120px;gap:10px;align-items:center;font-size:12.5px;padding:8px 10px;border-top:1px solid var(--line2)}
+.rtab.h{font-size:11px;font-weight:700;color:var(--muted);border-top:0}
+.chips{display:flex;gap:4px;flex-wrap:wrap}.chips span{font-size:10.5px;border-radius:999px;padding:1px 7px;color:#fff}
+.tag{font-size:10.5px;font-weight:800;border-radius:999px;padding:1px 8px;white-space:nowrap}
+.tag.rep{background:#fde9cf;color:#7a4100}.tag.redo{background:#fbe0e0;color:#8e1b1b}
+.wins{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.wn{background:var(--ground);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:11.5px}
+.wn.fit{background:var(--okc);outline:2px solid var(--ok)}
+.wn .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.wj{background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 6px;display:flex;gap:6px;align-items:center}
+.wj.new{border:1.5px dashed var(--ok);background:#f2fbf4;font-weight:700}
+.tl{position:relative;height:46px;background:var(--ground);border-radius:8px}
+.tl i{position:absolute;top:8px;height:30px;border-radius:6px;background:#cfdde3;display:block;font-style:normal;font-size:10px;padding:2px 4px;overflow:hidden;white-space:nowrap}
+.tl i.new{background:var(--okc);border:1.5px dashed var(--ok)}
+</style>
+
+<div class="wrap">
+<h1>Scheduling › Routing, and Re-Scheduling's job types</h1>
+<p class="subt">Two of Jose's asks from today. A new <b>Routing</b> tab shows each day's recommended routes, one per technician. Re-Scheduling tags repairs and redos, and a row opens to show that day's jobs and where the moved one would fit. Every name, address and number here is invented.</p>
+<p class="cap">The server is Scheduling's (<code>GET /scheduling/routes?area_id&amp;date</code>). A technician takes at most 6 jobs a day. Each route has its stops in order with the time, the job and the customer, its miles (straight-line), and a <b>Google Maps</b> link that opens the real directions through those stops. Routes past the area's capacity are marked <b>needs another technician</b>. Jobs Workiz has no location for are listed under <b>No location</b>, so they aren't forgotten.</p>
+
+<!-- ───────── Routing desktop 1 ───────── -->
+<h2><span class="n">1</span> A map with a colour per route, and the routes beside it <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Area and date pickers like Overbooking's. The map draws each route as a coloured line through numbered stops. On the right, a card per technician: stops, miles and Open in Google Maps. Clicking a card brings its route forward on the map. Extra routes are amber, and No location sits at the foot.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span><span>Settings</span></div>
+ <div class="bar2"><span class="drop">Maple Grove ▾</span><span class="drop">Wed Oct 15 ▾</span><span class="tiny">22 jobs · 4 technicians available · 3 routes + 1 needs another technician</span><span class="sp"></span><span class="btn sm t">↻ Refresh</span></div>
+ <div class="cols">
+  <div class="map" style="flex:1">
+   <svg class="bg" viewBox="0 0 600 520" preserveAspectRatio="none"><path d="M0 120 L600 90 M0 380 L600 420 M170 0 L200 520 M420 0 L400 520" stroke="#fff" stroke-width="9"/><path d="M0 250 C160 220 360 300 600 260" stroke="#f6e7b8" stroke-width="12" fill="none"/>
+    <polyline points="90,80 140,130 190,110 230,170 260,140 300,190" fill="none" stroke="#00708f" stroke-width="4"/>
+    <polyline points="330,90 380,120 430,100 470,150 520,130 560,170" fill="none" stroke="#b5541b" stroke-width="4"/>
+    <polyline points="120,330 170,300 220,350 270,320 320,370 360,340" fill="none" stroke="#6b4fa3" stroke-width="4"/>
+    <polyline points="420,330 460,370 500,350 540,400" fill="none" stroke="#c08a2b" stroke-width="4" stroke-dasharray="8 6"/></svg>
+   <div class="zoom"><span>+</span><span>−</span><span>⤢</span></div>
+   <div class="tip small" style="left:12px;bottom:10px">● Technician 1 · ● 2 · ● 3 · ┅ needs another technician</div>
+  </div>
+  <div class="side" style="width:390px;overflow:hidden">
+   <div class="rt sel"><div class="hd"><span class="sw2" style="background:#00708f"></span><b>Technician 1</b><span class="tiny">6 stops · 18.4 mi</span><span class="sp"></span><span class="gmap">Open in Google Maps ↗</span></div>
+    <div class="stop"><span class="n2" style="background:#00708f">1</span><span class="tm">8–10</span><span class="g2">#4127 Chimney sweep · Ana Ruiz · 1180 Larkspur Ln</span></div>
+    <div class="stop"><span class="n2" style="background:#00708f">2</span><span class="tm">8–10</span><span class="g2">#4102 Inspection · Marta Silva · 22 Birch Ct</span></div>
+    <div class="stop"><span class="n2" style="background:#00708f">3</span><span class="tm">10–12</span><span class="g2">#4131 Dryer vent · Leo Brandt · 9 Quarry Rd</span></div>
+    <div class="stop"><span class="n2" style="background:#00708f">4</span><span class="tm">12–2</span><span class="g2">#4144 Cap install · Nadia Petrov · 310 Elm St</span></div>
+    <span class="tiny">+ 2 more stops</span></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#b5541b"></span><b>Technician 2</b><span class="tiny">6 stops · 21.0 mi</span><span class="sp"></span><span class="gmap">Open in Google Maps ↗</span></div></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#6b4fa3"></span><b>Technician 3</b><span class="tiny">6 stops · 15.7 mi</span><span class="sp"></span><span class="gmap">Open in Google Maps ↗</span></div></div>
+   <div class="rt xtra"><div class="hd"><span class="sw2" style="background:#c08a2b"></span><b>Technician 4</b><span class="pill p-neu" style="background:#fde9cf;color:#7a4100">needs another technician</span><span class="sp"></span><span class="gmap">Maps ↗</span></div><span class="tiny">4 stops past the area's 3 technicians · 9.2 mi</span></div>
+   <div class="miss"><b>No location · 2</b><span>#4158 Inspection · Omar Haddad, Workiz has no address</span><span>#4163 Chimney sweep · Pia Lund</span></div>
+  </div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Routing desktop 2 ───────── -->
+<h2><span class="n">2</span> Routes as columns, like a board</h2>
+<p class="cap">One column per technician with its stops as cards, top to bottom. The map is a toggle above the columns. It's the clearest way to compare loads; the geography is one click away.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span><span>Settings</span></div>
+ <div class="bar2"><span class="drop">Maple Grove ▾</span><span class="drop">Wed Oct 15 ▾</span><span class="sp"></span><span class="seg"><span class="on">Routes</span><span>Map</span></span></div>
+ <div class="board">
+  <div class="lane"><h4><span class="sw2" style="background:#00708f"></span>Technician 1<span class="tiny">18.4 mi</span></h4>
+   <div class="jb"><span class="t">1 · 8–10</span>#4127 Ana Ruiz</div><div class="jb"><span class="t">2 · 8–10</span>#4102 Marta Silva</div><div class="jb"><span class="t">3 · 10–12</span>#4131 Leo Brandt</div><div class="jb"><span class="t">4 · 12–2</span>#4144 Nadia Petrov</div><div class="jb"><span class="t">5 · 2–4</span>#4150 Quinn Hart</div><div class="jb"><span class="t">6 · 2–4</span>#4152 Rosa Imani</div><span class="gmap">Open in Google Maps ↗</span></div>
+  <div class="lane"><h4><span class="sw2" style="background:#b5541b"></span>Technician 2<span class="tiny">21.0 mi</span></h4>
+   <div class="jb"><span class="t">1 · 8–10</span>#4133 Ben Okafor</div><div class="jb"><span class="t">2 · 10–12</span>#4119 Farid Nasser</div><div class="jb"><span class="t">3 · 10–12</span>#4138 Sora Kim</div><div class="jb"><span class="t">4 · 12–2</span>#4141 Tomas Weil</div><div class="jb"><span class="t">5 · 2–4</span>#4147 Uma Rao</div><div class="jb"><span class="t">6 · 4–6</span>#4149 Viktor Dahl</div><span class="gmap">Open in Google Maps ↗</span></div>
+  <div class="lane"><h4><span class="sw2" style="background:#6b4fa3"></span>Technician 3<span class="tiny">15.7 mi</span></h4>
+   <div class="jb"><span class="t">1 · 8–10</span>#4140 Clara Moss</div><div class="jb"><span class="t">2 · 10–12</span>#4160 Gwen Abernathy</div><div class="jb"><span class="t">3 · 12–2</span>#4162 Hiro Tanaka</div><div class="jb"><span class="t">4 · 12–2</span>#4165 Wren Ochoa</div><div class="jb"><span class="t">5 · 2–4</span>#4167 Xavi Puig</div><div class="jb"><span class="t">6 · 4–6</span>#4169 Yara Bello</div><span class="gmap">Open in Google Maps ↗</span></div>
+  <div class="lane" style="border-color:#c08a2b;background:#fff8ea"><h4><span class="sw2" style="background:#c08a2b"></span>Technician 4<span class="pill p-neu" style="background:#fde9cf;color:#7a4100">needs another</span></h4>
+   <div class="jb"><span class="t">1 · 10–12</span>#4171 Zoe Marr</div><div class="jb"><span class="t">2 · 12–2</span>#4173 Abel Cruz</div><div class="jb"><span class="t">3 · 2–4</span>#4175 Bea Lowe</div><div class="jb"><span class="t">4 · 4–6</span>#4177 Cyrus Vale</div>
+   <div class="jb ghost">No location: #4158, #4163</div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Routing desktop 3 ───────── -->
+<h2><span class="n">3</span> One row per route, the map underneath</h2>
+<p class="cap">A compact table: technician, stops, miles, the stops as coloured chips in order, and Open in Google Maps. The map fills the space below it, so it reads like a dispatcher's sheet.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span><span>Settings</span></div>
+ <div class="bar2"><span class="drop">Maple Grove ▾</span><span class="drop">Wed Oct 15 ▾</span></div>
+ <div class="card" style="padding:4px 4px;gap:0">
+  <div class="rtab h"><span>Route</span><span>Stops</span><span>Miles</span><span>In order</span><span></span></div>
+  <div class="rtab"><b><span class="sw2" style="background:#00708f"></span> Technician 1</b><span>6</span><span>18.4</span><span class="chips"><span style="background:#00708f">8 Ruiz</span><span style="background:#00708f">8 Silva</span><span style="background:#00708f">10 Brandt</span><span style="background:#00708f">12 Petrov</span><span style="background:#00708f">2 Hart</span><span style="background:#00708f">2 Imani</span></span><span class="gmap">Google Maps ↗</span></div>
+  <div class="rtab"><b><span class="sw2" style="background:#b5541b"></span> Technician 2</b><span>6</span><span>21.0</span><span class="chips"><span style="background:#b5541b">8 Okafor</span><span style="background:#b5541b">10 Nasser</span><span style="background:#b5541b">10 Kim</span><span style="background:#b5541b">12 Weil</span><span style="background:#b5541b">2 Rao</span><span style="background:#b5541b">4 Dahl</span></span><span class="gmap">Google Maps ↗</span></div>
+  <div class="rtab"><b><span class="sw2" style="background:#6b4fa3"></span> Technician 3</b><span>6</span><span>15.7</span><span class="chips"><span style="background:#6b4fa3">8 Moss</span><span style="background:#6b4fa3">10 Abernathy</span><span style="background:#6b4fa3">12 Tanaka</span><span style="background:#6b4fa3">12 Ochoa</span><span style="background:#6b4fa3">2 Puig</span><span style="background:#6b4fa3">4 Bello</span></span><span class="gmap">Google Maps ↗</span></div>
+  <div class="rtab" style="background:#fff8ea"><b><span class="sw2" style="background:#c08a2b"></span> Technician 4</b><span>4</span><span>9.2</span><span class="chips"><span style="background:#c08a2b">10 Marr</span><span style="background:#c08a2b">12 Cruz</span><span style="background:#c08a2b">2 Lowe</span><span style="background:#c08a2b">4 Vale</span></span><span class="pill p-neu" style="background:#fde9cf;color:#7a4100">needs another technician</span></div>
+  <div class="rtab"><b class="muted">No location</b><span>2</span><span>—</span><span class="tiny">#4158 Omar Haddad · #4163 Pia Lund</span><span></span></div>
+ </div>
+ <div class="map" style="flex:1"><svg class="bg" viewBox="0 0 900 260" preserveAspectRatio="none"><path d="M0 60 L900 40 M0 200 L900 220 M260 0 L290 260 M620 0 L600 260" stroke="#fff" stroke-width="8"/><polyline points="80,50 140,80 200,60 250,110 300,90 350,130" fill="none" stroke="#00708f" stroke-width="4"/><polyline points="480,50 540,80 600,60 660,100 720,80 780,120" fill="none" stroke="#b5541b" stroke-width="4"/><polyline points="120,180 200,160 260,200 330,170 400,210 460,190" fill="none" stroke="#6b4fa3" stroke-width="4"/><polyline points="620,180 680,210 740,190 800,230" fill="none" stroke="#c08a2b" stroke-width="4" stroke-dasharray="8 6"/></svg><div class="zoom"><span>+</span><span>−</span><span>⤢</span></div></div>
+</div></div></div>
+
+<!-- ───────── Routing phones ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> Routing on a phone</h2>
+<p class="cap"><b>4</b> (recommended): the pickers, the map with every route, then a card per route. Tapping a card opens its stops in the tab with Open in Google Maps. <b>5</b>: one route at a time, flicked with ‹ ›. <b>6</b>: the list only, no map, Google Maps on every card.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · map, then routes <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span></div>
+   <div class="bar2"><span class="drop" style="height:32px;font-size:12px">Maple Grove ▾</span><span class="drop" style="height:32px;font-size:12px">Wed 15 ▾</span></div>
+   <div class="map" style="height:170px"><svg class="bg" viewBox="0 0 300 170" preserveAspectRatio="none"><path d="M0 40 L300 25 M0 130 L300 145 M90 0 L105 170" stroke="#fff" stroke-width="6"/><polyline points="30,30 60,55 90,45 120,70" fill="none" stroke="#00708f" stroke-width="3"/><polyline points="160,30 190,50 220,40 260,65" fill="none" stroke="#b5541b" stroke-width="3"/><polyline points="40,110 80,95 120,120 160,105" fill="none" stroke="#6b4fa3" stroke-width="3"/><polyline points="200,110 230,130 270,120" fill="none" stroke="#c08a2b" stroke-width="3" stroke-dasharray="6 4"/></svg><div class="zoom"><span>+</span><span>−</span></div></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#00708f"></span><b>Technician 1</b><span class="sp"></span><span class="tiny">6 · 18.4 mi</span></div><span class="tiny">8–10 Ruiz → Silva → Brandt → Petrov…</span></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#b5541b"></span><b>Technician 2</b><span class="sp"></span><span class="tiny">6 · 21.0 mi</span></div></div>
+   <div class="rt xtra"><div class="hd"><span class="sw2" style="background:#c08a2b"></span><b>Technician 4</b><span class="sp"></span><span class="tag rep">needs another</span></div></div>
+   <div class="miss"><b>No location · 2</b></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">4 · a route opened</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <span class="back">← Routing</span>
+   <div class="hd" style="display:flex;gap:8px;align-items:center"><span class="sw2" style="background:#00708f"></span><b>Technician 1 · 6 stops · 18.4 mi</b></div>
+   <div class="stop"><span class="n2" style="background:#00708f">1</span><span class="tm">8–10</span><span class="g2">#4127 Ana Ruiz · Chimney sweep</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">2</span><span class="tm">8–10</span><span class="g2">#4102 Marta Silva · Inspection</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">3</span><span class="tm">10–12</span><span class="g2">#4131 Leo Brandt · Dryer vent</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">4</span><span class="tm">12–2</span><span class="g2">#4144 Nadia Petrov · Cap install</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">5</span><span class="tm">2–4</span><span class="g2">#4150 Quinn Hart · Chimney sweep</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">6</span><span class="tm">2–4</span><span class="g2">#4152 Rosa Imani · Inspection</span></div>
+   <span class="btn f">Open in Google Maps ↗</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · one route at a time</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span></div>
+   <div class="bar2"><span class="tiny b">Technician 1 of 4</span><span class="sp"></span><span class="btn sm">‹</span><span class="btn sm">›</span></div>
+   <div class="map" style="height:150px"><svg class="bg" viewBox="0 0 300 150" preserveAspectRatio="none"><path d="M0 40 L300 25 M0 115 L300 130" stroke="#fff" stroke-width="6"/><polyline points="40,30 90,60 130,45 180,80 220,65 260,100" fill="none" stroke="#00708f" stroke-width="4"/></svg></div>
+   <div class="stop"><span class="n2" style="background:#00708f">1</span><span class="tm">8–10</span><span class="g2">Ana Ruiz</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">2</span><span class="tm">8–10</span><span class="g2">Marta Silva</span></div>
+   <div class="stop"><span class="n2" style="background:#00708f">3</span><span class="tm">10–12</span><span class="g2">Leo Brandt</span></div>
+   <span class="btn f">Open in Google Maps ↗</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · the list only</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Re-Scheduling</span><span class="on">Routing</span><span>Locations</span></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#00708f"></span><b>Technician 1 · 6</b><span class="sp"></span><span class="gmap">Maps ↗</span></div><span class="tiny">Ruiz, Silva, Brandt, Petrov, Hart, Imani · 18.4 mi</span></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#b5541b"></span><b>Technician 2 · 6</b><span class="sp"></span><span class="gmap">Maps ↗</span></div><span class="tiny">Okafor, Nasser, Kim, Weil, Rao, Dahl · 21.0 mi</span></div>
+   <div class="rt"><div class="hd"><span class="sw2" style="background:#6b4fa3"></span><b>Technician 3 · 6</b><span class="sp"></span><span class="gmap">Maps ↗</span></div><span class="tiny">Moss, Abernathy, Tanaka, Ochoa, Puig, Bello</span></div>
+   <div class="rt xtra"><div class="hd"><span class="sw2" style="background:#c08a2b"></span><b>Technician 4 · 4</b><span class="sp"></span><span class="tag rep">needs another</span></div></div>
+  </div></div></div>
+</div>
+
+<!-- ───────── Re-Scheduling 7 ───────── -->
+<h2><span class="n">7</span> Re-Scheduling: job-type tags, and a row that opens onto its day <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Repairs and redos are still listed, now tagged <span class="tag rep">Chimney Repair</span> <span class="tag redo">Redo</span> so the dispatcher sees them at a glance. Clicking a row opens it in place: the suggested day's windows, each with its spots taken and left, the jobs already in it (their type, time and miles), and the moved job drawn dashed in the window it would take.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">Scheduling</div>
+ <div class="tabs"><span>Availability</span><span>Schedule</span><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Routing</span><span>Locations</span><span>Settings</span></div>
+ <div class="card" style="flex:1;padding:6px 6px;gap:0;overflow:hidden">
+  <div class="hdr"><span>Job</span><span>Move</span><span>Nearest job</span><span style="text-align:right">Saves</span></div>
+  <div class="mv sel"><div class="g"><b>#4127 · Chimney sweep</b><span>Ana Ruiz · Maple Grove</span></div><div class="arrow"><span class="from">Tue 14 · 8–10</span>→<span class="to">Thu 16 · 10–12</span></div><div class="g"><b>alone → 0.8 mi</b><span>beside 3 jobs</span></div><div class="save">alone ▴</div></div>
+  <div style="padding:8px 10px 12px;border-top:1px solid var(--line2);display:flex;flex-direction:column;gap:8px">
+   <span class="tiny"><b>Thu Oct 16 in Maple Grove</b> · 9 jobs booked · 3 spots left</span>
+   <div class="wins">
+    <div class="wn"><span class="k">8–10 · 3 of 3 taken</span><div class="slots"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="wj">#4102 Inspection · 0.8 mi</div><div class="wj">#4111 Chimney sweep · 1.4 mi</div><div class="wj"><span class="tag rep">Chimney Repair</span> 2.1 mi</div></div>
+    <div class="wn fit"><span class="k">10–12 · 2 of 3 taken</span><div class="slots"><i class="on"></i><i class="on"></i><i class="cur"></i></div><div class="wj">#4135 Dryer vent · 1.0 mi</div><div class="wj">#4137 Inspection · 1.9 mi</div><div class="wj new">#4127 would go here</div></div>
+    <div class="wn"><span class="k">12–2 · 2 of 3 taken</span><div class="slots"><i class="on"></i><i class="on"></i><i></i></div><div class="wj"><span class="tag redo">Redo</span> 3.2 mi</div><div class="wj">#4142 Cap install · 2.6 mi</div></div>
+    <div class="wn"><span class="k">2–4 · 2 of 3 taken</span><div class="slots"><i class="on"></i><i class="on"></i><i></i></div><div class="wj">#4146 Chimney sweep · 4.0 mi</div><div class="wj">#4148 Inspection · 3.7 mi</div></div>
+   </div>
+   <div class="foot"><span class="sp"></span><span class="btn">Open the job</span><span class="btn f">Move…</span></div>
+  </div>
+  <div class="mv"><div class="g"><b>#4133 · Chimney Repair <span class="tag rep">Repair</span></b><span>Ben Okafor · Cedar Falls</span></div><div class="arrow"><span class="from">Wed 15 · 12–2</span>→<span class="to">Wed 22 · 8–10</span></div><div class="g"><b>14.2 → 1.1 mi</b><span>beside 2 jobs</span></div><div class="save">13.1 mi ▾</div></div>
+  <div class="mv"><div class="g"><b>#4140 · Redo <span class="tag redo">Redo</span></b><span>Clara Moss · Riverbend</span></div><div class="arrow"><span class="from">Mon 20 · 2–4</span>→<span class="to">Fri 17 · 12–2</span></div><div class="g"><b>11.7 → 0.4 mi</b><span>beside 4 jobs</span></div><div class="save">11.3 mi ▾</div></div>
+  <div class="mv"><div class="g"><b>#4108 · Cap install</b><span>Dmitri Volkov · Maple Grove</span></div><div class="arrow"><span class="from">Thu 16 · 2–4</span>→<span class="to">Tue 21 · 10–12</span></div><div class="g"><b>9.8 → 2.0 mi</b><span>beside 1 job</span></div><div class="save">7.8 mi ▾</div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Re-Scheduling 8 ───────── -->
+<h2><span class="n">8</span> Re-Scheduling: the day as a timeline</h2>
+<p class="cap">The same tags. An opened row shows the suggested day as one bar from morning to evening, with each job a block and the moved one dashed. It's quicker to read, but it shows less about each job.</p>
+<div class="win" style="height:330px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="card" style="padding:6px 6px;gap:0">
+  <div class="mv sel"><div class="g"><b>#4133 · Chimney Repair <span class="tag rep">Repair</span></b><span>Ben Okafor · Cedar Falls</span></div><div class="arrow"><span class="from">Wed 15 · 12–2</span>→<span class="to">Wed 22 · 8–10</span></div><div class="g"><b>14.2 → 1.1 mi</b><span>beside 2 jobs</span></div><div class="save">13.1 mi ▴</div></div>
+  <div style="padding:8px 10px 12px;display:flex;flex-direction:column;gap:6px"><span class="tiny"><b>Wed Oct 22 in Cedar Falls</b> · 7 jobs · 5 spots left</span>
+   <div class="tl"><i style="left:1%;width:11%">#4180 sweep</i><i class="new" style="left:13%;width:11%">#4133 here</i><i style="left:26%;width:11%">#4182 insp.</i><i style="left:39%;width:11%">#4185 vent</i><i style="left:52%;width:11%">Redo</i><i style="left:65%;width:11%">#4190 cap</i><i style="left:78%;width:11%">#4192 sweep</i></div>
+   <span class="tiny">8 · · · 10 · · · 12 · · · 2 · · · 4 · · · 6</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── Re-Scheduling phone 9 ───────── -->
+<h2><span class="n">9</span> Re-Scheduling on a phone <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Each card carries its tag. Tapping one opens the day under it, window by window, the same content as 7.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">9 · a card opened</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Scheduling</span></div><div class="pb">
+   <div class="tabs" style="overflow:hidden"><span>Overbooking</span><span class="on">Re-Scheduling</span><span>Routing</span></div>
+   <div class="rc sel"><div class="hd"><b>#4133 · Ben Okafor</b><span class="sp"></span><span class="tag rep">Chimney Repair</span></div><div class="arrow"><span class="from">Wed 15 · 12–2</span>→<span class="to">Wed 22 · 8–10</span></div>
+    <div class="wn fit"><span class="k">8–10 · 1 of 3 taken</span><div class="wj">#4180 Chimney sweep · 0.6 mi</div><div class="wj new">#4133 would go here</div></div>
+    <div class="wn"><span class="k">10–12 · 2 of 3</span><div class="wj">#4182 Inspection · 1.1 mi</div><div class="wj">#4185 Dryer vent · 2.0 mi</div></div>
+    <div class="wn"><span class="k">12–2 · 1 of 3</span><div class="wj"><span class="tag redo">Redo</span> 2.4 mi</div></div>
+    <span class="btn f">Move…</span></div>
+   <div class="rc"><div class="hd"><b>#4140 · Clara Moss</b><span class="sp"></span><span class="tag redo">Redo</span></div><div class="arrow"><span class="from">Mon 20 · 2–4</span>→<span class="to">Fri 17 · 12–2</span></div></div>
+  </div></div></div>
+</div>
+<p class="cap" style="margin-top:10px">Owners: Scheduling built the routes server (<code>a95f30f6</code>, with the Routing tab and its permission). UI/UX builds the screens. Re-Scheduling needs no server change.</p>
+</div>

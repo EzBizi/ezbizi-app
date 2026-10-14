@@ -127,6 +127,7 @@ class _TechnicianLinksState extends State<TechnicianLinks> {
       error: _error,
       onRetry: _load,
       child: ListView(
+        key: const ValueKey('tour-scheduling-technicians'),
         padding: const EdgeInsets.all(16),
         children: [
           Text('Workiz technicians', style: theme.textTheme.titleMedium),
@@ -139,6 +140,7 @@ class _TechnicianLinksState extends State<TechnicianLinks> {
           ),
           const SizedBox(height: 12),
           Wrap(
+            key: const ValueKey('tour-scheduling-technicians-find'),
             spacing: 8,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,

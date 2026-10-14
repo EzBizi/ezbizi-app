@@ -128,6 +128,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
           child: Row(
             children: [
               FilterChip(
+                key: const ValueKey('tour-business-profile-not-showing'),
                 label: Text(
                   _notLive > 0 ? 'Not showing ($_notLive)' : 'Not showing',
                 ),
@@ -153,6 +154,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         ),
         if (_profile != null)
           ConnectedAccount(
+            key: const ValueKey('tour-business-profile-account'),
             api: widget.api,
             connection: _profile!,
             onDisconnected: _load,
@@ -185,6 +187,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Widget _empty(ThemeData theme) {
     return Center(
+      key: const ValueKey('tour-business-profile-empty'),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
@@ -234,6 +237,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Widget _list(ThemeData theme) {
     return ListView.separated(
+      key: const ValueKey('tour-business-profile-listings'),
       itemCount: _locations.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {

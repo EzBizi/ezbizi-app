@@ -96,6 +96,7 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
         'Settings',
         Icons.tune,
         () => SettingsScreen(
+          key: const ValueKey('tour-ai_assistance-settings'),
           api: widget.api,
           session: widget.session,
           onlyGroup: 'ai_assistance',
@@ -199,13 +200,16 @@ final _compact = ButtonStyle(
   ),
 );
 
-/// The assistant, in the app (UI queue 40, Jose's 1 and 4): topics down the
-/// left, the answer in the middle with where it came from, and what the Ask
-/// field finds on the right — branches as cards with Call and Map, over the
-/// questions asked today. On a phone the same steps are pages with ← back.
+/// The assistant, in the app, as a conversation (UI queue 91, Jose's 1, 4 and
+/// 7; Jose, 2026-10-14: "the "AI" tab and that menu on the left aren't really
+/// meant to be together. The AI tab should just be the ask bar at the bottom,
+/// sort of like here where i can ask you stuff and the reply goes on top").
 ///
-/// The answers are the Library's own words; nothing here writes them. The
-/// search is the WhatsApp line's (`/ai-assistance/ask`), not an AI.
+/// Each question asks the Library (`/ai-assistance/ask`, the WhatsApp line's
+/// search) and AI (`/ai-assistance/answer`) at once. The answer is AI's words,
+/// the Library entries it came from as chips that open the entry, and any
+/// branch the words named, with Call and Map. The topics now live in Library.
+/// The conversation lasts while the app is open.
 class AssistantTab extends StatefulWidget {
   const AssistantTab({
     super.key,
@@ -224,171 +228,99 @@ class AssistantTab extends StatefulWidget {
   State<AssistantTab> createState() => _AssistantTabState();
 }
 
-/// A question asked today. ponytail: kept while the app is open; a list
-/// preference would keep it across sign-ins if anyone asks.
-class _Asked {
-  _Asked(this.query, this.found, this.at);
+/// One question and what came back for it.
+class _Turn {
+  _Turn(this.query);
 
   final String query;
-  final Map<String, dynamic> found;
-  final DateTime at;
 
-  List<dynamic> get answers => found['answers'] as List<dynamic>? ?? const [];
-  List<dynamic> get sites => found['locations'] as List<dynamic>? ?? const [];
+  /// The Library's matches and branches, once `/ask` answers.
+  Map<String, dynamic>? found;
 
-  String get summary {
-    if (answers.length == 1) return answers.single['title'] as String;
-    if (answers.isNotEmpty) return '${answers.length} answers';
-    if (sites.isNotEmpty) {
-      return sites.length == 1 ? '1 branch' : '${sites.length} branches';
-    }
-    return 'Nothing found';
-  }
+  /// AI's answer, once `/answer` does; null when it could not.
+  String? reply;
+  bool thinking = true;
+  String? error;
+
+  List<dynamic> get answers => found?['answers'] as List<dynamic>? ?? const [];
+  List<dynamic> get sites => found?['locations'] as List<dynamic>? ?? const [];
 }
 
 class _AssistantTabState extends State<AssistantTab> {
-  Map<String, dynamic>? _menu;
-  String? _error;
   final _query = TextEditingController();
   final _queryFocus = FocusNode();
-  String? _askError;
-  bool _asking = false;
+  final _scroll = ScrollController();
 
-  /// Grok's answer from the Library for the last question, and whether it is
-  /// still being asked (Jose, 2026-10-12: "Grok answers in own words").
-  String? _aiReply;
-  bool _aiAsking = false;
+  /// Oldest first, as a conversation reads.
+  final List<_Turn> _turns = [];
 
-  /// Newest first.
-  final List<_Asked> _asked = [];
-
-  /// The question whose results are on screen.
-  _Asked? _current;
-
-  /// The answer open in the middle, by id.
-  String? _open;
-
-  /// Sections unfolded on the left.
-  final Set<String> _unfolded = {};
-
-  bool _allSites = false;
-
-  /// The phone's pages, deepest last: `section:NAME`, `answer:ID` or
-  /// `results`. Empty is the topics list.
-  final List<String> _pages = [];
+  /// The Library's topics, offered as first questions.
+  List<String> _topics = const [];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadTopics();
   }
 
   @override
   void dispose() {
     _query.dispose();
     _queryFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadTopics() async {
     final response = await widget.api.get('/ai-assistance/menu');
-    if (!mounted) return;
+    if (!mounted || !response.ok) return;
+    final data = response.data;
     setState(() {
-      _menu = response.ok ? response.data as Map<String, dynamic> : null;
-      _error = response.ok ? null : response.message;
+      _topics = [
+        for (final s in (data is Map ? data['sections'] : null) as List? ??
+            const [])
+          if (s is Map && s['section'] is String) s['section'] as String,
+      ].take(4).toList();
     });
   }
 
-  List<dynamic> get _sections =>
-      _menu?['sections'] as List<dynamic>? ?? const [];
-
-  /// An answer and the section it sits in, by id: as the last Ask found it
-  /// when it did, with its section looked up in the menu (Ask sends none).
-  (Map<String, dynamic>, String?)? _entry(String id) {
-    Map<String, dynamic>? found;
-    String? section;
-    for (final s in _sections) {
-      for (final e in s['entries'] as List<dynamic>) {
-        if (e['id'] == id) (found, section) = (e, s['section'] as String);
-      }
-    }
-    for (final e in _current?.answers ?? const []) {
-      if (e['id'] == id) found = e as Map<String, dynamic>;
-    }
-    return found == null ? null : (found, section);
-  }
-
-  /// The same search the WhatsApp line runs on typed words: answers first,
-  /// then the places the words name.
-  Future<void> _ask([String? again]) async {
-    final q = (again ?? _query.text).trim();
+  Future<void> _ask([String? text]) async {
+    final q = (text ?? _query.text).trim();
     if (q.length < 2) return;
-    if (again != null) _query.text = again;
-    setState(() => _asking = true);
-    final response = await widget.api.get('/ai-assistance/ask', {'q': q});
+    _query.clear();
+    final turn = _Turn(q);
+    setState(() => _turns.add(turn));
+    _toBottom();
+
+    // Both at once: the Library answers in milliseconds, AI in seconds.
+    final answer = widget.api.get('/ai-assistance/answer', {'q': q});
+    final found = await widget.api.get('/ai-assistance/ask', {'q': q});
     if (!mounted) return;
     setState(() {
-      _asking = false;
-      _askError = response.ok ? null : response.reason;
-      if (!response.ok) return;
-      final asked = _Asked(
-        q,
-        response.data as Map<String, dynamic>,
-        DateTime.now(),
-      );
-      _asked
-        ..removeWhere((a) => a.query.toLowerCase() == q.toLowerCase())
-        ..insert(0, asked);
-      _current = asked;
-      _allSites = false;
-      // One answer opens, as on WhatsApp.
-      _open = asked.answers.length == 1
-          ? asked.answers.single['id'] as String?
-          : null;
-      _pages
-        ..clear()
-        ..add('results');
+      turn.found = found.ok
+          ? found.data as Map<String, dynamic>
+          : const <String, dynamic>{};
+      if (!found.ok) turn.error = found.reason;
     });
-    _askAi(q);
+    final ai = await answer;
+    if (!mounted) return;
+    setState(() {
+      turn.thinking = false;
+      final data = ai.ok ? ai.data : null;
+      turn.reply = data is Map ? data['reply'] as String? : null;
+    });
+    _toBottom();
   }
 
-  /// Asked after the matches show, since Grok takes seconds. A later question
-  /// replaces it; a stale answer is dropped.
-  Future<void> _askAi(String q) async {
-    setState(() {
-      _aiReply = null;
-      _aiAsking = true;
-    });
-    final response = await widget.api.get('/ai-assistance/answer', {'q': q});
-    if (!mounted || _current?.query != q) return;
-    setState(() {
-      _aiAsking = false;
-      final data = response.ok ? response.data : null;
-      _aiReply = data is Map ? data['reply'] as String? : null;
-    });
-  }
-
-  void _openAnswer(String id, {bool push = true}) => setState(() {
-    _open = id;
-    if (push) _pages.add('answer:$id');
+  /// The newest answer in view, as a chat keeps it.
+  void _toBottom() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   });
-
-  void _openSection(Map<String, dynamic> section, {required bool phone}) {
-    final entries = section['entries'] as List<dynamic>;
-    final name = section['section'] as String;
-    // A section with one answer is that answer.
-    if (entries.length == 1) {
-      _openAnswer(entries.single['id'] as String, push: phone);
-      return;
-    }
-    setState(() {
-      if (phone) {
-        _pages.add('section:$name');
-      } else if (!_unfolded.remove(name)) {
-        _unfolded.add(name);
-      }
-    });
-  }
 
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
@@ -416,495 +348,302 @@ class _AssistantTabState extends State<AssistantTab> {
       );
       return;
     }
-    final saved = await showSidePanel<bool>(
+    await showSidePanel<bool>(
       context,
       builder: (_) =>
           _EntryDialog(api: widget.api, session: session, entry: entry),
     );
-    if (saved == true) _load();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final menu = _menu;
-
-    if (_error != null) return Center(child: Text(_error!));
-    if (menu == null) return const Center(child: CircularProgressIndicator());
-
-    return LayoutBuilder(
-      builder: (context, box) =>
-          box.maxWidth >= 1100 ? _wide(context, menu) : _phone(context, menu),
-    );
-  }
-
-  // ── desktop: topics | answer | branches ───────────────────────────
-
-  Widget _wide(BuildContext context, Map<String, dynamic> menu) {
-    final theme = Theme.of(context);
-    final side = theme.colorScheme.surfaceContainerLow;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          width: 300,
-          color: side,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-            children: [
-              _bot(context, menu),
-              const SizedBox(height: 16),
-              _label(context, 'Topics'),
-              if (_sections.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text('No answers yet. Add them on the Library tab.'),
-                ),
-              for (final section in _sections) ..._topic(context, section),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  'A section with one answer opens it. Branches: type a '
-                  'city, a state or a branch code above.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            ],
+  /// A Library entry, read whole, with Copy and (for editors) Edit.
+  Future<void> _read(Map<String, dynamic> e) => showSidePanel<void>(
+    context,
+    builder: (panel) => SidePanel(
+      title: e['title'] as String? ?? 'From the Library',
+      subtitle: 'From the Library',
+      actions: [
+        TextButton.icon(
+          onPressed: () => _copy(
+            '${e['title']}\n\n${plainAnswer(e['body'] as String? ?? '')}',
           ),
+          icon: const Icon(Icons.copy_outlined, size: 16),
+          label: const Text('Copy'),
         ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _askField(context),
-                      _status(context),
-                      const SizedBox(height: 12),
-                      ..._middle(context),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+        if (widget.canEdit && widget.session != null)
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.of(panel).pop();
+              _edit(e['id'] as String);
+            },
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: const Text('Edit in Library'),
           ),
-        ),
-        Container(
-          width: 340,
-          color: side,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-            children: [
-              ..._branches(context),
-              if (_asked.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                _label(context, 'Asked today'),
-                for (final asked in _asked) _askedRow(context, asked),
-              ],
-            ],
-          ),
-        ),
       ],
-    );
-  }
-
-  List<Widget> _topic(BuildContext context, dynamic section) {
-    final name = section['section'] as String;
-    final entries = section['entries'] as List<dynamic>;
-    final single = entries.length == 1;
-    final unfolded =
-        _unfolded.contains(name) ||
-        (!single && entries.any((e) => e['id'] == _open));
-
-    return [
-      _row(
-        context,
-        key: Key('topic-$name'),
-        icon: single
-            ? Icons.description_outlined
-            : unfolded
-            ? Icons.expand_more
-            : Icons.chevron_right,
-        text: name,
-        trailing: single ? null : '${entries.length}',
-        bold: true,
-        selected: single && entries.single['id'] == _open,
-        onTap: () =>
-            _openSection(section as Map<String, dynamic>, phone: false),
-      ),
-      if (!single && unfolded)
-        for (final e in entries)
-          Padding(
-            padding: const EdgeInsets.only(left: 22),
-            child: _row(
-              context,
-              key: Key('answer-${e['id']}'),
-              text: e['title'] as String,
-              selected: e['id'] == _open,
-              onTap: () => _openAnswer(e['id'] as String, push: false),
-            ),
-          ),
-    ];
-  }
-
-  Widget _row(
-    BuildContext context, {
-    Key? key,
-    IconData? icon,
-    required String text,
-    String? trailing,
-    bool bold = false,
-    bool selected = false,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
-    return Material(
-      key: key,
-      color: selected ? theme.colorScheme.primaryContainer : Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        borderRadius: radius,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Text(
-                  text,
-                  style:
-                      (bold
-                              ? theme.textTheme.titleSmall
-                              : theme.textTheme.bodyMedium)
-                          ?.copyWith(
-                            color: selected ? theme.colorScheme.primary : null,
-                          ),
-                ),
-              ),
-              if (trailing != null)
-                Text(trailing, style: theme.textTheme.bodySmall),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _middle(BuildContext context) {
-    final theme = Theme.of(context);
-    final open = _open == null ? null : _entry(_open!);
-    final found = _current?.answers ?? const [];
-
-    if (open != null) return [_answer(context, open.$1, open.$2)];
-
-    if (found.length > 1) {
-      return [
-        for (final e in found)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              title: Text(e['title'] as String),
-              subtitle: e['description'] == null
-                  ? null
-                  : Text(e['description'] as String),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openAnswer(e['id'] as String, push: false),
-            ),
-          ),
-      ];
-    }
-
-    return [
-      Padding(
-        padding: const EdgeInsets.only(top: 24),
-        child: Text(
-          'Pick a topic on the left, or ask above.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium,
-        ),
-      ),
-    ];
-  }
-
-  // ── the pieces both layouts share ────────────────────────────────
-
-  Widget _bot(BuildContext context, Map<String, dynamic> menu) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 16,
-          backgroundColor: theme.colorScheme.primaryContainer,
-          child: Icon(
-            Icons.smart_toy_outlined,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(menu['name'] as String, style: theme.textTheme.titleSmall),
-              const SizedBox(height: 2),
-              Text(
-                plainAnswer(menu['welcome'] as String),
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _label(BuildContext context, String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-    child: Text(
-      text.toUpperCase(),
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        letterSpacing: 1.1,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+      child: _AnswerBody(e['body'] as String? ?? ''),
     ),
   );
 
-  Widget _askField(BuildContext context) => Row(
+  @override
+  Widget build(BuildContext context) {
+    final phone = MediaQuery.sizeOf(context).width < 600;
+    final side = phone ? 12.0 : 24.0;
+
+    Widget column(Widget child) => Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: child,
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: _turns.isEmpty
+              ? _hello(context)
+              : ListView.builder(
+                  key: const ValueKey('assistant-conversation'),
+                  controller: _scroll,
+                  padding: EdgeInsets.fromLTRB(side, 16, side, 8),
+                  itemCount: _turns.length,
+                  itemBuilder: (context, i) =>
+                      column(_turnView(context, i, _turns[i])),
+                ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(side, 4, side, 12),
+            child: column(_askBar(context)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _hello(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            key: const ValueKey('assistant-hello'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'What do you need to know?',
+                style: theme.textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Ask the way you would ask a colleague: a code, a price, how '
+                'we do something, or a city, state or branch code.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (_topics.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    for (final t in _topics)
+                      ActionChip(
+                        key: ValueKey('assistant-starter-$t'),
+                        label: Text(t),
+                        onPressed: () => _ask(t),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _askBar(BuildContext context) => Row(
     key: const ValueKey('tour-ai_assistance-ask'),
     children: [
       Expanded(
         child: TextField(
+          key: const Key('assistant-ask'),
           controller: _query,
           focusNode: _queryFocus,
-          textInputAction: TextInputAction.search,
+          textInputAction: TextInputAction.send,
+          minLines: 1,
+          maxLines: 4,
           decoration: const InputDecoration(
-            hintText: 'Ask a question, or a city, state or branch code',
-            prefixIcon: Icon(Icons.search, size: 20),
+            hintText: 'Ask anything: a code, a price, a branch…',
+            border: OutlineInputBorder(),
           ),
           onSubmitted: (_) => _ask(),
         ),
       ),
       const SizedBox(width: 8),
-      FilledButton(
-        onPressed: _asking ? null : _ask,
-        child: Text(_asking ? 'Asking…' : 'Ask'),
+      IconButton.filled(
+        key: const Key('assistant-send'),
+        tooltip: 'Ask',
+        onPressed: _ask,
+        icon: const Icon(Icons.arrow_upward),
       ),
     ],
   );
 
-  Widget _status(BuildContext context) {
+  Widget _turnView(BuildContext context, int i, _Turn turn) {
     final theme = Theme.of(context);
-    final current = _current;
-    final text =
-        _askError ??
-        (current == null
-            ? null
-            : [
-                switch (current.answers.length) {
-                  0 => 'No answer for “${current.query}”.',
-                  1 => '1 answer for “${current.query}”, opened.',
-                  final n => '$n answers for “${current.query}”.',
-                },
-                switch (current.sites.length) {
-                  0 => 'No branch matched.',
-                  1 => '1 branch matched.',
-                  final n => '$n branches matched.',
-                },
-              ].join(' '));
-    if (text == null) return const SizedBox.shrink();
-    final reply = _aiReply;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final answers = [
+      for (final a in turn.answers)
+        if (a is Map) a.cast<String, dynamic>(),
+    ];
+    final sites = [
+      for (final s in turn.sites)
+        if (s is Map) s.cast<String, dynamic>(),
+    ];
+    final reply = turn.reply;
+
+    // AI's words when it has them; otherwise the one Library answer, so a
+    // question is never left with nothing to read.
+    final Widget words;
+    if (reply != null && reply.trim().isNotEmpty) {
+      words = Column(
+        key: const Key('assistant-ai-answer'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text, style: theme.textTheme.bodySmall),
-          if (_aiAsking)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'AI is reading the Library…',
-                key: const Key('assistant-ai-asking'),
-                style: theme.textTheme.bodySmall,
+          const AiMark.badge('Answer by AI'),
+          const SizedBox(height: 6),
+          _AnswerBody(reply),
+        ],
+      );
+    } else if (turn.thinking) {
+      words = Row(
+        key: const ValueKey('assistant-thinking'),
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 8),
+          Text('Thinking…', style: muted),
+        ],
+      );
+    } else if (answers.length == 1) {
+      words = _AnswerBody(answers.single['body'] as String? ?? '');
+    } else if (answers.isEmpty && sites.isEmpty) {
+      words = Text(
+        turn.error ??
+            'Nothing in the Library matched that, and AI could not answer '
+                'just now. Try other words.',
+        style: muted,
+      );
+    } else {
+      words = const SizedBox.shrink();
+    }
+
+    return Padding(
+      key: ValueKey('assistant-turn-$i'),
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(4),
+                  ),
+                ),
+                child: Text(
+                  turn.query,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onPrimary,
+                  ),
+                ),
               ),
-            )
-          else if (reply != null && reply.isNotEmpty)
-            Padding(
-              key: const Key('assistant-ai-answer'),
-              padding: const EdgeInsets.only(top: 8),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                border: Border.all(color: scheme.outlineVariant),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                  bottomLeft: Radius.circular(4),
+                  bottomRight: Radius.circular(16),
+                ),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const AiMark.badge(
-                    'Answer by AI',
-                    tooltip:
-                        'Written by AI from your Library. Open the matching answers to check it.',
-                  ),
-                  const SizedBox(height: 4),
-                  SelectableText(reply, style: theme.textTheme.bodyMedium),
+                  words,
+                  if (answers.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Wrap(
+                      key: const Key('assistant-answer'),
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text('From your Library', style: muted),
+                        for (final a in answers)
+                          ActionChip(
+                            key: ValueKey('assistant-source-${a['id']}'),
+                            avatar: const Icon(
+                              Icons.menu_book_outlined,
+                              size: 16,
+                            ),
+                            label: Text(a['title'] as String? ?? 'An answer'),
+                            onPressed: () => _read(a),
+                          ),
+                      ],
+                    ),
+                  ],
+                  for (final site in sites.take(3)) ...[
+                    const SizedBox(height: 10),
+                    _site(context, site),
+                  ],
+                  if (sites.length > 3)
+                    Text(
+                      'And ${sites.length - 3} more: '
+                      '${sites.skip(3).map((s) => s['company_name']).join(', ')}',
+                      style: muted,
+                    ),
                 ],
               ),
             ),
+          ),
         ],
       ),
     );
-  }
-
-  /// One answer, with where it came from, its footnote and the rest of its
-  /// section.
-  Widget _answer(
-    BuildContext context,
-    Map<String, dynamic> e,
-    String? section, {
-    bool phone = false,
-  }) {
-    final theme = Theme.of(context);
-    final id = e['id'] as String;
-    final others = [
-      for (final s in _sections)
-        if (s['section'] == section)
-          for (final other in s['entries'] as List<dynamic>)
-            if (other['id'] != id) other,
-    ];
-
-    return Container(
-      key: const Key('assistant-answer'),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            children: [
-              Icon(
-                Icons.menu_book_outlined,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              Text(
-                section == null
-                    ? 'From the Library'
-                    : 'From the Library · $section › ${e['title']}',
-                style: theme.textTheme.bodySmall,
-              ),
-              TextButton.icon(
-                onPressed: () => _copy(
-                  '${e['title']}\n\n${plainAnswer(e['body'] as String)}',
-                ),
-                icon: const Icon(Icons.copy_outlined, size: 16),
-                label: const Text('Copy'),
-              ),
-              if (widget.canEdit && widget.session != null)
-                TextButton.icon(
-                  onPressed: () => _edit(id),
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Edit in Library'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(e['title'] as String, style: theme.textTheme.titleLarge),
-          if (e['description'] != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              e['description'] as String,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          _AnswerBody(e['body'] as String),
-          if (others.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            _label(context, 'More in $section'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final other in others)
-                  OutlinedButton(
-                    onPressed: () =>
-                        _openAnswer(other['id'] as String, push: phone),
-                    child: Text(other['title'] as String),
-                  ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _branches(BuildContext context) {
-    final theme = Theme.of(context);
-    final current = _current;
-    if (current == null || current.sites.isEmpty) {
-      return [
-        _label(context, 'Branches'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Text(
-            current == null
-                ? 'Type a city, a state or a branch code to find a branch. '
-                      'It lands here with Call and Map.'
-                : 'No branch matched “${current.query}”.',
-            style: theme.textTheme.bodySmall,
-          ),
-        ),
-      ];
-    }
-
-    final sites = current.sites;
-    final shown = _allSites ? sites : sites.take(3).toList();
-
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Branches for “${current.query}”',
-                style: theme.textTheme.titleSmall,
-              ),
-            ),
-            Text('${sites.length}', style: theme.textTheme.bodySmall),
-          ],
-        ),
-      ),
-      for (final site in shown) _site(context, site as Map<String, dynamic>),
-      if (shown.length < sites.length)
-        TextButton(
-          onPressed: () => setState(() => _allSites = true),
-          child: Text(
-            'Show ${sites.length - shown.length} more: '
-            '${sites.skip(3).map((s) => s['company_name']).join(', ')}',
-          ),
-        ),
-    ];
   }
 
   Widget _site(BuildContext context, Map<String, dynamic> site) {
@@ -917,7 +656,6 @@ class _AssistantTabState extends State<AssistantTab> {
 
     return Container(
       key: Key('branch-$name'),
-      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
@@ -971,186 +709,6 @@ class _AssistantTabState extends State<AssistantTab> {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _askedRow(BuildContext context, _Asked asked) {
-    final theme = Theme.of(context);
-    return InkWell(
-      key: Key('asked-${asked.query}'),
-      borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
-      onTap: () => _ask(asked.query),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            Text(asked.query, style: theme.textTheme.titleSmall),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                asked.summary,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-            Text(
-              TimeOfDay.fromDateTime(asked.at).format(context),
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── phone: topics, then a page per step ──────────────────────────
-
-  Widget _phone(BuildContext context, Map<String, dynamic> menu) {
-    final theme = Theme.of(context);
-    final page = _pages.isEmpty ? null : _pages.last;
-
-    Widget back(String label) => Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        key: const Key('assistant-back'),
-        onPressed: () => setState(() {
-          _pages.removeLast();
-          if (_pages.isEmpty || !_pages.last.startsWith('answer:')) {
-            _open = _pages.isNotEmpty && _pages.last == 'results'
-                ? _open
-                : null;
-          }
-        }),
-        icon: const Icon(Icons.arrow_back, size: 18),
-        label: Text(label),
-      ),
-    );
-
-    final children = <Widget>[];
-
-    if (page == null) {
-      children.addAll([
-        _bot(context, menu),
-        const SizedBox(height: 12),
-        _askField(context),
-        if (_askError != null) _status(context),
-        if (_asked.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('Today', style: theme.textTheme.bodySmall),
-              for (final asked in _asked)
-                ActionChip(
-                  label: Text(asked.query),
-                  onPressed: () => _ask(asked.query),
-                ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 12),
-        if (_sections.isEmpty)
-          const Text('No answers yet. Add them on the Library tab.'),
-        for (final section in _sections)
-          _phoneRow(
-            context,
-            key: Key('topic-${section['section']}'),
-            title: section['section'] as String,
-            detail: _sectionDetail(section),
-            onTap: () =>
-                _openSection(section as Map<String, dynamic>, phone: true),
-          ),
-        _phoneRow(
-          context,
-          title: 'Find a branch',
-          detail: 'Phone, address, service area',
-          icon: Icons.storefront_outlined,
-          onTap: () => _queryFocus.requestFocus(),
-        ),
-      ]);
-    } else if (page.startsWith('section:')) {
-      final name = page.substring('section:'.length);
-      final section = _sections.firstWhere((s) => s['section'] == name);
-      children.addAll([
-        back('Topics'),
-        Text(name, style: theme.textTheme.titleLarge),
-        const SizedBox(height: 8),
-        for (final e in section['entries'] as List<dynamic>)
-          _phoneRow(
-            context,
-            key: Key('answer-${e['id']}'),
-            title: e['title'] as String,
-            detail: e['description'] as String?,
-            onTap: () => _openAnswer(e['id'] as String),
-          ),
-      ]);
-    } else if (page.startsWith('answer:')) {
-      final open = _entry(page.substring('answer:'.length));
-      children.addAll([
-        back(_pages.length > 1 ? 'Back' : 'Topics'),
-        if (open != null) _answer(context, open.$1, open.$2, phone: true),
-      ]);
-    } else {
-      final current = _current!;
-      children.addAll([
-        back('Topics'),
-        _askField(context),
-        _status(context),
-        const SizedBox(height: 12),
-        if (current.answers.length == 1 && _open != null)
-          if (_entry(_open!) case final open?)
-            _answer(context, open.$1, open.$2, phone: true),
-        if (current.answers.length > 1)
-          for (final e in current.answers)
-            _phoneRow(
-              context,
-              title: e['title'] as String,
-              detail: e['description'] as String?,
-              onTap: () => _openAnswer(e['id'] as String),
-            ),
-        if (current.sites.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ..._branches(context),
-        ],
-      ]);
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      children: children,
-    );
-  }
-
-  String? _sectionDetail(dynamic section) {
-    final entries = section['entries'] as List<dynamic>;
-    if (entries.length == 1) return entries.single['description'] as String?;
-    return '${entries.length} topics · '
-        '${entries.take(2).map((e) => e['title']).join(', ')}…';
-  }
-
-  Widget _phoneRow(
-    BuildContext context, {
-    Key? key,
-    required String title,
-    String? detail,
-    IconData? icon,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return Card(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: icon == null ? null : Icon(icon),
-        title: Text(title, style: theme.textTheme.titleSmall),
-        subtitle: detail == null
-            ? null
-            : Text(detail, maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
       ),
     );
   }
@@ -1269,6 +827,16 @@ class _LibraryTabState extends State<LibraryTab> {
     return 'Whole organization';
   }
 
+  Future<void> _read(Map<String, dynamic> e) => showSidePanel<void>(
+    context,
+    builder: (_) => SidePanel(
+      key: ValueKey('library-read-${e['id']}'),
+      title: e['title'] as String? ?? 'An answer',
+      subtitle: e['section'] as String?,
+      child: _AnswerBody(e['body'] as String? ?? ''),
+    ),
+  );
+
   Future<void> _edit([Map<String, dynamic>? entry]) async {
     // A side panel, as every other form: this was the one AlertDialog left
     // on a create path, a box over the list it was adding to.
@@ -1297,12 +865,14 @@ class _LibraryTabState extends State<LibraryTab> {
       backgroundColor: Colors.transparent,
       floatingActionButton: widget.canEdit
           ? FloatingActionButton.extended(
+              key: const ValueKey('tour-ai_assistance-add-answer'),
               onPressed: () => _edit(),
               icon: const Icon(Icons.add),
               label: const Text('Add answer'),
             )
           : null,
       body: ListView(
+        key: const ValueKey('tour-ai_assistance-library'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           if (entries.isEmpty)
@@ -1330,10 +900,14 @@ class _LibraryTabState extends State<LibraryTab> {
                       e['audience'] == 'staff' ? 'Staff only' : 'Everyone',
                     ].join(' · '),
                   ),
-                  trailing: widget.canEdit
-                      ? const Icon(Icons.edit_outlined)
-                      : null,
-                  onTap: widget.canEdit ? () => _edit(e) : null,
+                  trailing: Icon(
+                    widget.canEdit
+                        ? Icons.edit_outlined
+                        : Icons.chevron_right,
+                  ),
+                  // The topics the AI tab had down its side live here now
+                  // (UI queue 91): anybody reads an answer, editors edit it.
+                  onTap: () => widget.canEdit ? _edit(e) : _read(e),
                 ),
               ),
           ],

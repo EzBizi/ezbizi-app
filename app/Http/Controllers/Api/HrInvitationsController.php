@@ -116,6 +116,17 @@ class HrInvitationsController extends Controller
 
         $this->reach->constrain($query, $request->user());
 
+        // A search box over the list (Jose, 2026-10-14: "we lack searchbars on
+        // the 3 last human resources tabs"). Before the tiles, so their counts
+        // are of what was searched for.
+        if (filled($term = trim((string) $request->query('search')))) {
+            $like = "%{$term}%";
+            $query->where(fn ($q) => $q->where('email', 'like', $like)
+                ->orWhere('first_name', 'like', $like)
+                ->orWhere('last_name', 'like', $like)
+                ->orWhereRaw("CONCAT_WS(' ', first_name, last_name) LIKE ?", [$like]));
+        }
+
         // The tiles count every page, before the one they filter is applied.
         $tiles = [];
         foreach ([Invitation::SENT, 'opened', Invitation::COMPLETED, Invitation::ABANDONED, Invitation::REVOKED] as $status) {

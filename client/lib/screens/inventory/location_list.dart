@@ -179,6 +179,7 @@ class _LocationListState extends State<LocationList> {
             ? Refused(
                 reason: refused,
                 child: FilledButton.icon(
+                  key: const ValueKey('tour-inventory-locations-add'),
                   onPressed: refused == null
                       ? () => setState(() {
                           _adding = true;
@@ -203,6 +204,7 @@ class _LocationListState extends State<LocationList> {
       children: [
         if (_tiles case final tiles?)
           Padding(
+            key: const ValueKey('tour-inventory-locations-tiles'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
             child: LayoutBuilder(
               builder: (context, box) => inventoryTiles(
@@ -219,6 +221,7 @@ class _LocationListState extends State<LocationList> {
             ),
           ),
         Padding(
+          key: const ValueKey('tour-inventory-locations-search'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             controller: _search,
@@ -245,6 +248,7 @@ class _LocationListState extends State<LocationList> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: FilterChip(
+              key: const ValueKey('tour-inventory-locations-closed'),
               label: const Text('Closed'),
               selected: _closed,
               onSelected: (_) {

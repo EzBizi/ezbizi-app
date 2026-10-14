@@ -140,6 +140,7 @@ class _SiteContentListState extends State<SiteContentList> {
             children: [
               Expanded(
                 child: TextField(
+                  key: const ValueKey('tour-seo-content-search'),
                   decoration: InputDecoration(
                     labelText: 'Search ${widget.host}',
                     isDense: true,
@@ -176,6 +177,7 @@ class _SiteContentListState extends State<SiteContentList> {
           ),
         const Divider(height: 1),
         Expanded(
+          key: const ValueKey('tour-seo-content-list'),
           child: AsyncBody(
             loading: _loading,
             error: _error,

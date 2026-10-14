@@ -87,6 +87,11 @@
                 "Settings"
             ]
         },
+        "financials": {
+            "label": "Financials",
+            "parent": null,
+            "tabs": []
+        },
         "fleet_management": {
             "label": "Fleet Management",
             "parent": null,
@@ -99,6 +104,14 @@
             "label": "Franchises",
             "parent": null,
             "tabs": []
+        },
+        "guidelines": {
+            "label": "Guidelines",
+            "parent": null,
+            "tabs": [
+                "Guidelines",
+                "Settings"
+            ]
         },
         "hr": {
             "label": "Human Resources",
@@ -258,6 +271,7 @@
                 "Schedule",
                 "Overbooking",
                 "Re-Scheduling",
+                "Routing",
                 "Locations",
                 "Settings"
             ]
@@ -368,6 +382,10 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financials.create",
+        "financials.delete",
+        "financials.edit",
+        "financials.view",
         "fleet_management.assign",
         "fleet_management.create",
         "fleet_management.delete",
@@ -380,6 +398,10 @@
         "franchises.delete",
         "franchises.edit",
         "franchises.view",
+        "guidelines.guidelines.view",
+        "guidelines.manage",
+        "guidelines.settings.view",
+        "guidelines.view",
         "hr.contracts.view",
         "hr.create",
         "hr.dashboard.view",
@@ -505,6 +527,7 @@
         "scheduling.locations.view",
         "scheduling.overbooking.view",
         "scheduling.rescheduling.view",
+        "scheduling.routing.view",
         "scheduling.schedule.view",
         "scheduling.settings.view",
         "scheduling.view",

@@ -2,8 +2,11 @@
 
 namespace App\Support\Scheduling;
 
+use App\Models\Customer;
+use App\Models\FieldGeocode;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Support\Field\FieldJobs;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -30,9 +33,20 @@ final class NearbySuggestion
 
     public const DAYS = 'scheduling.suggest_days';
 
+    /**
+     * Only jobs in the offered window, or the one beside it, count as nearby
+     * (Grok's second review, 2026-10-14: the day's 8:00 neighbour was lending
+     * a 14:00 slot its 0.4 miles, and a job in no window was taken as beside
+     * every window). Availability and Re-Scheduling alike (Jose, 2026-10-14:
+     * "this is all being taken into account for the Scheduling Suggestion
+     * system as well right").
+     */
+    public const MAX_WINDOW_GAP = 1;
+
     public function __construct(
         private readonly Openings $openings,
         private readonly SettingsResolver $settings,
+        private readonly FieldJobs $field,
     ) {}
 
     /** @return array<string, mixed> */
@@ -49,7 +63,7 @@ final class NearbySuggestion
 
         $earliest = $candidates[0];
         $out['earliest'] = $this->shown($earliest);
-        $best = $origin === null ? null : self::best($candidates);
+        $best = $origin === null ? null : self::best(array_map([self::class, 'windowLocal'], $candidates));
 
         if ($best !== null) {
             $out['suggested'] = $this->shown($best) + [
@@ -103,7 +117,7 @@ final class NearbySuggestion
      * What a suggestion weighs, read once so Reschedules can weigh every job
      * of an area against it without a query per job.
      *
-     * @return array{radius: float, span: int, days: Collection, jobs: Collection}
+     * @return array{radius: float, span: int, days: Collection, all_days: Collection, jobs: Collection}
      */
     public function load(ServiceArea $area, CarbonImmutable $from): array
     {
@@ -114,10 +128,13 @@ final class NearbySuggestion
         return [
             'radius' => $radius,
             'span' => $span,
-            'days' => collect($this->openings->days($area, $from, $span))
+            'days' => ($all = collect($this->openings->days($area, $from, $span)))
                 ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
                 ->values(),
-            'jobs' => $this->openings->jobsBetween($area, $from, $from->addDays($span))
+            // Every day, full ones too, by date: Re-Scheduling's "before and
+            // after" for the day a job leaves.
+            'all_days' => $all->keyBy('date'),
+            'jobs' => $this->located($this->openings->jobsBetween($area, $from, $from->addDays($span)), $area->organization_id)
                 ->filter(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
                     && self::inUs((float) $j->latitude, (float) $j->longitude))
                 ->groupBy(fn (object $j) => substr((string) $j->scheduled_for, 0, 10)),
@@ -159,6 +176,27 @@ final class NearbySuggestion
         }
 
         return $candidates;
+    }
+
+    /**
+     * A candidate re-scored on the jobs in its own window and the ones beside
+     * it; the day's other jobs stay in `jobs` for the screen to draw.
+     *
+     * @param  array<string, mixed>  $c
+     * @return array<string, mixed>
+     */
+    public static function windowLocal(array $c): array
+    {
+        $local = collect($c['jobs'])->filter(fn (array $j) => $j['window'] !== null
+            && abs($j['window'] - $c['window_index']) <= self::MAX_WINDOW_GAP);
+        $nearby = $local->where('nearby', true);
+
+        return [
+            'nearby' => $nearby->count(),
+            'nearest_miles' => $local->min('miles'),
+            'gap' => $nearby->map(fn (array $j) => abs($j['window'] - $c['window_index']))->min() ?? 99,
+            'technicians' => $nearby->pluck('technicians')->flatten()->unique()->values()->all(),
+        ] + $c;
     }
 
     /**
@@ -260,6 +298,58 @@ final class NearbySuggestion
     {
         return $lat >= self::US_LATITUDE[0] && $lat <= self::US_LATITUDE[1]
             && $lng >= self::US_LONGITUDE[0] && $lng <= self::US_LONGITUDE[1];
+    }
+
+    /**
+     * A place for every row that has none (Grok, 2026-10-14: 35 of 37
+     * unroutable jobs had a full address and zip, but latitude NULL or -1):
+     * Field's stored geocode of the customer's address (cache only, never a
+     * call to Google), else the zip's centre from A-1's own jobs there,
+     * marked `approximate`.
+     */
+    public function located(Collection $rows, string $organizationId): Collection
+    {
+        $placed = fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
+            && self::inUs((float) $j->latitude, (float) $j->longitude);
+
+        $customers = Customer::query()->whereIn('id', $rows->reject($placed)->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
+        $rows = $rows->map(function (object $j) use ($placed, $customers) {
+            $customer = $placed($j) ? null : ($customers[$j->customer_id ?? ''] ?? null);
+            $point = $customer === null ? null : $this->field->pointAt(FieldGeocode::addressOf($customer));
+            if ($point !== null && self::inUs((float) $point['lat'], (float) $point['lng'])) {
+                $j = clone $j;
+                $j->latitude = (float) $point['lat'];
+                $j->longitude = (float) $point['lng'];
+            }
+
+            return $j;
+        });
+        $zips = $rows->reject($placed)->map(fn ($j) => substr(preg_replace('/\D+/', '', (string) ($j->postal_code ?? '')), 0, 5))
+            ->filter(fn ($z) => strlen($z) === 5)->unique()->values();
+
+        if ($zips->isEmpty()) {
+            return $rows;
+        }
+
+        $centres = DB::table('workiz_jobs')
+            ->where('organization_id', $organizationId)
+            ->whereIn(DB::raw('LEFT(postal_code, 5)'), $zips->all())
+            ->whereBetween('latitude', self::US_LATITUDE)->whereBetween('longitude', self::US_LONGITUDE)
+            ->groupBy(DB::raw('LEFT(postal_code, 5)'))
+            ->selectRaw('LEFT(postal_code, 5) zip, AVG(latitude) lat, AVG(longitude) lng')
+            ->get()->keyBy('zip');
+
+        return $rows->map(function (object $j) use ($placed, $centres) {
+            $c = $placed($j) ? null : ($centres[substr(preg_replace('/\D+/', '', (string) ($j->postal_code ?? '')), 0, 5)] ?? null);
+            if ($c !== null) {
+                $j = clone $j;
+                $j->latitude = (float) $c->lat;
+                $j->longitude = (float) $c->lng;
+                $j->approximate = true;
+            }
+
+            return $j;
+        });
     }
 
     /** Great-circle miles. */

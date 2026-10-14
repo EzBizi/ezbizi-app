@@ -291,6 +291,7 @@ class _FleetScreenState extends State<FleetScreen> {
               ? Refused(
                   reason: refused,
                   child: FilledButton.icon(
+                    key: const ValueKey('tour-fleet_management-add'),
                     onPressed: refused == null ? _add : null,
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Add vehicle'),

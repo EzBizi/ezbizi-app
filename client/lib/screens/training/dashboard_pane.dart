@@ -150,6 +150,7 @@ class _DashboardPaneState extends State<DashboardPane> {
         ),
         if (!_assigning) ...[
           Padding(
+            key: const ValueKey('tour-training-dashboard-counts'),
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: _RowStats(row: widget.row),
           ),
@@ -162,6 +163,7 @@ class _DashboardPaneState extends State<DashboardPane> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton.icon(
+                  key: const ValueKey('tour-training-dashboard-assign'),
                   onPressed: () => setState(() => _assigning = true),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Assign to more people'),
@@ -191,6 +193,7 @@ class _DashboardPaneState extends State<DashboardPane> {
                   },
                 )
               : AsyncBody(
+                  key: const ValueKey('tour-training-dashboard-people'),
                   loading: _loading,
                   error: _error,
                   onRetry: _load,

@@ -78,6 +78,21 @@ void main() {
     expect(find.text('The new starter'), findsWidgets);
   });
 
+  // Jose, 2026-10-14: "highlight missing fields inside the onboarding".
+  testWidgets('a required question still empty is marked until answered', (
+    tester,
+  ) async {
+    await _pumpForm(tester, _handler(form: _asEmployee));
+
+    expect(find.byKey(const Key('missing-notice_period')), findsOneWidget);
+    expect(find.byKey(const Key('missing-hourly_wage')), findsNothing);
+
+    await tester.enterText(find.byKey(answerKey('notice_period')), '2 weeks');
+    await tester.pump();
+
+    expect(find.byKey(const Key('missing-notice_period')), findsNothing);
+  });
+
   testWidgets('the employee fills in theirs, and sees what the employer owes', (
     tester,
   ) async {
@@ -132,8 +147,10 @@ void main() {
     // what every form says and nobody believes.
     expect(find.textContaining('4 of 7 answered'), findsOneWidget);
     expect(find.textContaining('Last answered'), findsOneWidget);
-    expect(find.textContaining('do not have to finish this in one go'),
-        findsOneWidget);
+    expect(
+      find.textContaining('do not have to finish this in one go'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('saving sends the answers that changed and nothing else', (
@@ -211,8 +228,10 @@ void main() {
       _handler(form: _asEmployee, onReveal: (body) => revealed = body),
     );
 
-    expect(find.text('Revealing it is recorded against your name.'),
-        findsOneWidget);
+    expect(
+      find.text('Revealing it is recorded against your name.'),
+      findsOneWidget,
+    );
 
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Reveal'));
 
@@ -300,7 +319,12 @@ void main() {
 
     // And a name alone is not consent — ESIGN wants it given, not assumed.
     await _tap(tester, find.byType(CheckboxListTile));
-    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    await _type(
+      tester,
+      null,
+      'Bea Okafor',
+      label: 'Type your full name to sign',
+    );
     expect(
       _signButton(tester).onPressed,
       isNull,
@@ -337,7 +361,9 @@ void main() {
 
     // The drawing, as a PNG: the file's own first bytes say so.
     expect(drawing, startsWith('data:image/png;base64,'));
-    final png = base64Decode(drawing.substring('data:image/png;base64,'.length));
+    final png = base64Decode(
+      drawing.substring('data:image/png;base64,'.length),
+    );
     expect(png.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
 
     // With the stroke on it: some pixel is not transparent.
@@ -368,7 +394,12 @@ void main() {
       ),
     );
     await _tap(tester, find.byType(CheckboxListTile));
-    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    await _type(
+      tester,
+      null,
+      'Bea Okafor',
+      label: 'Type your full name to sign',
+    );
     expect(_signButton(tester).onPressed, isNull);
 
     // The stored one takes the pad's place, and is enough to sign with.
@@ -454,13 +485,18 @@ void main() {
     await _type(tester, 'shirt_size_note', 'Prefers a jacket');
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
 
-    expect(find.text('That answer is longer than the field allows.'),
-        findsOneWidget);
+    expect(
+      find.text('That answer is longer than the field allows.'),
+      findsOneWidget,
+    );
 
     // Still in the box, and still queued. Clearing the pending answers over a
     // refusal would leave the text on screen and nothing behind it, so the next
     // Save would send nothing and report success over a form never written.
-    expect(_box(tester, 'shirt_size_note').controller!.text, 'Prefers a jacket');
+    expect(
+      _box(tester, 'shirt_size_note').controller!.text,
+      'Prefers a jacket',
+    );
     expect(_saveButton(tester).onPressed, isNotNull);
     expect(find.text('1 answer not saved yet.'), findsOneWidget);
   });
@@ -515,8 +551,13 @@ void main() {
     // One list, not two halves: with nothing writable there is no "yours".
     expect(find.text('THE ANSWERS'), findsOneWidget);
     expect(find.text('YOURS TO FILL IN'), findsNothing);
-    expect(find.text('Nothing here is waiting on you. This is the record as it '
-        'stands.'), findsOneWidget);
+    expect(
+      find.text(
+        'Nothing here is waiting on you. This is the record as it '
+        'stands.',
+      ),
+      findsOneWidget,
+    );
 
     // When it happened, which the status tag alone cannot carry.
     expect(find.textContaining('Completed 2026-08-12'), findsOneWidget);
@@ -578,7 +619,9 @@ void main() {
 
     expect(_box(tester, 'shoe_size').enabled, isFalse);
     expect(
-      find.text('It is theirs. Core identity belongs to the person it is about.'),
+      find.text(
+        'It is theirs. Core identity belongs to the person it is about.',
+      ),
       findsOneWidget,
       reason: 'A greyed box with no reason beside it reads as a fault.',
     );
@@ -596,16 +639,13 @@ void main() {
     // The version rides beside the contract's name in its column now.
     expect(find.textContaining('v3'), findsOneWidget);
 
-    // How far along, and then both sides' counts rather than one verdict word,
-    // in the server's names for the sides: an onboarding stuck because nobody
-    // set the wage and one stuck because the new starter has not opened it are
-    // different problems with different owners.
-    expect(
-      find.text(
-        '4 answered · 2 still with Head office · 1 still with The new starter',
-      ),
-      findsOneWidget,
-    );
+    // What is missing, in amber and by side, in the server's names for the
+    // sides, as Records marks a record (Jose, 2026-10-14): an onboarding stuck
+    // because nobody set the wage and one stuck because the new starter has
+    // not opened it are different problems with different owners.
+    expect(find.text('Head office: 2 missing'), findsOneWidget);
+    expect(find.text('The new starter: 1 missing'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
 
     // And the one that is done says so instead of counting to zero.
     expect(find.textContaining('Completed'), findsWidgets);
@@ -639,6 +679,26 @@ void main() {
 
     // Tapping the picked tile again goes back to what is still under way.
     await _tap(tester, find.byKey(const Key('onboardings-tile-completed')));
+    expect(asked.last['state'], 'open');
+  });
+
+  /// Jose, 2026-10-14: "we lack searchbars on the 3 last human resources
+  /// tabs". The list pages on the server, so the search goes there.
+  testWidgets('the search box asks the server once typing stops', (
+    tester,
+  ) async {
+    final asked = <Map<String, String>>[];
+    await _pumpTab(tester, _handler(onList: asked.add));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('tour-hr-onboarding-search')),
+      'Ruiz',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(asked.last.containsKey('search'), isFalse);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(asked.last['search'], 'Ruiz');
     expect(asked.last['state'], 'open');
   });
 
@@ -700,11 +760,7 @@ void main() {
 
     expect(_startButton(tester).onPressed, isNull);
 
-    await _choose(
-      tester,
-      'Who is this for',
-      'Kit Weaver (kit@example.com)',
-    );
+    await _choose(tester, 'Who is this for', 'Kit Weaver (kit@example.com)');
 
     expect(_startButton(tester).onPressed, isNotNull);
 
@@ -751,8 +807,9 @@ void main() {
     expect(subjects.options.map((o) => o.value), isNot(contains('i-3')));
   });
 
-  testWidgets('a reader who may not start one is told that, not shown an error',
-      (tester) async {
+  testWidgets('a reader who may not start one is told that, not shown an error', (
+    tester,
+  ) async {
     await _pumpTab(tester, _handler(), permissions: const ['hr.view']);
 
     expect(
@@ -951,15 +1008,18 @@ void main() {
     await _tap(tester, find.byKey(const Key('checklist-tools-Hammer')));
     await _tap(tester, find.byTooltip('One more'));
     await _tap(tester, find.byKey(const Key('checklist-add-tools')));
-    await tester.enterText(find.byKey(const Key('checklist-add-name')), 'Ladder');
+    await tester.enterText(
+      find.byKey(const Key('checklist-add-name')),
+      'Ladder',
+    );
     await _tap(tester, find.widgetWithText(TextButton, 'Add'));
 
     await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
     final rows = jsonDecode(saved!['answers']['tools'] as String) as List;
-    expect([for (final r in rows) (r['item'], r['quantity'])], [
-      ('Hammer', '2'),
-      ('Ladder', '1'),
-    ]);
+    expect(
+      [for (final r in rows) (r['item'], r['quantity'])],
+      [('Hammer', '2'), ('Ladder', '1')],
+    );
     expect((rows.first as Map)['received'], isNotEmpty);
   });
 
@@ -978,51 +1038,74 @@ void main() {
 
   // Jose, 2026-10-06: Eve wanted "to be determined", options she can see,
   // and pay basis off without everything under it going too.
-  testWidgets('pay terms: TBD, visible options, and a basis that does not apply', (
-    tester,
-  ) async {
-    Map<String, dynamic>? saved;
-    await _pumpForm(
-      tester,
-      _handler(
-        form: {
-          ..._asEmployer,
-          'fields': [
-            {
-              ..._field('pay_basis', 'Pay basis', 'choice', filledBy: 'employer', writable: true,
-                  options: const ['Hourly', 'Salary'], value: 'N/A'),
-              'voidable': true,
-            },
-            {
-              ..._field('hourly_rate', 'Hourly rate', 'number', filledBy: 'employer', writable: true),
-              'voidable': true,
-              'shown_when': {'key': 'pay_basis', 'is': 'hourly'},
-            },
-            {
-              ..._field('comp_method', 'Compensation method', 'text', filledBy: 'employer', writable: true),
-              'voidable': true,
-            },
-          ],
+  testWidgets(
+    'pay terms: TBD, visible options, and a basis that does not apply',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      await _pumpForm(
+        tester,
+        _handler(
+          form: {
+            ..._asEmployer,
+            'fields': [
+              {
+                ..._field(
+                  'pay_basis',
+                  'Pay basis',
+                  'choice',
+                  filledBy: 'employer',
+                  writable: true,
+                  options: const ['Hourly', 'Salary'],
+                  value: 'N/A',
+                ),
+                'voidable': true,
+              },
+              {
+                ..._field(
+                  'hourly_rate',
+                  'Hourly rate',
+                  'number',
+                  filledBy: 'employer',
+                  writable: true,
+                ),
+                'voidable': true,
+                'shown_when': {'key': 'pay_basis', 'is': 'hourly'},
+              },
+              {
+                ..._field(
+                  'comp_method',
+                  'Compensation method',
+                  'text',
+                  filledBy: 'employer',
+                  writable: true,
+                ),
+                'voidable': true,
+              },
+            ],
+          },
+          onSave: (body) => saved = body,
+        ),
+      );
+
+      // Pay basis does not apply, and the hourly rate under it is still there.
+      expect(find.text('Hourly rate'), findsOneWidget);
+
+      await _tap(tester, find.byKey(const Key('tbd:hourly_rate')));
+      expect(find.text('To be determined'), findsOneWidget);
+      await _tap(
+        tester,
+        find.byKey(const Key('comp-method-Hourly plus commission')),
+      );
+
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+      expect(saved, {
+        'answers': {
+          'hourly_rate': 'To be determined',
+          'comp_method': 'Hourly plus commission',
         },
-        onSave: (body) => saved = body,
-      ),
-    );
-
-    // Pay basis does not apply, and the hourly rate under it is still there.
-    expect(find.text('Hourly rate'), findsOneWidget);
-
-    await _tap(tester, find.byKey(const Key('tbd:hourly_rate')));
-    expect(find.text('To be determined'), findsOneWidget);
-    await _tap(tester, find.byKey(const Key('comp-method-Hourly plus commission')));
-
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
-    expect(saved, {
-      'answers': {
-        'hourly_rate': 'To be determined',
-        'comp_method': 'Hourly plus commission',
-      },
-    });
-  });
+      });
+    },
+  );
 
   // Jose, 2026-10-06: the I-9 is signed in the app, and Section 2 is the
   // employer's, on the page the new hire signed.
@@ -1032,8 +1115,14 @@ void main() {
       'i9': {'section2': done, 'mine': true},
       'fields': [
         {
-          ..._field('i9_form', 'Form I-9, signed', 'file',
-              filledBy: 'employee', writable: false, value: 'att-9'),
+          ..._field(
+            'i9_form',
+            'Form I-9, signed',
+            'file',
+            filledBy: 'employee',
+            writable: false,
+            value: 'att-9',
+          ),
           'tax_form_kind': 'i9',
         },
       ],
@@ -1053,8 +1142,14 @@ void main() {
           'i9': {'section2': true, 'mine': true},
           'fields': [
             {
-              ..._field('i9_form', 'Form I-9, signed', 'file',
-                  filledBy: 'employee', writable: false, value: 'att-9'),
+              ..._field(
+                'i9_form',
+                'Form I-9, signed',
+                'file',
+                filledBy: 'employee',
+                writable: false,
+                value: 'att-9',
+              ),
               'tax_form_kind': 'i9',
             },
           ],
@@ -1077,11 +1172,23 @@ void main() {
           ..._asEmployer,
           'fields': [
             {
-              ..._field('pay_basis', 'Pay basis', 'choice', filledBy: 'employer',
-                  writable: false, options: const ['Hourly', 'Salary']),
+              ..._field(
+                'pay_basis',
+                'Pay basis',
+                'choice',
+                filledBy: 'employer',
+                writable: false,
+                options: const ['Hourly', 'Salary'],
+              ),
               'retired': true,
             },
-            _field('hourly_rate', 'Hourly rate', 'number', filledBy: 'employer', writable: true),
+            _field(
+              'hourly_rate',
+              'Hourly rate',
+              'number',
+              filledBy: 'employer',
+              writable: true,
+            ),
           ],
         },
       ),
@@ -1151,32 +1258,33 @@ void main() {
 
   // Jose, 2026-10-05: some technicians have availability rather than set
   // hours; "it should be one or the other, never both".
-  testWidgets('availability can be typed instead, and the days then do not apply', (
-    tester,
-  ) async {
-    Map<String, dynamic>? saved;
+  testWidgets(
+    'availability can be typed instead, and the days then do not apply',
+    (tester) async {
+      Map<String, dynamic>? saved;
 
-    await _pumpForm(
-      tester,
-      _handler(form: _catalogForm, onSave: (body) => saved = body),
-    );
+      await _pumpForm(
+        tester,
+        _handler(form: _catalogForm, onSave: (body) => saved = body),
+      );
 
-    await _tap(tester, find.text('Set days and hours'));
-    await _tap(tester, find.text('Type availability'));
-    await tester.enterText(
-      find.byKey(const Key('onboarding-schedule-typed')),
-      'Mornings, Monday to Thursday',
-    );
-    await tester.pumpAndSettle();
+      await _tap(tester, find.text('Set days and hours'));
+      await _tap(tester, find.text('Type availability'));
+      await tester.enterText(
+        find.byKey(const Key('onboarding-schedule-typed')),
+        'Mornings, Monday to Thursday',
+      );
+      await tester.pumpAndSettle();
 
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
-    expect(saved, {
-      'answers': {
-        'work_hours': 'Mornings, Monday to Thursday',
-        'work_days': 'N/A',
-      },
-    });
-  });
+      await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+      expect(saved, {
+        'answers': {
+          'work_hours': 'Mornings, Monday to Thursday',
+          'work_days': 'N/A',
+        },
+      });
+    },
+  );
 
   test('the schedule text is the one the server reads, both ways', () {
     final week = <String, dynamic>{
@@ -1231,7 +1339,12 @@ void main() {
     expect(find.textContaining('CONTRACT OF EMPLOYMENT'), findsOneWidget);
 
     await _tap(tester, find.byType(CheckboxListTile));
-    await _type(tester, null, 'Bea Okafor', label: 'Type your full name to sign');
+    await _type(
+      tester,
+      null,
+      'Bea Okafor',
+      label: 'Type your full name to sign',
+    );
     await _draw(tester);
     expect(_signButton(tester).onPressed, isNotNull);
 
@@ -1277,7 +1390,10 @@ void main() {
     await _tap(tester, find.byKey(const Key('void:raise_amount')));
     expect(_frozen(tester, 'raise_amount'), isTrue);
     expect(_box(tester, 'raise_amount').controller!.text, isEmpty);
-    expect(find.text('Not a number: digits and one decimal point only.'), findsNothing);
+    expect(
+      find.text('Not a number: digits and one decimal point only.'),
+      findsNothing,
+    );
 
     // ✓ brings the interval back, empty.
     await _tap(tester, find.byKey(const Key('apply:raise_period')));
@@ -1561,7 +1677,9 @@ void main() {
         onPreview: (answers) => '<p>Uniform: as typed</p>',
         onPdf: (body) {
           asked.add(body);
-          return Uint8List.fromList(utf8.encode('%PDF-1.7 draft ${asked.length}'));
+          return Uint8List.fromList(
+            utf8.encode('%PDF-1.7 draft ${asked.length}'),
+          );
         },
       ),
     );
@@ -1643,7 +1761,10 @@ void main() {
 bool _frozen(WidgetTester tester, String key) => tester
     .widget<IgnorePointer>(
       find
-          .ancestor(of: find.byKey(answerKey(key)), matching: find.byType(IgnorePointer))
+          .ancestor(
+            of: find.byKey(answerKey(key)),
+            matching: find.byType(IgnorePointer),
+          )
           .first,
     )
     .ignoring;
@@ -1710,27 +1831,33 @@ Future<void> _pumpTab(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: OnboardingTab(api: api, session: session)),
+      home: Scaffold(
+        body: OnboardingTab(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
 Future<void> _pumpHr(WidgetTester tester, MockClientHandler handler) async {
-  final api = ApiClient(client: MockClient(_withMe(handler, const [
-    'hr.view',
-    'hr.create',
-    'hr.edit',
-    // And the per-tab grants (`08d98e07`), without which the whole strip is
-    // empty and the Records chip this test taps does not exist.
-    'hr.dashboard.view',
-    'hr.hours.view',
-    'hr.onboarding.view',
-    'hr.records.view',
-    'hr.invitations.view',
-    'hr.pto.view',
-    'hr.contracts.view',
-  ])));
+  final api = ApiClient(
+    client: MockClient(
+      _withMe(handler, const [
+        'hr.view',
+        'hr.create',
+        'hr.edit',
+        // And the per-tab grants (`08d98e07`), without which the whole strip is
+        // empty and the Records chip this test taps does not exist.
+        'hr.dashboard.view',
+        'hr.hours.view',
+        'hr.onboarding.view',
+        'hr.records.view',
+        'hr.invitations.view',
+        'hr.pto.view',
+        'hr.contracts.view',
+      ]),
+    ),
+  );
   final session = Session(api);
 
   await _sized(tester);
@@ -1739,7 +1866,9 @@ Future<void> _pumpHr(WidgetTester tester, MockClientHandler handler) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: HrScreen(api: api, session: session)),
+      home: Scaffold(
+        body: HrScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -1857,10 +1986,7 @@ Future<void> _type(
 }
 
 Future<void> _choose(WidgetTester tester, String label, String option) async {
-  await _tap(
-    tester,
-    find.widgetWithText(SearchPickerField<String>, label),
-  );
+  await _tap(tester, find.widgetWithText(SearchPickerField<String>, label));
   await _tap(tester, find.text(option).last);
 }
 
@@ -1875,12 +2001,8 @@ TextField _box(WidgetTester tester, String fieldKey) =>
 CalendarDayField _day(WidgetTester tester, String fieldKey) =>
     tester.widget<CalendarDayField>(find.byKey(answerKey(fieldKey)));
 
-SearchPickerField<String> _dropdown(
-  WidgetTester tester,
-  String fieldKey,
-) => tester.widget<SearchPickerField<String>>(
-  find.byKey(answerKey(fieldKey)),
-);
+SearchPickerField<String> _dropdown(WidgetTester tester, String fieldKey) =>
+    tester.widget<SearchPickerField<String>>(find.byKey(answerKey(fieldKey)));
 
 /// A form field's own DropdownButton, which is where the items live —
 /// `DropdownButtonFormField` is a FormField and does not expose them.
@@ -1895,9 +2017,8 @@ FilledButton _saveButton(WidgetTester tester) =>
 FilledButton _signButton(WidgetTester tester) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Sign'));
 
-FilledButton _startButton(WidgetTester tester) => tester.widget<FilledButton>(
-  find.widgetWithText(FilledButton, 'Start'),
-);
+FilledButton _startButton(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Start'));
 
 // ── the server, as these screens see it ────────────────────────────
 
@@ -1912,17 +2033,22 @@ MockClientHandler _handler({
   void Function()? onCancel,
   int saveStatus = 200,
   int revealStatus = 200,
+
   /// The contract the preview endpoint draws from the unsaved answers. Null
   /// leaves the preview unanswered, so the pane shows the document.
   String Function(Map<String, dynamic> answers)? onPreview,
   void Function(Map<String, dynamic> body)? onPreviewBody,
+
   /// The draft PDF `POST …/preview?format=pdf` answers with.
   Uint8List Function(Map<String, dynamic> body)? onPdf,
+
   /// `GET …/document/pdf`, the signed copy: called with nothing, counts asks.
   void Function()? onSignedPdf,
+
   /// The signer's saved signature, `GET /me/signature`; null when none.
   String? savedSignature,
   void Function(Map<String, dynamic> body)? onSaveSignature,
+
   /// `POST …/tax-form`: the query and body of each call, previews included.
   void Function(Map<String, String> query, Map<String, dynamic> body)?
   onTaxForm,
@@ -2030,9 +2156,7 @@ MockClientHandler _handler({
 
     if (path.endsWith('/hr/onboardings/o-1/document')) {
       return _json({
-        'data': seen['status'] == 'completed'
-            ? _asRecordDocument
-            : _document(),
+        'data': seen['status'] == 'completed' ? _asRecordDocument : _document(),
       });
     }
 
@@ -2043,10 +2167,9 @@ MockClientHandler _handler({
       onReveal?.call({'field_key': field});
 
       if (revealStatus != 200) {
-        return _json(
-          {'message': 'You may not see this value in the clear.'},
-          revealStatus,
-        );
+        return _json({
+          'message': 'You may not see this value in the clear.',
+        }, revealStatus);
       }
 
       return _json({
@@ -2106,12 +2229,10 @@ MockClientHandler _handler({
 
       final rows = only == null
           ? _list
-          : _list
-              .where((row) {
-                final person = row['person'] as Map<String, Object?>?;
-                return person?['user_id'] == only;
-              })
-              .toList();
+          : _list.where((row) {
+              final person = row['person'] as Map<String, Object?>?;
+              return person?['user_id'] == only;
+            }).toList();
 
       return _json({
         'data': rows,
@@ -2146,7 +2267,8 @@ MockClientHandler _handler({
       return _json({'data': _scopeOptions});
     }
 
-    if (request.method == 'GET' && RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
+    if (request.method == 'GET' &&
+        RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
       final id = path.split('/').last;
       return _json({
         'data': {
@@ -2298,90 +2420,90 @@ List<Map<String, Object?>> _fields({
   bool mine(bool employers) => !readOnly && employers;
 
   return [
-  // The common core, as the server sends it — part of the same list, and
-  // keyed by something no Dart list of six could have produced.
-  _field(
-    'shoe_size',
-    'Shoe size',
-    'text',
-    source: 'core',
-    filledBy: 'employee',
-    writable: mine(!asEmployer),
-    value: '43',
-    lockedBecause: asEmployer
-        ? 'It is theirs. Core identity belongs to the person it is about.'
-        : null,
-  ),
-  _field(
-    'hourly_wage',
-    'Hourly wage',
-    'number',
-    filledBy: 'employer',
-    writable: mine(asEmployer),
-    required: true,
-    value: '22.50',
-    setBy: 'Jose Silva',
-    setAt: '2026-08-10T09:00:00+00:00',
-  ),
-  _field(
-    'date_of_birth',
-    'Their date of birth',
-    'date',
-    filledBy: 'either',
-    // Both. This is the row the owner's argument for `either` is about.
-    writable: !readOnly,
-    value: '1990-02-11',
-    setBy: 'Jose Silva',
-    setAt: '2026-08-10T09:05:00+00:00',
-  ),
-  _field(
-    'bank_account',
-    'Bank account',
-    'text',
-    filledBy: 'employee',
-    writable: mine(!asEmployer),
-    sensitive: true,
-    // The MASK, which is what the server sends for a sensitive answer on every
-    // ordinary load. The clear value only ever comes back from a reveal.
-    value: '••••••••',
-    setBy: 'Bea Okafor',
-    setAt: '2026-08-10T10:00:00+00:00',
-  ),
-  _field(
-    'shirt_size',
-    'Shirt size',
-    'choice',
-    filledBy: 'employee',
-    writable: mine(!asEmployer),
-    options: const ['S', 'M', 'L'],
-  ),
-  _field(
-    'shirt_size_note',
-    'Anything else about the uniform',
-    'text',
-    filledBy: 'employee',
-    writable: mine(!asEmployer),
-  ),
-  // A kind of question this build has never met. It must be ASKED, not dropped.
-  _field(
-    'notice_period',
-    'Notice period',
-    'duration',
-    filledBy: 'employee',
-    writable: mine(!asEmployer),
-  ),
-  // The signature field is one of the version's fields, as the server sends
-  // it — never writable, because it is signed rather than typed. The form has
-  // to lift it out of the questions and into the ceremony, and must not count
-  // it as an outstanding answer.
-  _field(
-    'employee_signature',
-    'Signature of the new starter',
-    'signature',
-    filledBy: 'employee',
-    writable: false,
-  ),
-];
+    // The common core, as the server sends it — part of the same list, and
+    // keyed by something no Dart list of six could have produced.
+    _field(
+      'shoe_size',
+      'Shoe size',
+      'text',
+      source: 'core',
+      filledBy: 'employee',
+      writable: mine(!asEmployer),
+      value: '43',
+      lockedBecause: asEmployer
+          ? 'It is theirs. Core identity belongs to the person it is about.'
+          : null,
+    ),
+    _field(
+      'hourly_wage',
+      'Hourly wage',
+      'number',
+      filledBy: 'employer',
+      writable: mine(asEmployer),
+      required: true,
+      value: '22.50',
+      setBy: 'Jose Silva',
+      setAt: '2026-08-10T09:00:00+00:00',
+    ),
+    _field(
+      'date_of_birth',
+      'Their date of birth',
+      'date',
+      filledBy: 'either',
+      // Both. This is the row the owner's argument for `either` is about.
+      writable: !readOnly,
+      value: '1990-02-11',
+      setBy: 'Jose Silva',
+      setAt: '2026-08-10T09:05:00+00:00',
+    ),
+    _field(
+      'bank_account',
+      'Bank account',
+      'text',
+      filledBy: 'employee',
+      writable: mine(!asEmployer),
+      sensitive: true,
+      // The MASK, which is what the server sends for a sensitive answer on every
+      // ordinary load. The clear value only ever comes back from a reveal.
+      value: '••••••••',
+      setBy: 'Bea Okafor',
+      setAt: '2026-08-10T10:00:00+00:00',
+    ),
+    _field(
+      'shirt_size',
+      'Shirt size',
+      'choice',
+      filledBy: 'employee',
+      writable: mine(!asEmployer),
+      options: const ['S', 'M', 'L'],
+    ),
+    _field(
+      'shirt_size_note',
+      'Anything else about the uniform',
+      'text',
+      filledBy: 'employee',
+      writable: mine(!asEmployer),
+    ),
+    // A kind of question this build has never met. It must be ASKED, not dropped.
+    _field(
+      'notice_period',
+      'Notice period',
+      'duration',
+      filledBy: 'employee',
+      writable: mine(!asEmployer),
+    ),
+    // The signature field is one of the version's fields, as the server sends
+    // it — never writable, because it is signed rather than typed. The form has
+    // to lift it out of the questions and into the ceremony, and must not count
+    // it as an outstanding answer.
+    _field(
+      'employee_signature',
+      'Signature of the new starter',
+      'signature',
+      filledBy: 'employee',
+      writable: false,
+    ),
+  ];
 }
 
 Map<String, Object?> _form({
@@ -2407,9 +2529,7 @@ Map<String, Object?> _form({
   'parties': asEmployer ? ['employer'] : ['employee'],
   'started_by': 'Jose Silva',
   'fields': _fields(asEmployer: asEmployer, readOnly: readOnly),
-  'missing': readOnly
-      ? <String, String>{}
-      : {'notice_period': 'Notice period'},
+  'missing': readOnly ? <String, String>{} : {'notice_period': 'Notice period'},
   'frozen': readOnly,
   // Travels with the form, because the person filling in the employee's half
   // has no permission to fetch the Contracts catalogue.
@@ -2500,7 +2620,14 @@ final _catalogForm = {
       ('work_days', 'Work days', 'Monday - Friday 2-8 , Sunday 8-8'),
       ('work_hours', 'Work hours', 'Monday - Friday 2-8 , Sunday 8-8'),
     ])
-      _field(key, label, 'text', filledBy: 'employer', writable: true, value: value),
+      _field(
+        key,
+        label,
+        'text',
+        filledBy: 'employer',
+        writable: true,
+        value: value,
+      ),
   ],
   'missing': <String, String>{},
 };
@@ -2644,11 +2771,25 @@ final _voidForm = {
   ..._asEmployer,
   'fields': [
     {
-      ..._field('raise_amount', 'Scheduled increase amount', 'number', filledBy: 'employer', writable: true, value: '0'),
+      ..._field(
+        'raise_amount',
+        'Scheduled increase amount',
+        'number',
+        filledBy: 'employer',
+        writable: true,
+        value: '0',
+      ),
       'voidable': true,
     },
     {
-      ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'N/A'),
+      ..._field(
+        'raise_period',
+        'Scheduled increase interval',
+        'text',
+        filledBy: 'employer',
+        writable: true,
+        value: 'N/A',
+      ),
       'voidable': true,
     },
   ],
@@ -2665,12 +2806,26 @@ final _groupForm = {
   ..._asEmployer,
   'fields': [
     {
-      ..._field('raise_amount', 'Scheduled increase amount', 'number', filledBy: 'employer', writable: true, value: '0'),
+      ..._field(
+        'raise_amount',
+        'Scheduled increase amount',
+        'number',
+        filledBy: 'employer',
+        writable: true,
+        value: '0',
+      ),
       'voidable': true,
       'void_group': 'raise',
     },
     {
-      ..._field('raise_period', 'Scheduled increase interval', 'text', filledBy: 'employer', writable: true, value: 'Year'),
+      ..._field(
+        'raise_period',
+        'Scheduled increase interval',
+        'text',
+        filledBy: 'employer',
+        writable: true,
+        value: 'Year',
+      ),
       'voidable': true,
       'void_group': 'raise',
     },
@@ -2684,7 +2839,15 @@ final _addressForm = {
   ..._asEmployee,
   'fields': [
     {
-      ..._field('address', 'Home address', 'text', source: 'core', filledBy: 'employee', writable: true, value: '41 Elm St, Stamford, CT 06901'),
+      ..._field(
+        'address',
+        'Home address',
+        'text',
+        source: 'core',
+        filledBy: 'employee',
+        writable: true,
+        value: '41 Elm St, Stamford, CT 06901',
+      ),
       'parts': {
         'address_line1': '41 Elm St',
         'address_line2': null,
@@ -2694,7 +2857,14 @@ final _addressForm = {
         'country': 'US',
       },
     },
-    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: false, value: 'FL'),
+    _field(
+      'state',
+      'Governing state',
+      'text',
+      filledBy: 'employer',
+      writable: false,
+      value: 'FL',
+    ),
   ],
   'missing': <String, String>{},
 };
@@ -2711,19 +2881,45 @@ final _employerVoidsForm = {
     ],
   },
   'fields': [
-    _field('hourly_wage', 'Hourly wage', 'number', filledBy: 'employer', writable: true, value: '22.50'),
+    _field(
+      'hourly_wage',
+      'Hourly wage',
+      'number',
+      filledBy: 'employer',
+      writable: true,
+      value: '22.50',
+    ),
     {
-      ..._field('uniform_photo', 'Photo in uniform', 'file', filledBy: 'employee', writable: false),
+      ..._field(
+        'uniform_photo',
+        'Photo in uniform',
+        'file',
+        filledBy: 'employee',
+        writable: false,
+      ),
       'voidable': true,
       'void_group': 'uniform_photo',
     },
     {
-      ..._field('drivers_license_front', "Driver's licence, front", 'file', filledBy: 'employee', writable: false, value: 'att-1'),
+      ..._field(
+        'drivers_license_front',
+        "Driver's licence, front",
+        'file',
+        filledBy: 'employee',
+        writable: false,
+        value: 'att-1',
+      ),
       'voidable': true,
       'void_group': 'drivers_license',
     },
     {
-      ..._field('drivers_license_back', "Driver's licence, back", 'file', filledBy: 'employee', writable: false),
+      ..._field(
+        'drivers_license_back',
+        "Driver's licence, back",
+        'file',
+        filledBy: 'employee',
+        writable: false,
+      ),
       'voidable': true,
       'void_group': 'drivers_license',
     },
@@ -2735,9 +2931,22 @@ final _employerVoidsForm = {
 final _taxFormForm = {
   ..._asEmployee,
   'fields': [
-    _field('ssn', 'Social Security number', 'text', filledBy: 'employee', writable: true, value: '123-45-6789'),
+    _field(
+      'ssn',
+      'Social Security number',
+      'text',
+      filledBy: 'employee',
+      writable: true,
+      value: '123-45-6789',
+    ),
     {
-      ..._field('tax_form', 'W-4 (employee) or W-9 (contractor), signed', 'file', filledBy: 'employee', writable: true),
+      ..._field(
+        'tax_form',
+        'W-4 (employee) or W-9 (contractor), signed',
+        'file',
+        filledBy: 'employee',
+        writable: true,
+      ),
       'tax_form_kind': 'w4',
     },
   ],
@@ -2748,8 +2957,22 @@ final _taxFormForm = {
 final _countyFirstForm = {
   ..._asEmployer,
   'fields': [
-    _field('county', 'County for disputes', 'text', filledBy: 'employer', writable: true, value: 'Broward'),
-    _field('state', 'Governing state', 'text', filledBy: 'employer', writable: true, value: 'FL'),
+    _field(
+      'county',
+      'County for disputes',
+      'text',
+      filledBy: 'employer',
+      writable: true,
+      value: 'Broward',
+    ),
+    _field(
+      'state',
+      'Governing state',
+      'text',
+      filledBy: 'employer',
+      writable: true,
+      value: 'FL',
+    ),
   ],
   'missing': <String, String>{},
 };

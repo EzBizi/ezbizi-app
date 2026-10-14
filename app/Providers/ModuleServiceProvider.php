@@ -26,6 +26,7 @@ use App\Models\TrainingAssignment;
 use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
+use App\Models\FinancialRecord;
 use App\Models\Task;
 use App\Models\Vehicle;
 use App\Models\WebSite;
@@ -826,6 +827,27 @@ class ModuleServiceProvider extends ServiceProvider
                     .'could not answer" is the trigger to add here.',
             ),
 
+            /*
+             * Guidelines - Jose, 2026-10-14: "a company can create cards, or
+             * situations, then users can click on those cards and get step by
+             * step guides ... with a search bar ... and the settings tab to
+             * create them ... colors and images as well".
+             */
+            new ModuleDefinition(
+                key: 'guidelines',
+                label: 'Guidelines',
+                actions: ['view', 'manage'],
+                actionLabels: ['manage' => 'Create and edit guidelines'],
+                tabs: [
+                    new TabDefinition('guidelines', 'Guidelines'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['guideline'],
+                automationExemptBecause: 'Guidelines are reference material an administrator '
+                    .'writes, like the AI Assistance Library: editing a card is not something that '
+                    .'happened to the business, and a rule firing on it would act on a reworded step.',
+            ),
+
             new ModuleDefinition(
                 key: 'time_clock',
                 label: 'Clock in',
@@ -1306,6 +1328,9 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jose, 2026-10-13: booked jobs that would sit better on
                     // another day, beside other work (App\Support\Scheduling\Reschedules).
                     new TabDefinition('rescheduling', 'Re-Scheduling'),
+                    // Jose, 2026-10-14: a route per technician (capacity / 6),
+                    // opened in Google Maps (App\Support\Scheduling\Routes).
+                    new TabDefinition('routing', 'Routing'),
                     // Jovanni, 2026-10-01: company branches and the closest
                     // one to an address, for new dispatchers (queue 49).
                     new TabDefinition('locations', 'Locations'),
@@ -2200,6 +2225,32 @@ class ModuleServiceProvider extends ServiceProvider
              * TaskWriter (app/Support/Tasks). Until then the builder shows them
              * as not built (AutomationsController's built list).
              */
+            /*
+             * Financials (Jose, 2026-10-14) — the Airtable replacement: bases of
+             * tables with typed columns, records and saved views (grid, kanban,
+             * calendar, gallery, form). Edit covers records, columns, tables
+             * and views inside a base; delete removes any of them.
+             */
+            new ModuleDefinition(
+                key: 'financials',
+                label: 'Financials',
+                auditActionPrefixes: ['financials'],
+                subject: new AutomationSubject(FinancialRecord::class, 'Record', key: 'financial_record'),
+                emits: [FinancialRecord::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'financial_record.created',
+                        label: 'Financials record added',
+                        description: 'A record was added to a Financials table. It carries the table name.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'financial_record.updated',
+                        label: 'Financials record changed',
+                        description: 'A cell in a Financials record was changed. It carries the table name.',
+                    ),
+                ],
+            ),
+
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',

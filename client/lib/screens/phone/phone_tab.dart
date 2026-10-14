@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../widgets/tab_help.dart';
 import 'call_tab.dart';
 import 'records_tab.dart';
 import 'voicemails_pane.dart';
@@ -77,6 +78,9 @@ class _PhoneTabState extends State<PhoneTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The chips are this tab's strip, so (?) reads the open one from here
+        // and runs phone/Phone/Dial, /Team, /Messages or /Voicemail.
+        OpenTabMark(_sections[_section].$1, child: const SizedBox.shrink()),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Wrap(

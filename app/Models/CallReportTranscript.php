@@ -22,7 +22,7 @@ class CallReportTranscript extends Model implements HoldsPersonalData
 
     public const SOURCES = ['lead', 'whisper', 'failed'];
 
-    protected $fillable = ['organization_id', 'call_id', 'transcript', 'transcript_labelled', 'source', 'answered_by', 'call_started_at'];
+    protected $fillable = ['organization_id', 'call_id', 'transcript', 'transcript_labelled', 'source', 'answered_by', 'call_started_at', 'caller_number', 'recording_id'];
 
     protected function casts(): array
     {
@@ -58,6 +58,9 @@ class CallReportTranscript extends Model implements HoldsPersonalData
                 'The name of the staff member who answered the call, as the report shows it, '
                 .'so the score and review of a call belong to the person who took it.',
                 Erasure::keep('a work record of who handled a business call; it goes with the row after a year')),
+            new PersonalDataEntry('caller_number', PersonalDataEntry::CONTACT,
+                'The phone number the call came from, so a person\'s calls can be searched by it.',
+                Erasure::erase()),
         ];
     }
 

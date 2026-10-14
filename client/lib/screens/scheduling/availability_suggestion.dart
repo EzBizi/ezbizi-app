@@ -304,6 +304,19 @@ class RouteMap extends StatefulWidget {
 /// session per theme and shared by every map here.
 final _tiles = <String, Future<String?>>{};
 
+/// The street map's tile URL for this theme, or null when there is none.
+Future<String?> mapTileUrl(ApiClient api, Brightness brightness) {
+  final theme = brightness == Brightness.dark ? 'dark' : 'light';
+  return _tiles[theme] ??= api
+      .get('/field/map/tiles', {'theme': theme})
+      .then(
+        (r) => switch (r.body['data']) {
+          {'url': final String url} when r.ok => url,
+          _ => null,
+        },
+      );
+}
+
 class _RouteMapState extends State<RouteMap>
     with SingleTickerProviderStateMixin {
   late final AnimationController _draw = AnimationController(
@@ -328,20 +341,9 @@ class _RouteMapState extends State<RouteMap>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final theme = Theme.of(context).brightness == Brightness.dark
-        ? 'dark'
-        : 'light';
-    (_tiles[theme] ??= widget.api
-            .get('/field/map/tiles', {'theme': theme})
-            .then(
-              (r) => switch (r.body['data']) {
-                {'url': final String url} when r.ok => url,
-                _ => null,
-              },
-            ))
-        .then((url) {
-          if (mounted && url != _tileUrl) setState(() => _tileUrl = url);
-        });
+    mapTileUrl(widget.api, Theme.of(context).brightness).then((url) {
+      if (mounted && url != _tileUrl) setState(() => _tileUrl = url);
+    });
 
     // Switched-off animations get the finished picture.
     if (MediaQuery.disableAnimationsOf(context)) {

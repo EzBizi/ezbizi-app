@@ -29,7 +29,7 @@ class TaskBoardTest extends TestCase
             $this->assertNotNull($company);
             $this->assertNotNull($franchise);
             $this->assertNotNull($mine);
-            $this->assertSame(['This week', 'Next week', 'Done'], $franchise->groups->pluck('name')->all());
+            $this->assertSame(['Open Tasks', 'Recurring Tasks', 'Completed Tasks', 'Company Files', 'Guidelines'], $franchise->groups->pluck('name')->all());
 
             // The backfill is idempotent.
             Artisan::call('ezbizi:backfill-task-boards');

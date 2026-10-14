@@ -112,6 +112,7 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
 
     if (tabs.isEmpty) {
       return Center(
+        key: const ValueKey('tour-memberships'),
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
@@ -129,11 +130,13 @@ class _MembershipsScreenState extends State<MembershipsScreen> {
     final active = tabs[index < 0 ? 0 : index];
 
     return Column(
+      key: const ValueKey('tour-memberships'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
           color: theme.colorScheme.surface,
           child: TabBarLike(
+            key: const ValueKey('tour-memberships-tabs'),
             level: TabLevel.secondary,
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,

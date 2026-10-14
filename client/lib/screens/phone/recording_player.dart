@@ -55,9 +55,26 @@ class RecordingPlayback {
 /// ── Played from memory, never from a file ────────────────────────
 ///
 /// [BytesSource] hands the bytes to the platform directly: `SHCreateMemStream`
-/// on Windows, a blob on the web, an in-memory source elsewhere. Nothing
-/// touches disk, so there is no file to leak, none to clean up, and no temp
-/// directory to depend on.
+/// on Windows, a blob on the web, memory on Android. NOT on iOS, macOS and
+/// Linux: audioplayers writes them to an app-private temp file there, named
+/// by a hash and without an extension, which is why the type is passed.
+/// The audio type a recording's first bytes say it is: Twilio and Google
+/// send MP3, some voicemail WAV. Null when unknown, and the platform guesses.
+String? audioMimeType(List<int> bytes) {
+  bool starts(List<int> magic) =>
+      bytes.length >= magic.length &&
+      List.generate(magic.length, (i) => bytes[i] == magic[i]).every((b) => b);
+  if (starts([0x49, 0x44, 0x33]) || (bytes.length > 1 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0)) {
+    return 'audio/mpeg';
+  }
+  if (starts([0x52, 0x49, 0x46, 0x46])) return 'audio/wav';
+  if (starts([0x4F, 0x67, 0x67, 0x53])) return 'audio/ogg';
+  if (bytes.length > 8 && bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70) {
+    return 'audio/mp4';
+  }
+  return null;
+}
+
 abstract class RecordingPlayer {
   RecordingPlayback get state;
 
@@ -155,7 +172,10 @@ class AudioplayersRecordingPlayer implements RecordingPlayer {
     try {
       await _player.stop();
       _set(const RecordingPlayback(playing: true));
-      await _player.play(BytesSource(Uint8List.fromList(bytes)));
+      // The type is named: iOS and macOS play bytes from an extensionless
+      // temp file, and AVPlayer cannot open one it cannot identify (Jose,
+      // 2026-10-14: recordings would not play on iOS).
+      await _player.play(BytesSource(Uint8List.fromList(bytes), mimeType: audioMimeType(bytes)));
       // A new source can start at normal speed; the one picked carries on.
       if (_speed != 1) await _player.setPlaybackRate(_speed);
     } catch (error) {

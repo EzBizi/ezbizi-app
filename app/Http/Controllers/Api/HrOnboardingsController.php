@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
+use App\Models\Attachment;
+use App\Models\Company;
 use App\Models\Contract;
 use App\Models\ContractSignature;
+use App\Models\Franchise;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
@@ -21,23 +24,25 @@ use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldDefinition;
+use App\Support\Contracts\FilledBy;
+use App\Support\Contracts\PdfRenderer;
 use App\Support\Hr\CannotActOnInvitation;
 use App\Support\Hr\InvitationActions;
 use App\Support\Hr\OnboardingToRecord;
 use App\Support\Hr\TaxForms;
-use App\Support\Contracts\FieldType;
-use App\Support\Contracts\FilledBy;
-use App\Support\Contracts\PdfRenderer;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Privacy\SensitiveValues;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\HeaderUtils;
@@ -119,7 +124,7 @@ class HrOnboardingsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $actor = $request->user();
-        $mine  = $actor->getKey();
+        $mine = $actor->getKey();
 
         // The policy, asked as a question rather than as a gate — the same
         // `viewAny` an employer would be refused on, used here to decide how
@@ -160,6 +165,20 @@ class HrOnboardingsController extends Controller
                 }
             });
 
+        // A search box over the list (Jose, 2026-10-14: "we lack searchbars on
+        // the 3 last human resources tabs"): the person, by their account or by
+        // the invitation that started it. Before the tiles, so they count it.
+        if (filled($term = trim((string) $request->query('search')))) {
+            $like = "%{$term}%";
+            $query->where(fn (Builder $q) => $q
+                ->whereHas('user', fn (Builder $u) => $u->where('name', 'like', $like)
+                    ->orWhere('email', 'like', $like))
+                ->orWhereHas('invitation', fn (Builder $i) => $i->where('email', 'like', $like)
+                    ->orWhere('first_name', 'like', $like)
+                    ->orWhere('last_name', 'like', $like)
+                    ->orWhereRaw("CONCAT_WS(' ', first_name, last_name) LIKE ?", [$like])));
+        }
+
         // Every status counted across all pages, before a filter narrows the
         // list - the tiles above it (HR lists, layout A, Mia 2026-10-02).
         $tiles = (clone $query)->toBase()->reorder()
@@ -196,7 +215,7 @@ class HrOnboardingsController extends Controller
             'data' => collect($onboardings->items())->map(fn (Onboarding $o) => $this->summarise($o)),
             'meta' => [
                 ...$this->pageMeta($onboardings),
-                'tiles'        => [
+                'tiles' => [
                     Onboarding::IN_PROGRESS => $tiles[Onboarding::IN_PROGRESS] ?? 0,
                     Onboarding::SUBMITTED => $tiles[Onboarding::SUBMITTED] ?? 0,
                     Onboarding::AWAITING_APPROVAL => $tiles[Onboarding::AWAITING_APPROVAL] ?? 0,
@@ -238,7 +257,7 @@ class HrOnboardingsController extends Controller
         ]);
 
         $invitation = Invitation::findOrFail($input['invitation_id']);
-        $contract   = Contract::with('currentVersion')->findOrFail($input['contract_id']);
+        $contract = Contract::with('currentVersion')->findOrFail($input['contract_id']);
 
         // The same §4 bound inviting is held to, asked again here because
         // starting somebody's paperwork is acting on their placement.
@@ -313,8 +332,7 @@ class HrOnboardingsController extends Controller
         $this->authorize('cancel', $onboarding);
 
         if ($onboarding->isCancelled()) {
-            throw ValidationException::withMessages(['onboarding' =>
-                'That onboarding is already cancelled.',
+            throw ValidationException::withMessages(['onboarding' => 'That onboarding is already cancelled.',
             ]);
         }
 
@@ -367,8 +385,7 @@ class HrOnboardingsController extends Controller
         $address = trim((string) ($answers[Onboarding::EMPLOYER_ADDRESS] ?? '')) ?: null;
         unset($answers[Onboarding::EMPLOYER_ADDRESS]);
         if ($typedAddress && (! in_array(FilledBy::EMPLOYER, $parties, true) || $this->employerSigned($onboarding))) {
-            throw ValidationException::withMessages(['answers' =>
-                'Only the employer can set the company address, and only before signing.',
+            throw ValidationException::withMessages(['answers' => 'Only the employer can set the company address, and only before signing.',
             ]);
         }
 
@@ -382,8 +399,7 @@ class HrOnboardingsController extends Controller
             ));
             $touched = array_intersect(array_keys((array) $request->input('answers')), $locked);
             if ($touched !== []) {
-                throw ValidationException::withMessages(['answers' =>
-                    'The employer has signed, so the employer\'s answers are fixed: they are what '
+                throw ValidationException::withMessages(['answers' => 'The employer has signed, so the employer\'s answers are fixed: they are what '
                     .'was signed. Only the employee\'s own questions can still be answered.',
                 ]);
             }
@@ -413,9 +429,9 @@ class HrOnboardingsController extends Controller
                  * belongs, and it stores the field name for exactly this reason.
                  */
                 $this->audit->log('onboarding.answers_saved', $onboarding, metadata: [
-                    'fields'   => $changed['answers'],
+                    'fields' => $changed['answers'],
                     'identity' => $changed['identity'],
-                    'party'    => $parties,
+                    'party' => $parties,
                 ]);
             }
 
@@ -423,7 +439,7 @@ class HrOnboardingsController extends Controller
         });
 
         return response()->json([
-            'data'    => $this->detail($onboarding->fresh(), $actor),
+            'data' => $this->detail($onboarding->fresh(), $actor),
             'changed' => $changed,
         ]);
     }
@@ -518,12 +534,12 @@ class HrOnboardingsController extends Controller
             $content = $this->documents->render($onboarding);
 
             return response()->json(['data' => [
-                'stored'         => false,
-                'revision'       => null,
-                'attachment_id'  => null,
-                'content'        => $content,
-                'mime'           => DocumentRenderer::MIME,
-                'content_hash'   => DocumentFingerprint::of($content),
+                'stored' => false,
+                'revision' => null,
+                'attachment_id' => null,
+                'content' => $content,
+                'mime' => DocumentRenderer::MIME,
+                'content_hash' => DocumentFingerprint::of($content),
                 'hash_algorithm' => DocumentFingerprint::ALGORITHM,
                 'content_length' => strlen($content),
                 // Nothing is signed yet, so this is what the form currently says
@@ -538,9 +554,9 @@ class HrOnboardingsController extends Controller
         abort_if($content === null, Response::HTTP_NOT_FOUND);
 
         return response()->json(['data' => $document->present() + [
-            'stored'     => true,
-            'content'    => $content,
-            'mime'       => DocumentRenderer::MIME,
+            'stored' => true,
+            'content' => $content,
+            'mime' => DocumentRenderer::MIME,
             'is_preview' => false,
             /*
              * Checked on every read, not only when somebody asks.
@@ -612,7 +628,7 @@ class HrOnboardingsController extends Controller
                 'source' => 'imported',
                 'copy' => ['hash' => DocumentFingerprint::of($imported), 'algorithm' => DocumentFingerprint::ALGORITHM],
             ]);
-            $filename = \Illuminate\Support\Str::slug(trim(($onboarding->user?->name ?? '').' signed contract')) ?: 'signed-contract';
+            $filename = Str::slug(trim(($onboarding->user?->name ?? '').' signed contract')) ?: 'signed-contract';
 
             return response($imported, Response::HTTP_OK, [
                 'Content-Type' => PdfRenderer::MIME,
@@ -673,16 +689,16 @@ class HrOnboardingsController extends Controller
         $copyHash = DocumentFingerprint::of($pdf);
 
         $this->audit->log('onboarding.document_copied', $onboarding, metadata: [
-            'format'   => PdfRenderer::MIME,
+            'format' => PdfRenderer::MIME,
             'revision' => $document->revision,
             'document' => [
-                'hash'      => $document->content_hash,
+                'hash' => $document->content_hash,
                 'algorithm' => $document->hash_algorithm,
             ],
             'copy' => [
-                'hash'      => $copyHash,
+                'hash' => $copyHash,
                 'algorithm' => DocumentFingerprint::ALGORITHM,
-                'length'    => strlen($pdf),
+                'length' => strlen($pdf),
             ],
         ]);
 
@@ -691,7 +707,7 @@ class HrOnboardingsController extends Controller
         );
 
         return response($pdf, Response::HTTP_OK, [
-            'Content-Type'   => PdfRenderer::MIME,
+            'Content-Type' => PdfRenderer::MIME,
             'Content-Length' => (string) strlen($pdf),
             'Content-Disposition' => HeaderUtils::makeDisposition(
                 // Never `inline`. The bytes are converted from a document a
@@ -710,10 +726,10 @@ class HrOnboardingsController extends Controller
              * which is why the wording above puts the tie-back on the log and not
              * on a header a saved file does not keep.
              */
-            'X-Document-Fingerprint'  => (string) $document->content_hash,
-            'X-Document-Algorithm'    => (string) $document->hash_algorithm,
-            'X-Copy-Fingerprint'      => $copyHash,
-            'X-Copy-Algorithm'        => DocumentFingerprint::ALGORITHM,
+            'X-Document-Fingerprint' => (string) $document->content_hash,
+            'X-Document-Algorithm' => (string) $document->hash_algorithm,
+            'X-Copy-Fingerprint' => $copyHash,
+            'X-Copy-Algorithm' => DocumentFingerprint::ALGORITHM,
         ]);
     }
 
@@ -746,8 +762,7 @@ class HrOnboardingsController extends Controller
 
         abort_if($field === null, Response::HTTP_NOT_FOUND, 'This contract does not ask for that form.');
         if ($onboarding->isFrozen() || ! in_array(FilledBy::EMPLOYEE, $parties, true) || $onboarding->user === null) {
-            throw ValidationException::withMessages([$answerKey =>
-                'Only the new hire fills in and signs their own forms, before the paperwork is signed.']);
+            throw ValidationException::withMessages([$answerKey => 'Only the new hire fills in and signs their own forms, before the paperwork is signed.']);
         }
 
         $preview = $request->boolean('preview');
@@ -789,7 +804,7 @@ class HrOnboardingsController extends Controller
                 'extra_withholding' => $given('extra_withholding'),
                 'exempt' => filter_var($input['values']['exempt'] ?? false, FILTER_VALIDATE_BOOL),
                 'employer' => $employer,
-                'first_date' => $hired === '' ? '' : \Illuminate\Support\Carbon::parse($hired)->format('m/d/Y'),
+                'first_date' => $hired === '' ? '' : Carbon::parse($hired)->format('m/d/Y'),
             ]
             : [
                 'name' => (string) $user->name,
@@ -807,12 +822,10 @@ class HrOnboardingsController extends Controller
             ] + $this->taxIdBoxes($given('ein') !== '' ? $given('ein') : $answer('ein'), $ssn));
 
         if (! $preview && $input['kind'] === TaxForms::I9 && ($values['status'] ?? '') === '') {
-            throw ValidationException::withMessages(['values.status' =>
-                'Choose which of the four statements is true of you, then sign.']);
+            throw ValidationException::withMessages(['values.status' => 'Choose which of the four statements is true of you, then sign.']);
         }
         if (! $preview && $input['kind'] === TaxForms::DIRECT_DEPOSIT && ($values['account_type'] ?? '') === '') {
-            throw ValidationException::withMessages(['values.account_type' =>
-                'Choose checking or savings, then sign.']);
+            throw ValidationException::withMessages(['values.account_type' => 'Choose checking or savings, then sign.']);
         }
 
         $date = now($zone)->format('m/d/Y');
@@ -919,11 +932,10 @@ class HrOnboardingsController extends Controller
         }
 
         $answer = $onboarding->answers()->where('field_key', 'i9_form')->first();
-        $file = $answer?->value === null ? null : \App\Models\Attachment::query()->find($answer->value);
+        $file = $answer?->value === null ? null : Attachment::query()->find($answer->value);
         $page = $file === null ? null : $this->documents->fileBytes($file);
         if ($page === null) {
-            throw ValidationException::withMessages(['i9_form' =>
-                'The new hire has not signed Section 1 of their I-9 yet.']);
+            throw ValidationException::withMessages(['i9_form' => 'The new hire has not signed Section 1 of their I-9 yet.']);
         }
 
         $given = fn (string $key) => is_scalar($input['values'][$key] ?? null) ? mb_substr(trim((string) $input['values'][$key]), 0, 160) : '';
@@ -931,7 +943,7 @@ class HrOnboardingsController extends Controller
         $employer = $onboarding->employer();
         $values = [
             'first_day' => $given('first_day') !== '' ? $given('first_day')
-                : ($hired === '' ? '' : \Illuminate\Support\Carbon::parse($hired)->format('m/d/Y')),
+                : ($hired === '' ? '' : Carbon::parse($hired)->format('m/d/Y')),
             'representative' => trim(implode(', ', array_filter([(string) $actor->last_name, (string) $actor->first_name, $given('title')]))),
             'business_name' => $employer['name'],
             'business_address' => $employer['address'],
@@ -944,8 +956,7 @@ class HrOnboardingsController extends Controller
         $values['additional'] = $given('additional');
 
         if (! $preview && $values['a_title'] === '' && ($values['b_title'] === '' || $values['c_title'] === '')) {
-            throw ValidationException::withMessages(['values' =>
-                'Enter the document from List A, or one from List B and one from List C.']);
+            throw ValidationException::withMessages(['values' => 'Enter the document from List A, or one from List B and one from List C.']);
         }
 
         $date = now((string) ($this->tenantTimezone($onboarding) ?: config('app.timezone')))->format('m/d/Y');
@@ -984,7 +995,7 @@ class HrOnboardingsController extends Controller
 
     private function tenantTimezone(Onboarding $onboarding): ?string
     {
-        return app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $onboarding->organization);
+        return app(SettingsResolver::class)->get('timezone', $onboarding->organization);
     }
 
     /**
@@ -1072,8 +1083,7 @@ class HrOnboardingsController extends Controller
              * deliberate thing somebody does to a record, not a thing a form
              * does when it is submitted again.
              */
-            throw ValidationException::withMessages(['field_key' =>
-                'That line has already been signed. Signing it again would record the same '
+            throw ValidationException::withMessages(['field_key' => 'That line has already been signed. Signing it again would record the same '
                 .'act twice rather than replace the first — a signature is never replaced. '
                 .'If what was signed is wrong, correct it with an amendment: both documents '
                 .'stay, and the original remains what was agreed to.',
@@ -1092,8 +1102,7 @@ class HrOnboardingsController extends Controller
         // (Jose, 2026-10-05: "the final approval and the signature from the
         // employer are two different things"). The employee needs an account.
         if ($onboarding->user_id === null && $field->filledBy !== FilledBy::EMPLOYER) {
-            throw ValidationException::withMessages(['field_key' =>
-                'Nobody has accepted the invitation yet, so there is no person for this '
+            throw ValidationException::withMessages(['field_key' => 'Nobody has accepted the invitation yet, so there is no person for this '
                 .'contract to be about. They create their account from the link, and the '
                 .'contract can be signed after that.',
             ]);
@@ -1126,42 +1135,42 @@ class HrOnboardingsController extends Controller
 
             $this->assertShownDocumentMatches($document, $input['document_hash']);
 
-            $ceremony  = new Ceremony($onboarding);
+            $ceremony = new Ceremony($onboarding);
             $signature = ContractSignature::create([
                 'contract_version_id' => $onboarding->contract_version_id,
-                'field_key'           => $field->key,
-                'onboarding_id'       => $onboarding->getKey(),
-                'subject_user_id'     => $onboarding->user_id,
+                'field_key' => $field->key,
+                'onboarding_id' => $onboarding->getKey(),
+                'subject_user_id' => $onboarding->user_id,
                 // From the SESSION, never from the request body. "Who signed" is
                 // the one thing a signature cannot take somebody's word for.
                 'signer_user_id' => $actor->getKey(),
-                'signer_label'   => "{$actor->name} <{$actor->email}>",
+                'signer_label' => "{$actor->name} <{$actor->email}>",
                 // From the FIELD. ContractSignature refuses anything else, and
                 // the reason is in its own guard: a party taken from the request
                 // is an employer signature filed as the employee's.
                 'signer_party' => $field->filledBy,
-                'ip_address'   => $request->ip(),
-                'user_agent'   => mb_substr((string) $request->userAgent(), 0, 1000),
+                'ip_address' => $request->ip(),
+                'user_agent' => mb_substr((string) $request->userAgent(), 0, 1000),
 
-                'content_hash'   => $document->content_hash,
+                'content_hash' => $document->content_hash,
                 'hash_algorithm' => $document->hash_algorithm,
                 'content_length' => $document->content_length,
 
                 // The words that were on screen, and the server's own — a client
                 // that supplied them could record somebody agreeing to anything.
                 'consent_statement' => $ceremony->consent(),
-                'consented_at'      => now(),
-                'intent_statement'  => $ceremony->intent(),
-                'affirmation'       => trim($input['affirmation']),
+                'consented_at' => now(),
+                'intent_statement' => $ceremony->intent(),
+                'affirmation' => trim($input['affirmation']),
                 'drawing_attachment_id' => $drawing === null ? null
                     : $this->documents->storeDrawing($onboarding, $actor, $drawing)->getKey(),
-                'signed_at'         => now(),
+                'signed_at' => now(),
             ]);
 
             $this->audit->log('onboarding.signed', $onboarding, metadata: [
-                'field'        => $field->key,
-                'party'        => $field->filledBy,
-                'document'     => ['revision' => $document->revision, 'hash' => $document->content_hash],
+                'field' => $field->key,
+                'party' => $field->filledBy,
+                'document' => ['revision' => $document->revision, 'hash' => $document->content_hash],
                 'signature_id' => $signature->getKey(),
             ]);
 
@@ -1181,11 +1190,11 @@ class HrOnboardingsController extends Controller
              * separate completion event.
              */
             $this->events->emit('onboarding.signed', $onboarding, ['after' => [
-                'status'       => $onboarding->status,
-                'party'        => $field->filledBy,
-                'field'        => $field->key,
-                'field_label'  => $field->label,
-                'revision'     => $document->revision,
+                'status' => $onboarding->status,
+                'party' => $field->filledBy,
+                'field' => $field->key,
+                'field_label' => $field->label,
+                'revision' => $document->revision,
                 'fully_signed' => $onboarding->isFullySigned(),
             ]], actor: $actor);
 
@@ -1203,7 +1212,7 @@ class HrOnboardingsController extends Controller
         }
 
         return response()->json([
-            'data'      => $this->detail($onboarding->fresh(), $actor),
+            'data' => $this->detail($onboarding->fresh(), $actor),
             'signature' => $this->presentSignature($signature),
         ], Response::HTTP_CREATED);
     }
@@ -1230,7 +1239,7 @@ class HrOnboardingsController extends Controller
 
         $input = $request->validate([
             'answers' => ['required', 'array'],
-            'reason'  => ['required', 'string', 'min:10', 'max:2000'],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
         ], [
             'reason.required' => 'Say why this is being corrected. The list of fields says '
                 .'what changed; nothing can reconstruct why, and an amendment nobody can '
@@ -1240,8 +1249,7 @@ class HrOnboardingsController extends Controller
         ]);
 
         if (! $onboarding->isFrozen()) {
-            throw ValidationException::withMessages(['answers' =>
-                'Nothing has been signed yet, so there is nothing to amend — just save the '
+            throw ValidationException::withMessages(['answers' => 'Nothing has been signed yet, so there is nothing to amend — just save the '
                 .'correction. An amendment exists because a signed document cannot change, '
                 .'and it costs a second document that will be kept forever.',
             ]);
@@ -1271,8 +1279,7 @@ class HrOnboardingsController extends Controller
          * amend — that keeps the original and records who changed what.
          */
         if (! $onboarding->isFullySigned()) {
-            throw ValidationException::withMessages(['answers' =>
-                'Somebody has signed and somebody has not, so the document cannot change yet '
+            throw ValidationException::withMessages(['answers' => 'Somebody has signed and somebody has not, so the document cannot change yet '
                 .'— the second signature has to be over the same text as the first. Wait for '
                 .'the remaining signature, then amend. That keeps the original and records '
                 .'who changed what.',
@@ -1283,11 +1290,10 @@ class HrOnboardingsController extends Controller
 
         $result = DB::transaction(function () use ($onboarding, $actor, $parties, $input) {
             $changed = $this->form->save($onboarding, $actor, $parties, (array) $input['answers']);
-            $keys    = [...$changed['answers'], ...$changed['identity']];
+            $keys = [...$changed['answers'], ...$changed['identity']];
 
             if ($keys === []) {
-                throw ValidationException::withMessages(['answers' =>
-                    'Those are the answers this contract already has, so there is nothing to '
+                throw ValidationException::withMessages(['answers' => 'Those are the answers this contract already has, so there is nothing to '
                     .'correct. An amendment that changes nothing would still be a second '
                     .'document kept forever beside the first, with a reason describing a '
                     .'change nobody made.',
@@ -1304,9 +1310,9 @@ class HrOnboardingsController extends Controller
 
             $this->audit->log('onboarding.amended', $onboarding, metadata: [
                 'revision' => $document->revision,
-                'fields'   => $keys,
-                'reason'   => $document->reason,
-                'party'    => $parties,
+                'fields' => $keys,
+                'reason' => $document->reason,
+                'party' => $parties,
             ]);
 
             /*
@@ -1320,11 +1326,11 @@ class HrOnboardingsController extends Controller
              * a notification that cannot say why is the one nobody acts on.
              */
             $this->events->emit('onboarding.amended', $onboarding, ['after' => [
-                'status'   => $onboarding->status,
+                'status' => $onboarding->status,
                 'revision' => $document->revision,
-                'fields'   => $keys,
-                'reason'   => $document->reason,
-                'party'    => $parties,
+                'fields' => $keys,
+                'reason' => $document->reason,
+                'party' => $parties,
             ]], actor: $actor);
 
             $this->notifyOtherSide($onboarding, $actor, $keys);
@@ -1333,7 +1339,7 @@ class HrOnboardingsController extends Controller
         });
 
         return response()->json([
-            'data'     => $this->detail($onboarding->fresh(), $actor),
+            'data' => $this->detail($onboarding->fresh(), $actor),
             'document' => $result->present(),
         ], Response::HTTP_CREATED);
     }
@@ -1377,9 +1383,9 @@ class HrOnboardingsController extends Controller
 
         return response()->json(['data' => [
             'field_key' => $field,
-            'value'     => $read['value'],
+            'value' => $read['value'],
             'sensitive' => $read['sensitive'],
-            'revealed'  => $read['revealed'],
+            'revealed' => $read['revealed'],
         ]]);
     }
 
@@ -1430,7 +1436,7 @@ class HrOnboardingsController extends Controller
         $this->authorize('reveal', $onboarding);
 
         $this->audit->log('sensitive_value.revealed', $onboarding, metadata: [
-            'via'    => $via,
+            'via' => $via,
             'fields' => $onboarding->sensitiveAnswerKeys(),
         ]);
     }
@@ -1467,7 +1473,7 @@ class HrOnboardingsController extends Controller
             : $this->documents->store($onboarding, $actor, ($earlier?->revision ?? OnboardingDocument::ORIGINAL - 1) + 1);
 
         $onboarding->forceFill([
-            'status'       => Onboarding::SUBMITTED,
+            'status' => Onboarding::SUBMITTED,
             'submitted_at' => now(),
         ])->save();
 
@@ -1493,16 +1499,14 @@ class HrOnboardingsController extends Controller
         $stored = $this->documents->contentsOf($document);
 
         if ($stored === null || ! $document->stillMatches($stored)) {
-            throw ValidationException::withMessages(['document_hash' =>
-                'The stored copy of this contract is not the document that was recorded, so '
+            throw ValidationException::withMessages(['document_hash' => 'The stored copy of this contract is not the document that was recorded, so '
                 .'nothing may be signed against it. Nobody should sign a document the system '
                 .'cannot vouch for — this needs looking at before anything else happens.',
             ]);
         }
 
         if (! hash_equals((string) $document->content_hash, $shown)) {
-            throw ValidationException::withMessages(['document_hash' =>
-                'The document changed after it was put in front of you, so this signature '
+            throw ValidationException::withMessages(['document_hash' => 'The document changed after it was put in front of you, so this signature '
                 .'would be against something you have not read. Open it again and sign from '
                 .'there — that comparison is the only thing making a signature evidence of '
                 .'what somebody actually saw.',
@@ -1521,8 +1525,7 @@ class HrOnboardingsController extends Controller
         $this->authorize('approve', $onboarding);
 
         if ($onboarding->status !== Onboarding::AWAITING_APPROVAL) {
-            throw ValidationException::withMessages(['onboarding' =>
-                'Only paperwork both sides have signed waits for approval, and this one is not '
+            throw ValidationException::withMessages(['onboarding' => 'Only paperwork both sides have signed waits for approval, and this one is not '
                 .'waiting.',
             ]);
         }
@@ -1560,7 +1563,7 @@ class HrOnboardingsController extends Controller
             return;
         }
 
-        if ((bool) app(\App\Support\Settings\SettingsResolver::class)
+        if ((bool) app(SettingsResolver::class)
             ->get(Onboarding::APPROVAL_SETTING, $onboarding->organization)) {
             $onboarding->forceFill(['status' => Onboarding::AWAITING_APPROVAL])->save();
             $this->audit->log('onboarding.awaiting_approval', $onboarding);
@@ -1577,7 +1580,7 @@ class HrOnboardingsController extends Controller
         $signed = $onboarding->takenSignatures()->pluck('field_key')->all();
 
         $onboarding->forceFill([
-            'status'       => Onboarding::COMPLETED,
+            'status' => Onboarding::COMPLETED,
             'completed_at' => now(),
         ])->save();
 
@@ -1594,7 +1597,7 @@ class HrOnboardingsController extends Controller
 
         $this->audit->log('onboarding.completed', $onboarding, metadata: [
             'signatures' => count($signed),
-            'filled'     => $filled,
+            'filled' => $filled,
         ]);
 
         /*
@@ -1613,12 +1616,12 @@ class HrOnboardingsController extends Controller
          */
         $this->events->emit('onboarding.completed', $onboarding, [
             'before' => ['status' => $before === Onboarding::AWAITING_APPROVAL ? $before : Onboarding::SUBMITTED],
-            'after'  => [
-                'status'     => $onboarding->status,
+            'after' => [
+                'status' => $onboarding->status,
                 'signatures' => count($signed),
-                'contract'   => $onboarding->contractVersion?->contract?->name,
-                'version'    => $onboarding->contractVersion?->version,
-                'user_id'    => $onboarding->user_id,
+                'contract' => $onboarding->contractVersion?->contract?->name,
+                'version' => $onboarding->contractVersion?->version,
+                'user_id' => $onboarding->user_id,
             ],
         ], actor: $actor);
     }
@@ -1690,8 +1693,7 @@ class HrOnboardingsController extends Controller
     private function assertNotCancelled(Onboarding $onboarding): void
     {
         if ($onboarding->isCancelled()) {
-            throw ValidationException::withMessages(['onboarding' =>
-                'This onboarding was cancelled, so nothing on it can change. Start a new one '
+            throw ValidationException::withMessages(['onboarding' => 'This onboarding was cancelled, so nothing on it can change. Start a new one '
                 .'if you still need the paperwork.',
             ]);
         }
@@ -1702,8 +1704,7 @@ class HrOnboardingsController extends Controller
         if ($invitation->onboarding !== null) {
             $live = $invitation->onboarding;
 
-            throw ValidationException::withMessages(['invitation_id' =>
-                $live->status === Onboarding::COMPLETED
+            throw ValidationException::withMessages(['invitation_id' => $live->status === Onboarding::COMPLETED
                     ? 'That invitation already produced a signed agreement. A second '
                         .'onboarding against it would be two contracts for one arrival, with '
                         .'nothing saying which is real.'
@@ -1713,8 +1714,7 @@ class HrOnboardingsController extends Controller
         }
 
         if ($invitation->revoked_at !== null) {
-            throw ValidationException::withMessages(['invitation_id' =>
-                'That invitation was withdrawn, so nobody is coming. Send a new one if that '
+            throw ValidationException::withMessages(['invitation_id' => 'That invitation was withdrawn, so nobody is coming. Send a new one if that '
                 .'has changed.',
             ]);
         }
@@ -1723,8 +1723,7 @@ class HrOnboardingsController extends Controller
         // second side. Resending restarts the week, which is what that button is
         // for and is a smaller act than starting paperwork.
         if ($invitation->accepted_at === null && $invitation->hasExpired()) {
-            throw ValidationException::withMessages(['invitation_id' =>
-                'That invitation has lapsed and its link no longer works, so the person could '
+            throw ValidationException::withMessages(['invitation_id' => 'That invitation has lapsed and its link no longer works, so the person could '
                 .'never fill in their half. Resend it first.',
             ]);
         }
@@ -1825,9 +1824,9 @@ class HrOnboardingsController extends Controller
             return;
         }
 
-        $company = \App\Models\Company::query()->findOrFail($companyId);
+        $company = Company::query()->findOrFail($companyId);
         $companies = $company->subtreeCompanyIds();
-        $franchises = \App\Models\Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
+        $franchises = Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
         $inside = fn ($row) => in_array($row->assigned_company_id, $companies, true)
             || in_array($row->assigned_franchise_id, $franchises, true);
 
@@ -1910,7 +1909,7 @@ class HrOnboardingsController extends Controller
         $version = $onboarding->contractVersion;
 
         return [
-            'id'     => $onboarding->id,
+            'id' => $onboarding->id,
             'status' => $onboarding->status,
             'person' => [
                 'user_id' => $onboarding->user_id,
@@ -1924,7 +1923,7 @@ class HrOnboardingsController extends Controller
                 'email' => $onboarding->user?->email ?? $onboarding->invitation?->email,
             ],
             'contract' => [
-                'name'    => $version?->contract?->name,
+                'name' => $version?->contract?->name,
                 'version' => $version?->version,
                 'version_id' => $onboarding->contract_version_id,
             ],
@@ -1939,11 +1938,48 @@ class HrOnboardingsController extends Controller
             // is what the import brought, with the record (Jose, 2026-10-05).
             'downloadable' => $onboarding->status === Onboarding::COMPLETED
                 || (bool) ($onboarding->documents_exists ?? $onboarding->documents()->exists()),
-            'started_at'    => $onboarding->started_at?->toIso8601String(),
-            'submitted_at'  => $onboarding->submitted_at?->toIso8601String(),
-            'completed_at'  => $onboarding->completed_at?->toIso8601String(),
-            'cancelled_at'  => $onboarding->cancelled_at?->toIso8601String(),
+            'progress' => $this->progress($onboarding),
+            'started_at' => $onboarding->started_at?->toIso8601String(),
+            'submitted_at' => $onboarding->submitted_at?->toIso8601String(),
+            'completed_at' => $onboarding->completed_at?->toIso8601String(),
+            'cancelled_at' => $onboarding->cancelled_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * Answered and still owed, per side, while it is being filled in: the
+     * amber count on the list, as Records has (Jose, 2026-10-14). The same
+     * missing() the signature refuses on, so the list and the refusal agree;
+     * what the employee owns (the core included) is theirs, the rest the
+     * employer's, as renderForEmployer() splits it.
+     *
+     * ponytail: a few queries per row on a page of 50; eager-load answers if
+     * the list gets slow.
+     */
+    private function progress(Onboarding $onboarding): ?array
+    {
+        if ($onboarding->status !== Onboarding::IN_PROGRESS) {
+            return null;
+        }
+        $owners = $this->ownerByKey($onboarding);
+        $side = fn (string $key) => ($owners[$key] ?? FilledBy::EMPLOYEE) === FilledBy::EMPLOYEE
+            ? FilledBy::EMPLOYEE : FilledBy::EMPLOYER;
+        $progress = [
+            FilledBy::EMPLOYER => ['answered' => 0, 'outstanding' => 0],
+            FilledBy::EMPLOYEE => ['answered' => 0, 'outstanding' => 0],
+        ];
+        foreach ($onboarding->answers()->get() as $answer) {
+            if ((string) $answer->value !== '' && isset($owners[$answer->field_key])) {
+                $progress[$side($answer->field_key)]['answered']++;
+            }
+        }
+        // Without the list's relations: it loads the user as id, name and
+        // email only, and the core read off that has no phone or birth date.
+        foreach (array_keys($this->form->missing($onboarding->withoutRelations())) as $key) {
+            $progress[$side($key)]['outstanding']++;
+        }
+
+        return $progress;
     }
 
     /**
@@ -1966,15 +2002,15 @@ class HrOnboardingsController extends Controller
             // masked — on a form of thirty fields that is sixty queries.
             ->each(fn (OnboardingAnswer $a) => $a->setRelation('onboarding', $onboarding));
 
-        $parties  = $this->partiesFor($actor, $onboarding);
+        $parties = $this->partiesFor($actor, $onboarding);
         $ceremony = new Ceremony($onboarding);
 
         return $this->summarise($onboarding) + [
-            'parties'    => $parties,
+            'parties' => $parties,
             // The I-9: whether Section 2 is done, and whether this person
             // may do it (the employer's side).
             'i9' => ($i9 = $onboarding->answers()->where('field_key', 'i9_form')->first()?->value) === null ? null : [
-                'section2' => \App\Models\Attachment::query()->whereKey($i9)
+                'section2' => Attachment::query()->whereKey($i9)
                     ->where('original_name', OnboardingDocuments::I9_COMPLETE)->exists(),
                 'mine' => Gate::forUser($actor)->allows('cancel', $onboarding),
             ],
@@ -1993,15 +2029,15 @@ class HrOnboardingsController extends Controller
                     && ! $onboarding->isFrozen() && ! $this->employerSigned($onboarding),
             ],
             'started_by' => $onboarding->startedBy?->name,
-            'fields'     => $this->form->present($onboarding, $answers, $parties),
-            'missing'    => $this->form->missing($onboarding),
-            'frozen'     => $onboarding->isFrozen(),
+            'fields' => $this->form->present($onboarding, $answers, $parties),
+            'missing' => $this->form->missing($onboarding),
+            'frozen' => $onboarding->isFrozen(),
             'signature_fields' => array_map(fn (FieldDefinition $f) => [
-                'key'       => $f->key,
-                'label'     => $f->label,
+                'key' => $f->key,
+                'label' => $f->label,
                 'filled_by' => $f->filledBy,
-                'mine'      => in_array($f->filledBy, $parties, true),
-                'signed'    => $this->existingSignature($onboarding, $f->key) !== null,
+                'mine' => in_array($f->filledBy, $parties, true),
+                'signed' => $this->existingSignature($onboarding, $f->key) !== null,
             ], $onboarding->signatureFields()),
             'signatures' => $onboarding->takenSignatures()
                 ->map(fn (ContractSignature $s) => $this->presentSignature($s))->all(),
@@ -2012,7 +2048,7 @@ class HrOnboardingsController extends Controller
             // the same string.
             'ceremony' => [
                 'consent_statement' => $ceremony->consent(),
-                'intent_statement'  => $ceremony->intent(),
+                'intent_statement' => $ceremony->intent(),
             ],
         ];
     }
@@ -2020,20 +2056,20 @@ class HrOnboardingsController extends Controller
     private function presentSignature(ContractSignature $signature): array
     {
         return [
-            'id'        => $signature->id,
+            'id' => $signature->id,
             'field_key' => $signature->field_key,
-            'party'     => $signature->signer_party,
-            'signer'    => $signature->signer_label,
-            'affirmation'    => $signature->affirmation,
-            'signed_at'      => $signature->signed_at?->toIso8601String(),
-            'consented_at'   => $signature->consented_at?->toIso8601String(),
-            'content_hash'   => $signature->content_hash,
+            'party' => $signature->signer_party,
+            'signer' => $signature->signer_label,
+            'affirmation' => $signature->affirmation,
+            'signed_at' => $signature->signed_at?->toIso8601String(),
+            'consented_at' => $signature->consented_at?->toIso8601String(),
+            'content_hash' => $signature->content_hash,
             'hash_algorithm' => $signature->hash_algorithm,
-            'provider'       => $signature->provider,
+            'provider' => $signature->provider,
             // Published because it is the record of what they agreed to, and a
             // person is entitled to be shown it rather than told it exists.
             'consent_statement' => $signature->consent_statement,
-            'intent_statement'  => $signature->intent_statement,
+            'intent_statement' => $signature->intent_statement,
         ];
     }
 }

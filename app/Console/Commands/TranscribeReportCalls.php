@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CallReportLabel;
+use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
 use App\Models\Organization;
 use App\Models\SocialConnection;
@@ -30,8 +32,9 @@ use Throwable;
  *   2. WHISPER ON THIS SERVER, from RingCentral's recording - Leads' own runner
  *      (CallTranscripts::whisperAudio), so there is one way to run it.
  *
- * Only the calls the report's panels show: answered, recorded, on the New or
- * Existing client queues. Bounded by --minutes, and run after Leads' own
+ * Every answered, recorded call, on any line (Jose, 2026-10-14: calls on
+ * the Angi, Thumbtack and other lines were "not being rated or scored or
+ * anything"). Bounded by --minutes, and run after Leads' own
  * transcription by deploy/ezbizi-transcribe.service, never beside it.
  */
 class TranscribeReportCalls extends Command
@@ -74,22 +77,33 @@ class TranscribeReportCalls extends Command
         $start = max($end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay(), LabelReportCalls::aiSince());
         $until = now()->addMinutes((int) $this->option('minutes'));
 
-        $queues = [RingCentralCallLog::NEW_CLIENT_QUEUE, RingCentralCallLog::EXISTING_CLIENT_QUEUE];
-
         $wanted = array_values(array_filter(
             $calls->forPeriod($start, $end),
-            fn (array $call) => $call['recording_id'] !== null
-                && $call['answered_by'] !== null
-                && in_array($call['queue'], $queues, true),
+            fn (array $call) => $call['recording_id'] !== null && $call['answered_by'] !== null,
         ));
 
         $done = ['lead' => 0, 'whisper' => 0, 'failed' => 0];
 
         $tenant->run($organization, function () use ($wanted, $calls, $whisper, $until, &$done) {
+            $byId = array_column($wanted, null, 'id');
+
+            // A Local Services transcript far too short for the call is another
+            // leg's words (measured 2026-10-14: 219 characters for a 6-minute
+            // call, read as "no conversation" and never scored). Whisper redoes it.
             $have = CallReportTranscript::query()
-                ->whereIn('call_id', array_column($wanted, 'id'))
+                ->whereIn('call_id', array_keys($byId))
+                ->get(['call_id', 'source', 'transcript'])
+                ->reject(fn ($row) => $row->source === 'lead' && self::tooShort($byId[$row->call_id], $row->transcript))
                 ->pluck('call_id')
                 ->flip();
+
+            // Rows written before who / when / number / recording were kept
+            // get them from the same call log (the Scoring screen lists a
+            // person's calls by them).
+            CallReportTranscript::query()->whereIn('call_id', array_keys($byId))
+                ->where(fn ($q) => $q->whereNull('caller_number')->orWhereNull('answered_by'))
+                ->get()
+                ->each(fn (CallReportTranscript $row) => $row->forceFill($this->who($byId[$row->call_id]))->save());
 
             // Newest first: today's calls are the ones somebody is looking at.
             usort($wanted, fn ($a, $b) => strcmp((string) $b['started_at'], (string) $a['started_at']));
@@ -99,18 +113,23 @@ class TranscribeReportCalls extends Command
                     continue;
                 }
 
-                [$source, $words] = $this->fromLead($call) ?? $this->fromWhisper($call, $calls, $whisper);
+                $redo = CallReportTranscript::query()->where('call_id', $call['id'])->exists();
+                [$source, $words] = ($redo ? null : $this->fromLead($call)) ?? $this->fromWhisper($call, $calls, $whisper);
 
-                CallReportTranscript::query()->create([
+                if ($redo && $source === 'failed') {
+                    continue; // keep the short words rather than none
+                }
+
+                CallReportTranscript::query()->updateOrCreate(['call_id' => $call['id']], [
                     'organization_id' => app(TenantContext::class)->idOrFail(),
-                    'call_id' => $call['id'],
                     'transcript' => $words,
+                    'transcript_labelled' => null,
                     'source' => $source,
-                    // Who took it and when, for per-person scoring (Grok AI,
-                    // 2026-10-13), named as the report names them.
-                    'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
-                    'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
+                    ...$this->who($call),
                 ]);
+                // Labelled and scored from the wrong words; asked again from the new ones.
+                CallReportLabel::query()->where('call_id', $call['id'])->delete();
+                CallReportScore::query()->where('call_id', $call['id'])->delete();
 
                 $done[$source]++;
             }
@@ -119,6 +138,23 @@ class TranscribeReportCalls extends Command
         $this->info("From Local Services: {$done['lead']}, Whisper: {$done['whisper']}, failed: {$done['failed']}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Who took the call, when, from which number and its recording: for
+     * per-person scoring (Grok AI, 2026-10-13) and a person's calls on the
+     * Scoring screen (Jose, 2026-10-14). Named as the report names them.
+     *
+     * @return array<string, mixed>
+     */
+    private function who(array $call): array
+    {
+        return [
+            'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
+            'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
+            'caller_number' => $call['from'] ?? null,
+            'recording_id' => $call['recording_id'] ?? null,
+        ];
     }
 
     /** @return array{0: string, 1: string}|null */
@@ -144,7 +180,17 @@ class TranscribeReportCalls extends Command
             ->get(['leads.phone', 'lead_conversations.transcript'])
             ->first(fn ($row) => NumberNames::lastTen($row->phone) === $phone);
 
-        return $match === null ? null : ['lead', (string) $match->transcript];
+        return $match === null || self::tooShort($call, (string) $match->transcript)
+            ? null
+            : ['lead', (string) $match->transcript];
+    }
+
+    /** Under a character a second of a two-minute-plus call: not this call's words. */
+    private static function tooShort(array $call, ?string $words): bool
+    {
+        $talk = (int) ($call['talk_seconds'] ?? 0);
+
+        return $talk >= 120 && strlen((string) $words) < $talk;
     }
 
     /** @return array{0: string, 1: ?string} */

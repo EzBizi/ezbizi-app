@@ -2250,10 +2250,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       children: [?play, more],
     );
     // AI's coaching score for the call (Jose, 2026-10-13: "a column that
-    // shows the score given by AI"); a dash until the call is scored.
+    // shows the score given by AI"); a dash until the call is scored, and
+    // "Missed" on a call nobody answered (Jose, 2026-10-14).
     final aiScore = (call['score'] as Map?)?['score'];
     final score = Text(
-      aiScore == null ? '—' : '$aiScore / 10',
+      aiScore != null
+          ? '$aiScore / 10'
+          : missed
+          ? 'Missed'
+          : '—',
       key: ValueKey('score-cell-$callId'),
       style: aiScore == null ? TextStyle(color: muted) : null,
     );

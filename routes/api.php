@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
+use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
@@ -171,6 +172,7 @@ use App\Http\Controllers\Api\VehicleInsuranceController;
 use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
+use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -980,6 +982,28 @@ Route::prefix('v1')
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
+        // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
+        Route::prefix('financials')->controller(FinancialsController::class)->group(function (): void {
+            Route::get('bases', 'bases');
+            Route::post('bases', 'storeBase');
+            Route::patch('bases/{base}', 'updateBase');
+            Route::delete('bases/{base}', 'destroyBase');
+            Route::post('bases/{base}/tables', 'storeTable');
+            Route::get('tables/{table}', 'showTable');
+            Route::patch('tables/{table}', 'updateTable');
+            Route::delete('tables/{table}', 'destroyTable');
+            Route::get('tables/{table}/export', 'export');
+            Route::post('tables/{table}/import', 'import');
+            Route::post('tables/{table}/fields', 'storeField');
+            Route::patch('fields/{field}', 'updateField');
+            Route::delete('fields/{field}', 'destroyField');
+            Route::post('tables/{table}/records', 'storeRecord');
+            Route::patch('records/{record}', 'updateRecord');
+            Route::delete('records/{record}', 'destroyRecord');
+            Route::post('tables/{table}/views', 'storeView');
+            Route::patch('views/{view}', 'updateView');
+            Route::delete('views/{view}', 'destroyView');
+        });
         /*
          * NO `permission:inventory.items.view` OR `.locations.view` HERE, and
          * the omission is the decision.
@@ -1268,6 +1292,9 @@ Route::prefix('v1')
         // grant until the Scoring tab's own lands with its screen.
         // Its own tab (Jose: "right now only administrators and lead manager").
         Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
+        Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
+        // A scored call's recording, for Scoring alone (Performance's own needs Performance).
+        Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
         Route::get('reports/thumbtack', [ThumbtackReportController::class, 'show'])->middleware('permission:reports.thumbtack.view');
         Route::middleware('permission:reports.meta.view')->group(function () {
@@ -1348,6 +1375,8 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.settings.view')->group(function () {
             Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
         });
+        Route::get('scheduling/routes', [SchedulingAvailabilityController::class, 'routes'])
+            ->middleware('permission:scheduling.routing.view');
         Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])
             ->middleware('permission:scheduling.rescheduling.view');
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
@@ -1667,6 +1696,12 @@ Route::prefix('v1')
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
         Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
+        // Guidelines (2026-10-14): read on the Guidelines tab, written under
+        // `guidelines.manage` by GuidelinePolicy, place by place.
+        Route::apiResource('guidelines', GuidelinesController::class)->except('show');
+        Route::get('guidelines/{guideline}/image', [GuidelinesController::class, 'image']);
+        Route::post('guidelines/{guideline}/image', [GuidelinesController::class, 'uploadImage']);
+        Route::delete('guidelines/{guideline}/image', [GuidelinesController::class, 'destroyImage']);
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);

@@ -199,6 +199,7 @@ class _TeamTabState extends State<TeamTab> {
 
       footer: _canEdit && _connectionId != null
           ? SettingsPaneFooter(
+              key: const ValueKey('tour-phone-users-save'),
               unsaved: unsaved,
               saving: _saving,
               onSave: _save,
@@ -207,6 +208,7 @@ class _TeamTabState extends State<TeamTab> {
           : null,
       children: [
         SettingsSection(
+          key: const ValueKey('tour-phone-users-calling-out'),
           title: 'Calling out',
           children: [
             Text(
@@ -272,6 +274,7 @@ class _TeamTabState extends State<TeamTab> {
 
     return [
       FilterTiles(
+        key: const ValueKey('tour-phone-users-tiles'),
         prefix: 'users',
         picked: _filter,
         onPick: (key) => setState(() => _filter = key),
@@ -311,6 +314,7 @@ class _TeamTabState extends State<TeamTab> {
         )
       else
         ListTable(
+          key: const ValueKey('tour-phone-users-table'),
           columns: const [
             ListColumn('Person', flex: 3),
             ListColumn('Extension', flex: 2),

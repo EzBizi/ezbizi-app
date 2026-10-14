@@ -101,6 +101,7 @@ class _MembershipsDashboardState extends State<MembershipsDashboard> {
 
     if (_rows.isEmpty) {
       return Padding(
+        key: const ValueKey('tour-memberships-dashboard'),
         padding: const EdgeInsets.all(24),
         child: Text(
           'No members yet, so there is nothing to count. Members are added on '
@@ -111,6 +112,7 @@ class _MembershipsDashboardState extends State<MembershipsDashboard> {
     }
 
     return ListView(
+      key: const ValueKey('tour-memberships-dashboard'),
       padding: EdgeInsets.all(narrow ? 16 : 24),
       children: [
         _Figures(
@@ -162,9 +164,11 @@ class _MembershipsDashboardState extends State<MembershipsDashboard> {
                     child: soon.isEmpty
                         ? Text(
                             'Nobody renews in the next 30 days.',
+                            key: const ValueKey('tour-memberships-renewing'),
                             style: theme.textTheme.bodySmall,
                           )
                         : Column(
+                            key: const ValueKey('tour-memberships-renewing'),
                             children: [
                               for (final row in soon)
                                 Padding(
@@ -209,9 +213,11 @@ class _MembershipsDashboardState extends State<MembershipsDashboard> {
                     child: plans.isEmpty
                         ? Text(
                             'Nobody is a member this year.',
+                            key: const ValueKey('tour-memberships-by-plan'),
                             style: theme.textTheme.bodySmall,
                           )
                         : Column(
+                            key: const ValueKey('tour-memberships-by-plan'),
                             children: [
                               for (final plan in plans)
                                 Padding(

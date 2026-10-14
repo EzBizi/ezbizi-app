@@ -46,7 +46,8 @@ class GlanceRegistry
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads',
+        // Sales before Leads, where its sidebar entry sits (2026-10-14).
+        'services', 'sales', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
         'customer_experience', 'reviews', 'business_profile',
         // New Google reviews for Automations, beside Reviews (2026-09-25).
@@ -55,6 +56,8 @@ class GlanceRegistry
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
         // Its sidebar entry arrived after the others (2026-09-24).
         'ai_assistance',
+        // Guidelines, beside AI Assistance like its sidebar entry (2026-10-14).
+        'guidelines',
 
         // Profit & Loss AFTER Google Ads, matching the order of the chips
         // inside Reports — the module registry was changed to that order
@@ -64,6 +67,8 @@ class GlanceRegistry
         'profit_loss',
         // Field, on the end like its sidebar entry (2026-09-25).
         'field',
+        // Financials, before Task Board like its sidebar entry (2026-10-14).
+        'financials',
         // Task Board, on the end (2026-10-13).
         'tasks',
     ];
@@ -146,6 +151,11 @@ class GlanceRegistry
             'label' => 'AI Assistance',
             'sentence' => 'Answers for your team, on WhatsApp and in the app.',
         ],
+        // Reference cards; nothing to count on the home screen.
+        'guidelines' => [
+            'label' => 'Guidelines',
+            'sentence' => 'Step-by-step answers for the situations your team meets.',
+        ],
         'profit_loss' => [
             'label' => 'Profit & Loss',
 
@@ -181,6 +191,16 @@ class GlanceRegistry
         'monitoring' => [
             'label' => 'Monitoring',
             'sentence' => 'Monitoring will show who is online and on which device here. Open the Monitoring tab for the roster.',
+        ],
+        // Financials (2026-10-14): placeholder until a live glance is built.
+        'financials' => [
+            'label' => 'Financials',
+            'sentence' => 'Your bases, tables and records live in the Financials tab. Open it to work in them.',
+        ],
+        // Sales (2026-10-14): placeholder until a live glance is built.
+        'sales' => [
+            'label' => 'Sales',
+            'sentence' => 'Deals waiting on approval live in the Sales tab. Open it to work the pipeline.',
         ],
         // Task Board (2026-10-13): placeholder until a live glance is built.
         'tasks' => [

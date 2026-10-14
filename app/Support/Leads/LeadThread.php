@@ -70,7 +70,7 @@ final class LeadThread
             // Archived, Not a lead and Lost too (Jose, 2026-10-09: "customers
             // may also reach back ... should undo, so they aren't hidden").
             // Booked stays: that lead already became a job.
-            if (in_array($lead->status, [Lead::STATUS_COMPLETED, Lead::STATUS_ARCHIVED, Lead::STATUS_NOT_A_LEAD, Lead::STATUS_LOST], true)) {
+            if (in_array($lead->status, [Lead::STATUS_COMPLETED, Lead::STATUS_ARCHIVED, Lead::STATUS_NOT_A_LEAD, Lead::STATUS_LOST, Lead::STATUS_FOLLOW_UP], true)) {
                 $lead->forceFill(['status' => Lead::STATUS_NEW])->save();
             }
             // Back on the AI Follow up list if they ask again (Leads review).

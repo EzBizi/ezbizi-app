@@ -125,6 +125,7 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
       padding: const EdgeInsets.all(16),
       children: [
         DashboardCard(
+          key: const ValueKey('tour-newsletter-mailing-account'),
           title: 'Mailing account',
           icon: Icons.drafts_outlined,
           child: Column(
@@ -158,6 +159,7 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
         Text('Nothing connected in ${widget.viewName} yet.'),
         const SizedBox(height: 12),
         TextField(
+          key: const ValueKey('tour-newsletter-mailchimp-key'),
           controller: _key,
           enabled: !_busy && refusal == null,
           decoration: const InputDecoration(

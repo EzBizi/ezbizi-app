@@ -90,6 +90,7 @@ class _FieldScreenState extends State<FieldScreen> {
         'Settings',
         Icons.tune,
         () => SettingsScreen(
+          key: const ValueKey('tour-field-settings'),
           api: widget.api,
           session: widget.session,
           onlyGroup: 'field',

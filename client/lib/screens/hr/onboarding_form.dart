@@ -133,14 +133,18 @@ String _clock(String hhmm) {
       : '${_dayName(run.$1)} to ${_dayName(run.$2)}';
 
   final days = runs((a, b) => true).map(span).join(', ');
-  final hours = runs(
-    (a, b) =>
-        at(a)!['start'] == at(b)!['start'] && at(a)!['end'] == at(b)!['end'],
-  ).map((run) {
-    final window = at(run.$1)!;
-    return '${span(run)} ${_clock('${window['start']}')} to '
-        '${_clock('${window['end']}')}';
-  }).join('; ');
+  final hours =
+      runs(
+            (a, b) =>
+                at(a)!['start'] == at(b)!['start'] &&
+                at(a)!['end'] == at(b)!['end'],
+          )
+          .map((run) {
+            final window = at(run.$1)!;
+            return '${span(run)} ${_clock('${window['start']}')} to '
+                '${_clock('${window['end']}')}';
+          })
+          .join('; ');
 
   return (days, hours);
 }
@@ -383,8 +387,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// employee has no catalogue at all. The fallback exists so an employer's
   /// form still reads properly against a server that has not started sending
   /// the block yet.
-  ContractVocabulary get _vocabulary =>
-      _form?.vocabulary.isUsable == true ? _form!.vocabulary : widget.vocabulary;
+  ContractVocabulary get _vocabulary => _form?.vocabulary.isUsable == true
+      ? _form!.vocabulary
+      : widget.vocabulary;
 
   @override
   void initState() {
@@ -479,7 +484,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
       // A file says it is a PDF in its first bytes. A server from before the
       // PDF view answers this with the JSON preview, which is not one.
       final bytes = pdf.bytes;
-      final isPdf = bytes != null &&
+      final isPdf =
+          bytes != null &&
           bytes.length > 4 &&
           String.fromCharCodes(bytes.take(4)) == '%PDF';
       setState(() {
@@ -790,27 +796,29 @@ class _OnboardingFormState extends State<OnboardingForm> {
       _signError = null;
     });
 
-    final response = await widget.api
-        .post('/hr/onboardings/${widget.onboardingId}/sign', {
-          'field_key': fieldKey,
-          // Both halves ESIGN asks for, sent as two facts rather than one.
-          // Consent to transact electronically is a separate agreement from the
-          // contract, which is why the signature record timestamps it
-          // separately — so a server that received an affirmation with no
-          // consent must be able to tell, and refuse.
-          'consent': true,
-          'affirmation': affirmation,
-          // The signature drawn by hand, as A1 Tools took it: a PNG data URL,
-          // drawn into the signature block of the PDF.
-          'drawing': drawing,
-          // The fingerprint of the document this screen actually displayed,
-          // sent back rather than recomputed anywhere. The server refuses
-          // without it: it is what makes the signature evidence of what the
-          // person read rather than of what the server assumed they read, and
-          // a document that has moved since it was fetched is a refusal instead
-          // of a signature over text nobody saw.
-          'document_hash': documentHash,
-        });
+    final response = await widget.api.post(
+      '/hr/onboardings/${widget.onboardingId}/sign',
+      {
+        'field_key': fieldKey,
+        // Both halves ESIGN asks for, sent as two facts rather than one.
+        // Consent to transact electronically is a separate agreement from the
+        // contract, which is why the signature record timestamps it
+        // separately — so a server that received an affirmation with no
+        // consent must be able to tell, and refuse.
+        'consent': true,
+        'affirmation': affirmation,
+        // The signature drawn by hand, as A1 Tools took it: a PNG data URL,
+        // drawn into the signature block of the PDF.
+        'drawing': drawing,
+        // The fingerprint of the document this screen actually displayed,
+        // sent back rather than recomputed anywhere. The server refuses
+        // without it: it is what makes the signature evidence of what the
+        // person read rather than of what the server assumed they read, and
+        // a document that has moved since it was fetched is a refusal instead
+        // of a signature over text nobody saw.
+        'document_hash': documentHash,
+      },
+    );
 
     if (!mounted) return;
 
@@ -941,7 +949,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
     // hours; the days row would be the same control twice.
     final rows = [
       for (final question in questions)
-        if (question.key != 'work_days' || _question(form, 'work_hours') == null)
+        if (question.key != 'work_days' ||
+            _question(form, 'work_hours') == null)
           question,
     ];
 
@@ -1235,7 +1244,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
       child: pdf
           ? (_pdf == null
                 ? Text(
-                    _previewing ? 'Drawing the PDF…' : 'The PDF will show here.',
+                    _previewing
+                        ? 'Drawing the PDF…'
+                        : 'The PDF will show here.',
                     style: theme.textTheme.bodyMedium,
                   )
                 : PdfView(bytes: _pdf!))
@@ -1276,7 +1287,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
           children: [
             Flexible(
               child: Text(
-                form.contractName.isEmpty ? 'Your paperwork' : form.contractName,
+                form.contractName.isEmpty
+                    ? 'Your paperwork'
+                    : form.contractName,
                 style: theme.textTheme.headlineMedium,
               ),
             ),
@@ -1343,6 +1356,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
         : 'Nothing answered yet.';
 
     return Container(
+      key: const ValueKey('tour-hr-onboarding-progress'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
@@ -1399,6 +1413,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final theme = Theme.of(context);
 
     return Column(
+      key: const ValueKey('tour-hr-onboarding-save'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_actionError != null) ...[
@@ -1442,9 +1457,24 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final label = days == null
         ? field.label
         : '${days.field.label} and ${field.label.toLowerCase()}';
+    // Required and still empty, by the server's count (the one signing
+    // refuses on), until something is typed (Jose, 2026-10-14).
+    final missing =
+        !voided &&
+        _answerOf(field.key).trim().isEmpty &&
+        (_form!.missing.containsKey(field.key) ||
+            (days != null && _form!.missing.containsKey(days.field.key)));
+    final caution = StateColour.of(context).caution;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
+    return Container(
+      key: missing ? Key('missing-${field.key}') : null,
+      margin: const EdgeInsets.only(bottom: 22),
+      padding: missing ? const EdgeInsets.only(left: 10) : EdgeInsets.zero,
+      decoration: missing
+          ? BoxDecoration(
+              border: Border(left: BorderSide(color: caution, width: 3)),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1459,6 +1489,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
                         style: theme.textTheme.titleSmall,
                       ),
                     ),
+                    if (missing) const Tag('Not filled in', warn: true),
                     // The one thing position cannot show: that the other side
                     // may have got there first, and that correcting them is
                     // expected.
@@ -1798,20 +1829,23 @@ class _OnboardingFormState extends State<OnboardingForm> {
         ],
       ),
       'choice' => SearchPickerField<String>(
-                    key: answerKey(field.key),
-                    value: _chosen(question),
-                    border: OutlineInputBorder(),
-                    options: [
+        key: answerKey(field.key),
+        value: _chosen(question),
+        border: OutlineInputBorder(),
+        options: [
           for (final option in field.options)
             SearchOption(value: option, label: option),
           if (_chosen(question) case final current?)
             if (!field.options.contains(current))
-              SearchOption(value: current, label: '$current — no longer offered'),
+              SearchOption(
+                value: current,
+                label: '$current — no longer offered',
+              ),
         ],
-                    onChanged: enabled
+        onChanged: enabled
             ? (value) => _answer(question.key, value ?? '')
             : null,
-                  ),
+      ),
       'file' => _fileControl(context, question),
       'date' => CalendarDayField(
         key: answerKey(field.key),
@@ -1831,11 +1865,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
         'not arrive with the form.',
         style: theme.textTheme.bodyMedium,
       ),
-      _ => _text(
-        question,
-        enabled: enabled,
-        numeric: field.type == 'number',
-      ),
+      _ => _text(question, enabled: enabled, numeric: field.type == 'number'),
     };
   }
 
@@ -2008,7 +2038,11 @@ class _OnboardingFormState extends State<OnboardingForm> {
       question.key,
       jsonEncode([
         for (final MapEntry(key: item, value: row) in rows.entries)
-          {'item': item, 'quantity': row['quantity'], 'received': row['received']},
+          {
+            'item': item,
+            'quantity': row['quantity'],
+            'received': row['received'],
+          },
       ]),
     );
   }
@@ -2190,7 +2224,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
             enabled: !_saving,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
-              hintText: fallback.isEmpty ? 'No company address is set' : fallback,
+              hintText: fallback.isEmpty
+                  ? 'No company address is set'
+                  : fallback,
               helperText:
                   'Typed here, it replaces the company address on this contract.',
             ),
@@ -2379,7 +2415,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
         form.i9Section2Mine;
     final voided = _voided(question);
     final signed = !voided && question.answered;
-    final file = _revealed[question.key] ?? (question.masked ? null : question.value);
+    final file =
+        _revealed[question.key] ?? (question.masked ? null : question.value);
 
     return Wrap(
       key: answerKey(question.key),
@@ -2389,21 +2426,33 @@ class _OnboardingFormState extends State<OnboardingForm> {
       children: [
         if (question.writable && kind != null && !voided)
           FilledButton.icon(
-            key: Key(question.key == 'tax_form' ? 'tax-form-open' : 'tax-form-open-${question.key}'),
+            key: Key(
+              question.key == 'tax_form'
+                  ? 'tax-form-open'
+                  : 'tax-form-open-${question.key}',
+            ),
             onPressed: _saving ? null : () => _openTaxForm(question, kind),
             icon: const Icon(Icons.draw_outlined, size: 18),
-            label: Text(signed ? 'Fill in again' : 'Fill in and sign your $label'),
+            label: Text(
+              signed ? 'Fill in again' : 'Fill in and sign your $label',
+            ),
           ),
         if (!voided && section2Open)
           FilledButton.icon(
             key: const Key('i9-section2-open'),
-            onPressed: _saving ? null : () => _openTaxForm(question, 'i9_section2'),
+            onPressed: _saving
+                ? null
+                : () => _openTaxForm(question, 'i9_section2'),
             icon: const Icon(Icons.fact_check_outlined, size: 18),
             label: const Text('Complete Section 2'),
           ),
         if (signed && file != null && file.isNotEmpty)
           OutlinedButton(
-            key: Key(question.key == 'tax_form' ? 'tax-form-view' : 'tax-form-view-${question.key}'),
+            key: Key(
+              question.key == 'tax_form'
+                  ? 'tax-form-view'
+                  : 'tax-form-view-${question.key}',
+            ),
             onPressed: () => _viewTaxForm(file, label),
             child: const Text('View'),
           ),
@@ -2468,7 +2517,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     final bytes = response.bytes;
     if (!response.ok || bytes == null) {
-      setState(() => _actionError = response.message ?? 'The PDF could not be made.');
+      setState(
+        () => _actionError = response.message ?? 'The PDF could not be made.',
+      );
       return;
     }
 
@@ -2512,7 +2563,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final signed = Uint8List.fromList(bytes);
     // The signed form is a picture of the page since HR caae3171 (so the
     // contract's PDF can print it); one signed before that is a PDF.
-    final pdf = bytes.length > 4 && String.fromCharCodes(bytes.take(4)) == '%PDF';
+    final pdf =
+        bytes.length > 4 && String.fromCharCodes(bytes.take(4)) == '%PDF';
     await showSidePanel<void>(
       context,
       builder: (_) => SidePanel(
@@ -2592,6 +2644,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     ];
 
     return Column(
+      key: const ValueKey('tour-hr-onboarding-signing'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _sectionTitle(context, 'The document'),
@@ -2727,12 +2780,8 @@ class _OnboardingFormState extends State<OnboardingForm> {
       // contract on screen is not the one it would be taken against.
       blocked: _pending.isEmpty ? null : 'Save your answers first.',
       error: _signErrorKey == signature.fieldKey ? _signError : null,
-      onSign: (affirmation, drawing) => _sign(
-        signature.fieldKey,
-        affirmation,
-        drawing,
-        document.contentHash,
-      ),
+      onSign: (affirmation, drawing) =>
+          _sign(signature.fieldKey, affirmation, drawing, document.contentHash),
     );
   }
 
@@ -2876,7 +2925,6 @@ class _OnboardingFormState extends State<OnboardingForm> {
   }
 }
 
-
 /// The ceremony: agree to sign electronically, then sign.
 ///
 /// ── Consent is a thing they DO ───────────────────────────────────
@@ -2921,6 +2969,7 @@ class _SigningStep extends StatefulWidget {
   final String intentStatement;
   final bool busy;
   final String? error;
+
   /// The typed name, and the drawn signature as a PNG data URL.
   final void Function(String affirmation, String drawing) onSign;
 
@@ -2993,10 +3042,7 @@ class _SigningStepState extends State<_SigningStep> {
                 : (value) => setState(() => _consented = value ?? false),
           ),
           const SizedBox(height: 14),
-          Text(
-            widget.intentStatement,
-            style: theme.textTheme.bodyMedium,
-          ),
+          Text(widget.intentStatement, style: theme.textTheme.bodyMedium),
           const SizedBox(height: 12),
           TextField(
             controller: _affirmation,
@@ -3185,10 +3231,7 @@ class _CountySearchState extends State<_CountySearch> {
 /// Save an onboarding's signed PDF straight away, from a list (Jose,
 /// 2026-10-05: "make a button on onboarding to download them faster").
 /// Null when it was saved, otherwise the reason it could not be.
-Future<String?> downloadSignedPdf(
-  ApiClient api,
-  OnboardingSummary row,
-) async {
+Future<String?> downloadSignedPdf(ApiClient api, OnboardingSummary row) async {
   final response = await api.getBytesResponse(
     '/hr/onboardings/${row.id}/document/pdf',
   );

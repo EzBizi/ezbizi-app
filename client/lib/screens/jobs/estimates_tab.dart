@@ -236,6 +236,7 @@ class _EstimatesTabState extends State<EstimatesTab> {
             ],
           ),
           list: AsyncBody(
+            key: const ValueKey('tour-jobs-estimates-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
@@ -300,6 +301,7 @@ class _EstimatesTabState extends State<EstimatesTab> {
     ];
 
     return Padding(
+      key: const ValueKey('tour-jobs-estimates-chips'),
       padding: EdgeInsets.fromLTRB(wide ? 24 : 0, 0, wide ? 24 : 0, 10),
       child: wide
           ? Wrap(spacing: 6, runSpacing: 6, children: chips)

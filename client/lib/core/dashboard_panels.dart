@@ -19,6 +19,7 @@ IconData dashboardPanelIcon(String key) {
   'work_hours': Icons.schedule_outlined,
   // Same mark as its sidebar entry (module_screens.dart).
   'ai_assistance': Icons.smart_toy_outlined,
+  'guidelines': Icons.menu_book_outlined,
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
     'scheduling': Icons.calendar_month_outlined,
@@ -32,6 +33,7 @@ IconData dashboardPanelIcon(String key) {
     'phone': Icons.phone_outlined,
     'fleet_management': Icons.local_shipping_outlined,
     'inventory': Icons.inventory_2_outlined,
+    'financials': Icons.table_chart_outlined,
     'tasks': Icons.view_kanban_outlined,
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,

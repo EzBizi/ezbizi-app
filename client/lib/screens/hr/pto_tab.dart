@@ -91,6 +91,7 @@ class _PtoTabState extends State<PtoTab> {
       error: _error,
       onRetry: _load,
       child: LayoutBuilder(
+        key: const ValueKey('tour-work_hours-pto'),
         // The CARD's width rather than the window's — the same reason the
         // Training card asks: this is a pane inside a shell, and a window
         // measurement would put the desktop layout into a narrow column.
@@ -114,6 +115,7 @@ class _PtoTabState extends State<PtoTab> {
     final theme = Theme.of(context);
 
     return Center(
+      key: const ValueKey('tour-work_hours-pto-not-set-up'),
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: ConstrainedBox(
@@ -167,6 +169,7 @@ class _PtoTabState extends State<PtoTab> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
+          key: const ValueKey('tour-work_hours-pto-people'),
           width: 280,
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 24),
@@ -314,6 +317,7 @@ class _PtoTabState extends State<PtoTab> {
         ],
         Text(
           _allowance(person),
+          key: const ValueKey('tour-work_hours-pto-allowance'),
           // headlineMedium, not displaySmall. A TextTheme slot theme.dart
           // leaves out does NOT fall back to Material's default — it renders
           // with no size and no weight at all, at whatever the surrounding
@@ -395,6 +399,7 @@ class _PtoTabState extends State<PtoTab> {
     };
 
     return Container(
+      key: const ValueKey('tour-work_hours-pto-when'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),

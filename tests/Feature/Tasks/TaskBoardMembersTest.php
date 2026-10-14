@@ -28,6 +28,7 @@ class TaskBoardMembersTest extends TestCase
             ->assertJsonPath('data.my_role', 'owner')
             ->assertJsonPath('data.members_count', 1)
             ->assertJsonPath('data.can_manage', true)
+            ->assertJsonStructure(['data' => ['company_id', 'franchise_id']])
             ->json('data.id');
     }
 
@@ -38,7 +39,7 @@ class TaskBoardMembersTest extends TestCase
         $id = $this->privateBoard($tenant, $owner);
 
         $this->inTenant($tenant['org'], function () use ($id) {
-            $this->assertSame(['This week', 'Next week', 'Done'], TaskGroup::query()->where('board_id', $id)->orderBy('position')->pluck('name')->all());
+            $this->assertSame(['Open Tasks', 'Recurring Tasks', 'Completed Tasks', 'Company Files', 'Guidelines'], TaskGroup::query()->where('board_id', $id)->orderBy('position')->pluck('name')->all());
             $this->assertSame(['not_started', 'working_on_it', 'stuck', 'done'], TaskStatus::query()->where('board_id', $id)->orderBy('position')->pluck('key')->all());
         });
 

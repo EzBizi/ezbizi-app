@@ -11,6 +11,7 @@ import '../widgets/error_note.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tab_bar_like.dart';
+import '../widgets/tab_help.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'reports/experimental_call_report.dart';
 import 'reports/marketing_report.dart';
@@ -254,28 +255,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         // Phone 4: one picker naming the tab and listing all
                         // of them, for a strip that showed two and hid seven.
                         child: phone && labels.isNotEmpty
-                            ? SearchPickerField<int>(
-                                key: const ValueKey('tour-reports-tabs'),
-                                value: _chip < labels.length ? _chip : 0,
-                                searchFrom: 99,
-                                options: [
-                                  for (final (i, (label, icon))
-                                      in labels.indexed)
-                                    SearchOption<int>(
-                                      value: i,
-                                      label: label,
-                                      child: Row(
-                                        children: [
-                                          Icon(icon, size: 18),
-                                          const SizedBox(width: 10),
-                                          Text(label),
-                                        ],
+                            ? OpenTabMark(
+                                labels[_chip < labels.length ? _chip : 0].$1,
+                                child: SearchPickerField<int>(
+                                  key: const ValueKey('tour-reports-tabs'),
+                                  value: _chip < labels.length ? _chip : 0,
+                                  searchFrom: 99,
+                                  options: [
+                                    for (final (i, (label, icon))
+                                        in labels.indexed)
+                                      SearchOption<int>(
+                                        value: i,
+                                        label: label,
+                                        child: Row(
+                                          children: [
+                                            Icon(icon, size: 18),
+                                            const SizedBox(width: 10),
+                                            Text(label),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                ],
-                                onChanged: (i) {
-                                  if (i != null) select(i);
-                                },
+                                  ],
+                                  onChanged: (i) {
+                                    if (i != null) select(i);
+                                  },
+                                ),
                               )
                             : TabBarLike(
                                 key: const ValueKey('tour-reports-tabs'),

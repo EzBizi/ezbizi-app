@@ -492,6 +492,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   const Divider(),
                   const SizedBox(height: 16),
                   JobLinesTab(
+                    key: const ValueKey('tour-jobs-job-work'),
                     api: widget.api,
                     jobId: widget.id,
                     job: row,
@@ -572,6 +573,7 @@ class _Materials extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Column(
+      key: const ValueKey('tour-jobs-materials'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Materials', style: theme.textTheme.titleMedium),
@@ -635,6 +637,7 @@ class _Inspections extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Column(
+      key: const ValueKey('tour-jobs-inspections'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Inspections', style: theme.textTheme.titleMedium),

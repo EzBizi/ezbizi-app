@@ -2965,6 +2965,57 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 94 · ▶ How-to video: plays in the app on every platform, fullscreen and download — **sent 2026-10-14 11:20; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** 8640e3b2 (session/uiux-help-video) (`docs/previews/help-video-player-layouts.html`)
+
+Jose 2026-10-14 via the desk, verbatim: *"video should be seen on desktop, mobile, etc, right not it only works on web, secondly
+the fullscreen option and also the download option all inside the app."* Windows had no player half (the panel offered "Open
+the video"); video_player_win gives it one (checked on this machine). Desktop **1** (recommended): ⛶ Fullscreen and ⬇ Download
+in the player's own control bar; chapters under the picture, the playing one highlighted. **2**: labelled buttons under the
+picture. **3**: a ⋯ menu. Phone **4** (recommended): as 1, ⛶ turning sideways, ⬇ saving to Photos; **5**: labelled buttons;
+**6**: the ⋯ menu. UI/UX builds it in tab_help.dart.
+
+### 93 · Guidelines, a new module — **sent 2026-10-14 10:56; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, Settings 7** — built by the Guidelines session (12bba329), adjusted to the pick (`docs/previews/guidelines-layouts.html`)
+
+Jose 2026-10-14 via the Guidelines session: a module of situation cards, each with a colour and an optional picture, that open
+step-by-step instructions, and a Settings tab to create, edit and delete them. Desktop **1** (recommended): a searchable grid
+of equal cards (colour band, icon or picture, title, summary, step count); a card opens its numbered steps in a side panel
+over the grid. **2**: a list beside the steps. **3**: the card as its own page with ← back. Phone **4** (recommended): one
+card per row, the card opening in the tab with ← back; **5**: two tiles per row; **6**: a plain list. Settings **7**
+(recommended): the cards in order (drag to reorder), each edited in a side panel with the app's twelve colours and steps
+added, dragged and removed. Owners: the Guidelines session (server, module); UI/UX draws and reviews.
+
+### 92 · Re-Scheduling › open spots before and after the move — **sent 2026-10-14 10:40; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** (session/uiux-resched-spots, with Scheduling 528f5824) (`docs/previews/rescheduling-spots-layouts.html`)
+
+Jose 2026-10-14 via the desk, verbatim: *"perhaps on the reschedule screen on that blank spot on the right bottom, we can
+include the scheduling before and after for the area too, as in the amount of spots before and after"*. Desktop **1**
+(recommended): folded into the 0429 day plan, the current day's windows (the job's window 1 → 2 open, blue) and then the
+suggested day's windows with their jobs (the window it takes 1 → 0 open, amber), each day with its total. **2**: one
+table, both days side by side. **3**: each day as a strip of spot squares. Phone **4** (recommended): 1 stacked; **5**: the
+table; **6**: day totals only. Owners: Scheduling (the current day's windows in the suggestion); UI/UX builds the screen.
+
+### 91 · AI Assistance › AI, as a chat — **sent 2026-10-14 09:32; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4, topics to Library (7)** — **BUILT** 5af92b2a (session/uiux-ai-chat, with Grok AI 59c4988a for the WhatsApp look). The bot's welcome line was not moved to Staff bot: the Library shows the topics, and the welcome stays in Settings (`docs/previews/ai-assistance-chat-layouts.html`)
+
+Jose 2026-10-14 via Grok AI, verbatim: *"i think, the "AI" tab and that menu on the left aren't really meant to be together. The
+AI tab should just be the ask bar at the bottom , sort of like here where i can ask you stuff and the reply goes on top …
+figure it out."* Plus the WhatsApp look in the app's answers (capitals at sentence starts, emojis for bullets). Desktop **1**
+(recommended): one centred conversation, newest last, ask bar pinned at the foot, starter questions before the first; sources
+as chips, branches with Call/Map. **2**: sources in a right rail. **3**: Topics as a side panel. Phone **4** (recommended):
+the conversation with the bar above the keyboard; **5**: long answers folded; **6**: with Topics. **7** (recommended): the
+topics tree moves to Library; the welcome line to Staff bot. No server change (GET ai-assistance/ask + /answer).
+
+### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): Routing 1 and 4, Re-Scheduling 7 and 9** — **BUILT** 5c412452 (session/uiux-routing, with Scheduling 673b1598) (`docs/previews/scheduling-routing-layouts.html`)
+
+Jose 2026-10-14 via Scheduling, verbatim: *"1 technician is able to take a max of 6 jobs per day … a suggested route where it
+says like Technician 1 - Technician 2 (amount of technicians based on the availability) … a Routing Tab where it shows the
+recommended routes (actual routes being done on google maps when clicked)"*, and for Re-Scheduling *"[repairs and redos]
+should be included, but tag them appropriately … perhaps we can have the rescheduling clickable, showing the type of jobs
+set for that day and how the rescheduled one would fit"*. Routing desktop **1** (recommended): a map with one colour per
+route beside a card per technician (stops, miles, Open in Google Maps), extra routes amber "needs another technician", No
+location at the foot. **2**: a column per technician. **3**: one row per route, map below. Phone **4** (recommended): map,
+then route cards that open in the tab; **5**: one route at a time; **6**: list only. Re-Scheduling **7** (recommended):
+Chimney Repair / Redo tags, a row opening onto the suggested day's windows with the moved job dashed where it fits; **8**:
+the day as a timeline; phone **9**. Owners: Scheduling (server a95f30f6, the Routing tab); UI/UX builds the screens.
+
 ### 89 · Task Board · your own boards, who is on them, and Automate — **sent 2026-10-13 17:56; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** e7d82147 (session/uiux-taskboard-people, with Task Board 9ee0e915 + 21f93872): New board, People, ⚡ Automate (`docs/previews/task-board-members-automate-layouts.html`)
 
 Jose 2026-10-13, verbatim (inbox 0120): *"we also need to be able to assign people to certain boards and create boards,

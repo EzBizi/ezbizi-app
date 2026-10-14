@@ -189,6 +189,7 @@ class _CitiesPaneState extends State<CitiesPane> {
             children: [
               Expanded(
                 child: TextField(
+                  key: const ValueKey('tour-seo-cities-search'),
                   decoration: InputDecoration(
                     labelText: 'Search the cities on ${widget.host}',
                     isDense: true,
@@ -204,6 +205,7 @@ class _CitiesPaneState extends State<CitiesPane> {
               ),
               const SizedBox(width: 8),
               IconButton(
+                key: const ValueKey('tour-seo-cities-scan'),
                 tooltip: 'Look on the website for city pages EzBizi has '
                     'nothing for yet',
                 icon: _scanning
@@ -231,6 +233,7 @@ class _CitiesPaneState extends State<CitiesPane> {
           ),
         const Divider(height: 1),
         Expanded(
+          key: const ValueKey('tour-seo-cities-list'),
           child: AsyncBody(
             loading: _loading,
             error: _error,

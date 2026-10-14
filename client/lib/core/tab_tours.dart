@@ -1,3 +1,10 @@
+import 'tours/assist_tours.dart';
+import 'tours/leads_tours.dart';
+import 'tours/marketing_tours.dart';
+import 'tours/operations_tours.dart';
+import 'tours/phone_tours.dart';
+import 'tours/reports_tours.dart';
+
 /// Each tab's walkthrough (UI queue 81; Jose: "as u recommend" — 1 and 4).
 ///
 /// Data, not code: a tab's owner adds or rewrites its steps here and the
@@ -34,7 +41,8 @@ class Tour {
   final List<TourStep> steps;
 }
 
-/// By module key, as `module_screens.dart` keys its screens.
+/// By module key, as `module_screens.dart` keys its screens, then each sub
+/// tab's as `module/Tab` (see `tourKeyFor`).
 const Map<String, Tour> tabTours = {
   'tasks': Tour(
     // 2: Task Board v2 (UI queue 84) - the picker, columns, statuses.
@@ -719,8 +727,19 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
-  'ai_assistance': Tour(
+  'guidelines': Tour(
     version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-guidelines-tabs',
+        title: 'Guidelines',
+        body: 'Guidelines to read and, if you can edit, Settings to write them.',
+      ),
+    ],
+  ),
+  'ai_assistance': Tour(
+    // 2: the AI tab as a chat (UI queue 91).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-ai_assistance-tabs',
@@ -729,18 +748,32 @@ const Map<String, Tour> tabTours = {
       ),
       TourStep(
         anchor: 'tour-ai_assistance-ask',
+        since: 2,
         title: 'Ask',
-        body: 'A question in your own words, or a city, state or branch code.',
+        body:
+            'Type a question at the foot, as in a chat: a code, a price, how '
+            'we do something, or a city, state or branch code.',
       ),
       TourStep(
-        anchor: 'assistant-answer',
-        title: 'From the Library',
-        body: 'The Library entry that answers it.',
+        anchor: 'assistant-hello',
+        since: 2,
+        title: 'Start here',
+        body: "Your Library's topics, each a first question to ask.",
       ),
       TourStep(
         anchor: 'assistant-ai-answer',
         title: "AI's answer",
-        body: 'AI reads the Library and answers in its own words.',
+        body:
+            'AI reads your Library and answers in its own words, above the '
+            'ask bar, newest last.',
+      ),
+      TourStep(
+        anchor: 'assistant-answer',
+        since: 2,
+        title: 'From your Library',
+        body:
+            'The Library entries behind the answer. Click one to read it '
+            'whole.',
       ),
     ],
   ),
@@ -797,37 +830,6 @@ const Map<String, Tour> tabTours = {
         anchor: 'tour-reports-library',
         title: 'Your reports',
         body: 'Each saved report, what it covers, and when it was sent.',
-      ),
-      TourStep(
-        anchor: 'ads-refresh',
-        title: 'Read again',
-        body: 'Reads the figures from Google again.',
-      ),
-      TourStep(
-        anchor: 'ads-account-search',
-        title: 'Find an account',
-        body: 'Narrows the accounts as you type.',
-      ),
-      TourStep(
-        anchor: 'ads-accounts',
-        title: 'Accounts',
-        body:
-            'Managers stand out in their own colour, above the accounts in them.',
-      ),
-      TourStep(
-        anchor: 'ads-account-figures',
-        title: 'The account',
-        body: 'Cost, clicks and the rest, for the dates chosen.',
-      ),
-      TourStep(
-        anchor: 'ads-campaign-search',
-        title: 'Find a campaign',
-        body: 'Narrows the campaigns as you type.',
-      ),
-      TourStep(
-        anchor: 'tour-reports-pl-controls',
-        title: 'Profit & Loss',
-        body: 'Where the figures come from, and which week.',
       ),
     ],
   ),
@@ -937,4 +939,10 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  ...reportsTours,
+  ...assistTours,
+  ...operationsTours,
+  ...leadsTours,
+  ...marketingTours,
+  ...phoneTours,
 };

@@ -23,18 +23,82 @@ use Carbon\CarbonImmutable;
  */
 final class Reschedules
 {
+    /*
+     * Worth a phone call (Grok's review of the live list, 2026-10-14: 62 of
+     * 84 rows did not make sense). ponytail: constants, a Setting when Jose
+     * wants to tune one.
+     */
+    /** Jobs this soon are not moved: the customer has planned for them. */
+    public const SETTLED_DAYS = 2;
+
+    /** At most this many days earlier or later (Grok's second review: 7 still pulled customers 4-6 days). */
+    public const MAX_SHIFT_DAYS = 3;
+
+    /**
+     * The nearest job after the move is at most this far. (No "half of today"
+     * rule: a listed job has nothing within the radius today, so this alone
+     * already more than halves it.)
+     */
+    public const MAX_AFTER_MILES = 10.0;
+
     public function __construct(private readonly NearbySuggestion $nearby) {}
+
+    /**
+     * Open spots on a day before and after the move (Jose, 2026-10-14: "the
+     * scheduling before and after for the area too, as in the amount of spots
+     * before and after"), window by window, in Availability's numbers. The
+     * day a job leaves gets its seat back unless that window was over its
+     * limit anyway; the day it joins loses one.
+     *
+     * @return array{window_index: ?int, spots: ?array}
+     */
+    private static function spots(?array $day, ?int $window, int $change): array
+    {
+        if ($day === null) {
+            return ['window_index' => $window, 'spots' => null];
+        }
+
+        $windows = array_map(function (array $w, int $i) use ($window, $change) {
+            $after = $w['remaining'];
+            if ($i === $window) {
+                $after = $change > 0
+                    ? ($w['taken'] <= $w['capacity'] ? min($w['capacity'], $w['remaining'] + 1) : $w['remaining'])
+                    : max(0, $w['remaining'] - 1);
+            }
+
+            return ['start_time' => $w['start_time'], 'end_time' => $w['end_time'], 'before' => $w['remaining'], 'after' => $after];
+        }, $day['windows'], array_keys($day['windows']));
+
+        return ['window_index' => $window, 'spots' => [
+            'before' => array_sum(array_column($windows, 'before')),
+            'after' => array_sum(array_column($windows, 'after')),
+            'windows' => $windows,
+        ]];
+    }
+
+    /** The window a start time falls in, or null. */
+    private static function windowAt(?array $day, string $time): ?int
+    {
+        foreach ($day['windows'] ?? [] as $i => $w) {
+            if ($time !== '00:00' && $time >= $w['start_time'] && $time < $w['end_time']) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
 
     /** @return array<int, array<string, mixed>> */
     public function for(ServiceArea $area, CarbonImmutable $from): array
     {
         $look = $this->nearby->load($area, $from);
         $radius = $look['radius'];
+        $settled = $from->addDays(self::SETTLED_DAYS - 1)->toDateString();
         $out = [];
 
         foreach ($look['jobs'] as $date => $onDay) {
             foreach ($onDay as $job) {
-                if ($job->kind === 'booking') {
+                if ($job->kind === 'booking' || $date <= $settled) {
                     continue;
                 }
                 $at = ['latitude' => (float) $job->latitude, 'longitude' => (float) $job->longitude];
@@ -45,15 +109,21 @@ final class Reschedules
                     continue;
                 }
 
-                $best = NearbySuggestion::best($this->nearby->candidates(
-                    $look['days']->reject(fn (array $d) => $d['date'] === $date), $others, $at, $radius,
-                ));
+                $now = $today->min('miles');
+                $best = NearbySuggestion::best(array_filter(array_map(
+                    [NearbySuggestion::class, 'windowLocal'],
+                    $this->nearby->candidates($look['days']->reject(fn (array $d) => $d['date'] === $date), $others, $at, $radius),
+                ), fn (array $c) => $c['nearby'] > 0
+                    && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= self::MAX_SHIFT_DAYS
+                    && $c['nearest_miles'] <= self::MAX_AFTER_MILES));
 
                 if ($best !== null) {
+                    $day = $look['all_days'][$date] ?? null;
                     $out[] = [
                         'row' => $job,
-                        'current' => ['date' => $date, 'nearest_miles' => $today->min('miles')],
-                        'suggested' => $this->nearby->shown($best),
+                        'current' => ['date' => $date, 'nearest_miles' => $now, 'day' => $day]
+                            + self::spots($day, self::windowAt($day, substr((string) $job->scheduled_for, 11, 5)), +1),
+                        'suggested' => $this->nearby->shown($best) + self::spots($best['day'], $best['window_index'], -1),
                         // The jobs it would join: they stay where they are.
                         'anchors' => $others[$best['date']]->filter(fn ($j) => NearbySuggestion::miles(
                             $at['latitude'], $at['longitude'], (float) $j->latitude, (float) $j->longitude) <= $radius)->all(),

@@ -261,6 +261,7 @@ class _OrderListState extends State<OrderList> {
                     Refused(
                       reason: createRefused,
                       child: FilledButton.icon(
+                        key: const ValueKey('tour-inventory-orders-add'),
                         onPressed: createRefused == null
                             ? () => setState(() {
                                 _addingPo = true;
@@ -279,6 +280,7 @@ class _OrderListState extends State<OrderList> {
                     Refused(
                       reason: issueRefused,
                       child: OutlinedButton.icon(
+                        key: const ValueKey('tour-inventory-orders-issue'),
                         onPressed: issueRefused == null
                             ? () => setState(() {
                                 _addingIssue = true;
@@ -297,6 +299,7 @@ class _OrderListState extends State<OrderList> {
                     Refused(
                       reason: createRefused,
                       child: OutlinedButton.icon(
+                        key: const ValueKey('tour-inventory-orders-sale'),
                         onPressed: createRefused == null
                             ? () => setState(() {
                                 _addingSale = true;
@@ -327,6 +330,7 @@ class _OrderListState extends State<OrderList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
+          key: const ValueKey('tour-inventory-orders-tiles'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: _poTiles == null || _saleTiles == null
               ? Wrap(

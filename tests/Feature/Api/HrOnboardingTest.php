@@ -1321,6 +1321,29 @@ class HrOnboardingTest extends TestCase
             ->assertJsonPath('data.0.id', $id);
     }
 
+    /** The list's search box (Jose, 2026-10-14): by the person's name or email. */
+    public function test_the_list_searches_by_the_person(): void
+    {
+        [$alpha, , $id] = $this->scenario();
+
+        foreach (['Ruiz', 'marta ruiz', 'newstarter@'] as $term) {
+            $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?search='.urlencode($term))
+                ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.id', $id);
+        }
+        $this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings?search=Okafor')
+            ->assertOk()->assertJsonPath('meta.total', 0);
+
+        // Narrows what the reader may reach, never widens it (HR, 2026-10-14).
+        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id'      => $alpha['company']->id,
+            'name'            => 'Alpha F2',
+        ]));
+        $elsewhere = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.edit'], onlyAt: $second);
+        $this->as($elsewhere)->getJson('/api/v1/hr/onboardings?search=Ruiz')
+            ->assertOk()->assertJsonPath('meta.total', 0);
+    }
+
     /** §4 reach: a manager at another franchise is not looking at this. */
     public function test_an_onboarding_outside_a_managers_reach_is_out_of_bounds(): void
     {
@@ -1740,6 +1763,28 @@ class HrOnboardingTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.total', 0)
             ->assertJsonPath('meta.tiles', ['in_progress' => 1, 'submitted' => 0, 'awaiting_approval' => 0, 'completed' => 0, 'cancelled' => 0]);
+    }
+
+    /** The list says what is still missing, and on whose side (Jose, 2026-10-14). */
+    public function test_the_list_counts_what_each_side_still_owes(): void
+    {
+        [$alpha, , $id] = $this->scenario();
+        $row = fn () => collect($this->as($alpha['admin'])->getJson('/api/v1/hr/onboardings')->json('data'))
+            ->firstWhere('id', $id);
+
+        // Wage is the employer's, the bank account either side's (the
+        // employer's to chase), the emergency contact the new starter's. The
+        // core is complete from acceptance - which the list's id/name/email
+        // user must not hide.
+        $this->assertCount(3, $this->form($alpha['admin'], $id)['missing']);
+        $this->assertSame([
+            'employer' => ['answered' => 0, 'outstanding' => 2],
+            'employee' => ['answered' => 0, 'outstanding' => 1],
+        ], $row()['progress']);
+
+        $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['wage' => '18.50']])->assertOk();
+
+        $this->assertSame(['answered' => 1, 'outstanding' => 1], $row()['progress']['employer']);
     }
 
     private function scenario(?array $fields = null): array

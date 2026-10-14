@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -12,6 +14,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -93,6 +96,15 @@ class _OnboardingTabState extends State<OnboardingTab> {
   /// are one status each. Asked of the server: the list pages.
   String _filter = 'open';
 
+  String _search = '';
+  Timer? _searchDelay;
+
+  @override
+  void dispose() {
+    _searchDelay?.cancel();
+    super.dispose();
+  }
+
   bool get _finished => _filter == 'completed' || _filter == 'cancelled';
 
   /// Each status counted across every page, by the server.
@@ -139,6 +151,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
       widget.api.get('/hr/onboardings', {
         'page': '$page',
         if (_filter == 'open') 'state': 'open' else 'status': _filter,
+        if (_search.isNotEmpty) 'search': _search,
       }),
       widget.api.get('/hr/contracts/catalogue'),
     ]);
@@ -236,6 +249,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
                     'publishing a new version does not change a form somebody '
                     'is halfway through.',
           action: FilledButton.icon(
+            key: const ValueKey('tour-hr-onboarding-start'),
             onPressed: _cannotStart == null ? _start : null,
             icon: const Icon(Icons.how_to_reg_outlined, size: 18),
             label: const Text('Start an onboarding'),
@@ -248,12 +262,14 @@ class _OnboardingTabState extends State<OnboardingTab> {
           ),
         Expanded(
           child: AsyncBody(
+            key: const ValueKey('tour-hr-onboarding-list'),
             loading: _loading,
             error: _error,
             onRetry: _load,
             child:
                 _rows.isEmpty &&
                     _filter == 'open' &&
+                    _search.isEmpty &&
                     (_tiles?.values.every((n) => n == 0) ?? true)
                 ? Center(
                     child: Padding(
@@ -283,6 +299,8 @@ class _OnboardingTabState extends State<OnboardingTab> {
                     children: [
                       _tilesRow(),
                       const SizedBox(height: 12),
+                      _searchField(),
+                      const SizedBox(height: 12),
                       _table(context),
                     ],
                   ),
@@ -296,6 +314,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
     int? n(String status) => _tiles?[status];
 
     return FilterTiles(
+      key: const ValueKey('tour-hr-onboarding-tiles'),
       prefix: 'onboardings',
       picked: _filter,
       // A picked tile tapped again goes back to the ones still under way.
@@ -353,12 +372,39 @@ class _OnboardingTabState extends State<OnboardingTab> {
     );
   }
 
+  /// The list's search box (Jose, 2026-10-14: "we lack searchbars on the 3
+  /// last human resources tabs"), as Records has one.
+  Widget _searchField() => Align(
+    alignment: Alignment.centerLeft,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: TextField(
+        key: const ValueKey('tour-hr-onboarding-search'),
+        decoration: const InputDecoration(
+          hintText: 'Search by name or email',
+          prefixIcon: Icon(Icons.search),
+          isDense: true,
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (value) {
+          _searchDelay?.cancel();
+          _searchDelay = Timer(const Duration(milliseconds: 300), () {
+            _search = value.trim();
+            _load();
+          });
+        },
+      ),
+    ),
+  );
+
   Widget _table(BuildContext context) {
     if (_rows.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
         child: Text(
-          'No onboardings in this state.',
+          _search.isEmpty
+              ? 'No onboardings in this state.'
+              : 'No onboardings match that search.',
           textAlign: TextAlign.center,
         ),
       );
@@ -382,9 +428,26 @@ class _OnboardingTabState extends State<OnboardingTab> {
       rows: [
         for (final row in _rows)
           [
-            PersonCell(
-              name: row.personName.isEmpty ? row.personEmail : row.personName,
-              sub: row.personName.isEmpty ? null : row.personEmail,
+            Row(
+              children: [
+                Expanded(
+                  child: PersonCell(
+                    name: row.personName.isEmpty
+                        ? row.personEmail
+                        : row.personName,
+                    sub: row.personName.isEmpty ? null : row.personEmail,
+                  ),
+                ),
+                // Required questions still empty, both sides, as Records
+                // counts a record's empty boxes (Jose, 2026-10-14).
+                MissingCount(
+                  _owed(row),
+                  tooltip:
+                      '${_owed(row)} required '
+                      '${_owed(row) == 1 ? 'question' : 'questions'} '
+                      'not answered',
+                ),
+              ],
             ),
             Text(
               [
@@ -399,7 +462,7 @@ class _OnboardingTabState extends State<OnboardingTab> {
                     onboardingStatusLabel(row.status),
                     good: row.status == 'completed',
                   ),
-            Text(_waitingOn(row), style: small),
+            _whereItIs(row, small),
             Wrap(
               alignment: WrapAlignment.end,
               children: [
@@ -440,6 +503,29 @@ class _OnboardingTabState extends State<OnboardingTab> {
               onMore: () => _load(page: _page + 1),
             )
           : null,
+    );
+  }
+
+  int _owed(OnboardingSummary row) =>
+      row.progress.values.fold(0, (sum, side) => sum + side.outstanding);
+
+  /// What is still owed, in amber and by side, so whose move it is shows
+  /// without opening it (Jose, 2026-10-14); otherwise the sentence below.
+  Widget _whereItIs(OnboardingSummary row, TextStyle? small) {
+    if (_owed(row) == 0) return Text(_waitingOn(row), style: small);
+
+    return Wrap(
+      runSpacing: 4,
+      children: [
+        if (row.answered == 0) const Tag('Not started', warn: true),
+        for (final side in [filledByEmployer, filledByEmployee])
+          if ((row.progress[side]?.outstanding ?? 0) > 0)
+            Tag(
+              '${_vocabulary.filledByLabel(side)}: '
+              '${row.progress[side]!.outstanding} missing',
+              warn: true,
+            ),
+      ],
     );
   }
 

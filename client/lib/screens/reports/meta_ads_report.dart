@@ -153,6 +153,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
       padding: const EdgeInsets.all(16),
       children: [
         ReportDates(
+          key: const ValueKey('tour-report-dates'),
           initial: _span,
           today: _today,
           formats: widget.formats,

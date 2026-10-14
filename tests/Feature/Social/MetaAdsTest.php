@@ -33,15 +33,16 @@ class MetaAdsTest extends TestCase
         ]), fn ($c) => $c->forceFill(['credentials' => ['access_token' => 'user-token']])->save()));
     }
 
-    public function test_the_ads_connect_is_its_own_driver_asking_only_for_ads_read(): void
+    public function test_the_ads_driver_and_the_facebook_connect_both_ask_for_ads_read(): void
     {
         $driver = app(SocialOAuthDrivers::class)->byRouteKey('facebook-ads');
 
         $this->assertNotNull($driver);
         $this->assertSame(SocialProvider::FacebookAds, $driver->provider());
         $this->assertContains('ads_read', $driver->scopes());
-        // The Page connect is not touched: ads_read is not approved for others.
-        $this->assertNotContains('ads_read', app(SocialOAuthDrivers::class)->byRouteKey('facebook')->scopes());
+        // And the Facebook connect asks for it too, so one connect brings the
+        // ad accounts (Jose, 2026-10-14, reversing the separate-connect rule).
+        $this->assertContains('ads_read', app(SocialOAuthDrivers::class)->byRouteKey('facebook')->scopes());
     }
 
     public function test_a_state_is_read_from_the_campaign_name(): void

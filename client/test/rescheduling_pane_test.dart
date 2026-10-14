@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_suggestion.dart';
 import 'package:ezbizi_client/screens/scheduling/rescheduling_pane.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -304,5 +305,187 @@ void main() {
     await pump(tester, data: const []);
 
     expect(find.byKey(const Key('rescheduling-empty')), findsOneWidget);
+  });
+
+  /// Jose, 2026-10-14: repairs and redos "should be included, but tag them
+  /// appropriately … perhaps we can have the rescheduling clickable, showing
+  /// the type of jobs set for that day and how the rescheduled one would fit".
+  testWidgets('a repair or a redo is tagged, and the opened row shows its '
+      'new day window by window with this job where it would go', (
+    tester,
+  ) async {
+    final first = rows[0];
+    final tagged = [
+      {
+        ...first,
+        'job': {...first['job'] as Map, 'service': 'Chimney Repair'},
+        'suggested': {
+          ...first['suggested'] as Map,
+          'day': {
+            'date': '2026-10-16',
+            'windows': [
+              {
+                'start_time': '08:00',
+                'end_time': '10:00',
+                'capacity': 3,
+                'taken': 3,
+                'remaining': 0,
+              },
+              {
+                'start_time': '10:00',
+                'end_time': '12:00',
+                'capacity': 3,
+                'taken': 1,
+                'remaining': 2,
+              },
+            ],
+          },
+          'jobs': [
+            {
+              'latitude': 41.91,
+              'longitude': -87.6,
+              'miles': 0.8,
+              'nearby': true,
+              'customer': 'Leo Brandt',
+              'time': '08:00',
+              'window': 0,
+              'number': '4102',
+              'service': 'Redo',
+            },
+            {
+              'latitude': 41.92,
+              'longitude': -87.6,
+              'miles': 1.4,
+              'nearby': true,
+              'customer': 'Mia Holt',
+              'time': '10:00',
+              'window': 1,
+              'number': '4111',
+              'service': 'Inspection',
+            },
+          ],
+        },
+      },
+      rows[1],
+    ];
+    await pump(tester, data: tagged);
+
+    expect(find.widgetWithText(StatusPill, 'Chimney Repair'), findsWidgets);
+    expect(find.widgetWithText(StatusPill, 'Redo'), findsOneWidget);
+    expect(find.textContaining('3 of 3 taken'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-0')),
+        matching: find.textContaining('#4102 · Redo'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-1')),
+        matching: find.text('#4127 would go here'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  /// Jose, 2026-10-14: "the scheduling before and after for the area too, as
+  /// in the amount of spots before and after" (UI queue 92, 1 and 4), in
+  /// Scheduling's numbers (528f5824).
+  testWidgets('both days show their open spots before and after the move, '
+      "window by window, as the server counts them", (tester) async {
+    final first = rows[0];
+    Map<String, dynamic> win(String from, String to, int cap, int taken) => {
+      'start_time': from,
+      'end_time': to,
+      'capacity': cap,
+      'taken': taken,
+      'remaining': cap - taken,
+    };
+    Map<String, dynamic> spot(String from, String to, int before, int after) =>
+        {'start_time': from, 'end_time': to, 'before': before, 'after': after};
+    final spots = [
+      {
+        ...first,
+        'current': {
+          'date': '2026-10-14',
+          'day': {
+            'date': '2026-10-14',
+            'windows': [
+              win('08:00', '11:00', 3, 2),
+              win('11:00', '14:00', 3, 4),
+            ],
+          },
+          'window_index': 0,
+          'spots': {
+            'before': 1,
+            'after': 2,
+            'windows': [
+              spot('08:00', '11:00', 1, 2),
+              // Over its limit: a job leaving it frees nothing.
+              spot('11:00', '14:00', 0, 0),
+            ],
+          },
+        },
+        'suggested': {
+          ...first['suggested'] as Map,
+          'day': {
+            'date': '2026-10-16',
+            'windows': [
+              win('08:00', '10:00', 3, 3),
+              win('10:00', '12:00', 3, 2),
+            ],
+          },
+          'spots': {
+            'before': 1,
+            'after': 0,
+            'windows': [
+              spot('08:00', '10:00', 0, 0),
+              spot('10:00', '12:00', 1, 0),
+            ],
+          },
+        },
+      },
+      rows[1],
+    ];
+    await pump(tester, data: spots);
+
+    final now = find.byKey(const ValueKey('rescheduling-now-plan'));
+    expect(now, findsOneWidget);
+    // The day it leaves: 1 open → 2, its own window 1 → 2.
+    expect(
+      find.descendant(of: now, matching: find.textContaining('→ 2 open')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-now-window-1')),
+        matching: find.text('0 open'),
+      ),
+      findsOneWidget,
+    );
+    // The day it takes: its window 1 → 0, the day 1 → 0.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-1')),
+        matching: find.textContaining('→ 0 open'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-0')),
+        matching: find.text('0 open'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without the current day the plan shows the suggested day only', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('rescheduling-now-plan')), findsNothing);
   });
 }
