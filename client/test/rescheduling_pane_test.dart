@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_suggestion.dart';
 import 'package:ezbizi_client/screens/scheduling/rescheduling_pane.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -304,5 +305,87 @@ void main() {
     await pump(tester, data: const []);
 
     expect(find.byKey(const Key('rescheduling-empty')), findsOneWidget);
+  });
+
+  /// Jose, 2026-10-14: repairs and redos "should be included, but tag them
+  /// appropriately … perhaps we can have the rescheduling clickable, showing
+  /// the type of jobs set for that day and how the rescheduled one would fit".
+  testWidgets('a repair or a redo is tagged, and the opened row shows its '
+      'new day window by window with this job where it would go', (
+    tester,
+  ) async {
+    final first = rows[0];
+    final tagged = [
+      {
+        ...first,
+        'job': {...first['job'] as Map, 'service': 'Chimney Repair'},
+        'suggested': {
+          ...first['suggested'] as Map,
+          'day': {
+            'date': '2026-10-16',
+            'windows': [
+              {
+                'start_time': '08:00',
+                'end_time': '10:00',
+                'capacity': 3,
+                'taken': 3,
+                'remaining': 0,
+              },
+              {
+                'start_time': '10:00',
+                'end_time': '12:00',
+                'capacity': 3,
+                'taken': 1,
+                'remaining': 2,
+              },
+            ],
+          },
+          'jobs': [
+            {
+              'latitude': 41.91,
+              'longitude': -87.6,
+              'miles': 0.8,
+              'nearby': true,
+              'customer': 'Leo Brandt',
+              'time': '08:00',
+              'window': 0,
+              'number': '4102',
+              'service': 'Redo',
+            },
+            {
+              'latitude': 41.92,
+              'longitude': -87.6,
+              'miles': 1.4,
+              'nearby': true,
+              'customer': 'Mia Holt',
+              'time': '10:00',
+              'window': 1,
+              'number': '4111',
+              'service': 'Inspection',
+            },
+          ],
+        },
+      },
+      rows[1],
+    ];
+    await pump(tester, data: tagged);
+
+    expect(find.widgetWithText(StatusPill, 'Chimney Repair'), findsWidgets);
+    expect(find.widgetWithText(StatusPill, 'Redo'), findsOneWidget);
+    expect(find.textContaining('3 of 3 taken'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-0')),
+        matching: find.textContaining('#4102 · Redo'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('rescheduling-window-1')),
+        matching: find.text('#4127 would go here'),
+      ),
+      findsOneWidget,
+    );
   });
 }
