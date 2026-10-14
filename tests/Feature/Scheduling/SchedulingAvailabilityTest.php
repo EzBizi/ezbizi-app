@@ -852,6 +852,77 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * Jose, 2026-10-14: technicians = the day's capacity / 6, a route each,
+     * opened in Google Maps. 12 seats are 2 technicians; Dallas and Fort Worth
+     * each get one, every job joins the route already nearest it, and two
+     * jobs at 8:00 never share a technician.
+     */
+    public function test_a_day_is_split_into_a_route_per_technician(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+        $this->signedInAs($tenant['admin'])->putJson("/api/v1/scheduling/areas/{$area->id}/slots", ['slots' => [
+            ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 4],
+            ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 4],
+            ['weekday' => 1, 'start_time' => '14:00', 'end_time' => '17:00', 'max_jobs' => 4],
+        ]])->assertOk();
+
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);              // Dallas
+        $this->located($tenant, '2026-10-05 08:00:00', 32.7550, -97.3300, '76102');     // Fort Worth
+        $this->located($tenant, '2026-10-05 11:00:00', 32.8000, -96.8000);              // by Dallas
+        $this->located($tenant, '2026-10-05 12:00:00', 32.7600, -97.3350, '76102');     // by Fort Worth
+        $this->located($tenant, '2026-10-05 14:00:00', 32.8100, -96.8050);              // by Dallas
+        $this->located($tenant, '2026-10-05 12:30:00', -1.0, -1.0, '75202');            // nowhere
+
+        $data = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-05")
+            ->assertOk()->json('data');
+
+        $this->assertSame([12, 2], [$data['capacity'], $data['technicians']]);
+        $routes = collect($data['routes'])->keyBy(fn ($r) => substr((string) $r['stops'][0]['customer']['address'], -5));
+        $stops = $routes->map(fn ($r) => array_map(fn ($s) => $s['time'].' '.substr((string) $s['customer']['address'], -5), $r['stops']))->sortKeys()->all();
+        $this->assertSame([
+            '75201' => ['08:00 75201', '11:00 75201', '14:00 75201'],
+            '76102' => ['08:00 76102', '12:00 76102'],
+        ], $stops);
+        $this->assertSame([1, 2], $routes->pluck('technician')->sort()->values()->all());
+        $this->assertStringStartsWith('https://www.google.com/maps/dir/?api=1&origin=32.787%2C-96.799&destination=32.81%2C-96.805', $routes['75201']['maps_url']);
+        $this->assertStringContainsString('waypoints=32.8%2C-96.8', $routes['75201']['maps_url']);
+        $this->assertLessThan(5, $routes['75201']['miles']);
+        $this->assertCount(1, $data['unplaced']);
+
+        // Two 8:00 jobs a mile apart are still two technicians.
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-12 08:00:00', 32.8010, -96.7990);
+        $twelfth = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-12")
+            ->assertOk()->json('data.routes');
+        $this->assertSame([1, 1], array_map(fn ($r) => count($r['stops']), $twelfth));
+        $this->assertSame([false, false], array_column($twelfth, 'extra'));
+
+        // A third 8:00 job is a technician the day does not have: its own
+        // extra route, not a second 8:00 stop on someone's.
+        $this->located($tenant, '2026-10-12 08:00:00', 32.8050, -96.7990);
+        $twelfth = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-12")
+            ->assertOk()->json('data.routes');
+        $this->assertSame([[1, false], [1, false], [1, true]], array_map(fn ($r) => [count($r['stops']), $r['extra']], $twelfth));
+        $this->assertSame(3, $twelfth[2]['technician']);
+
+        // A job Workiz never placed, with a zip A-1 has worked: routed at the
+        // zip's centre and marked approximate, not left out.
+        $this->located($tenant, '2026-10-19 08:00:00', 0.0, 0.0);
+        app(TenantContext::class)->set($tenant['org']);
+        DB::table('workiz_jobs')->where('scheduled_for', '2026-10-19 08:00:00')->update(['latitude' => null, 'longitude' => null]);
+        $nineteenth = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/routes?area_id={$area->id}&date=2026-10-19")
+            ->assertOk()->json('data');
+        $this->assertSame([], $nineteenth['unplaced']);
+        $this->assertTrue($nineteenth['routes'][0]['stops'][0]['approximate']);
+        $this->assertEqualsWithDelta(32.79, $nineteenth['routes'][0]['stops'][0]['latitude'], 0.02);
+    }
+
+    /**
      * Grok's review of the live list (2026-10-14): a reschedule must be worth
      * the phone call. Each pair below would be suggested without one rule;
      * only the Houston pair passes them all.
