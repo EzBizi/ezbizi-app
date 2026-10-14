@@ -18,6 +18,7 @@ class VersionHistory {
       date: '14 Oct 2026',
       items: [
         'Reports: Scoring opens on yesterday, has Today / Yesterday / 1 week / 1 month buttons, and shows each person\'s latest calls plus their best and worst, with scores and a search.',
+        'Sales: a new Sales tab tracks jobs that are done but pending approval, with stage, urgency, next follow-up and notes for each; Administrators see it, and other roles get it in Roles.',
       ],
     ),
     VersionRelease(
