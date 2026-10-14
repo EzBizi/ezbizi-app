@@ -86,6 +86,7 @@ void main() {
     WidgetTester tester, {
     List<Map<String, dynamic>>? data,
     double width = 1440,
+    bool canWeigh = false,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -160,6 +161,7 @@ void main() {
             api: api,
             formats: DisplayFormats.fallback,
             now: () => DateTime(2026, 10, 13, 12),
+            canWeigh: canWeigh,
           ),
         ),
       ),
@@ -262,6 +264,16 @@ void main() {
     await tester.tap(find.byKey(const Key('scoring-back')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('scoring-card-Sam Wu')), findsOneWidget);
+  });
+
+  testWidgets('Weights shows only for who may change what the score weighs', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(find.byKey(const Key('scoring-weights-edit')), findsNothing);
+
+    await pump(tester, canWeigh: true);
+    expect(find.byKey(const Key('scoring-weights-edit')), findsOneWidget);
   });
 
   testWidgets('Most improved puts the biggest rise first', (tester) async {
