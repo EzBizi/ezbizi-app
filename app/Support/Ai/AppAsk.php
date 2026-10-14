@@ -2,7 +2,6 @@
 
 namespace App\Support\Ai;
 
-use App\Models\Lead;
 use App\Models\User;
 use App\Support\Http\InternalRequest;
 use Illuminate\Http\Request;
@@ -36,12 +35,15 @@ final class AppAsk
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
         $today = now('America/New_York');
 
-        $plan = GrokCli::ask(
-            'You help a staff member of a home-services business get information from their CRM, EzBizi. '
+        $plan = fn (string $retry) => GrokCli::ask(
+            // The CLI is an agent: without this line it planned "grep" calls on the codebase (prod, 2026-10-14).
+            'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
+            .'You help a staff member of a home-services business get information from their CRM, EzBizi. '
             ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick at most "
             .self::MAX_CALLS.' GET endpoints (path relative to api/v1, with {placeholders} filled in, and '
-            .'query parameters such as search, per_page, from, to) that would answer the question. If none '
-            ."would, return no calls.\n\nENDPOINTS:\n".self::catalogue()."\n\nQUESTION: ".$question,
+            .'query parameters, using only the names listed in brackets after each endpoint, as a query '
+            .'string such as when=upcoming&today=2026-10-15) that would answer the question. If none '
+            ."would, return no calls.\n\nENDPOINTS:\n".self::catalogue()."\n\nQUESTION: ".$question.$retry,
             [
                 'type' => 'object',
                 'properties' => ['calls' => ['type' => 'array', 'items' => [
@@ -56,12 +58,22 @@ final class AppAsk
             max(10, min(30, $left() - 25)),
         );
 
-        $calls = array_slice((array) ($plan['calls'] ?? []), 0, self::MAX_CALLS);
-        if ($calls === []) {
-            return null;
+        // One retry when every call failed: the app's own error ("The selected
+        // when is invalid.") tells Grok which value to change (prod, 2026-10-14).
+        $retry = '';
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $calls = array_slice((array) ($plan($retry)['calls'] ?? []), 0, self::MAX_CALLS);
+            if ($calls === []) {
+                return null;
+            }
+            $results = self::fetch($viewer, $calls);
+            $failed = array_filter($results, fn ($r) => is_string($r) && str_starts_with($r, 'HTTP '));
+            if (count($failed) < count($results) || $left() < 35) {
+                break;
+            }
+            $retry = "\n\nYOUR LAST CALLS FAILED - fix the query and try again:\n"
+                .json_encode(array_map(null, $calls, array_values($results)), JSON_UNESCAPED_SLASHES);
         }
-
-        $results = self::fetch($viewer, $calls);
         if ($results === [] || $left() < 10) {
             return null;
         }
@@ -93,8 +105,50 @@ final class AppAsk
                 && str_starts_with($r->uri(), 'api/v1/')
                 && in_array('tenant', $r->gatherMiddleware(), true)
                 && self::allowed(substr($r->uri(), 7)))
-            ->map(fn (RouteObject $r) => substr($r->uri(), 7))
+            ->map(fn (RouteObject $r) => substr($r->uri(), 7).self::params($r))
             ->unique()->implode("\n");
+    }
+
+    /**
+     * The query names a route's action reads, as " [a, b]": the keys of its
+     * validate() rules and query('x') reads, found in the method's source.
+     * ponytail: a regex over source, not a schema; a route that reads its
+     * query some other way shows none, and Grok guesses.
+     */
+    private static function params(RouteObject $route): string
+    {
+        $action = $route->getActionName();
+        if (! str_contains($action, '@')) {
+            return '';
+        }
+        try {
+            $m = new \ReflectionMethod(...explode('@', $action, 2));
+            $src = implode('', array_slice(file((string) $m->getFileName()), $m->getStartLine() - 1, $m->getEndLine() - $m->getStartLine() + 1));
+        } catch (\Throwable) {
+            return '';
+        }
+        preg_match_all("/(?:'([a-z_]+)'\\s*=>\\s*\\[|(?:query|input|integer|boolean|string|date)\\('([a-z_]+)')/", $src, $mm);
+        $names = array_values(array_unique(array_filter(array_merge($mm[1], $mm[2]))));
+
+        // A rule's fixed choices go with the name: when=upcoming|past|all.
+        // Without them Grok guessed when=tomorrow and sort=created_at (prod, 2026-10-14).
+        $names = array_map(function (string $name) use ($src, $m) {
+            if (! preg_match("/'{$name}'\\s*=>\\s*\\[[^\\n]*Rule::in\\((.+?)\\)\\s*[\\],]/", $src, $rule)) {
+                return $name;
+            }
+            $values = [];
+            if (preg_match('/self::([A-Z_]+)/', $rule[1], $const) && $m->getDeclaringClass()->hasConstant($const[1])) {
+                $list = (array) $m->getDeclaringClass()->getConstant($const[1]);
+                $values = str_contains($rule[1], 'array_keys') ? array_keys($list) : array_values($list);
+            } elseif (preg_match_all("/'([^']+)'/", $rule[1], $quoted)) {
+                $values = $quoted[1];
+            }
+            $values = array_filter($values, 'is_scalar');
+
+            return $values === [] ? $name : $name.'='.implode('|', array_slice($values, 0, 10));
+        }, $names);
+
+        return $names === [] ? '' : ' ['.implode(', ', array_slice($names, 0, 12)).']';
     }
 
     /**
@@ -126,7 +180,7 @@ final class AppAsk
                 // Only JSON reaches Grok: audio, files and pages (an LSA recording) never do.
                 $json = str_contains((string) $response->headers->get('Content-Type'), 'json');
                 $out[$path] = $response->getStatusCode() >= 400
-                    ? 'HTTP '.$response->getStatusCode()
+                    ? 'HTTP '.$response->getStatusCode().($response->getStatusCode() === 422 ? ': '.mb_substr($raw, 0, 400) : '')
                     : ($json ? self::cut(json_decode($raw, true) ?? $raw) : 'not readable here');
             }
 
@@ -155,8 +209,34 @@ final class AppAsk
     {
         $value = self::withoutSignedLinks($value);
         $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Too big: keep the shape and every list's length rather than the first
+        // 12 KB of text - "how many jobs tomorrow" is the length of a list the
+        // cut used to drop (the board for one day, prod, 2026-10-14).
+        foreach ([20, 5, 1] as $keep) {
+            if (strlen($json) <= self::MAX_CHARS) {
+                break;
+            }
+            $value = self::shrink($value, $keep);
+            $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
 
         return strlen($json) > self::MAX_CHARS ? mb_strcut($json, 0, self::MAX_CHARS).' …(cut)' : $value;
+    }
+
+    /** Long lists keep $keep items plus their total; long text is trimmed. */
+    public static function shrink(mixed $value, int $keep): mixed
+    {
+        if (is_string($value)) {
+            return mb_strlen($value) > 200 ? mb_substr($value, 0, 200).'…' : $value;
+        }
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value) && count($value) > $keep) {
+            return ['_total' => count($value), '_first' => array_map(fn ($v) => self::shrink($v, $keep), array_slice($value, 0, $keep))];
+        }
+
+        return array_map(fn ($v) => self::shrink($v, $keep), $value);
     }
 
     private static function readable(string $path): bool
