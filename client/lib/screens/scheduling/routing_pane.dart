@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
@@ -17,8 +16,10 @@ import 'availability_suggestion.dart';
 /// done on google maps when clicked)"; UI queue 90, desktop 1 and phone 4).
 ///
 /// The server plans the day (`GET /scheduling/routes`): a route per
-/// technician, its stops in order, its straight-line miles and a Google Maps
-/// link through them. Routes past the area's capacity are `extra`: the day
+/// technician, its stops in order, its straight-line miles and, with a Google
+/// key, its `drive`: the road path, miles and minutes, drawn here (Jose,
+/// 2026-10-14: "i want to see the google maps routing Inside the app, not via
+/// an outbound link"). Routes past the area's capacity are `extra`: the day
 /// needs another technician. `unplaced` jobs have no usable location, and are
 /// listed so nobody forgets them.
 class RoutingPane extends StatefulWidget {
@@ -134,6 +135,35 @@ class _RoutingPaneState extends State<RoutingPane> {
         : LatLng(lat, lng);
   }
 
+  /// The road through the stops when Google gave one, else straight lines
+  /// between them.
+  static List<LatLng> _path(Map<String, dynamic> route) {
+    final road = _decode('${(route['drive'] as Map?)?['polyline'] ?? ''}');
+    return road.length > 1 ? road : [for (final s in _stops(route)) ?_at(s)];
+  }
+
+  /// Google's encoded polyline, precision 5 (its published algorithm). A
+  /// string cut short stops at the last whole point.
+  static List<LatLng> _decode(String s) {
+    final points = <LatLng>[];
+    final at = [0, 0];
+    var i = 0;
+    while (i < s.length) {
+      for (var k = 0; k < 2; k++) {
+        var shift = 0, result = 0, b = 0x20;
+        while (b >= 0x20) {
+          if (i >= s.length) return points;
+          b = s.codeUnitAt(i++) - 63;
+          result |= (b & 0x1f) << shift;
+          shift += 5;
+        }
+        at[k] += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+      }
+      points.add(LatLng(at[0] / 1e5, at[1] / 1e5));
+    }
+    return points;
+  }
+
   /// Route colours from the app's own categorical set; an extra route is the
   /// caution colour, so "needs another technician" reads on the map too.
   Color _colour(BuildContext context, int i) {
@@ -147,10 +177,7 @@ class _RoutingPaneState extends State<RoutingPane> {
 
   void _fit() {
     if (!_mapReady) return;
-    final points = [
-      for (final r in _routes)
-        for (final s in _stops(r)) ?_at(s),
-    ];
+    final points = [for (final r in _routes) ..._path(r)];
     if (points.isEmpty) return;
     _map.fitCamera(
       CameraFit.coordinates(
@@ -199,8 +226,10 @@ class _RoutingPaneState extends State<RoutingPane> {
     return '${n == n.roundToDouble() ? n.toInt() : n.toStringAsFixed(1)} mi';
   }
 
-  Future<void> _openMaps(String url) =>
-      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  static String _minutes(Object? m) {
+    final n = (m as num?)?.toInt() ?? 0;
+    return n < 60 ? '$n min' : '${n ~/ 60} h ${n % 60} min';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -441,7 +470,7 @@ class _RoutingPaneState extends State<RoutingPane> {
                   polylines: [
                     for (final (i, r) in routes.indexed)
                       Polyline(
-                        points: [for (final s in _stops(r)) ?_at(s)],
+                        points: _path(r),
                         strokeWidth: picked == i ? 5 : 3,
                         color: _colour(context, i).withValues(alpha: alpha(i)),
                         pattern: r['extra'] == true
@@ -509,7 +538,6 @@ class _RoutingPaneState extends State<RoutingPane> {
     final route = _routes[i];
     final stops = _stops(route);
     final extra = route['extra'] == true;
-    final url = route['maps_url'] as String?;
     final open = side && (_picked == i || !framed);
     final caution = ToneColours.of(context, Tone.caution);
 
@@ -540,22 +568,19 @@ class _RoutingPaneState extends State<RoutingPane> {
                     ),
                     Text(
                       '${stops.length} ${stops.length == 1 ? 'stop' : 'stops'}'
-                      // Straight-line: the road is longer, and Google
-                      // Maps gives the real drive (Grok's review).
-                      ' · ≈ ${_miles(route['miles'])} straight-line',
+                      '${switch (route['drive']) {
+                        // Google's road miles and minutes.
+                        {'miles': final mi, 'minutes': final mins} => ' · ${_miles(mi)} · ${_minutes(mins)} drive',
+                        // No key, or Google refused: as the crow flies, said
+                        // so, as the road is longer (Grok's review).
+                        _ => ' · ≈ ${_miles(route['miles'])} straight-line',
+                      }}',
                       style: muted,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              if (url != null)
-                TextButton.icon(
-                  key: ValueKey('routing-maps-$i'),
-                  onPressed: () => _openMaps(url),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Google Maps'),
-                ),
             ],
           ),
           if (extra) ...[

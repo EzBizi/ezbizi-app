@@ -658,15 +658,16 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Settings/Suggestions': Tour(
-    version: 1,
+  'scheduling/Settings/Routing & suggestions': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-scheduling-suggestions',
-        title: 'Suggested availability',
+        title: 'Routing and suggestions',
         body:
-            'How near a booked job must be for Availability to suggest its '
-            'day, and how many days ahead it may look.',
+            'How many jobs a technician takes, how far apart they may be, '
+            'how near a booked job must be for Availability to suggest its '
+            'day, and what Re-Scheduling may move.',
       ),
     ],
   ),

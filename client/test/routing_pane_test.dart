@@ -4,9 +4,11 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/routing_pane.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Scheduling › Routing (UI queue 90, desktop 1 and phone 4), against
 /// Scheduling's `GET /scheduling/routes` (a95f30f6, 623cabda). Every name and
@@ -45,6 +47,12 @@ void main() {
         'miles': 3.4,
         'extra': false,
         'maps_url': 'https://www.google.com/maps/dir/?api=1',
+        // Google's own example polyline, three points.
+        'drive': {
+          'miles': 4.8,
+          'minutes': 75,
+          'polyline': '_p~iF~ps|U_ulLnnqC_mqNvxq`@',
+        },
       },
       {
         'technician': 2,
@@ -52,6 +60,7 @@ void main() {
         'miles': 0,
         'extra': true,
         'maps_url': null,
+        'drive': null,
       },
     ],
     'unplaced': [stop('4158', 'Omar Haddad', '14:00')],
@@ -111,11 +120,22 @@ void main() {
     expect(asked.single, {'area_id': 'a-mg', 'date': ymd(today)});
     expect(find.byKey(const ValueKey('routing-map')), findsOneWidget);
     expect(find.text('Technician 1'), findsOneWidget);
-    expect(find.text('2 stops · ≈ 3.4 mi straight-line'), findsOneWidget);
+    // Google's road drive; without one, straight lines said so.
+    expect(find.text('2 stops · 4.8 mi · 1 h 15 min drive'), findsOneWidget);
+    expect(find.text('1 stop · ≈ 0 mi straight-line'), findsOneWidget);
+    // The road is drawn: route 1 follows the decoded polyline, not its stops.
+    final lines = tester
+        .widget<PolylineLayer>(find.byType(PolylineLayer))
+        .polylines;
+    expect(lines.first.points, const [
+      LatLng(38.5, -120.2),
+      LatLng(40.7, -120.95),
+      LatLng(43.252, -126.453),
+    ]);
+    expect(lines.last.points, const [LatLng(42.0, -87.6)]);
     expect(find.text('Needs another technician'), findsOneWidget);
-    expect(find.byKey(const ValueKey('routing-maps-0')), findsOneWidget);
-    // No Google Maps link from the server, no button.
-    expect(find.byKey(const ValueKey('routing-maps-1')), findsNothing);
+    // Inside the app, no outbound link (Jose, 2026-10-14).
+    expect(find.text('Google Maps'), findsNothing);
     expect(find.text('No location · 1'), findsOneWidget);
     // Booked 60+ miles from the day's other jobs: listed apart, not routed.
     expect(find.text('Far outside this area · 1'), findsOneWidget);
@@ -150,7 +170,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('routing-route-page')), findsOneWidget);
     expect(find.byKey(const ValueKey('routing-stop-0-0')), findsOneWidget);
-    expect(find.byKey(const ValueKey('routing-maps-0')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('routing-back')));
     await tester.pumpAndSettle();
