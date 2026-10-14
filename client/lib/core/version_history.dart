@@ -26,6 +26,7 @@ class VersionHistory {
         'Integrations: every account type has its card, including Facebook Ads, so each can be connected from there.',
         'Facebook: connecting your Facebook also brings your ad accounts, so ad spend shows in Reports.',
         'HR: the onboarding list shows, in amber, how many required questions are still missing and on whose side; inside the form, each empty required question says Not filled in.',
+        'Financials: a new Financials tab, in place of Airtable, holds bases of tables with typed fields (currency, selects, rating, formula and more), saved views as a grid, kanban, calendar, gallery or form, CSV import and export, and starter templates; Administrators see it, and other roles get it in Roles.',
       ],
     ),
     VersionRelease(
