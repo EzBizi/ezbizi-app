@@ -1306,6 +1306,9 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jose, 2026-10-13: booked jobs that would sit better on
                     // another day, beside other work (App\Support\Scheduling\Reschedules).
                     new TabDefinition('rescheduling', 'Re-Scheduling'),
+                    // Jose, 2026-10-14: a route per technician (capacity / 6),
+                    // opened in Google Maps (App\Support\Scheduling\Routes).
+                    new TabDefinition('routing', 'Routing'),
                     // Jovanni, 2026-10-01: company branches and the closest
                     // one to an address, for new dispatchers (queue 49).
                     new TabDefinition('locations', 'Locations'),

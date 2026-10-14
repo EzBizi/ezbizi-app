@@ -10,6 +10,7 @@ use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Reschedules;
+use App\Support\Scheduling\Routes;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
@@ -102,6 +103,38 @@ class SchedulingAvailabilityController extends Controller
 
         return response()->json(['data' => ['area_id' => $area->id, 'area_name' => $area->name]
             + app(NearbySuggestion::class)->fit($area, $zip, $data['date'], $data['start_time'], $from)]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/routes?area_id=&date=
+     *
+     * Scheduling › Routing (Jose, 2026-10-14): the day's jobs as one route
+     * per technician (capacity / 6), each with its Google Maps directions.
+     * See App\Support\Scheduling\Routes.
+     */
+    public function routes(Request $request): JsonResponse
+    {
+        $data = $request->validate(['area_id' => ['required', 'uuid'], 'date' => ['required', 'date_format:Y-m-d']]);
+        $area = ServiceArea::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->findOrFail($data['area_id']);
+        $plan = app(Routes::class)->for($area, CarbonImmutable::parse($data['date']));
+
+        $rows = collect($plan['routes'])->pluck('stops')->flatten(1)->merge($plan['unplaced']);
+        $customers = Customer::query()->whereIn('id', $rows->pluck('customer_id')->filter()->unique())->get()->keyBy('id');
+        $job = fn (object $row) => SchedulingOverbookingController::detail($row, $customers[$row->customer_id ?? ''] ?? null)
+            + ['latitude' => (float) $row->latitude, 'longitude' => (float) $row->longitude];
+
+        return response()->json(['data' => [
+            'area_id' => $area->id,
+            'area_name' => $area->name,
+            'date' => $data['date'],
+            'capacity' => $plan['capacity'],
+            'technicians' => $plan['technicians'],
+            'routes' => array_map(fn (array $r) => ['stops' => array_map($job, $r['stops'])] + $r, $plan['routes']),
+            // No place on the map (Workiz could not geocode them): listed so
+            // nobody is forgotten, routed by the dispatcher.
+            'unplaced' => array_map($job, $plan['unplaced']),
+        ]]);
     }
 
     /**
