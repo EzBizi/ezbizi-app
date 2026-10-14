@@ -114,6 +114,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\MarketingReportController;
 use App\Http\Controllers\Api\MetaAdsReportController;
 use App\Http\Controllers\Api\ScoringReportController;
+use App\Http\Controllers\Api\StaffBotMenusController;
 use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
@@ -816,6 +817,14 @@ Route::prefix('v1')
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
         Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
         Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
+        // Custom boards and members, monday-style (inbox 0120).
+        Route::post('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroy']);
+        Route::get('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'members']);
+        Route::post('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'storeMember']);
+        Route::patch('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'updateMember']);
+        Route::delete('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroyMember']);
         Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
         Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
         Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);
@@ -1662,6 +1671,15 @@ Route::prefix('v1')
                 ->except('show')
                 ->parameters(['whatsapp-groups' => 'group']);
             Route::post('ai-assistance/whatsapp-groups/{group}/publish', [WhatsAppGroupsController::class, 'publish']);
+            // The staff line's menu for each role (UI queue 88).
+            Route::get('ai-assistance/staff-bot', [StaffBotMenusController::class, 'index']);
+            Route::post('ai-assistance/staff-bot/menus', [StaffBotMenusController::class, 'storeMenu']);
+            Route::put('ai-assistance/staff-bot/menus/{menu}', [StaffBotMenusController::class, 'updateMenu']);
+            Route::delete('ai-assistance/staff-bot/menus/{menu}', [StaffBotMenusController::class, 'destroyMenu']);
+            Route::put('ai-assistance/staff-bot/menus/{menu}/order', [StaffBotMenusController::class, 'order']);
+            Route::post('ai-assistance/staff-bot/menus/{menu}/items', [StaffBotMenusController::class, 'storeItem']);
+            Route::put('ai-assistance/staff-bot/items/{item}', [StaffBotMenusController::class, 'updateItem']);
+            Route::delete('ai-assistance/staff-bot/items/{item}', [StaffBotMenusController::class, 'destroyItem']);
         });
 
         Route::middleware('permission:work_hours.manage')->group(function () {

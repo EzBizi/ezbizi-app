@@ -2,16 +2,31 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\Lead;
+use App\Models\StaffBotItem;
+use App\Models\StaffBotMenu;
+use App\Models\TrainingGuide;
+use App\Models\TrainingMedia;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
+use App\Support\Ai\AppAsk;
+use App\Support\Ai\CallRecordingsRequest;
+use App\Support\Ai\ReportAsk;
 use App\Support\Social\WhatsAppStaffBot;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -691,7 +706,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => true, 'reply' => 'Use the flue sizing chart in the Library.', 'entry_ids' => ['made-up-id'],
         ]]))]);
 
@@ -709,7 +724,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => false, 'reply' => '', 'entry_ids' => [],
         ]]))]);
 
@@ -726,11 +741,11 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake();
+        Process::fake();
 
         $this->inbound(self::BOT, $this->text('who approves holiday requests'))->assertOk();
 
-        \Illuminate\Support\Facades\Process::assertNothingRan();
+        Process::assertNothingRan();
         $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
     }
 
@@ -741,9 +756,9 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::sequence()
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
-            ->push(\Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
+            ->push(Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
 
         $this->staff($t);
         $this->inbound(self::BOT, $this->text('how much did we sell last week'))->assertOk();
@@ -758,7 +773,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        \Illuminate\Support\Facades\Process::fake(['*' => \Illuminate\Support\Facades\Process::result(json_encode(['structuredOutput' => [
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
             'answered' => false, 'reply' => '', 'entry_ids' => [],
         ]]))]);
         $tech = $this->userWithRole($t, 'technician');
@@ -775,26 +790,240 @@ class WhatsAppStaffBotTest extends TestCase
     public function test_google_local_services_leads_are_not_in_the_figures_sent_to_ai(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $branch = $this->inTenant($t['org'], fn () => \App\Models\Franchise::query()->firstOrFail());
+        $branch = $this->inTenant($t['org'], fn () => Franchise::query()->firstOrFail());
         $this->inTenant($t['org'], function () use ($t, $branch) {
-            foreach ([\App\Models\Lead::SOURCE_LOCAL_SERVICES, \App\Models\Lead::SOURCE_THUMBTACK] as $source) {
-                \App\Models\Lead::create([
+            foreach ([Lead::SOURCE_LOCAL_SERVICES, Lead::SOURCE_THUMBTACK] as $source) {
+                Lead::create([
                     'organization_id' => $t['org']->id, 'franchise_id' => $branch->id, 'source' => $source,
                     'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
                 ]);
             }
         });
 
-        $counts = \App\Support\Ai\ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
+        $counts = ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
 
-        $this->assertSame([\App\Models\Lead::SOURCE_THUMBTACK => 1], $counts);
+        $this->assertSame([Lead::SOURCE_THUMBTACK => 1], $counts);
     }
 
     public function test_a_misread_period_is_clamped_to_a_year_ending_today(): void
     {
-        $today = \Carbon\CarbonImmutable::parse('2026-10-13', 'America/New_York');
-        $this->assertSame(['2025-10-13', '2026-10-13'], \App\Support\Ai\ReportAsk::period('1990-01-01', '2030-01-01', $today));
-        $this->assertSame(['2026-10-01', '2026-10-13'], \App\Support\Ai\ReportAsk::period('nonsense', 'x', $today));
-        $this->assertSame(['2026-10-05', '2026-10-11'], \App\Support\Ai\ReportAsk::period('2026-10-05', '2026-10-11', $today));
+        $today = CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        $this->assertSame(['2025-10-13', '2026-10-13'], ReportAsk::period('1990-01-01', '2030-01-01', $today));
+        $this->assertSame(['2026-10-01', '2026-10-13'], ReportAsk::period('nonsense', 'x', $today));
+        $this->assertSame(['2026-10-05', '2026-10-11'], ReportAsk::period('2026-10-05', '2026-10-11', $today));
+    }
+
+    // ── A menu for each role (AI Assistance › Staff bot, UI queue 88) ─────
+
+    /**
+     * Office's menu for this tenant's admin role: a guide section, a Library
+     * entry and a report nothing writes yet. Returns the three items.
+     *
+     * @return array{0: StaffBotItem, 1: StaffBotItem, 2: StaffBotItem}
+     */
+    private function roleMenu(array $t, ?string $roleId = null): array
+    {
+        return $this->inTenant($t['org'], function () use ($t, $roleId) {
+            $guide = TrainingGuide::create([
+                'company_id' => null, 'franchise_id' => null, 'title' => 'Dispatcher guide',
+                'status' => TrainingGuide::PUBLISHED,
+                'screens' => [['title' => 'Answering', 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service',
+                    'blocks' => [['type' => 'text', 'text' => 'Answer by the third ring, with the company name.']]]],
+            ]);
+            $menu = StaffBotMenu::create(['name' => 'Office', 'role_ids' => [$roleId ?? $t['admin']->role_id]]);
+            $item = fn (int $p, array $a) => StaffBotItem::create(['organization_id' => $t['org']->id,
+                'menu_id' => $menu->id, 'position' => $p, ...$a]);
+
+            return [
+                $item(1, ['title' => 'Dispatch guidelines', 'line' => 'How we answer', 'source' => 'guide',
+                    'training_guide_id' => $guide->id, 'chapter' => 'Dispatcher Essentials', 'section' => 'Customer Service']),
+                $item(2, ['title' => 'Codes', 'source' => 'library',
+                    'assistant_entry_id' => AssistantEntry::query()->orderBy('position')->value('id')]),
+                $item(3, ['title' => 'Before & After', 'source' => 'guide',
+                    'training_guide_id' => $guide->id, 'chapter' => 'Gallery']),
+            ];
+        });
+    }
+
+    public function test_a_role_with_its_own_menu_gets_that_menu(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
+
+        $this->inbound(self::BOT, $this->text('hi'))->assertOk();
+
+        $this->assertSame([
+            WhatsAppStaffBot::ITEM.$guide->id,
+            WhatsAppStaffBot::ITEM.$library->id,
+            WhatsAppStaffBot::ITEM.$empty->id,
+            WhatsAppStaffBot::FIND_LOCATION,
+        ], $this->menuIds());
+        $this->assertSame('Office', $this->sent[0]['interactive']['action']['sections'][0]['title']);
+    }
+
+    public function test_a_row_answers_from_what_it_links_to(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        [$guide, $library, $empty] = $this->roleMenu($t);
+        $entryBody = $this->inTenant($t['org'], fn () => (string) AssistantEntry::query()->orderBy('position')->value('body'));
+
+        // The guide's section, as the guide says it today.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN1')->assertOk();
+        $this->assertStringContainsString("\u{1F4D8} *Dispatch guidelines*", $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('Answer by the third ring', $this->sent[0]['text']['body']);
+
+        // The Library entry, read through AssistantBrain.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$library->id, 'Codes'), 'wamid.IN2')->assertOk();
+        $this->assertStringContainsString(mb_substr($entryBody, 0, 40), $this->sent[1]['text']['body']);
+
+        // A section with nothing in it yet says so rather than going quiet.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$empty->id, 'Before & After'), 'wamid.IN3')->assertOk();
+        $this->assertStringContainsString('Coming soon', $this->sent[2]['text']['body']);
+    }
+
+    public function test_another_roles_menu_is_neither_shown_nor_answered(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        $technician = $this->userWithRole($t, 'Technician', ['leads.view']);
+        [$guide] = $this->roleMenu($t, $technician->role_id);
+
+        // The admin's role is in no menu: the Library sections, as before.
+        $this->inbound(self::BOT, $this->text('hi'), 'wamid.IN1')->assertOk();
+        $this->assertNotContains(WhatsAppStaffBot::ITEM.$guide->id, $this->menuIds());
+        $this->assertContains(WhatsAppStaffBot::FIND_LOCATION, $this->menuIds());
+
+        // And a technician's row, tapped by somebody else, is refused.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$guide->id, 'Dispatch guidelines'), 'wamid.IN2')->assertOk();
+        $this->assertStringContainsString('for staff only', $this->sent[1]['text']['body']);
+        $this->assertStringNotContainsString('third ring', $this->sent[1]['text']['body']);
+    }
+
+    public function test_a_guide_rows_pictures_follow_its_text(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+
+        $item = $this->inTenant($t['org'], function () use ($t) {
+            $guide = TrainingGuide::create([
+                'company_id' => null, 'franchise_id' => null, 'title' => 'Technician guide',
+                'status' => TrainingGuide::PUBLISHED, 'screens' => [],
+            ]);
+            $png = TrainingMedia::create(['guide_id' => $guide->id, 'disk' => 'local', 'path' => 'g/crown.png',
+                'sha256' => str_repeat('a', 64), 'mime' => 'image/png', 'bytes' => 120_000]);
+            $huge = TrainingMedia::create(['guide_id' => $guide->id, 'disk' => 'local', 'path' => 'g/huge.png',
+                'sha256' => str_repeat('b', 64), 'mime' => 'image/png', 'bytes' => 9_000_000]);
+            $guide->forceFill(['screens' => [['title' => 'Rebuilt crown', 'chapter' => 'Gallery', 'section' => null,
+                'blocks' => [
+                    ['type' => 'text', 'text' => 'Before and after, Maple Grove.'],
+                    ['type' => 'image', 'media_id' => $png->id],
+                    ['type' => 'image', 'media_id' => $huge->id],          // over WhatsApp's 5 MB
+                    ['type' => 'image', 'url' => 'https://example.test/after.jpg'],
+                    ['type' => 'image', 'url' => 'https://example.test/spin.gif'], // not a jpg or png
+                ]]]])->save();
+            $menu = StaffBotMenu::create(['name' => 'Technicians', 'role_ids' => [$t['admin']->role_id]]);
+
+            return StaffBotItem::create(['organization_id' => $t['org']->id, 'menu_id' => $menu->id, 'position' => 1,
+                'title' => 'Before & After', 'source' => 'guide', 'training_guide_id' => $guide->id, 'chapter' => 'Gallery']);
+        });
+
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::ITEM.$item->id, 'Before & After'))->assertOk();
+
+        $this->assertCount(3, $this->sent, 'the text, then two pictures');
+        $this->assertStringContainsString('Before and after, Maple Grove.', $this->sent[0]['text']['body']);
+        $this->assertSame('image', $this->sent[1]['type']);
+        $this->assertStringContainsString('signature=', $this->sent[1]['image']['link']);
+        $this->assertSame('Rebuilt crown', $this->sent[1]['image']['caption']);
+        $this->assertSame('https://example.test/after.jpg', $this->sent[2]['image']['link']);
+    }
+
+    /** Jose, 2026-10-13: "please send me all the calls w this number 9524572594" goes to the recordings job. */
+    public function test_a_calls_request_from_reports_staff_is_queued_for_recordings(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);   // the admin: holds reports.view
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Queue::fake();
+
+        $this->inbound(self::BOT, $this->text('please send me all the calls w this number 9524572594'))->assertOk();
+
+        Queue::assertPushed(SendCallRecordings::class,
+            fn ($job) => str_contains($job->text, '9524572594'));
+        $this->assertSame([], $this->sent, 'nothing is sent from the webhook itself');
+    }
+
+    public function test_the_request_is_read_into_a_number_and_dates_or_a_question(): void
+    {
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $today = CarbonImmutable::parse('2026-10-13', 'America/New_York');
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(json_encode(['structuredOutput' => [
+                'is_request' => true, 'phone' => '(952) 457-2594', 'from' => '2026-10-13', 'to' => '2026-12-01', 'clarify' => '',
+            ]])))
+            ->push(Process::result(json_encode(['structuredOutput' => [
+                'is_request' => true, 'phone' => '', 'from' => '2026-10-12', 'to' => '2026-10-12', 'clarify' => '',
+            ]])))]);
+
+        $this->assertTrue(CallRecordingsRequest::looksLikeOne('send me all the calls w this number 9524572594'));
+        $this->assertFalse(CallRecordingsRequest::looksLikeOne('what is the wifi password'));
+        $this->assertSame(['phone' => '9524572594', 'from' => '2026-10-13', 'to' => '2026-10-13', 'clarify' => null],
+            CallRecordingsRequest::read('calls with 9524572594', $today), 'never later than today');
+        $this->assertSame('Which phone number? Send the 10 digits.',
+            CallRecordingsRequest::read('calls from yesterday', $today)['clarify']);
+    }
+
+    /** Jose, 2026-10-13: "grok should be able to have access to everything ... not modify or delete stuff". */
+    public function test_staff_questions_the_library_misses_are_read_from_the_app_as_the_asker(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $this->inTenant($t['org'], fn () => Customer::create([
+            'owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Zelda Quarry', 'phone' => '(555) 010-2000',
+        ]));
+        $prompts = [];
+        Process::fake(function ($process) use (&$prompts) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompt = $prompts[] = $file && is_file($file) ? file_get_contents($file) : '';
+            $out = match (true) {
+                str_contains($prompt, 'ENDPOINTS:') => ['calls' => [
+                    ['path' => 'customers', 'query' => 'search=Quarry'],
+                    ['path' => 'me/api-keys', 'query' => ''],
+                ]],
+                str_contains($prompt, 'DATA:') => ['answered' => true, 'reply' => '*Zelda Quarry* 📞 (555) 010-2000'],
+                default => ['answered' => false, 'reply' => '', 'entry_ids' => []],
+            };
+
+            return Process::result(json_encode(['structuredOutput' => $out]));
+        });
+
+        $this->inbound(self::BOT, $this->text('what is the phone of customer Quarry'))->assertOk();
+
+        $data = collect($prompts)->first(fn ($p) => str_contains($p, 'DATA:'));
+        $this->assertStringContainsString('Zelda', $data, 'the GET ran as the asker and returned the customer');
+        $this->assertStringContainsString('"me/api-keys":"refused"', $data, 'a blocked path is never dispatched');
+        $this->assertStringContainsString('Zelda Quarry', json_encode($this->sent, JSON_UNESCAPED_UNICODE));
+        $this->assertSame(0, PersonalAccessToken::where('name', 'WhatsApp AI (read only)')->count(), 'the token is gone');
+    }
+
+
+    public function test_signed_links_never_reach_grok(): void
+    {
+        $this->assertSame(['a' => ['url' => '[signed link removed]', 'name' => 'Ana']], \App\Support\Ai\AppAsk::withoutSignedLinks(
+            ['a' => ['url' => 'https://app.ezbizi.com/c/1?expires=9&signature=abc', 'name' => 'Ana']]));
     }
 }

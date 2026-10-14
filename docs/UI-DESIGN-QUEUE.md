@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 88 · AI Assistance › Staff bot · one WhatsApp number, a menu for each role — **Jose: "great, go ahead" — editor 1, WhatsApp 4** — building (`docs/previews/staff-bot-menus-layouts.html`)
+### 88 · AI Assistance › Staff bot · one WhatsApp number, a menu for each role — **Jose: "great, go ahead" — editor 1, WhatsApp 4** — **BUILT** c6a1ed63 (session/uiux-staff-bot: model, API, the WhatsAppStaffBot hook, the tab). Not yet: Daily conversion has no writer (answers "coming soon"); the content Training lists as missing is entered as Library entries (`docs/previews/staff-bot-menus-layouts.html`)
 
 Relayed by Grok AI, Jose 2026-10-13, verbatim: *"One number, menu by role"*; content: *"all of it is in ezbizi already, from
 the training guides, but i also want to see it all in ezbizi so it can be modified as well, please talk to ui - ux to make a

@@ -14,12 +14,23 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0426',
+      date: '13 Oct 2026',
+      items: [
+        'AI Assistance: a Staff bot tab gives each group of roles its own menu on the staff WhatsApp line, with each topic linked to its Training guide section or Library entry, so editing the guide changes what the bot says. The Daily conversion topic answers with today\'s new-client calls, answered, booked and the conversion. A topic\'s guide pictures follow its text.',
+        'Reports: type a phone number in Calls to find every call with it, in or out.',
+        'WhatsApp: staff with Reports access can ask the staff line for the calls with a number and get the list plus each recording.',
+        'WhatsApp: the staff line answers questions the Library cannot from what the asker can see in EzBizi, read only.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0425',
       date: '13 Oct 2026',
       items: [
         'Leads: texts sent to a lead, and the customer\'s text replies, now show in the lead\'s conversation.',
         'Automations: a pop-up alert step says which of the people it names it skipped, and why.',
         'Automations: a rule can text the customer onto the enquiry, so their answer is seen there.',
+        'Automations: a WhatsApp to the customer of an enquiry lands on the enquiry, so their answer does too.',
       ],
     ),
     VersionRelease(

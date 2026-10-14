@@ -17,6 +17,7 @@
                 "AI",
                 "Library",
                 "WhatsApp groups",
+                "Staff bot",
                 "Settings"
             ]
         },
@@ -317,6 +318,7 @@
         "ai_assistance.library.view",
         "ai_assistance.manage",
         "ai_assistance.settings.view",
+        "ai_assistance.staff_bot.view",
         "ai_assistance.view",
         "ai_assistance.whatsapp_groups.view",
         "api_keys.delete",

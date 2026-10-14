@@ -38,3 +38,7 @@ sent from here on ships in 0.0.0425.
 
 ---
 **Results (filled in after 0.0.0424 deploys):**
+- 0.0.0424 (badfe337) is LIVE on web and natives. verify-web passed; migrations 190000/300000/600000/900000 Ran;
+  ai-booked-no-job and ai-person-reviews are scheduled; the /privacy/ hash matches badfe337.
+- **Leads:** plugin 1.26.15 is live on 136/136 sites (the desk checked; plain-URL /booking/ has the
+  booking/lead read). ?l= links can go out once leads.booking_url and leads.office_phone are set on prod.

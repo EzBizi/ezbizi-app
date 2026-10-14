@@ -2,13 +2,20 @@
 
 namespace App\Support\Social;
 
+use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
+use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
+use App\Models\StaffBotItem;
+use App\Models\StaffBotMenu;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\AppAsk;
+use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\ReportAsk;
 use App\Support\Assistant\AssistantBrain;
 use Illuminate\Support\Collection;
 
@@ -47,6 +54,9 @@ final class WhatsAppStaffBot
     public const SECTION = 's:';
 
     public const ENTRY = 'e:';
+
+    /** A row of a role's own menu (AI Assistance › Staff bot, UI queue 88). */
+    public const ITEM = 'i:';
 
     /** Words that mean "show me the menu" rather than "search for this". */
     private const MENU_WORDS = ['menu', 'hi', 'hello', 'hey', 'hola', 'start', 'help', '?'];
@@ -140,9 +150,75 @@ final class WhatsAppStaffBot
             return;
         }
 
+        if (str_starts_with($choice, self::ITEM)) {
+            $this->answerItem($number, $to, $viewer, substr($choice, strlen(self::ITEM)));
+
+            return;
+        }
+
         // A row id we do not know: a menu drawn before the Library replaced the
         // built-in answers. The fresh menu is a better answer than silence.
         $this->menu($number, $to, $viewer);
+    }
+
+    /**
+     * A row of the sender's role menu. Asked about the sender on every tap, as
+     * the rest is: a row tapped after their role changed, or one from another
+     * role's menu, is refused like any staff-only answer. A Library row is
+     * read through AssistantBrain, so it keeps its own audience and place.
+     */
+    private function answerItem(WhatsAppNumber $number, string $to, ?User $viewer, string $id): void
+    {
+        $item = StaffBotItem::query()->with('menu', 'guide')->find($id);
+
+        if ($item === null || $viewer === null || ! $item->menu->isFor($viewer->role_id)) {
+            $this->refuse($number, $to);
+
+            return;
+        }
+
+        if ($item->source === StaffBotItem::SOURCE_LIBRARY) {
+            $entry = $item->assistant_entry_id === null ? null : $this->brain->entry($viewer, $item->assistant_entry_id);
+            $answer = trim((string) $entry?->body) === '' ? null : (string) $entry->body;
+        } else {
+            $answer = $item->answer();
+        }
+
+        // The house voice (GrokCli::WHATSAPP_STYLE): a bold title with one
+        // emoji, then the text. A Library entry and Reports' line are written
+        // in that voice already and go as they are. Linked content not written
+        // yet says so rather than going quiet.
+        $this->text($number, $to, mb_substr(match (true) {
+            $answer === null => "\u{1F6A7} *{$item->title}*\n\u{23F3} Coming soon. Ask your manager in the meantime.\n\n\u{1F4CB} Text *MENU* to go back.",
+            $item->source === StaffBotItem::SOURCE_GUIDE => "\u{1F4D8} *{$item->title}*\n\n".$answer,
+            default => $answer,
+        }, 0, AssistantEntry::MAX_BODY));
+
+        // A guide's pictures follow the text, each its own message (Meta:
+        // one media a message, fetched from the link when sent).
+        if ($answer !== null) {
+            foreach ($item->guideImages() as $image) {
+                $this->cloud->replyFreeForm($number, $to, [
+                    'type' => 'image',
+                    'image' => ['link' => $image['link'], 'caption' => mb_substr($image['caption'], 0, 1024)],
+                ], $image['caption']);
+            }
+        }
+    }
+
+    /**
+     * The first menu, in the editor's order, that names the sender's role and
+     * has a row in it; null for a stranger, or a role no menu names, who get
+     * the Library's sections as before.
+     */
+    private function roleMenu(?User $viewer): ?StaffBotMenu
+    {
+        if ($viewer === null || $viewer->role_id === null) {
+            return null;
+        }
+
+        return StaffBotMenu::query()->with('items')->orderBy('position')->orderBy('created_at')->get()
+            ->first(fn (StaffBotMenu $m) => $m->isFor($viewer->role_id) && $m->items->isNotEmpty());
     }
 
     /**
@@ -211,14 +287,20 @@ final class WhatsAppStaffBot
             ? $lead."\n\n\u{1F447} Choose an option below."
             : $this->brain->welcome($organization), 0, 1024);
 
-        // One row per section, leaving room for Find a location.
-        $library = $this->brain->sections($viewer)->take(self::MAX_ROWS - 1)->map(
-            fn (Collection $entries, string $section) => $this->row(
-                self::SECTION.$section,
-                $section,
-                $entries->count() === 1 ? $entries->first()->description : $entries->count().' topics',
-            ),
-        )->values()->all();
+        // The sender's role menu when one names their role (UI queue 88);
+        // otherwise one row per Library section. Room left for Find a location.
+        $roleMenu = $this->roleMenu($viewer);
+        $library = $roleMenu !== null
+            ? $roleMenu->items->take(self::MAX_ROWS - 1)->map(
+                fn (StaffBotItem $item) => $this->row(self::ITEM.$item->id, $item->title, $item->line),
+            )->values()->all()
+            : $this->brain->sections($viewer)->take(self::MAX_ROWS - 1)->map(
+                fn (Collection $entries, string $section) => $this->row(
+                    self::SECTION.$section,
+                    $section,
+                    $entries->count() === 1 ? $entries->first()->description : $entries->count().' topics',
+                ),
+            )->values()->all();
 
         $this->cloud->replyFreeForm($number, $to, [
             'type' => 'interactive',
@@ -231,7 +313,7 @@ final class WhatsAppStaffBot
                     'button' => 'Choose',
                     // A section with no rows makes Meta refuse the whole list.
                     'sections' => array_values(array_filter([
-                        ['title' => 'Library', 'rows' => $library],
+                        ['title' => mb_substr($roleMenu?->name ?? 'Library', 0, 24), 'rows' => $library],
                         ['title' => 'Company', 'rows' => [
                             $this->row(self::FIND_LOCATION, 'Find a location', 'Phone, address, service area'),
                         ]],
@@ -325,6 +407,14 @@ final class WhatsAppStaffBot
         // dumping its whole list rather than answering.
         if (mb_strlen($query) < 2) {
             $this->menu($number, $to, $viewer);
+
+            return;
+        }
+
+        // "Send me all the calls with 9524572594" (Jose, 2026-10-13): Grok reads
+        // the number and dates off the webhook; Reports access, as Performance.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && CallRecordingsRequest::looksLikeOne($query)) {
+            SendCallRecordings::dispatch($number->id, $to, $query);
 
             return;
         }
@@ -435,7 +525,7 @@ final class WhatsAppStaffBot
         // the figures left, and nothing when under 10 s remain.
         $started = microtime(true);
         if ($viewer?->hasPermission('reports.view')) {
-            $figures = app(\App\Support\Ai\ReportAsk::class)->answer($organization, $query);
+            $figures = app(ReportAsk::class)->answer($organization, $query);
             if ($figures !== null) {
                 $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
 
@@ -450,12 +540,37 @@ final class WhatsAppStaffBot
             $answer = null;
         }
 
+        if ($answer === null && $viewer !== null) {
+            // Not in the Library: staff get the app's own data, read-only (AppAsk), in a job of its own.
+            AnswerWhatsAppFromApp::dispatch($number->id, $to, $viewer->id, $query);
+
+            return;
+        }
         if ($answer === null) {
-            $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
+            $this->nothingMatched($number, $to, $viewer, $query);
 
             return;
         }
 
         $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
+    }
+
+    /** AnswerWhatsAppFromApp's half: Grok reads the app as the asker, GET only. */
+    public function appReply(WhatsAppNumber $number, string $to, User $viewer, string $query): void
+    {
+        try {
+            $reply = AppAsk::answer($viewer, $query);
+        } catch (\RuntimeException) {
+            $reply = null;
+        }
+
+        $reply === null
+            ? $this->nothingMatched($number, $to, $viewer, $query)
+            : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+    }
+
+    private function nothingMatched(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
+    {
+        $this->menu($number, $to, $viewer, "\u{1F937} Nothing matched *".mb_substr($query, 0, 40)."*\n\nNo answer and no location for that.");
     }
 }
