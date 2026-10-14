@@ -2975,7 +2975,7 @@ as chips, branches with Call/Map. **2**: sources in a right rail. **3**: Topics 
 the conversation with the bar above the keyboard; **5**: long answers folded; **6**: with Topics. **7** (recommended): the
 topics tree moves to Library; the welcome line to Staff bot. No server change (GET ai-assistance/ask + /answer).
 
-### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): Routing 1 and 4, Re-Scheduling 7 and 9 — building** (`docs/previews/scheduling-routing-layouts.html`)
+### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): Routing 1 and 4, Re-Scheduling 7 and 9** — **BUILT** 46f2a60a (session/uiux-routing, with Scheduling 623cabda) (`docs/previews/scheduling-routing-layouts.html`)
 
 Jose 2026-10-14 via Scheduling, verbatim: *"1 technician is able to take a max of 6 jobs per day … a suggested route where it
 says like Technician 1 - Technician 2 (amount of technicians based on the availability) … a Routing Tab where it shows the
