@@ -37,6 +37,24 @@ class TaskBoardPermissionsTest extends TestCase
         return collect($this->signedInAs($user)->getJson('/api/v1/task-boards')->assertOk()->json('data'))->pluck('id')->all();
     }
 
+    public function test_the_grant_migration_keeps_board_creation_for_roles_with_tasks_edit(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole($tenant, 'Editor', ['tasks.view', 'tasks.edit']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['tasks.view']);
+
+        (require database_path('migrations/2026_10_14_224518_grant_tasks_edit_roles_create_boards.php'))->up();
+
+        $keys = fn ($user) => \Illuminate\Support\Facades\DB::table('permission_role')
+            ->join('permissions', 'permissions.id', '=', 'permission_role.permission_id')
+            ->where('role_id', $user->role_id)->pluck('key')->all();
+
+        $this->assertContains('tasks.create_boards', $keys($editor));
+        $this->assertNotContains('tasks.view_all', $keys($editor));
+        $this->assertNotContains('tasks.manage_members', $keys($editor));
+        $this->assertNotContains('tasks.create_boards', $keys($viewer));
+    }
+
     public function test_view_all_shows_other_peoples_personal_and_private_boards(): void
     {
         $tenant = $this->provisionTenant('Alpha');
