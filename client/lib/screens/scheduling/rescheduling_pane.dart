@@ -588,24 +588,21 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     );
   }
 
-  /// The day the job leaves, window by window: the one it is in gains the
-  /// spot it frees (UI queue 92, 1 and 4). Drawn only when the server sends
-  /// the current day.
+  /// The day the job leaves, window by window: the one it is in gets back
+  /// the spot it frees, unless that window was over its limit anyway (UI
+  /// queue 92, 1 and 4). The counts are the server's (`current.spots`, in
+  /// Availability's numbers); drawn only when it sends them.
   Widget _nowPlan(ThemeData theme, Map<String, dynamic> row) {
     final current = _map(row['current']);
+    final spots = _map(current['spots']);
     final windows = [
-      if (current['day'] case {'windows': final List days})
-        for (final w in days)
-          if (w is Map) w.cast<String, dynamic>(),
+      for (final w in (spots['windows'] as List? ?? const []))
+        if (w is Map) w.cast<String, dynamic>(),
     ];
     if (windows.isEmpty) return const SizedBox.shrink();
     final at = (current['window_index'] as num?)?.toInt();
     final info = ToneColours.of(context, Tone.info);
-    final open = windows.fold<int>(
-      0,
-      (n, w) => n + ((w['remaining'] as num?)?.toInt() ?? 0),
-    );
-    final date = _map(current['day'])['date'] ?? _map(row['job'])['date'];
+    int n(Object? v) => (v as num?)?.toInt() ?? 0;
 
     return Column(
       key: const ValueKey('rescheduling-now-plan'),
@@ -615,14 +612,15 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
           children: [
             Flexible(
               child: Text(
-                'Now · ${_day(date)} in ${row['area_name'] ?? 'this area'} · ',
+                'Now · ${_day(current['date'] ?? _map(row['job'])['date'])} in '
+                '${row['area_name'] ?? 'this area'} · ',
                 style: theme.textTheme.titleSmall,
               ),
             ),
             _opens(
               theme,
-              open,
-              after: at == null ? null : open + 1,
+              n(spots['before']),
+              after: n(spots['after']),
               ink: info.ink,
             ),
           ],
@@ -657,10 +655,8 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                     ),
                     _opens(
                       theme,
-                      (w['remaining'] as num?)?.toInt() ?? 0,
-                      after: i == at
-                          ? ((w['remaining'] as num?)?.toInt() ?? 0) + 1
-                          : null,
+                      n(w['before']),
+                      after: n(w['after']),
                       ink: info.ink,
                     ),
                   ],
@@ -698,6 +694,13 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     );
     final ok = ToneColours.of(context, Tone.ok);
     final caution = ToneColours.of(context, Tone.caution);
+    // The server's before → after for this day (Scheduling 528f5824); without
+    // it, the window it takes loses one.
+    final spots = _map(s['spots']);
+    final spotWindows = [
+      for (final w in (spots['windows'] as List? ?? const []))
+        if (w is Map) w.cast<String, dynamic>(),
+    ];
 
     Widget line(Map<String, dynamic> j) => Container(
       margin: const EdgeInsets.only(top: 4),
@@ -749,14 +752,22 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                 fontWeight: FontWeight.w800,
               ),
             ),
-            _opens(
-              theme,
-              (w['remaining'] as num?)?.toInt() ?? 0,
-              after: here
-                  ? math.max(0, ((w['remaining'] as num?)?.toInt() ?? 0) - 1)
-                  : null,
-              ink: caution.ink,
-            ),
+            if (i < spotWindows.length)
+              _opens(
+                theme,
+                (spotWindows[i]['before'] as num?)?.toInt() ?? 0,
+                after: (spotWindows[i]['after'] as num?)?.toInt(),
+                ink: caution.ink,
+              )
+            else
+              _opens(
+                theme,
+                (w['remaining'] as num?)?.toInt() ?? 0,
+                after: here
+                    ? math.max(0, ((w['remaining'] as num?)?.toInt() ?? 0) - 1)
+                    : null,
+                ink: caution.ink,
+              ),
             for (final j in jobs)
               if ((j['window'] as num?)?.toInt() == i) line(j),
             if (here)
@@ -804,8 +815,10 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
             ),
             _opens(
               theme,
-              left,
-              after: at == null ? null : math.max(0, left - 1),
+              (spots['before'] as num?)?.toInt() ?? left,
+              after:
+                  (spots['after'] as num?)?.toInt() ??
+                  (at == null ? null : math.max(0, left - 1)),
               ink: caution.ink,
             ),
           ],
