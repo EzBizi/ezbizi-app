@@ -21,6 +21,8 @@ class VersionHistory {
         'Walkthroughs: (?) now runs the walkthrough of the sub tab you are on, and every sub tab has its own, including inner strips such as Communication › Phone and the sections of an HR record.',
         'HR: Contracts, Invitations and Onboarding each have a search box.',
         'Scheduling: Re-Scheduling counts as nearby only jobs in the offered time window or the one next to it, and moves a job at most 3 days.',
+        'Scheduling: a new Routing tab: pick an area and a day to see a route per technician on a map, with stops in order, miles and a Google Maps button; it says when a day needs more technicians than the area has, and lists jobs with no address.',
+        'Scheduling: Re-Scheduling tags repairs and redos, and opening a suggestion shows that day window by window with where the job would go.',
       ],
     ),
     VersionRelease(
