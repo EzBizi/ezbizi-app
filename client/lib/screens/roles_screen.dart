@@ -1399,6 +1399,12 @@ class _RoleEditorState extends State<_RoleEditor> {
     BoxConstraints constraints,
   ) {
     final theme = Theme.of(context);
+    final requirement = _requirementLine(
+      context,
+      action,
+      narrow: constraints.maxWidth < 400,
+    );
+    final description = action.description;
 
     return CheckboxListTile(
       key: ValueKey('action:${action.key}'),
@@ -1415,11 +1421,20 @@ class _RoleEditorState extends State<_RoleEditor> {
         muted,
         narrow: constraints.maxWidth < 400,
       ),
-      subtitle: _requirementLine(
-        context,
-        action,
-        narrow: constraints.maxWidth < 400,
-      ),
+      subtitle: description == null || description.isEmpty
+          ? requirement
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  description,
+                  key: ValueKey('action-description:${action.key}'),
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                ?requirement,
+              ],
+            ),
       // Shown rather than hidden, and shown as held when it is held. §4:
       // nobody grants what they do not have — but a role can hold what
       // the person editing it does not, and pretending otherwise draws an
