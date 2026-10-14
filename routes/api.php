@@ -1,23 +1,22 @@
 <?php
 
-use App\Http\Controllers\Api\A1LeadsGbpController;
-use App\Http\Controllers\Api\A1LeadsReviewOpsController;
+use App\Http\Controllers\Api\InstagramCommentsController;
+use App\Http\Controllers\Api\FieldController;
+use App\Http\Controllers\Api\AssistantController;
+use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
 use App\Http\Controllers\Api\AirtableConnectController;
-use App\Http\Controllers\Api\AlertsController;
-use App\Http\Controllers\Api\ApiKeysController;
-use App\Http\Controllers\Api\AssistantController;
-use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\A1LeadsGbpController;
+use App\Http\Controllers\Api\A1LeadsReviewOpsController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
-use App\Http\Controllers\Api\CountyLookupController;
 use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\CustomerWorkizNotesController;
 use App\Http\Controllers\Api\DashboardController;
@@ -26,14 +25,12 @@ use App\Http\Controllers\Api\DevelopmentUnlockController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
 use App\Http\Controllers\Api\EstimatesController;
+use App\Http\Controllers\Api\MembershipsController;
 use App\Http\Controllers\Api\ExperimentalCallReportController;
-use App\Http\Controllers\Api\FieldController;
-use App\Http\Controllers\Api\FleetSummaryController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\HealthController;
-use App\Http\Controllers\Api\HelpVideosController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
@@ -44,7 +41,6 @@ use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
 use App\Http\Controllers\Api\InspectionRunsController;
-use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\InventoryAdjustmentsController;
 use App\Http\Controllers\Api\InventoryIssuesController;
 use App\Http\Controllers\Api\InventoryItemsController;
@@ -67,24 +63,17 @@ use App\Http\Controllers\Api\MailboxesController;
 use App\Http\Controllers\Api\MailboxMessagesController;
 use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
-use App\Http\Controllers\Api\MarketingReportController;
-use App\Http\Controllers\Api\McpController;
-use App\Http\Controllers\Api\MembershipsController;
-use App\Http\Controllers\Api\MembershipsPublicController;
-use App\Http\Controllers\Api\MetaAdsReportController;
 use App\Http\Controllers\Api\MetaCallbacksController;
-use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
-use App\Http\Controllers\Api\Monitoring\FilesController as MonitoringFilesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
+use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
-use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
+use App\Http\Controllers\Api\Monitoring\FilesController as MonitoringFilesController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
-use App\Http\Controllers\Api\MySignatureController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
 use App\Http\Controllers\Api\NewslettersController;
 use App\Http\Controllers\Api\NewsletterUnsubscribeController;
@@ -94,7 +83,6 @@ use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
 use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
-use App\Http\Controllers\Api\Phone\AudioController;
 use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
@@ -123,8 +111,12 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\MarketingReportController;
+use App\Http\Controllers\Api\MetaAdsReportController;
+use App\Http\Controllers\Api\ScoringReportController;
+use App\Http\Controllers\Api\StaffBotMenusController;
+use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ProfitLossController;
-use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
@@ -139,7 +131,6 @@ use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
 use App\Http\Controllers\Api\SchedulingTimeSlotsController;
-use App\Http\Controllers\Api\ScoringReportController;
 use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -149,22 +140,17 @@ use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
+use App\Http\Controllers\Api\QrCodesController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
 use App\Http\Controllers\Api\StaffAuthController;
-use App\Http\Controllers\Api\StaffBotMenusController;
 use App\Http\Controllers\Api\StaffClientVersionsController;
 use App\Http\Controllers\Api\StaffController;
-use App\Http\Controllers\Api\StaffHelpVideosController;
 use App\Http\Controllers\Api\StaffMessagesController;
 use App\Http\Controllers\Api\StaffPhoneRequestsController;
 use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
-use App\Http\Controllers\Api\TaskBoardsController;
-use App\Http\Controllers\Api\TaskBoardSettingsController;
-use App\Http\Controllers\Api\TasksController;
-use App\Http\Controllers\Api\ThumbtackReportController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\TimeClockController;
 use App\Http\Controllers\Api\TimeClockCorrectionsController;
@@ -174,9 +160,9 @@ use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardCo
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
 use App\Http\Controllers\Api\Training\LearnController as TrainingLearnController;
 use App\Http\Controllers\Api\Training\MediaController as TrainingMediaController;
+use App\Http\Controllers\Api\Training\VideoController as TrainingVideoController;
 use App\Http\Controllers\Api\Training\ProgressController as TrainingProgressController;
 use App\Http\Controllers\Api\Training\TestsController as TrainingTestsController;
-use App\Http\Controllers\Api\Training\VideoController as TrainingVideoController;
 use App\Http\Controllers\Api\TwoFactorController;
 use App\Http\Controllers\Api\UiStringsController;
 use App\Http\Controllers\Api\VehicleAssignmentsController;
@@ -188,20 +174,20 @@ use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\HoursBatchController as WebHoursBatchController;
-use App\Http\Controllers\Api\Web\ListsController as WebListsController;
+use App\Http\Controllers\Api\Web\SeoHelperController as WebSeoHelperController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
-use App\Http\Controllers\Api\Web\SeoHelperController as WebSeoHelperController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
-use App\Http\Controllers\Api\WhatsAppGroupsController;
+use App\Http\Controllers\Api\Web\ListsController as WebListsController;
+use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
+use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
-use App\Http\Controllers\Api\WorkizConnectController;
 use App\Http\Controllers\Api\WorkizWebhookController;
-use App\Models\Onboarding;
+use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -590,29 +576,29 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 
 // Membership program, customer side (spec 2026-10-05). The review faces say who
 // smiled by the site's public key; the join page's signed link is its permission.
-Route::post('v1/web/review', [MembershipsPublicController::class, 'review'])
+Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
 // {{ membership_link }}: app.ezbizi.com/api/m/<code>, under /api because nginx
 // sends only /api and /q/ to Laravel.
-Route::get('m/{code}', [MembershipsPublicController::class, 'shortJoin'])
+Route::get('m/{code}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'shortJoin'])
     ->where('code', '[A-Za-z0-9]{7}')
     ->middleware('throttle:60,1')
     ->name('memberships.short');
 // The review page's membership offer (2026-10-08), by the link's customer token.
-Route::get('v1/web/membership', [MembershipsPublicController::class, 'offer'])
+Route::get('v1/web/membership', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offer'])
     ->middleware('throttle:web-enquiry');
-Route::post('v1/web/membership/join', [MembershipsPublicController::class, 'offerJoin'])
+Route::post('v1/web/membership/join', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'offerJoin'])
     ->middleware('throttle:web-enquiry');
-Route::get('v1/memberships/join/{customer}', [MembershipsPublicController::class, 'joinPage'])
+Route::get('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'joinPage'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('memberships.join');
-Route::post('v1/memberships/join/{customer}', [MembershipsPublicController::class, 'join'])
+Route::post('v1/memberships/join/{customer}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'join'])
     ->middleware(['signed', 'throttle:20,1']);
-Route::get('v1/memberships/visit/{membership}', [MembershipsPublicController::class, 'visitPage'])
+Route::get('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visitPage'])
     ->middleware(['signed', 'throttle:60,1'])
     ->name('memberships.visit');
-Route::post('v1/memberships/visit/{membership}', [MembershipsPublicController::class, 'visit'])
+Route::post('v1/memberships/visit/{membership}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'visit'])
     ->middleware(['signed', 'throttle:20,1']);
 
 Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge'])
@@ -621,7 +607,7 @@ Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge']
 
 // A phone recording (menu prompt, voicemail greeting), fetched by Twilio with
 // no session — the signed link is the permission. See Phone\AudioController.
-Route::get('v1/phone/audio/{name}', [AudioController::class, 'file'])
+Route::get('v1/phone/audio/{name}', [\App\Http\Controllers\Api\Phone\AudioController::class, 'file'])
     ->middleware('signed')
     ->name('phone.audio');
 
@@ -829,30 +815,30 @@ Route::prefix('v1')
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
-        Route::get('task-boards', [TaskBoardsController::class, 'index']);
-        Route::get('task-boards/{taskBoard}', [TaskBoardsController::class, 'show']);
+        Route::get('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'index']);
+        Route::get('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'show']);
         // Custom boards and members, monday-style (inbox 0120).
-        Route::post('task-boards', [TaskBoardsController::class, 'store']);
-        Route::patch('task-boards/{taskBoard}', [TaskBoardsController::class, 'update']);
-        Route::delete('task-boards/{taskBoard}', [TaskBoardsController::class, 'destroy']);
-        Route::get('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'members']);
-        Route::post('task-boards/{taskBoard}/members', [TaskBoardsController::class, 'storeMember']);
-        Route::patch('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'updateMember']);
-        Route::delete('task-boards/{taskBoard}/members/{member}', [TaskBoardsController::class, 'destroyMember']);
-        Route::post('task-boards/{taskBoard}/statuses', [TaskBoardSettingsController::class, 'storeStatus']);
-        Route::patch('task-boards/{taskBoard}/statuses/{status}', [TaskBoardSettingsController::class, 'updateStatus']);
-        Route::delete('task-boards/{taskBoard}/statuses/{status}', [TaskBoardSettingsController::class, 'destroyStatus']);
-        Route::post('task-boards/{taskBoard}/columns', [TaskBoardSettingsController::class, 'storeColumn']);
-        Route::patch('task-boards/{taskBoard}/columns/{column}', [TaskBoardSettingsController::class, 'updateColumn']);
-        Route::delete('task-boards/{taskBoard}/columns/{column}', [TaskBoardSettingsController::class, 'destroyColumn']);
-        Route::post('task-boards/{taskBoard}/groups', [TaskBoardSettingsController::class, 'storeGroup']);
-        Route::patch('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'updateGroup']);
-        Route::delete('task-boards/{taskBoard}/groups/{group}', [TaskBoardSettingsController::class, 'destroyGroup']);
-        Route::post('tasks', [TasksController::class, 'store']);
-        Route::get('tasks/{task}', [TasksController::class, 'show']);
-        Route::patch('tasks/{task}', [TasksController::class, 'update']);
-        Route::delete('tasks/{task}', [TasksController::class, 'destroy']);
-        Route::post('tasks/{task}/updates', [TasksController::class, 'storeUpdate']);
+        Route::post('task-boards', [\App\Http\Controllers\Api\TaskBoardsController::class, 'store']);
+        Route::patch('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'update']);
+        Route::delete('task-boards/{taskBoard}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroy']);
+        Route::get('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'members']);
+        Route::post('task-boards/{taskBoard}/members', [\App\Http\Controllers\Api\TaskBoardsController::class, 'storeMember']);
+        Route::patch('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'updateMember']);
+        Route::delete('task-boards/{taskBoard}/members/{member}', [\App\Http\Controllers\Api\TaskBoardsController::class, 'destroyMember']);
+        Route::post('task-boards/{taskBoard}/statuses', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeStatus']);
+        Route::patch('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateStatus']);
+        Route::delete('task-boards/{taskBoard}/statuses/{status}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyStatus']);
+        Route::post('task-boards/{taskBoard}/columns', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeColumn']);
+        Route::patch('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateColumn']);
+        Route::delete('task-boards/{taskBoard}/columns/{column}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyColumn']);
+        Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
+        Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
+        Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
+        Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
+        Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
+        Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
+        Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
+        Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
 
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.
@@ -873,7 +859,7 @@ Route::prefix('v1')
         // drivers before {vehicle} so the literal path is not captured as an id
         Route::get('vehicles/drivers', [VehicleAssignmentsController::class, 'drivers']);
         // Fleet's General tab. Before `vehicles/{vehicle}`, same reason as drivers.
-        Route::get('vehicles/summary', [FleetSummaryController::class, 'index'])
+        Route::get('vehicles/summary', [\App\Http\Controllers\Api\FleetSummaryController::class, 'index'])
             ->middleware('permission:fleet_management.general.view');
         Route::post('vehicles/{vehicle}/assignments', [VehicleAssignmentsController::class, 'store']);
         Route::post('vehicles/{vehicle}/unassign', [VehicleAssignmentsController::class, 'unassign']);
@@ -1569,7 +1555,7 @@ Route::prefix('v1')
         Route::put('organization/canvas', [OrganizationCanvasController::class, 'save']);
         Route::patch('organization', [OrganizationProfileController::class, 'update']);
         Route::get('address-lookup', AddressLookupController::class);
-        Route::get('places/counties', CountyLookupController::class);
+        Route::get('places/counties', \App\Http\Controllers\Api\CountyLookupController::class);
 
         // ── Branding (§12) ───────────────────────────────────────
         //
@@ -1677,7 +1663,7 @@ Route::prefix('v1')
         Route::middleware('permission:ai_assistance.ai.view')->group(function () {
             Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
-            Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
+        Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
@@ -1795,9 +1781,9 @@ Route::prefix('v1')
         Route::middleware('permission:hr.invitations.view')->group(function () {
             Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
             Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
-            // Resend and revoke, one at a time. The owner was explicit that there is
-            // no bulk form of either, and there is no route here that could become
-            // one without somebody adding it deliberately.
+        // Resend and revoke, one at a time. The owner was explicit that there is
+        // no bulk form of either, and there is no route here that could become
+        // one without somebody adding it deliberately.
             Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
             Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
         });
@@ -2192,7 +2178,7 @@ Route::prefix('v1')
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
         // Reports.
-        Route::post('phone/audio', [AudioController::class, 'store'])
+        Route::post('phone/audio', [\App\Http\Controllers\Api\Phone\AudioController::class, 'store'])
             ->middleware('permission:phone.settings.view');
         Route::get('phone/reports/run', [PhoneReportsController::class, 'run'])
             ->middleware('permission:phone.reports.view');
@@ -2785,17 +2771,17 @@ Route::prefix('v1')
         );
 
         Route::middleware('permission:monitoring.map.view')->group(function () {
-            Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
-            Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
-            // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
-            // would match {id} first and 404 as a plan that does not exist. Gated on
-            // monitoring.map.manage (the policy's `create`) and answered straight
-            // from ScopeReach::optionsFor, so the create panel offers exactly the
-            // levels `store`'s assertCovers will accept.
-            Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
-            Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
-            Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
-            Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
+        Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
+        Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
+        // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
+        // would match {id} first and 404 as a plan that does not exist. Gated on
+        // monitoring.map.manage (the policy's `create`) and answered straight
+        // from ScopeReach::optionsFor, so the create panel offers exactly the
+        // levels `store`'s assertCovers will accept.
+        Route::get('monitoring/floor-plans/scope-options', [MonitoringFloorPlansController::class, 'scopeOptions']);
+        Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
+        Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
+        Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
         });
 
         // The assign picker's own roster: who this editor may put on a tile.
@@ -2817,9 +2803,9 @@ Route::prefix('v1')
         // record, so there is nobody else to authorize against.
         Route::get('me/profile', [ProfileController::class, 'show']);
         // The signer's own saved drawn signature (2026-10-01).
-        Route::get('me/signature', [MySignatureController::class, 'show']);
-        Route::put('me/signature', [MySignatureController::class, 'update']);
-        Route::delete('me/signature', [MySignatureController::class, 'destroy']);
+        Route::get('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'show']);
+        Route::put('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'update']);
+        Route::delete('me/signature', [\App\Http\Controllers\Api\MySignatureController::class, 'destroy']);
         Route::patch('me', [ProfileController::class, 'update']);
         // Own schedule, only when the organization's self_schedule switch is on.
         Route::patch('me/schedule', [ProfileController::class, 'updateSchedule']);
@@ -2832,12 +2818,12 @@ Route::prefix('v1')
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
 
         // API keys and the MCP endpoint: an AI acting as this person (EnforceApiKeyAccess).
-        Route::get('me/api-keys', [ApiKeysController::class, 'index']);
-        Route::post('me/api-keys', [ApiKeysController::class, 'store']);
-        Route::delete('me/api-keys/{id}', [ApiKeysController::class, 'destroy'])->whereNumber('id');
-        Route::get('api-keys/activity', [ApiKeysController::class, 'activity']);
-        Route::post('api-keys/activity/{event}/revert', [ApiKeysController::class, 'revert']);
-        Route::post('mcp', [McpController::class, 'handle'])->middleware('throttle:120,1');
+        Route::get('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'index']);
+        Route::post('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'store']);
+        Route::delete('me/api-keys/{id}', [\App\Http\Controllers\Api\ApiKeysController::class, 'destroy'])->whereNumber('id');
+        Route::get('api-keys/activity', [\App\Http\Controllers\Api\ApiKeysController::class, 'activity']);
+        Route::post('api-keys/activity/{event}/revert', [\App\Http\Controllers\Api\ApiKeysController::class, 'revert']);
+        Route::post('mcp', [\App\Http\Controllers\Api\McpController::class, 'handle'])->middleware('throttle:120,1');
 
         // ── Deleting your own account ────────────────────────────
         //
@@ -2863,7 +2849,7 @@ Route::prefix('v1')
 
         // Each tab's how-to video (UI queue 81): platform-wide, kept by staff,
         // the same for everybody signed in.
-        Route::get('help/videos', [HelpVideosController::class, 'index']);
+        Route::get('help/videos', [\App\Http\Controllers\Api\HelpVideosController::class, 'index']);
 
         // ── Your own second factor (§6) ──────────────────────────
         //
@@ -2896,9 +2882,9 @@ Route::prefix('v1')
 
         // Alerts: one person to chosen colleagues (Communication ▸ Alerts).
         // Gated in the controller on phone.alerts.view, the tab's own key.
-        Route::get('alerts/recipients', [AlertsController::class, 'recipients']);
-        Route::get('alerts', [AlertsController::class, 'index']);
-        Route::post('alerts', [AlertsController::class, 'send']);
+        Route::get('alerts/recipients', [\App\Http\Controllers\Api\AlertsController::class, 'recipients']);
+        Route::get('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'index']);
+        Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
 
         // ── Settings (§6) ────────────────────────────────────────
         Route::get('settings', [SettingsController::class, 'index']);
@@ -3029,9 +3015,9 @@ Route::prefix('v1')
                     // HR tab had no way to reach their own form.
                     // `held`: everything else is closed until the paperwork
                     // is approved (User::awaitingOnboardingApproval).
-                    'onboarding' => ($open = Onboarding::query()
+                    'onboarding' => ($open = \App\Models\Onboarding::query()
                         ->where('user_id', $user->id)
-                        ->whereIn('status', Onboarding::OPEN)
+                        ->whereIn('status', \App\Models\Onboarding::OPEN)
                         ->latest()
                         ->first(['id', 'status'])) === null ? null : [
                             'id' => $open->id,
@@ -3295,9 +3281,9 @@ Route::prefix('v1/staff')
 
         // Which tab has which how-to video (UI queue 81). Platform-wide like the
         // client versions: a new video is a save, not a release.
-        Route::get('help-videos', [StaffHelpVideosController::class, 'index']);
-        Route::put('help-videos/{module}', [StaffHelpVideosController::class, 'update']);
-        Route::delete('help-videos/{module}', [StaffHelpVideosController::class, 'destroy']);
+        Route::get('help-videos', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'index']);
+        Route::put('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'update']);
+        Route::delete('help-videos/{module}', [\App\Http\Controllers\Api\StaffHelpVideosController::class, 'destroy']);
 
         Route::get('impersonations', [StaffController::class, 'impersonations']);
         Route::post('impersonations', [StaffController::class, 'impersonate']);
