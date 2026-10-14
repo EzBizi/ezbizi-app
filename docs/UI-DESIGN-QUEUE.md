@@ -2965,6 +2965,15 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 96 · How-to videos › the opening card, with the EzBizi logo — **sent 2026-10-14 15:34** (`docs/previews/help-video-title-card-layouts.html`)
+
+Jose 2026-10-14 via the desk: "do improve the Initial Screen, use the EzBizi Logo, make it look better, cause right now it looks like
+something made on moviemaker". Each option has the real logo, Inter, the module icon and the video's tabs as chips, with 1.5 s of motion,
+then a hold. **1**: light, like the app (logo top left, icon tile and name, cyan rule, white chips). **2**: brand cyan gradient, the logo
+on a white badge with a light sweep, centred. **3** (recommended): the left column, plus the tab itself in an angled app window that
+slides in. The matching 2 s end card is light with 1 and 3, cyan with 2. The voice is Matilda (approved). It goes on Scheduling first, then
+every tab's video.
+
 ### 95 · Task Board › People on every board, and everyone's boards — **sent 2026-10-14 13:08 — Jose: "as u recommend" — picker 1, desktop 4, phone 7, Roles 10 — BUILT `fa70a03a`** (with Task Board `e4966d5d`) (`docs/previews/task-board-people-everywhere-layouts.html`)
 
 Jose 2026-10-14 via the desk: he can't find People (it showed on custom boards only); he wants to add people to any board he
