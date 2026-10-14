@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0430',
+      date: '14 Oct 2026',
+      items: [
+        'Scheduling: an opened Re-Scheduling suggestion shows both days window by window with the open spots before and after the move: the day the job leaves gains a spot, the day it moves to loses one, and each day shows its total.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0429',
       date: '14 Oct 2026',
       items: [
