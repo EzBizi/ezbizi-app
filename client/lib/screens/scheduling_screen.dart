@@ -290,7 +290,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
             ('Availability', Icons.event_available_outlined),
             ('Schedule', Icons.engineering_outlined),
             if (notes) ('Locations', Icons.place_outlined),
-            ('Suggestions', Icons.near_me_outlined),
+            ('Routing & suggestions', Icons.near_me_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() {
