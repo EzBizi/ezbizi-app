@@ -3,6 +3,7 @@
 namespace App\Support\Scheduling;
 
 use App\Models\ServiceArea;
+use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
 
 /**
@@ -24,24 +25,27 @@ use Carbon\CarbonImmutable;
 final class Reschedules
 {
     /*
-     * Worth a phone call (Grok's review of the live list, 2026-10-14: 62 of
-     * 84 rows did not make sense). ponytail: constants, a Setting when Jose
-     * wants to tune one.
+     * Worth a phone call (Grok's reviews of the live list, 2026-10-14). Each
+     * limit is a Setting (Jose, 2026-10-14: "i want to be able to change all
+     * the settings in the app").
      */
     /** Jobs this soon are not moved: the customer has planned for them. */
-    public const SETTLED_DAYS = 2;
+    public const SETTLED_DAYS = 'scheduling.reschedule_settled_days';
 
-    /** At most this many days earlier or later (Grok's second review: 7 still pulled customers 4-6 days). */
-    public const MAX_SHIFT_DAYS = 3;
+    /** At most this many days earlier or later. */
+    public const MAX_SHIFT_DAYS = 'scheduling.reschedule_max_shift_days';
 
     /**
      * The nearest job after the move is at most this far. (No "half of today"
      * rule: a listed job has nothing within the radius today, so this alone
      * already more than halves it.)
      */
-    public const MAX_AFTER_MILES = 10.0;
+    public const MAX_AFTER_MILES = 'scheduling.reschedule_max_after_miles';
 
-    public function __construct(private readonly NearbySuggestion $nearby) {}
+    public function __construct(
+        private readonly NearbySuggestion $nearby,
+        private readonly SettingsResolver $settings,
+    ) {}
 
     /**
      * Open spots on a day before and after the move (Jose, 2026-10-14: "the
@@ -93,7 +97,9 @@ final class Reschedules
     {
         $look = $this->nearby->load($area, $from);
         $radius = $look['radius'];
-        $settled = $from->addDays(self::SETTLED_DAYS - 1)->toDateString();
+        $limit = fn (string $key) => (int) $this->settings->get($key, $look['franchise']);
+        [$maxShift, $maxAfter] = [$limit(self::MAX_SHIFT_DAYS), $limit(self::MAX_AFTER_MILES)];
+        $settled = $from->addDays($limit(self::SETTLED_DAYS) - 1)->toDateString();
         $out = [];
 
         foreach ($look['jobs'] as $date => $onDay) {
@@ -111,11 +117,11 @@ final class Reschedules
 
                 $now = $today->min('miles');
                 $best = NearbySuggestion::best(array_filter(array_map(
-                    [NearbySuggestion::class, 'windowLocal'],
+                    fn (array $c) => NearbySuggestion::windowLocal($c, $look['gap']),
                     $this->nearby->candidates($look['days']->reject(fn (array $d) => $d['date'] === $date), $others, $at, $radius),
                 ), fn (array $c) => $c['nearby'] > 0
-                    && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= self::MAX_SHIFT_DAYS
-                    && $c['nearest_miles'] <= self::MAX_AFTER_MILES));
+                    && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= $maxShift
+                    && $c['nearest_miles'] <= $maxAfter));
 
                 if ($best !== null) {
                     $day = $look['all_days'][$date] ?? null;
