@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
+use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
@@ -1695,6 +1696,12 @@ Route::prefix('v1')
             Route::get('ai-assistance/ask', [AssistantController::class, 'ask']);
         Route::get('ai-assistance/answer', [AssistantController::class, 'answer']);
         });
+        // Guidelines (2026-10-14): read on the Guidelines tab, written under
+        // `guidelines.manage` by GuidelinePolicy, place by place.
+        Route::apiResource('guidelines', GuidelinesController::class)->except('show');
+        Route::get('guidelines/{guideline}/image', [GuidelinesController::class, 'image']);
+        Route::post('guidelines/{guideline}/image', [GuidelinesController::class, 'uploadImage']);
+        Route::delete('guidelines/{guideline}/image', [GuidelinesController::class, 'destroyImage']);
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);

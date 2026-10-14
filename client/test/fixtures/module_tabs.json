@@ -105,6 +105,14 @@
             "parent": null,
             "tabs": []
         },
+        "guidelines": {
+            "label": "Guidelines",
+            "parent": null,
+            "tabs": [
+                "Guidelines",
+                "Settings"
+            ]
+        },
         "hr": {
             "label": "Human Resources",
             "parent": null,
@@ -390,6 +398,10 @@
         "franchises.delete",
         "franchises.edit",
         "franchises.view",
+        "guidelines.guidelines.view",
+        "guidelines.manage",
+        "guidelines.settings.view",
+        "guidelines.view",
         "hr.contracts.view",
         "hr.create",
         "hr.dashboard.view",

@@ -827,6 +827,27 @@ class ModuleServiceProvider extends ServiceProvider
                     .'could not answer" is the trigger to add here.',
             ),
 
+            /*
+             * Guidelines - Jose, 2026-10-14: "a company can create cards, or
+             * situations, then users can click on those cards and get step by
+             * step guides ... with a search bar ... and the settings tab to
+             * create them ... colors and images as well".
+             */
+            new ModuleDefinition(
+                key: 'guidelines',
+                label: 'Guidelines',
+                actions: ['view', 'manage'],
+                actionLabels: ['manage' => 'Create and edit guidelines'],
+                tabs: [
+                    new TabDefinition('guidelines', 'Guidelines'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['guideline'],
+                automationExemptBecause: 'Guidelines are reference material an administrator '
+                    .'writes, like the AI Assistance Library: editing a card is not something that '
+                    .'happened to the business, and a rule firing on it would act on a reworded step.',
+            ),
+
             new ModuleDefinition(
                 key: 'time_clock',
                 label: 'Clock in',
