@@ -65,7 +65,12 @@ class _Person {
   _Person(Map<String, dynamic> row)
     : name = '${row['person']}',
       n = (row['calls_scored'] as num?)?.toInt() ?? 0,
-      avg = (row['avg_score'] as num?)?.toDouble() ?? 0,
+      // The weighted score (conversion and the checks, Jose 2026-10-14);
+      // AI's plain call average where the server sends no weighted one.
+      avg = ((row['score'] ?? row['avg_score']) as num?)?.toDouble() ?? 0,
+      conversion = (row['conversion'] as num?)?.toInt(),
+      jobs = (row['jobs'] as num?)?.toInt() ?? 0,
+      newClient = (row['new_client'] as num?)?.toInt() ?? 0,
       rank = (row['rank'] as num?)?.toInt(),
       checks = {
         for (final key in _checks.keys)
@@ -80,6 +85,9 @@ class _Person {
   final String name;
   final int n;
   final double avg;
+  final int? conversion;
+  final int jobs;
+  final int newClient;
   final int? rank;
   final Map<String, double> checks;
   final List<String> strengths;
@@ -99,10 +107,13 @@ class _Person {
 }
 
 class _Team {
-  _Team(this.people, this.minCalls);
+  _Team(this.people, this.minCalls, [this.weights = const {}]);
 
   final List<_Person> people;
   final int minCalls;
+
+  /// What each metric counts for in the score, summing to 100.
+  final Map<String, int> weights;
   double? before;
 
   int get calls => people.fold(0, (s, p) => s + p.n);
@@ -185,11 +196,18 @@ class _ScoringReportState extends State<ScoringReport> {
 
   static _Team _read(Map<String, dynamic> body) {
     final data = (body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    return _Team([
-      for (final row in (data['people'] as List?) ?? const [])
-        if (row is Map && row['person'] is String)
-          _Person(row.cast<String, dynamic>()),
-    ], (data['min_calls_to_rank'] as num?)?.toInt() ?? 3);
+    return _Team(
+      [
+        for (final row in (data['people'] as List?) ?? const [])
+          if (row is Map && row['person'] is String)
+            _Person(row.cast<String, dynamic>()),
+      ],
+      (data['min_calls_to_rank'] as num?)?.toInt() ?? 3,
+      {
+        for (final e in ((data['weights'] as Map?) ?? const {}).entries)
+          '${e.key}': (e.value as num?)?.toInt() ?? 0,
+      },
+    );
   }
 
   List<_Person> _sorted(_Team team) {
@@ -960,10 +978,31 @@ class _DetailState extends State<_Detail> {
       ),
     );
 
+    final weights = [
+      for (final e in team.weights.entries)
+        if (e.value > 0)
+          '${e.key == 'conversion' ? 'Conversion' : _checks[e.key] ?? e.key} '
+              '${e.value}%',
+    ];
     final checks = section(
       'The seven checks',
       Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Performance's conversion rate, counted in the score (Jose,
+          // 2026-10-14).
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              p.conversion == null
+                  ? 'Conversion rate: no new-client calls in these dates'
+                  : 'Conversion rate: ${p.conversion}% '
+                        '(${p.jobs} ${p.jobs == 1 ? 'job' : 'jobs'} from '
+                        '${p.newClient} new-client calls)',
+              key: const Key('scoring-conversion'),
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
           for (final key in _checks.keys)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1022,6 +1061,15 @@ class _DetailState extends State<_Detail> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          if (weights.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'The score weighs: ${weights.join(' · ')}',
+                key: const Key('scoring-weights'),
+                style: muted,
               ),
             ),
         ],

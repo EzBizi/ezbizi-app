@@ -507,6 +507,7 @@
         "reports.marketing.view",
         "reports.meta.view",
         "reports.scoring.view",
+        "reports.scoring_weights",
         "reports.thumbtack.view",
         "reports.view",
         "reviews.create",
