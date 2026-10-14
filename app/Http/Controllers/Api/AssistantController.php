@@ -64,7 +64,7 @@ class AssistantController extends Controller
         // Jose, 2026-10-14: same voice as WhatsApp (line breaks, emojis), and
         // a question the Library cannot answer ("How many jobs do we have for
         // tomorrow") is read from the app as the asker, GET only (AppAsk).
-        // Both fit nginx's 120 s: 35 s for the Library, the rest for the app.
+        // Both fit nginx's 120 s with 20 s spare: 35 s for the Library, up to 95 s in all.
         $started = microtime(true);
         $failed = false;
         try {
@@ -75,7 +75,7 @@ class AssistantController extends Controller
 
         if ($answer === null) {
             try {
-                $reply = AppAsk::answer($user, $q, 105 - (int) ceil(microtime(true) - $started));
+                $reply = AppAsk::answer($user, $q, 95 - (int) ceil(microtime(true) - $started));
                 $answer = $reply === null ? null : ['reply' => $reply, 'entry_ids' => [], 'from_app' => true];
             } catch (\RuntimeException) {
                 $failed = true;
