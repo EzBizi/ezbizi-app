@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Help: the how-to videos play inside the app on Windows, Mac, phones and web, with Fullscreen (Esc comes back) and Download (a Save dialog on a computer, Photos on a phone); the chapter playing is highlighted.',
         'Phone: call recordings and voicemails play on iPhone and Mac.',
+        'Reports: calls on every line are now transcribed and scored, long calls are no longer misread as "no conversation", and missed calls say Missed in the Score column.',
       ],
     ),
     VersionRelease(
