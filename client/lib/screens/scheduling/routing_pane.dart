@@ -308,11 +308,17 @@ class _RoutingPaneState extends State<RoutingPane> {
       );
     }
     final routes = _routes;
-    final unplaced = [
-      for (final u in (_plan?['unplaced'] as List? ?? const []))
+    List<Map<String, dynamic>> jobs(String key) => [
+      for (final u in (_plan?[key] as List? ?? const []))
         if (u is Map) u.cast<String, dynamic>(),
     ];
-    if (routes.every((r) => _stops(r).isEmpty) && unplaced.isEmpty) {
+    final unplaced = jobs('unplaced');
+    // 60 miles or more from the day's other jobs: nearly always booked in
+    // the wrong area, so kept off the routes (Scheduling 44b28e96).
+    final elsewhere = jobs('elsewhere');
+    if (routes.every((r) => _stops(r).isEmpty) &&
+        unplaced.isEmpty &&
+        elsewhere.isEmpty) {
       return Center(
         key: const ValueKey('routing-empty'),
         child: Padding(
@@ -329,6 +335,16 @@ class _RoutingPaneState extends State<RoutingPane> {
     final cards = [
       for (final (i, _) in routes.indexed)
         if (_stops(routes[i]).isNotEmpty) _card(context, i, side: side),
+      if (elsewhere.isNotEmpty)
+        _unplaced(
+          context,
+          elsewhere,
+          key: const ValueKey('routing-elsewhere'),
+          title: 'Far outside this area · ${elsewhere.length}',
+          why:
+              "60 miles or more from the day's other jobs, so they are on no "
+              "route. Check the booking's area.",
+        ),
       if (unplaced.isNotEmpty) _unplaced(context, unplaced),
     ];
 
@@ -524,7 +540,9 @@ class _RoutingPaneState extends State<RoutingPane> {
                     ),
                     Text(
                       '${stops.length} ${stops.length == 1 ? 'stop' : 'stops'}'
-                      ' · ${_miles(route['miles'])}',
+                      // Straight-line: the road is longer, and Google
+                      // Maps gives the real drive (Grok's review).
+                      ' · ≈ ${_miles(route['miles'])} straight-line',
                       style: muted,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -637,11 +655,19 @@ class _RoutingPaneState extends State<RoutingPane> {
     );
   }
 
-  Widget _unplaced(BuildContext context, List<Map<String, dynamic>> jobs) {
+  Widget _unplaced(
+    BuildContext context,
+    List<Map<String, dynamic>> jobs, {
+    Key key = const ValueKey('routing-unplaced'),
+    String? title,
+    String why =
+        'Workiz has no usable address for these, so they are on no route. '
+        'Place them by hand.',
+  }) {
     final theme = Theme.of(context);
     final caution = ToneColours.of(context, Tone.caution);
     return Card(
-      key: const ValueKey('routing-unplaced'),
+      key: key,
       margin: EdgeInsets.zero,
       color: caution.fill,
       child: Padding(
@@ -650,15 +676,11 @@ class _RoutingPaneState extends State<RoutingPane> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'No location · ${jobs.length}',
+              title ?? 'No location · ${jobs.length}',
               style: theme.textTheme.titleSmall,
             ),
             const SizedBox(height: 2),
-            Text(
-              'Workiz has no usable address for these, so they are on no '
-              'route. Place them by hand.',
-              style: theme.textTheme.bodySmall,
-            ),
+            Text(why, style: theme.textTheme.bodySmall),
             for (final j in jobs)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
