@@ -1032,6 +1032,7 @@ class WhatsAppStaffBotTest extends TestCase
         $bot = WhatsAppStaffBot::class;
         $this->assertSame("🔍 *How often to inspect*\n🔹 Once a year\n🧱 Check the crown", $bot::look("*How often to inspect*\n• once a year\n- check the crown"));
         $this->assertSame('6 topics', $bot::cap('6 topics'));
+        $this->assertSame("🆕 *Newest customer*", $bot::look("🆕 *Newest customer*"), 'an emoji outside the old range is not doubled (prod 10-14)');
         $this->assertSame('📍 Find a location', $bot::emojiFor('Find a location').' Find a location');
     }
 }
