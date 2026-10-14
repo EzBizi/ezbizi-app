@@ -73,7 +73,7 @@ class ScoringReportTest extends TestCase
             foreach (['a1', 'a2', 'a3'] as $i => $id) {
                 CallReportTranscript::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'transcript' => 'x',
                     'source' => 'whisper', 'answered_by' => 'Ada', 'call_started_at' => '2026-10-13 1'.$i.':00:00']);
-                CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => 6,
+                CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => 7,
                     'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
             }
         });
@@ -83,9 +83,10 @@ class ScoringReportTest extends TestCase
         $admin = $this->signedInAs($t['admin']);
         $ada = fn () => $admin->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data.people.0');
 
-        // Defaults: conversion 40 at 25%, every check met (60 at 100%): (40*25 + 60*100) / 100 = 70% -> 7.0.
+        // Defaults: conversion 50 at 25%, quality 15 at 70%, every check met (35 at 100%):
+        // (1250 + 1050 + 3500) / 100 = 58% -> 5.8.
         $this->assertSame(25, $ada()['conversion']);
-        $this->assertEquals(7.0, $ada()['score']);
+        $this->assertEquals(5.8, $ada()['score']);
 
         $all = array_fill_keys(ScoringWeights::metrics(), 0);
         $admin->putJson('/api/v1/reports/scoring/weights', ['weights' => ['conversion' => 50] + $all])
