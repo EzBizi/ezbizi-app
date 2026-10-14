@@ -2254,7 +2254,23 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'tasks',
                 label: 'Task Board',
-                actions: ['view', 'edit'],
+                /*
+                 * Jose, 2026-10-14: roles decide who sees every board, who adds
+                 * people to boards, and who creates boards. Administrator holds
+                 * all three (Role::hasPermission). create_boards replaced
+                 * tasks.edit on POST task-boards with no backfill, on purpose.
+                 */
+                actions: ['view', 'edit', 'view_all', 'manage_members', 'create_boards'],
+                actionLabels: [
+                    'view_all' => 'See every board',
+                    'manage_members' => 'Add people to any board',
+                    'create_boards' => 'Create boards',
+                ],
+                actionDescriptions: [
+                    'view_all' => "Everyone's boards in their picker, grouped by person, including personal ones.",
+                    'manage_members' => "Share any board they can see with others, and change who is on it. A board's owner can always do this on their own board.",
+                    'create_boards' => 'Make new boards of their own.',
+                ],
                 subject: new AutomationSubject(Task::class, 'Task'),
                 emits: [Task::class],
                 triggers: [
