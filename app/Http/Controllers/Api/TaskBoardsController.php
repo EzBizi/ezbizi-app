@@ -56,6 +56,10 @@ class TaskBoardsController extends Controller
                 ? $b->owner
                 : $b->members->firstWhere('role', TaskBoardMember::OWNER)?->user;
 
+            $role = $b->kind === TaskBoard::KIND_USER && $b->owner_user_id === $user->getKey()
+                ? TaskBoardMember::OWNER
+                : $b->members->firstWhere('user_id', $user->getKey())?->role;
+
             return [
                 'id' => $b->id,
                 'kind' => $b->kind,
@@ -66,9 +70,9 @@ class TaskBoardsController extends Controller
                 'company_name' => ($b->company ?? $b->franchise?->company)?->name,
                 'open_for_me' => (int) $b->open_for_me,
                 'can_edit' => $this->boards->canEdit($user, $b),
-                'my_role' => $b->kind === TaskBoard::KIND_USER
-                    ? ($b->owner_user_id === $user->getKey() ? TaskBoardMember::OWNER : null)
-                    : $b->members->firstWhere('user_id', $user->getKey())?->role,
+                'my_role' => $role,
+                'can_manage' => $this->boards->canManageMembers($user, $b),
+                'section' => $this->boards->sectionOf($user, $b, $role),
                 'owner' => $owner ? ['id' => $owner->id, 'name' => $owner->name] : null,
             ];
         })->all()]);
@@ -92,7 +96,14 @@ class TaskBoardsController extends Controller
             'visibility' => $taskBoard->visibility,
             'my_role' => $this->boards->roleOf($user, $taskBoard),
             'members_count' => $taskBoard->members()->count(),
-            'can_manage' => $this->boards->canManage($user, $taskBoard),
+            // The first four people on it, owners first, for the header avatars.
+            'members_preview' => $taskBoard->members()->with('user:id,name')->get()
+                ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
+                ->take(4)->values()
+                ->map(fn (TaskBoardMember $m) => ['id' => $m->user_id, 'name' => $m->user?->name])->all(),
+            'can_manage' => $this->boards->canManageMembers($user, $taskBoard),
+            // Rename and delete: custom boards, their owners and Administrators.
+            'can_rename' => ! $taskBoard->isAutomatic() && $this->boards->canManage($user, $taskBoard),
             'company_id' => $taskBoard->company_id,
             'franchise_id' => $taskBoard->franchise_id,
             'can_edit' => $this->boards->canEdit($user, $taskBoard),
@@ -109,7 +120,7 @@ class TaskBoardsController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        abort_unless($user->hasPermission('tasks.edit'), 403, 'You need permission to edit tasks to create a board.');
+        abort_unless($user->hasPermission('tasks.create_boards'), 403, 'You need permission to create boards.');
 
         $input = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -170,8 +181,8 @@ class TaskBoardsController extends Controller
             ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
             ->values();
 
-        $candidates = $taskBoard->kind === TaskBoard::KIND_CUSTOM && $this->boards->canManage($request->user(), $taskBoard)
-            ? $this->boards->reach($taskBoard)->load('role:id,name')
+        $candidates = $this->boards->canManageMembers($request->user(), $taskBoard)
+            ? $this->boards->candidates($taskBoard)->load('role:id,name')
                 ->reject(fn (User $u) => $members->contains('user_id', $u->id))
                 ->values()
                 ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'role_name' => $u->role?->name])
@@ -186,13 +197,13 @@ class TaskBoardsController extends Controller
 
     public function storeMember(Request $request, TaskBoard $taskBoard): JsonResponse
     {
-        $this->authorizeManage($request->user(), $taskBoard);
+        $this->authorizeMembers($request->user(), $taskBoard);
         $input = $request->validate([
             'user_id' => ['required', 'uuid'],
             'role' => ['required', Rule::in(TaskBoardMember::ROLES)],
         ]);
 
-        if (! $this->boards->reach($taskBoard)->contains('id', $input['user_id'])) {
+        if (! $this->boards->candidates($taskBoard)->contains('id', $input['user_id'])) {
             throw ValidationException::withMessages(['user_id' => 'That person cannot work where this board is.']);
         }
         if ($taskBoard->members()->where('user_id', $input['user_id'])->exists()) {
@@ -210,7 +221,7 @@ class TaskBoardsController extends Controller
 
     public function updateMember(Request $request, TaskBoard $taskBoard, TaskBoardMember $member): JsonResponse
     {
-        $this->authorizeManage($request->user(), $taskBoard);
+        $this->authorizeMembers($request->user(), $taskBoard);
         abort_unless($member->board_id === $taskBoard->id, 404);
         $input = $request->validate(['role' => ['required', Rule::in(TaskBoardMember::ROLES)]]);
 
@@ -226,7 +237,7 @@ class TaskBoardsController extends Controller
 
     public function destroyMember(Request $request, TaskBoard $taskBoard, TaskBoardMember $member): Response
     {
-        $this->authorizeManage($request->user(), $taskBoard);
+        $this->authorizeMembers($request->user(), $taskBoard);
         abort_unless($member->board_id === $taskBoard->id, 404);
 
         DB::transaction(function () use ($taskBoard, $member) {
@@ -247,10 +258,26 @@ class TaskBoardsController extends Controller
         ];
     }
 
-    /** A board always keeps at least one owner. */
+    /** Members on any kind of board: owner, tasks.manage_members, Administrator. */
+    private function authorizeMembers(User $user, TaskBoard $board): void
+    {
+        $this->authorize('view', $board);
+        abort_unless($this->boards->canManageMembers($user, $board), 403, 'Only an owner of this board, or somebody allowed to add people to any board, can do that.');
+    }
+
+    /**
+     * A board always keeps at least one owner. A place board starts with
+     * none, so this guards only a board that has owners.
+     */
     private function keepAnOwner(TaskBoard $board, TaskBoardMember $leaving): void
     {
         if ($leaving->role !== TaskBoardMember::OWNER) {
+            return;
+        }
+        if ($board->kind === TaskBoard::KIND_USER && $leaving->user_id === $board->owner_user_id) {
+            throw ValidationException::withMessages(['role' => 'The person whose board this is stays its owner.']);
+        }
+        if (in_array($board->kind, [TaskBoard::KIND_COMPANY, TaskBoard::KIND_FRANCHISE], true)) {
             return;
         }
         $others = $board->members()->where('role', TaskBoardMember::OWNER)
@@ -264,7 +291,7 @@ class TaskBoardsController extends Controller
     {
         $this->authorize('view', $board);
         if ($board->isAutomatic()) {
-            throw ValidationException::withMessages(['board' => 'This board is made automatically: it cannot be renamed, deleted or given members.']);
+            throw ValidationException::withMessages(['board' => 'This board is made automatically: it cannot be renamed or deleted.']);
         }
         abort_unless($this->boards->canManage($user, $board), 403, 'Only an owner of this board or an Administrator can do that.');
     }

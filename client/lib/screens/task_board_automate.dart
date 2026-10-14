@@ -68,8 +68,11 @@ class _BoardAutomatePanelState extends State<BoardAutomatePanel> {
 
   /// Its owners and Administrators automate their own board without the
   /// Automations permissions (Jose, 2026-10-13: "yes they should";
-  /// Automations 2798c466 holds the server to the same rule).
-  bool get _manages => widget.board['can_manage'] == true;
+  /// Automations 2798c466 holds the server to the same rule). Not
+  /// can_manage: since Task Board aec4364b that is "can add people", which
+  /// tasks.manage_members gives without owning the board. Administrator
+  /// holds every permission, so _may lets them through.
+  bool get _manages => widget.board['my_role'] == 'owner';
 
   bool _may(String permission) =>
       _manages || (widget.session.me?.can(permission) ?? false);

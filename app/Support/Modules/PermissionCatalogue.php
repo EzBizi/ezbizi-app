@@ -294,6 +294,7 @@ class PermissionCatalogue
                     // ModuleDefinition::$actionRequires for why refusing beats
                     // quietly adding the missing key.
                     'requires'  => array_values($module->actionRequires[$action] ?? []),
+                    'description' => $module->actionDescriptions[$action] ?? null,
                 ], $module->actions),
             ];
         }

@@ -19,9 +19,11 @@ void main() {
 
   ApiClient fakeServer({
     required bool manage,
+    bool? owner,
     String kind = 'custom',
     bool automations = false,
     String? franchiseId,
+    List<Map<String, dynamic>> more = const [],
   }) {
     log = [];
     var boards = <Map<String, dynamic>>[
@@ -34,7 +36,9 @@ void main() {
         'company_name': null,
         'open_for_me': 0,
         'can_edit': true,
+        if (more.isNotEmpty) 'section': 'mine',
       },
+      ...more,
     ];
     http.Response json(Object body, [int code = 200]) => http.Response(
       jsonEncode(body),
@@ -43,9 +47,10 @@ void main() {
     );
     Map<String, dynamic> board(Map<String, dynamic> b) => {
       ...b,
-      'my_role': manage ? 'owner' : 'member',
+      'my_role': owner ?? manage ? 'owner' : 'member',
       'franchise_id': franchiseId,
       'can_manage': manage,
+      'can_rename': (owner ?? manage) && kind == 'custom',
       'members_count': 2,
       'statuses': [
         {
@@ -80,6 +85,7 @@ void main() {
               'permissions': [
                 'tasks.view',
                 'tasks.edit',
+                'tasks.create_boards',
                 if (automations) ...['automations.view', 'automations.create'],
               ],
               'modules': <dynamic>[],
@@ -193,10 +199,12 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     bool manage = true,
+    bool? owner,
     String kind = 'custom',
     double width = 1400,
     bool automations = false,
     String? franchiseId,
+    List<Map<String, dynamic>> more = const [],
   }) async {
     tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1.0;
@@ -204,9 +212,11 @@ void main() {
 
     final api = fakeServer(
       manage: manage,
+      owner: owner,
       kind: kind,
       automations: automations,
       franchiseId: franchiseId,
+      more: more,
     );
     final session = Session(api);
     await session.adopt('tok');
@@ -305,22 +315,70 @@ void main() {
     expect(find.text('Gutters'), findsOneWidget);
   });
 
-  testWidgets('on a phone People is behind the board\'s ⋯', (tester) async {
+  /// Jose could not find People (UI queue 95, 7): on a phone it is a chip
+  /// under the picker, not inside the menu.
+  testWidgets('on a phone People is a chip in the board header', (
+    tester,
+  ) async {
     await pump(tester, width: 400);
 
-    expect(find.byKey(const Key('tasks-people')), findsNothing);
-    await tester.tap(find.byKey(const Key('tasks-board-menu')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('People · 2 · Private'));
+    await tester.tap(find.byKey(const Key('tasks-people')));
     await tester.pumpAndSettle();
     expect(find.text('Tobin Marsh'), findsOneWidget);
   });
 
-  testWidgets('a company or branch board has no People', (tester) async {
+  testWidgets('a company or branch board has People too, and no Open or '
+      'Private', (tester) async {
     await pump(tester, kind: 'franchise');
 
-    expect(find.byKey(const Key('tasks-people')), findsNothing);
+    expect(find.byKey(const Key('tasks-people')), findsOneWidget);
     expect(find.text('Private'), findsNothing);
+  });
+
+  testWidgets('on My board, adding someone is said to share it', (
+    tester,
+  ) async {
+    await pump(tester, kind: 'user');
+
+    await tester.tap(find.byKey(const Key('tasks-people')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('board-people-shares')), findsOneWidget);
+    expect(find.byKey(const Key('board-visibility')), findsNothing);
+  });
+
+  /// UI queue 95, 1: grouped by why each board is here, everyone's by person.
+  testWidgets("the picker groups my boards, shared ones and everyone's by "
+      'person', (tester) async {
+    await pump(
+      tester,
+      more: [
+        {
+          'id': 'b-20',
+          'kind': 'custom',
+          'name': 'Office move',
+          'section': 'shared',
+          'owner': {'id': 'u-5', 'name': 'Dana Ruiz'},
+          'open_for_me': 1,
+        },
+        {
+          'id': 'b-21',
+          'kind': 'user',
+          'name': 'Ben',
+          'section': 'everyone',
+          'owner': {'id': 'u-6', 'name': 'Ben Okafor'},
+          'open_for_me': 0,
+        },
+      ],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
+    await tester.pumpAndSettle();
+    for (final header in ['MY BOARDS', 'SHARED WITH ME', "EVERYONE'S BOARDS"]) {
+      expect(find.text(header), findsOneWidget);
+    }
+    expect(find.text('Office move · from Dana Ruiz'), findsOneWidget);
+    expect(find.text('Ben Okafor · 1 board'), findsOneWidget);
+    expect(find.text("Ben Okafor's board"), findsOneWidget);
   });
 
   testWidgets("Automate lists this board's rules as sentences and saves a "
@@ -427,6 +485,21 @@ void main() {
         'to_assignee': true,
       },
     ]);
+  });
+
+  testWidgets('Add people to any board adds people, and neither makes the '
+      'board Open nor automates it', (tester) async {
+    // tasks.manage_members: can_manage, but not the owner, so no can_rename.
+    await pump(tester, manage: true, owner: false);
+
+    expect(find.byKey(const Key('tasks-automate')), findsNothing);
+    await tester.tap(find.byKey(const Key('tasks-people')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('board-people-add')), findsOneWidget);
+
+    await tester.tap(find.text('Open'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(log.where((c) => c.$1 == 'PATCH'), isEmpty);
   });
 
   testWidgets('without Automations, on a board they do not manage, there is '

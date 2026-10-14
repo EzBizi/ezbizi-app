@@ -659,9 +659,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    String name(_Json b) => b['kind'] == 'user' ? 'My board' : '${b['name']}';
+    // Someone else's personal board says whose it is.
+    String name(_Json b) => b['kind'] != 'user'
+        ? '${b['name']}'
+        : b['section'] == 'everyone' || b['section'] == 'shared'
+        ? "${(b['owner'] as Map?)?['name'] ?? 'Someone'}'s board"
+        : 'My board';
 
-    Widget row(int i, {bool indent = false}) {
+    Widget row(int i, {bool indent = false, String? from}) {
       final b = _boards[i];
       return Padding(
         padding: EdgeInsets.only(left: indent ? 20 : 0),
@@ -677,7 +682,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                name(b),
+                from == null ? name(b) : '${name(b)} · from $from',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -688,51 +693,111 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       );
     }
 
-    // My board first, then each company with its own board and its
-    // franchises' under it.
-    final byCompany = <String, List<int>>{};
-    for (final (i, b) in _boards.indexed) {
-      if (b['kind'] == 'user') continue;
-      byCompany.putIfAbsent('${b['company_name'] ?? ''}', () => []).add(i);
+    SearchOption<int> header(String text) => SearchOption(
+      value: null,
+      enabled: false,
+      label: text,
+      child: Text(
+        text.toUpperCase(),
+        style: muted?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.6),
+      ),
+    );
+    String? ownerOf(_Json b) => (b['owner'] as Map?)?['name'] as String?;
+
+    // The place boards, each company with its own board and its franchises'
+    // under it (UI queue 84).
+    List<SearchOption<int>> places(Iterable<int> indexes) {
+      final byCompany = <String, List<int>>{};
+      for (final i in indexes) {
+        byCompany
+            .putIfAbsent('${_boards[i]['company_name'] ?? ''}', () => [])
+            .add(i);
+      }
+      final companies = byCompany.keys.toList()
+        ..sort((a, b) => a.isEmpty ? 1 : (b.isEmpty ? -1 : a.compareTo(b)));
+      return [
+        for (final company in companies) ...[
+          header(company.isEmpty ? 'Other boards' : company),
+          for (final i
+              in byCompany[company]!..sort((a, b) {
+                final ka = _boards[a]['kind'] == 'company' ? 0 : 1;
+                final kb = _boards[b]['kind'] == 'company' ? 0 : 1;
+                return ka != kb
+                    ? ka - kb
+                    : name(_boards[a]).compareTo(name(_boards[b]));
+              }))
+            SearchOption(
+              value: i,
+              label: name(_boards[i]),
+              // Searched as well, so "Main" finds every company's Main.
+              detail: company.isEmpty ? null : company,
+              child: row(i, indent: _boards[i]['kind'] != 'company'),
+            ),
+        ],
+      ];
     }
-    final companies = byCompany.keys.toList()
-      ..sort((a, b) => a.isEmpty ? 1 : (b.isEmpty ? -1 : a.compareTo(b)));
+
+    // Why each board is here (Task Board's `section`): yours, shared with
+    // you, your places', or everyone's for See every board (UI queue 95, 1).
+    // A server without sections gets the grouping it always had.
+    final sectioned = _boards.any((b) => b['section'] != null);
+    Iterable<int> inSection(String key) => [
+      for (final (i, b) in _boards.indexed)
+        if (b['section'] == key) i,
+    ];
+    final everyone = <String, List<int>>{};
+    for (final i in inSection('everyone')) {
+      everyone.putIfAbsent(ownerOf(_boards[i]) ?? 'Someone', () => []).add(i);
+    }
+    final people = everyone.keys.toList()..sort();
 
     final options = <SearchOption<int>>[
-      for (final (i, b) in _boards.indexed)
-        if (b['kind'] == 'user')
-          SearchOption(value: i, label: 'My board', child: row(i)),
-      for (final company in companies) ...[
-        SearchOption(
-          value: null,
-          enabled: false,
-          label: company.isEmpty ? 'Other boards' : company,
-          child: Text(
-            (company.isEmpty ? 'Other boards' : company).toUpperCase(),
-            style: muted?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ),
-        for (final i
-            in byCompany[company]!..sort((a, b) {
-              final ka = _boards[a]['kind'] == 'company' ? 0 : 1;
-              final kb = _boards[b]['kind'] == 'company' ? 0 : 1;
-              return ka != kb
-                  ? ka - kb
-                  : name(_boards[a]).compareTo(name(_boards[b]));
-            }))
+      if (!sectioned) ...[
+        for (final (i, b) in _boards.indexed)
+          if (b['kind'] == 'user')
+            SearchOption(value: i, label: 'My board', child: row(i)),
+        ...places([
+          for (final (i, b) in _boards.indexed)
+            if (b['kind'] != 'user') i,
+        ]),
+      ] else ...[
+        if (inSection('mine').isNotEmpty) header('My boards'),
+        for (final i in inSection('mine'))
+          SearchOption(value: i, label: name(_boards[i]), child: row(i)),
+        if (inSection('shared').isNotEmpty) header('Shared with me'),
+        for (final i in inSection('shared'))
           SearchOption(
             value: i,
             label: name(_boards[i]),
-            // Searched as well, so "Main" finds every company's Main.
-            detail: company.isEmpty ? null : company,
-            child: row(i, indent: _boards[i]['kind'] != 'company'),
+            detail: ownerOf(_boards[i]),
+            child: row(i, from: ownerOf(_boards[i])),
           ),
+        ...places(inSection('place')),
+        if (people.isNotEmpty) header("Everyone's boards"),
+        for (final person in people) ...[
+          SearchOption(
+            value: null,
+            enabled: false,
+            label: person,
+            child: Text(
+              '$person · ${everyone[person]!.length} '
+              '${everyone[person]!.length == 1 ? 'board' : 'boards'}',
+              style: theme.textTheme.labelLarge,
+            ),
+          ),
+          for (final i in everyone[person]!)
+            SearchOption(
+              value: i,
+              label: name(_boards[i]),
+              // A person's name finds their boards.
+              detail: person,
+              child: row(i, indent: true),
+            ),
+        ],
       ],
-      // monday's "+ Add" at the foot of the board list.
-      if (widget.session.me?.can('tasks.edit') ?? false)
+      // monday's "+ Add" at the foot of the board list, for those who may
+      // create boards (Task Board's tasks.create_boards).
+      if (widget.session.me?.can('tasks.create_boards') ?? false)
         SearchOption(
           value: -1,
           label: 'New board',
@@ -842,57 +907,75 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     );
   }
 
-  /// A board you made: who is on it and whether it is Open or Private; and
-  /// on any board, its own automations. On a phone behind the board's ⋯ (UI
-  /// queue 89, desktop 1 and phone 4).
+  /// Who is on the board, on EVERY board (Jose could not find People: it
+  /// showed on boards made with New board only), with its faces when the
+  /// server sends them; Open or Private on a board you made; and its own
+  /// automations. On a phone People stays a chip, Automate goes in ⋯ (UI
+  /// queue 95, desktop 4 and phone 7).
   List<Widget> _boardFaces({required bool phone}) {
     final custom = _board!['kind'] == 'custom';
+    // Its owner, as the Automate panel (not can_manage: adding people).
     final automate =
-        _board!['can_manage'] == true ||
+        _board!['my_role'] == 'owner' ||
         (widget.session.me?.can('automations.view') ?? false);
-    final people = 'People · ${_board!['members_count'] ?? 0}';
     final private = _board!['visibility'] == 'private';
-    if (!custom && !automate) return const [];
-    if (phone) {
-      return [
-        PopupMenuButton<String>(
-          key: const Key('tasks-board-menu'),
-          tooltip: 'This board',
-          icon: const Icon(Icons.more_horiz),
-          onSelected: (v) => v == 'people' ? _editPeople() : _automate(),
-          itemBuilder: (_) => [
-            if (custom)
-              PopupMenuItem(
-                value: 'people',
-                child: Text(
-                  '$people · ${boardVisibilityLabel(_board!['visibility'])}',
+    final scheme = Theme.of(context).colorScheme;
+    final faces = [
+      for (final m in (_board!['members_preview'] as List? ?? const []))
+        if (m is Map) '${m['name'] ?? ''}',
+    ];
+
+    return [
+      if (faces.isNotEmpty)
+        Row(
+          key: const Key('tasks-people-faces'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, f) in faces.take(4).indexed)
+              Transform.translate(
+                offset: Offset(-6.0 * i, 0),
+                child: CircleAvatar(
+                  radius: 12,
+                  backgroundColor: scheme.primaryContainer,
+                  child: Text(
+                    f.trim().isEmpty ? '?' : f.trim()[0].toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
               ),
-            if (automate)
-              const PopupMenuItem(value: 'automate', child: Text('Automate')),
           ],
         ),
-      ];
-    }
-    return [
-      if (custom) ...[
-        OutlinedButton.icon(
-          key: const Key('tasks-people'),
-          onPressed: _editPeople,
-          icon: const Icon(Icons.group_outlined, size: 18),
-          label: Text(people),
-        ),
+      OutlinedButton.icon(
+        key: const Key('tasks-people'),
+        onPressed: _editPeople,
+        icon: const Icon(Icons.group_outlined, size: 18),
+        label: Text('People · ${_board!['members_count'] ?? 0}'),
+      ),
+      if (custom)
         StatusPill(
           boardVisibilityLabel(_board!['visibility']),
           tone: private ? Tone.caution : Tone.neutral,
         ),
-      ],
-      if (automate)
+      if (automate && !phone)
         OutlinedButton.icon(
           key: const Key('tasks-automate'),
           onPressed: _automate,
           icon: const Icon(Icons.bolt, size: 18),
           label: const Text('Automate'),
+        ),
+      if (automate && phone)
+        PopupMenuButton<String>(
+          key: const Key('tasks-board-menu'),
+          tooltip: 'This board',
+          icon: const Icon(Icons.more_horiz),
+          onSelected: (_) => _automate(),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'automate', child: Text('Automate')),
+          ],
         ),
     ];
   }

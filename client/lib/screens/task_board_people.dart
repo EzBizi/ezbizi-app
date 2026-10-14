@@ -109,6 +109,26 @@ class _BoardPeoplePanelState extends State<BoardPeoplePanel> {
             ErrorNote(_error!),
             const SizedBox(height: 12),
           ],
+          // Jose, 2026-10-14: people on every board. On a personal board
+          // that is sharing it (Task Board's members on every kind).
+          if (widget.board['kind'] == 'user' && _owner) ...[
+            Container(
+              key: const Key('board-people-shares'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Adding someone shares your board with them: they see it in '
+                'Shared with me and can work its tasks.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (_owner) ...[
             SearchPickerField<String>(
               key: const Key('board-people-add'),
@@ -200,43 +220,50 @@ class _BoardPeoplePanelState extends State<BoardPeoplePanel> {
                   ],
                 ),
               ),
-          const SizedBox(height: 16),
-          Text('Who can find it', style: theme.textTheme.labelLarge),
-          const SizedBox(height: 6),
-          SegmentedButton<String>(
-            key: const Key('board-visibility'),
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(
-                value: 'main',
-                icon: Icon(Icons.public),
-                label: Text('Open'),
-              ),
-              ButtonSegment(
-                value: 'private',
-                icon: Icon(Icons.lock_outline),
-                label: Text('Private'),
-              ),
-            ],
-            selected: {_visibility},
-            onSelectionChanged: _owner
-                ? (v) {
-                    setState(() => _visibility = v.first);
-                    _write(
-                      widget.api.patch('/task-boards/${widget.board['id']}', {
-                        'visibility': v.first,
-                      }),
-                    );
-                  }
-                : null,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _visibility == 'private'
-                ? 'Only the people above see this board.'
-                : 'Everyone where this board belongs can find it and join.',
-            style: muted,
-          ),
+          // Open or Private is a board you made; the others are found by
+          // their place, or are personal.
+          if (widget.board['kind'] == 'custom') ...[
+            const SizedBox(height: 16),
+            Text('Who can find it', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            SegmentedButton<String>(
+              key: const Key('board-visibility'),
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(
+                  value: 'main',
+                  icon: Icon(Icons.public),
+                  label: Text('Open'),
+                ),
+                ButtonSegment(
+                  value: 'private',
+                  icon: Icon(Icons.lock_outline),
+                  label: Text('Private'),
+                ),
+              ],
+              selected: {_visibility},
+              // Open or Private is the board's own change, as rename and
+              // delete: its owners and Administrators (Task Board's
+              // can_rename), not everyone who may add people.
+              onSelectionChanged: widget.board['can_rename'] as bool? ?? _owner
+                  ? (v) {
+                      setState(() => _visibility = v.first);
+                      _write(
+                        widget.api.patch('/task-boards/${widget.board['id']}', {
+                          'visibility': v.first,
+                        }),
+                      );
+                    }
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _visibility == 'private'
+                  ? 'Only the people above see this board.'
+                  : 'Everyone where this board belongs can find it and join.',
+              style: muted,
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             'Owner ${boardRoles[0].$3} · Member ${boardRoles[1].$3} · '
