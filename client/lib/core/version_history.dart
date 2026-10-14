@@ -18,6 +18,7 @@ class VersionHistory {
       date: '14 Oct 2026',
       items: [
         'Help: the how-to videos play inside the app on Windows, Mac, phones and web, with Fullscreen (Esc comes back) and Download (a Save dialog on a computer, Photos on a phone); the chapter playing is highlighted.',
+        'Phone: call recordings and voicemails play on iPhone and Mac.',
       ],
     ),
     VersionRelease(
