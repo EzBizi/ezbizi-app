@@ -157,6 +157,40 @@ class SocialNetworkOAuthTest extends TestCase
         );
     }
 
+    public function test_one_facebook_connect_also_brings_the_ad_accounts(): void
+    {
+        // Jose, 2026-10-14: "if i am a random business ... i connect my
+        // facebook account i should see my financials".
+        $t = $this->provisionTenant('A1-Group');
+
+        $url = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/social/facebook/start')
+            ->assertOk()->json('data.authorization_url');
+        $this->assertStringContainsString('ads_read', $url);
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+
+            return match (true) {
+                str_contains($url, 'oauth/access_token') => Http::response(['access_token' => 'a-user-token', 'expires_in' => 5184000]),
+                str_contains($url, '/me/adaccounts') => Http::response(['data' => [['id' => 'act_777', 'name' => 'A-1 Chimney Ads', 'currency' => 'USD']]]),
+                str_contains($url, '/me/accounts') => Http::response(['data' => [['id' => '111', 'name' => 'A-1 Chimney', 'access_token' => 'page-token-111']]]),
+                str_contains($url, '/me?') || str_ends_with(parse_url($url, PHP_URL_PATH) ?: '', '/me') => Http::response(['id' => 'meta-user-abc']),
+                str_contains($url, '/subscribed_apps') => Http::response(['success' => true]),
+                default => Http::response(['error' => 'unexpected'], 500),
+            };
+        });
+
+        $this->get('/api/v1/social/facebook/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+        $rows = $this->inTenant($t['org'], fn () => SocialConnection::query()->orderBy('provider')->get(['provider', 'remote_id'])
+            ->map(fn ($c) => $c->provider.':'.$c->remote_id)->all());
+
+        $this->assertSame(['facebook_ads:act_777', 'facebook_page:111'], $rows);
+    }
+
     public function test_pages_held_through_a_business_portfolio_are_offered_once_each(): void
     {
         $t = $this->provisionTenant('A1-Group');
