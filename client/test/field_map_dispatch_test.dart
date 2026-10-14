@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -169,6 +170,22 @@ void main() {
       LatLng(40.7, -120.95),
       LatLng(43.252, -126.453),
     ]);
+  });
+
+  // The test above runs on the VM, where `~` is 64-bit signed and correct. On
+  // the web `~` is unsigned 32-bit and turned every western longitude into
+  // nonsense. No gate here runs a browser, so pin the source instead.
+  test('the polyline decoder uses no ~ (wrong on the web)', () {
+    final source = File(
+      'lib/screens/field/map_overlays.dart',
+    ).readAsStringSync();
+    final start = source.indexOf('List<LatLng> decodePolyline(');
+    final body = source
+        .substring(start, source.indexOf('\n}', start))
+        .split('\n')
+        .map((line) => line.split('//').first)
+        .join('\n');
+    expect(body, isNot(contains('~')));
   });
 }
 

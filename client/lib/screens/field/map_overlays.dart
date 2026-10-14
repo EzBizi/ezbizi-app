@@ -1163,7 +1163,9 @@ List<LatLng> decodePolyline(String encoded) {
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20 && index < encoded.length);
-      final delta = (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+      // Not `~(result >> 1)`: on the web `~` is unsigned 32-bit, so every
+      // negative delta (any western longitude) became a huge positive one.
+      final delta = (result & 1) != 0 ? -(result >> 1) - 1 : result >> 1;
       if (axis == 0) {
         lat += delta;
       } else {
