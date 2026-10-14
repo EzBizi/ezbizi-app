@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0436',
+      date: '14 Oct 2026',
+      items: [
+        'Reports: Scoring now counts each person\'s conversion rate (the same one Performance shows) and the AI\'s overall call score alongside the seven call checks, each weighted. The default weights are conversion 50%, AI call score 15% and 5% for each check.',
+        'Reports: a Weights button on Scoring sets how much each part counts, with a slider per part. Save waits until they add up to 100, and Back to the defaults restores them. It needs the Set Scoring\'s weights permission, which Administrators have.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0435',
       date: '14 Oct 2026',
       items: [
