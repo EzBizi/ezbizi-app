@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0433',
+      date: '14 Oct 2026',
+      items: [
+        'Scheduling: every number Routing, Re-Scheduling and the suggestions use is now a setting in Scheduling › Settings › Suggestions: jobs per technician per day and per window, the routing distances, which time windows count as nearby, and Re-Scheduling\'s limits. Routes also carry Google\'s real road path, miles and drive time, so the app can draw them on its own map.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0432',
       date: '14 Oct 2026',
       items: [
