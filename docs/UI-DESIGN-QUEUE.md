@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 95 · Task Board › People on every board, and everyone's boards — **sent 2026-10-14 13:08, awaiting Jose until 13:18** (`docs/previews/task-board-people-everywhere-layouts.html`)
+### 95 · Task Board › People on every board, and everyone's boards — **sent 2026-10-14 13:08 — Jose: "as u recommend" — picker 1, desktop 4, phone 7, Roles 10 — building** (`docs/previews/task-board-people-everywhere-layouts.html`)
 
 Jose 2026-10-14 via the desk: he can't find People (it showed on custom boards only); he wants to add people to any board he
 manages, have Administrators see everyone's boards in the picker, and set in Roles who may. Picker **1** (recommended): grouped
