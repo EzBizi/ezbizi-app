@@ -441,6 +441,50 @@ const Map<String, Tour> phoneTours = {
             "Asks first, then changes the customer's appointment in Workiz. "
             'Confirm with the client before you move it.',
       ),
+      TourStep(
+        anchor: 'rescheduling-day-plan',
+        title: 'That day',
+        body:
+            'The suggested day window by window: spots taken, the jobs in '
+            'each with their type and distance, and where this one would go. '
+            'Repairs and redos are tagged.',
+      ),
+    ],
+  ),
+  'scheduling/Routing': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'routing-area',
+        title: 'Area and day',
+        body:
+            'Which service area and which day to plan. The arrows step a day.',
+      ),
+      TourStep(
+        anchor: 'routing-map',
+        title: 'The routes',
+        body:
+            'A colour for each technician, through their stops in order. A '
+            'hollow stop is placed at its zip code, not its address.',
+      ),
+      TourStep(
+        anchor: 'routing-routes',
+        title: 'Each technician',
+        body:
+            'Stops, miles and Google Maps for the real directions. Click a '
+            'route for its stops. One marked Needs another technician is past '
+            "the area's capacity.",
+      ),
+      TourStep(
+        anchor: 'routing-unplaced',
+        title: 'No location',
+        body: 'Jobs Workiz has no usable address for, on no route.',
+      ),
+      TourStep(
+        anchor: 'routing-empty',
+        title: 'Nothing booked',
+        body: 'No jobs in this area on this day.',
+      ),
     ],
   ),
   'scheduling/Locations': Tour(

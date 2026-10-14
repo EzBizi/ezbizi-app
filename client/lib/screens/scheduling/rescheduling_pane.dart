@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/status_pill.dart';
 import 'availability_suggestion.dart';
 
 /// Scheduling › Re-Scheduling (Jose, 2026-10-13: "a separate tab in
@@ -116,6 +117,18 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     if (start is String && start.isNotEmpty) JobDotCard.clock(start),
     if (end is String && end.isNotEmpty) JobDotCard.clock(end),
   ].join('–');
+
+  /// A repair or a redo, tagged so the dispatcher sees what is being moved
+  /// (Jose, 2026-10-14: "should be included, but tag them appropriately, so
+  /// the dispatcher can make an informed decision"). `service` is Workiz's
+  /// job type.
+  static Widget? _tag(Object? service) {
+    final type = service is String ? service : '';
+    final lower = type.toLowerCase();
+    if (lower.contains('redo')) return StatusPill(type, tone: Tone.bad);
+    if (lower.contains('repair')) return StatusPill(type, tone: Tone.caution);
+    return null;
+  }
 
   static String _miles(num m) =>
       '${m == m.roundToDouble() ? m.toInt() : m.toStringAsFixed(1)} mi';
@@ -408,16 +421,26 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
             children: [
               Expanded(
                 flex: 13,
-                child: two(
-                  [
-                    if (job['number'] != null) '#${job['number']}',
-                    if (job['service'] is String) job['service'],
-                  ].join(' · '),
-                  [
-                    if (_map(job['customer'])['name'] is String)
-                      _map(job['customer'])['name'],
-                    row['area_name'] ?? '',
-                  ].join(' · '),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: two(
+                        [
+                          if (job['number'] != null) '#${job['number']}',
+                          if (job['service'] is String) job['service'],
+                        ].join(' · '),
+                        [
+                          if (_map(job['customer'])['name'] is String)
+                            _map(job['customer'])['name'],
+                          row['area_name'] ?? '',
+                        ].join(' · '),
+                      ),
+                    ),
+                    if (_tag(job['service']) case final tag?) ...[
+                      const SizedBox(width: 6),
+                      tag,
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(width: 10),
@@ -498,6 +521,10 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                       style: theme.textTheme.titleSmall,
                     ),
                   ),
+                  if (_tag(job['service']) case final tag?) ...[
+                    tag,
+                    const SizedBox(width: 6),
+                  ],
                   Text(
                     _saves(row),
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -524,6 +551,140 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
           ),
         ),
       ),
+    );
+  }
+
+  /// The suggested day as its windows: each one's spots taken of its
+  /// capacity, the jobs already in it with their type and distance, and this
+  /// job, dashed, in the window it would take (Jose, 2026-10-14: "showing the
+  /// type of jobs set for that day and how the rescheduled one would fit").
+  Widget _dayPlan(ThemeData theme, Map<String, dynamic> row) {
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final job = _map(row['job']);
+    final s = _map(row['suggested']);
+    final windows = [
+      if (s['day'] case {'windows': final List days})
+        for (final w in days)
+          if (w is Map) w.cast<String, dynamic>(),
+    ];
+    if (windows.isEmpty) return const SizedBox.shrink();
+    final jobs = [
+      for (final j in (s['jobs'] as List? ?? const []))
+        if (j is Map) j.cast<String, dynamic>(),
+    ];
+    final at = (s['window_index'] as num?)?.toInt();
+    final booked = jobs.length;
+    final left = windows.fold<int>(
+      0,
+      (n, w) => n + ((w['remaining'] as num?)?.toInt() ?? 0),
+    );
+    final ok = ToneColours.of(context, Tone.ok);
+
+    Widget line(Map<String, dynamic> j) => Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              [
+                if (j['number'] != null) '#${j['number']}',
+                if (j['service'] is String) j['service'],
+                if (j['miles'] is num) _miles(j['miles'] as num),
+              ].join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          ?_tag(j['service']),
+        ],
+      ),
+    );
+
+    Widget window(int i, Map<String, dynamic> w) {
+      final here = i == at;
+      final taken = (w['taken'] as num?)?.toInt() ?? 0;
+      final capacity = (w['capacity'] as num?)?.toInt() ?? 0;
+      return Container(
+        key: ValueKey('rescheduling-window-$i'),
+        width: 210,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: here ? ok.fill : scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: here ? Border.all(color: ok.ink, width: 2) : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${_span(w['start_time'], w['end_time'])} · '
+              '$taken of $capacity taken',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            for (final j in jobs)
+              if ((j['window'] as num?)?.toInt() == i) line(j),
+            if (here)
+              Container(
+                key: const ValueKey('rescheduling-fits-here'),
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: ok.ink, width: 1.5),
+                ),
+                child: Text(
+                  '${job['number'] != null ? '#${job['number']}' : 'This job'}'
+                  ' would go here',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: ok.ink,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    final untimed = [
+      for (final j in jobs)
+        if (j['window'] == null) j,
+    ];
+
+    return Column(
+      key: const ValueKey('rescheduling-day-plan'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '${_day(s['date'])} in ${row['area_name'] ?? 'this area'} · '
+          '$booked ${booked == 1 ? 'job' : 'jobs'} booked · '
+          '$left ${left == 1 ? 'spot' : 'spots'} left',
+          style: theme.textTheme.titleSmall,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [for (final (i, w) in windows.indexed) window(i, w)],
+        ),
+        if (untimed.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('No set time', style: muted),
+          for (final j in untimed) line(j),
+        ],
+      ],
     );
   }
 
@@ -677,6 +838,8 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                           ],
                         ),
                       ),
+                const SizedBox(height: 14),
+                _dayPlan(theme, row),
                 if (_moveError != null) ...[
                   const SizedBox(height: 8),
                   Text(
