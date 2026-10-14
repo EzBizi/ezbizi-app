@@ -728,7 +728,8 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   'ai_assistance': Tour(
-    version: 1,
+    // 2: the AI tab as a chat (UI queue 91).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-ai_assistance-tabs',
@@ -737,18 +738,32 @@ const Map<String, Tour> tabTours = {
       ),
       TourStep(
         anchor: 'tour-ai_assistance-ask',
+        since: 2,
         title: 'Ask',
-        body: 'A question in your own words, or a city, state or branch code.',
+        body:
+            'Type a question at the foot, as in a chat: a code, a price, how '
+            'we do something, or a city, state or branch code.',
       ),
       TourStep(
-        anchor: 'assistant-answer',
-        title: 'From the Library',
-        body: 'The Library entry that answers it.',
+        anchor: 'assistant-hello',
+        since: 2,
+        title: 'Start here',
+        body: "Your Library's topics, each a first question to ask.",
       ),
       TourStep(
         anchor: 'assistant-ai-answer',
         title: "AI's answer",
-        body: 'AI reads the Library and answers in its own words.',
+        body:
+            'AI reads your Library and answers in its own words, above the '
+            'ask bar, newest last.',
+      ),
+      TourStep(
+        anchor: 'assistant-answer',
+        since: 2,
+        title: 'From your Library',
+        body:
+            'The Library entries behind the answer. Click one to read it '
+            'whole.',
       ),
     ],
   ),

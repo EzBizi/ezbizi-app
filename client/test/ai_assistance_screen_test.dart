@@ -11,52 +11,139 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
-  testWidgets('the AI tab shows the answers the server sends, without markup', (
-    tester,
-  ) async {
+  /// UI queue 91 (Jose, 2026-10-14: "The AI tab should just be the ask bar
+  /// at the bottom, sort of like here where i can ask you stuff and the reply
+  /// goes on top"): a conversation, the topics gone to Library.
+  testWidgets('the AI tab is a conversation: the ask bar at the foot, the '
+      "Library's topics as first questions", (tester) async {
     await _pump(tester, grants: ['ai_assistance.ai.view']);
 
-    expect(find.text('A1 Chimney Bot'), findsOneWidget);
     // Only the tab this person was granted.
     expect(find.text('Library'), findsNothing);
+    expect(find.byKey(const ValueKey('assistant-hello')), findsOneWidget);
+    expect(find.byKey(const Key('assistant-ask')), findsOneWidget);
+    // The topics tree is not here any more.
+    expect(find.byKey(const Key('topic-NFPA 211')), findsNothing);
 
-    await tester.tap(find.text('NFPA 211'));
+    await tester.tap(find.byKey(const ValueKey('assistant-starter-NFPA 211')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Flue sizing'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Flue sizing for a fireplace'), findsOneWidget);
+    expect(find.byKey(const ValueKey('assistant-turn-0')), findsOneWidget);
   });
 
-  testWidgets('Ask shows what the server found', (tester) async {
-    await _pump(tester, grants: ['ai_assistance.ai.view']);
-
-    await tester.enterText(find.byType(TextField), 'flue size');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-
-    // A single answer arrives open, so it reads without a second tap.
-    expect(find.text('Round flue: 1/12'), findsOneWidget);
-    expect(find.text('A1 Chimney - CHI'), findsOneWidget);
-  });
-
-  /// Jose, 2026-10-12: the AI tab answers in its own words, marked as AI.
-  testWidgets('Ask also shows an answer by AI under the matches', (
+  testWidgets("a question and its answer stack above the bar: AI's words, "
+      'then the Library entries behind them, one tap from reading', (
     tester,
   ) async {
     await _pump(tester, grants: ['ai_assistance.ai.view']);
 
-    await tester.enterText(find.byType(TextField), 'flue size');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.enterText(find.byKey(const Key('assistant-ask')), 'flue size');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
     await tester.pumpAndSettle();
 
+    expect(find.text('flue size'), findsOneWidget);
     expect(find.byKey(const Key('assistant-ai-answer')), findsOneWidget);
     expect(find.text('Answer by AI'), findsOneWidget);
     expect(
       find.text('Size the round flue at 1/12 of the opening.'),
       findsOneWidget,
     );
+    // The bar is empty again, ready for the next question.
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('assistant-ask')))
+          .controller!
+          .text,
+      '',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('assistant-source-e-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SidePanel), findsOneWidget);
+    expect(find.text('Round flue: 1/12'), findsOneWidget);
+    expect(find.text('Edit in Library'), findsNothing);
   });
+
+  testWidgets('a second question goes under the first', (tester) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    for (final q in ['flue size', 'chi']) {
+      await tester.enterText(find.byKey(const Key('assistant-ask')), q);
+      await tester.tap(find.byKey(const Key('assistant-send')));
+      await tester.pumpAndSettle();
+    }
+    final first = tester.getTopLeft(
+      find.byKey(const ValueKey('assistant-turn-0')),
+    );
+    final second = tester.getTopLeft(
+      find.byKey(const ValueKey('assistant-turn-1')),
+    );
+    expect(second.dy, greaterThan(first.dy));
+  });
+
+  testWidgets('a branch is a card with Call and Map under its answer', (
+    tester,
+  ) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    await tester.enterText(find.byKey(const Key('assistant-ask')), 'chi');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('branch-A1 Chimney - CHI'));
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.text('Serves Chicago, Illinois'),
+      ),
+      findsOneWidget,
+    );
+    for (final action in ['Call', 'Map', 'Copy']) {
+      expect(
+        find.descendant(of: card, matching: find.text(action)),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets("Edit in Library opens the Library's own panel", (tester) async {
+    await _pump(
+      tester,
+      grants: ['ai_assistance.ai.view', 'ai_assistance.manage'],
+    );
+
+    await tester.enterText(find.byKey(const Key('assistant-ask')), 'flue size');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('assistant-source-e-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit in Library'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SidePanel), findsOneWidget);
+  });
+
+  testWidgets(
+    'on a phone the conversation fills the tab, the bar at its foot',
+    (tester) async {
+      await _pump(
+        tester,
+        grants: ['ai_assistance.ai.view'],
+        size: const Size(390, 900),
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('assistant-ask')),
+        'flue size',
+      );
+      await tester.tap(find.byKey(const Key('assistant-send')));
+      await tester.pumpAndSettle();
+      final bar = tester.getTopLeft(find.byKey(const Key('assistant-ask')));
+      final answer = tester.getTopLeft(
+        find.byKey(const Key('assistant-ai-answer')),
+      );
+      expect(bar.dy, greaterThan(answer.dy));
+    },
+  );
 
   testWidgets('Library without manage has no Add answer', (tester) async {
     await _pump(tester, grants: ['ai_assistance.library.view']);
@@ -110,103 +197,17 @@ void main() {
 
   // ── the layout Jose picked (UI queue 40: 1 and 4) ─────────────────
 
-  testWidgets('topics on the left open an answer in the middle, with where '
-      'it came from, its footnote and the rest of its section', (tester) async {
-    await _pump(tester, grants: ['ai_assistance.ai.view']);
+  /// The topics live in Library now (UI queue 91, 7): anybody reads an
+  /// answer there; an editor edits it.
+  testWidgets('Library: anybody reads an answer, and only an editor edits', (
+    tester,
+  ) async {
+    await _pump(tester, grants: ['ai_assistance.library.view']);
 
-    // Two answers: the section unfolds rather than opening one.
-    await tester.tap(find.byKey(const Key('topic-About Harbor')));
+    await tester.tap(find.text('Lenders'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('assistant-answer')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('answer-e-3')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('From the Library · About Harbor › Who we are'),
-      findsOneWidget,
-    );
-    expect(find.text('We sweep every chimney.'), findsOneWidget);
-    expect(find.text('Our own words.'), findsOneWidget);
-
-    // The rest of the section, one tap away.
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Our warranty'));
-    await tester.pumpAndSettle();
-    expect(find.text('Two years.'), findsOneWidget);
-    expect(find.text('Edit in Library'), findsNothing);
-  });
-
-  testWidgets('a branch is a card with Call and Map, under the question '
-      'asked today', (tester) async {
-    await _pump(tester, grants: ['ai_assistance.ai.view']);
-
-    await tester.enterText(find.byType(TextField), 'chi');
-    await tester.tap(find.widgetWithText(FilledButton, 'Ask'));
-    await tester.pumpAndSettle();
-
-    final card = find.byKey(const Key('branch-A1 Chimney - CHI'));
-    expect(
-      find.descendant(of: card, matching: find.text('Serves Chicago, Illinois')),
-      findsOneWidget,
-    );
-    for (final action in ['Call', 'Map', 'Copy']) {
-      expect(
-        find.descendant(of: card, matching: find.text(action)),
-        findsOneWidget,
-      );
-    }
-    expect(
-      find.text('1 answer for “chi”, opened. 1 branch matched.'),
-      findsOneWidget,
-    );
-
-    // Asked today: tapping it asks again.
-    expect(find.byKey(const Key('asked-chi')), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '');
-    await tester.tap(find.byKey(const Key('asked-chi')));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller!.text,
-      'chi',
-    );
-  });
-
-  testWidgets("Edit in Library opens the Library's own panel", (tester) async {
-    await _pump(
-      tester,
-      grants: ['ai_assistance.ai.view', 'ai_assistance.manage'],
-    );
-
-    await tester.tap(find.byKey(const Key('topic-NFPA 211')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Edit in Library'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(SidePanel), findsOneWidget);
-  });
-
-  testWidgets('on a phone each step is a page with a way back', (tester) async {
-    await _pump(
-      tester,
-      grants: ['ai_assistance.ai.view'],
-      size: const Size(390, 900),
-    );
-
-    expect(find.text('2 topics · Who we are, Our warranty…'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('topic-About Harbor')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('topic-NFPA 211')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('answer-e-4')));
-    await tester.pumpAndSettle();
-    expect(find.text('Two years.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('assistant-back')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('assistant-back')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('topic-NFPA 211')), findsOneWidget);
+    expect(find.byKey(const ValueKey('library-read-e-2')), findsOneWidget);
+    expect(find.text('Acorn first.'), findsOneWidget);
   });
 
   test('WhatsApp markers go, a link keeps its underscores', () {
