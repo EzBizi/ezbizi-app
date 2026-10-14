@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 92 · Re-Scheduling › open spots before and after the move — **sent 2026-10-14 10:40, awaiting Jose until 10:50** (`docs/previews/rescheduling-spots-layouts.html`)
+### 92 · Re-Scheduling › open spots before and after the move — **sent 2026-10-14 10:40; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** (session/uiux-resched-spots, with Scheduling 528f5824) (`docs/previews/rescheduling-spots-layouts.html`)
 
 Jose 2026-10-14 via the desk, verbatim: *"perhaps on the reschedule screen on that blank spot on the right bottom, we can
 include the scheduling before and after for the area too, as in the amount of spots before and after"*. Desktop **1**
