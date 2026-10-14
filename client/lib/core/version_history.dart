@@ -18,6 +18,7 @@ class VersionHistory {
       date: '14 Oct 2026',
       items: [
         'Scheduling: in the web app, Routing draws each road route along the right roads again; it had gone off the map.',
+        'Field: in the web app, the Map’s drive line to a job follows the roads again instead of crossing the globe.',
       ],
     ),
     VersionRelease(
