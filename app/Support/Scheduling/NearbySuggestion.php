@@ -107,7 +107,7 @@ final class NearbySuggestion
      * What a suggestion weighs, read once so Reschedules can weigh every job
      * of an area against it without a query per job.
      *
-     * @return array{radius: float, span: int, days: Collection, jobs: Collection}
+     * @return array{radius: float, span: int, days: Collection, all_days: Collection, jobs: Collection}
      */
     public function load(ServiceArea $area, CarbonImmutable $from): array
     {
@@ -118,9 +118,12 @@ final class NearbySuggestion
         return [
             'radius' => $radius,
             'span' => $span,
-            'days' => collect($this->openings->days($area, $from, $span))
+            'days' => ($all = collect($this->openings->days($area, $from, $span)))
                 ->filter(fn (array $d) => collect($d['windows'])->contains(fn ($w) => $w['remaining'] > 0))
                 ->values(),
+            // Every day, full ones too, by date: Re-Scheduling's "before and
+            // after" for the day a job leaves.
+            'all_days' => $all->keyBy('date'),
             'jobs' => $this->located($this->openings->jobsBetween($area, $from, $from->addDays($span)), $area->organization_id)
                 ->filter(fn (object $j) => is_numeric($j->latitude ?? null) && is_numeric($j->longitude ?? null)
                     && self::inUs((float) $j->latitude, (float) $j->longitude))
