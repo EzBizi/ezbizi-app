@@ -259,6 +259,7 @@ class ActionRunner
                 'completed' => 'Completed',
                 'lost' => 'Lost (declined, or a service we do not offer)',
                 'job_applicant' => 'Job applicant',
+                'follow_up' => 'Follow up',
             ],
         ],
         // Names, not keys: since custom statuses the event carries the name,

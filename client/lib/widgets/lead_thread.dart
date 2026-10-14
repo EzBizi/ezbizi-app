@@ -405,6 +405,7 @@ class _LeadThreadState extends State<LeadThread> {
       'not_a_lead' => 'not_a_lead',
       'completed' => 'completed',
       'lost' => 'lost',
+      'follow_up' => 'follow_up',
       _ => 'new',
     };
 
@@ -421,6 +422,7 @@ class _LeadThreadState extends State<LeadThread> {
           SearchOption(value: 'archived', label: 'Archive'),
           SearchOption(value: 'not_a_lead', label: 'Not a lead'),
           SearchOption(value: 'new', label: 'Lead'),
+          SearchOption(value: 'follow_up', label: 'Follow Up'),
           SearchOption(value: 'completed', label: 'Completed'),
           SearchOption(value: 'lost', label: 'Lost'),
         ],
@@ -463,6 +465,12 @@ class _LeadThreadState extends State<LeadThread> {
           value: 'new',
           label: label('Lead', 'status-lead'),
         ),
+        // Somebody reached out and is waiting, or will try again (Jose,
+        // 2026-10-14). Clears the red mark; the customer writing reopens it.
+        ButtonSegment(
+          value: 'follow_up',
+          label: label('Follow Up', 'status-follow-up'),
+        ),
         // Nobody owes the customer an answer - "Thank you" was their last
         // word. Clears the red warning (Jose, 2026-10-01); writing again
         // reopens the lead.
@@ -490,7 +498,8 @@ class _LeadThreadState extends State<LeadThread> {
   /// they go under the lines instead. 880 since the moves became three
   /// (Archive, Not a lead, Lead) and a gap before Call and Book: at 640 the
   /// name line overflowed by 11px in a 740-wide thread.
-  static const double _besideNameFrom = 880;
+  // 1300 since Follow Up made the moves six (2026-10-14).
+  static const double _besideNameFrom = 1300;
 
   /// Desktop: the moves, then Book, the one that matters most, last. On a
   /// phone Book is full width and the moves share a row under it.
@@ -2667,6 +2676,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'completed' => 'Completed',
     'lost' => 'Lost',
     'job_applicant' => 'Job applicant',
+    'follow_up' => 'Follow Up',
     _ => 'New',
   },
   key: key,
@@ -2677,6 +2687,7 @@ StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
     'completed' => Tone.ok,
     'lost' => Tone.neutral,
     'job_applicant' => Tone.review,
+    'follow_up' => Tone.caution,
     _ => Tone.info,
   },
 );

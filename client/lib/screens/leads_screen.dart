@@ -300,6 +300,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     'completed': 'Completed',
     'lost': 'Lost',
     'job_applicant': 'Job applicant',
+    'follow_up': 'Follow up',
   };
 
   /// How often the list re-reads itself while somebody is looking at it.
@@ -1832,7 +1833,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 // things and one must not be dressed as the other.
                                 // Not on a Completed lead: nobody owes them an
                                 // answer, whoever spoke last (Jose, 2026-10-01).
-                                if (lead['can_reply'] == true &&
+                                // A form has no reply box, but its overdue
+                                // mark means a call back is owed (Jose, 2026-10-14).
+                                if ((lead['can_reply'] == true ||
+                                        lead['reply_overdue'] == true) &&
                                     lead['status'] != 'completed') ...[
                                   _Badge(
                                     mine ? 'Replied' : 'Awaiting reply',

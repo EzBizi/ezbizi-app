@@ -338,6 +338,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public const STATUS_JOB_APPLICANT = 'job_applicant';
 
+    /**
+     * Somebody has reached out and is waiting to hear back, or will call the
+     * customer again (Jose, 2026-10-14: "we should have a new tag called
+     * Follow Up"). Clears the red mark; the customer writing again reopens it.
+     */
+    public const STATUS_FOLLOW_UP = 'follow_up';
+
     /** @var string[] */
     public const STATUSES = [
         self::STATUS_NEW,
@@ -347,6 +354,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::STATUS_COMPLETED,
         self::STATUS_LOST,
         self::STATUS_JOB_APPLICANT,
+        self::STATUS_FOLLOW_UP,
     ];
 
     public static function retention(): RetentionPolicy
@@ -536,11 +544,23 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function replyOverdue(bool $canReply): bool
     {
-        return $canReply
+        return ($canReply || $this->awaitsCallback())
             && $this->status === self::STATUS_NEW
             && $this->last_contact_from === LeadConversation::FROM_CONSUMER
             && $this->last_contact_at !== null
             && $this->last_contact_at->lte(now()->subMinutes(self::REPLY_OVERDUE_AFTER_MINUTES));
+    }
+
+    /**
+     * A website form has no reply box, but the person who filled it in is
+     * waiting for a call back (Jose, 2026-10-14: "forms should turn red as
+     * well"). A note written since the form says somebody dealt with it.
+     */
+    public function awaitsCallback(): bool
+    {
+        return $this->source === self::SOURCE_WEBSITE_FORM
+            && ($this->note_updated_at === null || $this->last_contact_at === null
+                || $this->note_updated_at->lt($this->last_contact_at));
     }
 
     /** A Local Services call lead, and a text lead - A1 Leads' "LS Call" / "LS Text". */
