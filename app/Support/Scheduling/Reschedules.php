@@ -31,8 +31,8 @@ final class Reschedules
     /** Jobs this soon are not moved: the customer has planned for them. */
     public const SETTLED_DAYS = 2;
 
-    /** At most this many days earlier or later. */
-    public const MAX_SHIFT_DAYS = 7;
+    /** At most this many days earlier or later (Grok's second review: 7 still pulled customers 4-6 days). */
+    public const MAX_SHIFT_DAYS = 3;
 
     /**
      * The nearest job after the move is at most this far. (No "half of today"
@@ -41,10 +41,36 @@ final class Reschedules
      */
     public const MAX_AFTER_MILES = 10.0;
 
-    /** The window is the nearby job's own or the one beside it. */
+    /**
+     * Only jobs in the offered window, or the one beside it, count as nearby
+     * (Grok's second review, 2026-10-14: the day's 8:00 neighbour was lending
+     * a 14:00 slot its 0.4 miles, and a job in no window was taken as beside
+     * every window).
+     */
     public const MAX_WINDOW_GAP = 1;
 
     public function __construct(private readonly NearbySuggestion $nearby) {}
+
+    /**
+     * A candidate re-scored on the jobs in its own window and the ones beside
+     * it; the day's other jobs stay in `jobs` for the screen to draw.
+     *
+     * @param  array<string, mixed>  $c
+     * @return array<string, mixed>
+     */
+    private function windowLocal(array $c): array
+    {
+        $local = collect($c['jobs'])->filter(fn (array $j) => $j['window'] !== null
+            && abs($j['window'] - $c['window_index']) <= self::MAX_WINDOW_GAP);
+        $nearby = $local->where('nearby', true);
+
+        return [
+            'nearby' => $nearby->count(),
+            'nearest_miles' => $local->min('miles'),
+            'gap' => $nearby->map(fn (array $j) => abs($j['window'] - $c['window_index']))->min() ?? 99,
+            'technicians' => $nearby->pluck('technicians')->flatten()->unique()->values()->all(),
+        ] + $c;
+    }
 
     /** @return array<int, array<string, mixed>> */
     public function for(ServiceArea $area, CarbonImmutable $from): array
@@ -68,12 +94,12 @@ final class Reschedules
                 }
 
                 $now = $today->min('miles');
-                $best = NearbySuggestion::best(array_filter(
+                $best = NearbySuggestion::best(array_filter(array_map(
+                    [$this, 'windowLocal'],
                     $this->nearby->candidates($look['days']->reject(fn (array $d) => $d['date'] === $date), $others, $at, $radius),
-                    fn (array $c) => $c['gap'] <= self::MAX_WINDOW_GAP
-                        && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= self::MAX_SHIFT_DAYS
-                        && $c['nearest_miles'] <= self::MAX_AFTER_MILES,
-                ));
+                ), fn (array $c) => $c['nearby'] > 0
+                    && abs(CarbonImmutable::parse($c['date'])->diffInDays(CarbonImmutable::parse($date))) <= self::MAX_SHIFT_DAYS
+                    && $c['nearest_miles'] <= self::MAX_AFTER_MILES));
 
                 if ($best !== null) {
                     $out[] = [

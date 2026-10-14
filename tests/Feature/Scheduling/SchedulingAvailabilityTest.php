@@ -873,20 +873,26 @@ class SchedulingAvailabilityTest extends TestCase
         $this->located($tenant, '2026-10-02 08:00:00', 32.7870, -96.7990);
         $this->located($tenant, '2026-10-05 08:00:00', 32.7910, -96.7990);
         // Waco: the work on Wed Oct 7 fills 2-5, and 11-2 is full too, so the
-        // only open window is 7-11, two windows from it.
+        // only open window is 7-11, two windows from it; the lone job is Mon
+        // Oct 5.
         $this->located($tenant, '2026-10-07 15:00:00', 31.5500, -97.1500, '76701');
         $this->located($tenant, '2026-10-07 16:00:00', 31.5550, -97.1500, '76701');
         $this->located($tenant, '2026-10-07 12:00:00', 29.4200, -98.4900, '78205');
-        $this->located($tenant, '2026-10-14 08:00:00', 31.5520, -97.1510, '76701');
+        $this->located($tenant, '2026-10-05 08:00:00', 31.5520, -97.1510, '76701');
         // Tyler: the only neighbour is 12 miles off, even after the move.
         $this->located($tenant, '2026-10-12 08:00:00', 32.3500, -95.3000, '75701');
-        $this->located($tenant, '2026-10-05 09:00:00', 32.5240, -95.3000, '75701');
+        $this->located($tenant, '2026-10-14 09:00:00', 32.5240, -95.3000, '75701');
         // Austin: next door, but 9 days apart.
         $this->located($tenant, '2026-10-14 09:00:00', 30.2700, -97.7400, '78701');
         $this->located($tenant, '2026-10-05 10:00:00', 30.2730, -97.7400, '78701');
-        // Houston: next door, 5 days apart, same window. This one passes.
+        // Lubbock: the only neighbours on Mon Oct 12 have no time and one at
+        // 6 pm, in no window, so they are beside no window either.
+        $this->located($tenant, '2026-10-14 08:00:00', 33.5800, -101.8500, '79401');
+        $this->located($tenant, '2026-10-12 00:00:00', 33.5830, -101.8500, '79401');
+        $this->located($tenant, '2026-10-12 18:00:00', 33.5840, -101.8500, '79401');
+        // Houston: next door, 2 days apart, same window. This one passes.
         $this->located($tenant, '2026-10-12 09:00:00', 29.7600, -95.3700, '77002');
-        $this->located($tenant, '2026-10-07 08:00:00', 29.7630, -95.3700, '77002');
+        $this->located($tenant, '2026-10-14 08:00:00', 29.7630, -95.3700, '77002');
 
         $rows = $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/scheduling/reschedules')
@@ -974,19 +980,19 @@ class SchedulingAvailabilityTest extends TestCase
             ['weekday' => 3, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
             ['weekday' => 3, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
         ]])->assertOk();
-        // Mon Oct 5: A downtown, alone. Mon Oct 12: C two blocks from A, alone.
+        // Mon Oct 5: A downtown, alone, and D+E together in Denton, 38 miles
+        // off. That fills the day. Wed Oct 7: C two blocks from A, alone, and
+        // F near D+E, filling 7-11. D is already paired, so it is not offered
+        // F's day even though F sits next to it.
         $this->located($tenant, '2026-10-05 08:00:00', 32.7870, -96.7990);
-        $this->located($tenant, '2026-10-12 08:00:00', 32.7900, -96.8010);
-        // Wed Oct 7: B alone in Houston with nothing near it on any day, and
-        // D+E together in Denton, 38 miles off. That fills the day.
-        $this->located($tenant, '2026-10-07 07:00:00', 29.7600, -95.3700, '77002');
-        $this->located($tenant, '2026-10-07 08:00:00', 33.2150, -97.1330, '76201');
-        $this->located($tenant, '2026-10-07 11:00:00', 33.2160, -97.1340, '76201');
-        // Mon Oct 12: F near D+E, filling 7-11. D is already paired, so it is
-        // not offered F's day even though F sits next to it.
-        $this->located($tenant, '2026-10-12 07:30:00', 33.2170, -97.1330, '76201');
+        $this->located($tenant, '2026-10-05 09:00:00', 33.2150, -97.1330, '76201');
+        $this->located($tenant, '2026-10-05 11:00:00', 33.2160, -97.1340, '76201');
+        $this->located($tenant, '2026-10-07 08:00:00', 32.7900, -96.8010);
+        $this->located($tenant, '2026-10-07 07:30:00', 33.2170, -97.1330, '76201');
+        // Mon Oct 12: B alone in Houston with nothing near it on any day.
+        $this->located($tenant, '2026-10-12 07:00:00', 29.7600, -95.3700, '77002');
         // Two jobs Workiz could not place (-1,-1): "0 miles apart", not a pair.
-        $this->located($tenant, '2026-10-05 12:00:00', -1.0, -1.0, '75202');
+        $this->located($tenant, '2026-10-12 12:00:00', -1.0, -1.0, '75202');
         $this->located($tenant, '2026-10-14 08:00:00', -1.0, -1.0, '75202');
 
         $rows = $this->signedInAs($tenant['admin'])
@@ -996,15 +1002,14 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->assertCount(1, $rows, json_encode(array_map(fn ($r) => [$r['job']['date'], $r['job']['time']], $rows)));
         $this->assertSame('Dallas', $rows[0]['area_name']);
-        // A and C save the same; the earlier one moves beside the other, into
-        // Oct 12's only open window, and C stays put. F is alone too, but Oct 7
-        // is full.
+        // A moves beside C, into Oct 7's only open window. C has no day to
+        // go to (Oct 5 is full), nor has F.
         $this->assertSame(['2026-10-05', '08:00'], [$rows[0]['job']['date'], $rows[0]['job']['time']]);
-        $this->assertNull($rows[0]['current_nearest_miles'], 'Nothing else booked on Oct 5.');
+        $this->assertGreaterThan(30, $rows[0]['current_nearest_miles'], 'Only Denton, 38 miles off, on Oct 5.');
         // The id POST scheduling/board/jobs/{job}/reschedule takes.
         app(TenantContext::class)->set($tenant['org']);
         $this->assertSame('2026-10-05 08:00', substr((string) WorkizJob::findOrFail($rows[0]['job']['workiz_job_id'])->getRawOriginal('scheduled_for'), 0, 16));
-        $this->assertSame('2026-10-12', $rows[0]['suggested']['date']);
+        $this->assertSame('2026-10-07', $rows[0]['suggested']['date']);
         $this->assertSame('11:00', $rows[0]['suggested']['window']['start_time']);
         $this->assertSame(1, $rows[0]['suggested']['nearby']);
         $this->assertLessThan(1, $rows[0]['suggested']['nearest_miles']);
