@@ -190,8 +190,8 @@ final class WhatsAppStaffBot
         // yet says so rather than going quiet.
         $this->text($number, $to, mb_substr(match (true) {
             $answer === null => "\u{1F6A7} *{$item->title}*\n\u{23F3} Coming soon. Ask your manager in the meantime.\n\n\u{1F4CB} Text *MENU* to go back.",
-            $item->source === StaffBotItem::SOURCE_GUIDE => "\u{1F4D8} *{$item->title}*\n\n".$answer,
-            default => $answer,
+            $item->source === StaffBotItem::SOURCE_GUIDE => "\u{1F4D8} *{$item->title}*\n\n".self::look($answer),
+            default => self::look($answer),
         }, 0, AssistantEntry::MAX_BODY));
 
         // A guide's pictures follow the text, each its own message (Meta:
@@ -234,7 +234,7 @@ final class WhatsAppStaffBot
     private function answer(WhatsAppNumber $number, string $to, AssistantEntry $entry): void
     {
         // No link card: one would sit above the answer and push it off screen.
-        $this->text($number, $to, mb_substr($entry->body, 0, AssistantEntry::MAX_BODY), preview: false);
+        $this->text($number, $to, mb_substr(self::look($entry->body), 0, AssistantEntry::MAX_BODY), preview: false);
     }
 
     /** @param  Collection<int, AssistantEntry>  $entries */
@@ -259,7 +259,7 @@ final class WhatsAppStaffBot
                 'action' => [
                     'button' => 'Topics',
                     'sections' => [[
-                        'title' => mb_substr($section, 0, 24),
+                        'title' => mb_substr(self::cap($section), 0, 24),
                         // ponytail: WhatsApp shows 10 rows; an 11th answer in one
                         // section is reachable only in the app. The Library says so.
                         'rows' => $entries->take(self::MAX_ROWS)->map(fn (AssistantEntry $e) => $this->row(
@@ -285,7 +285,7 @@ final class WhatsAppStaffBot
          */
         $body = mb_substr($lead !== null
             ? $lead."\n\n\u{1F447} Choose an option below."
-            : $this->brain->welcome($organization), 0, 1024);
+            : self::look($this->brain->welcome($organization)), 0, 1024);
 
         // The sender's role menu when one names their role (UI queue 88);
         // otherwise one row per Library section. Room left for Find a location.
@@ -324,6 +324,55 @@ final class WhatsAppStaffBot
     }
 
     /**
+     * Jose, 2026-10-14: "Menu's use caps at the beginning of sentences and
+     * emojis instead of dots, visual storytelling is always better." Applied
+     * as the message goes out, so the Library keeps what people typed.
+     */
+    public static function look(string $text): string
+    {
+        $out = implode("\n", array_map(function (string $line) {
+            if (preg_match('/^(\s*)[•\-\*·]\s+(.*)$/u', $line, $m) === 1) {
+                return $m[1].self::emojiFor($m[2]).' '.self::cap($m[2]);
+            }
+
+            return self::cap($line);
+        }, explode("\n", $text)));
+
+        // A first line with no emoji of its own gets the one its words call for.
+        return trim($out) === '' || preg_match('/^\s*\*?[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B50}]/u', $out) === 1
+            ? $out : self::emojiFor((string) strtok($out, "\n")).' '.$out;
+    }
+
+    /** The first letter upper-cased; markup (*, _) before it is kept. */
+    public static function cap(string $text): string
+    {
+        return preg_replace_callback('/^([\s*_]*)(\p{Ll})/u', fn ($m) => $m[1].mb_strtoupper($m[2]), $text) ?? $text;
+    }
+
+    /** One emoji that tells the line's story at a glance, by its words. */
+    public static function emojiFor(string $text): string
+    {
+        // ponytail: keyword map; add a line when a new kind of topic shows the plain diamond.
+        $map = [
+            'inspect|scan|video' => "\u{1F50D}", 'level' => "\u{1F4CA}", 'flue|liner|draft' => "\u{1F32C}\u{FE0F}",
+            'crown|brick|mortar|bond|chimney' => "\u{1F9F1}", 'roof|attic|basement|crawl' => "\u{1F3E0}",
+            'financ|lender|price|pay|cost' => "\u{1F4B0}", 'nfpa|code|standard|law' => "\u{1F4DC}",
+            'csia|exam|training|guide|course|education' => "\u{1F393}", 'location|branch|address|area' => "\u{1F4CD}",
+            'phone|call' => "\u{1F4DE}", 'review|google' => "\u{2B50}", 'value|about|company|mission' => "\u{1F3E2}",
+            'schedul|job|appointment' => "\u{1F5D3}\u{FE0F}", 'safe|fire|carbon|smoke' => "\u{1F9EF}",
+            'tool|ladder|equipment' => "\u{1F9F0}", 'appliance|furnace|stove|insert' => "\u{1F525}",
+            'report|client|customer' => "\u{1F4DD}", 'topic' => "\u{1F4DA}",
+        ];
+        foreach ($map as $words => $emoji) {
+            if (preg_match('/'.$words.'/i', $text) === 1) {
+                return $emoji;
+            }
+        }
+
+        return "\u{1F539}";
+    }
+
+    /**
      * A list row, cut to WhatsApp's lengths. Meta refuses the WHOLE list for
      * one row over them, which a tech experiences as no reply at all.
      *
@@ -333,8 +382,8 @@ final class WhatsAppStaffBot
     {
         return array_filter([
             'id' => $id,
-            'title' => mb_substr($title, 0, AssistantEntry::MAX_TITLE),
-            'description' => mb_substr((string) $description, 0, AssistantEntry::MAX_DESCRIPTION),
+            'title' => mb_substr(self::emojiFor($title).' '.self::cap($title), 0, AssistantEntry::MAX_TITLE),
+            'description' => mb_substr(self::cap((string) $description), 0, AssistantEntry::MAX_DESCRIPTION),
         ], fn (string $v) => $v !== '');
     }
 

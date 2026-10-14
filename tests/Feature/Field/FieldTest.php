@@ -196,6 +196,31 @@ class FieldTest extends TestCase
         $this->assertCount(2, $this->events('field.stopped_too_long'));
     }
 
+    public function test_the_sweep_geocodes_a_job_two_weeks_out_ahead_of_time(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        Http::fake(['maps.googleapis.com/*' => Http::response([
+            'status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => 39.3, 'lng' => -76.6]]]],
+        ])]);
+        $customer = $this->inTenant($this->t['org'], function () {
+            $customer = Customer::factory()->create([
+                'owning_franchise_id' => $this->t['franchise']->id,
+                'address_line1' => '712 Pacific St', 'city' => 'Baltimore', 'state' => 'MD', 'postal_code' => '21211',
+            ]);
+            Job::factory()->create([
+                'franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id,
+                'scheduled_for' => '2026-10-07 10:00:00', 'duration_minutes' => 60,
+            ]);
+
+            return $customer;
+        });
+
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+
+        $this->assertSame(FieldGeocode::OK, $this->inTenant($this->t['org'], fn () => FieldGeocode::query()
+            ->where('address_hash', FieldGeocode::hash(FieldGeocode::addressOf($customer)))->value('status')));
+    }
+
     public function test_the_sweep_raises_lost_signal_once_while_the_person_should_be_reporting(): void
     {
         $this->mode('always');

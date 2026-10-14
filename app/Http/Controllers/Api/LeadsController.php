@@ -292,7 +292,11 @@ class LeadsController extends Controller
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
                     ->orWhere('leads.lead_type', 'MESSAGE'))
                 ->where(fn ($q) => $q->whereNotIn('leads.source', Lead::SOURCES_VIA_CONNECTION)
-                    ->orWhereNotNull('leads.connection_id'));
+                    ->orWhereNotNull('leads.connection_id'))
+                // A form: until a note says somebody called back (Lead::awaitsCallback).
+                ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_WEBSITE_FORM)
+                    ->orWhereNull('leads.note_updated_at')
+                    ->orWhereColumn('leads.note_updated_at', '<', 'leads.last_contact_at'));
         }
 
         // Asked the price or a day on a call, nothing booked (Jose, 2026-10-12,

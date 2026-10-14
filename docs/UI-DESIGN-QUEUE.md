@@ -2965,6 +2965,29 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 91 · AI Assistance › AI, as a chat — **sent 2026-10-14 09:32, awaiting Jose until 09:42** (`docs/previews/ai-assistance-chat-layouts.html`)
+
+Jose 2026-10-14 via Grok AI, verbatim: *"i think, the "AI" tab and that menu on the left aren't really meant to be together. The
+AI tab should just be the ask bar at the bottom , sort of like here where i can ask you stuff and the reply goes on top …
+figure it out."* Plus the WhatsApp look in the app's answers (capitals at sentence starts, emojis for bullets). Desktop **1**
+(recommended): one centred conversation, newest last, ask bar pinned at the foot, starter questions before the first; sources
+as chips, branches with Call/Map. **2**: sources in a right rail. **3**: Topics as a side panel. Phone **4** (recommended):
+the conversation with the bar above the keyboard; **5**: long answers folded; **6**: with Topics. **7** (recommended): the
+topics tree moves to Library; the welcome line to Staff bot. No server change (GET ai-assistance/ask + /answer).
+
+### 90 · Scheduling › Routing, and Re-Scheduling's job types — **sent 2026-10-14 09:18; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): Routing 1 and 4, Re-Scheduling 7 and 9 — building** (`docs/previews/scheduling-routing-layouts.html`)
+
+Jose 2026-10-14 via Scheduling, verbatim: *"1 technician is able to take a max of 6 jobs per day … a suggested route where it
+says like Technician 1 - Technician 2 (amount of technicians based on the availability) … a Routing Tab where it shows the
+recommended routes (actual routes being done on google maps when clicked)"*, and for Re-Scheduling *"[repairs and redos]
+should be included, but tag them appropriately … perhaps we can have the rescheduling clickable, showing the type of jobs
+set for that day and how the rescheduled one would fit"*. Routing desktop **1** (recommended): a map with one colour per
+route beside a card per technician (stops, miles, Open in Google Maps), extra routes amber "needs another technician", No
+location at the foot. **2**: a column per technician. **3**: one row per route, map below. Phone **4** (recommended): map,
+then route cards that open in the tab; **5**: one route at a time; **6**: list only. Re-Scheduling **7** (recommended):
+Chimney Repair / Redo tags, a row opening onto the suggested day's windows with the moved job dashed where it fits; **8**:
+the day as a timeline; phone **9**. Owners: Scheduling (server a95f30f6, the Routing tab); UI/UX builds the screens.
+
 ### 89 · Task Board · your own boards, who is on them, and Automate — **sent 2026-10-13 17:56; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** e7d82147 (session/uiux-taskboard-people, with Task Board 9ee0e915 + 21f93872): New board, People, ⚡ Automate (`docs/previews/task-board-members-automate-layouts.html`)
 
 Jose 2026-10-13, verbatim (inbox 0120): *"we also need to be able to assign people to certain boards and create boards,

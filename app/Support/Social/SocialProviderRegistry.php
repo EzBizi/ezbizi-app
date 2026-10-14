@@ -7,7 +7,13 @@ final class SocialProviderRegistry
     public function __construct(private readonly SocialOAuthDrivers $drivers) {}
 
     /** @return list<array{value: string, label: string, usable: bool, unusable_because: ?string, connects_by: string, start_path: string, permission: string}> */
-    public function catalogue(): array
+    /**
+     * @param  bool  $withDataSources  Integrations asks for every provider - a data
+     *                                 source with nothing connected (Facebook Ads)
+     *                                 had no card and so no Connect (2026-10-14).
+     *                                 The composer keeps the publishing list.
+     */
+    public function catalogue(bool $withDataSources = false): array
     {
         return array_map(function (SocialProvider $provider) {
             $why = $this->notReadyBecause($provider);
@@ -38,7 +44,7 @@ final class SocialProviderRegistry
                  */
                 'permission'       => $provider->connectPermission(),
             ];
-        }, SocialProvider::all());
+        }, $withDataSources ? SocialProvider::cases() : SocialProvider::all());
     }
 
     public function notReadyBecause(SocialProvider $provider): ?string

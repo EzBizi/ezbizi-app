@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0428',
+      date: '14 Oct 2026',
+      items: [
+        'Reports: Scoring opens on yesterday, has Today / Yesterday / 1 week / 1 month buttons, and shows each person\'s latest calls plus their best and worst, with scores and a search.',
+        'Sales: a new Sales tab tracks jobs that are done but pending approval, with stage, urgency, next follow-up and notes for each; Administrators see it, and other roles get it in Roles.',
+        'Leads: reconnecting Facebook or Instagram brings back that account\'s earlier enquiries.',
+        'WhatsApp: the staff bot\'s menus and answers start sentences with a capital and use topic emojis instead of dots.',
+        'Leads: website forms nobody has called back turn red like unanswered texts; new status Follow Up.',
+        'Field: job addresses are now located two weeks ahead, so maps and routes have exact pins sooner.',
+        'Integrations: every account type has its card, including Facebook Ads, so each can be connected from there.',
+        'Facebook: connecting your Facebook also brings your ad accounts, so ad spend shows in Reports.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0427',
       date: '13 Oct 2026',
       items: [

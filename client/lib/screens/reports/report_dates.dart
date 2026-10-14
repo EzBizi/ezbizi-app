@@ -67,11 +67,39 @@ class _ReportDatesState extends State<ReportDates> {
       ? SizedBox(height: MediaQuery.sizeOf(context).height * 0.7, child: panel)
       : panel;
 
+  /// One tap for the common ranges (Jose, 2026-10-14: "add easy options to
+  /// select 1 month - 1 week - yesterday - today, besides the custom").
+  Map<String, DateSpan> get _quick {
+    final t = widget.today;
+    DateTime back(int days) => DateTime(t.year, t.month, t.day - days);
+    return {
+      'Today': DateSpan.single(t),
+      'Yesterday': DateSpan.single(back(1)),
+      '1 week': DateSpan(back(6), t),
+      '1 month': DateSpan(back(29), t),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final q in _quick.entries)
+              ChoiceChip(
+                key: ValueKey('report-dates-${q.key}'),
+                label: Text(q.key),
+                selected: _span == q.value,
+                showCheckmark: false,
+                onSelected: (_) => _set(q.value),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
         DateRangeBar(
           span: _span,
           today: widget.today,

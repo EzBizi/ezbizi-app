@@ -18,6 +18,7 @@ import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/a1leads_gbp_screen.dart';
+import '../screens/sales_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
@@ -116,6 +117,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'a1leads_gbp': ModuleScreen(
     Icons.business_outlined,
     (api, session) => A1LeadsGbpScreen(api: api, session: session),
+  ),
+  // Sales pipeline: quoted jobs awaiting approval (2026-10-14).
+  'sales': ModuleScreen(
+    Icons.trending_up,
+    (api, session) => SalesScreen(api: api, session: session),
   ),
   // Reviews and Business Profile, moved out of Marketing 2026-09-25.
   'customer_experience': ModuleScreen(

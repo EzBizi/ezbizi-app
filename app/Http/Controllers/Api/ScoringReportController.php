@@ -25,6 +25,76 @@ class ScoringReportController extends Controller
     /** Fewer scored calls than this and a person is shown but not ranked. */
     public const MIN_CALLS = 3;
 
+    /**
+     * GET /api/v1/reports/scoring/calls?person=&from=&to=[&q=]
+     *
+     * One person's scored calls, newest first (Jose, 2026-10-14: "the latest
+     * 3 calls for each user, with a search bar ... and the individual score of
+     * said call"). Three without a search; up to 50 matching one, by the
+     * caller's number (digits) or by words said on the call.
+     */
+    public function calls(Request $request): JsonResponse
+    {
+        $q = $request->validate([
+            'person' => ['required', 'string', 'max:191'],
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $zone = (string) config('app.timezone');
+        $from = max(CarbonImmutable::parse($q['from'], $zone)->startOfDay(), LabelReportCalls::aiSince());
+        $to = CarbonImmutable::parse($q['to'], $zone)->endOfDay();
+        $search = trim((string) ($q['q'] ?? ''));
+        $digits = preg_replace('/\D/', '', $search);
+
+        $base = fn () => DB::table('call_report_scores as s')
+            ->join('call_report_transcripts as t', fn ($j) => $j->on('t.organization_id', '=', 's.organization_id')->on('t.call_id', '=', 's.call_id'))
+            ->where('s.organization_id', app(TenantContext::class)->idOrFail())
+            ->whereNotNull('s.score')
+            ->where('t.answered_by', $q['person'])
+            ->whereBetween('t.call_started_at', [$from->utc(), $to->utc()])
+            ->select(['t.call_id', 't.call_started_at', 't.caller_number', 't.recording_id', 's.score', 's.strength', 's.improve', 't.transcript_labelled', 't.transcript']);
+
+        if ($search !== '') {
+            $picked = ['match' => $base()
+                ->when(strlen($digits) >= 3,
+                    fn ($w) => $w->where('t.caller_number', 'like', '%'.$digits.'%'),
+                    fn ($w) => $w->where(fn ($x) => $x->where('t.transcript', 'like', '%'.$search.'%')->orWhere('t.transcript_labelled', 'like', '%'.$search.'%')))
+                ->orderByDesc('t.call_started_at')->limit(50)->get()];
+        } else {
+            // The latest three, and the best and worst in the dates to compare
+            // them with (Jose, 2026-10-14).
+            $picked = [
+                'latest' => $base()->orderByDesc('t.call_started_at')->limit(3)->get(),
+                'best' => $base()->orderByDesc('s.score')->orderByDesc('t.call_started_at')->limit(1)->get(),
+                'worst' => $base()->orderBy('s.score')->orderByDesc('t.call_started_at')->limit(1)->get(),
+            ];
+        }
+
+        // One row per call; a call that is both latest and best carries both tags.
+        $calls = [];
+        foreach ($picked as $tag => $rows) {
+            foreach ($rows as $r) {
+                $calls[$r->call_id] ??= [
+                    'call_id' => $r->call_id,
+                    'started_at' => CarbonImmutable::parse($r->call_started_at, 'UTC')->toIso8601String(),
+                    'caller_number' => $r->caller_number,
+                    'recording_id' => $r->recording_id,
+                    'score' => (int) $r->score,
+                    'strength' => $r->strength,
+                    'improve' => $r->improve,
+                    'transcript' => $r->transcript_labelled ?: $r->transcript,
+                    'tags' => [],
+                ];
+                $calls[$r->call_id]['tags'][] = $tag;
+            }
+        }
+        $calls = array_values($calls);
+
+        return response()->json(['data' => $calls]);
+    }
+
     public function show(Request $request): JsonResponse
     {
         $q = $request->validate([

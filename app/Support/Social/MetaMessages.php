@@ -216,6 +216,53 @@ final class MetaMessages
     }
 
     /**
+     * Re-adopt the hidden enquiries a reconnected Page or Instagram account
+     * brought before (Lead::scopeSourceStillConnected hides a lead whose
+     * connection is gone). The old row is deleted, so which account a lead
+     * came through is asked of Meta: a sender id is scoped to one Page / one
+     * Instagram account, so only this account's conversation with it answers;
+     * a lead-ad form id reads only with its own Page's token. Inside the tenant.
+     */
+    public function reclaim(SocialConnection $connection): int
+    {
+        $instagram = $connection->provider === SocialProvider::InstagramProfessional->value;
+        $token = $connection->credentials['access_token'] ?? null;
+
+        if (! is_string($token) || $token === '') {
+            return 0;
+        }
+
+        $orphans = Lead::query()
+            ->where('source', $instagram ? Lead::SOURCE_INSTAGRAM : Lead::SOURCE_FACEBOOK)
+            ->whereNull('connection_id')
+            ->get();
+
+        $adopted = 0;
+
+        foreach ($orphans as $lead) {
+            try {
+                $ours = match (true) {
+                    str_starts_with((string) $lead->remote_id, 'form:') => ! $instagram && Http::timeout(self::TIMEOUT)
+                        ->get(WhatsAppCloud::endpoint().'/'.substr((string) $lead->remote_id, 5), ['fields' => 'id', 'access_token' => $token])->successful(),
+                    $instagram => (array) (Http::timeout(self::TIMEOUT)
+                        ->get('https://graph.instagram.com/v21.0/me/conversations', ['user_id' => $lead->remote_id, 'platform' => 'instagram', 'access_token' => $token])->json('data')) !== [],
+                    default => (array) (Http::timeout(self::TIMEOUT)
+                        ->get(WhatsAppCloud::endpoint().'/'.$connection->remote_id.'/conversations', ['user_id' => $lead->remote_id, 'fields' => 'id', 'access_token' => $token])->json('data')) !== [],
+                };
+            } catch (ConnectionException) {
+                $ours = false;   // asked again on the next reconnect
+            }
+
+            if ($ours) {
+                $lead->forceFill(['connection_id' => $connection->getKey()])->save();
+                $adopted++;
+            }
+        }
+
+        return $adopted;
+    }
+
+    /**
      * The sender's display name, or null when Meta will not say.
      *
      * Messenger: read from the conversation's participants, which

@@ -1,0 +1,278 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AI Assistance · AI as a chat</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.chat{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;overflow:hidden;padding:4px 2px}
+.chat.mid{width:100%;max-width:720px;margin:0 auto}
+.q{align-self:flex-end;max-width:70%;background:var(--pri);color:#fff;border-radius:16px 16px 4px 16px;padding:8px 12px;font-size:13px}
+.a{align-self:flex-start;max-width:86%;background:var(--paper);border:1px solid var(--line);border-radius:16px 16px 16px 4px;padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:6px;line-height:1.5}
+.a .who{font-size:11px;font-weight:800;color:var(--muted);display:flex;gap:6px;align-items:center}
+.srcs{display:flex;gap:6px;flex-wrap:wrap}
+.src{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;background:var(--ground);white-space:nowrap}
+.br{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:6px 8px;font-size:12px;background:#fff}
+.br .sp{flex:1}
+.askbar{display:flex;gap:8px;align-items:center;border:1px solid #b9c7cd;border-radius:14px;padding:6px 6px 6px 14px;background:#fff;box-shadow:0 2px 10px rgba(6,8,8,.06)}
+.askbar span.ph{flex:1;color:var(--muted);font-size:13px}
+.askbar .go{width:34px;height:34px;border-radius:10px;background:var(--pri);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+.starters{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.starters span{border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;background:#fff}
+.hello{display:flex;flex-direction:column;align-items:center;gap:10px;margin:auto 0;text-align:center;color:var(--muted);font-size:13px}
+.hello b{font-size:17px;color:var(--ink)}
+.rail2{width:250px;flex:0 0 auto;display:flex;flex-direction:column;gap:8px;border-left:1px solid var(--line);padding-left:12px;font-size:12px}
+.tree{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.tree div{padding:4px 8px;border-radius:6px}.tree div.h{font-weight:800}.tree div.in{padding-left:20px}.tree div.on{background:var(--pric)}
+.typing{display:flex;gap:4px}.typing i{width:6px;height:6px;border-radius:50%;background:#9fb0b8;display:block}
+</style>
+
+<div class="wrap">
+<h1>AI Assistance › AI, as a chat</h1>
+<p class="subt">Jose, today: <i>"the "AI" tab and that menu on the left aren't really meant to be together. The AI tab should just be the ask bar at the bottom, sort of like here where i can ask you stuff and the reply goes on top"</i>. So AI becomes a conversation. The ask bar is pinned at the bottom, and each question and its answer stack above it, newest last. The topics menu moves to Library. Every question and answer here is invented.</p>
+<p class="cap">The server is unchanged: each question asks the Library and Grok, as the tab does now. An answer shows Grok's reply in the look Jose asked for on WhatsApp, with capitals at sentence starts and emojis in place of bullet dots. Under it go the Library entries it came from, as chips that open the entry, and any branch the question named, with Call and Map. The questions last only while the app is open, as now.</p>
+
+<!-- ───────── desktop 1 ───────── -->
+<h2><span class="n">1</span> One centred conversation, the ask bar at the foot <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Like Claude or ChatGPT: a reading-width column in the middle of the tab. Before the first question it shows a greeting and four starter questions, and those starters fill the ask bar when clicked. The topics tree goes to <b>Library</b>, where the entries are kept.</p>
+<div class="win tall"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="t">AI Assistance</div>
+ <div class="tabs"><span class="on">AI</span><span>Library</span><span>WhatsApp groups</span><span>Staff bot</span><span>Settings</span></div>
+ <div class="chat mid">
+  <div class="q">How often should a chimney be inspected?</div>
+  <div class="a"><span class="who">✦ AI · from your Library</span>
+   <span>📘 Once a year, the Library's NFPA 211 entry says.</span>
+   <span>🔥 Sooner after a chimney fire, a storm or a change of fuel.</span>
+   <span>🧾 The inspection report goes to the customer with the job.</span>
+   <div class="srcs"><span class="src">Library › NFPA 211 › Inspections</span><span class="src">Library › CSIA › Levels</span></div></div>
+  <div class="q">What's the Maple Grove office number?</div>
+  <div class="a"><span class="who">✦ AI · from your Library</span><span>📍 Maple Grove is at 41 Orchard Way.</span>
+   <div class="br"><b>Maple Grove</b><span class="tiny">41 Orchard Way · 555-0110</span><span class="sp"></span><span class="btn sm">Call</span><span class="btn sm">Map</span></div></div>
+  <div class="q">Do we charge for a second visit?</div>
+  <div class="a"><span class="who">✦ AI</span><div class="typing"><i></i><i></i><i></i></div></div>
+ </div>
+ <div class="chat mid" style="flex:0 0 auto;padding:0"><div class="askbar"><span class="ph">Ask anything: a code, a price, a branch…</span><span class="go">↑</span></div><span class="tiny" style="text-align:center">Answers come from your Library first, then AI.</span></div>
+</div></div></div>
+
+<!-- ───────── desktop 1 empty ───────── -->
+<h2><span class="n">1</span> …before the first question</h2>
+<div class="win" style="height:420px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span class="on">AI</span><span>Library</span><span>WhatsApp groups</span><span>Staff bot</span><span>Settings</span></div>
+ <div class="chat mid"><div class="hello"><b>What do you need to know?</b><span>Codes, prices, branches, how we do things: ask it the way you'd ask a colleague.</span>
+  <div class="starters"><span>How often should a chimney be inspected?</span><span>What does a Level 2 inspection include?</span><span>Where is the nearest branch to 07030?</span><span>What do we charge for a cap?</span></div></div></div>
+ <div class="chat mid" style="flex:0 0 auto;padding:0"><div class="askbar"><span class="ph">Ask anything: a code, a price, a branch…</span><span class="go">↑</span></div></div>
+</div></div></div>
+
+<!-- ───────── desktop 2 ───────── -->
+<h2><span class="n">2</span> The conversation, with its sources in a rail</h2>
+<p class="cap">The chat fills the tab. A slim rail on the right lists the Library entries behind the answer in front, so the conversation itself stays text only. It's denser, and it keeps the Library a click away.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span class="on">AI</span><span>Library</span><span>WhatsApp groups</span><span>Staff bot</span><span>Settings</span></div>
+ <div class="cols">
+  <div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0">
+   <div class="chat"><div class="q">How often should a chimney be inspected?</div>
+    <div class="a"><span class="who">✦ AI</span><span>📘 Once a year, the Library's NFPA 211 entry says.</span><span>🔥 Sooner after a chimney fire, a storm or a change of fuel.</span></div></div>
+   <div class="askbar"><span class="ph">Ask anything…</span><span class="go">↑</span></div>
+  </div>
+  <div class="rail2"><b>From your Library</b><div class="br">NFPA 211 › Inspections</div><div class="br">CSIA › Levels</div><span class="tiny">Click one to read it whole.</span></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── desktop 3 ───────── -->
+<h2><span class="n">3</span> The conversation, with Topics as a panel</h2>
+<p class="cap">As 1, plus a <b>Topics</b> button above the chat that opens the tree as a side panel over the tab. Browsing stays inside AI, but it's no longer always on screen.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span class="on">AI</span><span>Library</span><span>WhatsApp groups</span><span>Staff bot</span><span>Settings</span></div>
+ <div class="cols">
+  <div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;opacity:.55">
+   <div class="bar2"><span class="btn sm">☰ Topics</span></div>
+   <div class="chat mid"><div class="q">How often should a chimney be inspected?</div><div class="a"><span>📘 Once a year, the Library's NFPA 211 entry says.</span></div></div>
+   <div class="askbar"><span class="ph">Ask anything…</span><span class="go">↑</span></div>
+  </div>
+  <div class="card" style="width:300px"><h3>Topics</h3>
+   <div class="tree"><div class="h">NFPA 211</div><div class="in on">Inspections</div><div class="in">Clearances</div><div class="h">CSIA</div><div class="in">Levels</div><div class="h">Finance</div><div class="h">About A1</div></div></div>
+ </div>
+</div></div></div>
+
+<!-- ───────── phones ───────── -->
+<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
+<p class="cap"><b>4</b> (recommended): the same conversation filling the tab, with the ask bar pinned above the keyboard and the sources as chips under each answer. <b>5</b>: long answers fold to three lines with More. <b>6</b>: with a Topics button that opens the tree as a page.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · the conversation <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">AI Assistance</span></div><div class="pb" style="display:flex;flex-direction:column;gap:8px">
+   <div class="tabs" style="overflow:hidden"><span class="on">AI</span><span>Library</span><span>WhatsApp</span></div>
+   <div class="chat"><div class="q">How often should a chimney be inspected?</div>
+    <div class="a"><span>📘 Once a year, the Library's NFPA 211 entry says.</span><span>🔥 Sooner after a chimney fire or a change of fuel.</span><div class="srcs"><span class="src">NFPA 211 › Inspections</span></div></div>
+    <div class="q">Maple Grove number?</div>
+    <div class="a"><div class="br"><b>Maple Grove</b><span class="sp"></span><span class="btn sm">Call</span></div></div></div>
+   <div class="askbar"><span class="ph">Ask anything…</span><span class="go">↑</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · long answers folded</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">AI Assistance</span></div><div class="pb" style="display:flex;flex-direction:column;gap:8px">
+   <div class="chat"><div class="q">What does a Level 2 inspection include?</div>
+    <div class="a"><span>🔎 Everything in a Level 1, plus a camera through the flue.</span><span>🏠 The attic, crawl space and basement around it.</span><span>📸 Photos for the report…</span><span class="b" style="color:var(--prid)">More</span></div></div>
+   <div class="askbar"><span class="ph">Ask anything…</span><span class="go">↑</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · with Topics</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">AI Assistance</span></div><div class="pb" style="display:flex;flex-direction:column;gap:8px">
+   <div class="bar2"><span class="btn sm">☰ Topics</span></div>
+   <div class="chat"><div class="hello"><b>What do you need to know?</b><div class="starters"><span>Inspections</span><span>Nearest branch</span><span>Prices</span></div></div></div>
+   <div class="askbar"><span class="ph">Ask anything…</span><span class="go">↑</span></div>
+  </div></div></div>
+</div>
+
+<!-- ───────── where the topics go ───────── -->
+<h2><span class="n">7</span> Where the topics menu goes <span class="rec">RECOMMENDED</span></h2>
+<p class="cap"><b>Library</b> (recommended) opens on the same tree, NFPA 211 › CSIA › Finance › About A1, with each entry under its topic, since that's where they're written and edited. The bot's welcome line moves to <b>Staff bot</b>, as the first thing its WhatsApp preview shows. Grok's other suggestion, a WhatsApp-menu preview under Staff bot, would draw the same tree a second time.</p>
+<div class="win" style="height:380px"><div class="top"><span class="logo">EzBizi</span><span class="org">Northwind Chimney</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>AI</span><span class="on">Library</span><span>WhatsApp groups</span><span>Staff bot</span><span>Settings</span></div>
+ <div class="cols">
+  <div class="card" style="width:240px"><div class="tree"><div class="h">NFPA 211</div><div class="in on">Inspections</div><div class="in">Clearances</div><div class="h">CSIA</div><div class="in">Levels</div><div class="h">Finance</div><div class="h">About A1</div></div></div>
+  <div class="card" style="flex:1"><h3>Inspections <span class="pill p-neu">NFPA 211</span></h3><span class="tiny">3 entries · edited Oct 9</span><div class="br">How often to inspect</div><div class="br">After a chimney fire</div><div class="br">The report</div><div class="foot"><span class="sp"></span><span class="btn f">+ New entry</span></div></div>
+ </div>
+</div></div></div>
+<p class="cap" style="margin-top:10px">Owners: Grok AI (the answers and WhatsAppStaffBot::look(), the WhatsApp look), AI Assistance's Library, and UI/UX, who builds the screens. No server change.</p>
+</div>

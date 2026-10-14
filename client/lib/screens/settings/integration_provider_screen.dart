@@ -501,7 +501,10 @@ class IntegrationConnection {
   /// because "where do I go to fix this" is the question underneath.
   String get family => switch (provider) {
     'mailchimp' => 'mailing',
-    'google_ads' || 'google_business_profile' || 'thumbtack' => 'leads',
+    'google_ads' ||
+    'google_business_profile' ||
+    'thumbtack' ||
+    'facebook_ads' => 'leads',
     'airtable' || 'workiz' => 'reporting',
     _ => 'social',
   };

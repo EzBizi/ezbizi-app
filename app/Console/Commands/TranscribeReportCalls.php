@@ -91,6 +91,15 @@ class TranscribeReportCalls extends Command
                 ->pluck('call_id')
                 ->flip();
 
+            // Rows written before who / when / number / recording were kept
+            // get them from the same call log (the Scoring screen lists a
+            // person's calls by them).
+            $byId = array_column($wanted, null, 'id');
+            CallReportTranscript::query()->whereIn('call_id', array_keys($byId))
+                ->where(fn ($q) => $q->whereNull('caller_number')->orWhereNull('answered_by'))
+                ->get()
+                ->each(fn (CallReportTranscript $row) => $row->forceFill($this->who($byId[$row->call_id]))->save());
+
             // Newest first: today's calls are the ones somebody is looking at.
             usort($wanted, fn ($a, $b) => strcmp((string) $b['started_at'], (string) $a['started_at']));
 
@@ -106,10 +115,7 @@ class TranscribeReportCalls extends Command
                     'call_id' => $call['id'],
                     'transcript' => $words,
                     'source' => $source,
-                    // Who took it and when, for per-person scoring (Grok AI,
-                    // 2026-10-13), named as the report names them.
-                    'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
-                    'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
+                    ...$this->who($call),
                 ]);
 
                 $done[$source]++;
@@ -119,6 +125,23 @@ class TranscribeReportCalls extends Command
         $this->info("From Local Services: {$done['lead']}, Whisper: {$done['whisper']}, failed: {$done['failed']}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Who took the call, when, from which number and its recording: for
+     * per-person scoring (Grok AI, 2026-10-13) and a person's calls on the
+     * Scoring screen (Jose, 2026-10-14). Named as the report names them.
+     *
+     * @return array<string, mixed>
+     */
+    private function who(array $call): array
+    {
+        return [
+            'answered_by' => CallReconciliation::ALIASES[$call['answered_by']] ?? $call['answered_by'],
+            'call_started_at' => isset($call['started_at']) ? CarbonImmutable::parse($call['started_at']) : null,
+            'caller_number' => $call['from'] ?? null,
+            'recording_id' => $call['recording_id'] ?? null,
+        ];
     }
 
     /** @return array{0: string, 1: string}|null */

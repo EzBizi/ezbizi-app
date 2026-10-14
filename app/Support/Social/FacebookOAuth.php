@@ -34,6 +34,9 @@ final class FacebookOAuth implements SocialOAuth
         'instagram_manage_comments',
         // Lead-ad form answers into Leads as "Meta Form" (MetaLeadForms).
         'leads_retrieval',
+        // Ad spend and results for Reports, from the same connect - the
+        // ad accounts become Facebook Ads connections (SocialAuthController).
+        'ads_read',
     ];
 
     private const TIMEOUT = 10;

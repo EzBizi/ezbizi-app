@@ -25,6 +25,9 @@ class FieldSweep extends Command
     /** Google calls per run, across every tenant. */
     private const GEOCODE_BUDGET = 50;
 
+    /** Two weeks ahead: Scheduling's per-technician routes read these pins too (2026-10-14). */
+    private const GEOCODE_DAYS = 14;
+
     public function handle(TenantContext $tenant, FieldEvaluator $evaluator, FieldJobs $jobs, FieldMaps $maps): int
     {
         $silent = $tenant->runWithoutTenant(fn () => FieldPresence::query()
@@ -49,7 +52,7 @@ class FieldSweep extends Command
 
             $upcoming = $tenant->runWithoutTenant(fn () => Job::query()
                 ->withoutGlobalScopes()
-                ->whereBetween('scheduled_for', [now()->subDay()->toDateString(), now()->addDays(3)->toDateString()])
+                ->whereBetween('scheduled_for', [now()->subDay()->toDateString(), now()->addDays(self::GEOCODE_DAYS)->toDateString()])
                 ->pluck('organization_id', 'id'));
 
             foreach ($upcoming->unique()->values() as $organizationId) {

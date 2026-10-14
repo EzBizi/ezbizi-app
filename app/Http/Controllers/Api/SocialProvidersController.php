@@ -20,6 +20,6 @@ class SocialProvidersController extends Controller
             Refusal::permission('open Marketing')->message(),
         );
 
-        return response()->json(['data' => $this->providers->catalogue()]);
+        return response()->json(['data' => $this->providers->catalogue($request->query('include') === 'data_sources')]);
     }
 }
