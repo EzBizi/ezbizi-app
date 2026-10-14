@@ -46,7 +46,8 @@ class GlanceRegistry
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads',
+        // Sales before Leads, where its sidebar entry sits (2026-10-14).
+        'services', 'sales', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
         'customer_experience', 'reviews', 'business_profile',
         // New Google reviews for Automations, beside Reviews (2026-09-25).
@@ -188,6 +189,11 @@ class GlanceRegistry
         'financials' => [
             'label' => 'Financials',
             'sentence' => 'Your bases, tables and records live in the Financials tab. Open it to work in them.',
+        ],
+        // Sales (2026-10-14): placeholder until a live glance is built.
+        'sales' => [
+            'label' => 'Sales',
+            'sentence' => 'Deals waiting on approval live in the Sales tab. Open it to work the pipeline.',
         ],
         // Task Board (2026-10-13): placeholder until a live glance is built.
         'tasks' => [
