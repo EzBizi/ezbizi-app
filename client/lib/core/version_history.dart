@@ -20,6 +20,7 @@ class VersionHistory {
         'Task Board: boards start with the groups Open Tasks, Recurring Tasks, Completed Tasks, Company Files and Guidelines; existing boards gain Company Files and Guidelines, and groups still called This week, Next week or Done take the new names.',
         'Walkthroughs: (?) now runs the walkthrough of the sub tab you are on, and every sub tab has its own, including inner strips such as Communication › Phone and the sections of an HR record.',
         'HR: Contracts, Invitations and Onboarding each have a search box.',
+        'Scheduling: Re-Scheduling counts as nearby only jobs in the offered time window or the one next to it, and moves a job at most 3 days.',
       ],
     ),
     VersionRelease(
