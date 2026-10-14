@@ -2965,6 +2965,16 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 93 · Guidelines, a new module — **sent 2026-10-14 10:56, awaiting Jose until 11:06** (`docs/previews/guidelines-layouts.html`)
+
+Jose 2026-10-14 via the Guidelines session: a module of situation cards, each with a colour and an optional picture, that open
+step-by-step instructions, and a Settings tab to create, edit and delete them. Desktop **1** (recommended): a searchable grid
+of equal cards (colour band, icon or picture, title, summary, step count); a card opens its numbered steps in a side panel
+over the grid. **2**: a list beside the steps. **3**: the card as its own page with ← back. Phone **4** (recommended): one
+card per row, the card opening in the tab with ← back; **5**: two tiles per row; **6**: a plain list. Settings **7**
+(recommended): the cards in order (drag to reorder), each edited in a side panel with the app's twelve colours and steps
+added, dragged and removed. Owners: the Guidelines session (server, module); UI/UX draws and reviews.
+
 ### 92 · Re-Scheduling › open spots before and after the move — **sent 2026-10-14 10:40; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT** (session/uiux-resched-spots, with Scheduling 528f5824) (`docs/previews/rescheduling-spots-layouts.html`)
 
 Jose 2026-10-14 via the desk, verbatim: *"perhaps on the reschedule screen on that blank spot on the right bottom, we can
