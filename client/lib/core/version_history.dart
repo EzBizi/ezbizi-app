@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0441',
       date: '15 Oct 2026',
       items: [
+        'Scheduling: the availability screen stays just as current while using far less data. It downloads again only when something changed, and checks less often while the window is in the background.',
         'EzBizi now reports its own errors, crashes and freezes so we can fix them faster. It sends only what went wrong and where, never what you typed.',
         'Settings › Integrations: connect your RingCentral account on its own card. Reports’ call reports read it.',
         'Settings › Integrations: your Google Workspace domains now appear under Email.',
