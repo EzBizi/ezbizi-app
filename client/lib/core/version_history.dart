@@ -14,27 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0443',
-      date: '15 Oct 2026',
-      items: [
-        'Customer Experience: A-1 Chimney Google reviews and listings now sync on their own: listings and standing every morning, reviews every 6 hours.',
-        'Marketing › Social: the Dashboard has an All tile. A post shows Posting N of M with a progress bar while it goes out, and Partly posted when some accounts took it and others refused.',
-        'Marketing › Social: a post goes out to every ticked account that can take it and names the ones that cannot. Long Instagram videos no longer fail while Instagram is still processing them, and Facebook video posts now link to the live post.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0442',
-      date: '15 Oct 2026',
-      items: [
-        'Settings: the Settings tab now lists every module\'s own settings, so each one can be opened from one place. Settings, Suggestions, Development and Your account get the same header as other modules, with a Walkthrough button.',
-        'Settings › Organization: moving a company and renaming an integration now open in a side panel.',
-      ],
-    ),
-    VersionRelease(
       version: '0.0.0441',
       date: '15 Oct 2026',
       items: [
         'Leads: calls made straight to your own phone lines (from the website, the Google profile or ads) now appear under RC Calls, one lead per caller, with the recording and transcript. A Google Local Services call never appears twice.',
+        'Settings: the Settings tab now lists every module\'s own settings, so each one can be opened from one place. Settings, Suggestions, Development and Your account get the same header as other modules, with a Walkthrough button.',
+        'Settings › Organization: moving a company and renaming an integration now open in a side panel.',
+        'Customer Experience: A-1 Chimney Google reviews and listings now sync on their own: listings and standing every morning, reviews every 6 hours.',
+        'Marketing › Social: the Dashboard has an All tile. A post shows Posting N of M with a progress bar while it goes out, and Partly posted when some accounts took it and others refused.',
+        'Marketing › Social: a post goes out to every ticked account that can take it and names the ones that cannot. Long Instagram videos no longer fail while Instagram is still processing them, and Facebook video posts now link to the live post.',
       ],
     ),
     VersionRelease(
