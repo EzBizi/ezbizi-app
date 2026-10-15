@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 99 · Settings, Suggestions, Development and Your account: UI overhaul — **sent 2026-10-15 14:30** (`docs/previews/settings-overhaul-layouts.html`)
+### 99 · Settings, Suggestions, Development and Your account: UI overhaul — **sent 2026-10-15 14:30 — Jose: "Looks good", desktop 1 and phone 4, plus: "settings works as a hub for all the other settings in the app ... the settings tab should be in sync with them and have the full parity, so all settings can be found there"** (`docs/previews/settings-overhaul-layouts.html`)
 
 Jose 2026-10-15 via the desk: overhaul Settings, Suggestions and Development and all their sub tabs, then walkthroughs and videos. He also asked directly for a walkthrough and
 video for Your account. **1** (recommended): the module header (title, ▶ How to, Walkthrough) plus a sticky group index on the long pages (Settings groups, Your
