@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 100 · Marketing › Social poster: views, live progress, post detail — **sent 2026-10-15** (`docs/previews/social-poster-layouts.html`)
+### 100 · Marketing › Social poster: views, live progress, post detail — **sent 2026-10-15 — Jose: "go ahead" (to Marketing, on my recommendation) — 1 and 4** (`docs/previews/social-poster-layouts.html` @ `697e84df`)
 
 Jose via the desk and Marketing, 2026-10-15: enhance ours from Rodrigo's poster; links to verify posts; delete them. **1** (recommended): the list stays with All · Scheduled · Posting · Posted · Failed tiles,
 a List | Board | Calendar switch remembered per person, a pulsing tab dot and "Posting 2 of 3", an honest "Partly posted", and a side panel per post: each account's link, reason, Try again /
