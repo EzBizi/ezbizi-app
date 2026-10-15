@@ -100,7 +100,13 @@ class RingCentralLeadCallsTest extends TestCase
             LeadConversation::create(['organization_id' => $t['org']->id, 'lead_id' => $ls->id, 'remote_id' => 'gc7',
                 'channel' => 'PHONE_CALL', 'participant' => 'CONSUMER', 'occurred_at' => now()->subHour()->addSeconds(30)]);
 
+            // A second call from that caller, an hour after Google's: it goes on
+            // the LS lead and is NOT a duplicate of itself.
+            $calls->file([self::rc('7b', '+15550000007', now()->toIso8601String())], self::LINES, $t['company']->id);
+            $this->assertTrue($ls->conversations()->where('remote_id', 'rc_7b')->exists(), 'filed on the caller\'s LS lead');
+
             $this->assertSame(1, $calls->withdrawDuplicates(\Carbon\CarbonImmutable::now()->subDays(2)));
+            $this->assertTrue($ls->conversations()->where('remote_id', 'rc_7b')->exists(), 'never matched to itself');
             $this->assertSame(['15550000008'], Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->pluck('phone_digits')->all());
         });
     }
