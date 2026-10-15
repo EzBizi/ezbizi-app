@@ -115,7 +115,14 @@ class RingCentralLeadCallsTest extends TestCase
         });
         $conversation = $this->inTenant($t['org'], fn () => $lead->conversations()->sole());
 
-        config(['experimental_reports.ringcentral' => ['server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']]);
+        // The organization's own RingCentral connection (8a640f19); env is A1-Group's alone.
+        $this->inTenant($t['org'], function () use ($t) {
+            $rc = new \App\Models\SocialConnection;
+            $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'ringcentral', 'remote_id' => '123', 'display_name' => 'RingCentral']);
+            $rc->connect(['refresh_token' => '-', 'server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+            $rc->save();
+        });
         \Illuminate\Support\Facades\Http::fake([
             'rc.test/restapi/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 't', 'expires_in' => 3600]),
             'rc.test/restapi/v1.0/account/~/recording/R9/content' => \Illuminate\Support\Facades\Http::response('ID3-audio', 200, ['Content-Type' => 'audio/mpeg']),
