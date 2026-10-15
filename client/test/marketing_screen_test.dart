@@ -1834,13 +1834,19 @@ void main() {
       final both = {
         ...posted,
         'targets': [
-          ...(posted['targets'] as List<dynamic>),
+          // The server says which can be taken down; the screen asks no list.
+          {
+            ...((posted['targets'] as List<dynamic>).single
+                as Map<String, Object?>),
+            'can_delete': true,
+          },
           {
             'id': 'target-2',
             'account': '@everdoors',
             'provider': 'instagram_professional',
             'provider_label': 'Instagram',
             'status': 'sent',
+            'can_delete': false,
           },
         ],
       };

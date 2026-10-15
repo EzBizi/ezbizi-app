@@ -3659,10 +3659,14 @@ class _SentTarget {
     this.connectionId,
     this.provider,
     this.id,
+    this.canDelete = false,
   });
 
   /// For Try again, which names the target in its path.
   final String? id;
+
+  /// The server's word: sent, and its network lets EzBizi take it down.
+  final bool canDelete;
 
   final String account;
   final String providerLabel;
@@ -3689,6 +3693,7 @@ class _SentTarget {
       connectionId: json['connection_id'] as String?,
       provider: json['provider'] as String?,
       id: json['id'] as String?,
+      canDelete: json['can_delete'] as bool? ?? false,
     );
   }
 }
@@ -4376,11 +4381,6 @@ class _TargetLine extends StatelessWidget {
     this.onDeleteRemote,
   });
 
-  /// Networks whose API lets EzBizi take a post down with the access we hold
-  /// (measured by Marketing, 2026-10-15). Instagram and TikTok have no delete;
-  /// YouTube and Threads need a permission not yet asked for.
-  static const deletable = {'facebook_page', 'linkedin', 'x', 'pinterest', 'bluesky'};
-
   /// Hide one failed account's line without trying again.
   final VoidCallback? onDismiss;
 
@@ -4490,7 +4490,7 @@ class _TargetLine extends StatelessWidget {
                 if (target.status == 'sent' &&
                     target.id != null &&
                     onDeleteRemote != null)
-                  deletable.contains(target.provider)
+                  target.canDelete
                       ? TextButton.icon(
                           key: ValueKey('social-target-delete-${target.id}'),
                           style: TextButton.styleFrom(
