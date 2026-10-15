@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0439',
+      date: '15 Oct 2026',
+      items: [
+        'Automations: a rule that sends a notification can mark it as urgent. Urgent notifications show a red icon in the notification list.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0438',
       date: '15 Oct 2026',
       items: [
