@@ -1893,10 +1893,17 @@ check('light by default', str_contains($faces, 'color:#fff}'), false);
 check('the review is told to EzBizi', str_contains($faces, "/api/v1/web/review'"), true);
 check('with the personal link when the page has one', str_contains($faces, "get('c')") && str_contains($faces, 'if(c)v.c=c'), true);
 // Jose, 2026-10-13: the green face goes straight to Google, with no step between.
-check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}"), true);
+check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});track('google');location.href=google;return;}"), true);
 check('to the review link', str_contains($faces, 'google="https:\/\/g.page\/r\/a1chimney\/review"'), true);
 check('and says so', str_contains($faces, 'Tap to share it on Google'), true);
 check('the review is told even as the page leaves', str_contains($faces, 'keepalive:true'), true);
+// Jose, 2026-10-15: the link's activity, for the Customer Experience report.
+check('the link reports what was done with it', str_contains($faces, "api+'/api/v1/web/review-link'"), true);
+check('only when the page came by a link', str_contains($faces, 'function track(k){if(!c)return;'), true);
+check('opening it', str_contains($faces, "track('opened');"), true);
+check('which face', str_contains($faces, 'track(go);'), true);
+check('going on to Google', str_contains($faces, "track('google');location.href=google"), true);
+check('and a sent complaint', str_contains($faces, "track('submitted');show('sent')"), true);
 check('and no membership offer on the page (Jose, 2026-10-08: it is a text of its own)', str_contains($faces, "'/api/v1/web/membership/join'"), false);
 check('without one it asks, and can be skipped', str_contains($faces, 'data-step="ask"') && str_contains($faces, 'ezbizi-rf-skip'), true);
 check('a sad face is told too, with what happened', str_contains($faces, "tell({rating:'sad'"), true);

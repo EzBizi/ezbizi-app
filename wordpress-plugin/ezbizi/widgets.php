@@ -2066,15 +2066,21 @@ if(c){fetch(api+'/api/v1/web/membership?key='+encodeURIComponent(key)+'&c='+enco
   .then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d||!d.first_name)return;var sf=w.querySelector('form');w._ezAs=1;
     ['name','phone','email'].forEach(function(n){var i=sf.elements[n];if(!i)return;i.required=false;i.style.display='none';var l=w.querySelector('label[for=\"'+i.id+'\"]');if(l)l.style.display='none';});
     var p=document.createElement('p');p.className='ezbizi-rf-as';p.textContent=" . wp_json_encode(__('Sending as', 'ezbizi')) . "+' '+d.first_name;sf.insertBefore(p,sf.firstChild);}).catch(function(){});}
+// What the customer did with their link, for the Customer Experience report
+// (Jose, 2026-10-15). Only with a link: the server counts nothing else.
+function track(k){if(!c)return;try{fetch(api+'/api/v1/web/review-link',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({key:key,c:c,kind:k})}).catch(function(){});}catch(x){}}
+track('opened');
 function who(raw){var s=String(raw||'').trim(),o={};if(!s)return o;if(s.indexOf('@')>-1)o.email=s;else o.phone=s;return o;}
 Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){
   var go=b.getAttribute('data-go');
   // Jose, 2026-10-13: the green face goes straight to Google, no step between.
   // Without a Google link it keeps the old path rather than a dead end.
-  if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}
+  track(go);
+  if(go==='happy'&&google){if(c)tell({rating:'happy'});track('google');location.href=google;return;}
   if(go==='happy'){if(c){tell({rating:'happy'});show('happy');}else show('ask');return;}
   show(go);
 });});
+Array.prototype.forEach.call(w.querySelectorAll('[data-step] a[target]'),function(a){a.addEventListener('click',function(){track('google');});});
 var whoBox=w.querySelector('.ezbizi-rf-who');
 w.querySelector('.ezbizi-rf-continue').addEventListener('click',function(){var v=who(whoBox.value);v.rating='happy';if(v.email||v.phone)tell(v);show('happy');});
 w.querySelector('.ezbizi-rf-skip').addEventListener('click',function(){show('happy');});
@@ -2095,7 +2101,7 @@ f.addEventListener('submit',function(e){
   if(ts)v.turnstile=ts;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
   return fetch(api+'/api/v1/web/form',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
-  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});show('sent');})
+  .then(function(r){ezTsReset(f);if(!r.ok)throw new Error(r.status);tell({rating:'sad',phone:g('phone'),email:g('email'),comment:g('feedback')});track('submitted');show('sent');})
   .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
 });
 })();</script>";
