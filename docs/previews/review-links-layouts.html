@@ -1,0 +1,288 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Review link activity</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+<style>
+.fun{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:stretch}
+.st{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.st .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.st b{font-size:22px}
+.st .r{font-size:11.5px;color:var(--muted)}
+.st.ok{border-color:#9fd9b4;background:#f1fbf4}.st.bad{border-color:#f0b9b9;background:#fdf3f3}
+.split2{display:flex;flex-direction:column;gap:6px}
+.tb{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tb th{text-align:right;font-size:10.5px;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--line)}
+.tb th:first-child,.tb td:first-child{text-align:left}
+.tb td{text-align:right;padding:6px 8px;border-top:1px solid var(--line2)}
+.tb tr.tot td{font-weight:800;background:#f5f8fa}
+.hbar{height:8px;border-radius:4px;background:#dfe6ea;position:relative;overflow:hidden}
+.hbar i{position:absolute;left:0;top:0;bottom:0}
+.note{background:var(--pric);border-radius:8px;padding:6px 10px;font-size:11.5px}
+.hd2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.hd2 .sp{flex:1}
+.paths{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.flow{font-size:12px;display:flex;flex-direction:column;gap:6px}
+.flow .row2{display:grid;grid-template-columns:110px 1fr 56px;gap:8px;align-items:center}
+</style>
+<div class="wrap">
+<h1>Customer Experience › Review links</h1>
+<p class="subt">Jose, 2026-10-15: "a new tab in Customer Experience for measuring the activity with the review links that are being sent how many click the green, how many click the bad, etc whatever info we can get from the unique links being sent, the amount of messages sent". Every name and number here is invented.</p>
+<p class="cap">Customer Experience's server (session/review-link-activity): for a date range (30 days by default), it returns totals and the same six counts by branch and by person: <b>sent</b> (review texts), <b>opened</b>, <b>happy</b> (tapped the green face), <b>sad</b>, <b>Google</b> (went on to Google) and <b>complaint sent</b>. Opens and taps are counted from the release that adds them, so the tab says "Tracking started …". Same grant as Reviews. There's no day-by-day series yet, so none of these options needs a chart over time.</p>
+
+<h2><span class="n">1</span> The path a link takes, then who and where <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Across the top, the funnel reads left to right: <b>Sent → Opened → Green / Red → Google / Complaint</b>. Each step shows its count and its share of the step before, with the green path in green and the red one in red. Below, one table with a <b>Branch | Person</b> switch, the same columns, and a total row. Pick the dates at the top right.</p>
+<div class="win" style="height:540px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>Reviews</span><span>Business Profile</span><span class="on">Review links</span></div>
+ <div class="hd2"><span class="note">Tracking opens and taps since Oct 15. Texts sent are counted from Oct 8.</span><span class="sp"></span><span class="drop">📅 Last 30 days ▾</span></div>
+ <div class="fun">
+  <div class="st"><span class="k">Sent</span><b>64</b><span class="r">review texts</span></div>
+  <div class="st"><span class="k">Opened</span><b>41</b><span class="r">64% of sent</span></div>
+  <div class="split2"><div class="st ok"><span class="k">😀 Green</span><b>33</b><span class="r">80% of opened</span></div><div class="st bad"><span class="k">🙁 Red</span><b>8</b><span class="r">20% of opened</span></div></div>
+  <div class="split2"><div class="st ok"><span class="k">Went to Google</span><b>21</b><span class="r">64% of green</span></div><div class="st bad"><span class="k">Complaint sent</span><b>5</b><span class="r">63% of red</span></div></div>
+ </div>
+ <div class="hd2"><span class="seg"><span class="on">Branch</span><span>Person</span></span></div>
+ <table class="tb"><tr><th>Branch</th><th>Sent</th><th>Opened</th><th>Green</th><th>Red</th><th>Google</th><th>Complaint</th></tr>
+ <tr><td>Springfield</td><td>40</td><td>27 · 68%</td><td>23</td><td>4</td><td>15</td><td>2</td></tr>
+ <tr><td>Riverton</td><td>24</td><td>14 · 58%</td><td>10</td><td>4</td><td>6</td><td>3</td></tr>
+ <tr class="tot"><td>All</td><td>64</td><td>41 · 64%</td><td>33</td><td>8</td><td>21</td><td>5</td></tr></table>
+</div></div></div>
+
+<h2><span class="n">2</span> One table, the numbers only</h2>
+<p class="cap">No funnel: a single table for branches or people, with the rate in each cell and the total row on top. It's compact and sortable, but the green-or-red story has to be read across a row.</p>
+<div class="win" style="height:270px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>Reviews</span><span>Business Profile</span><span class="on">Review links</span></div>
+ <div class="hd2"><span class="seg"><span class="on">Branch</span><span>Person</span></span><span class="sp"></span><span class="drop">📅 Last 30 days ▾</span></div>
+ <table class="tb"><tr><th>Branch</th><th>Sent</th><th>Opened</th><th>Green</th><th>Red</th><th>Google</th><th>Complaint</th></tr>
+ <tr class="tot"><td>All</td><td>64</td><td>64%</td><td>80%</td><td>20%</td><td>64%</td><td>63%</td></tr>
+ <tr><td>Springfield</td><td>40</td><td>68%</td><td>85%</td><td>15%</td><td>65%</td><td>50%</td></tr>
+ <tr><td>Riverton</td><td>24</td><td>58%</td><td>71%</td><td>29%</td><td>60%</td><td>75%</td></tr></table>
+</div></div></div>
+
+<h2><span class="n">3</span> Two paths side by side</h2>
+<p class="cap">A green card, "Happy customers" (opened → green → Google), and a red card, "Unhappy customers" (opened → red → complaint), each step as a bar. Under them, the people ranked by green taps. It reads well at a glance, but sent and opened appear in both cards, and the people ranking can feel like a scoreboard.</p>
+<div class="win" style="height:340px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div class="tabs"><span>Reviews</span><span>Business Profile</span><span class="on">Review links</span></div>
+ <div class="paths">
+  <div class="card"><b>😀 Happy customers</b><div class="flow">
+   <div class="row2"><span>Opened</span><span class="hbar"><i style="width:64%;background:var(--pri)"></i></span><b>41</b></div>
+   <div class="row2"><span>Tapped green</span><span class="hbar"><i style="width:52%;background:#2e9d4f"></i></span><b>33</b></div>
+   <div class="row2"><span>Went to Google</span><span class="hbar"><i style="width:33%;background:#2e9d4f"></i></span><b>21</b></div></div></div>
+  <div class="card"><b>🙁 Unhappy customers</b><div class="flow">
+   <div class="row2"><span>Opened</span><span class="hbar"><i style="width:64%;background:var(--pri)"></i></span><b>41</b></div>
+   <div class="row2"><span>Tapped red</span><span class="hbar"><i style="width:13%;background:#c53b3b"></i></span><b>8</b></div>
+   <div class="row2"><span>Sent a complaint</span><span class="hbar"><i style="width:8%;background:#c53b3b"></i></span><b>5</b></div></div></div>
+ </div>
+</div></div></div>
+
+<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
+<p class="cap"><b>4</b> (recommended, matches 1): the funnel stacks into two columns of tiles, then the Branch | Person list as one row per branch with its sent count and green/red split. <b>5</b> matches 2: the table becomes cards. <b>6</b> matches 3: the two paths stack.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · funnel <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">Customer Experience</span></div><div class="pb">
+   <div class="tabs"><span>Reviews</span><span class="on">Review links</span></div>
+   <span class="drop" style="align-self:flex-start">📅 Last 30 days ▾</span>
+   <div class="fun" style="grid-template-columns:1fr 1fr">
+    <div class="st"><span class="k">Sent</span><b>64</b></div><div class="st"><span class="k">Opened</span><b>41</b><span class="r">64%</span></div>
+    <div class="st ok"><span class="k">Green</span><b>33</b><span class="r">80%</span></div><div class="st bad"><span class="k">Red</span><b>8</b><span class="r">20%</span></div>
+    <div class="st ok"><span class="k">Google</span><b>21</b></div><div class="st bad"><span class="k">Complaint</span><b>5</b></div></div>
+   <span class="seg" style="align-self:flex-start"><span class="on">Branch</span><span>Person</span></span>
+   <div class="lst"><div class="li"><div class="g"><b>Springfield</b><span>40 sent · 23 green · 4 red</span></div></div><div class="li"><div class="g"><b>Riverton</b><span>24 sent · 10 green · 4 red</span></div></div></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · cards</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">Customer Experience</span></div><div class="pb">
+   <div class="tabs"><span>Reviews</span><span class="on">Review links</span></div>
+   <div class="card"><b>All · 64 sent</b><span class="tiny2" style="font-size:11.5px;color:var(--muted)">Opened 64% · green 80% · red 20% · Google 64% · complaint 63%</span></div>
+   <div class="card"><b>Springfield · 40 sent</b><span style="font-size:11.5px;color:var(--muted)">Opened 68% · green 85% · red 15%</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · two paths</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">Customer Experience</span></div><div class="pb">
+   <div class="tabs"><span>Reviews</span><span class="on">Review links</span></div>
+   <div class="card"><b>😀 Happy</b><div class="flow"><div class="row2" style="grid-template-columns:80px 1fr 30px"><span>Green</span><span class="hbar"><i style="width:52%;background:#2e9d4f"></i></span><b>33</b></div><div class="row2" style="grid-template-columns:80px 1fr 30px"><span>Google</span><span class="hbar"><i style="width:33%;background:#2e9d4f"></i></span><b>21</b></div></div></div>
+   <div class="card"><b>🙁 Unhappy</b><div class="flow"><div class="row2" style="grid-template-columns:80px 1fr 30px"><span>Red</span><span class="hbar"><i style="width:13%;background:#c53b3b"></i></span><b>8</b></div><div class="row2" style="grid-template-columns:80px 1fr 30px"><span>Complaint</span><span class="hbar"><i style="width:8%;background:#c53b3b"></i></span><b>5</b></div></div></div>
+  </div></div></div>
+</div>
+<p class="cap" style="margin-top:20px">Before tracking starts, the funnel shows Sent only, and says opens and taps are counted from the next release. A person shown as "—" did a job with no one recorded on it. Owners: Customer Experience (the server and the build); UI/UX draws the layout.</p>
+</div>

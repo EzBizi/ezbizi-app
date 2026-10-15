@@ -2965,6 +2965,12 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 98 · Customer Experience › Review links (link activity) — **sent 2026-10-15 10:57** (`docs/previews/review-links-layouts.html`)
+
+Jose 2026-10-15 via Customer Experience: a tab that measures the review links sent (green, red, opened, sent). There are six counts by branch and by person
+for a date range. **1** (recommended): a Sent → Opened → Green/Red → Google/Complaint funnel, then a Branch | Person table with a total row. **2**: one table
+of rates. **3**: happy and unhappy paths as bar cards. Phone **4** (recommended) / **5** / **6** match. Customer Experience builds it.
+
 ### 97 · Reports › Scoring › what the score weighs — **sent 2026-10-14 18:03; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT `2360c162`** (nine weights with Reports 90e9d8a5) (`docs/previews/scoring-weights-layouts.html`)
 
 Reports (051fa5e6): the Scoring score is now conversion plus the AI's seven call checks, weighted. There are eight whole-number weights that must total 100
