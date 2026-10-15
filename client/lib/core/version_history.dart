@@ -18,6 +18,7 @@ class VersionHistory {
       date: '15 Oct 2026',
       items: [
         'Customer Experience: A-1 Chimney Google reviews and listings now sync on their own: listings and standing every morning, reviews every 6 hours.',
+        'Marketing › Social: the Dashboard has an All tile. A post shows Posting N of M with a progress bar while it goes out, and Partly posted when some accounts took it and others refused.',
       ],
     ),
     VersionRelease(
