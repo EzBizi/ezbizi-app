@@ -21,10 +21,12 @@ use Illuminate\Support\Facades\Http;
  * An account with no boards at all is refused with the reason, because the fix
  * is on Pinterest's side and nothing EzBizi does will help.
  */
-final class PinterestPublisher implements SocialPublisher
+final class PinterestPublisher implements DeletesPosts, SocialPublisher
 {
     private const API = 'https://api.pinterest.com/v5';
+
     private const SANDBOX_API = 'https://api-sandbox.pinterest.com/v5';
+
     private const TIMEOUT = 30;
 
     public function publish(SocialConnection $connection, PostPayload $post): string
@@ -44,13 +46,13 @@ final class PinterestPublisher implements SocialPublisher
         // tenant's media to an unauthenticated public address first, which is a
         // privacy change nobody asked for to save one request.
         $response = $this->call('post', '/pins', $token, [
-            'board_id'    => $board,
-            'title'       => $post->title !== null ? mb_substr($post->title, 0, 100) : null,
+            'board_id' => $board,
+            'title' => $post->title !== null ? mb_substr($post->title, 0, 100) : null,
             'description' => mb_substr($post->body, 0, 800),
             'media_source' => [
                 'source_type' => 'image_base64',
                 'content_type' => $post->mime(),
-                'data'         => base64_encode($post->bytes()),
+                'data' => base64_encode($post->bytes()),
             ],
         ]);
 
@@ -75,7 +77,7 @@ final class PinterestPublisher implements SocialPublisher
     private function firstBoard(string $token): string
     {
         $boards = $this->call('get', '/boards', $token, ['page_size' => 25]);
-        $first  = $boards['items'][0]['id'] ?? null;
+        $first = $boards['items'][0]['id'] ?? null;
 
         if (! is_string($first) || $first === '') {
             throw SocialPublishFailed::network(
@@ -94,9 +96,11 @@ final class PinterestPublisher implements SocialPublisher
         try {
             $request = Http::withToken($token)->timeout(self::TIMEOUT)->acceptJson();
 
-            $response = $method === 'get'
-                ? $request->get($this->api().$path, $payload)
-                : $request->post($this->api().$path, array_filter($payload, fn ($v) => $v !== null));
+            $response = match ($method) {
+                'get' => $request->get($this->api().$path, $payload),
+                'delete' => $request->delete($this->api().$path),
+                default => $request->post($this->api().$path, array_filter($payload, fn ($v) => $v !== null)),
+            };
         } catch (ConnectionException) {
             throw SocialPublishFailed::network('Pinterest', 'EzBizi could not reach it.');
         }
@@ -111,6 +115,11 @@ final class PinterestPublisher implements SocialPublisher
         }
 
         return (array) $response->json();
+    }
+
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        $this->call('delete', '/pins/'.rawurlencode($remoteId), $this->token($connection), []);
     }
 
     /** The sandbox token while the app is on Trial access, else null. */

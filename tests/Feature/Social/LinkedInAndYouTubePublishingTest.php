@@ -547,6 +547,17 @@ class LinkedInAndYouTubePublishingTest extends TestCase
         });
     }
 
+    /** Delete from the network (2026-10-15): the URN encoded in the path. */
+    public function test_linkedin_deletes_the_post_it_published(): void
+    {
+        Http::fake();
+
+        (new LinkedInPublisher)->deleteRemote($this->unsaved(SocialProvider::LinkedIn), 'urn:li:share:123');
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE'
+            && str_ends_with($r->url(), '/rest/posts/urn%3Ali%3Ashare%3A123'));
+    }
+
     private function temp(string $extension, string $contents): string
     {
         $path = tempnam(sys_get_temp_dir(), 'social').'.'.$extension;

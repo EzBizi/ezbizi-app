@@ -29,7 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
  * the old one stops working the moment X answers — see token() for why that
  * makes a lock necessary rather than tidy.
  */
-final class XPublisher implements LinksToPosts, SocialPublisher
+final class XPublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const API = 'https://api.x.com/2';
 
@@ -109,6 +109,14 @@ final class XPublisher implements LinksToPosts, SocialPublisher
     }
 
     /** Built from the id: X's own redirect finds the account, so no handle is needed. */
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        $token = $this->token($connection);
+
+        $this->send(fn () => Http::withToken($token)->timeout(self::TIMEOUT)->acceptJson()
+            ->delete(self::API.'/tweets/'.rawurlencode($remoteId)));
+    }
+
     public function permalink(SocialConnection $connection, string $remoteId): ?string
     {
         return ctype_digit($remoteId) ? 'https://x.com/i/web/status/'.$remoteId : null;
@@ -234,7 +242,7 @@ final class XPublisher implements LinksToPosts, SocialPublisher
             } catch (SocialOAuthRefused $e) {
                 if ($e->status === Response::HTTP_CONFLICT) {
                     $connection->forceFill([
-                        'status'        => SocialConnection::STATUS_BROKEN,
+                        'status' => SocialConnection::STATUS_BROKEN,
                         'status_reason' => 'X no longer accepts this connection. It needs connecting again.',
                     ])->save();
                 }

@@ -42,7 +42,7 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * is already a URN (an organization connection, the day Community Management
  * is approved and Connect lists Pages) is used as it stands.
  */
-final class LinkedInPublisher implements LinksToPosts, SocialPublisher
+final class LinkedInPublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const API = 'https://api.linkedin.com/rest';
 
@@ -81,27 +81,27 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
         $author = self::author($connection);
 
         $media = match ($kind) {
-            SocialMediaKind::Text  => null,
+            SocialMediaKind::Text => null,
             SocialMediaKind::Image => $this->uploadImage($connection, $token, $author, $post),
             SocialMediaKind::Video => $this->uploadVideo($connection, $token, $author, $post),
         };
 
         $payload = [
-            'author'       => $author,
-            'commentary'   => self::littleText(mb_substr($body, 0, self::MAX_COMMENTARY)),
-            'visibility'   => 'PUBLIC',
+            'author' => $author,
+            'commentary' => self::littleText(mb_substr($body, 0, self::MAX_COMMENTARY)),
+            'visibility' => 'PUBLIC',
             'distribution' => [
-                'feedDistribution'               => 'MAIN_FEED',
-                'targetEntities'                 => [],
+                'feedDistribution' => 'MAIN_FEED',
+                'targetEntities' => [],
                 'thirdPartyDistributionChannels' => [],
             ],
-            'lifecycleState'            => 'PUBLISHED',
+            'lifecycleState' => 'PUBLISHED',
             'isReshareDisabledByAuthor' => false,
         ];
 
         if ($media !== null) {
             $payload['content'] = ['media' => array_filter([
-                'id'    => $media,
+                'id' => $media,
                 'title' => $kind === SocialMediaKind::Video && $post->title !== null && trim($post->title) !== ''
                     ? mb_substr(trim($post->title), 0, 200)
                     : null,
@@ -128,6 +128,15 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
         // are checked in publish(), because a kind cannot say whether a
         // picture is a .webp.
         return null;
+    }
+
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        $token = $this->token($connection);
+
+        // The URN is URL-encoded in this path, unlike the share link.
+        $this->send($connection, fn () => $this->api($token)
+            ->delete(self::API.'/posts/'.rawurlencode($remoteId)), 'deleting the post');
     }
 
     public function permalink(SocialConnection $connection, string $remoteId): ?string
@@ -232,9 +241,9 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
         $init = $this->send($connection, fn () => $this->api($token)->post(
             self::API.'/videos?action=initializeUpload',
             ['initializeUploadRequest' => [
-                'owner'           => $owner,
-                'fileSizeBytes'   => $size,
-                'uploadCaptions'  => false,
+                'owner' => $owner,
+                'fileSizeBytes' => $size,
+                'uploadCaptions' => false,
                 'uploadThumbnail' => false,
             ]],
         ));
@@ -275,8 +284,8 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
         $this->send($connection, fn () => $this->api($token)->post(
             self::API.'/videos?action=finalizeUpload',
             ['finalizeUploadRequest' => [
-                'video'           => $video,
-                'uploadToken'     => (string) ($init->json('value.uploadToken') ?? ''),
+                'video' => $video,
+                'uploadToken' => (string) ($init->json('value.uploadToken') ?? ''),
                 'uploadedPartIds' => $etags,
             ]],
         ));
@@ -295,7 +304,7 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
             ->acceptJson()
             ->asJson()
             ->withHeaders([
-                'LinkedIn-Version'          => self::VERSION,
+                'LinkedIn-Version' => self::VERSION,
                 'X-Restli-Protocol-Version' => '2.0.0',
             ]);
     }
@@ -324,7 +333,7 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
 
         if ($response->status() === Status::HTTP_UNAUTHORIZED) {
             $connection->forceFill([
-                'status'        => SocialConnection::STATUS_BROKEN,
+                'status' => SocialConnection::STATUS_BROKEN,
                 'status_reason' => 'LinkedIn no longer accepts this connection. It needs connecting again.',
             ])->save();
 
@@ -395,7 +404,7 @@ final class LinkedInPublisher implements LinksToPosts, SocialPublisher
             } catch (SocialOAuthRefused $e) {
                 if ($e->status === Status::HTTP_CONFLICT) {
                     $connection->forceFill([
-                        'status'        => SocialConnection::STATUS_BROKEN,
+                        'status' => SocialConnection::STATUS_BROKEN,
                         'status_reason' => 'LinkedIn no longer accepts this connection. It needs connecting again.',
                     ])->save();
                 }
