@@ -1,260 +1,286 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Marketing · Social posting that feels finished</title>
+<title>Social poster</title>
 <style>
-/* Palette from client/lib/core/theme.dart; one 10px corner on every control. Accounts, posts
-   and times are invented. The data is what GET /social/posts already returns: scheduled_for,
-   created_at, and per target a status and the network's link (Meta, 0.0.0291). */
-:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.12);
- --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--ok:#16662d;--okc:#e1f2e5;
- --warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;--r:10px}
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
 *{box-sizing:border-box}
 body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
-.wrap{max-width:1180px;margin:0 auto}
+.wrap{max-width:1240px;margin:0 auto}
 h1{font-size:22px;margin:0 0 6px}
-.sub{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:960px}
-h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
-h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
-.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:960px}
-.note{background:var(--paper);border:1px solid #c9d4d9;border-radius:12px;padding:14px 18px;font-size:13px;max-width:1120px;margin:14px 0}
-.note ul{margin:6px 0 0 18px;padding:0}
-.lbl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
-.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1120px;max-width:100%;box-shadow:0 6px 22px rgba(6,8,8,.07)}
-.chrome{display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
-.chrome .t{font-size:20px;font-weight:800}
-.strip{display:flex;gap:6px;padding:8px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
-.tabx{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12px;background:var(--paper)}
-.tabx.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;padding:8px 14px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
 .btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
 .btn.t{border-color:transparent;background:transparent}
-.btn.sm{padding:5px 10px;font-size:12px}
-.btn.busy{background:#5f9fb2;border-color:#5f9fb2;color:#fff}
-.card{background:var(--paper);border:1px solid var(--line);border-radius:14px}
-.ch{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line2);font-weight:700;font-size:13.5px}
-.ch .s{font-weight:500;color:var(--muted);font-size:12px}
-.muted{color:var(--muted)} .tiny{font-size:11.5px;color:var(--muted)} .sp{flex:1}
-.ta{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;min-height:74px;color:#26323a;background:var(--paper)}
-.acct{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;background:var(--paper)}
-.acct.on{background:#f2fafc;border-color:#a9d3e1}
-.ic{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex:0 0 auto}
-.fb{background:#1877f2}.ig{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af)}.li{background:#0a66c2}.tt{background:#111}
-.res{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line2)}
-.res:last-child{border-bottom:0}
-.res .g{flex:1;min-width:0}
-.res .n{font-weight:600}
-.res .l{font-size:12px;color:var(--muted)}
-.spin{width:16px;height:16px;border-radius:50%;border:2px solid #cfe3ea;border-top-color:var(--pri);display:inline-block}
-.okk{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
-.bad{width:18px;height:18px;border-radius:50%;background:var(--bad);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
-.drf{width:18px;height:18px;border-radius:50%;background:#7b8791;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
-.link{color:var(--pri);font-weight:600;font-size:12px;white-space:nowrap}
-.bar{height:6px;border-radius:3px;background:#e3edf1;overflow:hidden}
-.bar span{display:block;height:100%;background:var(--pri)}
-.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:26px 20px 18px;gap:6px}
-.bigok{width:64px;height:64px;border-radius:50%;background:var(--okc);color:var(--ok);display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 0 0 10px rgba(31,138,61,.07),0 0 0 20px rgba(31,138,61,.04)}
-.hero .t{font-size:19px;font-weight:800}
-.prev{display:flex;gap:10px;border:1px solid var(--line);border-radius:12px;padding:10px;text-align:left;background:#fbfdfe}
-.thumb{width:64px;height:64px;border-radius:8px;background:linear-gradient(135deg,#b9d6e0,#e9d8c6);flex:0 0 auto}
-/* calendar */
-.mon{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.mon .h{font-size:10.5px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0}
-.cell{min-height:74px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:4px;font-size:10.5px;position:relative}
-.cell .d{font-weight:700;color:#33404a;margin-bottom:2px}
-.cell.today{border-color:var(--pri);box-shadow:0 0 0 2px rgba(0,112,143,.15)}
-.cell.dim{background:#f7f9fa;color:#b9c2c7}
-.pc{display:block;border-radius:6px;padding:2px 4px;margin-top:3px;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pc.sent{background:var(--okc);color:var(--ok)}
-.pc.sch{background:var(--pric);color:#00485c}
-.pc.fail{background:var(--badc);color:var(--bad)}
-.pc.new{outline:2px solid var(--ok);outline-offset:1px}
-.pc .mi{width:10px;height:10px;border-radius:3px;display:inline-block}
-.wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
-.wd{border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:6px;min-height:150px}
-.wd .h{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px}
-.wd.today{border-color:var(--pri)}
-.post{border:1px solid var(--line);border-radius:8px;padding:5px;margin-bottom:5px;background:#fbfdfe;font-size:10.5px}
-.post .tm{font-weight:700;font-size:10px;color:#33404a}
-.post.sent{border-left:0;background:#f4fbf6;border-color:#bfe0c9}
-.post.sch{background:#f2fafc;border-color:#a9d3e1}
-.toast{display:flex;align-items:center;gap:10px;background:#0f2a33;color:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 8px 22px rgba(6,8,8,.25);font-size:12.5px}
-.toast .link{color:#8fd9ef}
-/* phone */
-.pair{display:flex;gap:30px;flex-wrap:wrap}
-.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
-.ph{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;position:relative;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
-.sb{height:26px;display:flex;justify-content:space-between;padding:6px 20px 0;font-size:11px;font-weight:700;flex:0 0 auto}
-.ab{display:flex;align-items:center;gap:12px;padding:8px 16px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line)}
-.ab .t{font-size:17px;font-weight:800} .ab .i{font-size:18px} .ab .s{font-size:11.5px;color:var(--muted);font-weight:500}
-.scr{flex:1;overflow:hidden;position:relative}
-.pbar{padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:10px;flex:0 0 auto}
-.pbar .btn{flex:1;padding:11px}
-.sec{padding:14px 14px 6px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
-.ag{background:var(--paper);border:1px solid var(--line);border-radius:12px;margin:6px 14px;padding:10px 12px}
-.ag .top{display:flex;align-items:center;gap:6px}
-.ag .tx{margin-top:4px;color:#26323a;font-size:12.5px}
-.days{display:flex;gap:6px;padding:10px 14px;background:var(--paper);border-bottom:1px solid var(--line)}
-.days span{flex:1;text-align:center;border-radius:10px;padding:6px 0;font-size:11px;font-weight:700;color:#33404a;border:1px solid var(--line)}
-.days span.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
-.days span i{display:block;font-style:normal;height:6px;margin:3px auto 0;width:6px;border-radius:50%}
-.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(6,8,8,.18);padding:14px}
-.scrim{position:absolute;inset:0;background:rgba(6,8,8,.3)}
-.grab{width:40px;height:4px;border-radius:2px;background:#cfd6da;margin:0 auto 10px}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+<style>
+.vs{display:inline-flex;border:1px solid #b9c7cd;border-radius:8px;overflow:hidden;font-size:12px;font-weight:700}
+.vs span{padding:5px 10px;color:#33404a;background:#fff;border-left:1px solid #b9c7cd}.vs span:first-child{border-left:0}.vs span.on{background:var(--pric);color:var(--prid)}
+.tl{display:flex;gap:8px}.tl .t{flex:1;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:11px;color:var(--muted)}
+.tl .t b{display:block;font-size:18px;color:var(--ink)}.tl .t.on{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.pc{background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;gap:10px;align-items:center;font-size:12px}
+.pc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.pc .im{width:42px;height:42px;border-radius:8px;background:linear-gradient(135deg,#9cc7d3,#e3c48c);flex:0 0 auto}
+.pc .m{flex:1;min-width:0}.pc .m b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pc .m span{color:var(--muted);font-size:11px}
+.st{font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.st.ok{background:var(--okc);color:var(--ok)}.st.bad{background:#fbe3e3;color:#9f1d1d}.st.info{background:#dcecf6;color:#0b5a87}.st.part{background:#fbefd9;color:#734600}.st.go{background:#e6e0f6;color:#4b2f8f}
+.bar{height:5px;border-radius:3px;background:#e3e9ec;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;background:#4b2f8f}
+.pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4b2f8f;box-shadow:0 0 0 3px rgba(75,47,143,.25);margin-left:5px;vertical-align:middle}
+.drw{background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 22px rgba(6,8,8,.10);padding:12px 14px;display:flex;flex-direction:column;gap:8px;font-size:12px;width:300px;flex:0 0 auto}
+.drw h4{margin:0;font-size:14px}.drw .k{font-size:10px;font-weight:800;letter-spacing:.06em;color:#93a3ab;text-transform:uppercase;margin-top:4px}
+.acc{display:flex;gap:8px;align-items:flex-start;border-top:1px solid var(--line2);padding-top:7px}
+.acc .n{width:22px;height:22px;border-radius:6px;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.acc .g{flex:1}.acc .g b{display:block}.acc .g span{color:var(--muted);font-size:11px}.lk{color:var(--prid);font-weight:700;font-size:11.5px}
+.btns{display:flex;gap:6px;flex-wrap:wrap}.btn{height:28px;padding:0 10px;border-radius:8px;border:1px solid #b9c7cd;display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;background:#fff}
+.btn.p{background:var(--pri);color:#fff;border-color:var(--pri)}.btn.d{color:#9f1d1d;border-color:#e4b3b3}
+.cols4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;flex:1;min-height:0}
+.col{background:var(--ground);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.col h5{margin:0;font-size:12px;display:flex;justify-content:space-between}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;flex:1}
+.cal div{background:#fff;border:1px solid var(--line2);border-radius:6px;padding:4px;font-size:10.5px;color:var(--muted);min-height:62px;display:flex;flex-direction:column;gap:3px}
+.cal i{font-style:normal;border-radius:4px;padding:1px 4px;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal i.ok{background:var(--okc);color:var(--ok)}.cal i.info{background:#dcecf6;color:#0b5a87}.cal i.bad{background:#fbe3e3;color:#9f1d1d}
 </style>
 <div class="wrap">
-<h1>Marketing · Social posting that feels finished</h1>
-<p class="sub">From Jose (verbatim, 2026-09-28, via the Meta session): <i>"there was no hint that the post had been successful … we need to add flare, loading screens, success screens … i didn't see anything appear on the calendar even though you posted it and it succeeded … the user needs to feel like he's accomplished what he set out to do like posting, scheduling"</i>.</p>
-<div class="note"><b>In every option:</b>
-<ul>
-<li><b>A visible "posting" moment:</b> one line per account that resolves on its own: posted (with the network's <i>View on Facebook</i> link), failed (with the network's own sentence and <i>Try again</i>), or sent to drafts (TikTok: "finish it in the TikTok app").</li>
-<li><b>A success moment that names what happened:</b> "Posted to 3 accounts" or "Scheduled for Tuesday 9:00 AM on 3 accounts", with the post itself shown back and a way to see it on the calendar.</li>
-<li><b>The calendar shows every post</b>, sent and scheduled, on its day: green is posted, blue is scheduled, red is a failure to look at. The new one is outlined the first time you see it. (Today the calendars are drawn with no posts passed in; the data is already in <code>GET /social/posts</code>.)</li>
-<li>No dialogs and no popup menus: the moment happens in the composer, in a page, or in a panel.</li>
-</ul></div>
+<h1>Social poster: views, live progress and a post's detail</h1>
+<p class="subt">Jose, 2026-10-15: "starting with the Social Poster that rodrigo build to enhance our current one", "on the posted screen i want to have the links so i can verify that they were posted" and "ability to delete them". Every name here is invented.</p>
+<p class="cap"><b>What we have today:</b> a list with Scheduled / Sent / Failed tiles. Each account's line already has "View on Facebook" when it posted, and "Try again" when it failed. <b>What is missing:</b> an "All" tile; other ways to see the posts; live progress while a post goes out; a way to edit, reschedule or cancel a scheduled post; a way to dismiss one failed account or delete a post from the network; and an honest "partly posted" when some accounts refused it.</p>
 
-<!-- 1 -->
-<h2><span class="n">1</span>The composer becomes the result, and the post lands on the calendar <span class="rec">recommended</span></h2>
-<p class="cap">The three columns stay (pages · compose · calendars). Pressing <b>Publish now</b> turns the composer into a live list of the accounts, each resolving in turn; when the last one answers, a green check and "Posted to 3 accounts" with the post shown back, links per network, and <b>Write another</b>. The post appears on today's cell at the same moment, outlined once.</p>
-<div class="lbl">While posting</div>
-<div class="win"><div class="chrome"><span class="t">Marketing</span></div><div class="strip"><span class="tabx">Newsletter</span><span class="tabx on">Social Media Management</span><span class="tabx">Web Management</span></div>
- <div style="display:grid;grid-template-columns:200px 360px 1fr;gap:10px;padding:12px">
-  <div class="card"><div class="ch">Pages</div><div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px"><span class="acct on"><span class="ic fb">f</span>Ridgeline Chimney</span><span class="acct on"><span class="ic ig">◎</span>@ridgelinechimney</span><span class="acct on"><span class="ic tt">♪</span>ridgelinechimney</span></div></div>
-  <div class="card"><div class="ch">Posting… <span class="s">2 of 3 done</span></div>
-   <div style="padding:10px 14px"><div class="bar"><span style="width:66%"></span></div></div>
-   <div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div><div class="l">Posted just now</div></div><span class="okk">✓</span></div>
-   <div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div><div class="l">Posting with the picture…</div></div><span class="spin"></span></div>
-   <div class="res"><span class="ic tt">♪</span><div class="g"><div class="n">TikTok</div><div class="l">In your TikTok drafts</div></div><span class="drf">✎</span></div>
-   <div style="padding:10px 14px"><span class="btn busy" style="width:100%">Posting to 3 accounts…</span></div>
-  </div>
-  <div class="card"><div class="ch">September <span class="s">— your posts</span></div><div style="padding:8px 10px">
-   <div class="mon"><span class="h">Mon</span><span class="h">Tue</span><span class="h">Wed</span><span class="h">Thu</span><span class="h">Fri</span><span class="h">Sat</span><span class="h">Sun</span>
-    <div class="cell"><div class="d">21</div><div class="pc sent">✓ 9:10 · Fall sweep</div></div><div class="cell"><div class="d">22</div></div><div class="cell"><div class="d">23</div><div class="pc sent">✓ 2:00 · Chimney cap</div></div><div class="cell"><div class="d">24</div></div><div class="cell"><div class="d">25</div><div class="pc fail">! 11:00 · Instagram</div></div><div class="cell"><div class="d">26</div></div><div class="cell"><div class="d">27</div></div>
-    <div class="cell today"><div class="d">28 · today</div><div class="pc sch">… 3:14 · posting</div></div><div class="cell"><div class="d">29</div><div class="pc sch">◷ 9:00 · Liner promo</div></div><div class="cell"><div class="d">30</div></div><div class="cell dim"><div class="d">1</div></div><div class="cell dim"><div class="d">2</div><div class="pc sch">◷ 8:30 · Oct offer</div></div><div class="cell dim"><div class="d">3</div></div><div class="cell dim"><div class="d">4</div></div>
-   </div></div></div>
- </div></div>
-<div class="lbl">Done — a success moment, and the post is on today</div>
-<div class="win">
- <div style="display:grid;grid-template-columns:200px 360px 1fr;gap:10px;padding:12px">
-  <div class="card"><div class="ch">Pages</div><div style="padding:10px 14px" class="tiny">3 connected</div></div>
-  <div class="card">
-   <div class="hero"><div class="bigok">✓</div><div class="t">Posted to 3 accounts</div><div class="tiny">Facebook and Instagram are live. TikTok is waiting in your drafts.</div></div>
-   <div style="padding:0 14px 10px"><div class="prev"><div class="thumb"></div><div style="font-size:12px">Fall is here — book your chimney sweep before the first cold night. 10% off through October.</div></div></div>
-   <div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="link">View on Facebook ↗</span></div>
-   <div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="link">View on Instagram ↗</span></div>
-   <div class="res"><span class="ic tt">♪</span><div class="g"><div class="n">TikTok</div><div class="l">Finish it in the TikTok app</div></div><span class="drf">✎</span></div>
-   <div style="padding:10px 14px;display:flex;gap:8px"><span class="btn" style="flex:1">See it on the calendar</span><span class="btn f" style="flex:1">Write another</span></div>
-  </div>
-  <div class="card"><div class="ch">September</div><div style="padding:8px 10px">
-   <div class="mon"><span class="h">Mon</span><span class="h">Tue</span><span class="h">Wed</span><span class="h">Thu</span><span class="h">Fri</span><span class="h">Sat</span><span class="h">Sun</span>
-    <div class="cell"><div class="d">21</div><div class="pc sent">✓ 9:10 · Fall sweep</div></div><div class="cell"><div class="d">22</div></div><div class="cell"><div class="d">23</div><div class="pc sent">✓ 2:00 · Chimney cap</div></div><div class="cell"><div class="d">24</div></div><div class="cell"><div class="d">25</div><div class="pc fail">! 11:00 · Instagram</div></div><div class="cell"><div class="d">26</div></div><div class="cell"><div class="d">27</div></div>
-    <div class="cell today"><div class="d">28 · today</div><div class="pc sent new">✓ 3:14 · Fall is here…</div></div><div class="cell"><div class="d">29</div><div class="pc sch">◷ 9:00 · Liner promo</div></div><div class="cell"><div class="d">30</div></div><div class="cell dim"><div class="d">1</div></div><div class="cell dim"><div class="d">2</div><div class="pc sch">◷ 8:30 · Oct offer</div></div><div class="cell dim"><div class="d">3</div></div><div class="cell dim"><div class="d">4</div></div>
-   </div>
-   <div class="tiny" style="margin-top:6px">Clicking a post opens it in a panel: every account, its link or its reason, and Try again for a failed one.</div></div></div>
- </div></div>
+<h2><span class="n">1</span> The list stays, with a view switch and a detail panel <span class="rec">RECOMMENDED</span></h2>
+<p class="cap">Tiles: <b>All · Scheduled · Publishing · Posted · Failed</b>. A switch for <b>List | Board | Calendar</b>, remembered per person. While anything is going out, the Social tab shows a pulsing dot and the card shows "Posting 2 of 3" with a bar. A post that went to some accounts and not others says <b>Partly posted</b>. Clicking a post opens a side panel with every account's result: a <b>link to the live post</b>, the network's own reason when it failed, and <b>Try again</b> or <b>Dismiss</b>. A scheduled post gets <b>Edit</b>, <b>Reschedule</b> and <b>Cancel</b>. <b>Delete from the network</b> appears only on accounts whose network allows it; on the others it says to delete it in that app.</p>
+<div class="win" style="height:520px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page" style="flex-direction:row;gap:0;padding:0">
+ <div style="flex:1;display:flex;flex-direction:column;gap:10px;padding:14px;min-width:0">
+  <div class="tabs"><span>Leads</span><span class="on">Social<span class="pulse"></span></span><span>Newsletter</span><span>Reviews</span></div>
+  <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Posts</b><span style="flex:1"></span><span class="vs"><span class="on">List</span><span>Board</span><span>Calendar</span></span><span class="btn p">+ New post</span></div>
+  <div class="tl"><div class="t on"><b>24</b>All</div><div class="t"><b>3</b>Scheduled</div><div class="t"><b>1</b>Posting</div><div class="t"><b>18</b>Posted</div><div class="t"><b>2</b>Failed</div></div>
+  <div class="pc"><span class="im"></span><div class="m"><b>Fall chimney sweep special: book before November</b><span>3 accounts · now</span><div class="bar"><i style="width:66%"></i></div></div><span class="st go">Posting 2 of 3</span></div>
+  <div class="pc sel"><span class="im"></span><div class="m"><b>Meet Sam, our newest technician</b><span>Facebook, Instagram, LinkedIn · Oct 14, 9:00 AM</span></div><span class="st part">Partly posted · 2 of 3</span></div>
+  <div class="pc"><span class="im"></span><div class="m"><b>5 signs your dryer vent needs cleaning</b><span>Facebook, Instagram · Oct 18, 10:00 AM</span></div><span class="st info">Scheduled</span></div>
+  <div class="pc"><span class="im"></span><div class="m"><b>Thank you, Springfield!</b><span>Facebook · Oct 12</span></div><span class="st ok">Posted</span></div>
+ </div>
+ <div class="drw"><h4>Meet Sam, our newest technician</h4><span class="muted">Posted Oct 14, 9:00 AM by Dana</span>
+  <span class="k">Accounts</span>
+  <div class="acc"><span class="n" style="background:#1877f2">f</span><div class="g"><b>Brightside Home</b><span>Posted</span><br><span class="lk">↗ View on Facebook</span></div><span class="btn d">Delete</span></div>
+  <div class="acc"><span class="n" style="background:#0a66c2">in</span><div class="g"><b>Brightside Home Services</b><span>Posted</span><br><span class="lk">↗ View on LinkedIn</span></div><span class="btn d">Delete</span></div>
+  <div class="acc"><span class="n" style="background:#c13584">ig</span><div class="g"><b>@brightside.home</b><span style="color:#9f1d1d">Instagram needs a photo between 4:5 and 1.91:1.</span></div></div>
+  <div class="btns" style="padding-left:30px"><span class="btn">Try again</span><span class="btn">Dismiss</span></div>
+  <span class="k">Text</span><span>Say hello to Sam, who joined the team this week…</span>
+ </div>
+</div></div></div>
 
-<!-- 2 -->
-<h2><span class="n">2</span>A page of its own: posting, then a finish screen</h2>
-<p class="cap">Publishing takes the whole tab for a moment: a progress ring with each account ticking over, then a finish screen with the post shown large, links per network, and two ways on — <b>See it on the calendar</b> (opens the calendar with the post outlined) or <b>Write another</b>. Scheduling ends on "Scheduled for Tuesday 9:00 AM".</p>
-<div class="win"><div class="chrome"><span class="t">Marketing</span><span class="sp"></span><span class="tiny">Social Media Management</span></div>
- <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-  <div style="padding:26px;border-right:1px solid var(--line)">
-   <div class="lbl" style="margin-top:0">Posting</div>
-   <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px 0">
-    <div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(var(--pri) 0 240deg,#e3edf1 240deg 360deg);display:flex;align-items:center;justify-content:center"><div style="width:86px;height:86px;border-radius:50%;background:var(--ground);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px">2 / 3</div></div>
-    <div style="font-weight:800;font-size:16px">Posting to your accounts</div>
-   </div>
-   <div class="card"><div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="okk">✓</span></div><div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div><div class="l">uploading the picture</div></div><span class="spin"></span></div><div class="res"><span class="ic li">in</span><div class="g"><div class="n">LinkedIn</div><div class="l">waiting</div></div></div></div>
-  </div>
-  <div style="padding:26px">
-   <div class="lbl" style="margin-top:0">Finished</div>
-   <div class="hero" style="padding-top:6px"><div class="bigok">✓</div><div class="t">Posted to 2 of 3 accounts</div><div class="tiny">LinkedIn needs a look — the rest are live.</div></div>
-   <div class="prev" style="margin-bottom:10px"><div class="thumb" style="width:90px;height:90px"></div><div style="font-size:12.5px">Fall is here — book your chimney sweep before the first cold night. 10% off through October.</div></div>
-   <div class="card"><div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="link">View ↗</span></div><div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="link">View ↗</span></div><div class="res"><span class="ic li">in</span><div class="g"><div class="n">LinkedIn</div><div class="l" style="color:var(--bad)">LinkedIn said the session has ended. Reconnect it under Accounts.</div></div><span class="btn sm">Try again</span></div></div>
-   <div style="display:flex;gap:8px;margin-top:12px"><span class="btn" style="flex:1">See it on the calendar</span><span class="btn f" style="flex:1">Write another</span></div>
-  </div>
- </div></div>
+<h2><span class="n">2</span> A board first</h2>
+<p class="cap">The page opens on four columns: <b>Scheduled · Posting · Posted · Failed</b>. A partly posted post sits under Posted with an amber badge. The same side panel opens on click. You can see where everything stands at a glance, but long text gets cut short and a busy month makes very long columns.</p>
+<div class="win" style="height:360px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">Posts</b><span style="flex:1"></span><span class="vs"><span>List</span><span class="on">Board</span><span>Calendar</span></span><span class="btn p">+ New post</span></div>
+ <div class="cols4">
+  <div class="col"><h5>Scheduled <span>3</span></h5><div class="pc"><div class="m"><b>5 signs your dryer vent…</b><span>Oct 18</span></div></div><div class="pc"><div class="m"><b>Halloween safety tips</b><span>Oct 28</span></div></div></div>
+  <div class="col"><h5>Posting <span>1</span></h5><div class="pc"><div class="m"><b>Fall sweep special</b><span>2 of 3</span><div class="bar"><i style="width:66%"></i></div></div></div></div>
+  <div class="col"><h5>Posted <span>18</span></h5><div class="pc"><div class="m"><b>Meet Sam</b><span class="st part">2 of 3</span></div></div><div class="pc"><div class="m"><b>Thank you, Springfield!</b><span>Oct 12</span></div></div></div>
+  <div class="col"><h5>Failed <span>2</span></h5><div class="pc"><div class="m"><b>Before and after</b><span>Video too long</span></div></div></div>
+ </div>
+</div></div></div>
 
-<!-- 3 -->
-<h2><span class="n">3</span>The calendar is the page; writing a post is a panel over it</h2>
-<p class="cap">For planning a month of posts: the calendar takes the tab (a week of cards with the post's own text and picture), <b>New post</b> opens the composer as a side panel, and on publish the panel shows the progress and the finish. Close it and the post is sitting on its day, outlined, with a short note along the bottom.</p>
-<div class="win"><div class="chrome"><span class="t">Marketing</span><span class="sp"></span><span class="btn sm">‹</span><b>Week of Sep 28</b><span class="btn sm">›</span><span class="btn f sm">+ New post</span></div>
- <div style="display:grid;grid-template-columns:1fr 360px;gap:0">
-  <div style="padding:12px">
-   <div class="wk">
-    <div class="wd today"><div class="h">Mon 28 · today</div><div class="post sent new"><div class="tm">✓ 3:14 PM <span class="ic fb" style="width:12px;height:12px;font-size:7px">f</span> <span class="ic ig" style="width:12px;height:12px;font-size:7px">◎</span></div><div class="thumb" style="width:100%;height:40px;margin:3px 0"></div>Fall is here — book your sweep…</div></div>
-    <div class="wd"><div class="h">Tue 29</div><div class="post sch"><div class="tm">◷ 9:00 AM <span class="ic fb" style="width:12px;height:12px;font-size:7px">f</span></div>Liner promo: $150 off installs</div></div>
-    <div class="wd"><div class="h">Wed 30</div></div>
-    <div class="wd"><div class="h">Thu 1</div></div>
-    <div class="wd"><div class="h">Fri 2</div><div class="post sch"><div class="tm">◷ 8:30 AM <span class="ic ig" style="width:12px;height:12px;font-size:7px">◎</span></div>October offer</div></div>
-    <div class="wd"><div class="h">Sat 3</div></div>
-    <div class="wd"><div class="h">Sun 4</div></div>
-   </div>
-   <div class="toast" style="margin-top:12px;width:420px"><span class="okk">✓</span><span>Posted to Facebook and Instagram</span><span class="sp"></span><span class="link">Open it</span></div>
-  </div>
-  <div style="background:var(--paper);border-left:1px solid var(--line);padding:14px">
-   <div style="display:flex;align-items:center;margin-bottom:8px"><b style="font-size:15px">New post</b><span class="sp"></span><span class="muted">✕</span></div>
-   <div class="hero" style="padding:10px 0"><div class="bigok">✓</div><div class="t">Posted</div><div class="tiny">It's on Monday, outlined.</div></div>
-   <div class="card"><div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="link">View ↗</span></div><div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="link">View ↗</span></div></div>
-   <div style="display:flex;gap:8px;margin-top:12px"><span class="btn" style="flex:1">Close</span><span class="btn f" style="flex:1">Write another</span></div>
-  </div>
- </div></div>
+<h2><span class="n">3</span> A calendar first</h2>
+<p class="cap">The page opens on the month, each post a coloured chip on its day: blue when scheduled, green when posted, red when it failed. Dragging a scheduled chip to another day reschedules it. It's the best way to plan, but it's poor for checking what posted and for following links.</p>
+<div class="win" style="height:360px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span><span class="bell">🔔</span></div>
+<div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+<div class="page">
+ <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px">October 2026</b><span style="flex:1"></span><span class="vs"><span>List</span><span>Board</span><span class="on">Calendar</span></span></div>
+ <div class="cal"><div>11</div><div>12<i class="ok">Thank you</i></div><div>13</div><div>14<i class="ok">Meet Sam</i></div><div>15<i class="bad">Before/after</i></div><div>16</div><div>17</div><div>18<i class="info">Dryer vent</i></div><div>19</div><div>20</div><div>21</div><div>22</div><div>23</div><div>24</div></div>
+</div></div></div>
 
-<!-- phones -->
-<h2 style="margin-top:56px">On a phone — pick one of 4, 5 or 6</h2>
-<p class="cap">A month grid does not fit a phone; each of these swaps it for something that does.</p>
-<h2 style="margin-top:14px"><span class="n">4</span>A finish screen, then an agenda <span class="rec">recommended</span></h2>
-<p class="cap" style="max-width:760px">Publish opens a posting screen that ticks each account over, then a finish screen with a big check, the post shown back, and links. <b>Done</b> lands on the agenda (Today, Tomorrow, then dates) with the new post at the top, outlined.</p>
-<div class="pair">
- <div><div class="pl">Posting</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">Posting…</div></div>
-  <div class="scr"><div class="hero" style="padding-top:40px"><div style="width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--pri) 0 240deg,#e3edf1 240deg 360deg);display:flex;align-items:center;justify-content:center"><div style="width:94px;height:94px;border-radius:50%;background:var(--ground);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px">2 / 3</div></div><div class="t" style="margin-top:10px">Posting to your accounts</div></div>
-   <div class="card" style="margin:0 14px"><div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="okk">✓</span></div><div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div><div class="l">uploading the picture</div></div><span class="spin"></span></div><div class="res"><span class="ic tt">♪</span><div class="g"><div class="n">TikTok</div><div class="l">to your drafts</div></div><span class="drf">✎</span></div></div></div></div></div>
- <div><div class="pl">Finished</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">Done</div></div>
-  <div class="scr"><div class="hero" style="padding-top:30px"><div class="bigok" style="width:84px;height:84px;font-size:40px">✓</div><div class="t" style="font-size:21px;margin-top:8px">Posted to 3 accounts</div><div class="tiny">TikTok is waiting in your drafts.</div></div>
-   <div style="padding:0 14px"><div class="prev"><div class="thumb"></div><div style="font-size:12px">Fall is here — book your chimney sweep before the first cold night.</div></div></div>
-   <div class="card" style="margin:10px 14px 0"><div class="res"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="link">View ↗</span></div><div class="res"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="link">View ↗</span></div><div class="res"><span class="ic tt">♪</span><div class="g"><div class="n">TikTok</div><div class="l">Finish it in the app</div></div></div></div></div>
-  <div class="pbar"><span class="btn">Write another</span><span class="btn f">Done</span></div></div></div>
- <div><div class="pl">The agenda</div><div class="ph"><div class="sb"><span>3:15</span><span>▾▴▮</span></div><div class="ab"><div><div class="t">Posts</div><div class="s">3 accounts</div></div><span class="sp"></span><span class="btn f sm">+ New</span></div>
-  <div class="scr"><div class="sec">Today</div>
-   <div class="ag" style="outline:2px solid var(--ok)"><div class="top"><span class="okk" style="width:16px;height:16px;font-size:9px">✓</span><b>3:14 PM</b><span class="ic fb" style="width:14px;height:14px;font-size:8px">f</span><span class="ic ig" style="width:14px;height:14px;font-size:8px">◎</span><span class="ic tt" style="width:14px;height:14px;font-size:8px">♪</span><span class="sp"></span><span class="tiny">just now</span></div><div class="tx">Fall is here — book your chimney sweep…</div></div>
-   <div class="sec">Tomorrow</div>
-   <div class="ag"><div class="top"><span style="color:var(--pri)">◷</span><b>9:00 AM</b><span class="ic fb" style="width:14px;height:14px;font-size:8px">f</span><span class="sp"></span><span class="tiny">scheduled</span></div><div class="tx">Liner promo: $150 off installs</div></div>
-   <div class="sec">Fri, Oct 2</div>
-   <div class="ag"><div class="top"><span style="color:var(--pri)">◷</span><b>8:30 AM</b><span class="ic ig" style="width:14px;height:14px;font-size:8px">◎</span><span class="sp"></span><span class="tiny">scheduled</span></div><div class="tx">October offer</div></div>
-   <div class="sec">Earlier</div>
-   <div class="ag"><div class="top"><span class="bad" style="width:16px;height:16px;font-size:9px">!</span><b>Sep 25</b><span class="ic ig" style="width:14px;height:14px;font-size:8px">◎</span><span class="sp"></span><span class="tiny" style="color:var(--bad)">needs a look</span></div><div class="tx">Instagram needs a picture or a video</div></div>
+<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
+<p class="cap"><b>4</b> (recommended, matches 1): the tiles scroll sideways, posts are a list, and a post opens <b>in place</b> with a back arrow (no full-screen push), with its accounts, links and buttons. <b>5</b> matches 2: one column at a time, swiped. <b>6</b> matches 3: an agenda by day.</p>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · list + in place <span class="rec">RECOMMENDED</span></span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">‹ Meet Sam</span></div><div class="pb">
+   <span class="st part" style="align-self:flex-start">Partly posted · 2 of 3</span>
+   <div class="acc"><span class="n" style="background:#1877f2">f</span><div class="g"><b>Brightside Home</b><span class="lk">↗ View on Facebook</span></div></div>
+   <div class="acc"><span class="n" style="background:#0a66c2">in</span><div class="g"><b>Brightside Home Services</b><span class="lk">↗ View on LinkedIn</span></div></div>
+   <div class="acc"><span class="n" style="background:#c13584">ig</span><div class="g"><b>@brightside.home</b><span style="color:#9f1d1d">Needs a 4:5 to 1.91:1 photo.</span></div></div>
+   <div class="btns"><span class="btn">Try again</span><span class="btn">Dismiss</span></div>
+  </div></div></div>
+ <div class="pcol"><span class="pl">5 · board, swiped</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">Posted · 18</span></div><div class="pb">
+   <div class="pc"><div class="m"><b>Meet Sam</b><span class="st part">2 of 3</span></div></div><div class="pc"><div class="m"><b>Thank you, Springfield!</b></div></div><span class="muted" style="text-align:center">● ● ○ ○</span>
+  </div></div></div>
+ <div class="pcol"><span class="pl">6 · agenda</span>
+  <div class="phn"><div class="sb"></div><div class="ab"><span class="t">October</span></div><div class="pb">
+   <b>Tue, Oct 14</b><div class="pc"><div class="m"><b>Meet Sam</b></div><span class="st part">2 of 3</span></div><b>Sat, Oct 18</b><div class="pc"><div class="m"><b>Dryer vent signs</b></div><span class="st info">Scheduled</span></div>
   </div></div></div>
 </div>
 
-<h2 style="margin-top:40px"><span class="n">5</span>Progress at the bottom, the week as a strip</h2>
-<p class="cap" style="max-width:760px">The composer stays on screen; the progress and the finish rise from the bottom and settle into a single line with the result. The calendar becomes a strip of seven days with a dot under each day that has posts, and that day's posts below.</p>
-<div class="pair">
- <div><div class="pl">Posting, from the bottom</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">New post</div></div>
-  <div class="scr"><div style="padding:14px"><div class="ta">Fall is here — book your chimney sweep before the first cold night…</div></div><div class="scrim"></div>
-   <div class="sheet"><div class="grab"></div><div style="font-weight:800;font-size:16px;margin-bottom:8px">Posting to 3 accounts</div><div class="bar" style="margin-bottom:10px"><span style="width:66%"></span></div>
-    <div class="res" style="padding:8px 0"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="okk">✓</span></div><div class="res" style="padding:8px 0"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="spin"></span></div><div class="res" style="padding:8px 0"><span class="ic tt">♪</span><div class="g"><div class="n">TikTok</div><div class="l">to your drafts</div></div><span class="drf">✎</span></div></div></div></div></div>
- <div><div class="pl">Finished, from the bottom</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">New post</div></div>
-  <div class="scr"><div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="hero" style="padding:8px 0 12px"><div class="bigok">✓</div><div class="t">Posted to 3 accounts</div></div>
-   <div class="res" style="padding:8px 0"><span class="ic fb">f</span><div class="g"><div class="n">Facebook</div></div><span class="link">View ↗</span></div><div class="res" style="padding:8px 0"><span class="ic ig">◎</span><div class="g"><div class="n">Instagram</div></div><span class="link">View ↗</span></div>
-   <div style="display:flex;gap:8px;margin-top:10px"><span class="btn" style="flex:1">See this week</span><span class="btn f" style="flex:1">Done</span></div></div></div></div></div>
- <div><div class="pl">This week</div><div class="ph"><div class="sb"><span>3:15</span><span>▾▴▮</span></div><div class="ab"><div class="t">Posts</div><span class="sp"></span><span class="btn f sm">+ New</span></div>
-  <div class="days"><span class="on">Mon<br>28<i style="background:var(--ok)"></i></span><span>Tue<br>29<i style="background:var(--pri)"></i></span><span>Wed<br>30<i></i></span><span>Thu<br>1<i></i></span><span>Fri<br>2<i style="background:var(--pri)"></i></span><span>Sat<br>3<i></i></span><span>Sun<br>4<i></i></span></div>
-  <div class="scr"><div class="sec">Monday — today</div><div class="ag" style="outline:2px solid var(--ok)"><div class="top"><span class="okk" style="width:16px;height:16px;font-size:9px">✓</span><b>3:14 PM</b><span class="sp"></span><span class="tiny">posted</span></div><div class="tx">Fall is here — book your chimney sweep…</div><div class="tiny" style="margin-top:4px">Facebook ↗ · Instagram ↗ · TikTok drafts</div></div></div></div></div>
-</div>
-
-<h2 style="margin-top:40px"><span class="n">6</span>A running feed: every post, newest first</h2>
-<p class="cap" style="max-width:760px">One scrolling feed like a social timeline: scheduled posts at the top counting down, then what went out with each network's result. Posting shows a card at the top of the feed that fills in as each account answers, then turns green.</p>
-<div class="pair">
- <div><div class="pl">Posting, at the top of the feed</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">Posts</div><span class="sp"></span><span class="btn f sm">+ New</span></div>
-  <div class="scr"><div class="ag" style="border-color:#a9d3e1"><div class="top"><span class="spin"></span><b>Posting…</b><span class="sp"></span><span class="tiny">2 of 3</span></div><div class="bar" style="margin:8px 0"><span style="width:66%"></span></div><div class="tx">Fall is here — book your chimney sweep…</div></div>
-   <div class="sec">Coming up</div><div class="ag"><div class="top"><span style="color:var(--pri)">◷</span><b>Tomorrow 9:00 AM</b><span class="sp"></span><span class="tiny">in 17 h</span></div><div class="tx">Liner promo: $150 off installs</div></div>
-   <div class="sec">Sent</div><div class="ag"><div class="top"><span class="okk" style="width:16px;height:16px;font-size:9px">✓</span><b>Sep 23, 2:00 PM</b></div><div class="tx">Chimney caps keep the rain and the raccoons out.</div></div></div></div></div>
- <div><div class="pl">Posted</div><div class="ph"><div class="sb"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><div class="t">Posts</div><span class="sp"></span><span class="btn f sm">+ New</span></div>
-  <div class="scr"><div class="ag" style="border-color:#bfe0c9;background:#f4fbf6"><div class="top"><span class="okk">✓</span><b>Posted to 3 accounts</b><span class="sp"></span><span class="tiny">just now</span></div><div class="prev" style="margin-top:8px;background:#fff"><div class="thumb" style="width:52px;height:52px"></div><div style="font-size:12px">Fall is here — book your chimney sweep…</div></div><div class="tiny" style="margin-top:6px">Facebook ↗ · Instagram ↗ · TikTok in drafts</div></div>
-   <div class="sec">Coming up</div><div class="ag"><div class="top"><span style="color:var(--pri)">◷</span><b>Tomorrow 9:00 AM</b></div><div class="tx">Liner promo: $150 off installs</div></div></div></div></div>
- <div><div class="pl">A failure in the feed</div><div class="ph"><div class="sb"><span>3:20</span><span>▾▴▮</span></div><div class="ab"><div class="t">Posts</div></div>
-  <div class="scr"><div class="ag" style="border-color:#f0c4c4;background:#fff8f8"><div class="top"><span class="bad">!</span><b>Posted to 2 of 3</b><span class="sp"></span><span class="tiny">3:18 PM</span></div><div class="tx">Instagram needs a picture or a video. Add one and try again.</div><div style="display:flex;gap:8px;margin-top:8px"><span class="btn sm">Add a picture</span><span class="btn f sm">Try again</span></div></div></div></div></div>
-</div>
-
-<div class="note" style="margin-top:40px"><b>Recommendation: 1 on a desktop, 4 on a phone.</b> 1 keeps everything where it is and makes the moment happen where the eyes already are: the composer turns into the result, and the post appears on the calendar beside it at the same time. 4 gives the phone a real finish screen (the "I did it" Jose described) and replaces a month grid a phone cannot show with an agenda it can. Every option needs the same two server facts it already has: per-account status with its link, and the post's time.</div>
+<h2>With any option</h2>
+<p class="cap"><b>Delete from the network</b> asks first and says it can't be undone. <b>Cancel</b> on a scheduled post means it never goes out. <b>Dismiss</b> hides one failed account's line without retrying. Which networks allow deleting comes from the Marketing session; for Instagram and TikTok, the drawing assumes they don't.</p>
 </div>

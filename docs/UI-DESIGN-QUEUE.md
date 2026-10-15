@@ -2965,6 +2965,13 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 100 · Marketing › Social poster: views, live progress, post detail — **sent 2026-10-15** (`docs/previews/social-poster-layouts.html`)
+
+Jose via the desk and Marketing, 2026-10-15: enhance ours from Rodrigo's poster; links to verify posts; delete them. **1** (recommended): the list stays with All · Scheduled · Posting · Posted · Failed tiles,
+a List | Board | Calendar switch remembered per person, a pulsing tab dot and "Posting 2 of 3", an honest "Partly posted", and a side panel per post: each account's link, reason, Try again /
+Dismiss, Edit / Reschedule / Cancel while scheduled, Delete from the network only where the network allows. **2**: board first. **3**: calendar first. Phone **4** (recommended, opens in place) / **5** / **6**.
+Server routes are Marketing's (PATCH/DELETE post, DELETE target remote, POST dismiss).
+
 ### 99 · Settings, Suggestions, Development and Your account: UI overhaul — **sent 2026-10-15 14:30 — Jose: "Looks good", desktop 1 and phone 4, plus: "settings works as a hub for all the other settings in the app ... the settings tab should be in sync with them and have the full parity, so all settings can be found there"** (`docs/previews/settings-overhaul-layouts.html`)
 
 Jose 2026-10-15 via the desk: overhaul Settings, Suggestions and Development and all their sub tabs, then walkthroughs and videos. He also asked directly for a walkthrough and
