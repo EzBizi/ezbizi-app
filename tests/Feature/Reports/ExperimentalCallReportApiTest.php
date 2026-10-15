@@ -72,6 +72,26 @@ class ExperimentalCallReportApiTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Jose, 2026-10-15: people assigned to one company "should be able to see
+     * it regardless". The tab is the gate, and every branch's Workiz counts.
+     */
+    public function test_the_tab_alone_reads_it_from_one_branch(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $branchOnly = $this->userWithRole($tenant, 'Lead Manager', ['reports.experimental.view'], onlyAt: $tenant['franchise']);
+
+        $report = $this->signedInAs($branchOnly)
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json();
+        $this->assertSame(['Nationwide', 'New Jersey'], collect($report['workiz_accounts'])->pluck('name')->sort()->values()->all());
+
+        $this->assertNotSame(403, $this->signedInAs($branchOnly)->get('/api/v1/reports/experimental/calls/rec-9/recording')->status());
+    }
+
     // ── an absent vendor is a state, not an empty report ─────────
 
     /**
