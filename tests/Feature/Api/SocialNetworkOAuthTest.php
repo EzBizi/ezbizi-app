@@ -349,7 +349,7 @@ class SocialNetworkOAuthTest extends TestCase
     {
         $this->assertContains(SocialProvider::Thumbtack, SocialProvider::dataSources());
         $this->assertFalse(SocialProvider::Thumbtack->isPublishingNetwork());
-        $this->assertSame('leads.edit', SocialProvider::Thumbtack->connectPermission());
+        $this->assertSame('leads.manage', SocialProvider::Thumbtack->connectPermission());
     }
 
     /**
