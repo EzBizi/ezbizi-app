@@ -85,6 +85,11 @@ class ViewScope
             if (! $reachable) {
                 throw new AuthorizationException('That view is not available. Choose a view again.');
             }
+            // A company or place switched off while someone stood in it: back
+            // to the whole organization (Jose, 2026-10-15).
+            if (self::switchedOff($type, $id)) {
+                return new self(self::ORGANIZATION, null, $user);
+            }
 
             return new self($type, $id, $user);
         }
@@ -103,9 +108,33 @@ class ViewScope
             default => false,
         };
 
-        return $valid
+        return $valid && ! self::switchedOff($type, $id)
             ? new self($type, $id, $user)
             : new self(self::ORGANIZATION, null, $user);
+    }
+
+    /**
+     * A company switched off, a Sub Company under one, or a place that is off
+     * or in a company that is. Settings › Organization still lists them; the
+     * view cannot stand in them.
+     */
+    private static function switchedOff(string $type, string $id): bool
+    {
+        if ($type === self::FRANCHISE) {
+            $franchise = Franchise::find($id);
+            if ($franchise === null) {
+                return false;
+            }
+            if (! $franchise->is_active) {
+                return true;
+            }
+            $company = $franchise->company;
+        } else {
+            $company = Company::find($id);
+        }
+
+        return $company !== null
+            && (! $company->is_active || ($company->parent !== null && ! $company->parent->is_active));
     }
 
     public static function forStoredAutomationScope(User $user, ?string $type, ?string $id): self
