@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0441',
       date: '15 Oct 2026',
       items: [
+        'Settings › Integrations: connect your RingCentral account on its own card. Reports’ call reports read it.',
         'Leads: calls made straight to your own phone lines (from the website, the Google profile or ads) now appear under RC Calls, one lead per caller, with the recording and transcript. A Google Local Services call never appears twice.',
         'Settings: the Settings tab now lists every module\'s own settings, so each one can be opened from one place. Settings, Suggestions, Development and Your account get the same header as other modules, with a Walkthrough button.',
         'Settings › Organization: moving a company and renaming an integration now open in a side panel.',
