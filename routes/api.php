@@ -582,6 +582,9 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
+// What the customer did with their review link (Customer Experience, 2026-10-15).
+Route::post('v1/web/review-link', [\App\Http\Controllers\Api\ReviewLinkEventsController::class, 'store'])
+    ->middleware('throttle:web-enquiry');
 // {{ membership_link }}: app.ezbizi.com/api/m/<code>, under /api because nginx
 // sends only /api and /q/ to Laravel.
 Route::get('m/{code}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'shortJoin'])
@@ -901,6 +904,8 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        // What customers did with their review links (Customer Experience, 2026-10-15).
+        Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);

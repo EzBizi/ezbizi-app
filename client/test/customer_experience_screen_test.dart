@@ -26,6 +26,7 @@ import 'package:http/testing.dart';
 /// The real `/me` is held to the real registry by `CustomerExperienceModuleTest` on the
 /// server. A fixture here would otherwise only prove it agrees with itself.
 void main() {
+  reviewLinkTests();
   testWidgets('both children are drawn, in the order the server sent them', (
     tester,
   ) async {
@@ -83,7 +84,8 @@ void main() {
     expect(
       find.textContaining('granted separately'),
       findsOneWidget,
-      reason: 'an empty state that does not name what to ask for cannot be acted on',
+      reason:
+          'an empty state that does not name what to ask for cannot be acted on',
     );
     expect(find.byType(ChoiceChip), findsNothing);
   });
@@ -104,7 +106,8 @@ void main() {
     expect(
       find.widgetWithText(ChoiceChip, 'Leads'),
       findsNothing,
-      reason: 'the strip is the children of customer_experience, not everything reachable',
+      reason:
+          'the strip is the children of customer_experience, not everything reachable',
     );
   });
 
@@ -127,6 +130,83 @@ void main() {
     );
 
     expect(chip.selected, isTrue);
+  });
+}
+
+/// Review links (Jose, 2026-10-15): a chip of the container's own, on
+/// Reviews' grant, drawing the funnel and the table from one endpoint.
+void reviewLinkTests() {
+  testWidgets('review links ride on the Reviews grant', (tester) async {
+    await _pump(tester, _handler(reachable: const ['business_profile']));
+    expect(find.widgetWithText(ChoiceChip, 'Review links'), findsNothing);
+
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    expect(find.widgetWithText(ChoiceChip, 'Review links'), findsOneWidget);
+  });
+
+  testWidgets('the funnel shows each step and its share of the one before', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('20'), findsWidgets);
+    expect(find.text('10 · 50%'), findsWidgets, reason: 'opened of sent');
+    expect(find.text('8 · 80%'), findsOneWidget, reason: 'green of opened');
+    expect(find.text('6 · 75%'), findsOneWidget, reason: 'google of green');
+    expect(find.textContaining('counted since'), findsOneWidget);
+
+    // Siblings are one size (Jose: "you always make that mistake").
+    final sizes = {
+      for (final k in ['sent', 'opened', 'happy', 'sad', 'google', 'submitted'])
+        tester.getSize(find.byKey(Key('review-links-tile-$k'))),
+    };
+    expect(sizes.length, 1);
+  });
+
+  testWidgets(
+    'on a phone: two columns of tiles and a list, nothing overflows',
+    (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      await _pump(tester, _handler(reachable: const ['reviews']));
+      tester.view.physicalSize = const Size(390, 844);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('review-links-table')), findsNothing);
+      expect(find.text('North Branch'), findsOneWidget);
+      final sent = tester.getTopLeft(
+        find.byKey(const Key('review-links-tile-sent')),
+      );
+      final opened = tester.getTopLeft(
+        find.byKey(const Key('review-links-tile-opened')),
+      );
+      expect(sent.dy, opened.dy, reason: 'two tiles per row');
+      expect(
+        errors,
+        isEmpty,
+        reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+      );
+    },
+  );
+
+  testWidgets('the table switches between branch and person', (tester) async {
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('North Branch'), findsOneWidget);
+    expect(find.text('Total'), findsOneWidget);
+    await tester.tap(find.text('Person'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rita Tech'), findsOneWidget);
+    expect(find.text('North Branch'), findsNothing);
   });
 }
 
@@ -214,6 +294,46 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
           },
           'companies': <Map<String, Object?>>[],
           'franchises': <Map<String, Object?>>[],
+        },
+      });
+    }
+
+    if (request.url.path.endsWith('/customer-experience/review-links')) {
+      return _json({
+        'data': {
+          'totals': {
+            'sent': 20,
+            'opened': 10,
+            'happy': 8,
+            'sad': 2,
+            'submitted': 1,
+            'google': 6,
+          },
+          'by_branch': [
+            {
+              'id': 'f-1',
+              'name': 'North Branch',
+              'sent': 20,
+              'opened': 10,
+              'happy': 8,
+              'sad': 2,
+              'submitted': 1,
+              'google': 6,
+            },
+          ],
+          'by_person': [
+            {
+              'id': 'u-9',
+              'name': 'Rita Tech',
+              'sent': 20,
+              'opened': 10,
+              'happy': 8,
+              'sad': 2,
+              'submitted': 1,
+              'google': 6,
+            },
+          ],
+          'tracked_since': '2026-10-15T14:00:00Z',
         },
       });
     }

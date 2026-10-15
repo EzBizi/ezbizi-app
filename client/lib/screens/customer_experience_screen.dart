@@ -4,11 +4,13 @@ import '../core/api_client.dart';
 import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'customer_experience/review_links_tab.dart';
 
 /// Customer Experience — Reviews and Business Profile, moved out of Marketing
 /// on 2026-09-25 (Jose).
 ///
-/// Holds nothing of its own. Every chip is a module the server says is drawn
+/// One chip of its own, Review links (2026-10-15, on Reviews' grant). Every
+/// other chip is a module the server says is drawn
 /// here (`ModuleDefinition::$parent`), so their order, labels and whether they
 /// appear at all come off `/me` — MarketingScreen's contract. If a chip is
 /// missing, the grant is missing; this screen cannot be the reason.
@@ -42,6 +44,14 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
             screen.icon,
             () => screen.build(widget.api, widget.session),
           ),
+    // What customers did with their review links (Jose, 2026-10-15). Reviews'
+    // own activity, so Reviews' grant; the server asks the same.
+    if (me.reaches('reviews'))
+      (
+        'Review links',
+        Icons.ads_click_outlined,
+        () => ReviewLinksTab(api: widget.api, session: widget.session),
+      ),
   ];
 
   @override
