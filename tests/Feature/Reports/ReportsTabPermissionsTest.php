@@ -180,27 +180,23 @@ class ReportsTabPermissionsTest extends TestCase
      * and its gate in disagreement: they could read the report and not connect
      * the Workiz account it reads from.
      *
-     * Measured here rather than argued: the controller still calls
-     * `authorize('createOnOrganization')`, which SavedReportPolicy maps to
-     * `reports.build`. So the tab is an AND on top of the capability, not an
-     * alternative to it, and the pane needs both.
-     *
-     * This is the assertion that would go red if a later change ever made the
-     * route gate the only one — which is the version of this where the tab
-     * silently becomes a way IN rather than a way to withhold.
+     * Changed 2026-10-15. Jose: people assigned to one company "should be
+     * able to see it regardless". Reading the pane needs the tab alone; the
+     * two writes (tag, convert) still need organization-level reports.build.
+     * Without the tab, nothing opens.
      */
-    public function test_the_tab_alone_does_not_open_the_pane_without_the_capability(): void
+    public function test_the_tab_alone_opens_the_pane_but_not_its_writes(): void
     {
         $tenant = $this->provisionTenant('Alpha');
+        config(['experimental_reports.ringcentral.client_id' => null, 'experimental_reports.ringcentral.client_secret' => null, 'experimental_reports.ringcentral.jwt' => null]);
 
-        $watcher = $this->userWithRole($tenant, 'Watcher', [
-            'reports.view',
-            'reports.experimental.view',
-        ]);
+        $watcher = $this->userWithRole($tenant, 'Watcher', ['reports.view', 'reports.experimental.view']);
+        $this->signedInAs($watcher)->getJson('/api/v1/reports/experimental/calls')->assertOk();
+        $this->signedInAs($watcher)->putJson('/api/v1/reports/experimental/people/tag', ['person' => 'X', 'tag' => 'new'])->assertForbidden();
+        $this->signedInAs($watcher)->postJson('/api/v1/reports/experimental/calls/1/convert')->assertForbidden();
 
-        $this->signedInAs($watcher)
-            ->getJson('/api/v1/reports/experimental/calls')
-            ->assertForbidden();
+        $noTab = $this->userWithRole($tenant, 'Runner', ['reports.view', 'reports.build']);
+        $this->signedInAs($noTab)->getJson('/api/v1/reports/experimental/calls')->assertForbidden();
     }
 
     /**

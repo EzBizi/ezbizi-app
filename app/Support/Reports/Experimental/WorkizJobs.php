@@ -146,6 +146,20 @@ final class WorkizJobs
      *
      * @return array{jobs: list<array<string, mixed>>, synced_at: ?string}
      */
+    /**
+     * Every Workiz account of the organization, by name: Performance and
+     * Scoring read all of them whoever holds the tab (Jose, 2026-10-15: people
+     * assigned to A-1 Chimney "should be able to see it regardless").
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    public function allAccounts(): array
+    {
+        return SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->get()
+            ->map(fn (SocialConnection $c) => ['id' => (string) $c->getKey(), 'name' => (string) $c->display_name])
+            ->values()->all();
+    }
+
     public function storedAll(string $since): array
     {
         return $this->storedFrom(SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->get(), $since);

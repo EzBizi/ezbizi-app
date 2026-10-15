@@ -445,6 +445,7 @@
         "leads.facebook.view",
         "leads.instagram.view",
         "leads.local_services.view",
+        "leads.manage",
         "leads.thumbtack.view",
         "leads.view",
         "leads.website_booking.view",

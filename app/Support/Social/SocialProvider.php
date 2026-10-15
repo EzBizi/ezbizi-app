@@ -307,8 +307,9 @@ enum SocialProvider: string
              * migration, and connecting an advertising account is not a
              * dispatcher's act.
              */
-            self::GoogleAds => 'leads.edit',
-            self::Thumbtack => 'leads.edit',
+            // `leads.manage` since 2026-10-15: the Manage pane is its own grant.
+            self::GoogleAds => 'leads.manage',
+            self::Thumbtack => 'leads.manage',
             self::GoogleBusinessProfile => 'reviews.edit',
             // Connecting the account you MAIL THROUGH is a newsletter act, and
             // `newsletter.send` is the permission that can actually use it —
