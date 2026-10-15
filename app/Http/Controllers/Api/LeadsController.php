@@ -274,6 +274,11 @@ class LeadsController extends Controller
              * call back.
              */
             $query->whereIn('leads.source', Lead::INBOX_SOURCES)
+                // Calls and Google bookings owe no reply (Jose, 2026-10-15: "non actionable").
+                ->where('leads.source', '!=', Lead::SOURCE_RINGCENTRAL)
+                ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
+                    ->orWhereNotIn('leads.lead_type', ['PHONE_CALL', 'BOOKING'])
+                    ->orWhereNull('leads.lead_type'))
                 // Completed: the customer is owed nothing (Jose, 2026-10-01).
                 ->whereNotIn('leads.status', [Lead::STATUS_COMPLETED, Lead::STATUS_LOST])
                 ->where(function ($q) {

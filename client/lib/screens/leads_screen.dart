@@ -154,7 +154,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Call as those are not actionable").
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
-  final Set<String> _allLeftOut = {'ls_call', 'ls_booking'};
+  // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
+  final Set<String> _allLeftOut = {'ls_call', 'ls_booking', 'ringcentral'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
