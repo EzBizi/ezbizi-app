@@ -28,8 +28,8 @@ class PerformancePeople
             return [];
         }
 
-        $jobs = $this->workiz->configured($user)
-            ? $this->workiz->stored($user, $start->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs']
+        $jobs = $this->workiz->allAccounts() !== []
+            ? $this->workiz->storedAll($start->subDays(ExperimentalCallReportController::LOOKBACK_DAYS)->toDateString())['jobs']
             : [];
 
         $report = $this->reconcile->forRange(
