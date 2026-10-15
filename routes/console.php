@@ -376,6 +376,8 @@ Schedule::command('ezbizi:meta-ads-sync')->dailyAt('05:30')->timezone('America/N
 Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
+// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
+Schedule::command('ezbizi:leads-ringcentral')->everyFiveMinutes()->withoutOverlapping(15);
 // One batch of 4 side by side per run: the scheduler runs a minute's
 // commands in sequence, so a long run would hold the others behind it.
 Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()->withoutOverlapping(15);

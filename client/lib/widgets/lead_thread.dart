@@ -2522,6 +2522,7 @@ String sourceWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
   'whatsapp' => 'WhatsApp',
   'workiz' => 'Workiz',
+  'ringcentral' => 'RingCentral',
   _ => 'Google Ads',
 };
 

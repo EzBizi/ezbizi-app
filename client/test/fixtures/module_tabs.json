@@ -164,7 +164,8 @@
                 "Messenger",
                 "Instagram",
                 "Workiz",
-                "WhatsApp"
+                "WhatsApp",
+                "RC Calls"
             ]
         },
         "marketing": {
@@ -446,6 +447,7 @@
         "leads.instagram.view",
         "leads.local_services.view",
         "leads.manage",
+        "leads.ringcentral.view",
         "leads.thumbtack.view",
         "leads.view",
         "leads.website_booking.view",
