@@ -43,6 +43,9 @@ Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('Americ
 // waiting for the night they disagree.
 Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
 
+// A sudden jump in errors, crashes or freezes from one app version (2026-10-15).
+Schedule::command('ezbizi:check-client-issues')->everyTenMinutes()->withoutOverlapping(5);
+
 // Close impersonation sessions past their expiry (§4.2). Every five minutes,
 // because the value is a truthful record rather than cutting off access —
 // access already stops by itself the moment the expiry passes.

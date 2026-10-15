@@ -7,6 +7,7 @@ import 'package:flutter/services.dart' show MethodChannel;
 import 'api_client.dart';
 import 'device_key.dart';
 import 'screenshot_capability.dart';
+import 'issue_reporter.dart';
 
 /// Remote Control — the AGENT half (2026-09-02-monitoring-remote-control, Part
 /// A). The viewer half lives in desktop_monitoring_tab.dart; the backend
@@ -117,7 +118,10 @@ class RemoteControlService {
   /// at risk of an uncaught error from the native side.
   static Future<void> _defaultInject(List<Map<String, Object?>> events) async {
     try {
-      await _input.invokeMethod<void>('injectInput', events);
+      await IssueReporter.trackNative(
+        'injectInput',
+        () => _input.invokeMethod<void>('injectInput', events),
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('RemoteControlService: native input injection failed: $e');
@@ -127,7 +131,10 @@ class RemoteControlService {
 
   static Future<void> _defaultIndicate(bool active) async {
     try {
-      await _indicator.invokeMethod<void>('setControlled', active);
+      await IssueReporter.trackNative(
+        'setControlled',
+        () => _indicator.invokeMethod<void>('setControlled', active),
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint('RemoteControlService: native control indicator failed: $e');

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'issue_reporter.dart';
 
 /// Reads this machine's hardware/OS/network specs over the Windows native
 /// channel. Returns null on any non-Windows platform, and null (never throws)
@@ -13,7 +14,10 @@ class SpecsReader {
   Future<Map<String, dynamic>?> read() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) return null;
     try {
-      final result = await _channel.invokeMapMethod<String, dynamic>('readSpecs');
+      final result = await IssueReporter.trackNative(
+        'readSpecs',
+        () => _channel.invokeMapMethod<String, dynamic>('readSpecs'),
+      );
       return (result == null || result.isEmpty) ? null : result;
     } catch (e) {
       // Any failure degrades to activity-only rather than crashing the

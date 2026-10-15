@@ -10,6 +10,7 @@
 
 #include "monitoring_input.h"
 #include "monitoring_specs.h"
+#include "watchdog.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -53,6 +54,10 @@ class FlutterWindow : public Win32Window {
   // `this` to reach the tray; kept alive for the life of the window.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       monitoring_indicator_channel_;
+
+  // Freeze ping and last-crash pickup (watchdog.h).
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      watchdog_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

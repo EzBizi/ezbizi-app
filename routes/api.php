@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\ClientIssuesController;
+use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
@@ -241,6 +243,14 @@ use Illuminate\Support\Facades\Route;
 */
 
 // ── Public: no user and no organization exist yet ────────────────
+// The apps reporting their own errors, crashes, freezes and failed calls
+// (Jose, 2026-10-15). Outside auth on purpose: a crash on the sign-in screen
+// still needs reporting. The controller reads the person from the token when
+// there is one and rate-limits per person or address; this throttle is only
+// the outer fence.
+Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
+    ->middleware('throttle:60,1');
+
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
     // the organization, its first company and that company's first franchise.
@@ -3288,6 +3298,8 @@ Route::prefix('v1/staff')
         // HealthController for why a status code cannot answer this.
         Route::get('health', [HealthController::class, 'index']);
         Route::post('health/test-email', [HealthController::class, 'testEmail']);
+        // What the apps reported going wrong, grouped by problem (2026-10-15).
+        Route::get('health/client-issues', [StaffClientIssuesController::class, 'index']);
 
         // Global module availability — the platform-wide gate that sits above
         // every organization's own permissions (§2.1, layer 3).
