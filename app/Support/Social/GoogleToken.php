@@ -69,7 +69,20 @@ final class GoogleToken
          * Named after the key the caller actually passed, so the fault is
          * legible as ours rather than Google's.
          */
-        $clientId = config("services.{$service}.client_id");
+        /*
+         * A connection may carry its OWN OAuth client (Jose, 2026-10-15): A-1
+         * Chimney's interim Business Profile connection is Rodrigo's grant, made
+         * through HIS Cloud project (A1 Leads), which has the quota ours does
+         * not yet. Never the global client: that would route every tenant's
+         * consent through his project. When ours is approved, swapping is a
+         * credential change on that row. Rodrigo can revoke it at any time;
+         * the refresh then fails as invalid_grant and the row reads broken.
+         */
+        $own = $connection->credentials['client_id'] ?? null;
+        $clientId = is_string($own) && $own !== '' ? $own : config("services.{$service}.client_id");
+        $secret = is_string($own) && $own !== ''
+            ? (string) ($connection->credentials['client_secret'] ?? '')
+            : (string) config("services.{$service}.client_secret");
 
         if (! is_string($clientId) || $clientId === '') {
             throw new RuntimeException(
@@ -83,8 +96,8 @@ final class GoogleToken
             $response = Http::asForm()->timeout(self::TIMEOUT)->post(
                 'https://oauth2.googleapis.com/token',
                 [
-                    'client_id' => (string) config("services.{$service}.client_id"),
-                    'client_secret' => (string) config("services.{$service}.client_secret"),
+                    'client_id' => (string) $clientId,
+                    'client_secret' => $secret,
                     'refresh_token' => $refresh,
                     'grant_type' => 'refresh_token',
                 ],

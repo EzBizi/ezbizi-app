@@ -67,6 +67,11 @@ class BusinessProfileReviews
         $created = 0;
         $updated = 0;
 
+        // The first import is the backlog, not news: nothing is announced until
+        // the connection already holds its reviews (A-1's 13,000 would otherwise
+        // each raise review.received - "no backlogged notifications").
+        $announce = Review::query()->where('connection_id', $connection->getKey())->exists();
+
         foreach ($this->locations($token, $account) as $location) {
             $pageToken = null;
             $pages     = 0;
@@ -81,7 +86,7 @@ class BusinessProfileReviews
 
                     if ($result['created']) {
                         $created++;
-                        $this->events->emitAfterCommit('review.received', $result['review'], [
+                        $announce && $this->events->emitAfterCommit('review.received', $result['review'], [
                             'after' => $result['review']->only([
                                 'rating', 'reviewer_name', 'location_name', 'reviewed_at',
                             ]),
