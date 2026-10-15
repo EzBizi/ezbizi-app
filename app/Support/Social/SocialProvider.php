@@ -591,6 +591,9 @@ enum SocialProvider: string
 
             // Video, and only video.
             self::YouTube => [SocialMediaKind::Video],
+
+            // A Business Profile post: words, with a photo or without (v4 localPosts).
+            self::GoogleBusinessProfile => [SocialMediaKind::Text, SocialMediaKind::Image],
         };
     }
 
