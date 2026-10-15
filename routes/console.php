@@ -378,6 +378,9 @@ Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone(
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
 // RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
 Schedule::command('ezbizi:leads-ringcentral')->everyFiveMinutes()->withoutOverlapping(15);
+// Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
+Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
+Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
 // One batch of 4 side by side per run: the scheduler runs a minute's
 // commands in sequence, so a long run would hold the others behind it.
 Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()->withoutOverlapping(15);
