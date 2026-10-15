@@ -2077,6 +2077,7 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Facebook' => PersonColours.hue(context, 10), // sky
   'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
+  'RC Call' => PersonColours.hue(context, 11), // RingCentral's deep orange
   _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
 };
 
