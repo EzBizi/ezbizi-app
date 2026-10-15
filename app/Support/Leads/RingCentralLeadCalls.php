@@ -269,6 +269,10 @@ final class RingCentralLeadCalls
             ->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
             ->where('lead_conversations.channel', LeadConversation::CHANNEL_PHONE_CALL)
             ->where('lead_conversations.participant', LeadConversation::FROM_CONSUMER)
+            // Google's calls only: a RingCentral call filed on the caller's LS
+            // lead is not one, and counting it matched every such call to
+            // itself (0.0.0441's first run withdrew 50 that way).
+            ->where('lead_conversations.remote_id', 'not like', 'rc\_%')
             ->whereBetween('lead_conversations.occurred_at', [$from->subHour(), $to->addHour()])
             ->get(['leads.phone_digits', 'lead_conversations.occurred_at']) as $row) {
             if (($d = self::ten($row->phone_digits)) !== null) {
