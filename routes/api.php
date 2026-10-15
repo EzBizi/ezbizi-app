@@ -2041,6 +2041,13 @@ Route::prefix('v1')
             ->middleware('permission:marketing.compose.view');
         Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry'])
             ->middleware('permission:marketing.dashboard.view,marketing.compose.view');
+        // Managing a post after Publish: from the Dashboard's side panel or Compose.
+        Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
+            Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
+            Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
+            Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
+        });
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);

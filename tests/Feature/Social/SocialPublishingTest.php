@@ -795,6 +795,16 @@ class SocialPublishingTest extends TestCase
         return $path;
     }
 
+    /** Delete from the network (2026-10-15). */
+    public function test_pinterest_deletes_the_pin_it_published(): void
+    {
+        Http::fake();
+
+        (new PinterestPublisher)->deleteRemote($this->connection(SocialProvider::Pinterest, 'pin-account'), 'pin-9');
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/v5/pins/pin-9'));
+    }
+
     private function connection(SocialProvider $provider, string $remoteId = 'remote-1'): SocialConnection
     {
         $connection = new SocialConnection;

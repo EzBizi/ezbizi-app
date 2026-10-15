@@ -79,7 +79,7 @@ class BlueskyAndXPublishingTest extends TestCase
         $blob = ['$type' => 'blob', 'ref' => ['$link' => 'bafkrei'], 'mimeType' => 'image/png', 'size' => 8];
 
         Http::fake([
-            'bsky.social/xrpc/com.atproto.repo.uploadBlob'   => Http::response(['blob' => $blob]),
+            'bsky.social/xrpc/com.atproto.repo.uploadBlob' => Http::response(['blob' => $blob]),
             'bsky.social/xrpc/com.atproto.repo.createRecord' => Http::response(['uri' => 'at://'.self::DID.'/app.bsky.feed.post/3k']),
         ]);
 
@@ -182,7 +182,7 @@ class BlueskyAndXPublishingTest extends TestCase
     {
         Http::fake([
             'api.x.com/2/media/upload' => Http::response(['data' => ['id' => '7001', 'media_key' => '3_7001']]),
-            'api.x.com/2/tweets'       => Http::response(['data' => ['id' => '1847']], 201),
+            'api.x.com/2/tweets' => Http::response(['data' => ['id' => '1847']], 201),
         ]);
 
         (new XPublisher)->publish(
@@ -306,8 +306,8 @@ class BlueskyAndXPublishingTest extends TestCase
         $row->forceFill(['provider' => $provider->value, 'remote_id' => $remoteId, 'display_name' => 'Test account']);
         $row->connect(array_filter([
             'refresh_token' => 'r',
-            'access_token'  => $access,
-            'expires_at'    => $expiresAt?->toIso8601String(),
+            'access_token' => $access,
+            'expires_at' => $expiresAt?->toIso8601String(),
         ]));
 
         return $row;
@@ -320,17 +320,33 @@ class BlueskyAndXPublishingTest extends TestCase
             $row = new SocialConnection;
             $row->forceFill([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => 'company',
-                'scope_id'        => $t['company']->id,
-                'provider'        => $provider->value,
-                'remote_id'       => $remoteId,
-                'display_name'    => 'EzBizi US',
+                'scope_type' => 'company',
+                'scope_id' => $t['company']->id,
+                'provider' => $provider->value,
+                'remote_id' => $remoteId,
+                'display_name' => 'EzBizi US',
             ]);
             $row->connect($credentials);
             $row->save();
 
             return $row;
         });
+    }
+
+    /** Delete from the network (2026-10-15): the request each API expects. */
+    public function test_x_and_bluesky_delete_the_post_they_published(): void
+    {
+        Http::fake();
+
+        (new XPublisher)->deleteRemote($this->unsaved(SocialProvider::X, 'x-1', 'live', now()->addHour()), '1846');
+        (new BlueskyPublisher)->deleteRemote(
+            $this->unsaved(SocialProvider::Bluesky, self::DID, $this->jwt(3600)),
+            'at://'.self::DID.'/app.bsky.feed.post/3kabc',
+        );
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/2/tweets/1846'));
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), '/xrpc/com.atproto.repo.deleteRecord')
+            && $r->data() === ['repo' => self::DID, 'collection' => 'app.bsky.feed.post', 'rkey' => '3kabc']);
     }
 
     private function temp(string $extension, string $contents): string

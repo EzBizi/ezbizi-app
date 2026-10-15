@@ -34,7 +34,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Connected with an app password, stored as an access JWT (about two hours)
  * and a refresh JWT that ROTATES on every use. See token().
  */
-final class BlueskyPublisher implements LinksToPosts, SocialPublisher
+final class BlueskyPublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const TIMEOUT = 30;
 
@@ -82,8 +82,8 @@ final class BlueskyPublisher implements LinksToPosts, SocialPublisher
         $did = (string) $connection->remote_id;
 
         $record = [
-            '$type'     => 'app.bsky.feed.post',
-            'text'      => $text,
+            '$type' => 'app.bsky.feed.post',
+            'text' => $text,
             'createdAt' => now()->utc()->format('Y-m-d\TH:i:s.v\Z'),
         ];
 
@@ -93,20 +93,20 @@ final class BlueskyPublisher implements LinksToPosts, SocialPublisher
 
         if ($bytes !== null) {
             $record['embed'] = [
-                '$type'  => 'app.bsky.embed.images',
+                '$type' => 'app.bsky.embed.images',
                 'images' => [[
                     // No alt text is asked for in the composer yet. Empty is
                     // what the lexicon allows; inventing one would be worse.
-                    'alt'   => '',
+                    'alt' => '',
                     'image' => $this->uploadBlob($token, $bytes, $post->mime()),
                 ]],
             ];
         }
 
         $created = $this->call($token, 'com.atproto.repo.createRecord', [
-            'repo'       => $did,
+            'repo' => $did,
             'collection' => 'app.bsky.feed.post',
-            'record'     => $record,
+            'record' => $record,
         ]);
 
         $uri = $created['uri'] ?? null;
@@ -123,6 +123,17 @@ final class BlueskyPublisher implements LinksToPosts, SocialPublisher
         // The network has no video (SocialProvider::accepts says so). The
         // sentence is the network's limit, not a missing poster.
         return SocialProvider::Bluesky->refuses($kind);
+    }
+
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        if (preg_match('~^at://([^/]+)/(app\.bsky\.feed\.post)/([^/]+)$~', $remoteId, $m) !== 1) {
+            throw SocialPublishFailed::network('Bluesky', 'EzBizi does not recognise that post.');
+        }
+
+        $this->call($this->token($connection), 'com.atproto.repo.deleteRecord', [
+            'repo' => $m[1], 'collection' => $m[2], 'rkey' => $m[3],
+        ]);
     }
 
     /**
@@ -161,7 +172,7 @@ final class BlueskyPublisher implements LinksToPosts, SocialPublisher
             $url = rtrim($url, '.,;:!?)\'"');
 
             $facets[] = [
-                'index'    => ['byteStart' => $start, 'byteEnd' => $start + strlen($url)],
+                'index' => ['byteStart' => $start, 'byteEnd' => $start + strlen($url)],
                 'features' => [['$type' => 'app.bsky.richtext.facet#link', 'uri' => $url]],
             ];
         }
@@ -277,7 +288,7 @@ final class BlueskyPublisher implements LinksToPosts, SocialPublisher
             } catch (SocialOAuthRefused $e) {
                 if ($e->status === Response::HTTP_CONFLICT) {
                     $connection->forceFill([
-                        'status'        => SocialConnection::STATUS_BROKEN,
+                        'status' => SocialConnection::STATUS_BROKEN,
                         'status_reason' => 'Bluesky no longer accepts this connection. It needs connecting again with a new app password.',
                     ])->save();
                 }

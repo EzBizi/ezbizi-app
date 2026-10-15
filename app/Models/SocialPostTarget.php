@@ -31,8 +31,13 @@ class SocialPostTarget extends Model implements StatesRetention
     public const STATUS_SCHEDULED = 'scheduled';
 
     public const STATUS_QUEUED = 'queued';
-    public const STATUS_SENT   = 'sent';
+
+    public const STATUS_SENT = 'sent';
+
     public const STATUS_FAILED = 'failed';
+
+    /** Published, then taken down from the network from EzBizi. */
+    public const STATUS_REMOVED = 'removed';
 
     public static function retention(): RetentionPolicy
     {
@@ -62,17 +67,17 @@ class SocialPostTarget extends Model implements StatesRetention
     public function markSent(string $remoteId): void
     {
         $this->forceFill([
-            'status'    => self::STATUS_SENT,
+            'status' => self::STATUS_SENT,
             'remote_id' => $remoteId,
-            'failure'   => null,
-            'sent_at'   => now(),
+            'failure' => null,
+            'sent_at' => now(),
         ])->save();
     }
 
     public function markFailed(string $because): void
     {
         $this->forceFill([
-            'status'  => self::STATUS_FAILED,
+            'status' => self::STATUS_FAILED,
             'failure' => $because,
         ])->save();
     }
