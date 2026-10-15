@@ -8,7 +8,7 @@ import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
 import 'settings/integrations_screen.dart';
-import 'settings_screen.dart';
+import 'settings/settings_hub.dart';
 
 /// The Settings destination: the shape of the business, how the work behaves,
 /// and who may do it.
@@ -76,7 +76,8 @@ class _SettingsShellState extends State<SettingsShell> {
           'settings',
           UiStrings.t('shell.settings'),
           Icons.tune_outlined,
-          () => SettingsScreen(api: widget.api, session: widget.session),
+          // The hub of every module's settings too (UI queue 99).
+          () => SettingsHub(api: widget.api, session: widget.session),
         ),
       /*
        * Integrations sits between Settings and Roles: it is a thing you look

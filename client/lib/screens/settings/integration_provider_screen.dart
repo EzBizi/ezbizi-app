@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
+import '../../widgets/side_panel.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
 ///
@@ -194,21 +195,11 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
   Future<void> _rename(IntegrationConnection row) async {
     final controller = TextEditingController(text: row.label ?? '');
 
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Name this ${widget.providerLabel} connection'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Name',
-            // The id, so somebody naming several in a row can tell them apart
-            // while the dialog is covering the list.
-            helperText: row.displayName,
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
+    // A side panel, as every other edit in Settings (UI queue 99).
+    final name = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Name this ${widget.providerLabel} connection',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -219,6 +210,17 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             child: const Text('Save'),
           ),
         ],
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Name',
+            // The id, so somebody naming several in a row can tell them apart
+            // while the dialog is covering the list.
+            helperText: row.displayName,
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
       ),
     );
 
