@@ -505,7 +505,7 @@ class IntegrationConnection {
     'google_business_profile' ||
     'thumbtack' ||
     'facebook_ads' => 'leads',
-    'airtable' || 'workiz' => 'reporting',
+    'airtable' || 'workiz' || 'ringcentral' => 'reporting',
     _ => 'social',
   };
 

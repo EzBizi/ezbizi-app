@@ -37,7 +37,7 @@ class WarmCallLog extends Command
         for ($back = 1; $back <= max(1, (int) $this->option('days')); $back++) {
             $day = $today->subDays($back);
 
-            if (Cache::has(RingCentralCallLog::dayKey($day))) {
+            if (Cache::has($calls->dayKeyFor($day))) {
                 continue;
             }
 

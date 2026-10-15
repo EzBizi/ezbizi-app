@@ -334,6 +334,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   List<Widget> Function()? _formsFor(String provider) => switch (provider) {
     'airtable' when _mayConnect('profit_loss.view') => _airtableForm,
     'workiz' when _maySeeExperimental => _workizForm,
+    'ringcentral' when _maySeeExperimental => _ringCentralForm,
     _ => null,
   };
 
@@ -394,6 +395,31 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           'API secret',
           'Only for a v1 token: the secret beside it',
         ),
+      ],
+      onConnected: _load,
+    ),
+  ];
+
+  /// Jose, 2026-10-15: "Shouldn't ring central also show here on
+  /// Integrations?" The organization's own RingCentral app, JWT flow — the
+  /// same three values the call report read from the server's env.
+  List<Widget> _ringCentralForm() => [
+    Text('RingCentral', style: Theme.of(context).textTheme.titleSmall),
+    const SizedBox(height: 4),
+    Text(
+      'Create a private server app in the RingCentral Developer Console with '
+      'the Read Call Log permission, then paste its credentials and a JWT.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/ringcentral',
+      submitLabel: 'Connect account',
+      fields: const [
+        ('client_id', 'Client ID', 'From the app\'s Credentials'),
+        ('client_secret', 'Client secret', 'Beside the client ID'),
+        ('jwt', 'JWT', 'From Credentials › JWT, for this app'),
       ],
       onConnected: _load,
     ),
@@ -510,6 +536,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'thumbtack': 'Leads and messages from Thumbtack.',
     'workiz': 'Jobs and calls from Workiz, for reports.',
     'airtable': 'A base read by Profit & Loss.',
+    'ringcentral': 'Calls from RingCentral, for reports.',
   };
 
   /// What a card with nothing connected offers: Connect where connecting can

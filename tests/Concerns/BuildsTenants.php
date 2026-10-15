@@ -42,6 +42,17 @@ trait BuildsTenants
      *
      * @return array{org: Organization, admin: User, company: \App\Models\Company, franchise: Franchise}
      */
+    /**
+     * The tenant as A1-Group, the only organization the RingCentral env
+     * credential belongs to (Jose, 2026-10-15): matched by slug.
+     */
+    protected function asRingCentralEnvOwner(array $tenant): array
+    {
+        $tenant['org']->forceFill(['slug' => \App\Support\Reports\Experimental\RingCentralCallLog::ENV_ORGANIZATION_SLUG])->save();
+
+        return $tenant;
+    }
+
     protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
     {
         $email ??= strtolower(preg_replace('/[^a-z0-9]/i', '', $name)).'@example.test';
