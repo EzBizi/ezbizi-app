@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0440',
+      date: '15 Oct 2026',
+      items: [
+        'Customer Experience: a new Review links tab shows, by branch and by person, how many review texts went out, how many were opened, whether the customer picked the green or the red face, and whether they went on to Google or filed a complaint. Texts sent count back to 8 October; the rest count from this release.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0439',
       date: '15 Oct 2026',
       items: [
