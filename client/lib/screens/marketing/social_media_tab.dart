@@ -878,6 +878,13 @@ class _PostsDashboard extends StatelessWidget {
       picked: filter,
       onPick: onFilter,
       tiles: [
+        // Every post at once (UI queue 100).
+        FilterTile(
+          key: null,
+          label: 'All',
+          count: tiles.values.fold<int>(0, (a, b) => a + b),
+          note: 'every post',
+        ),
         FilterTile(
           key: 'scheduled',
           label: 'Scheduled',
@@ -1074,16 +1081,22 @@ class _PostsDashboard extends StatelessWidget {
   }
 }
 
-/// A post's pill: "Failed", or "1 failed" when others took it.
+/// A post's pill: "Failed"; "Partly posted · 2 of 3" when some accounts took
+/// it and others refused (UI queue 100); "1 failed" while the rest wait.
 (String, Tone) _statusOf(_SentPost post) {
+  final total = post.targets.length;
   final failed = post.targets.where((t) => t.status == 'failed').length;
+  final sent = post.targets.where((t) => t.status == 'sent').length;
   if (failed > 0) {
-    final label = failed == post.targets.length ? 'Failed' : '$failed failed';
-    return (label, Tone.bad);
+    if (failed == total) return ('Failed', Tone.bad);
+    if (sent + failed == total) {
+      return ('Partly posted · $sent of $total', Tone.caution);
+    }
+    return ('$failed failed', Tone.bad);
   }
 
   return switch (post.tone) {
-    Tone.neutral => ('Sending', Tone.neutral),
+    Tone.neutral => ('Posting $sent of $total', Tone.neutral),
     Tone.info => ('Scheduled', Tone.info),
     _ => ('Sent', Tone.ok),
   };
@@ -1228,6 +1241,21 @@ class _TimelineRow extends StatelessWidget {
                           ),
                     ],
                   ),
+                  // How far a post going out has got (UI queue 100).
+                  if (post.tone == Tone.neutral && post.targets.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 12),
+                      child: LinearProgressIndicator(
+                        key: ValueKey('social-post-progress-${post.id}'),
+                        value:
+                            post.targets
+                                .where((t) => t.status == 'sent')
+                                .length /
+                            post.targets.length,
+                        minHeight: 4,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   // The failure sentence is the server's. A status word on
                   // its own says something is wrong and nothing about what to
                   // do; Open shows the rest of a long one.

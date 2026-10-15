@@ -1745,6 +1745,47 @@ void main() {
       expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
     });
 
+    // UI queue 100: an All tile, and a post some accounts took and one
+    // refused says so rather than reading as a plain failure.
+    testWidgets('All counts every tile, and a part-sent post is Partly '
+        'posted', (tester) async {
+      final sent = _landed('sent');
+      final failed = _landed('failed', failure: 'No boards.');
+      final partly = {
+        ...sent,
+        'id': 'p1',
+        'body': 'Post p1',
+        'targets': [
+          ...(sent['targets'] as List<dynamic>),
+          ...(failed['targets'] as List<dynamic>),
+        ],
+      };
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/social/posts')) {
+          return _json({
+            'data': [partly],
+            'meta': {
+              'tiles': {'scheduled': 1, 'sent': 37, 'failed': 1},
+            },
+          });
+        }
+
+        return inner(request);
+      });
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('social-posts-tile-all')),
+          matching: find.text('39'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Partly posted · 1 of 2'), findsOneWidget);
+    });
+
     testWidgets('Retry on a failed row sends that account again', (
       tester,
     ) async {
