@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0441',
+      date: '15 Oct 2026',
+      items: [
+        'Leads: calls made straight to your own phone lines (from the website, the Google profile or ads) now appear under RC Calls, one lead per caller, with the recording and transcript. A Google Local Services call never appears twice.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0440',
       date: '15 Oct 2026',
       items: [
