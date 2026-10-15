@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Leads: a direct call from someone who already has a Local Services lead stays on that lead under RC Calls instead of being withdrawn as a duplicate.',
         'Leads: RingCentral calls, Google calls and Google bookings are left out of All and Unreplied, and stay in their own tabs. An answered RingCentral call no longer raises a reply notification. A missed one can notify you through a rule on Missed call.',
+        'Leads: RC Call tags are RingCentral orange.',
       ],
     ),
     VersionRelease(
