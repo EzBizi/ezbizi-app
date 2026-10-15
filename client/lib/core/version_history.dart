@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0442',
+      date: '15 Oct 2026',
+      items: [
+        'Settings: the Settings tab now lists every module\'s own settings, so each one can be opened from one place. Settings, Suggestions, Development and Your account get the same header as other modules, with a Walkthrough button.',
+        'Settings › Organization: moving a company and renaming an integration now open in a side panel.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0441',
       date: '15 Oct 2026',
       items: [

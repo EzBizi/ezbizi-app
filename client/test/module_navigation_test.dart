@@ -189,12 +189,10 @@ void main() {
     }
   });
 
-  /// Settings, Development and Your account are not modules.
-  ///
-  /// They have no server label, they are the other branches of the shell's
-  /// switch, and each already says what it is. A header here would be a second
-  /// title over the one they draw themselves.
-  testWidgets('the module header is not drawn over Your account', (
+  /// UI queue 99 (Jose, 2026-10-15): Your account gets the header every
+  /// module has, so it has a walkthrough and a how-to video too. The screen
+  /// no longer draws its own title, so the name is still printed once.
+  testWidgets('Your account has the module header, titled once', (
     tester,
   ) async {
     _wide(tester);
@@ -203,7 +201,14 @@ void main() {
     await _pumpShell(tester, modules: const []);
 
     expect(find.byType(ProfileScreen), findsOneWidget);
-    expect(find.byType(ModulePageHeader), findsNothing);
+    expect(find.byType(ModulePageHeader), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ModulePageHeader),
+        matching: find.text('Your account'),
+      ),
+      findsOneWidget,
+    );
   });
 
   /// A module this build has no screen for is skipped rather than drawn.
