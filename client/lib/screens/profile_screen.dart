@@ -203,14 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Your account', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(
-          "Yours, not the organization's. What an administrator controls is "
-          'in Settings.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 20),
+        // The title and its line are the page header now (UI queue 99).
         if (wide)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -31,6 +31,15 @@ class UiStrings {
     // rename any module (§8) and a hardcoded name would go stale silently.
     // The subtitle has no server field yet, so it lives here where
     // /ui-strings can still override it.
+    // UI queue 99: the pages that are not modules get a line too.
+    'module.settings.subtitle':
+        "How the business works in EzBizi, and every module's settings.",
+    'module.suggestions.subtitle':
+        'Tell EzBizi what to change, and see what came of it.',
+    'module.development.subtitle': 'The EzBizi platform, for EzBizi staff.',
+    'module.account.subtitle':
+        "Yours, not the organization's. What an administrator controls is "
+        'in Settings.',
     'module.dashboard.subtitle':
         'What each part of the business is doing right now.',
     'module.customers.subtitle':

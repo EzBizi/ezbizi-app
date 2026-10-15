@@ -1881,14 +1881,24 @@ class _HomeShellState extends State<HomeShell> {
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
                         // module at all lands on, rather than an empty frame.
+                        // UI queue 99: Settings, Suggestions, Development and
+                        // Your account get the header every module has, with
+                        // its walkthrough and how-to video.
                         child: pinnedIndex != null
-                            ? pinned[pinnedIndex].screen
+                            ? _titled(pinned[pinnedIndex])
                             : staffIndex != null
-                            ? staffOnly[staffIndex].screen
+                            ? _titled(staffOnly[staffIndex])
                             : (showingProfile || railIndex == null)
-                            ? ProfileScreen(
-                                api: widget.api,
-                                session: widget.session,
+                            ? _titled(
+                                Destination(
+                                  'Your account',
+                                  Icons.person_outline,
+                                  ProfileScreen(
+                                    api: widget.api,
+                                    session: widget.session,
+                                  ),
+                                  id: 'account',
+                                ),
                               )
                             : _titled(destinations[railIndex]),
                       ),
