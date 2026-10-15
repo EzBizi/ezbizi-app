@@ -78,9 +78,12 @@ class BusinessProfileReviewsTest extends TestCase
         $this->connection($t);
 
         $this->fakeGoogle([
-            // One closure for the whole v4 host, dispatching on the path and on
-            // pageToken. A pattern-per-URL fake is order-sensitive here because
-            // `locations*` also matches `locations/1/reviews`.
+            // The locations listing, two pages, on v1 Business Information
+            // (Google retired v4's list; reviews stay on v4).
+            'mybusinessbusinessinformation.googleapis.com/*' => fn ($request) => ($request->data()['pageToken'] ?? null) === 'p2'
+                ? Http::response(['locations' => [['name' => 'locations/2']]], 200)
+                : Http::response(['locations' => [['name' => 'locations/1']], 'nextPageToken' => 'p2'], 200),
+            // One closure for the whole v4 host, dispatching on the path.
             'mybusiness.googleapis.com/v4/*' => function ($request) {
                 $url = $request->url();
 
@@ -92,10 +95,7 @@ class BusinessProfileReviewsTest extends TestCase
                     return Http::response(['reviews' => [$this->review('accounts/111/locations/2/reviews/b')]], 200);
                 }
 
-                // The locations listing, two pages.
-                return ($request->data()['pageToken'] ?? null) === 'p2'
-                    ? Http::response(['locations' => [['name' => 'accounts/111/locations/2']]], 200)
-                    : Http::response(['locations' => [['name' => 'accounts/111/locations/1']], 'nextPageToken' => 'p2'], 200);
+                return Http::response([], 404);
             },
         ]);
 
@@ -124,7 +124,7 @@ class BusinessProfileReviewsTest extends TestCase
         $this->connection($t);
 
         $this->fakeGoogle([
-            'mybusiness.googleapis.com/v4/*' => Http::response(
+            'mybusinessbusinessinformation.googleapis.com/*' => Http::response(
                 ['error' => ['code' => 403, 'status' => 'PERMISSION_DENIED', 'message' => 'The caller does not have permission']],
                 403,
             ),
@@ -147,7 +147,7 @@ class BusinessProfileReviewsTest extends TestCase
         $this->connection($t);
 
         $this->fakeGoogle([
-            'mybusiness.googleapis.com/v4/*' => Http::response(
+            'mybusinessbusinessinformation.googleapis.com/*' => Http::response(
                 ['error' => ['code' => 429, 'status' => 'RESOURCE_EXHAUSTED', 'message' => "Quota exceeded for quota metric 'Requests' and limit 'Requests per minute'"]],
                 429,
             ),

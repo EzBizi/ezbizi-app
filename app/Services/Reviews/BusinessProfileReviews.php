@@ -173,7 +173,11 @@ class BusinessProfileReviews
             try {
                 $response = Http::withToken($token)
                     ->timeout(self::TIMEOUT)
-                    ->get(BusinessProfileOAuth::LEGACY_V4."/accounts/{$account}/locations", array_filter([
+                    // v1 Business Information, not v4: Google retired v4's location
+                    // list (404 on 0.0.0441's first real sync, 2026-10-15). Reviews
+                    // themselves are still v4, under accounts/A/locations/L.
+                    ->get('https://mybusinessbusinessinformation.googleapis.com/v1/accounts/'.$account.'/locations', array_filter([
+                        'readMask'  => 'name',
                         'pageSize'  => 100,
                         'pageToken' => $pageToken,
                     ], fn ($v) => $v !== null));

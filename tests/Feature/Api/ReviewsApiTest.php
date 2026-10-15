@@ -71,8 +71,8 @@ class ReviewsApiTest extends TestCase
         $this->connectedProfile($t, 'acct-bad');
 
         $this->fakeGoogle([
-            'mybusiness.googleapis.com/v4/accounts/acct-good/locations*' => Http::response(['locations' => []], 200),
-            'mybusiness.googleapis.com/v4/accounts/acct-bad/locations*'  => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403),
+            'mybusinessbusinessinformation.googleapis.com/v1/accounts/acct-good/locations*' => Http::response(['locations' => []], 200),
+            'mybusinessbusinessinformation.googleapis.com/v1/accounts/acct-bad/locations*'  => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403),
         ]);
 
         $this->signedInAs($t['admin'])
