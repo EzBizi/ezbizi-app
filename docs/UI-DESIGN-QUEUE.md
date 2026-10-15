@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 98 · Customer Experience › Review links (link activity) — **sent 2026-10-15 10:57** (`docs/previews/review-links-layouts.html`)
+### 98 · Customer Experience › Review links (link activity) — **sent 2026-10-15 10:57 — Jose: "as u recommend" — 1 and 4** (`docs/previews/review-links-layouts.html`)
 
 Jose 2026-10-15 via Customer Experience: a tab that measures the review links sent (green, red, opened, sent). There are six counts by branch and by person
 for a date range. **1** (recommended): a Sent → Opened → Green/Red → Google/Complaint funnel, then a Branch | Person table with a total row. **2**: one table
