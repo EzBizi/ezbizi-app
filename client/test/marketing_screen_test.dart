@@ -1784,6 +1784,17 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Partly posted · 1 of 2'), findsOneWidget);
+
+      // Board puts it under Posted, not Failed.
+      await tester.tap(find.text('Board'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('social-board-posted')),
+          matching: find.byKey(const ValueKey('social-post-p1')),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('Retry on a failed row sends that account again', (
@@ -1812,6 +1823,81 @@ void main() {
 
       expect(retried, isTrue);
       expect(find.text('Posting… 0 of 1 done'), findsOneWidget);
+    });
+
+    // UI queue 100: a post's panel deletes from a network that allows it,
+    // says so for one that does not, and cancels a post still waiting.
+    testWidgets('the post panel deletes from the network, and cancels a '
+        'scheduled post', (tester) async {
+      final calls = <String>[];
+      final posted = _landed('sent', url: 'https://pin.example/1');
+      final both = {
+        ...posted,
+        'targets': [
+          ...(posted['targets'] as List<dynamic>),
+          {
+            'id': 'target-2',
+            'account': '@everdoors',
+            'provider': 'instagram_professional',
+            'provider_label': 'Instagram',
+            'status': 'sent',
+          },
+        ],
+      };
+      final later = {
+        ..._landed('scheduled', scheduledFor: '2030-01-02 09:00'),
+        'id': 'post-2',
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        postsFor: () => [both, later],
+      );
+
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'DELETE') {
+          calls.add(request.url.path);
+          return _json({'data': <String, Object?>{}});
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('social-post-post-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Instagram does not let EzBizi delete posts. Delete it in '
+          'Instagram itself.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('social-target-delete-target-2')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('social-post-cancel')), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('social-target-delete-target-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-confirm-yes')));
+      await tester.pumpAndSettle();
+
+      expect(calls, [
+        endsWith('/social/posts/post-1/targets/target-1/remote'),
+      ]);
+
+      await tester.tap(find.byKey(const ValueKey('social-post-post-2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('social-post-edit')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-confirm-yes')));
+      await tester.pumpAndSettle();
+
+      expect(calls.last, endsWith('/social/posts/post-2'));
     });
   });
 
