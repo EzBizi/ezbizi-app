@@ -67,6 +67,47 @@ void main() {
 
   /// Jose, 2026-09-30: twenty rows of "A new lead from Local Services has
   /// arrived." with nothing to say when, each behind the same circle.
+  testWidgets('an urgent notification draws its icon in the error colour', (
+    tester,
+  ) async {
+    final at = DateTime.now().toUtc().toIso8601String();
+    Map<String, dynamic> row(String id, bool urgent) => {
+      'id': id,
+      'source': 'automation',
+      'title': 'Row $id',
+      'body': null,
+      'urgent': urgent,
+      'subject': {'type': null, 'id': null},
+      'meta': {'module': 'leads', 'filter': null},
+      'read_at': null,
+      'created_at': at,
+    };
+
+    await _pumpWithItem(
+      tester,
+      item: row('u1', true),
+      also: [row('n1', false)],
+      onOpenModule: (_, _, _) {},
+      iconOf: (key) => Icons.call_received_outlined,
+    );
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    Color? colourOf(String id) => tester
+        .widget<Icon>(
+          find.descendant(
+            of: find.byKey(ValueKey('notification-icon-$id')),
+            matching: find.byType(Icon),
+          ),
+        )
+        .color;
+    final scheme = Theme.of(
+      tester.element(find.byKey(const ValueKey('notification-icon-u1'))),
+    ).colorScheme;
+    expect(colourOf('u1'), scheme.error);
+    expect(colourOf('n1'), scheme.primary);
+  });
+
   testWidgets('a notification wears the icon of its module and says when', (
     tester,
   ) async {
@@ -576,6 +617,7 @@ Future<void> _pumpWithItem(
   required Map<String, dynamic> item,
   required void Function(String, String?, String?) onOpenModule,
   List<String>? posted,
+  List<Map<String, dynamic>>? also,
   IconData? Function(String)? iconOf,
 }) async {
   final api = ApiClient(
@@ -586,7 +628,7 @@ Future<void> _pumpWithItem(
       }
 
       return _json({
-        'data': [item],
+        'data': [item, ...?also],
         'meta': {'unread': item['read_at'] == null ? 1 : 0},
       });
     }),

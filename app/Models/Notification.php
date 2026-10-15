@@ -112,6 +112,7 @@ class Notification extends Model implements HoldsPersonalData
     {
         return [
             'read_at' => 'datetime',
+            'urgent' => 'boolean',
             'created_at' => 'datetime',
         ];
     }

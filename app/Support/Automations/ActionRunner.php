@@ -3144,6 +3144,8 @@ class ActionRunner
                 inAppOnly: $inAppOnly,
                 roleIds: $roleIds,
                 userIds: $userIds,
+                // "Mark as urgent (red)": a red icon in the bell and the urgent push channel.
+                urgent: (bool) ($action['urgent'] ?? false),
             );
         } catch (InvalidArgumentException $refusal) {
             return ['type' => 'notify', 'ok' => false, 'detail' => $refusal->getMessage()];

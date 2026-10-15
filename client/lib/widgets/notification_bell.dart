@@ -556,9 +556,12 @@ class _NotificationBellState extends State<NotificationBell>
                         child: Icon(
                           icon ?? Icons.info_outline,
                           size: 20,
-                          color: unread
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant,
+                          // A rule's "Mark as urgent (red)".
+                          color: n['urgent'] == true
+                              ? scheme.error
+                              : unread
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
                         ),
                       ),
                       title: Text(
