@@ -2965,6 +2965,13 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 99 · Settings, Suggestions, Development and Your account: UI overhaul — **sent 2026-10-15 14:30** (`docs/previews/settings-overhaul-layouts.html`)
+
+Jose 2026-10-15 via the desk: overhaul Settings, Suggestions and Development and all their sub tabs, then walkthroughs and videos. He also asked directly for a walkthrough and
+video for Your account. **1** (recommended): the module header (title, ▶ How to, Walkthrough) plus a sticky group index on the long pages (Settings groups, Your
+account sections), Organization's List | Structure moved into its header, dialogs turned into side panels, and Development tabs kept open. **2**: a Settings home of cards. **3**: one in-page side
+menu. Phone **4** (recommended, Jump to chips; Your account opens in place) / **5** / **6**. The help videos need the server to accept these page keys.
+
 ### 98 · Customer Experience › Review links (link activity) — **sent 2026-10-15 10:57 — Jose: "as u recommend" — 1 and 4** (`docs/previews/review-links-layouts.html`)
 
 Jose 2026-10-15 via Customer Experience: a tab that measures the review links sent (green, red, opened, sent). There are six counts by branch and by person
