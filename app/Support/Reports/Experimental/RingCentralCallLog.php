@@ -2,6 +2,11 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Models\Organization;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialConnectionAccess;
+use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -73,13 +78,94 @@ final class RingCentralCallLog
     /** RingCentral keeps 12 months of call log; older dates return nothing. */
     public const RETENTION_MONTHS = 12;
 
+    /** The one organization the env credential belongs to (Jose, 2026-10-15). Slug, not name: it was renamed. */
+    public const ENV_ORGANIZATION_SLUG = 'a-1-chimney';
+
+    public const NOT_CONNECTED = 'RingCentral is not connected. Connect it in Settings › Integrations.';
+
     public function configured(): bool
+    {
+        return $this->credentials() !== null;
+    }
+
+    /**
+     * Whose RingCentral account, and with what.
+     *
+     * The organization's own connection (Settings › Integrations) first; for a
+     * signed-in person, one in their current view. Then the env credential, but
+     * ONLY for A1-Group: it is their account, and any other organization
+     * reading it would see A-1's calls. The env is retired once A1-Group's
+     * connection is on the card.
+     *
+     * No tenant (the scheduled commands) reads as A1-Group, which is what
+     * every one of them did before connections existed.
+     *
+     * @return array{server: string, client_id: string, client_secret: string, jwt: string, account: ?string}|null
+     */
+    private function credentials(): ?array
+    {
+        $tenant = app(TenantContext::class)->get()
+            ?? Organization::query()->where('slug', self::ENV_ORGANIZATION_SLUG)->first();
+
+        // No tenant and no A1-Group on this installation: a console run, which
+        // is the env credential's own case.
+        if ($tenant === null) {
+            return $this->fromEnv();
+        }
+
+        $connections = SocialConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', $tenant->getKey())
+            ->where('provider', SocialProvider::RingCentral->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->get();
+
+        $user = auth()->user();
+        if ($user !== null && $user->organization_id === $tenant->getKey()) {
+            $connections = $connections->filter(fn (SocialConnection $c) => app(SocialConnectionAccess::class)->inView($user, $c));
+        }
+
+        if (($c = $connections->first()) !== null) {
+            $creds = (array) ($c->credentials ?? []);
+
+            return [
+                'server' => (string) ($creds['server'] ?? 'https://platform.ringcentral.com'),
+                'client_id' => (string) ($creds['client_id'] ?? ''),
+                'client_secret' => (string) ($creds['client_secret'] ?? ''),
+                'jwt' => (string) ($creds['jwt'] ?? ''),
+                'account' => (string) $c->remote_id,
+            ];
+        }
+
+        return $tenant->slug === self::ENV_ORGANIZATION_SLUG ? $this->fromEnv() : null;
+    }
+
+    /** @return array{server: string, client_id: string, client_secret: string, jwt: string, account: ?string}|null */
+    private function fromEnv(): ?array
     {
         $config = config('experimental_reports.ringcentral');
 
-        return filled($config['client_id'])
-            && filled($config['client_secret'])
-            && filled($config['jwt']);
+        if (blank($config['client_id']) || blank($config['client_secret']) || blank($config['jwt'])) {
+            return null;
+        }
+
+        return [
+            'server' => (string) $config['server'],
+            'client_id' => (string) $config['client_id'],
+            'client_secret' => (string) $config['client_secret'],
+            'jwt' => (string) $config['jwt'],
+            'account' => null,
+        ];
+    }
+
+    /** @return array{server: string, client_id: string, client_secret: string, jwt: string, account: ?string} */
+    private function credentialsOrFail(): array
+    {
+        return $this->credentials() ?? throw new RuntimeException(self::NOT_CONNECTED);
+    }
+
+    private function server(): string
+    {
+        return rtrim($this->credentialsOrFail()['server'], '/');
     }
 
     /**
@@ -98,7 +184,7 @@ final class RingCentralCallLog
     public function forDate(string $from, string $to): array
     {
         $token = $this->token();
-        $server = rtrim((string) config('experimental_reports.ringcentral.server'), '/');
+        $server = $this->server();
 
         $calls = [];
         $page = 1;
@@ -162,11 +248,19 @@ final class RingCentralCallLog
             $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
 
             $calls = [...$calls, ...($day < $today
-                ? Cache::remember(self::dayKey($day), now()->addDays(7), $fetch)
+                ? Cache::remember($this->dayKeyFor($day), now()->addDays(7), $fetch)
                 : $fetch())];
         }
 
         return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));
+    }
+
+    /** dayKey() for the account being read: a connected account caches apart from the env one. */
+    public function dayKeyFor(CarbonImmutable $day): string
+    {
+        $account = $this->credentialsOrFail()['account'];
+
+        return self::dayKey($day).($account === null ? '' : ':'.$account);
     }
 
     /** One finished day's cache key; the zone is in it because a day's edges are. */
@@ -334,7 +428,7 @@ final class RingCentralCallLog
      */
     public function recording(string $id): array
     {
-        $server = rtrim((string) config('experimental_reports.ringcentral.server'), '/');
+        $server = $this->server();
 
         $response = Http::withToken($this->token())
             ->get($server.'/restapi/v1.0/account/~/recording/'.rawurlencode($id).'/content');
@@ -380,11 +474,11 @@ final class RingCentralCallLog
      */
     public function numberNames(): array
     {
-        if (is_array($cached = Cache::get('ringcentral-number-names'))) {
+        if (is_array($cached = Cache::get($this->namesKey()))) {
             return $cached;
         }
 
-        $server = rtrim((string) config('experimental_reports.ringcentral.server'), '/');
+        $server = $this->server();
         $names = [];
 
         try {
@@ -413,7 +507,7 @@ final class RingCentralCallLog
             return [];
         }
 
-        Cache::put('ringcentral-number-names', $names, now()->addDay());
+        Cache::put($this->namesKey(), $names, now()->addDay());
 
         return $names;
     }
@@ -426,9 +520,16 @@ final class RingCentralCallLog
      * 2026-10-06, `ezbizi:warm-call-log --days=31` died on a 429 from
      * /oauth/token, not from the call log. The token lasts an hour.
      */
+    private function namesKey(): string
+    {
+        $account = $this->credentialsOrFail()['account'];
+
+        return 'ringcentral-number-names'.($account === null ? '' : ':'.$account);
+    }
+
     private function token(): string
     {
-        $config = config('experimental_reports.ringcentral');
+        $config = $this->credentialsOrFail();
         $key = 'ringcentral-token:'.sha1((string) $config['client_id']);
 
         if (is_string($cached = Cache::get($key))) {

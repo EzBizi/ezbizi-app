@@ -191,6 +191,7 @@ use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
+use App\Http\Controllers\Api\RingCentralConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -1278,6 +1279,7 @@ Route::prefix('v1')
         */
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
+        Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*
          * Profit & Loss, read live from a tenant's own Airtable base. Before
