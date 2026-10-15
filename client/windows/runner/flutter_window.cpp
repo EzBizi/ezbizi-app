@@ -126,6 +126,8 @@ bool FlutterWindow::OnCreate() {
         result->Success();
       });
 
+  watchdog_channel_ = RegisterWatchdogChannel(flutter_controller_->engine());
+
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+
+import 'issue_reporter.dart';
 import 'build_info.dart';
 import 'client_platform.dart';
 
@@ -180,12 +182,13 @@ class ApiClient {
     Map<String, String>? headers,
   ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
-    return _send(() => _http.get(uri, headers: {..._headers, ...?headers}));
+    return _send('GET', path, () => _http.get(uri, headers: {..._headers, ...?headers}));
   }
 
   Future<ApiResponse> post(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
+      'POST', path,
       () => _http.post(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -196,6 +199,7 @@ class ApiClient {
   Future<ApiResponse> put(String path, Map<String, dynamic> body) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
+      'PUT', path,
       () => _http.put(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -207,13 +211,14 @@ class ApiClient {
   ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
     return _send(
+      'PATCH', path,
       () => _http.patch(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
 
   Future<ApiResponse> delete(String path, [Map<String, String>? query]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);
-    return _send(() => _http.delete(uri, headers: _headers));
+    return _send('DELETE', path, () => _http.delete(uri, headers: _headers));
   }
 
   /// DELETE with a JSON body.
@@ -229,6 +234,7 @@ class ApiClient {
   ) async {
     final uri = Uri.parse('$_root/api/v1$path');
     return _send(
+      'DELETE', path,
       () => _http.delete(uri, headers: _headers, body: jsonEncode(body)),
     );
   }
@@ -445,11 +451,22 @@ class ApiClient {
     }
   }
 
-  Future<ApiResponse> _send(Future<http.Response> Function() request) async {
+  Future<ApiResponse> _send(
+    String method,
+    String path,
+    Future<http.Response> Function() request,
+  ) async {
     final tokenGeneration = _tokenGeneration;
     final authenticated = _token != null;
+    final started = DateTime.now();
     try {
       final response = await request();
+
+      // Server errors are the app's problem to report too (2026-10-15).
+      if (response.statusCode >= 500) {
+        IssueReporter.instance.apiFailure(
+          method, _pathShape(path), response.statusCode, DateTime.now().difference(started));
+      }
 
       /*
        * NO CONDITION AT ALL, unlike the 401 below, and the difference is the
@@ -510,12 +527,22 @@ class ApiClient {
         },
       );
     } catch (e) {
+      IssueReporter.instance.apiFailure(
+          method, _pathShape(path), 0, DateTime.now().difference(started));
       return ApiResponse(
         statusCode: 0,
         body: {'message': 'Could not reach the server. Check your connection.'},
       );
     }
   }
+
+  /// `/customers/0194…-…/jobs` → `/customers/{id}/jobs`, so one failing
+  /// endpoint is one problem rather than one per record.
+  static String _pathShape(String path) => path
+      .split('?')
+      .first
+      .replaceAll(RegExp(r'[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}'), '{id}')
+      .replaceAll(RegExp(r'/\d+(?=/|$)'), '/{n}');
 
   /// Status handling precedes decoding and is identical for every transport.
   /// A late refusal for an old token must never end a newly adopted session.

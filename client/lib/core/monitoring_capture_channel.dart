@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/services.dart'
     show MethodChannel, MissingPluginException, PlatformException;
 
+import 'issue_reporter.dart';
+
 /// The ONE platform channel every screen-capture path in this client calls —
 /// [ScreenshotService]'s periodic 30-day capture (2026-08-31-monitoring-
 /// screenshots, Task 6) and [LiveViewService]'s live-view capture
@@ -51,8 +53,9 @@ typedef CaptureAttempt = ({Uint8List? bytes, String? reason});
 /// told apart between the two things that call this.
 Future<CaptureAttempt> captureMonitoringScreen({String caller = 'capture'}) async {
   try {
-    final bytes = await monitoringScreenshotChannel.invokeMethod<Uint8List>(
+    final bytes = await IssueReporter.trackNative(
       'captureScreenshot',
+      () => monitoringScreenshotChannel.invokeMethod<Uint8List>('captureScreenshot'),
     );
 
     if (bytes == null || bytes.isEmpty) {

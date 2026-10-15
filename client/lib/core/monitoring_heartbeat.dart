@@ -3,6 +3,7 @@ import 'dart:async';
 import 'api_client.dart';
 import 'client_platform.dart';
 import 'device_key.dart';
+import 'issue_reporter.dart';
 import 'screenshot_capability.dart';
 import 'specs_reader.dart';
 
@@ -176,6 +177,7 @@ class MonitoringHeartbeat {
     final segment = _closeSegment();
 
     _currentModule = moduleKey;
+    IssueReporter.module = moduleKey;
     _dwell
       ..reset()
       ..start();

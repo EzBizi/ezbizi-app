@@ -38,6 +38,10 @@ class _HealthScreenState extends State<HealthScreen> {
   int _request = 0;
   String? _error;
   Map<String, dynamic>? _health;
+
+  /// What the apps reported going wrong (2026-10-15). Loaded beside the five
+  /// subsystems; its own failure leaves the rest of the screen standing.
+  Map<String, dynamic>? _issues;
   String? _testResult;
   bool _sending = false;
 
@@ -66,7 +70,11 @@ class _HealthScreenState extends State<HealthScreen> {
       _error = null;
     });
 
-    final response = await widget.staff.api.get('/staff/health');
+    final results = await Future.wait([
+      widget.staff.api.get('/staff/health'),
+      widget.staff.api.get('/staff/health/client-issues'),
+    ]);
+    final response = results[0];
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
@@ -75,6 +83,7 @@ class _HealthScreenState extends State<HealthScreen> {
       _loading = false;
       _error = response.ok ? null : response.message;
       _health = response.ok ? response.body : null;
+      _issues = results[1].ok ? results[1].body : null;
     });
   }
 
@@ -136,12 +145,14 @@ class _HealthScreenState extends State<HealthScreen> {
             _mail(_health!['mail'] as Map<String, dynamic>),
             _outbox(_health!['outbox'] as Map<String, dynamic>),
           ],
+          if (_issues != null) _appIssues(_issues!),
         ],
       ),
     );
   }
 
   Widget _card({
+    Key? key,
     required bool ok,
     required String title,
     required String headline,
@@ -150,6 +161,7 @@ class _HealthScreenState extends State<HealthScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Card(
+      key: key,
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -310,6 +322,56 @@ class _HealthScreenState extends State<HealthScreen> {
       ],
     );
   }
+
+  /// The apps' own error reports, grouped into problems, newest first.
+  Widget _appIssues(Map<String, dynamic> issues) {
+    final problems = (issues['problems'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final days = issues['days'] ?? 7;
+    final total = problems.fold<int>(0, (n, p) => n + ((p['total'] as num?)?.toInt() ?? 0));
+
+    return _card(
+      key: const Key('health-app-issues'),
+      ok: problems.isEmpty,
+      title: 'App issues',
+      headline: problems.isEmpty
+          ? 'No errors, crashes or freezes reported in the last $days days.'
+          : '${problems.length} problems, $total reports in the last $days days. '
+              'Newest first; tap one for where it happened.',
+      children: [
+        for (final p in problems.take(25))
+          ExpansionTile(
+            key: ValueKey('health-issue-${p['fingerprint']}'),
+            tilePadding: EdgeInsets.zero,
+            title: Text('${_kindLabel(p['kind'] as String?)} · ${p['message']}',
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            subtitle: Text([
+              '${p['total']}× by ${p['people']} ${p['people'] == 1 ? 'person' : 'people'}',
+              if ((p['modules'] as List?)?.isNotEmpty ?? false) 'in ${(p['modules'] as List).join(', ')}',
+              if ((p['platforms'] as List?)?.isNotEmpty ?? false) (p['platforms'] as List).join(', '),
+              if ((p['versions'] as List?)?.isNotEmpty ?? false) (p['versions'] as List).join(', '),
+              'last ${p['last_seen_at']}',
+            ].join(' · ')),
+            children: [
+              if (p['detail'] != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: SelectableText(p['detail'] as String,
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  static String _kindLabel(String? kind) => switch (kind) {
+        'dart_error' => 'Error',
+        'native_crash' => 'Crash',
+        'freeze' => 'Freeze',
+        'api_failure' => 'Failed call',
+        _ => 'Issue',
+      };
 
   Widget _outbox(Map<String, dynamic> outbox) {
     final ok = outbox['ok'] == true;
