@@ -75,7 +75,7 @@ final class MediaHandoff
     public static function hold(PostPayload $post): self
     {
         $extension = strtolower(pathinfo((string) $post->filePath, PATHINFO_EXTENSION));
-        $handle    = (string) Str::ulid().($extension === '' ? '' : '.'.$extension);
+        $handle = (string) Str::ulid().($extension === '' ? '' : '.'.$extension);
 
         Storage::disk(self::DISK)->put(self::PREFIX.'/'.$handle, $post->bytes());
 
@@ -88,6 +88,12 @@ final class MediaHandoff
         self::refuseUnreachable($url);
 
         return new self($handle, $url);
+    }
+
+    /** A handoff held by an earlier job, to release once Instagram is done with it. */
+    public static function forHandle(string $handle): self
+    {
+        return new self($handle, '');
     }
 
     public function release(): void
@@ -117,9 +123,9 @@ final class MediaHandoff
      */
     public static function sweep(): int
     {
-        $disk    = Storage::disk(self::DISK);
-        $cutoff  = now()->subMinutes(self::MINUTES + 10)->getTimestamp();
-        $swept   = 0;
+        $disk = Storage::disk(self::DISK);
+        $cutoff = now()->subMinutes(self::MINUTES + 10)->getTimestamp();
+        $swept = 0;
 
         foreach ($disk->files(self::PREFIX) as $file) {
             if ($disk->lastModified($file) < $cutoff) {
@@ -152,7 +158,7 @@ final class MediaHandoff
      */
     private static function refuseUnreachable(string $url): void
     {
-        $host   = (string) parse_url($url, PHP_URL_HOST);
+        $host = (string) parse_url($url, PHP_URL_HOST);
         $scheme = (string) parse_url($url, PHP_URL_SCHEME);
 
         $unreachable = $host === ''

@@ -216,11 +216,11 @@ class SocialPostsController extends Controller
 
         $connections = $this->resolve($request, $data['connections']);
 
-        $this->assertEveryNetworkTakesThis($connections, $kind);
+        $refused = $this->whatEachNetworkRefuses($connections, $kind);
 
         $options = $this->tiktokChoices($request, $connections);
 
-        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options) {
+        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options, $refused) {
             $post = new SocialPost([
                 'body' => $data['body'] ?? null,
                 'title' => $data['title'] ?? null,
@@ -240,13 +240,24 @@ class SocialPostsController extends Controller
             $post->save();
 
             foreach ($connections as $connection) {
-                $post->targets()->create([
+                $because = $refused[$connection->getKey()] ?? null;
+
+                // An account that cannot take this post is written as failed,
+                // with its reason, so it shows under Needs attention instead
+                // of quietly not being there.
+                $target = $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
                     'options' => $options[$connection->getKey()] ?? null,
-                    'status' => $schedule['for'] === null
-                        ? SocialPostTarget::STATUS_QUEUED
-                        : SocialPostTarget::STATUS_SCHEDULED,
+                    'status' => match (true) {
+                        $because !== null => SocialPostTarget::STATUS_FAILED,
+                        $schedule['for'] === null => SocialPostTarget::STATUS_QUEUED,
+                        default => SocialPostTarget::STATUS_SCHEDULED,
+                    },
                 ]);
+
+                if ($because !== null) {
+                    $target->forceFill(['failure' => $because])->save();
+                }
             }
 
             return $post;
@@ -268,7 +279,9 @@ class SocialPostsController extends Controller
          */
         if ($schedule['for'] === null) {
             foreach ($post->targets as $target) {
-                PublishSocialTarget::dispatch($target->getKey());
+                if ($target->status === SocialPostTarget::STATUS_QUEUED) {
+                    PublishSocialTarget::dispatch($target->getKey());
+                }
             }
         }
 
@@ -487,8 +500,11 @@ class SocialPostsController extends Controller
     /**
      * @param  Collection<int, SocialConnection>  $connections
      */
-    private function assertEveryNetworkTakesThis(Collection $connections, SocialMediaKind $kind): void
+    /** @return array<string, string> connection id => why that network cannot take this post */
+    private function whatEachNetworkRefuses(Collection $connections, SocialMediaKind $kind): array
     {
+        $refused = [];
+
         foreach ($connections as $connection) {
             $provider = $connection->providerEnum();
 
@@ -518,17 +534,22 @@ class SocialPostsController extends Controller
                 ?? Publishers::for($provider)?->cannotSend($kind);
 
             if ($because !== null) {
-                /*
-                 * The whole post is refused rather than the one target dropped.
-                 * Silently posting to two of three accounts is the outcome
-                 * nobody asked for: the person meant all three, and finding out
-                 * afterwards that Pinterest was skipped is worse than being told
-                 * now, while the words are still in the box and a picture can
-                 * still be attached.
-                 */
-                throw ValidationException::withMessages(['connections' => $because]);
+                $refused[$connection->getKey()] = $because;
             }
         }
+
+        /*
+         * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post
+         * the other 5 should still go through". So one account that cannot take
+         * this post no longer stops the rest; it is written as failed with its
+         * reason. Only when NONE can take it is the post refused, every reason
+         * named, so nothing is written for nobody.
+         */
+        if ($refused !== [] && count($refused) === $connections->count()) {
+            throw ValidationException::withMessages(['connections' => implode(' ', array_unique($refused))]);
+        }
+
+        return $refused;
     }
 
     /**

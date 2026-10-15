@@ -204,6 +204,12 @@ final class FacebookPublisher implements LinksToPosts, SocialPublisher
             'access_token' => $this->token($connection),
         ])->json('permalink_url');
 
+        // A video's link comes back relative ("/reel/1792…/", measured
+        // 2026-10-15), which used to be thrown away; a photo's is absolute.
+        if (is_string($url) && str_starts_with($url, '/')) {
+            $url = 'https://www.facebook.com'.$url;
+        }
+
         return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }

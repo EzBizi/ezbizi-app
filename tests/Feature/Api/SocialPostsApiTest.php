@@ -668,6 +668,44 @@ class SocialPostsApiTest extends TestCase
         return self::ENDPOINT."/{$post}/targets/{$target}/retry";
     }
 
+    /**
+     * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post the
+     * other 5 should still go through". Pinterest cannot take words alone;
+     * Facebook can. Facebook goes out, and Pinterest is written as FAILED with
+     * the reason, so it is named on the dashboard instead of vanishing.
+     */
+    public function test_one_account_that_cannot_take_the_post_does_not_stop_the_others(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $pin = $this->connection($t, 'company', $t['company']->id, 'Pins', 'pin-1', 'pinterest');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-post-1'])]);
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$pin->getKey(), $page->getKey()], 'body' => 'Words only'])
+            ->assertCreated();
+
+        $this->inTenant($t['org'], function () use ($pin, $page) {
+            $byConnection = SocialPostTarget::query()->get()->keyBy('social_connection_id');
+            $this->assertSame(SocialPostTarget::STATUS_SENT, $byConnection[$page->getKey()]->status);
+            $this->assertSame(SocialPostTarget::STATUS_FAILED, $byConnection[$pin->getKey()]->status);
+            $this->assertNotEmpty($byConnection[$pin->getKey()]->failure);
+        });
+    }
+
+    public function test_a_post_no_ticked_account_can_take_is_refused_whole(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $pin = $this->connection($t, 'company', $t['company']->id, 'Pins', 'pin-1', 'pinterest');
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$pin->getKey()], 'body' => 'Words only'])
+            ->assertStatus(422);
+
+        $this->assertNothingWasWritten($t);
+    }
+
     private function assertNothingWasWritten(array $t): void
     {
         $this->inTenant($t['org'], function () {
