@@ -505,6 +505,30 @@ class Me {
   /// switcher lists it; filing uses [franchisesInView].
   final List<FranchiseSummary> franchises;
 
+  /// Where the view switcher may go (Jose, 2026-10-15: "if a company is
+  /// switched off, it should not appear on the company picker"): companies
+  /// that are on, under a parent that is on.
+  List<CompanySummary> get switchableCompanies {
+    final byId = {for (final c in companies) c.id: c};
+    bool on(CompanySummary c) {
+      final parent = c.parentCompanyId == null ? null : byId[c.parentCompanyId];
+      return c.isActive && (parent == null || parent.isActive);
+    }
+
+    return companies.where(on).toList();
+  }
+
+  /// Places that are on, in a company that is on and switchable.
+  List<FranchiseSummary> get switchableFranchises {
+    final on = {for (final c in switchableCompanies) c.id};
+    return franchises
+        .where(
+          (f) =>
+              f.isActive && (f.companyId == null || on.contains(f.companyId)),
+        )
+        .toList();
+  }
+
   /// Companies the current view covers — the scoped company plus its Sub
   /// Companies, already intersected with [companies] (reach).
   ///
@@ -1158,10 +1182,16 @@ class CompanySummary {
     required this.id,
     required this.name,
     required this.parentCompanyId,
+    this.isActive = true,
   });
 
   final String id;
   final String name;
+
+  /// False once switched off in Settings › Organization. It stays in reach
+  /// (and on that screen, to be switched back on) but is not somewhere to
+  /// stand (Jose, 2026-10-15).
+  final bool isActive;
 
   /// Null for a top-level company; set for a Sub Company (§3).
   ///
@@ -1174,6 +1204,7 @@ class CompanySummary {
     id: json['id'] as String,
     name: json['name'] as String,
     parentCompanyId: json['parent_company_id'] as String?,
+    isActive: json['is_active'] != false,
   );
 }
 
@@ -1182,17 +1213,22 @@ class FranchiseSummary {
     required this.id,
     required this.name,
     this.companyId,
+    this.isActive = true,
   });
 
   final String id;
   final String name;
   final String? companyId;
 
+  /// False once the place is switched off (see [CompanySummary.isActive]).
+  final bool isActive;
+
   factory FranchiseSummary.fromJson(Map<String, dynamic> json) =>
       FranchiseSummary(
         id: json['id'] as String,
         name: json['name'] as String,
         companyId: json['company_id'] as String?,
+        isActive: json['is_active'] != false,
       );
 }
 

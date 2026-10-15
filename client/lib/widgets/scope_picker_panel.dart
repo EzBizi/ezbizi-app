@@ -86,9 +86,13 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
       ),
     ];
 
+    // Switched-off companies and places are not offered (Jose, 2026-10-15).
+    final companies = me.switchableCompanies;
+    final places = me.switchableFranchises;
+
     void addCompany(CompanySummary company, int depth, String prefix) {
       final path = prefix.isEmpty ? company.name : '$prefix › ${company.name}';
-      final subs = me.companies.where((c) => c.parentCompanyId == company.id);
+      final subs = companies.where((c) => c.parentCompanyId == company.id);
 
       out.add(
         _Entry(
@@ -101,7 +105,7 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
         ),
       );
 
-      for (final f in me.franchises.where((f) => f.companyId == company.id)) {
+      for (final f in places.where((f) => f.companyId == company.id)) {
         out.add(
           _Entry(
             value: 'franchise:${f.id}',
@@ -118,8 +122,8 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
       }
     }
 
-    final reachableIds = me.companies.map((c) => c.id).toSet();
-    for (final company in me.companies.where(
+    final reachableIds = companies.map((c) => c.id).toSet();
+    for (final company in companies.where(
       (c) =>
           c.parentCompanyId == null ||
           !reachableIds.contains(c.parentCompanyId),

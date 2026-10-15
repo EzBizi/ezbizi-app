@@ -3149,6 +3149,9 @@ Route::prefix('v1')
                             'name' => $c->name,
                             'parent_company_id' => $c->parent_company_id,
                             'has_logo' => $c->logo_path !== null,
+                            // Switched off: kept in reach, not offered by the
+                            // view switcher (Jose, 2026-10-15).
+                            'is_active' => (bool) $c->is_active,
                         ])
                         ->all(),
 
