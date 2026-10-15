@@ -1417,8 +1417,13 @@ Route::prefix('v1')
         });
 
         Route::middleware('permission:scheduling.availability.view')->group(function () {
-            Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
-            Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion']);
+            // Polled every 30 s by each open availability pane: an ETag lets an
+            // unchanged answer come back as an empty 304 (2026-10-15; done by
+            // Monitoring while Scheduling was unstaffed).
+            Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show'])
+                ->middleware('cache.headers:etag');
+            Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
+                ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
 
             // Suggest is Availability's search box and has no other caller

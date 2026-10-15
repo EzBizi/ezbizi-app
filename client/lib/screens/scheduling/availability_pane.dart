@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -32,6 +35,23 @@ import 'availability_suggestion.dart';
 /// opening in a year all say "check availability on Workiz". A1 Tools once
 /// said "we do not cover" and "fully booked" in those cases, and dispatchers
 /// turned away jobs A-1 could have done.
+/// Whether a refresh tick should ask the server, given whether the window is
+/// in front and when the person last clicked or typed (2026-10-15). Idle for
+/// [availabilityIdleAfter] slows the 30 s refresh to [availabilityIdleRefreshEvery].
+bool availabilityShouldRefresh({
+  required bool inFront,
+  required DateTime lastInput,
+  required DateTime lastRefresh,
+  required DateTime now,
+}) {
+  if (!inFront) return false;
+  final idle = now.difference(lastInput) >= availabilityIdleAfter;
+  return !idle || now.difference(lastRefresh) >= availabilityIdleRefreshEvery;
+}
+
+const availabilityIdleAfter = Duration(minutes: 5);
+const availabilityIdleRefreshEvery = Duration(minutes: 5);
+
 class AvailabilityPane extends StatefulWidget {
   const AvailabilityPane({
     super.key,
@@ -55,7 +75,8 @@ class AvailabilityPane extends StatefulWidget {
 
 enum _Mode { zip, area, calendar }
 
-class _AvailabilityPaneState extends State<AvailabilityPane> {
+class _AvailabilityPaneState extends State<AvailabilityPane>
+    with WidgetsBindingObserver {
   static const _unknown =
       'Information not available, please check availability on Workiz.';
   static const _weekdays = [
@@ -100,10 +121,46 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   Map<String, String>? _lastQuery;
   Timer? _refresh;
 
+  // ── Polling that costs nothing when nothing changed (2026-10-15) ──────
+  //
+  // Every open pane asked twice every 30 s: ~14k calls a day from one office.
+  // Three changes, made by Monitoring while Scheduling was unstaffed, and none
+  // of them weaken Jose's 10-05 rule (another dispatcher's booking shows):
+  //  1. the last answer's ETag goes back with each refresh; an unchanged
+  //     answer is an empty 304 and nothing is redrawn;
+  //  2. the suggestion is asked again only when the availability changed;
+  //  3. no refresh while the window is not in front, and every 5 minutes
+  //     (not 30 s) after 5 minutes without a click or key. Coming back
+  //     refreshes at once.
+  String? _etag;
+  DateTime _lastInput = DateTime.now();
+  DateTime _lastRefresh = DateTime.now();
+
+
+  void _onPointer(PointerEvent _) => _lastInput = DateTime.now();
+
+  bool _onKey(KeyEvent _) {
+    _lastInput = DateTime.now();
+    return false;
+  }
+
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back in front: catch up now rather than on the next tick.
+    if (state == AppLifecycleState.resumed) {
+      _lastInput = DateTime.now();
+      _refreshNow();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _refresh = Timer.periodic(availabilityRefreshEvery, (_) => _refreshNow());
+    _refresh = Timer.periodic(availabilityRefreshEvery, (_) => _tick());
+    WidgetsBinding.instance.addObserver(this);
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_onPointer);
+    HardwareKeyboard.instance.addHandler(_onKey);
     _loadFranchises();
     final zip = widget.initialZip?.trim() ?? '';
     if (zip.isNotEmpty) {
@@ -118,15 +175,32 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     if (widget.visible && !old.visible) _refreshNow();
   }
 
+  void _tick() {
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (!availabilityShouldRefresh(
+      inFront: state == null || state == AppLifecycleState.resumed,
+      lastInput: _lastInput,
+      lastRefresh: _lastRefresh,
+      now: DateTime.now(),
+    )) {
+      return;
+    }
+    _refreshNow();
+  }
+
   void _refreshNow() {
     final query = _lastQuery;
     if (!widget.visible || _loading || query == null) return;
+    _lastRefresh = DateTime.now();
     _run(query, quiet: true);
   }
 
   @override
   void dispose() {
     _refresh?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(_onPointer);
+    HardwareKeyboard.instance.removeHandler(_onKey);
     _search.dispose();
     super.dispose();
   }
@@ -236,6 +310,8 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   /// [quiet] is a refresh: no spinner, and a failed one leaves the answer up.
   Future<void> _run(Map<String, String> query, {bool quiet = false}) async {
     final ticket = ++_request;
+    // A new question has no previous answer to compare against.
+    if (!quiet || !mapEquals(query, _lastQuery)) _etag = null;
     _lastQuery = query;
     if (!quiet) {
       setState(() {
@@ -245,9 +321,17 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       });
     }
 
-    final response = await widget.api.get('/scheduling/availability', query);
+    final response = await widget.api.get(
+      '/scheduling/availability',
+      query,
+      {if (quiet && _etag != null) 'If-None-Match': _etag!},
+    );
     if (!mounted || ticket != _request) return;
+    // Unchanged since the answer on screen: nothing to redraw, nothing to
+    // ask about the suggestion either.
+    if (response.statusCode == 304) return;
     if (quiet && !response.ok) return;
+    _etag = response.headers['etag'];
 
     setState(() {
       _loading = false;
