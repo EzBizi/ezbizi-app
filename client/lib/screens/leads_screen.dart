@@ -556,7 +556,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// who does not watch the Google tab still delivers every enquiry to the
   /// people who do; the reasoning, and the case where the opposite is right, is
   /// in SocialProvider::connectPermission.
-  bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
+  bool get _canConnect => widget.session.me?.can('leads.manage') ?? false;
 
   /// One tab per source, because the two are not one list yet.
   ///
@@ -696,14 +696,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
         const Divider(height: 1),
         const SizedBox(height: 6),
-        _railButton(
-          theme,
-          key: const ValueKey('sources-manage'),
-          icon: Icons.link,
-          label: 'Manage',
-          tooltip: _sourcesSummary(),
-          onPressed: _openSources,
-        ),
+        if (_canConnect)
+          _railButton(
+            theme,
+            key: const ValueKey('sources-manage'),
+            icon: Icons.link,
+            label: 'Manage',
+            tooltip: _sourcesSummary(),
+            onPressed: _openSources,
+          ),
         _railButton(
           theme,
           key: const ValueKey('leads-fetch'),
@@ -1242,7 +1243,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
             children: [
               row(null, 'All sources', Icons.all_inbox),
               for (final s in _visibleSources) row(s.$1, s.$2, s.$3),
-              Padding(
+              if (_canConnect)
+                Padding(
                 padding: const EdgeInsets.all(16),
                 child: OutlinedButton.icon(
                   key: const ValueKey('sources-manage'),

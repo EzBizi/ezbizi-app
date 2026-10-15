@@ -767,6 +767,7 @@ void main() {
       permissions: const [
         'leads.view',
         'leads.edit',
+        'leads.manage',
         'leads.local_services.view',
         'leads.thumbtack.view',
         'leads.website_chat.view',
@@ -1238,16 +1239,18 @@ void main() {
     expect(find.text('1 business · 0 sending leads'), findsOneWidget);
   });
 
-  testWidgets('without leads.edit Connections names who can connect instead '
-      'of offering a button that would be refused', (tester) async {
+  testWidgets('without leads.manage there is no Manage to open', (
+    tester,
+  ) async {
+    // leads.manage (2026-10-15) is the grant for the Manage pane; a role
+    // holding the sources and edit but not it is not offered the pane.
     await _pump(
       tester,
       leads: const [],
       connections: const [],
-      // Sources beside it: this case is about leads.edit, and a role with no
-      // source at all would be a different test failing for a second reason.
       permissions: const [
         'leads.view',
+        'leads.edit',
         'leads.local_services.view',
         'leads.thumbtack.view',
         'leads.website_chat.view',
@@ -1255,17 +1258,9 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byKey(const ValueKey('sources-manage')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Connect Google Ads'), findsNothing);
-    expect(find.textContaining('Somebody who can manage Leads'), findsWidgets);
-
-    await tester.tap(find.byKey(const ValueKey('provider-thumbtack')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Connect Thumbtack'), findsNothing);
-    expect(find.textContaining('Somebody who can manage Leads'), findsWidgets);
+    expect(find.byKey(const ValueKey('sources-manage')), findsNothing);
+    // Control: the strip itself is drawn, so the absence is the grant.
+    expect(find.text('Thumbtack'), findsWidgets);
   });
 
   testWidgets('Connections goes back to the leads', (tester) async {
@@ -1811,6 +1806,7 @@ Future<void> _pump(
   List<String> permissions = const [
     'leads.view',
     'leads.edit',
+    'leads.manage',
     'leads.local_services.view',
     'leads.thumbtack.view',
     'leads.website_chat.view',

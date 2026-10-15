@@ -38,7 +38,7 @@ class GoogleConnectPermissionTest extends TestCase
 
     public function test_each_google_account_answers_to_the_module_that_reads_it(): void
     {
-        $this->assertSame('leads.edit', SocialProvider::GoogleAds->connectPermission());
+        $this->assertSame('leads.manage', SocialProvider::GoogleAds->connectPermission());
         $this->assertSame(
             'reviews.edit',
             SocialProvider::GoogleBusinessProfile->connectPermission(),
@@ -70,7 +70,7 @@ class GoogleConnectPermissionTest extends TestCase
     public function test_the_leads_module_can_connect_its_own_account(): void
     {
         $t      = $this->provisionTenant('A1-Group');
-        $runner = $this->userWithRole($t, 'Leads', ['leads.view', 'leads.edit']);
+        $runner = $this->userWithRole($t, 'Leads', ['leads.view', 'leads.manage']);
 
         $response = $this->signedInAs($runner)
             ->postJson('/api/v1/social/google-ads/start');
@@ -122,7 +122,7 @@ class GoogleConnectPermissionTest extends TestCase
     public function test_the_module_that_can_connect_an_account_can_also_disconnect_it(): void
     {
         $t    = $this->provisionTenant('A1-Group');
-        $lead = $this->userWithRole($t, 'Lead desk', ['leads.view', 'leads.edit']);
+        $lead = $this->userWithRole($t, 'Lead desk', ['leads.view', 'leads.manage']);
 
         $row = $this->inTenant($t['org'], fn () => SocialConnection::create([
             'organization_id' => $t['org']->id,
@@ -278,7 +278,7 @@ class GoogleConnectPermissionTest extends TestCase
     public function test_leads_edit_does_not_leak_into_connecting_a_social_page(): void
     {
         $t      = $this->provisionTenant('A1-Group');
-        $runner = $this->userWithRole($t, 'Leads', ['leads.view', 'leads.edit']);
+        $runner = $this->userWithRole($t, 'Leads', ['leads.view', 'leads.edit', 'leads.manage']);
 
         $this->signedInAs($runner)
             ->postJson('/api/v1/social/tiktok/start')

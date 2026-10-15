@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0437',
+      date: '15 Oct 2026',
+      items: [
+        'Roles & permissions: Leads has a new tick, Manage sources (connect accounts). Only roles with it see the Manage button in Leads and can connect Google Ads or Thumbtack. Every role that could connect sources before keeps it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0436',
       date: '14 Oct 2026',
       items: [
