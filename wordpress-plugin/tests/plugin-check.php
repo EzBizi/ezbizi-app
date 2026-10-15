@@ -95,6 +95,9 @@ function add_action($hook, $cb, $p = 10, $a = 1) { $GLOBALS['actions'][$hook][] 
 function do_action($hook, ...$args) {
     foreach ($GLOBALS['actions'][$hook] ?? [] as $cb) { $cb(...$args); }
 }
+// The checks below read each widget's script from its shortcode's own output,
+// which is what a render after the footer gives (ezbizi_late_script).
+function did_action($hook) { return $GLOBALS['did_action'][$hook] ?? 1; }
 function wp_schedule_single_event($ts, $hook) { $GLOBALS['scheduled'][] = $hook; return true; }
 function wp_clear_scheduled_hook($hook) { return true; }
 
@@ -2376,6 +2379,24 @@ check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?f
 // and the social title templates can be corrected like the search ones.
 check('the SEO Helper carries the X title', ezbizi_seo_keys()['twitter_title'] ?? null, '_yoast_wpseo_twitter-title');
 check('and the social title template for pages', ezbizi_seo_site_fields()['social_page_title_template'] ?? null, 'social-title-page');
+
+// 2026-10-15: on a-1chimney.com/booking the page's content filters turned the
+// widget script's && into &#038;&#038; and the ZIP step did nothing. Before the
+// footer, the script waits for it instead of riding inside the shortcode's HTML.
+$GLOBALS['did_action']['wp_footer'] = 0;
+$GLOBALS['ezbizi_late_js'] = [];
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+$early = $GLOBALS['sc']['ezbizi_form']([]);
+check('before the footer a form carries no script', str_contains($early, '<script'), false);
+$GLOBALS['did_action']['wp_footer'] = 1;
+ob_start();
+do_action('wp_footer');
+$footer = (string) ob_get_clean();
+preg_match('/id="(ezbizi-form-[0-9]+)"/', $early, $late);
+check('and the footer prints it, for that form', str_contains($footer, '<script') && str_contains($footer, $late[1] ?? 'x'), true);
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"
