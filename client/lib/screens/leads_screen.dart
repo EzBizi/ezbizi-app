@@ -185,6 +185,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('ls_call', 'LS Call'),
     ('ls_text', 'LS Text'),
     ('ls_booking', 'LS Booking'),
+    // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
+    ('ringcentral', 'RC Calls'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
@@ -207,6 +209,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.call_outlined, // Google Local Services calls
     Icons.sms_outlined, // Google Local Services texts
     Icons.event_available_outlined, // booked through Google directly
+    Icons.phone_callback_outlined, // RingCentral: a call to our own line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -616,6 +619,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'instagram': 'Instagram',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
+      'ringcentral': 'RC Calls',
     }[_source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
@@ -2002,6 +2006,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'website_booking' => 'Online Booking',
   'workiz' => 'Workiz',
   'whatsapp' => 'WhatsApp',
+  'ringcentral' => 'RC Call',
   _ => 'Google',
 };
 

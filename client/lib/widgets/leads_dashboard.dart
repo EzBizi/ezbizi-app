@@ -51,6 +51,7 @@ const _sources = <({String word, String source, String? leadType})>[
   (word: 'Instagram', source: 'instagram', leadType: null),
   (word: 'Workiz', source: 'workiz', leadType: null),
   (word: 'WhatsApp', source: 'whatsapp', leadType: null),
+  (word: 'RC Calls', source: 'ringcentral', leadType: null),
 ];
 
 /// The badge word for a (source, lead_type) pair, as the list says it.

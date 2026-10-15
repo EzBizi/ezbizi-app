@@ -250,6 +250,7 @@ class ActionRunner
                 'website_booking' => 'Website online booking',
                 'whatsapp' => 'WhatsApp',
                 'workiz' => 'Workiz',
+                'ringcentral' => 'RingCentral call',
             ],
             'status' => [
                 'new' => 'New',

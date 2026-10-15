@@ -104,6 +104,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_WORKIZ = 'workiz';
 
     /**
+     * A call straight to one of the business's RingCentral lines, not through
+     * Google (Jose, 2026-10-15). One per caller; never a Local Services call
+     * twice (RingCentralLeadCalls). No reply channel, like an LS call.
+     */
+    public const SOURCE_RINGCENTRAL = 'ringcentral';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -166,6 +173,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WHATSAPP,
+        self::SOURCE_RINGCENTRAL,
     ];
 
     /**
@@ -268,6 +276,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WORKIZ,
         self::SOURCE_WHATSAPP,
+        self::SOURCE_RINGCENTRAL,
     ];
 
     /**

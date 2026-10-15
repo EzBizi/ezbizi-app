@@ -2616,6 +2616,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
+                    new TabDefinition('ringcentral', 'RC Calls'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*

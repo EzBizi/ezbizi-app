@@ -293,6 +293,39 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/RC Calls': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'RC Calls',
+        body:
+            'Calls straight to your own phone lines, from your website, '
+            'Google profile or ads. A Google Local Services call is never '
+            'shown here twice.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'RC Calls',
+        body:
+            'Calls straight to your own phone lines, from your website, '
+            'Google profile or ads. A Google Local Services call is never '
+            'shown here twice.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'One caller, one lead',
+        body:
+            'Each caller is one lead, with every call they made, the line '
+            'they rang, the recording and what was said.',
+      ),
+      TourStep(
+        anchor: 'lead-call',
+        title: 'Call them back',
+        body: "Opens EzBizi's dial pad with their number on it.",
+      ),
+    ],
+  ),
   'leads/WhatsApp': Tour(
     version: 1,
     steps: [
