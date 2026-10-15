@@ -144,6 +144,38 @@ class SchedulingAvailabilityTest extends TestCase
             ->json('data.areas.0');
     }
 
+    /**
+     * Every open pane re-asks every 30 s (Jose, 2026-10-05: another
+     * dispatcher's booking must show). An unchanged answer comes back as an
+     * empty 304; anything that changes the answer changes its ETag, so a
+     * booking still arrives on the next tick. Added 2026-10-15 by Monitoring
+     * while Scheduling was unstaffed.
+     */
+    public function test_an_unchanged_answer_is_a_304_and_a_changed_one_is_not(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $first = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?zip=75201')
+            ->assertOk();
+        $etag = $first->headers->get('ETag');
+        $this->assertNotEmpty($etag);
+
+        $this->signedInAs($tenant['admin'])
+            ->withHeader('If-None-Match', $etag)
+            ->get('/api/v1/scheduling/availability?zip=75201', ['Accept' => 'application/json'])
+            ->assertStatus(304)
+            ->assertContent('');
+
+        // An answer that differs from what the app holds comes back whole.
+        $this->signedInAs($tenant['admin'])
+            ->withHeader('If-None-Match', '"something-older"')
+            ->getJson('/api/v1/scheduling/availability?zip=75201')
+            ->assertOk()
+            ->assertJsonPath('data.areas.0.area_name', 'Dallas');
+    }
+
     /** With nothing booked, the first Monday offers everything, and `basis` says remaining. */
     public function test_a_zip_finds_its_area_and_the_first_day_with_room(): void
     {
