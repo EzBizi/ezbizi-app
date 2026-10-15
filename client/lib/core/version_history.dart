@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0443',
+      date: '15 Oct 2026',
+      items: [
+        'Customer Experience: A-1 Chimney Google reviews and listings now sync on their own: listings and standing every morning, reviews every 6 hours.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0442',
       date: '15 Oct 2026',
       items: [
