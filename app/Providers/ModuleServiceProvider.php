@@ -2570,7 +2570,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * is the same key it was, held by the same roles, and the
                  * automations keyed on `lead.*` are untouched.
                  */
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                // `manage` (Jose, 2026-10-15): the Manage pane, where lead sources
+                // are connected, is its own grant instead of riding on `edit`.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage'],
+                actionLabels: ['manage' => 'Manage sources (connect accounts)'],
                 /*
                  * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
                  * be able to grant access by sub tab as well ... so this applies
