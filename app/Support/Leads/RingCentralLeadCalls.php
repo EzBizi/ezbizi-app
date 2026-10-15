@@ -69,7 +69,10 @@ final class RingCentralLeadCalls
         'IN' => 'Nationwide', 'OR' => 'Nationwide',
     ];
 
-    public function __construct(private readonly LeadThread $thread) {}
+    public function __construct(
+        private readonly LeadThread $thread,
+        private readonly \App\Support\Automations\EventEmitter $events,
+    ) {}
 
     /**
      * Lead calls from one batch of RingCentral call-log rows (RingCentralCallLog
@@ -131,6 +134,18 @@ final class RingCentralLeadCalls
                     'recording_url' => $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null,
                 ]);
                 $this->thread->refresh($lead);
+
+                // The only RingCentral call anybody is told about (Jose,
+                // 2026-10-15: "just report the Missed Calls instead from now on").
+                if ($call['answered_by'] === null) {
+                    $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
+                        'phone' => $lead->phone,
+                        'contact_name' => $lead->contact_name,
+                        'line' => $line,
+                        'occurred_at' => $times[$i]->toIso8601String(),
+                        'source' => $lead->source,
+                    ]]);
+                }
             });
             $filed++;
         }

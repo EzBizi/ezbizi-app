@@ -142,6 +142,31 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertFalse($row['is_unread']);
     }
 
+    /** 884 "New reply" bells in 30 minutes (2026-10-15): a call is not a reply; only a missed one is news. */
+    public function test_only_a_missed_call_is_announced_and_calls_owe_no_reply(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([
+                self::rc('20', '+15550000020', now()->subHours(3)->toIso8601String()),
+                self::rc('21', '+15550000020', now()->subHours(2)->toIso8601String()),   // calls again, answered
+                self::rc('22', '+15550000022', now()->subHour()->toIso8601String(), extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null]),
+            ], self::LINES, $t['company']->id);
+            // Running again files nothing and announces nothing.
+            $calls->file([self::rc('22', '+15550000022', now()->subHour()->toIso8601String(), extra: ['answered_by' => null])], self::LINES, $t['company']->id);
+        });
+
+        $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
+        $this->assertSame(0, $events['lead.customer_replied'] ?? 0);
+        $this->assertSame(0, $events['lead.contact_received'] ?? 0);
+        $this->assertSame(1, $events['lead.missed_call'] ?? 0, 'the one missed call, once');
+
+        $unreplied = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?unreplied=1')->json('data');
+        $this->assertSame([], array_column($unreplied, 'id'), 'a call owes no reply');
+    }
+
     public function test_line_names_place_the_company_and_market(): void
     {
         $companies = ['a' => 'A-1 Chimney', 'b' => 'Crestline Home', 'c' => 'Ace Fireplace Services', 'd' => 'Roofirst'];

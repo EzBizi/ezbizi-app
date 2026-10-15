@@ -2768,6 +2768,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'raise this.',
                     ),
                     new TriggerDefinition(
+                        key: 'lead.missed_call',
+                        label: 'Missed call',
+                        description: 'Somebody rang one of the business\'s own RingCentral lines and nobody '
+                            .'picked up. It carries their number, name when known, the line they rang '
+                            .'and when. Answered calls raise nothing.',
+                    ),
+                    new TriggerDefinition(
                         key: 'lead.booking_approved',
                         label: 'Online booking approved',
                         description: 'A dispatcher approved a booking made on the website. It carries '
