@@ -22,6 +22,11 @@ use Illuminate\Support\Facades\Route;
  *
  * Grok sees the request and the route list only. No response body is ever
  * sent to it, so AppAsk's GET/JSON privacy line is untouched.
+ *
+ * A chat command does NOT ask for the app's second factor. The proof of who
+ * is asking is WhatsApp's: the message came from the phone number on that
+ * person's EzBizi profile, through Meta's signed webhook. Anyone holding that
+ * unlocked phone can command as them, within the allowlist below.
  */
 final class AppAct
 {
@@ -58,14 +63,16 @@ final class AppAct
         $method = strtoupper(trim((string) ($p['method'] ?? '')));
         $path = preg_replace('#^/?(api/)?v1/#', '', trim((string) ($p['path'] ?? ''), '/'));
 
-        if (! self::writable($method, $path) || trim((string) ($p['summary'] ?? '')) === '') {
+        $body = (array) (json_decode((string) ($p['body'] ?? ''), true) ?: []);
+
+        if (! self::writable($method, $path, $body) || trim((string) ($p['summary'] ?? '')) === '') {
             return null;
         }
 
         return [
             'method' => $method,
             'path' => $path,
-            'body' => (array) (json_decode((string) ($p['body'] ?? ''), true) ?: []),
+            'body' => $body,
             'summary' => trim((string) $p['summary']),
         ];
     }
@@ -96,7 +103,7 @@ final class AppAct
     {
         self::drop($viewer);
 
-        if (! $viewer->hasPermission(self::PERMISSION) || ! self::writable($plan['method'], $plan['path'])) {
+        if (! $viewer->hasPermission(self::PERMISSION) || ! self::writable($plan['method'], $plan['path'], $plan['body'])) {
             return ['ok' => false, 'status' => 403, 'message' => 'That is not something you can do from WhatsApp.'];
         }
 
@@ -135,11 +142,12 @@ final class AppAct
      * here. Jose's asks first (desk, 2026-10-16).
      */
     public const COMMANDS = [
-        'PUT reviews/{review}/reply',
-        'POST reviews/{review}/reply/publish',
-        'POST scheduling/board/jobs/{job}/reschedule',
-        'PATCH leads/{lead}',
-        'PUT scheduling/locations/notes/{company}',
+        'PUT reviews/{review}/reply' => null,
+        'POST reviews/{review}/reply/publish' => null,
+        'POST scheduling/board/jobs/{job}/reschedule' => null,
+        // Status only: the star and note on a lead are not changed from chat.
+        'PATCH leads/{lead}' => ['status'],
+        'PUT scheduling/locations/notes/{company}' => null,
     ];
 
     /**
@@ -153,11 +161,11 @@ final class AppAct
     public static function catalogue(): string
     {
         return implode('
-', array_filter(self::COMMANDS, fn ($c) => ! self::forbidden(explode(' ', $c, 2)[1])));
+', array_filter(array_keys(self::COMMANDS), fn ($c) => ! self::forbidden(explode(' ', $c, 2)[1])));
     }
 
     /** A real tenant route, on the allowlist, and not forbidden. */
-    public static function writable(string $method, string $path): bool
+    public static function writable(string $method, string $path, array $body = []): bool
     {
         if ($path === '') {
             return false;
@@ -172,7 +180,15 @@ final class AppAct
 
         $template = substr($route->uri(), 7);
 
-        return in_array($method.' '.$template, self::COMMANDS, true) && ! self::forbidden($template);
+        $command = $method.' '.$template;
+        if (! array_key_exists($command, self::COMMANDS) || self::forbidden($template)) {
+            return false;
+        }
+
+        // A command limited to some fields may carry no others.
+        $keys = self::COMMANDS[$command];
+
+        return $keys === null || array_diff(array_keys($body), $keys) === [];
     }
 
     public static function forbidden(string $template): bool

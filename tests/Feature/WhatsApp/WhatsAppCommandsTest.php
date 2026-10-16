@@ -29,6 +29,10 @@ class WhatsAppCommandsTest extends TestCase
         // A real tenant write route nobody opted in: refused. This is the
         // allowlist; a denylist would let it through and this goes red.
         $this->assertFalse(AppAct::writable('POST', 'tasks'));
+        // A lead's status, and nothing else on it.
+        $this->assertTrue(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['status' => 'won']));
+        $this->assertFalse(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['note' => 'x']));
+        $this->assertFalse(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d', ['status' => 'won', 'starred' => true]));
         $this->assertFalse(AppAct::writable('POST', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/book'));
         // Wrong method on an allowed path, and a path the model made up.
         $this->assertFalse(AppAct::writable('DELETE', 'reviews/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/reply'));
@@ -41,7 +45,7 @@ class WhatsAppCommandsTest extends TestCase
         $routes = collect(Route::getRoutes()->getRoutes())
             ->flatMap(fn ($r) => collect($r->methods())->map(fn ($m) => $m.' '.substr($r->uri(), 7)))->all();
 
-        foreach (AppAct::COMMANDS as $command) {
+        foreach (array_keys(AppAct::COMMANDS) as $command) {
             $this->assertContains($command, $routes, "$command is not a route: renamed?");
             $this->assertFalse(AppAct::forbidden(explode(' ', $command, 2)[1]), "$command is on the never list");
         }
