@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 101 · Customer Experience › Reviews takes over A1Leads GBP — **sent 2026-10-16** (`docs/previews/reviews-takeover-layouts.html`)
+### 101 · Customer Experience › Reviews takes over A1Leads GBP — **sent 2026-10-16 — Jose: "as you recommend" — 1 and 4** (`docs/previews/reviews-takeover-layouts.html` @ `4c8d1950`)
 
 Jose 2026-10-16: "take whatever is valuable from there towards Customer Experience tab and delete the a1leads gbp tab"; and "we are also building how the system
 functions in ezbizi for when we replace his API with ours" — so Status, Notes, customer match, Report to Google and replies are EzBizi's own data and endpoints. **1** (recommended):
