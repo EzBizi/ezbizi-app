@@ -31,6 +31,8 @@ Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverla
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
 // A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
+// Financials tables linked to Airtable read that copy, ten minutes after it lands.
+Schedule::command('ezbizi:financials-airtable-refresh')->hourlyAt(27)->withoutOverlapping(10);
 Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Everything else's retention (§10), read off each model's own declaration.

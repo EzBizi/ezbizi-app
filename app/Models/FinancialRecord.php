@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** Financials (the Airtable replacement) — see the create_financials_tables migration. */
-#[Fillable(['table_id', 'values', 'position', 'created_by_user_id'])]
+#[Fillable(['table_id', 'source_record_id', 'values', 'position', 'created_by_user_id'])]
 class FinancialRecord extends Model implements CarriesAutomationScope, StatesRetention
 {
     use BelongsToTenant;
