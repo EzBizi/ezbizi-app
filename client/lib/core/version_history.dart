@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Notifications: tapping a notification about a review opens that review.',
         'Automations: rules can now act when Google removes a review, and on new low-star reviews (each new review now says how many days old it is). Two ready-made rules are in the templates.',
         'WhatsApp: staff with the new Do things from WhatsApp tick can ask the EzBizi bot to reply to or publish a review reply, reschedule a job, change a lead’s status, or update a location’s scheduling note. The bot shows exactly what it will do and waits for YES first, and each person’s own permissions still apply.',
         'Financials: link your Airtable tables, choose which table plays which part (repair teams, refunds, HQ expenses and so on) under Financials › Settings, and split repair-team costs between companies to the cent.',
