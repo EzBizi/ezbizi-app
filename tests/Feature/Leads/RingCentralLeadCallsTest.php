@@ -55,14 +55,15 @@ class RingCentralLeadCallsTest extends TestCase
                 self::rc('1', '+15550000001', '2026-10-14T14:00:00Z'),
                 self::rc('2', '+15550000001', '2026-10-14T16:00:00Z', '+12160000003', null, ['talk_seconds' => null, 'answered_by' => null, 'recording_id' => null]),
                 self::rc('3', '+15550000009', '2026-10-14T15:00:00Z'),                                   // the LS call
-                self::rc('4', '+15550000004', '2026-10-14T15:10:00Z', queue: RingCentralLeadCalls::EXISTING_CLIENT_QUEUE),
+                self::rc('4', '+15550000004', '2026-10-14T15:10:00Z', queue: RingCentralLeadCalls::EXISTING_CLIENT_QUEUE), // shown too, tagged
                 self::rc('5', '+15550000005', '2026-10-14T15:20:00Z', queue: 'Ana Diaz'),               // a person's direct line
                 self::rc('6', '+15550000006', '2026-10-14T15:30:00Z', '+18000000002'),
             ], self::LINES, $t['company']->id);
 
-            $this->assertSame(3, $filed, 'calls 1, 2 (same caller) and 6');
+            $this->assertSame(4, $filed, 'calls 1, 2 (same caller), 4 and 6');
             $rc = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->orderBy('received_at')->get();
-            $this->assertCount(2, $rc, 'one lead per caller');
+            $this->assertCount(3, $rc, 'one lead per caller');
+            $this->assertSame(RingCentralLeadCalls::EXISTING_CLIENT, $rc[1]->source_status, 'existing client, tagged');
 
             $first = $rc[0];
             $this->assertSame('NJ - GMB', $first->category);
@@ -73,8 +74,8 @@ class RingCentralLeadCallsTest extends TestCase
             $this->assertSame(95000, $calls[0]->duration_ms);
             $this->assertNull($calls[1]->duration_ms, 'missed: rang out');
 
-            $this->assertSame(Company::query()->where('name', 'AngiSweep')->value('id'), $rc[1]->company_id, 'a brand line is its company');
-            $this->assertNull($rc[1]->franchise_id);
+            $this->assertSame(Company::query()->where('name', 'AngiSweep')->value('id'), $rc[2]->company_id, 'a brand line is its company');
+            $this->assertNull($rc[2]->franchise_id);
 
             // Run again: nothing twice.
             $this->assertSame(0, app(RingCentralLeadCalls::class)->file([self::rc('1', '+15550000001', '2026-10-14T14:00:00Z')], self::LINES, $t['company']->id));
@@ -152,10 +153,10 @@ class RingCentralLeadCallsTest extends TestCase
             $calls->file([
                 self::rc('20', '+15550000020', now()->subHours(3)->toIso8601String()),
                 self::rc('21', '+15550000020', now()->subHours(2)->toIso8601String()),   // calls again, answered
-                self::rc('22', '+15550000022', now()->subHour()->toIso8601String(), extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null]),
+                self::rc('22', '+15550000022', now()->subMinutes(30)->toIso8601String(), extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null]),
             ], self::LINES, $t['company']->id);
             // Running again files nothing and announces nothing.
-            $calls->file([self::rc('22', '+15550000022', now()->subHour()->toIso8601String(), extra: ['answered_by' => null])], self::LINES, $t['company']->id);
+            $calls->file([self::rc('22', '+15550000022', now()->subMinutes(30)->toIso8601String(), extra: ['answered_by' => null])], self::LINES, $t['company']->id);
         });
 
         $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
@@ -176,11 +177,15 @@ class RingCentralLeadCallsTest extends TestCase
         $this->inTenant($t['org'], function () use ($t, $unanswered) {
             $calls = app(RingCentralLeadCalls::class);
             $calls->file([
-                self::rc('30', '+15550000030', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
-                self::rc('31', '+15550000031', now()->subHours(3)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
-                self::rc('32', '+15550000032', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Voicemail']),
+                self::rc('30', '+15550000030', now()->subMinutes(30)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
+                self::rc('31', '+15550000031', now()->subMinutes(30)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
+                self::rc('32', '+15550000032', now()->subMinutes(30)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Voicemail']),
+                // Missed before any queue (RingCentral says Missed, not Accepted): not spam.
+                self::rc('35', '+15550000035', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Missed']),
+                // Missed hours ago (a catch-up run): filed, tagged, not announced.
+                self::rc('34', '+15550000034', now()->subHours(3)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
                 // The missed caller hangs up in the menu later: still Missed call.
-                self::rc('33', '+15550000031', now()->subHour()->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
+                self::rc('33', '+15550000031', now()->subMinutes(20)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
             ], self::LINES, $t['company']->id);
 
             $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
@@ -188,6 +193,8 @@ class RingCentralLeadCallsTest extends TestCase
                 '+15550000030' => RingCentralLeadCalls::POSSIBLE_SPAM,
                 '+15550000031' => RingCentralLeadCalls::MISSED,
                 '+15550000032' => RingCentralLeadCalls::VOICEMAIL,
+                '+15550000034' => RingCentralLeadCalls::MISSED,
+                '+15550000035' => RingCentralLeadCalls::MISSED,
             ], $tags);
             $this->assertSame('Possible spam', LeadConversation::query()->where('remote_id', 'rc_30')->value('text'));
         });
@@ -196,7 +203,7 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(2, $events['lead.missed_call'] ?? 0, 'missed and voicemail, not the hang-ups');
 
         $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
-        $this->assertCount(3, $rc, 'all three under RC Calls');
+        $this->assertCount(5, $rc, 'all five under RC Calls');
     }
 
     public function test_line_names_place_the_company_and_market(): void
