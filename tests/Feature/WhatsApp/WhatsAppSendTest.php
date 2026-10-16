@@ -303,4 +303,45 @@ class WhatsAppSendTest extends TestCase
 
         $this->assertSame(self::PHONE_ID, $row->phone_number_id);
     }
+
+    public function test_a_key_already_sent_sends_nothing_the_second_time(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        $send = fn () => $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
+
+        $first = $send();
+        $second = $send();
+
+        $this->assertSame($first->id, $second->id);
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_key_that_failed_is_sent_again(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+
+        Http::fakeSequence()
+            ->push(['error' => ['message' => 'nope']], 400)
+            ->push(['messages' => [['id' => 'wamid.RETRY']]]);
+
+        $send = fn () => $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199', [], 'en_US', null, 'weekly:alpha:2026-10-12'));
+
+        try {
+            $send();
+        } catch (RuntimeException) {
+            // Meta refused the first attempt.
+        }
+
+        $retry = $send();
+
+        $this->assertSame('wamid.RETRY', $retry->wamid);
+        $this->assertSame('weekly:alpha:2026-10-12', $retry->idempotency_key);
+        Http::assertSentCount(2);
+    }
 }
