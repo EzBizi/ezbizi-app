@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Financials (the Airtable replacement) — see the create_financials_tables migration. */
-#[Fillable(['base_id', 'name', 'position'])]
+#[Fillable(['base_id', 'name', 'position', 'source_base_id', 'source_table_id', 'synced_at'])]
 class FinancialTable extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -26,6 +26,17 @@ class FinancialTable extends Model implements StatesRetention
             'A spreadsheet the organization keeps for itself. It stays until somebody deletes it '
             .'or the organization is removed.'
         );
+    }
+
+    protected function casts(): array
+    {
+        return ['synced_at' => 'datetime'];
+    }
+
+    /** Mirrors a table of the Airtable copy, and is read-only here. */
+    public function isMirror(): bool
+    {
+        return $this->source_table_id !== null;
     }
 
     public function base(): BelongsTo
