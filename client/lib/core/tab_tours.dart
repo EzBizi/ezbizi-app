@@ -98,7 +98,8 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   'leads': Tour(
-    version: 1,
+    // 2: charge, IVR, dispatcher, dates and Edit (UI queue 103).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'source-rail',
@@ -128,6 +129,22 @@ const Map<String, Tour> tabTours = {
         body:
             'Unread, Unreplied, Overdue, Follow up and Starred narrow the list '
             'together. Mark all read sits at the end.',
+      ),
+      TourStep(
+        anchor: 'tour-leads-more-filters',
+        since: 2,
+        title: 'Charge, IVR, dispatcher, dates',
+        body:
+            'Narrow the list by what Google charged, which phone line the '
+            'call came in on, who answered it, and when.',
+      ),
+      TourStep(
+        anchor: 'lead-edit',
+        since: 2,
+        title: 'Edit',
+        body:
+            "Fix the name, ZIP, classification or dispatcher, ask AI to "
+            "classify it again, and see every call from this number.",
       ),
       TourStep(
         anchor: 'leads-fetch',
