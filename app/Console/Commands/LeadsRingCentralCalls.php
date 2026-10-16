@@ -46,7 +46,10 @@ class LeadsRingCentralCalls extends Command
         $zone = (string) config('app.timezone');
         $now = CarbonImmutable::now($zone);
         $start = $now->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
-        $ready = $now->subMinutes(10);
+        // Two minutes, not ten: measured 2026-10-16, calls landed 10-19 minutes
+        // late and Jose saw Bar's call "after a while". The log lists a call
+        // once it has ended; a Google copy that arrives later is withdrawn.
+        $ready = $now->subMinutes(2);
 
         foreach ($organizations as $organization) {
             $tenant->run($organization, function () use ($log, $calls, $connections, $organization, $start, $now, $ready) {

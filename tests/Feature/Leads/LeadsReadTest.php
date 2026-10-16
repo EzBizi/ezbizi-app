@@ -54,10 +54,16 @@ class LeadsReadTest extends TestCase
         $named = $this->callLead('Already Known', 'Hi this is Kassandra, zip 19020, I need an inspection');
         $blank = $this->callLead(null, 'Hi this is Kassandra Stone, zip 19020, I need an inspection');
         $waiting = $this->callLead(null, null);   // not transcribed yet
+        // An unanswered RingCentral call carries only our tag as text (2026-10-16:
+        // Grok read "Possible spam" as the caller's words and marked Not a lead).
+        $tagged = $this->callLead(null, null);
+        $this->inTenant($this->t['org'], fn () => LeadConversation::query()->where('lead_id', $tagged->id)->update(['text' => 'Possible spam', 'duration_ms' => null]));
 
         $this->artisan('ezbizi:leads-read')->assertSuccessful();
 
-        $this->inTenant($this->t['org'], function () use ($named, $blank, $waiting) {
+        $this->inTenant($this->t['org'], function () use ($named, $blank, $waiting, $tagged) {
+            $this->assertNull($tagged->refresh()->classification, 'a tag is not words');
+            $this->assertSame(Lead::STATUS_NEW, $tagged->status);
             $blank->refresh();
             $this->assertSame('Kassandra Stone', $blank->contact_name);
             $this->assertSame('19020', $blank->postal_code);

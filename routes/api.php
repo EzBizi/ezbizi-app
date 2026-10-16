@@ -635,6 +635,11 @@ Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class
     ->middleware(['signed', 'throttle:60,1'])
     ->whereUuid('report')
     ->name('inspection.report.shared');
+// A1 Tools' old customer report links, redirected here once that box is gone.
+Route::get('v1/inspections/a1/{id}', [InspectionReportsController::class, 'a1Link'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->whereNumber('id')
+    ->name('inspection.a1.link');
 
 // A form upload, by the signed link in its enquiry — never guessable.
 Route::get('v1/web/form/files/{name}', [WebEnquiriesController::class, 'file'])

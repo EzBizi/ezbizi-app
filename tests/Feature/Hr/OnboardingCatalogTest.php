@@ -300,6 +300,38 @@ class OnboardingCatalogTest extends TestCase
         $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
     }
 
+    /** A1 Tools' Recruiter agreement, built on Customer Relations (A1 takeover, 2026-10-16). */
+    public function test_the_recruiter_contract_is_customer_relations_with_its_own_duties(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $body = "This Customer Relations Employment Agreement (\"Agreement\") is entered into between:\r\n\r\n"
+            ."2. POSITION & DUTIES\r\n\r\nThe Employee is hired to manage relations.\r\n\r\n• Answer complaints\r\n"
+            ."The Employee is expected to maintain professional conduct and be kind.\r\n\r\n"
+            ."6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n".\App\Console\Commands\CallScoringClause::CLAUSE."\r\n\r\n"
+            ."7. CONFIDENTIALITY\r\n\r\nKeep it.\r\n\r\n8. NON-SOLICITATION\r\n\r\nDo not.";
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Customer Relations', 'body' => $body,
+            'fields' => [
+                ['key' => 'job_title', 'label' => 'Job title', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
+                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
+            ],
+        ])->assertCreated();
+
+        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Dry run. Nothing written.')->assertSuccessful();
+        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:recruiter-contract', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('Recruiter: already there')->assertSuccessful();
+
+        $recruiter = $this->inTenant($alpha['org'], fn () => Contract::where('name', 'Recruiter')->firstOrFail()->currentVersion);
+        $this->assertStringStartsWith('This Recruiter Employment Agreement', $recruiter->body);
+        $this->assertStringContainsString("• Perform additional recruiting and administrative tasks as reasonably assigned\nThe Employee is expected", $recruiter->body);
+        $this->assertStringNotContainsString('Answer complaints', $recruiter->body);
+        $this->assertStringNotContainsString('Grok', $recruiter->body);
+        $this->assertMatchesRegularExpression('/Keep it\.\n\n\(a\) Candidate & Applicant Information\n\n.*\n\n8\. NON-SOLICITATION/s', $recruiter->body);
+        $this->assertSame(['job_title', 'employee_signature'], collect($recruiter->fieldSet()->toArray())->pluck('key')->all());
+    }
+
     /** Phone staff are told, in their contract, that calls are scored (Jose, 2026-10-12). */
     public function test_phone_contracts_say_calls_are_recorded_and_scored(): void
     {

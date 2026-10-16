@@ -112,8 +112,28 @@ final class WhatsAppCloud
         array $parameters = [],
         string $language = 'en_US',
         ?string $from = null,
+        ?string $idempotencyKey = null,
     ): WhatsAppMessage {
+        /*
+         * A key already sent (or still owed) answers with that row and sends
+         * nothing. A failed one is retried: the person never got it. Scoped by
+         * the tenant scope, so one org's key can never return another's row.
+         */
+        if ($idempotencyKey !== null) {
+            $sent = WhatsAppMessage::query()->where('idempotency_key', $idempotencyKey)->first();
+
+            if ($sent !== null && $sent->status !== WhatsAppMessage::STATUS_FAILED) {
+                return $sent;
+            }
+
+            $sent?->forceFill(['idempotency_key' => null])->save();
+        }
+
         $row = $this->rowFor($recipient, $template, $from);
+
+        if ($idempotencyKey !== null) {
+            $row->forceFill(['idempotency_key' => $idempotencyKey])->save();
+        }
 
         return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
     }
