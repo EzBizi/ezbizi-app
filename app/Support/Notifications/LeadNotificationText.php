@@ -90,6 +90,8 @@ final class LeadNotificationText
             },
             'whatsapp' => 'WhatsApp',
             'ringcentral' => 'RingCentral Call',
+            'ez_calls' => 'EZ Call',
+            'ez_texts' => 'EZ Text',
             // A source added later still says something true rather than
             // throwing inside a queue worker; its owner adds its line here.
             default => ucwords(str_replace('_', ' ', $source)),

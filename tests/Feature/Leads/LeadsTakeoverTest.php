@@ -100,6 +100,22 @@ class LeadsTakeoverTest extends TestCase
         $this->signedInAs($t['admin'])->patchJson("/api/v1/leads/{$lead->id}", ['classification' => 'MAYBE'])->assertUnprocessable();
     }
 
+    /** Jose, 2026-10-16: "leads.* permission ticks for each new filter, edit or action". */
+    public function test_dispatcher_and_reclassify_are_their_own_grants(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $lead = $this->inTenant($t['org'], fn () => $this->lead($t, []));
+        $editor = $this->userWithRole($t, 'Editor', ['leads.view', 'leads.edit', 'leads.website_chat.view']);
+
+        $this->signedInAs($editor)->patchJson("/api/v1/leads/{$lead->id}", ['contact_name' => 'Kim'])->assertOk();
+        $this->signedInAs($editor)->patchJson("/api/v1/leads/{$lead->id}", ['dispatcher' => 'Ana'])->assertForbidden();
+        $this->signedInAs($editor)->postJson("/api/v1/leads/{$lead->id}/reclassify")->assertForbidden();
+
+        $both = $this->userWithRole($t, 'Lead desk', ['leads.view', 'leads.edit', 'leads.website_chat.view', 'leads.dispatcher', 'leads.reclassify']);
+        $this->signedInAs($both)->patchJson("/api/v1/leads/{$lead->id}", ['dispatcher' => 'Ana'])->assertOk();
+        $this->signedInAs($both)->postJson("/api/v1/leads/{$lead->id}/reclassify")->assertStatus(202);
+    }
+
     public function test_the_timeline_is_every_lead_with_the_callers_number(): void
     {
         $t = $this->provisionTenant('A1-Group');

@@ -2528,6 +2528,7 @@ String sourceWord(String? source) => switch (source) {
   'whatsapp' => 'WhatsApp',
   'workiz' => 'Workiz',
   'ringcentral' => 'RingCentral',
+  'ez_calls' || 'ez_texts' => 'EzBizi',
   _ => 'Google Ads',
 };
 

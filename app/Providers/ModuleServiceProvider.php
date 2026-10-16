@@ -2584,8 +2584,11 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 // `manage` (Jose, 2026-10-15): the Manage pane, where lead sources
                 // are connected, is its own grant instead of riding on `edit`.
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage'],
-                actionLabels: ['manage' => 'Manage sources (connect accounts)'],
+                // `reclassify` and `dispatcher` (A1 Leads takeover, 2026-10-16):
+                // asking Grok again, and saying who handled a call, are grants of
+                // their own (Jose: "leads.* permission ticks for each").
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage', 'reclassify', 'dispatcher'],
+                actionLabels: ['manage' => 'Manage sources (connect accounts)', 'reclassify' => 'Re-classify with AI', 'dispatcher' => 'Change who handled a call'],
                 /*
                  * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
                  * be able to grant access by sub tab as well ... so this applies
@@ -2629,6 +2632,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('workiz', 'Workiz'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
                     new TabDefinition('ringcentral', 'RC Calls'),
+                    // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).
+                    new TabDefinition('ez_calls', 'EZ Calls'),
+                    new TabDefinition('ez_texts', 'EZ Texts'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*

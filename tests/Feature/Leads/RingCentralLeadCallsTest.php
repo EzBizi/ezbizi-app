@@ -35,6 +35,10 @@ class RingCentralLeadCallsTest extends TestCase
         $this->inTenant($t['org'], function () use ($t) {
             Franchise::query()->whereKey($t['franchise']->id)->update(['name' => 'New Jersey', 'company_id' => $t['company']->id]);
             Company::create(['organization_id' => $t['org']->id, 'name' => 'AngiSweep']);
+            // The business's own map and queue, from Settings (no A-1 in the code).
+            $settings = app(\App\Support\Settings\SettingsResolver::class);
+            $settings->set('leads.line_markets', $t['org'], ['NJ' => 'New Jersey', 'CLE' => 'Ohio']);
+            $settings->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
         });
 
         return $t;
@@ -55,7 +59,7 @@ class RingCentralLeadCallsTest extends TestCase
                 self::rc('1', '+15550000001', '2026-10-14T14:00:00Z'),
                 self::rc('2', '+15550000001', '2026-10-14T16:00:00Z', '+12160000003', null, ['talk_seconds' => null, 'answered_by' => null, 'recording_id' => null]),
                 self::rc('3', '+15550000009', '2026-10-14T15:00:00Z'),                                   // the LS call
-                self::rc('4', '+15550000004', '2026-10-14T15:10:00Z', queue: RingCentralLeadCalls::EXISTING_CLIENT_QUEUE), // shown too, tagged
+                self::rc('4', '+15550000004', '2026-10-14T15:10:00Z', queue: 'A1 - Existing Client'), // shown too, tagged
                 self::rc('5', '+15550000005', '2026-10-14T15:20:00Z', queue: 'Ana Diaz'),               // a person's direct line
                 self::rc('6', '+15550000006', '2026-10-14T15:30:00Z', '+18000000002'),
             ], self::LINES, $t['company']->id);
@@ -204,6 +208,41 @@ class RingCentralLeadCallsTest extends TestCase
 
         $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
         $this->assertCount(5, $rc, 'all five under RC Calls');
+    }
+
+    /** Jose, 2026-10-16: "stablished as a public product would" - no business's names in the code. */
+    public function test_a_business_with_no_settings_gets_no_one_elses_markets_or_queue(): void
+    {
+        $t = $this->provisionTenant('Everdoor');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('40', '+15550000040', now()->subMinutes(30)->toIso8601String(), queue: 'A1 - Existing Client'),
+            ], self::LINES, $t['company']->id);
+
+            $lead = Lead::query()->firstOrFail();
+            $this->assertNull($lead->source_status, 'no existing-client queue configured');
+            $this->assertNull($lead->franchise_id, 'no market map configured');
+            $this->assertSame($t['company']->id, $lead->company_id);
+        });
+    }
+
+    /** Jose, 2026-10-16 (James Blanke, C-06974): a known customer's hang-up is Existing client, never spam. */
+    public function test_a_customers_hang_up_is_existing_client_not_spam(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Blanke', 'phone' => '(314) 409-1888']);
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('50', '+13144091888', now()->subMinutes(30)->toIso8601String(), queue: null,
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted']),
+                self::rc('51', '+13144091999', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
+            ], self::LINES, $t['company']->id);
+
+            $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
+            $this->assertSame(['+13144091888' => RingCentralLeadCalls::EXISTING_CLIENT, '+13144091999' => null], $tags);
+        });
     }
 
     public function test_line_names_place_the_company_and_market(): void

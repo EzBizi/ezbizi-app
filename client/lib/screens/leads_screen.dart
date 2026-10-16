@@ -155,7 +155,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
   // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
-  final Set<String> _allLeftOut = {'ls_call', 'ls_booking', 'ringcentral'};
+  final Set<String> _allLeftOut = {
+    'ls_call',
+    'ls_booking',
+    'ringcentral',
+    'ez_calls',
+  };
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -188,6 +193,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('ls_booking', 'LS Booking'),
     // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
     ('ringcentral', 'RC Calls'),
+    // EzBizi's own lines (Jose, 2026-10-16): calls owe no reply, texts do.
+    ('ez_calls', 'EZ Calls'),
+    ('ez_texts', 'EZ Texts'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
@@ -211,6 +219,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.sms_outlined, // Google Local Services texts
     Icons.event_available_outlined, // booked through Google directly
     Icons.phone_callback_outlined, // RingCentral: a call to our own line
+    Icons.phone_in_talk_outlined, // EZ Calls: a call to an EzBizi line
+    Icons.textsms_outlined, // EZ Texts: a text to an EzBizi line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -621,6 +631,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
       'ringcentral': 'RC Calls',
+      'ez_calls': 'EZ Calls',
+      'ez_texts': 'EZ Texts',
     }[_source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
@@ -1783,7 +1795,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                   _Badge('Credit?', key: ValueKey('credit-badge-$id')),
                                 // An unanswered RC call: Possible spam, Missed
                                 // call or Voicemail (Jose, 2026-10-16).
-                                if (lead['source'] == 'ringcentral' &&
+                                if ((lead['source'] == 'ringcentral' ||
+                                        lead['source'] == 'ez_calls') &&
                                     lead['source_status'] is String)
                                   _Badge(
                                     rcCallTag(lead['source_status'] as String),
@@ -2022,6 +2035,8 @@ String sourceBadgeWord(String? source) => switch (source) {
   'workiz' => 'Workiz',
   'whatsapp' => 'WhatsApp',
   'ringcentral' => 'RC Call',
+  'ez_calls' => 'EZ Call',
+  'ez_texts' => 'EZ Text',
   _ => 'Google',
 };
 
@@ -2092,6 +2107,8 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
   'RC Call' => PersonColours.hue(context, 11), // RingCentral's deep orange
+  'EZ Call' => PersonColours.hue(context, 6), // coral
+  'EZ Text' => PersonColours.hue(context, 12), // deep teal
   _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
 };
 

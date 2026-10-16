@@ -168,7 +168,9 @@
                 "Instagram",
                 "Workiz",
                 "WhatsApp",
-                "RC Calls"
+                "RC Calls",
+                "EZ Calls",
+                "EZ Texts"
             ]
         },
         "marketing": {
@@ -447,12 +449,16 @@
         "jobs.view",
         "leads.create",
         "leads.delete",
+        "leads.dispatcher",
         "leads.edit",
         "leads.export",
+        "leads.ez_calls.view",
+        "leads.ez_texts.view",
         "leads.facebook.view",
         "leads.instagram.view",
         "leads.local_services.view",
         "leads.manage",
+        "leads.reclassify",
         "leads.ringcentral.view",
         "leads.thumbtack.view",
         "leads.view",

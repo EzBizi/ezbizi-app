@@ -84,6 +84,29 @@ class LeadsReadTest extends TestCase
         $this->assertSame(2, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.classified')->count());
     }
 
+    /** Jose, 2026-10-16: a customer is never set Not a lead by the AI. */
+    public function test_a_known_customer_is_never_marked_not_a_lead(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'ARCHIVE', 'summary' => 'Hung up.', 'name' => null, 'zip' => null,
+            'not_a_lead' => true, 'lost' => false, 'job_applicant' => false,
+        ]]))]);
+        $customer = $this->callLead(null, 'Hello? ... hello');
+        $stranger = $this->callLead(null, 'Hello? ... hello');
+        $this->inTenant($this->t['org'], function () use ($customer, $stranger) {
+            $customer->forceFill(['phone' => '+13144091888', 'phone_digits' => '13144091888'])->save();
+            $stranger->forceFill(['phone' => '+13144091999', 'phone_digits' => '13144091999'])->save();
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'James Blanke', 'phone' => '+13144091888']);
+        });
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($customer, $stranger) {
+            $this->assertSame(Lead::STATUS_NEW, $customer->refresh()->status);
+            $this->assertSame(Lead::STATUS_NOT_A_LEAD, $stranger->refresh()->status, 'the same answer still closes a stranger');
+        });
+    }
+
     /** Re-classify by hand (A1 Leads takeover): a read lead, at any age, read again. */
     public function test_a_named_lead_is_read_again_whatever_its_age(): void
     {
