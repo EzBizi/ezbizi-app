@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\CallTypeCorrection;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Reports\Experimental\CallReconciliation;
@@ -174,6 +175,33 @@ class ExperimentalCallReportTest extends TestCase
      * NOT BOOKED: an answered new-client call whose number has no Workiz job
      * in the period - unless somebody marked it booked by hand.
      */
+    /** Jose, 2026-10-16: a caller who pressed the wrong key counts as what they were. */
+    public function test_a_corrected_caller_type_moves_the_call_and_says_what_was_pressed(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->fakeCallLog([
+            ['id' => 'c-wrong'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+            ['id' => 'c-right'] + $this->inbound(rang: [['Trey Brannan', 'Call connected']], queue: RingCentralCallLog::NEW_CLIENT_QUEUE),
+        ]);
+
+        $calls = app(RingCentralCallLog::class)->forDate('x', 'y');
+        $day = $this->inTenant($t['org'], function () use ($t, $calls) {
+            CallTypeCorrection::query()->create(['organization_id' => $t['org']->id, 'call_id' => 'c-wrong',
+                'pressed_queue' => RingCentralCallLog::NEW_CLIENT_QUEUE, 'corrected_type' => 'existing',
+                'reason' => 'An open job from before the call', 'evidence' => 'job_match', 'confidence' => 95, 'decided_at' => now()]);
+
+            return app(CallReconciliation::class)->forRange($calls, [], '2026-09-14', '2026-09-14');
+        });
+
+        $this->assertSame(1, $day['totals']['new_client']);
+        $this->assertSame(1, $day['totals']['existing_client']);
+        $byId = array_column($day['calls'], null, 'id');
+        $this->assertSame(RingCentralCallLog::EXISTING_CLIENT_QUEUE, $byId['c-wrong']['queue']);
+        $this->assertSame(RingCentralCallLog::NEW_CLIENT_QUEUE, $byId['c-wrong']['reclassified']['pressed']);
+        $this->assertSame('An open job from before the call', $byId['c-wrong']['reclassified']['reason']);
+        $this->assertNull($byId['c-right']['reclassified']);
+    }
+
     public function test_not_booked_matches_jobs_by_phone_and_honours_a_manual_mark(): void
     {
         $call = fn (string $id, string $phone) => array_merge(

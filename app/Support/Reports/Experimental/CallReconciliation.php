@@ -4,6 +4,7 @@ namespace App\Support\Reports\Experimental;
 
 use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
+use App\Support\Tenancy\TenantContext;
 
 /**
  * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
@@ -495,14 +496,15 @@ final class CallReconciliation
 
     /**
      * Each inbound call's queue swapped for the corrected caller type, where
-     * Leads has one. ponytail: reads nothing until Leads' class is deployed.
+     * Leads has one.
      *
      * @param  list<array<string, mixed>>  $calls
      * @return list<array<string, mixed>>
      */
     private function corrected(array $calls): array
     {
-        if (! class_exists(CallTypeCorrections::class)) {
+        // Corrections are a tenant's own; a run outside one counts as pressed.
+        if (! app(TenantContext::class)->has()) {
             return $calls;
         }
 
