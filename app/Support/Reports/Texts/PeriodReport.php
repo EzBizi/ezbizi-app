@@ -92,49 +92,41 @@ final class PeriodReport
             ];
 
             $body .= '<div style="page-break-before:always"><h1>'.e(BranchName::of($branch)).'</h1>'
-                .$this->sections($f, $pnl, self::PNL_TABLES[$branch->name] ?? null, $from, $to, (string) $branch->organization_id).'</div>';
+                .$this->sections($f, $pnl).'</div>';
         }
 
         $head = '<h2>Company summary</h2>'.self::table(
             ['Company', 'Jobs created', 'Done', 'Canceled', 'Gross', 'Deposits', 'P&L income', 'Net', 'Margin'],
             $summary,
-        ).'<h2>HQ office expenses</h2>'.app(AirtableSections::class)->hqExpenses((string) $organization->getKey(), $from, $to);
+        );
 
         return HardenedPdf::render($this->page($this->title($organization->name.' Consolidated', $from, $to), $head.$body), 'letter');
     }
 
     private function branch(Franchise $branch, string $from, string $to): string
     {
-        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to), self::PNL_TABLES[$branch->name] ?? null, $from, $to, (string) $branch->organization_id);
+        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to));
     }
 
-    private function sections(array $f, array $pnl, ?string $code = null, string $from = '', string $to = '', string $org = ''): string
+    private function sections(array $f, array $pnl): string
     {
-        // Red when worse than the company's goal (ReportGoals).
-        $avgGoal = $code === null ? null : (ReportGoals::AVG_SALE[$code] ?? null);
-        $cancel = fn ($canceled, $of) => ReportGoals::mark(e(self::share($canceled, $of)), $of > 0 && $canceled / $of > ReportGoals::CANCEL_RATE);
-        $avg = fn ($gross, $done) => $done ? ReportGoals::mark(e(self::money($gross / $done)), $avgGoal !== null && $gross / $done < $avgGoal) : '—';
         $sourceRows = fn (array $rows, bool $all) => array_map(fn ($name, $r) => array_merge(
-            [e($name)],
+            [$name],
             $all ? [(string) $r['all'], (string) $r['done'], (string) $r['open']] : [(string) $r['done']],
-            [(string) $r['canceled'], $cancel($r['canceled'], $all ? $r['all'] : $r['done'] + $r['canceled']),
-                e(self::money($r['gross'])), $avg($r['gross'], $r['done'])],
+            [(string) $r['canceled'], self::share($r['canceled'], $all ? $r['all'] : $r['done'] + $r['canceled']),
+                self::money($r['gross']), $r['done'] ? self::money($r['gross'] / $r['done']) : '—'],
         ), array_keys($rows), $rows);
 
-        $airtable = app(AirtableSections::class);
-
         return '<h2>Ad sources - created</h2>'
-            .self::table(['Source', 'All', 'Done', 'Open', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['created'], true), raw: true)
+            .self::table(['Source', 'All', 'Done', 'Open', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['created'], true))
             .'<h2>Ad sources - closed</h2>'
-            .self::table(['Source', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['closed'], false), raw: true)
+            .self::table(['Source', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale'], $sourceRows($f['closed'], false))
             .'<h2>Field performance (by tech)</h2>'
             .self::table(['Technician', 'Done', 'Canc', 'Canc%', 'Gross', 'Avg sale', 'Deposits'], array_map(fn ($t) => [
-                e($t['name']), (string) $t['done'], (string) $t['canceled'],
-                $cancel($t['canceled'], $t['done'] + $t['canceled']),
-                e(self::money($t['gross'])), $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
-            ], $f['techs']), raw: true)
-            .($code === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $code, $from, $to)
-                .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $code, $from, $to))
+                $t['name'], (string) $t['done'], (string) $t['canceled'],
+                self::share($t['canceled'], $t['done'] + $t['canceled']),
+                self::money($t['gross']), $t['done'] ? self::money($t['gross'] / $t['done']) : '—', self::money($t['deposits']),
+            ], $f['techs']))
             .'<h2>Profit &amp; loss</h2>'.$this->pnlSection($pnl);
     }
 
@@ -366,20 +358,17 @@ final class PeriodReport
             .e(CarbonImmutable::now('America/New_York')->format('M j, Y g:i A T')).'.</p></body></html>';
     }
 
-    /**
-     * @param  list<list<string>>  $rows
-     * @param  bool  $raw  cells are HTML the caller escaped (goal colours)
-     */
-    public static function table(array $head, array $rows, bool $raw = false): string
+    /** @param list<list<string>> $rows */
+    private static function table(array $head, array $rows): string
     {
         if ($rows === []) {
             return '<p>None in this period.</p>';
         }
 
-        $cells = fn (array $r, string $tag, bool $html) => '<tr>'.implode('', array_map(fn ($c) => "<{$tag}>".($html ? $c : e($c))."</{$tag}>", $r)).'</tr>';
+        $cells = fn (array $r, string $tag) => '<tr>'.implode('', array_map(fn ($c) => "<{$tag}>".e($c)."</{$tag}>", $r)).'</tr>';
 
-        return '<table><thead>'.$cells($head, 'th', false).'</thead><tbody>'
-            .implode('', array_map(fn ($r) => $cells($r, 'td', $raw), $rows)).'</tbody></table>';
+        return '<table><thead>'.$cells($head, 'th').'</thead><tbody>'
+            .implode('', array_map(fn ($r) => $cells($r, 'td'), $rows)).'</tbody></table>';
     }
 
     /**

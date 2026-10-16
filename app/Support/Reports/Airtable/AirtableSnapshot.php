@@ -32,16 +32,16 @@ class AirtableSnapshot
             'tblmV1sk6qs4QbUWU' => 'hq_expenses', 'tblDaxgxfcaUBeQPT' => 'office_per_job', 'tblzC1laiwxmLw50S' => 'weekly_data',
             'tblC2qB7ew6in1YTC' => 'companies', 'tbl0xxoIuToQWIYmN' => 'monthly_bills', 'tblQRWVs4Xz53H8Xf' => 'lease_reviews',
         ],
-        // P&L: one table per company (MA's added after the contract, measured 2026-10-16).
+        // P&L: one table per company.
         'appWhbwht0xgB5Yut' => [
             'tblDUxGZlTStCb2UH' => 'pnl', 'tblhqHFPpYAiW8WPw' => 'pnl', 'tbltOW4Ye5LqwKaLa' => 'pnl', 'tblpKJk2XEMlkX4lG' => 'pnl',
             'tblMZBfVXxXmNzNTd' => 'pnl', 'tbl1YNRbZeLgaJChN' => 'pnl', 'tblENNwJUcW7ySb8P' => 'pnl', 'tblifiOssYgLOaz3X' => 'pnl',
-            'tbl06qeoIY5E7PfxH' => 'pnl', 'tblunO193lu8YMcIq' => 'pnl', 'tblhIqc5V5yH6m0H0' => 'pnl',
+            'tbl06qeoIY5E7PfxH' => 'pnl', 'tblunO193lu8YMcIq' => 'pnl',
         ],
         // Repair Teams: one table per region.
         'appzD9I7nNkALmw4l' => [
             'tbliTYwmQl2KXzoxh' => 'repair', 'tblLaCAXBIFj2H5hu' => 'repair', 'tblDUxGZlTStCb2UH' => 'repair', 'tblhW7kHAtYzleqde' => 'repair',
-            'tblM8GHLc5ssy12nj' => 'repair', 'tblhc4CJLOkMCNopv' => 'repair', 'tbl7GHGQpvlyWg4dG' => 'repair', 'tblo2IX58b5GWiU7E' => 'repair', 'tbl9IYzaoNxKAZJNx' => 'repair',
+            'tblM8GHLc5ssy12nj' => 'repair', 'tblhc4CJLOkMCNopv' => 'repair', 'tbl7GHGQpvlyWg4dG' => 'repair', 'tblo2IX58b5GWiU7E' => 'repair',
         ],
         // Refunds, Disputes and Checks Returns (never Debt & Loans).
         'appe1vSSRRvKToShq' => [
