@@ -4,8 +4,8 @@ namespace Tests\Feature\Reports;
 
 use App\Models\AirtableRecord;
 use App\Models\AirtableRecordVersion;
+use App\Models\FinancialSource;
 use App\Models\SocialConnection;
-use App\Support\Reports\Airtable\AirtableSnapshot;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
@@ -28,6 +28,8 @@ class AirtableSnapshotTest extends TestCase
                 'provider' => SocialProvider::Airtable->value, 'remote_id' => 'appWhbwht0xgB5Yut', 'display_name' => 'P&L']);
             $c->connect(['api_token' => 'pat']);
             $c->save();
+            // Only what the tenant mapped (Financials' sources) is copied.
+            FinancialSource::query()->create(['base_id' => 'appe1vSSRRvKToShq', 'table_id' => 'tblxCKagahNfmjaSQ', 'role' => 'refunds']);
         });
 
         $refunds = [['id' => 'rec1', 'createdTime' => '2026-10-01T10:00:00.000Z', 'fields' => ['Refund Amount' => 120, 'Job Number' => '901']],
@@ -60,9 +62,14 @@ class AirtableSnapshotTest extends TestCase
         $this->assertSame(120, AirtableRecordVersion::withoutGlobalScopes()->sole()->fields['Refund Amount'], 'the earlier state is kept');
     }
 
-    public function test_debt_and_loans_is_never_read(): void
+    public function test_nothing_is_copied_for_a_tenant_with_nothing_mapped(): void
     {
-        $this->assertArrayNotHasKey('tblDebtAndLoans', AirtableSnapshot::TABLES['appe1vSSRRvKToShq']);
-        $this->assertSame(['refunds', 'disputes', 'check_returns'], array_values(AirtableSnapshot::TABLES['appe1vSSRRvKToShq']));
+        $this->provisionTenant('Alpha');
+        Http::fake();
+
+        $this->artisan('ezbizi:airtable-snapshot')->assertSuccessful();
+
+        Http::assertNothingSent();
+        $this->assertSame(0, AirtableRecord::withoutGlobalScopes()->count());
     }
 }

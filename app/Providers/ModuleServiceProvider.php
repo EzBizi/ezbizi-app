@@ -3985,7 +3985,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4085,8 +4085,10 @@ class ModuleServiceProvider extends ServiceProvider
                     'export' => ['reports.view'],
                     // Setting what each Scoring metric counts for (Jose, 2026-10-14).
                     'scoring_weights' => ['reports.scoring.view'],
+                    // The weekly/monthly report's goals (2026-10-16).
+                    'settings' => ['reports.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights"],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals"],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',

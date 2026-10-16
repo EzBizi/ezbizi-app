@@ -511,6 +511,7 @@
         "reports.meta.view",
         "reports.scoring.view",
         "reports.scoring_weights",
+        "reports.settings",
         "reports.thumbtack.view",
         "reports.view",
         "reviews.create",
