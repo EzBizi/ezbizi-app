@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0443',
       date: '16 Oct 2026',
       items: [
+        'Leads: RC Calls nobody answered are tagged Possible spam (hung up in the phone menu), Missed call or Voicemail, and the call card says which instead of 0:00. Possible spam calls no longer raise a missed-call alert.',
         'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
         'Marketing › Social: your choice of List or Board for posts is now remembered.',
         'Customer Experience: Reviews and Business Profile name the connected Google account but no longer offer Disconnect. Change it in Settings › Integrations.',
