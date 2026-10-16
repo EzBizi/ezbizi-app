@@ -173,7 +173,11 @@ class RolesApiTest extends TestCase
         //            `training.assign` nothing gets past the policy: the
         //            requirement describes the product rather than making its
         //            own premise true.
-        $argued = ['estimates', 'reports', 'work_hours'];
+        //   field    `listen` requires `field.recordings.view` (2026-10-16).
+        //            Other people's recordings are listed and played only in
+        //            the Recordings tab, so listen without the tab is a grant
+        //            nothing can spend; the requirement describes the product.
+        $argued = ['estimates', 'field', 'reports', 'work_hours'];
 
         $declaring = [];
 
