@@ -4299,6 +4299,12 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Field',
                 // record: makes safety recordings; listen: hears other people's.
                 actions: ['view', 'tracked', 'manage', 'record', 'listen'],
+                actionLabels: [
+                    'record' => 'Make safety recordings',
+                    'listen' => "Listen to other people's recordings",
+                ],
+                // Listening is only spent in the Recordings tab.
+                actionRequires: ['listen' => ['field.recordings.view']],
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('map', 'Map'),
