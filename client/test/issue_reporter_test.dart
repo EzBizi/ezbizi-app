@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/issue_reporter.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -33,6 +34,29 @@ void main() {
     expect(stall(2000), isNull, reason: '1.5 s late is under the line.');
     expect(stall(4700), const Duration(milliseconds: 4200), reason: 'Lenin\'s kind of freeze.');
     expect(stall(5 * 60 * 1000), isNull, reason: 'A laptop lid, not a freeze.');
+  });
+
+  test('a background tab coming back is not a freeze; a real stall while in front is', () {
+    // 2026-10-16: 175 web "freezes", and they were hidden tabs. Chrome holds a
+    // hidden tab's timer for up to a minute; the late tick fired once the tab
+    // was visible again and read as a 40 s freeze.
+    final t0 = DateTime(2026, 10, 16, 18);
+    reporter.checkTick(t0, resumed: true); // baseline
+
+    reporter.noteLifecycle(AppLifecycleState.hidden);
+    // The throttled tick lands 45 s later, just after the tab is visible again.
+    expect(
+      reporter.checkTick(t0.add(const Duration(seconds: 45)), resumed: true),
+      isNull,
+      reason: 'Time spent away restarts the clock instead of counting.',
+    );
+
+    // Back in front, the app really stalls for 4 s: that IS a freeze.
+    final back = t0.add(const Duration(seconds: 45));
+    expect(
+      reporter.checkTick(back.add(const Duration(milliseconds: 4500)), resumed: true),
+      const Duration(milliseconds: 4000),
+    );
   });
 
   test('a failed call is reported once per endpoint per 10 minutes, with ids folded', () {

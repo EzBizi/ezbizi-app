@@ -36,6 +36,39 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Clock Out'), findsOneWidget);
   });
 
+  // client_issues, 2026-10-16: "Null check operator used on a null value" at
+  // MaterialLocalizations.of ← TimeOfDay.format ← shift_reminder.dart, in
+  // Scheduling and Work Hours on Windows. The dialog's builder formatted the
+  // end time with the CAPTURED context of the screen that opened it; when
+  // that screen went away and the dialog rebuilt, the lookup failed.
+  testWidgets('the reminder survives the screen that opened it going away', (tester) async {
+    final end = DateTime.now().toUtc().add(const Duration(minutes: 3));
+    final showShell = ValueNotifier(true);
+    final dark = ValueNotifier(false);
+
+    await _pumpShell(
+      tester,
+      timeClock: _clock(
+        open: {'id': 's-1', 'clocked_in_at': '2026-09-08T14:00:00Z'},
+        scheduledEndAt: end.toIso8601String(),
+        warningMinutes: 5,
+      ),
+      showShell: showShell,
+      dark: dark,
+    );
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.text('Your shift is ending'), findsOneWidget);
+
+    showShell.value = false; // the opening screen is replaced
+    await tester.pump();
+    dark.value = true; // and the dialog rebuilds
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Your shift is ending'), findsOneWidget);
+  });
+
   testWidgets('Extend posts, applies the new end, and the dialog closes', (
     tester,
   ) async {
@@ -142,6 +175,8 @@ Future<void> _pumpShell(
   WidgetTester tester, {
   Map<String, Object?>? timeClock,
   Future<http.Response?> Function(http.Request request)? onRequest,
+  ValueNotifier<bool>? showShell,
+  ValueNotifier<bool>? dark,
 }) async {
   tester.view.physicalSize = const Size(1280, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -179,15 +214,22 @@ Future<void> _pumpShell(
 
   await tester.runAsync(() => session.adopt('tok'));
 
+  final shown = showShell ?? ValueNotifier(true);
+  final isDark = dark ?? ValueNotifier(false);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: EzBiziTheme.light(),
-      home: Builder(
-        builder: (context) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: ListenableBuilder(
-            listenable: session,
-            builder: (_, _) => HomeShell(api: api, session: session),
+    ListenableBuilder(
+      listenable: isDark,
+      builder: (_, _) => MaterialApp(
+        theme: isDark.value ? EzBiziTheme.dark() : EzBiziTheme.light(),
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: ListenableBuilder(
+              listenable: Listenable.merge([session, shown]),
+              builder: (_, _) => shown.value
+                  ? HomeShell(api: api, session: session)
+                  : const SizedBox(),
+            ),
           ),
         ),
       ),
