@@ -19,6 +19,41 @@ import 'package:http/http.dart' as http;
 /// the wrong one is the exact failure this module was built to stop, and it is
 /// invisible in a screenshot.
 void main() {
+  // UI queue 103 (A1 takeover): the charge / IVR / dispatcher / date
+  // filters, and editing a lead with its caller's history.
+  testWidgets('a charge filter asks the server, and Edit saves the fields', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('leads-charge')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Charged').last);
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['charge'], 'CHARGED');
+
+    await tester.tap(find.text('Marcus Bell').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lead-edit')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('lead-edit-name')),
+      'Marcus Bellamy',
+    );
+    await tester.enterText(find.byKey(const ValueKey('lead-edit-zip')), '62704');
+    await tester.tap(find.byKey(const ValueKey('lead-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(_patches['lead-1']?['contact_name'], 'Marcus Bellamy');
+    expect(_patches['lead-1']?['postal_code'], '62704');
+    expect(_patches['lead-1']!.containsKey('phone'), isFalse);
+  });
+
   _conversationRowTests();
 
   /// A NOTIFICATION OPENS ITS OWN LEAD, not the newest.

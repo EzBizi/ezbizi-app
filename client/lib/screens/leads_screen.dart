@@ -126,6 +126,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
   bool _followUp = false;
   bool _starred = false;
 
+  /// UI queue 103 (A1 takeover): charge, IVR source, dispatcher and dates.
+  String? _charge;
+  String? _ivr;
+  String? _dispatcher;
+  String? _dates;
+  List<String> _dispatchers = const [];
+  bool _moreFilters = false;
+
   /// The source chip, as the API spells it. Null is every source.
   String? _source;
 
@@ -415,6 +423,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
             in (meta['unread_by_source'] as Map? ?? const {}).entries)
           '${e.key}': (e.value as num?)?.toInt() ?? 0,
       };
+      _dispatchers = [
+        for (final d in meta['dispatchers'] as List? ?? const []) '$d',
+      ];
     });
 
     if (response.ok && _toOpen != null) await _openWanted(_toOpen!);
@@ -431,7 +442,101 @@ class _LeadsScreenState extends State<LeadsScreen> {
     'source': ?_source,
     'sources': ?_allSources,
     if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+    'charge': ?_charge,
+    'ivr': ?_ivr,
+    'dispatcher': ?_dispatcher,
+    ..._dateRange,
   };
+
+  /// The Dates preset as from / to days, on this device's calendar.
+  Map<String, String> get _dateRange {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    String day(DateTime d) =>
+        '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final (DateTime, DateTime)? range = switch (_dates) {
+      'today' => (today, today),
+      'this_week' => (monday, today),
+      'last_week' => (
+        monday.subtract(const Duration(days: 7)),
+        monday.subtract(const Duration(days: 1)),
+      ),
+      '7' => (today.subtract(const Duration(days: 6)), today),
+      'this_month' => (DateTime(today.year, today.month), today),
+      'last_month' => (
+        DateTime(today.year, today.month - 1),
+        DateTime(today.year, today.month).subtract(const Duration(days: 1)),
+      ),
+      '30' => (today.subtract(const Duration(days: 29)), today),
+      _ => null,
+    };
+    return range == null ? const {} : {'from': day(range.$1), 'to': day(range.$2)};
+  }
+
+  /// Charge, IVR source, dispatcher and dates, under the three filters.
+  Widget _takeoverFilters() {
+    Widget pick<T>(
+      String key,
+      double width,
+      T value,
+      List<SearchOption<T>> options,
+      ValueChanged<T> set,
+    ) => SizedBox(
+      width: width,
+      child: SearchPickerField<T>(
+        key: ValueKey(key),
+        value: value,
+        isDense: true,
+        options: options,
+        onChanged: (v) {
+          setState(() => set(v as T));
+          _load();
+        },
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: Wrap(
+        key: const ValueKey('tour-leads-more-filters'),
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          pick<String?>('leads-charge', 130, _charge, const [
+            SearchOption(value: null, label: 'Any charge'),
+            SearchOption(value: 'CHARGED', label: 'Charged'),
+            SearchOption(value: 'CREDITED', label: 'Credited'),
+            SearchOption(value: 'IN_REVIEW', label: 'In review'),
+            SearchOption(value: 'NOT_CHARGED', label: 'Not charged'),
+          ], (v) => _charge = v),
+          pick<String?>('leads-ivr', 150, _ivr, const [
+            SearchOption(value: null, label: 'Any IVR source'),
+            SearchOption(value: 'LS Ads', label: 'LS Ads'),
+            SearchOption(value: 'GMB', label: 'GMB'),
+            SearchOption(value: 'SEO', label: 'SEO'),
+            SearchOption(value: 'PPC', label: 'PPC'),
+            SearchOption(value: 'Existing Customer', label: 'Existing customer'),
+          ], (v) => _ivr = v),
+          if (_dispatchers.isNotEmpty || _dispatcher != null)
+            pick<String?>('leads-dispatcher', 150, _dispatcher, [
+              const SearchOption(value: null, label: 'Any dispatcher'),
+              for (final d in _dispatchers) SearchOption(value: d, label: d),
+            ], (v) => _dispatcher = v),
+          pick<String?>('leads-dates', 140, _dates, const [
+            SearchOption(value: null, label: 'All dates'),
+            SearchOption(value: 'today', label: 'Today'),
+            SearchOption(value: 'this_week', label: 'This week'),
+            SearchOption(value: 'last_week', label: 'Last week'),
+            SearchOption(value: '7', label: 'Last 7 days'),
+            SearchOption(value: 'this_month', label: 'This month'),
+            SearchOption(value: 'last_month', label: 'Last month'),
+            SearchOption(value: '30', label: 'Last 30 days'),
+          ], (v) => _dates = v),
+        ],
+      ),
+    );
+  }
 
   /// The next ten older leads, when the list is scrolled to its end. Pages
   /// of ten line up with the first 50 because 50 is a whole number of them.
@@ -917,6 +1022,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
       ),
       _filterRow(theme, withStatus: false),
+      _takeoverFilters(),
       if (_source == null && _visibleSources.length > 1) _inAll(theme),
       ..._alerts(theme),
     ],
@@ -1121,6 +1227,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
           child: _searchField(),
         ),
       _filterRow(theme, withStatus: true),
+      // Phone (UI queue 103, 4): the four takeover filters behind one button.
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: TextButton.icon(
+            key: const ValueKey('leads-more-filters'),
+            onPressed: () => setState(() => _moreFilters = !_moreFilters),
+            icon: Icon(_moreFilters ? Icons.expand_less : Icons.tune, size: 18),
+            label: Text(
+              [_charge, _ivr, _dispatcher, _dates].any((v) => v != null)
+                  ? 'More filters (${[_charge, _ivr, _dispatcher, _dates].where((v) => v != null).length})'
+                  : 'More filters',
+            ),
+          ),
+        ),
+      ),
+      if (_moreFilters) _takeoverFilters(),
       if (_source == null && _visibleSources.length > 1) _inAll(theme),
       ..._alerts(theme),
     ],

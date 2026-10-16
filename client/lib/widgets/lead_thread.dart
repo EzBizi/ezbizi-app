@@ -18,6 +18,7 @@ import '../screens/scheduling/availability_pane.dart';
 import 'ai_mark.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
+import 'lead_edit_panel.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
@@ -524,6 +525,15 @@ class _LeadThreadState extends State<LeadThread> {
               icon: const Icon(Icons.call_outlined, size: 18),
               label: const Text('Call'),
             ),
+          // Name, ZIP, classification, dispatcher, and the caller's
+          // history (UI queue 103). With the right to change the lead.
+          if (widget.onStatusChanged != null)
+            OutlinedButton.icon(
+              key: const ValueKey('lead-edit'),
+              onPressed: _edit,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit'),
+            ),
           if (_canBook)
             FilledButton(
               key: const ValueKey('book-open'),
@@ -534,6 +544,16 @@ class _LeadThreadState extends State<LeadThread> {
       ),
     ],
   );
+
+  Future<void> _edit() async {
+    final saved = await showLeadEditPanel(
+      context,
+      api: widget.api,
+      lead: _lead,
+      player: widget.player,
+    );
+    if (saved != null && mounted) setState(() => _lead = {..._lead, ...saved});
+  }
 
   /// "When can I call you?" answered by calling them, from EzBizi's own
   /// phone, rather than by sending our number (Jose, 2026-09-30).
