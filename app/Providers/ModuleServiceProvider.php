@@ -4273,6 +4273,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('map', 'Map'),
                     new TabDefinition('route', 'Route'),
+                    new TabDefinition('recordings', 'Recordings'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['field'],

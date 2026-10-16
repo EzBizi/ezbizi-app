@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/field_tracker.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import 'record_card.dart';
 
 /// Field › Dashboard: who is out, what needs a manager, and, for somebody
 /// who is tracked, the SOS button.
@@ -215,6 +216,8 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
               ),
               const SizedBox(height: 12),
             ],
+            // The safety recording, under SOS (UI queue 102). Phone only.
+            const RecordCard(),
             if (_actionError != null) ...[
               ErrorNote(_actionError!),
               const SizedBox(height: 12),

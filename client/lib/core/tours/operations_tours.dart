@@ -59,6 +59,23 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  'field/Recordings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-field-recordings',
+        title: 'Recordings',
+        body:
+            'Safety recordings: who, which job, when, how long, and when each '
+            'is deleted. Click one to play it.',
+      ),
+      TourStep(
+        anchor: 'field-recordings-day',
+        title: 'The day',
+        body: "One day's recordings, or any day.",
+      ),
+    ],
+  ),
   'field/Route': Tour(
     version: 1,
     steps: [

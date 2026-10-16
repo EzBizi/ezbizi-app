@@ -12,6 +12,7 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'field/dashboard_tab.dart';
 import 'field/map_tab.dart';
+import 'field/recordings_tab.dart';
 import 'field/route_tab.dart';
 import 'settings_screen.dart';
 
@@ -83,6 +84,19 @@ class _FieldScreenState extends State<FieldScreen> {
         'Route',
         Icons.alt_route,
         () => FieldRouteTab(api: widget.api, meId: widget.session.me?.id),
+      ),
+    // Safety recordings (UI queue 102): your own, or with field.listen
+    // everyone Field shows you.
+    if (_may('field.recordings.view'))
+      (
+        'recordings',
+        'Recordings',
+        Icons.mic_none_outlined,
+        () => FieldRecordingsTab(
+          api: widget.api,
+          canListen: _may('field.listen'),
+          canKeep: _may('field.manage'),
+        ),
       ),
     if (_may('field.settings.view'))
       (

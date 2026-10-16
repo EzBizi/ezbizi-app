@@ -84,6 +84,7 @@
                 "Dashboard",
                 "Map",
                 "Route",
+                "Recordings",
                 "Settings"
             ]
         },
@@ -381,6 +382,7 @@
         "field.manage",
         "field.map.view",
         "field.record",
+        "field.recordings.view",
         "field.route.view",
         "field.settings.view",
         "field.tracked",
