@@ -75,6 +75,7 @@ class BusinessProfileReviews
         foreach ($this->locations($token, $account) as $location) {
             $pageToken = null;
             $pages     = 0;
+            $seen      = [];
 
             do {
                 $page = $this->page($token, $location, $pageToken);
@@ -83,13 +84,18 @@ class BusinessProfileReviews
                     $fetched++;
 
                     $result = $this->store($connection, $location, $raw);
+                    $seen[] = $result['review']->getKey();
 
                     if ($result['created']) {
                         $created++;
                         $announce && $this->events->emitAfterCommit('review.received', $result['review'], [
-                            'after' => $result['review']->only([
-                                'rating', 'reviewer_name', 'location_name', 'reviewed_at',
-                            ]),
+                            'after' => [
+                                ...$result['review']->only(['rating', 'reviewer_name', 'location_name', 'reviewed_at', 'comment']),
+                                // For a rule like "2 stars or fewer, at most 14 days old"
+                                // (A1 Leads takeover P0, 2026-10-16).
+                                'age_days' => $result['review']->reviewed_at === null ? null
+                                    : (int) $result['review']->reviewed_at->diffInDays(now(), true),
+                            ],
                         ]);
                     } else {
                         $updated++;
@@ -98,11 +104,75 @@ class BusinessProfileReviews
 
                 $pageToken = $page['next'];
             } while ($pageToken !== null && ++$pages < self::MAX_PAGES);
+
+            // Only a list that reached its end can say a review is missing.
+            if ($pageToken === null) {
+                $this->checkMissing($token, $connection, $location, $seen);
+            }
         }
 
         $connection->forceFill(['last_reached_at' => now()])->save();
 
         return ['fetched' => $fetched, 'created' => $created, 'updated' => $updated];
+    }
+
+    /** Checks a review must miss, two hours apart, before it counts as removed (the A1 Leads rule). */
+    public const REMOVAL_CHECKS = 3;
+
+    /**
+     * A review Google's complete list no longer has. It is asked for directly:
+     * only a 404 counts, and only once per two hours, so three runs of the
+     * six-hourly sync are what it takes. A review seen again starts over.
+     * `review.removed` is raised once, when the third check lands.
+     *
+     * @param  list<string>  $seen
+     */
+    private function checkMissing(string $token, SocialConnection $connection, string $location, array $seen): void
+    {
+        $here = fn () => Review::query()->where('connection_id', $connection->getKey())
+            ->where('location_name', $location)->whereNull('removed_at');
+
+        $here()->whereIn('id', $seen)->where('missing_checks', '>', 0)
+            ->update(['missing_checks' => 0, 'missing_since' => null, 'missing_checked_at' => null]);
+
+        $here()->whereNotIn('id', $seen)
+            ->where(fn ($q) => $q->whereNull('missing_checked_at')->orWhere('missing_checked_at', '<=', now()->subHours(2)))
+            ->limit(100)->get()
+            ->each(function (Review $review) use ($token) {
+                try {
+                    $status = Http::withToken($token)->timeout(self::TIMEOUT)
+                        ->get(BusinessProfileOAuth::LEGACY_V4.'/'.$review->remote_name)->status();
+                } catch (ConnectionException) {
+                    return;
+                }
+
+                if ($status !== 404) {
+                    // Still there resets the count; an error is not evidence either way.
+                    if ($status < 300) {
+                        $review->forceFill(['missing_checks' => 0, 'missing_since' => null, 'missing_checked_at' => null])->save();
+                    }
+
+                    return;
+                }
+
+                // A day without a check breaks the run: the count starts again.
+                $stale = $review->missing_checked_at !== null && $review->missing_checked_at->lt(now()->subDay());
+                $checks = $stale ? 1 : $review->missing_checks + 1;
+                $review->forceFill([
+                    'missing_checks' => $checks,
+                    'missing_since' => $stale || $review->missing_since === null ? now() : $review->missing_since,
+                    'missing_checked_at' => now(),
+                    'removed_at' => $checks >= self::REMOVAL_CHECKS ? now() : null,
+                ])->save();
+
+                if ($checks >= self::REMOVAL_CHECKS) {
+                    $this->events->emitAfterCommit('review.removed', $review, ['after' => [
+                        ...$review->only(['rating', 'reviewer_name', 'location_name', 'reviewed_at', 'comment']),
+                        'removed_at' => $review->removed_at,
+                        'missing_since' => $review->missing_since,
+                    ]]);
+                }
+            });
     }
 
     /**

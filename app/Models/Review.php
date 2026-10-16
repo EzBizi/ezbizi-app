@@ -112,6 +112,9 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
             'edited_at'   => 'datetime',
             'synced_at'   => 'datetime',
             'reported_at' => 'datetime',
+            'missing_since' => 'datetime',
+            'missing_checked_at' => 'datetime',
+            'removed_at' => 'datetime',
         ];
     }
 
