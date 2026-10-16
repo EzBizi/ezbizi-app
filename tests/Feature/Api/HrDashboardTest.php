@@ -302,7 +302,7 @@ class HrDashboardTest extends TestCase
         return $this->inTenant(function () use ($name, $email, $franchiseId) {
             $user = User::create([
                 'organization_id' => $this->alpha['org']->id,
-                'role_id' => $this->alpha['admin']->role_id,
+                'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->alpha['admin']),
                 'name' => $name, 'email' => $email,
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -335,7 +335,7 @@ class HrDashboardTest extends TestCase
     {
         $this->as($this->alpha['admin'])->postJson('/api/v1/hr/invitations', [
             'email' => $email,
-            'role_id' => $this->alpha['admin']->role_id,
+            'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->alpha['admin']),
             'scope_type' => 'franchise',
             'scope_id' => $this->alpha['franchise']->id,
         ])->assertCreated();

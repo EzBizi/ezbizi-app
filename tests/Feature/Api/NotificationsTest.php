@@ -132,7 +132,7 @@ class NotificationsTest extends TestCase
         return $this->inTenant(function () use ($email, $assign) {
             $user = User::create([
                 'organization_id' => $this->org['organization']->id,
-                'role_id'   => $this->org['admin']->role_id,
+                'role_id'   => \Tests\Concerns\BranchManagerRole::idFor($this->org['admin']),
                 'name'      => 'Someone',
                 'email'     => $email,
                 'password'  => 'a-real-password',

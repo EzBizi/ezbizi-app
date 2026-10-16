@@ -269,7 +269,7 @@ class ViewScopeTest extends TestCase
         $limited = app(TenantContext::class)->run($this->w['org'], function () {
             $user = User::create([
                 'organization_id' => $this->w['org']->id,
-                'role_id' => $this->w['admin']->role_id,
+                'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->w['admin']),
                 'name' => 'Limited', 'email' => 'l@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
