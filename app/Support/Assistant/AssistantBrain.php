@@ -144,6 +144,12 @@ final class AssistantBrain
      */
     public function aiAnswer(?User $viewer, Organization $organization, string $query, int $timeout = 60, bool $forWhatsApp = false): ?array
     {
+        // Traced as the asker's (GrokCli::about).
+        return GrokCli::about($viewer, fn () => $this->aiAnswerAs($viewer, $organization, $query, $timeout, $forWhatsApp));
+    }
+
+    private function aiAnswerAs(?User $viewer, Organization $organization, string $query, int $timeout, bool $forWhatsApp): ?array
+    {
         if (! GrokCli::configured()) {
             return null;
         }
@@ -157,8 +163,8 @@ final class AssistantBrain
 
         $json = GrokCli::ask(
             "You answer staff questions for {$this->name($organization)}, a home-services business. Answer "
-            ."ONLY from the Library, training guides and branch details below; if they do not contain the answer, set "
-            ."answered to false and reply with an empty string. Never invent prices, phone numbers, "
+            .'ONLY from the Library, training guides and branch details below; if they do not contain the answer, set '
+            .'answered to false and reply with an empty string. Never invent prices, phone numbers, '
             ."addresses or policies. Reply in 1-5 short plain sentences, in the question's language. "
             ."List the ids of the Library entries you used.\n".($forWhatsApp ? GrokCli::WHATSAPP_STYLE."\n" : '')."\nLIBRARY:\n".($library ?: '(empty)')
             ."\n\nBRANCHES:\n".($sites ?: '(none matched)')
