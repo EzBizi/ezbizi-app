@@ -315,7 +315,7 @@ class DataTest extends TestCase
 
             $user = User::create([
                 'organization_id' => $this->alpha['organization']->id,
-                'role_id' => $this->alpha['admin']->role_id,
+                'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->alpha['admin']),
                 'name' => 'Branch', 'email' => 'branch@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -702,7 +702,7 @@ class DataTest extends TestCase
 
         DB::table('permission_role')->insert([
             'permission_id' => $id,
-            'role_id'       => $alpha['admin']->role_id,
+            'role_id'       => \Tests\Concerns\BranchManagerRole::idFor($alpha['admin']),
         ]);
 
         $migration = require database_path(
