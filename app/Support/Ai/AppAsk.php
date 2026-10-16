@@ -31,6 +31,12 @@ final class AppAsk
     /** @return string|null the WhatsApp reply, or null when the app holds no answer */
     public static function answer(User $viewer, string $question, int $timeout = 75): ?string
     {
+        // Traced as the asker's (GrokCli::about): their question and the data read as them.
+        return GrokCli::about($viewer, fn () => self::answerAs($viewer, $question, $timeout));
+    }
+
+    private static function answerAs(User $viewer, string $question, int $timeout): ?string
+    {
         $started = microtime(true);
         $left = fn () => $timeout - (int) ceil(microtime(true) - $started);
         $today = now('America/New_York');

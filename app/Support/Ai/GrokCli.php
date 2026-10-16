@@ -6,6 +6,7 @@ use App\Models\AiTrace;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Process\ProcessResult;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -141,7 +142,7 @@ final class GrokCli
 
             foreach ($results as $i => $result) {
                 $answers[$i] = $result instanceof RuntimeException ? $result : self::answer($result);
-                self::trace($chunk[$i], $schema, $answers[$i], (int) round((microtime(true) - $started) * 1000));
+                self::trace($chunk[$i], $schema, $answers[$i], (int) round((microtime(true) - $started) * 1000), $i);
             }
         }
 
@@ -183,14 +184,17 @@ final class GrokCli
      * "pin as test case"). Never fails the caller: a trace that cannot be
      * written is lost, the answer is not.
      */
-    private static function trace(string $prompt, array $schema, array|RuntimeException $answer, int $ms): void
+    private static function trace(string $prompt, array $schema, array|RuntimeException $answer, int $ms, int $index): void
     {
         try {
+            $subject = is_array(self::$about) ? (self::$about[$index] ?? null) : self::$about;
             $caller = collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8))
                 ->first(fn (array $f) => isset($f['class']) && $f['class'] !== self::class);
             AiTrace::create([
                 'organization_id' => app(TenantContext::class)->id(),
                 'scope' => mb_substr(class_basename($caller['class'] ?? 'unknown'), 0, 120),
+                'subject_type' => $subject?->getMorphClass(),
+                'subject_id' => $subject === null ? null : (string) $subject->getKey(),
                 'prompt' => $prompt,
                 'schema' => $schema,
                 'response' => $answer instanceof RuntimeException ? null : $answer,
@@ -199,6 +203,29 @@ final class GrokCli
             ]);
         } catch (\Throwable $e) {
             report($e);
+        }
+    }
+
+    /** @var Model|list<?Model>|null */
+    private static $about = null;
+
+    /**
+     * Runs $ask with its traces tied to whose data the prompts carry: one model
+     * for every prompt, or a list in askMany's prompt order.
+     *
+     * @template T
+     *
+     * @param  Model|list<?Model>|null  $subject
+     * @param  \Closure(): T  $ask
+     * @return T
+     */
+    public static function about(Model|array|null $subject, \Closure $ask): mixed
+    {
+        [$before, self::$about] = [self::$about, $subject];
+        try {
+            return $ask();
+        } finally {
+            self::$about = $before;
         }
     }
 

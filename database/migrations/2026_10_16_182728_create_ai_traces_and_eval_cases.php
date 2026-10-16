@@ -17,6 +17,10 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->foreignUuid('organization_id')->nullable()->constrained()->cascadeOnDelete();
             $table->string('scope', 120);              // the class that asked
+            // Whose data the prompt carried, where the caller knows (a lead, the
+            // asking user): an access or erasure request finds the trace.
+            $table->string('subject_type', 120)->nullable();
+            $table->string('subject_id', 64)->nullable();
             $table->longText('prompt');
             $table->json('schema');
             $table->json('response')->nullable();       // null: it failed
@@ -24,6 +28,7 @@ return new class extends Migration
             $table->unsignedInteger('ms');
             $table->timestamp('created_at')->index();
             $table->index(['scope', 'created_at']);
+            $table->index(['subject_type', 'subject_id']);
         });
 
         Schema::create('ai_eval_cases', function (Blueprint $table) {
@@ -35,6 +40,9 @@ return new class extends Migration
             $table->json('expected');                   // set by a person, not copied from the AI
             $table->text('notes')->nullable();
             $table->uuid('trace_id')->nullable();
+            $table->string('subject_type', 120)->nullable();
+            $table->string('subject_id', 64)->nullable();
+            $table->index(['subject_type', 'subject_id']);
             $table->timestamps();
         });
     }

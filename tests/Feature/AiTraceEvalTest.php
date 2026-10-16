@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Console\Commands\AiEval;
 use App\Models\AiEvalCase;
 use App\Models\AiTrace;
+use App\Models\User;
 use App\Support\Ai\GrokCli;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Process;
@@ -71,5 +72,22 @@ class AiTraceEvalTest extends TestCase
                 && $cmd[array_search('--max-turns', $cmd) + 1] === '3'
                 && str_ends_with($cwd, '/cwd');
         });
+    }
+
+    /** Desk review 2026-10-16: an access or erasure request must find traces holding that person's data. */
+    public function test_a_trace_is_found_by_whose_data_it_carried(): void
+    {
+        $this->grokSays(['a' => 1], ['a' => 2], ['a' => 3]);
+        $ana = new User;
+        $ana->forceFill(['id' => '01aaaaaa-0000-7000-8000-000000000001']);
+        $bo = new User;
+        $bo->forceFill(['id' => '01aaaaaa-0000-7000-8000-000000000002']);
+
+        GrokCli::about($ana, fn () => GrokCli::ask('about ana', ['type' => 'object'], 30));
+        GrokCli::about([null, $bo], fn () => GrokCli::askMany(['nobody', 'about bo'], ['type' => 'object'], 30));
+
+        $this->assertSame(['about ana'], AiTrace::personalDataAbout($ana)->pluck('prompt')->all());
+        $this->assertSame(['about bo'], AiTrace::personalDataAbout($bo)->pluck('prompt')->all());
+        $this->assertSame(1, AiTrace::whereNull('subject_id')->count(), 'the context ends with its closure');
     }
 }

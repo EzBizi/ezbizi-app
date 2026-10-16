@@ -17,7 +17,7 @@ class AiTrace extends Model implements HoldsPersonalData
 
     public const UPDATED_AT = null;
 
-    protected $fillable = ['organization_id', 'scope', 'prompt', 'schema', 'response', 'error', 'ms'];
+    protected $fillable = ['organization_id', 'scope', 'subject_type', 'subject_id', 'prompt', 'schema', 'response', 'error', 'ms'];
 
     protected function casts(): array
     {
@@ -46,6 +46,9 @@ class AiTrace extends Model implements HoldsPersonalData
 
     public static function personalDataAbout(Model $subject): ?Builder
     {
-        return null;
+        // Set where the caller knows whose data it sent (GrokCli::about: a
+        // lead, the asking user). Calls keyed by a RingCentral call carry no
+        // model, as their transcripts do not; the month window removes those.
+        return static::query()->where('subject_type', $subject->getMorphClass())->where('subject_id', (string) $subject->getKey());
     }
 }

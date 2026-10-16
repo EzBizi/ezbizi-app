@@ -28,7 +28,7 @@ class AiPin extends Command
         }
 
         $case = AiEvalCase::create([
-            'organization_id' => $trace->organization_id, 'scope' => $trace->scope, 'prompt' => $trace->prompt,
+            'organization_id' => $trace->organization_id, 'scope' => $trace->scope, 'subject_type' => $trace->subject_type, 'subject_id' => $trace->subject_id, 'prompt' => $trace->prompt,
             'schema' => $trace->schema, 'expected' => $expected, 'notes' => $this->option('notes'), 'trace_id' => $trace->id,
         ]);
         $this->info("Pinned {$case->id} ({$trace->scope}).");
