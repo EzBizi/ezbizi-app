@@ -24,9 +24,22 @@ use Throwable;
 final class AddressCheck
 {
     /**
-     * @return array{address: string, zip: ?string, exact: bool, lat: ?float, lng: ?float}|null  null when unknown
+     * @return array{address: string, zip: ?string, exact: bool}|null  null when unknown
      */
     public static function check(string $address, ?string $zip = null): ?array
+    {
+        $place = self::place($address, $zip);
+
+        // The shape Leads and Scheduling read; coordinates are geocode's.
+        return $place === null ? null : array_intersect_key($place, array_flip(['address', 'zip', 'exact']));
+    }
+
+    /**
+     * check() plus where it is (GeocodeController).
+     *
+     * @return array{address: string, zip: ?string, exact: bool, lat: ?float, lng: ?float}|null  null when unknown
+     */
+    public static function place(string $address, ?string $zip = null): ?array
     {
         $key = (string) config('services.google_maps.server_key');
         $query = trim($address.($zip !== null && ! str_contains($address, $zip) ? ' '.$zip : ''));

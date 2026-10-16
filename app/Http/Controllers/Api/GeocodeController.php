@@ -38,6 +38,6 @@ class GeocodeController extends Controller
             'You cannot look addresses up for that screen.');
 
         // Null when Google has no answer or no key is set: "not found", never a guess.
-        return response()->json(['data' => AddressCheck::check($input['address'])]);
+        return response()->json(['data' => AddressCheck::place($input['address'])]);
     }
 }
