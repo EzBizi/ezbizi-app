@@ -290,9 +290,35 @@ class BusinessProfileReviews
             }
 
             $review->save();
+            $this->keepGooglesReply($review, (array) ($raw['reviewReply'] ?? []));
 
             return ['review' => $review, 'created' => $created];
         });
+    }
+
+    /**
+     * The answer Google already shows, so a review answered on Google (or by
+     * A1 Leads) is not counted Unanswered. Never over a reply drafted or
+     * published here: those are this organization's own words.
+     *
+     * @param  array<string, mixed>  $reply
+     */
+    private function keepGooglesReply(Review $review, array $reply): void
+    {
+        $body = trim((string) ($reply['comment'] ?? ''));
+        $mine = $review->reply()->first();
+
+        if ($body === '' || ($mine !== null && $mine->drafted_by !== ReviewReply::BY_GOOGLE)) {
+            return;
+        }
+
+        ($mine ?? new ReviewReply(['organization_id' => $review->organization_id, 'review_id' => $review->getKey()]))
+            ->fill([
+                'body' => $body,
+                'status' => ReviewReply::STATUS_PUBLISHED,
+                'drafted_by' => ReviewReply::BY_GOOGLE,
+                'published_at' => isset($reply['updateTime']) ? Carbon::parse((string) $reply['updateTime']) : now(),
+            ])->save();
     }
 
     /**

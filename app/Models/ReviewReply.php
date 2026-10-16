@@ -46,6 +46,12 @@ class ReviewReply extends Model implements StatesRetention
      */
     public const BY_AUTOMATION = 'automation';
 
+    /**
+     * Already on Google when it was fetched, written there or elsewhere
+     * (UI/UX finding, 2026-10-16: A-1's answered reviews read as Unanswered).
+     */
+    public const BY_GOOGLE = 'google';
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::forever(
