@@ -1265,6 +1265,64 @@ void main() {
   });
 
   group('what posting somewhere actually does is said beforehand', () {
+    // A1 takeover, "compose once for many locations": Business Profile
+    // listings beside the accounts, and the listing's button.
+    testWidgets('a listing can be ticked, and its button needs an https address', (
+      tester,
+    ) async {
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+      await _pumpSocial(tester, (request) async {
+        if (request.url.path.endsWith('/social/places')) {
+          return _json({
+            'data': [
+              {
+                'id': 'place-1',
+                'title': 'Brightside Home – Springfield',
+                'address': '14 Elm St, Springfield',
+                'connection_id': 'conn-g',
+                'state': 'verified',
+                'postable': true,
+              },
+              {
+                'id': 'place-2',
+                'title': 'Brightside Home – Riverton',
+                'address': '9 Oak Ave, Riverton',
+                'connection_id': 'conn-g',
+                'state': 'suspended',
+                'postable': false,
+              },
+            ],
+          });
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      expect(find.textContaining('Riverton · suspended'), findsOneWidget);
+      expect(find.byKey(const ValueKey('social-place-cta')), findsNothing);
+
+      final words = find.widgetWithText(TextField, 'What should go out?');
+      await tester.enterText(words, 'Fall sweep special.');
+      await tester.tap(find.byKey(const ValueKey('social-place-place-1')));
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+
+      // A button that goes to a web page needs one.
+      expect(find.byKey(const ValueKey('social-place-cta')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('social-place-cta')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Book').last);
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), contains('https://'));
+
+      await tester.enterText(
+        find.byKey(const ValueKey('social-place-cta-url')),
+        'https://brightside.example/book',
+      );
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+    });
+
     testWidgets('the TikTok drafts detour is on the account, before Publish', (
       tester,
     ) async {
