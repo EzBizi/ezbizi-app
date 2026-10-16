@@ -17,6 +17,9 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Leads: new EZ Calls and EZ Texts tabs for calls and texts on your own EzBizi phone lines, tagged like RC Calls. Texts can be answered from the lead. Mark which lines count as leads under Communication › Settings › Numbers.',
+        'Leads: a call from a known customer is never tagged Possible spam or marked Not a lead.',
+        'Leads: re-classifying a lead and changing its dispatcher are now their own ticks in Roles & permissions (given to everyone who could edit leads), and a Leads setting can pause all calls to Google for a business.',
         'Notifications: tapping a notification about a review opens that review.',
         'Automations: rules can now act when Google removes a review, and on new low-star reviews (each new review now says how many days old it is). Two ready-made rules are in the templates.',
         'WhatsApp: staff with the new Do things from WhatsApp tick can ask the EzBizi bot to reply to or publish a review reply, reschedule a job, change a lead’s status, or update a location’s scheduling note. The bot shows exactly what it will do and waits for YES first, and each person’s own permissions still apply.',
