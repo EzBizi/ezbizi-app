@@ -251,7 +251,8 @@ final class RingCentralLeadCalls
 
     /**
      * Null when somebody picked up. A call that never left the phone menu (no
-     * queue, nobody's phone rang) is a hang-up: robocalls, mostly.
+     * queue, nobody's phone rang, and RingCentral says Accepted) is a hang-up:
+     * robocalls, mostly. "Missed" with no queue is a caller who waited: missed.
      *
      * @param  array<string, mixed>  $call
      */
@@ -260,7 +261,7 @@ final class RingCentralLeadCalls
         return match (true) {
             $call['answered_by'] !== null => ($call['queue'] ?? null) === self::EXISTING_CLIENT_QUEUE ? self::EXISTING_CLIENT : null,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
-            $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
+            ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
             default => self::MISSED,
         };
     }

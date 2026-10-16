@@ -180,6 +180,8 @@ class RingCentralLeadCallsTest extends TestCase
                 self::rc('30', '+15550000030', now()->subMinutes(30)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
                 self::rc('31', '+15550000031', now()->subMinutes(30)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
                 self::rc('32', '+15550000032', now()->subMinutes(30)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Voicemail']),
+                // Missed before any queue (RingCentral says Missed, not Accepted): not spam.
+                self::rc('35', '+15550000035', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Missed']),
                 // Missed hours ago (a catch-up run): filed, tagged, not announced.
                 self::rc('34', '+15550000034', now()->subHours(3)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
                 // The missed caller hangs up in the menu later: still Missed call.
@@ -192,6 +194,7 @@ class RingCentralLeadCallsTest extends TestCase
                 '+15550000031' => RingCentralLeadCalls::MISSED,
                 '+15550000032' => RingCentralLeadCalls::VOICEMAIL,
                 '+15550000034' => RingCentralLeadCalls::MISSED,
+                '+15550000035' => RingCentralLeadCalls::MISSED,
             ], $tags);
             $this->assertSame('Possible spam', LeadConversation::query()->where('remote_id', 'rc_30')->value('text'));
         });
@@ -200,7 +203,7 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(2, $events['lead.missed_call'] ?? 0, 'missed and voicemail, not the hang-ups');
 
         $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
-        $this->assertCount(4, $rc, 'all four under RC Calls');
+        $this->assertCount(5, $rc, 'all five under RC Calls');
     }
 
     public function test_line_names_place_the_company_and_market(): void
