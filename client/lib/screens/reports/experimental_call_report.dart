@@ -2142,11 +2142,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       call['to_name'],
     ].where((v) => v != null && '$v'.isNotEmpty).join(' · ');
 
-    final client = call['queue'] == _newQueue
-        ? const StatusPill('New', tone: Tone.info)
+    // A caller who pressed the other key is shown as what they were, marked
+    // ↺ with what was pressed and why (Leads' correction, 2026-10-16).
+    final fix = (call['reclassified'] as Map?)?.cast<String, dynamic>();
+    final mark = fix == null ? '' : ' ↺';
+    final pill = call['queue'] == _newQueue
+        ? StatusPill('New$mark', tone: Tone.info)
         : call['queue'] == _existingQueue
-        ? const StatusPill('Existing')
+        ? StatusPill('Existing$mark')
         : null;
+    final client = pill == null || fix == null
+        ? pill
+        : Tooltip(
+            key: ValueKey('reclassified-$callId'),
+            message:
+                'Re-classified: pressed '
+                '${fix['pressed'] == _newQueue ? 'new' : 'existing'}'
+                '${fix['reason'] == null ? '' : ' · ${fix['reason']}'}',
+            child: pill,
+          );
     final result = missed
         ? StatusPill(
             outbound

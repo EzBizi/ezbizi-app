@@ -67,6 +67,28 @@ void main() {
     );
   });
 
+  // 2026-10-16: a caller who pressed the other key, re-classified by Leads.
+  testWidgets('a re-classified call shows its type marked, with what was '
+      'pressed', (tester) async {
+    final fixed = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (fixed['calls'] as List).first['reclassified'] = {
+      'pressed': 'A1 - Existing Client',
+      'reason': 'No customer with this number',
+      'evidence': 'customer_match',
+      'by_person': false,
+    };
+    await _pump(tester, width: 1400, view: 'Calls', report: () => fixed);
+
+    final tip = tester.widget<Tooltip>(
+      find.byKey(const ValueKey('reclassified-c1')),
+    );
+    expect(
+      tip.message,
+      'Re-classified: pressed existing · No customer with this number',
+    );
+    expect(find.textContaining('↺'), findsOneWidget);
+  });
+
   testWidgets('a caller with an open earlier job reads Existing job, not '
       'Not booked', (tester) async {
     final existing = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
