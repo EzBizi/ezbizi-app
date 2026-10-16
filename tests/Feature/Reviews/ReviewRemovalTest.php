@@ -33,6 +33,8 @@ class ReviewRemovalTest extends TestCase
     /** What a direct GET of the missing review answers. */
     private int $direct = 404;
 
+    private bool $undated = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -47,7 +49,7 @@ class ReviewRemovalTest extends TestCase
             return $c;
         });
         $raw = fn (string $id) => ['name' => "accounts/P/locations/1/reviews/{$id}", 'reviewer' => ['displayName' => 'Dana'],
-            'starRating' => 'ONE', 'comment' => 'Bad.', 'createTime' => now()->subDays(3)->toIso8601String()];
+            'starRating' => 'ONE', 'comment' => 'Bad.', ...($this->undated && $id === 'undated' ? [] : ['createTime' => now()->subDays(3)->toIso8601String()])];
         Http::fake(fn (Request $r) => match (true) {
             str_contains($r->url(), 'oauth2.googleapis.com') => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
             str_ends_with(parse_url($r->url(), PHP_URL_PATH), '/reviews') => Http::response(['reviews' => array_map($raw, $this->listed)]),
@@ -128,5 +130,17 @@ class ReviewRemovalTest extends TestCase
         $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'review.received')->firstOrFail();
         $this->assertSame(3, $event->payload['after']['age_days']);
         $this->assertSame(1, $event->payload['after']['rating']);
+    }
+
+    /** A rule reads null as 0, so an undated review must still carry a number. */
+    public function test_an_undated_review_still_has_an_age(): void
+    {
+        $this->sync();
+        $this->listed = ['keep', 'gone', 'undated'];
+        $this->undated = true;
+        $this->sync();
+
+        $event = AutomationEvent::withoutGlobalScopes()->where('event_key', 'review.received')->firstOrFail();
+        $this->assertIsInt($event->payload['after']['age_days']);
     }
 }

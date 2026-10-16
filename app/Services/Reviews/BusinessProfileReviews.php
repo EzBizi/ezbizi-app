@@ -93,8 +93,11 @@ class BusinessProfileReviews
                                 ...$result['review']->only(['rating', 'reviewer_name', 'location_name', 'reviewed_at', 'comment']),
                                 // For a rule like "2 stars or fewer, at most 14 days old"
                                 // (A1 Leads takeover P0, 2026-10-16).
-                                'age_days' => $result['review']->reviewed_at === null ? null
-                                    : (int) $result['review']->reviewed_at->diffInDays(now(), true),
+                                // Never null: a rule reads null as 0, so "at most 14 days"
+                                // would pass for a review of unknown age. Undated, it is
+                                // as old as the moment it first reached us (Automations, 2026-10-16).
+                                'age_days' => (int) ($result['review']->reviewed_at ?? $result['review']->created_at ?? now())
+                                    ->diffInDays(now(), true),
                             ],
                         ]);
                     } else {
