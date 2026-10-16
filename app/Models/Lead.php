@@ -426,6 +426,10 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 'Which member of staff wrote the note, and when - so a shared line can say '
                 .'"Maya · 2h ago" and two people cannot overwrite each other unseen.',
                 Erasure::erase()),
+            new PersonalDataEntry('dispatcher, dispatcher_by_user_id', PersonalDataEntry::ACTIVITY,
+                'Which member of staff answered the call, from RingCentral, or who said so - '
+                .'so the list can filter by dispatcher (A1 Leads takeover).',
+                Erasure::erase()),
             new PersonalDataEntry('marketing_consent_at, marketing_consent_text', PersonalDataEntry::ACTIVITY,
                 'Whether this person agreed to be sent marketing email, when, and the exact '
                 .'words beside the box they ticked. Kept so the business can show what '
@@ -455,7 +459,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         // The enquirer is nobody on this platform (see above). A member of
         // staff IS, and the one place a lead names one is the note's author.
         return $subject instanceof User
-            ? static::query()->where('note_by_user_id', $subject->getKey())
+            ? static::query()->where(fn ($q) => $q->where('note_by_user_id', $subject->getKey())
+                ->orWhere('dispatcher_by_user_id', $subject->getKey()))
             : null;
     }
 
@@ -467,7 +472,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits', 'postal_code',
         'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
-        'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
+        'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
     ];
 

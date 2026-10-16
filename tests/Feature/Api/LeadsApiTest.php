@@ -357,11 +357,14 @@ class LeadsApiTest extends TestCase
     /**
      * The one that keeps the record from becoming notes.
      *
-     * Name and phone are what somebody actually said. An endpoint that accepted
-     * edits to them would turn evidence into something tidyable, and the
-     * difference matters the first time a charge is disputed.
+     * The phone is what Google or the carrier reported. An endpoint that
+     * accepted edits to it would turn evidence into something tidyable, and
+     * the difference matters the first time a charge is disputed. The NAME is
+     * a label a person may correct in place since the A1 Leads takeover
+     * (Jose, 2026-10-16: "go ahead"; A1 Leads kept a corrected name): what
+     * was said stays in the conversations.
      */
-    public function test_the_contact_details_cannot_be_edited(): void
+    public function test_the_phone_cannot_be_edited_but_the_name_can_be_corrected(): void
     {
         $t    = $this->provisionTenant('A1-Group');
         $lead = $this->lead($t);
@@ -374,7 +377,7 @@ class LeadsApiTest extends TestCase
 
         $fresh = $this->inTenant($t['org'], fn () => Lead::find($lead->id));
 
-        $this->assertSame('Dana Whitfield', $fresh->contact_name);
+        $this->assertSame('Someone Else', $fresh->contact_name);
         $this->assertSame(self::PHONE, $fresh->phone);
     }
 

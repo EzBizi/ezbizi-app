@@ -20,7 +20,7 @@ use RuntimeException;
  */
 class LeadsRead extends Command
 {
-    protected $signature = 'ezbizi:leads-read {--limit=12}';
+    protected $signature = 'ezbizi:leads-read {--limit=12} {--lead=* : read these again, at any age (Re-classify on the lead)}';
 
     protected $description = 'Sort new leads and fill a missing name or ZIP from what the customer said';
 
@@ -31,9 +31,11 @@ class LeadsRead extends Command
         }
 
         $leads = Lead::query()->withoutGlobalScopes()
-            ->whereNull('classification')
+            ->when($this->option('lead') !== [],
+                fn ($q) => $q->whereIn('id', $this->option('lead')),
+                fn ($q) => $q->whereNull('classification')
+                    ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since())))
             ->where('is_test', false)
-            ->where('received_at', '>=', max(now()->subDays(3), \App\Support\Ai\GrokCli::since()))
             // Something said in words: a message, or a call already transcribed.
             ->whereExists(fn ($q) => $q->from('lead_conversations')
                 ->whereColumn('lead_conversations.lead_id', 'leads.id')

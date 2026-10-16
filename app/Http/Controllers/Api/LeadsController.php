@@ -24,6 +24,7 @@ use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\RingCentralLeadCalls;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
@@ -324,6 +325,30 @@ class LeadsController extends Controller
             $query->whereRaw(self::UNREAD_SQL);
         }
 
+        // A1 Leads' filters (takeover, Jose 2026-10-16): Google's charge
+        // status, the RingCentral line the call came in on, who answered, and
+        // the day it arrived in the organization's own time.
+        if (in_array($charge = $request->query('charge'), ['CHARGED', 'CREDITED', 'IN_REVIEW', 'NOT_CHARGED'], true)) {
+            $query->where('leads.charge_status', $charge);
+        }
+        if (is_string($ivr = $request->query('ivr')) && $ivr !== '') {
+            $query->where('leads.source', Lead::SOURCE_RINGCENTRAL);
+            match ($ivr) {
+                'Existing Customer' => $query->where('leads.source_status', RingCentralLeadCalls::EXISTING_CLIENT),
+                'LS Ads', 'GMB', 'SEO', 'PPC' => $query->where('leads.category', 'like', '% - '.$ivr.'%'),
+                default => $query->where('leads.category', 'like', str_replace(['%', '_'], ['\%', '\_'], $ivr).'%'),
+            };
+        }
+        if (is_string($dispatcher = $request->query('dispatcher')) && $dispatcher !== '') {
+            $query->where('leads.dispatcher', $dispatcher);
+        }
+        $zone = (string) app(SettingsResolver::class)->get('timezone', $user->organization);
+        foreach (['from' => 'startOfDay', 'to' => 'endOfDay'] as $key => $edge) {
+            if (is_string($day = $request->query($key)) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                $query->where('leads.received_at', $key === 'from' ? '>=' : '<=', Carbon::parse($day, $zone)->{$edge}()->utc());
+            }
+        }
+
         if ($request->boolean('starred')) {
             // The reader's own stars (Jose, 2026-09-30: stars are personal).
             $query->whereNotNull('lead_reads.starred_at');
@@ -419,6 +444,9 @@ class LeadsController extends Controller
                 ...$this->pageMeta($leads),
                 'connections' => $this->connectionState(),
                 'unread_by_source' => (object) $unreadBySource->all(),
+                // The dispatcher filter's choices: who answered this reader's leads.
+                'dispatchers' => self::scopeToReader(Lead::query(), $user)->whereNotNull('leads.dispatcher')
+                    ->distinct()->orderBy('leads.dispatcher')->limit(200)->pluck('leads.dispatcher')->all(),
                 /*
                  * "Google is refusing, so enquiries are late" - or null.
                  *
@@ -1216,9 +1244,10 @@ class LeadsController extends Controller
     /**
      * PATCH /api/v1/leads/{lead}
      *
-     * Status only. Name, phone and what they asked about are a record of what
-     * somebody said, not fields to tidy — editing them would turn evidence into
-     * notes, and the difference matters the first time a charge is disputed.
+     * Status, and the lead's labels a person may correct in place (A1 Leads
+     * takeover, Jose 2026-10-16): the name, the ZIP, the pile (BOOK / SUPPORT
+     * / ARCHIVE) and who handled it. Never the phone or what was said: the
+     * conversations stay the evidence, and a charge dispute reads those.
      */
     public function update(Request $request, Lead $lead): JsonResponse
     {
@@ -1228,7 +1257,26 @@ class LeadsController extends Controller
             'status' => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
             'starred' => ['sometimes', 'boolean'],
             'note' => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'contact_name' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'classification' => ['sometimes', 'nullable', 'string', Rule::in(['BOOK', 'SUPPORT', 'ARCHIVE'])],
+            'dispatcher' => ['sometimes', 'nullable', 'string', 'max:120'],
         ]);
+
+        foreach (['contact_name', 'postal_code', 'classification'] as $field) {
+            if (array_key_exists($field, $input)) {
+                $lead->{$field} = trim((string) $input[$field]) ?: null;
+            }
+        }
+        if (array_key_exists('classification', $input) && $lead->isDirty('classification')) {
+            $lead->classified_at = now();
+        }
+        // A person's word on who handled it; RingCentral never overwrites it.
+        // Blank hands it back to RingCentral.
+        if (array_key_exists('dispatcher', $input)) {
+            $lead->dispatcher = trim((string) $input['dispatcher']) ?: null;
+            $lead->dispatcher_by_user_id = $lead->dispatcher === null ? null : $request->user()->getKey();
+        }
 
         // Star and note are marks, not decisions: no event, one audit row
         // each, and blank clears rather than storing an empty string.
@@ -1296,6 +1344,51 @@ class LeadsController extends Controller
         DB::table('leads')->where('id', $lead->getKey())->update(['read_at' => now()]);
 
         return response()->json(['data' => ['id' => $lead->getKey(), 'is_unread' => false]]);
+    }
+
+    /**
+     * POST /api/v1/leads/{lead}/reclassify
+     *
+     * Grok reads it again, at any age, right after this answers (A1 Leads
+     * takeover: "re-classify by hand"). The new pile arrives on the next read.
+     */
+    public function reclassify(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $id = (string) $lead->getKey();
+        dispatch(fn () => \Illuminate\Support\Facades\Artisan::call('ezbizi:leads-read', ['--lead' => [$id]]))->afterResponse();
+
+        return response()->json(['data' => ['id' => $id, 'reclassifying' => true]], 202);
+    }
+
+    /**
+     * GET /api/v1/leads/{lead}/timeline
+     *
+     * Everything this caller has said to the business, on every lead with
+     * their number, newest first, calls with their recordings (A1 Leads
+     * takeover: "customer timeline with recordings"). Only leads the reader
+     * can see.
+     */
+    public function timeline(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('view', $lead);
+
+        $digits = self::tenDigits($lead->phone_digits);
+        $leads = $digits === null
+            ? collect([$lead])
+            : self::scopeToReader(Lead::query(), $request->user())
+                ->where('leads.phone_digits', 'like', '%'.$digits)->limit(50)->get(['leads.id', 'leads.source', 'leads.lead_type']);
+        $byId = $leads->keyBy('id');
+
+        $rows = LeadConversation::query()->whereIn('lead_id', $byId->keys())
+            ->orderByDesc('occurred_at')->limit(200)->get();
+
+        return response()->json(['data' => $rows->map(fn (LeadConversation $c) => [
+            ...$this->presentConversation($c),
+            'lead_id' => $c->lead_id,
+            'source' => $byId[$c->lead_id]?->source,
+        ])->values()]);
     }
 
     /**
@@ -1729,6 +1822,9 @@ class LeadsController extends Controller
             // enquirer has said something in words, or while the model is off.
             'classification' => $lead->classification,
             'classified_at' => $lead->classified_at?->toIso8601String(),
+            // Who answered the call (RingCentral), or who a person said did.
+            'dispatcher' => $lead->dispatcher,
+            'dispatcher_overridden' => $lead->dispatcher_by_user_id !== null,
             'starred' => $this->starredByMe($lead),
             'note' => $lead->note,
             'note_by' => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')

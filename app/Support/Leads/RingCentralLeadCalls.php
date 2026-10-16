@@ -125,7 +125,16 @@ final class RingCentralLeadCalls
         $filed = 0;
         foreach ($calls as $i => $call) {
             $digits = self::ten($call['from']);
-            if (isset($have['rc_'.$call['id']]) || self::matches($ls[$digits] ?? [], $times[$i])) {
+            if (isset($have['rc_'.$call['id']])) {
+                continue;
+            }
+            // Google's copy of this call: shown there, but RingCentral knows
+            // who picked it up, which Google does not.
+            if (($lsLead = self::matches($ls[$digits] ?? [], $times[$i])) !== null) {
+                if ($call['answered_by'] !== null) {
+                    self::fillDispatcher(Lead::query()->whereKey($lsLead), (string) $call['answered_by']);
+                }
+
                 continue;
             }
 
@@ -168,6 +177,9 @@ final class RingCentralLeadCalls
                     'text' => self::WORDS[$outcome] ?? null,
                 ]);
                 $this->thread->refresh($lead);
+                if ($call['answered_by'] !== null) {
+                    self::fillDispatcher(Lead::query()->whereKey($lead->getKey()), (string) $call['answered_by']);
+                }
 
                 // The only RingCentral calls anybody is told about (Jose,
                 // 2026-10-15: "just report the Missed Calls instead from now on";
@@ -204,7 +216,7 @@ final class RingCentralLeadCalls
 
         $withdrawn = 0;
         foreach ($rows as $row) {
-            if (! self::matches($ls[self::ten($row->lead?->phone)] ?? [], CarbonImmutable::parse($row->occurred_at))) {
+            if (self::matches($ls[self::ten($row->lead?->phone)] ?? [], CarbonImmutable::parse($row->occurred_at)) === null) {
                 continue;
             }
             $lead = $row->lead;
@@ -316,18 +328,30 @@ final class RingCentralLeadCalls
     }
 
     /** @param  list<int>  $stamps */
-    private static function matches(array $stamps, CarbonImmutable $at): bool
+    /**
+     * The LS lead whose call this is, or null.
+     *
+     * @param  list<array{0: int, 1: string}>  $stamps
+     */
+    private static function matches(array $stamps, CarbonImmutable $at): ?string
     {
-        foreach ($stamps as $t) {
+        foreach ($stamps as [$t, $leadId]) {
             if (abs($t - $at->getTimestamp()) <= self::MATCH_SECONDS) {
-                return true;
+                return $leadId;
             }
         }
 
-        return false;
+        return null;
     }
 
-    /** @return array<string, list<int>> Local Services calls by the caller's ten digits */
+    /** The person who answered, unless somebody already said who, or a person set it. */
+    private static function fillDispatcher($query, string $name): void
+    {
+        $query->whereNull('dispatcher')->whereNull('dispatcher_by_user_id')
+            ->toBase()->update(['dispatcher' => mb_substr($name, 0, 120)]);
+    }
+
+    /** @return array<string, list<array{0: int, 1: string}>> Local Services calls by the caller's ten digits */
     private function lsCalls(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $by = [];
@@ -341,9 +365,9 @@ final class RingCentralLeadCalls
             // itself (0.0.0441's first run withdrew 50 that way).
             ->where('lead_conversations.remote_id', 'not like', 'rc\_%')
             ->whereBetween('lead_conversations.occurred_at', [$from->subHour(), $to->addHour()])
-            ->get(['leads.phone_digits', 'lead_conversations.occurred_at']) as $row) {
+            ->get(['leads.phone_digits', 'lead_conversations.occurred_at', 'lead_conversations.lead_id']) as $row) {
             if (($d = self::ten($row->phone_digits)) !== null) {
-                $by[$d][] = CarbonImmutable::parse($row->occurred_at)->getTimestamp();
+                $by[$d][] = [CarbonImmutable::parse($row->occurred_at)->getTimestamp(), (string) $row->lead_id];
             }
         }
 
