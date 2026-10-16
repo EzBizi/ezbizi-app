@@ -15,8 +15,7 @@ use Tests\TestCase;
 
 /**
  * UI/UX's findings, 2026-10-16: A-1's reviews already answered on Google read
- * as Unanswered, and Publish on an A1 Leads connection would write to Google
- * past A1 Leads, the only writer.
+ * as Unanswered,. (Publish stays as it is: Jose, 2026-10-16.)
  */
 class InterimReviewRepliesTest extends TestCase
 {
@@ -89,16 +88,4 @@ class InterimReviewRepliesTest extends TestCase
         $this->assertSame('Ours.', $open->reply()->withoutGlobalScopes()->first()->body);
     }
 
-    public function test_publish_is_refused_on_an_a1_leads_connection_and_the_draft_is_kept(): void
-    {
-        $this->sync();
-        $open = $this->inTenant($this->t['org'], fn () => Review::query()->where('remote_name', 'like', '%/open')->firstOrFail());
-        $this->signedInAs($this->t['admin'])->putJson("/api/v1/reviews/{$open->id}/reply", ['body' => 'Thanks!'])->assertOk();
-
-        $this->signedInAs($this->t['admin'])->postJson("/api/v1/reviews/{$open->id}/reply/publish")
-            ->assertStatus(409)->assertJsonPath('message', fn ($m) => str_contains($m, 'A1 Leads'));
-
-        Http::assertNotSent(fn (Request $r) => $r->method() !== 'GET' && str_contains($r->url(), 'reply'));
-        $this->assertSame(ReviewReply::STATUS_DRAFT, $open->reply()->withoutGlobalScopes()->first()->status);
-    }
 }
