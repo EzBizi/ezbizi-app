@@ -1458,7 +1458,7 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'time_clock.geofence_center',
                 label: 'Clock-in zone centre',
-                type: SettingDefinition::TYPE_STRING,
+                type: SettingDefinition::TYPE_LOCATION,
                 default: '',
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'Latitude and longitude of the place, as Google Maps shows them: right-click the spot, then click the numbers to copy them (for example 41.0534, -73.5387).',
