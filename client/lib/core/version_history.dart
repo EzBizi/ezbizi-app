@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Automations: rules can now act when Google removes a review, and on new low-star reviews (each new review now says how many days old it is). Two ready-made rules are in the templates.',
         'WhatsApp: staff with the new Do things from WhatsApp tick can ask the EzBizi bot to reply to or publish a review reply, reschedule a job, change a lead’s status, or update a location’s scheduling note. The bot shows exactly what it will do and waits for YES first, and each person’s own permissions still apply.',
         'Financials: link your Airtable tables, choose which table plays which part (repair teams, refunds, HQ expenses and so on) under Financials › Settings, and split repair-team costs between companies to the cent.',
         'Reports: the weekly and monthly report adds repair teams, refunds, disputes and returned checks, and HQ office expenses, read from the tables mapped in Financials. Goals per branch, set under Settings › Reports with the new Reports settings tick, colour the figures that miss them.',
@@ -24,7 +25,7 @@ class VersionHistory {
         'Communication › Settings › Numbers: a new switch marks a line’s calls and texts as leads, ready for the EZ Calls and EZ Texts tabs coming to Leads.',
         'Notifications: a misfiring automation can no longer flood the bell. Each rule tells a person at most 20 things in 10 minutes.',
         'Settings: a new Activity tab lists who did what and when, for the companies and places you can see, filtered by time window and by person, system or staff. It needs the Audit log tick.',
-        'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Manage.',
+        'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Work reviews as cases.',
         'Leads: the server now supports filtering leads by charge, phone line, dispatcher and date, correcting a lead’s name, ZIP, classification and dispatcher, re-reading a lead with the AI, and a call timeline. The screens follow.',
       ],
     ),
