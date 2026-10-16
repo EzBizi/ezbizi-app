@@ -1186,6 +1186,18 @@ class SettingRegistry
                 editPermission: 'leads.edit',
                 help: 'The number a customer calls to reschedule, {{office_phone}} in a message. Set per branch.',
             ),
+            // A1 Leads takeover, 2026-10-16: one switch that stops every call
+            // to Google for a business (GoogleToken refuses the token).
+            new SettingDefinition(
+                key: 'leads.google_paused',
+                label: 'Pause all Google calls',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                editPermission: 'leads.manage',
+                help: 'On: EzBizi stops talking to Google for this business - Local Services leads, '
+                    .'Ads, Business Profile and reviews - until it is switched off. Nothing is '
+                    .'disconnected; syncs say they are paused.',
+            ),
         ];
     }
 

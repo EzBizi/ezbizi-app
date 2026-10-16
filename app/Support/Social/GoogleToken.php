@@ -33,6 +33,20 @@ final class GoogleToken
 {
     private const TIMEOUT = 10;
 
+    public const PAUSED = 'Google is paused for this business (Settings › Leads › Pause all Google calls).';
+
+    /** The business's own switch, read at the connection's scope (branch, company or organization). */
+    public static function paused(SocialConnection $connection): bool
+    {
+        $scope = match ($connection->scope_type) {
+            SocialConnection::SCOPE_FRANCHISE => \App\Models\Franchise::withoutGlobalScopes()->find($connection->scope_id),
+            SocialConnection::SCOPE_COMPANY => \App\Models\Company::withoutGlobalScopes()->find($connection->scope_id),
+            default => null,
+        } ?? \App\Models\Organization::withoutGlobalScopes()->find($connection->organization_id);
+
+        return $scope !== null && (bool) app(\App\Support\Settings\SettingsResolver::class)->get('leads.google_paused', $scope);
+    }
+
     /**
      * @param  string  $service  the `config/services.php` key holding the
      *                           OAuth client this connection was made with —
@@ -44,7 +58,13 @@ final class GoogleToken
      */
     public static function forConnection(SocialConnection $connection, string $service): string
     {
-        $refresh = (string) (($connection->credentials['refresh_token'] ?? '') ?: '');
+        // Paused in Settings for this business: nothing goes to Google, and the
+        // connection is not marked broken (A1 Leads takeover, 2026-10-16).
+        if (self::paused($connection)) {
+            throw new RuntimeException(self::PAUSED);
+        }
+
+        $refresh =(string) (($connection->credentials['refresh_token'] ?? '') ?: '');
         $label = self::label($service);
 
         if ($refresh === '') {
