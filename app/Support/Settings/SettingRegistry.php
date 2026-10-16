@@ -1338,6 +1338,38 @@ class SettingRegistry
              * nobody should hit it, and hitting it means the punch was never
              * closed by a person.
              */
+            /*
+             * The clock-in zone (A1 Tools takeover, 2026-10-16): somebody
+             * whose role cannot "Clock in from anywhere" must be within this
+             * many metres of their place to clock in or out by hand. Set on
+             * the franchise (or higher, and it cascades). Off, or no centre,
+             * and nothing is checked.
+             */
+            new SettingDefinition(
+                key: 'time_clock.geofence_enabled',
+                label: 'Clock-in zone',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'When on, people whose role cannot "Clock in from anywhere" must be near this place to clock in or out. Roles grant it in Settings › Roles.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.geofence_center',
+                label: 'Clock-in zone centre',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Latitude and longitude of the place, as Google Maps shows them: right-click the spot, then click the numbers to copy them (for example 41.0534, -73.5387).',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.geofence_radius_m',
+                label: 'Clock-in zone size, metres',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 100,
+                options: [50, 100, 150, 200, 300, 500, 1000, 2000, 5000],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'How far from the centre still counts as at the place. The phone’s own accuracy is allowed on top.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.max_hours',
                 label: 'Longest a shift may run, hours',

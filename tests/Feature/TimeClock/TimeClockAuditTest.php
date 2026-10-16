@@ -67,7 +67,7 @@ class TimeClockAuditTest extends TestCase
     {
         $module = app(ModuleRegistry::class)->get('time_clock');
 
-        // Both actions are read-only BY NAME; the write is behind `view`.
+        // Every action is read-only BY NAME; the write is behind `view`.
         $this->assertFalse($module->writesRecords());
         $this->assertNull($module->auditExemptBecause, 'not exempt: the punches ARE audited, see above');
         $this->assertContains('time_clock', $module->auditPrefixes());

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/clock_window.dart';
+import '../core/punch_position.dart';
 import '../core/session.dart';
 import '../core/ui_strings.dart';
 
@@ -64,9 +65,7 @@ class ShiftReminderController {
   Future<void> _show(DateTime end) async {
     if (_showing || _shownFor == end) return;
     final status = session.me?.timeClock;
-    if (status == null ||
-        status.open == null ||
-        status.scheduledEndAt != end) {
+    if (status == null || status.open == null || status.scheduledEndAt != end) {
       return;
     }
 
@@ -92,7 +91,8 @@ class ShiftReminderController {
         extensionMinutes: status.extensionMinutes,
         endLabel: TimeOfDay.fromDateTime(end.toLocal()).format(ctx),
         onExtend: () => _post('/time-clock/extend'),
-        onClockOut: () => _post('/time-clock/clock-out'),
+        onClockOut: () =>
+            _post('/time-clock/clock-out', needsLocation: status.needsLocation),
         onExpired: _refetchSoon,
       ),
     );
@@ -100,8 +100,8 @@ class ShiftReminderController {
     _showing = false;
   }
 
-  Future<void> _post(String path) async {
-    final response = await api.post(path, {});
+  Future<void> _post(String path, {bool needsLocation = false}) async {
+    final response = await api.post(path, await punchPosition(needsLocation));
     _apply(response);
     sync();
   }
