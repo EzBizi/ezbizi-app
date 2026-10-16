@@ -70,9 +70,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ('year', 'Year'),
   ];
 
+  /// The last dashboard each person saw, per view, for this run of the app.
+  ///
+  /// Coming back to the dashboard paints it at once from here and refreshes
+  /// underneath, instead of a spinner over the whole screen for as long as the
+  /// slowest box takes (Jose, 2026-10-16: "takes too long when it should be
+  /// instant"). Keyed by person AND view, so switching company never shows
+  /// another view's numbers; held in memory only, and hung on the ApiClient,
+  /// so it lives as long as the client that was allowed to read it (and two
+  /// tests, each with its own client, never share one).
+  static final Expando<Map<String, Map<String, dynamic>>> _lastSeenBy = Expando();
+
+  Map<String, Map<String, dynamic>> get _lastSeen =>
+      _lastSeenBy[widget.api] ??= <String, Map<String, dynamic>>{};
+
+  String? get _seenKey {
+    final me = widget.session.me;
+    return me == null ? null : '${me.id}|${me.scope.type}:${me.scope.id}';
+  }
+
   @override
   void initState() {
     super.initState();
+    final seen = _lastSeen[_seenKey];
+    if (seen != null) {
+      _loaded = true;
+      _period = seen['period'] as String? ?? 'day';
+      _glances = (seen['glances'] as List<dynamic>).cast<Map<String, dynamic>>();
+    }
     _load();
   }
 
@@ -107,6 +132,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .cast<Map<String, dynamic>>();
     });
     if (response.ok) {
+      final key = _seenKey;
+      if (key != null) _lastSeen[key] = response.body;
       _rememberLayout(response.body, fallback: _glances);
     }
   }
