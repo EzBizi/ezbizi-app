@@ -43,7 +43,16 @@ class PeriodReportTest extends TestCase
             ['Week' => '21 Sep - 27 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 250],
         ]);
 
-        $html = app(PeriodReport::class)->html($f, '2026-09-21', '2026-09-27');
+        $marked = app(PeriodReport::class)->html($f, '2026-09-21', '2026-09-27');
+
+        // Goal colours (2026-10-16): Connecticut's average sale goal is $2,500 and
+        // a cancel rate over 20% is red, so these three cells are marked.
+        $red = '<span style="color:#DC2626;font-weight:700">';
+        $this->assertStringContainsString('<td>'.$red.'$400.00</span></td>', $marked);
+        $this->assertStringContainsString('<td>'.$red.'100.0%</span></td>', $marked);
+        $this->assertStringContainsString('<td>'.$red.'50.0%</span></td>', $marked);
+        $this->assertStringContainsString('<td>0.0%</td>', $marked, 'under the goal is not marked');
+        $html = preg_replace('#</?span[^>]*>#', '', $marked);
 
         $this->assertStringContainsString('Alpha Co · Weekly Report · Sep 21 – Sep 27, 2026', $html);
         $this->assertStringContainsString($this->row('LS Ads', '2', '1', '1', '0', '0.0%', '$400.00', '$400.00'), $html);
