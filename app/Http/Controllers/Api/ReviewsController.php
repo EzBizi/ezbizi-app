@@ -248,15 +248,6 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             return response()->json(['data' => $this->present($review->load('reply'))]);
         }
 
-        // A1 Leads stays the only thing that writes to A-1's Google listings
-        // (GbpSync; Rodrigo's rule). A connection on his grant reads here and
-        // is never written to here (UI/UX finding, 2026-10-16).
-        if (($review->connection?->credentials['interim'] ?? null) !== null) {
-            return response()->json([
-                'message' => 'This listing is connected through A1 Leads, so replies are '
-                    .'published there. Your draft is kept.',
-            ], Response::HTTP_CONFLICT);
-        }
 
         try {
             $this->google->publish($reply);
