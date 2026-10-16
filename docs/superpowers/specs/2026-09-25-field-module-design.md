@@ -161,3 +161,33 @@ asking for an ETA … a top bar … which would show phone battery, avg speed, a
   Choosing a job opens the job card: the nearest people, then the route and a Copy button for the
   sentence. With a job open, tapping a person routes that person to it. Choosing a person opens the
   horizontal technician bar.
+
+## Addendum, 2026-10-16: safety recordings (from A1 Tools)
+
+The A1 takeover (desk, Jose's "go ahead" 2026-10-16) moves A1's technician
+audio safety recording here. A1's design and its decisions with Jose
+(2026-07-09) carry over: manual start, auto-stop on leaving the job and at
+four hours, 90-day retention unless a manager keeps it, managers listen, the
+technician hears their own, and a line to say to the customer in the notice
+states.
+
+- **Grants:** `field.record` (makes recordings), `field.listen` (hears other
+  people's, within the people Field shows you). Keeping one past 90 days
+  is `field.manage`.
+- **Setting:** `field.recording_notice_states`, default `FL, CA, PA, IL, CT`
+  (A1's list). `/field/me` returns `may_record` and `at_job {id, number, notice}`.
+- **Server:** `field_recordings` + `field_recording_chunks`; gaps are a JSON
+  list on the recording. Audio lives under `field-audio/{org}/{recording}/`
+  on the default disk. `ezbizi:field-sweep` deletes expired recordings and
+  their audio, and hourly clears audio whose rows were erased.
+- **Phone:** `FieldRecorder` (client/lib/core/field_recorder.dart), owned by
+  `FieldTracker.current`: one-minute AAC files with a JSON sidecar, sent with
+  their sha256 and deleted once stored; anything left is sent on the next
+  launch and closed as `recovered`.
+- **Not carried over:** A1's `hard` enforcement (blocking clock-in without the
+  microphone) — Clock-in is another module's, and nobody asked for it here.
+  Android records only while the app is open: the background microphone
+  needs a microphone-type foreground service, and declaring one on the
+  location service would break tracking for anyone who refuses the
+  microphone.
+- **Layouts** (the record control, Field › Recordings) are UI/UX's.

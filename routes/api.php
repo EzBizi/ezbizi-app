@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ClientIssuesController;
 use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
+use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\GuidelinesController;
@@ -1496,6 +1497,16 @@ Route::prefix('v1')
             Route::get('field/people', [FieldController::class, 'people']);
             Route::get('field/route', [FieldController::class, 'route']);
         });
+        // Safety recordings (from A1 Tools, 2026-10-16). Listing and playback
+        // check own-or-field.listen in the controller; keeping, field.manage.
+        Route::middleware('permission:field.record')->group(function () {
+            Route::post('field/recordings', [FieldRecordingsController::class, 'begin'])->middleware('throttle:30,1');
+            Route::post('field/recordings/{recording}/chunks', [FieldRecordingsController::class, 'chunk'])->middleware('throttle:120,1');
+            Route::post('field/recordings/{recording}/finish', [FieldRecordingsController::class, 'finish']);
+        });
+        Route::get('field/recordings', [FieldRecordingsController::class, 'index']);
+        Route::get('field/recordings/{recording}/audio/{seq}', [FieldRecordingsController::class, 'audio'])->whereNumber('seq');
+        Route::post('field/recordings/{recording}/flag', [FieldRecordingsController::class, 'flag']);
 
         // Training — guides people read, the tests they take, and (later
         // tasks) who has been given which. `view`/`monitor`/`manage`/

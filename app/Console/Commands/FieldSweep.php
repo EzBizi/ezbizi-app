@@ -3,13 +3,16 @@
 namespace App\Console\Commands;
 
 use App\Models\FieldPresence;
+use App\Models\FieldRecording;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Support\Field\FieldEvaluator;
 use App\Support\Field\FieldJobs;
 use App\Support\Field\FieldMaps;
+use App\Support\Files\FileStore;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Field's clock: lost signal (the one fact no incoming point can announce),
@@ -28,7 +31,7 @@ class FieldSweep extends Command
     /** Two weeks ahead: Scheduling's per-technician routes read these pins too (2026-10-14). */
     private const GEOCODE_DAYS = 14;
 
-    public function handle(TenantContext $tenant, FieldEvaluator $evaluator, FieldJobs $jobs, FieldMaps $maps): int
+    public function handle(TenantContext $tenant, FieldEvaluator $evaluator, FieldJobs $jobs, FieldMaps $maps, FileStore $files): int
     {
         $silent = $tenant->runWithoutTenant(fn () => FieldPresence::query()
             ->withoutGlobalScopes()
@@ -76,10 +79,45 @@ class FieldSweep extends Command
             }
         }
 
-        if ($raised + $geocoded > 0) {
-            $this->info("Field: {$raised} lost-signal alert(s), {$geocoded} address(es) geocoded.");
+        $expired = $this->expireRecordings($tenant, $files);
+
+        if ($raised + $geocoded + $expired > 0) {
+            $this->info("Field: {$raised} lost-signal alert(s), {$geocoded} address(es) geocoded, {$expired} recording(s) expired.");
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Recordings past ninety days go, audio first, unless a manager kept one.
+     * Hourly it also clears audio whose rows are gone: erasing a person drops
+     * their rows by query, which never reaches the files.
+     */
+    private function expireRecordings(TenantContext $tenant, FileStore $files): int
+    {
+        $disk = Storage::disk($files->defaultDisk());
+
+        return $tenant->runWithoutTenant(function () use ($files, $disk) {
+            $old = FieldRecording::query()->withoutGlobalScopes()
+                ->where('flagged', false)
+                ->where('started_at', '<', now()->subDays(FieldRecording::KEEP_DAYS))
+                ->limit(100)->get();
+            foreach ($old as $recording) {
+                $disk->deleteDirectory($files->directoryFor('field-audio', $recording->organization_id).'/'.$recording->getKey());
+                $recording->delete();
+            }
+
+            if (now()->minute === 0) {
+                foreach ($disk->directories('field-audio') as $organization) {
+                    foreach ($disk->directories($organization) as $directory) {
+                        if (! FieldRecording::query()->withoutGlobalScopes()->whereKey(basename($directory))->exists()) {
+                            $disk->deleteDirectory($directory);
+                        }
+                    }
+                }
+            }
+
+            return $old->count();
+        });
     }
 }

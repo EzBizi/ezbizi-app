@@ -1244,6 +1244,16 @@ class SettingRegistry
                 editPermission: 'field.manage',
                 help: 'A phone that should be reporting and has been silent this long raises an alert.',
             ),
+            new SettingDefinition(
+                key: 'field.recording_notice_states',
+                label: 'States where the customer is told about recording',
+                type: SettingDefinition::TYPE_STRING,
+                // A1 Tools' list, approved by Jose 2026-07-09.
+                default: 'FL, CA, PA, IL, CT',
+                editPermission: 'field.manage',
+                help: 'Two-letter state codes, separated by commas. On a job in one of these states, the technician is shown '
+                    .'a line to say to the customer before recording.',
+            ),
         ];
     }
 

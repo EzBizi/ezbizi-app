@@ -94,6 +94,14 @@ final class FieldTracking
         return (int) $this->setting('field.lost_signal_minutes', $user);
     }
 
+    /** @return list<string> two-letter codes, upper case */
+    public function recordingNoticeStates(User $user): array
+    {
+        preg_match_all('/[A-Za-z]{2}/', (string) $this->setting('field.recording_notice_states', $user), $m);
+
+        return array_map('strtoupper', $m[0]);
+    }
+
     public function mode(User $user): string
     {
         return (string) $this->setting('field.tracking_mode', $user);

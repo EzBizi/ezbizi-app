@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   gal
   geolocator_windows
   printing
+  record_windows
   screen_retriever_windows
   url_launcher_windows
   video_player_win

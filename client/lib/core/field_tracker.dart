@@ -22,10 +22,13 @@ import 'api_client.dart';
 import 'build_info.dart';
 import 'client_platform.dart';
 import 'field_os.dart';
+import 'field_recorder.dart';
 import 'session.dart';
 
 class FieldTracker {
-  FieldTracker._(this._api, this._session) {
+  FieldTracker._(this._api, this._session) : recorder = FieldRecorder(_api) {
+    current = this;
+    unawaited(recorder.recover());
     _session.addListener(_sync);
     _poll = Timer.periodic(const Duration(minutes: 2), (_) => _sync());
     _sync();
@@ -37,6 +40,16 @@ class FieldTracker {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// The running tracker on a phone, for the screens that show its state.
+  static FieldTracker? current;
+
+  /// Safety recordings (field.record), on the same phone as the tracker.
+  final FieldRecorder recorder;
+
+  /// The last /field/me answer: whether sharing is on, and the job the phone
+  /// is standing at, which the record control offers.
+  final me = ValueNotifier<Map<String, dynamic>?>(null);
 
   static FieldTracker? startIfPhone(ApiClient api, Session session) =>
       onPhone ? FieldTracker._(api, session) : null;
@@ -133,14 +146,24 @@ class FieldTracker {
     if (_syncing) return;
     _syncing = true;
     try {
-      final tracked =
-          _session.me?.permissions.contains('field.tracked') ?? false;
+      final grants = _session.me?.permissions ?? const <String>{};
+      final tracked = grants.contains('field.tracked');
       var share = false;
-      if (tracked) {
+      if (tracked || grants.contains('field.record')) {
         final response = await _api.get('/field/me');
-        share =
-            response.ok &&
-            (response.body['data'] as Map?)?['should_track'] == true;
+        final data = response.ok
+            ? response.body['data'] as Map<String, dynamic>?
+            : null;
+        if (data != null) me.value = data;
+        share = tracked && data?['should_track'] == true;
+        // Leaving the job a recording was started at stops it.
+        final recordingAt = recorder.state.value.jobId;
+        if (data != null &&
+            recorder.active &&
+            recordingAt != null &&
+            (data['at_job'] as Map?)?['id'] != recordingAt) {
+          await recorder.stop('left_job');
+        }
       }
       share ? await _start() : await _stop();
     } finally {
@@ -262,6 +285,10 @@ class FieldTracker {
   }
 
   void dispose() {
+    // Signing out never leaves a microphone running.
+    if (recorder.active) unawaited(recorder.stop('done'));
+    recorder.dispose();
+    if (current == this) current = null;
     _session.removeListener(_sync);
     _poll.cancel();
     _flush?.cancel();
