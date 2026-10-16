@@ -42,16 +42,14 @@ final class ReviewsGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $reachable = ViewScope::forUser($user)->franchiseIds();
+            $view = ViewScope::forUser($user);
 
             $from = $period->startsOn->copy()->utc();
             $to   = $period->endsOn->copy()->utc();
 
             // An organization-wide listing has no franchise and still belongs
             // to whoever can see this box.
-            $inReach = fn ($query) => $query->where(
-                fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
-            );
+            $inReach = fn ($query) => $view->constrainPlaces($query);
 
             $total = (int) $inReach(Review::query())->count();
 

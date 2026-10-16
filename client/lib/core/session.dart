@@ -979,6 +979,7 @@ class TimeClockStatus {
     this.extensionMinutes = 30,
     this.today,
     this.afterHours = false,
+    this.needsLocation = false,
     this.todayLabel = '',
   });
 
@@ -1015,6 +1016,10 @@ class TimeClockStatus {
   /// buys one extension, instead of "start your day" at 5 PM (2026-09-24).
   final bool afterHours;
 
+  /// A clock-in zone applies to this person (A1 Tools takeover,
+  /// 2026-10-16): a hand punch must carry where the device is.
+  final bool needsLocation;
+
   /// "Wednesday, September 30": the server's today, in the org's language.
   final String todayLabel;
 
@@ -1048,6 +1053,7 @@ class TimeClockStatus {
           ? TimeClockWindow.fromJson(Map<String, dynamic>.from(todayRaw))
           : null,
       afterHours: map['after_hours'] == true,
+      needsLocation: map['needs_location'] == true,
       todayLabel: '${map['today_label'] ?? ''}',
     );
   }
@@ -1082,6 +1088,7 @@ class OrganizationSummary {
     required this.name,
     required this.franchiseLabel,
     required this.isReadOnly,
+    this.canView = true,
     this.address,
     this.addressLine1,
     this.addressLine2,
@@ -1097,6 +1104,12 @@ class OrganizationSummary {
   final String franchiseLabel;
   final bool isReadOnly;
 
+  /// Whether this person may stand in the organization view: only somebody
+  /// assigned at organization level (Jose, 2026-10-16: "access is only
+  /// downwards, not upwards"). The server refuses the view either way; an
+  /// older server that does not say is read as yes.
+  final bool canView;
+
   /// The business address a contract merges as organization.address.
   final String? address;
   final String? addressLine1;
@@ -1111,6 +1124,7 @@ class OrganizationSummary {
         name: json['name'] as String,
         franchiseLabel: json['franchise_label'] as String? ?? 'Franchise',
         isReadOnly: json['is_read_only'] as bool? ?? false,
+        canView: json['can_view'] as bool? ?? true,
         address: json['address'] as String?,
         addressLine1: json['address_line1'] as String?,
         addressLine2: json['address_line2'] as String?,

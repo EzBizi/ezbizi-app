@@ -119,7 +119,8 @@ class RolesApiTest extends TestCase
         $this->assertSame([], $watch['requires']);
     }
 
-    public function test_the_editor_does_not_offer_the_audit_log_it_has_no_screen_for(): void
+    /** Omitted until Settings › Activity read it (2026-10-16); now it opens that tab. */
+    public function test_the_editor_offers_the_audit_log_now_a_screen_reads_it(): void
     {
         $alpha = $this->provisionTenant('Alpha');
 
@@ -128,7 +129,7 @@ class RolesApiTest extends TestCase
             ->pluck('key');
 
         $this->assertContains('roles', $keys, 'control: a Settings module is still offered');
-        $this->assertNotContains('audit', $keys);
+        $this->assertContains('audit', $keys);
     }
 
     public function test_no_shipped_module_declares_a_requirement_by_accident(): void

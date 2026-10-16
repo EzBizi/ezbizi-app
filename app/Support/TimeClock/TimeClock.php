@@ -18,6 +18,7 @@ use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -102,6 +103,9 @@ final class TimeClock
             // So the lock screen stops saying "start your day" at 5 PM: after
             // the end, Clock In buys one extension, and it should say so.
             'after_hours' => $window !== null && now()->gte($window['end_at']),
+            // The client asks the device for a position only when this is true,
+            // so nobody outside a zone is ever prompted for location.
+            'needs_location' => $this->geofenceFor($user) !== null,
             // "Wednesday, September 30" for the lock screen: the day in the
             // schedule's zone, so it is the day `today` is about, in the
             // organization's language. The device's day can be another one.
@@ -125,7 +129,7 @@ final class TimeClock
      *
      * @return array{organization_enabled: bool, can_clock: bool, show_button: bool, open: null|array{id: string, clocked_in_at: string}}
      */
-    public function clockIn(User $user, ?AutomationEvent $causedBy = null): array
+    public function clockIn(User $user, ?AutomationEvent $causedBy = null, ?array $position = null): array
     {
         if (! $this->organizationEnabled($user->organization)) {
             throw ValidationException::withMessages([
@@ -135,6 +139,11 @@ final class TimeClock
 
         if (! $user->hasPermission('time_clock.view')) {
             abort(403, Refusal::permission('clock in')->message());
+        }
+
+        // A person's own punch only: a rule clocking somebody in has no device.
+        if ($causedBy === null) {
+            $this->assertInsideZone($user, $position, 'clock in');
         }
 
         try {
@@ -277,7 +286,14 @@ final class TimeClock
         User $user,
         ?AutomationEvent $causedBy = null,
         string $endedBy = TimeClockShift::ENDED_BY_PERSON,
+        ?array $position = null,
     ): array {
+        // Only a person clocking themselves out by hand: the end-of-day sweep,
+        // HR and automations never carry a device, and must always close.
+        if ($causedBy === null && $endedBy === TimeClockShift::ENDED_BY_PERSON) {
+            $this->assertInsideZone($user, $position, 'clock out');
+        }
+
         return DB::transaction(function () use ($user, $causedBy, $endedBy) {
             $open = TimeClockShift::query()
                 ->open()
@@ -871,14 +887,104 @@ final class TimeClock
         return (int) $this->settings->get('time_clock.max_hours', $user->organization);
     }
 
-    public function scheduleFor(User $user): ?array
+    /** Where somebody works: their first assignment's place, else the organization. */
+    private function placeOf(User $user): Model
     {
         $assignment = $user->assignments()->orderBy('created_at')->first();
-        $scope = match ($assignment?->scopeType()) {
+
+        return match ($assignment?->scopeType()) {
             Assignment::SCOPE_FRANCHISE => $assignment->assignedFranchise,
             Assignment::SCOPE_COMPANY => $assignment->assignedCompany,
             default => null,
         } ?? $user->organization;
+    }
+
+    /**
+     * The clock-in zone `$user` must be inside to punch by hand, or null when
+     * none applies: the zone is off or has no centre at their place, or their
+     * role may "Clock in from anywhere" (A1 Tools takeover, 2026-10-16).
+     *
+     * @return array{lat: float, lng: float, radius: int, place: string}|null
+     */
+    public function geofenceFor(User $user): ?array
+    {
+        // Phones only (Jose, 2026-10-16: "clock in zone should only affect
+        // mobile users"). Desktop and web have no reliable location, and the
+        // zone is for people out in the field. The platform header is the
+        // client's own word, so a modified desktop client skips the zone;
+        // that is the rule as given, not a lock.
+        if (! in_array(request()->header('X-EzBizi-Client-Platform'), ['android', 'ios'], true)) {
+            return null;
+        }
+        if ($user->hasPermission('time_clock.anywhere')) {
+            return null;
+        }
+        $place = $this->placeOf($user);
+        if (! $this->settings->get('time_clock.geofence_enabled', $place)) {
+            return null;
+        }
+        $center = (string) $this->settings->get('time_clock.geofence_center', $place);
+        if (! preg_match('/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/', $center, $m)
+            || abs((float) $m[1]) > 90 || abs((float) $m[2]) > 180) {
+            return null; // no usable centre: nothing to measure against
+        }
+
+        return [
+            'lat' => (float) $m[1],
+            'lng' => (float) $m[2],
+            'radius' => (int) $this->settings->get('time_clock.geofence_radius_m', $place),
+            'place' => (string) ($place->name ?? 'your place'),
+        ];
+    }
+
+    /**
+     * Refuse a hand punch from outside the zone. The phone's reported accuracy
+     * is taken off the distance, as A1 Tools did, so a fuzzy fix at the door
+     * is not turned away. Each refusal is audited with where it was.
+     *
+     * @param  array{latitude?: ?float, longitude?: ?float, accuracy?: ?float}|null  $position
+     */
+    private function assertInsideZone(User $user, ?array $position, string $verb): void
+    {
+        $zone = $this->geofenceFor($user);
+        if ($zone === null) {
+            return;
+        }
+
+        $lat = $position['latitude'] ?? null;
+        $lng = $position['longitude'] ?? null;
+        if ($lat === null || $lng === null) {
+            $this->audit->log('time_clock.geofence_blocked', $user, metadata: ['action' => $verb, 'reason' => 'location_required']);
+            throw ValidationException::withMessages([
+                'location' => "Your location is needed to {$verb} at {$zone['place']}. Turn on location for EzBizi and try again.",
+            ]);
+        }
+
+        $distance = self::metresBetween((float) $lat, (float) $lng, $zone['lat'], $zone['lng']);
+        if ($distance - max(0.0, (float) ($position['accuracy'] ?? 0)) > $zone['radius']) {
+            $this->audit->log('time_clock.geofence_blocked', $user, metadata: [
+                'action' => $verb, 'reason' => 'outside', 'distance_m' => (int) round($distance), 'radius_m' => $zone['radius'],
+            ]);
+            throw ValidationException::withMessages([
+                'location' => sprintf('You need to be at %s to %s. You are about %d m away (allowed %d m).', $zone['place'], $verb, round($distance), $zone['radius']),
+            ]);
+        }
+    }
+
+    /** Great-circle distance in metres (haversine). */
+    public static function metresBetween(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $r = 6371000.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return 2 * $r * asin(min(1.0, sqrt($a)));
+    }
+
+    public function scheduleFor(User $user): ?array
+    {
+        $scope = $this->placeOf($user);
 
         /*
          * ── The clock is the PLACE's, read now; never the stored one ──

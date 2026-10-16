@@ -34,8 +34,10 @@ use Throwable;
  */
 class LeadInsights
 {
-    public const BOOK    = 'BOOK';
+    public const BOOK = 'BOOK';
+
     public const SUPPORT = 'SUPPORT';
+
     public const ARCHIVE = 'ARCHIVE';
 
     public const CLASSIFICATIONS = [self::BOOK, self::SUPPORT, self::ARCHIVE];
@@ -89,7 +91,7 @@ class LeadInsights
      *
      * @return array{classification: string, summary: string, name: ?string, name_basis: string, zip: ?string, not_a_lead: bool, lost: bool, job_applicant: bool, booked: bool, reason: string, google_credit: ?string}|null
      *
-     * @throws \RuntimeException when Grok fails, so the caller retries later
+     * @throws RuntimeException when Grok fails, so the caller retries later
      */
     public function read(Lead $lead): ?array
     {
@@ -114,7 +116,8 @@ class LeadInsights
         $threads = array_map(fn (Lead $lead) => self::grok() ? $this->thread($lead) : '', $leads);
         $asked = array_filter($threads, fn ($t) => $t !== '');
         $answers = $asked === [] ? [] : array_combine(array_keys($asked),
-            GrokCli::askMany(array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA));
+            GrokCli::about(array_values(array_intersect_key($leads, $asked)), fn () => GrokCli::askMany(
+                array_values(array_map(fn ($t) => self::READ_PROMPT.$t, $asked)), self::READ_SCHEMA)));
 
         return array_map(fn ($i) => match (true) {
             ! isset($answers[$i]) => null,
@@ -123,38 +126,38 @@ class LeadInsights
         }, array_keys($leads));
     }
 
-    private const READ_PROMPT = "You read enquiries for a home-services business (chimneys, fireplaces, garage doors, "
+    private const READ_PROMPT = 'You read enquiries for a home-services business (chimneys, fireplaces, garage doors, '
         ."inspections). Calls are machine transcripts and start with the business's own phone "
         ."menu (\"Thank you for calling A1 Chimney, press 1...\"): ignore that. Answer:\n"
-        ."- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing "
-        ."customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, "
+        .'- classification: BOOK (wants work done, quoted or scheduled), SUPPORT (an existing '
+        .'customer about a booking, invoice, follow-up or complaint), ARCHIVE (spam, wrong number, '
         ."a vendor selling something, a hang-up, or nothing to act on).\n"
         ."- summary: what the person wants, one plain sentence, at most 140 characters.\n"
         ."- name: the CUSTOMER's own name, as they gave it (keep accents, hyphens, apostrophes; "
-        ."one name is fine), only from: the customer introducing themselves (\"My name is ...\", "
+        .'one name is fine), only from: the customer introducing themselves ("My name is ...", '
         ."\"This is ...\"), the customer's answer when asked their name, a \"Name:\" line they "
-        ."wrote, or the customer spelling or correcting it (use the spelled form). NEVER a "
-        ."dispatcher, technician, the phone menu, the business, a review author, or someone "
-        ."the customer mentions (\"my husband Mark\", \"ask for Andy\"); never made from an "
+        .'wrote, or the customer spelling or correcting it (use the spelled form). NEVER a '
+        .'dispatcher, technician, the phone menu, the business, a review author, or someone '
+        .'the customer mentions ("my husband Mark", "ask for Andy"); never made from an '
         ."email handle. Null if not given.\n"
-        ."- name_basis: how the name was given: self_introduction, answer_to_name_question, "
+        .'- name_basis: how the name was given: self_introduction, answer_to_name_question, '
         ."spelled_or_corrected, or none when name is null.\n"
         ."- zip: the 5-digit US ZIP code of the service address only if the customer says it; null otherwise.\n"
-        ."- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling "
-        ."something, a robocall, or a wrong number. A real person asking about any "
+        .'- not_a_lead: true ONLY when this is not a customer at all: spam, a vendor or marketer selling '
+        .'something, a robocall, or a wrong number. A real person asking about any '
         ."service, even one we may not offer, or who declined a price, is false.\n"
         ."- job_applicant: true when the person is asking for a job or work with us, not for a service.\n"
-        ."- lost: true when a real customer will not book: they declined the price or said no, or "
+        .'- lost: true when a real customer will not book: they declined the price or said no, or '
         ."want a service a chimney/fireplace/garage-door company does not do. False otherwise.\n"
-        ."- booked: true ONLY when the business and the customer agreed a specific day for the visit "
-        ."(\"Thursday between 9 and 12\") and the customer accepted it. A quote, a price, a callback, "
+        .'- booked: true ONLY when the business and the customer agreed a specific day for the visit '
+        .'("Thursday between 9 and 12") and the customer accepted it. A quote, a price, a callback, '
         ."or the customer saying they will check and call back is false.\n"
-        ."- reason: one short sentence on why booked, lost, not_a_lead or job_applicant is true, "
+        .'- reason: one short sentence on why booked, lost, not_a_lead or job_applicant is true, '
         ."quoting what was said; empty when all are false.\n"
-        ."- google_credit: whether Google should refund this lead: SPAM (a bot, a silent or dead call, "
-        ."a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks "
-        ."only for a service a chimney/fireplace/garage-door company does not do), or null. A real "
-        ."customer who simply did not book is null."
+        .'- google_credit: whether Google should refund this lead: SPAM (a bot, a silent or dead call, '
+        .'a robocall, a scam), SOLICITATION (someone selling to the business), JOB_TYPE_MISMATCH (asks '
+        .'only for a service a chimney/fireplace/garage-door company does not do), or null. A real '
+        .'customer who simply did not book is null.'
         ."\n\n";
 
     /** Google's own SurveyDissatisfiedReason values AI may suggest for a credit. */
@@ -260,7 +263,7 @@ class LeadInsights
 
         return [
             'classification' => $classification,
-            'summary'        => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
+            'summary' => mb_substr(trim((string) ($json['summary'] ?? '')), 0, 255),
         ];
     }
 
@@ -275,10 +278,10 @@ class LeadInsights
 
         if (! $this->bedrock()) {
             try {
-                $json = GrokCli::ask(
+                $json = GrokCli::about($lead, fn () => GrokCli::ask(
                     self::REPLY_BRIEF."\n\n".$thread,
                     ['type' => 'object', 'properties' => ['reply' => ['type' => 'string']], 'required' => ['reply'], 'additionalProperties' => false],
-                );
+                ));
             } catch (Throwable $e) {
                 Log::warning('Grok did not answer for a lead.', ['reason' => mb_substr($e->getMessage(), 0, 200)]);
 
@@ -348,9 +351,9 @@ class LeadInsights
     {
         try {
             $result = $this->client->converse([
-                'modelId'         => $this->model,
-                'system'          => [['text' => $system]],
-                'messages'        => [['role' => 'user', 'content' => [['text' => $user]]]],
+                'modelId' => $this->model,
+                'system' => [['text' => $system]],
+                'messages' => [['role' => 'user', 'content' => [['text' => $user]]]],
                 'inferenceConfig' => ['maxTokens' => 400, 'temperature' => 0.2],
             ]);
         } catch (Throwable $e) {
@@ -379,7 +382,7 @@ class LeadInsights
         $text = preg_replace('/^```(?:json)?\s*|\s*```$/', '', $text) ?? $text;
 
         $start = strpos($text, '{');
-        $end   = strrpos($text, '}');
+        $end = strrpos($text, '}');
 
         if ($start === false || $end === false || $end < $start) {
             return [];

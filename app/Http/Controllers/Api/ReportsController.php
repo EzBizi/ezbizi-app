@@ -99,13 +99,9 @@ class ReportsController extends Controller
         $view = ViewScope::forUser($request->user());
 
         $reports = SavedReport::query()
-            ->unless($view->isOrganization(), function ($query) use ($view) {
-                $companyIds = $view->companyIds();
-
-                if ($companyIds !== []) {
-                    $query->whereIn('company_id', $companyIds);
-                }
-            })
+            // Downwards only: a place view lists its company's reports, never a
+            // sibling's or the organization's (2026-10-16).
+            ->when($view->companyIdsInView() !== null, fn ($query) => $query->whereIn('company_id', $view->companyIdsInView()))
             ->orderBy('name')
             ->get();
 

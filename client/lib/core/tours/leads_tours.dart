@@ -616,7 +616,8 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'customer_experience/Reviews': Tour(
-    version: 1,
+    // 2: the A1Leads GBP takeover (UI queue 101).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-customer_experience-unanswered',
@@ -628,7 +629,22 @@ const Map<String, Tour> leadsTours = {
       TourStep(
         anchor: 'tour-customer_experience-rating',
         title: 'Rating',
-        body: 'One star rating at a time, or any.',
+        body: 'Negative (1–3★), positive, one star rating, or any.',
+      ),
+      TourStep(
+        anchor: 'reviews-matched',
+        since: 2,
+        title: 'Time, sort, location, match, status',
+        body:
+            'Narrow the list further: how recent, the order, which location, '
+            'whether the reviewer is matched to a customer, and where working '
+            'it has got to.',
+      ),
+      TourStep(
+        anchor: 'reviews-view',
+        since: 2,
+        title: 'Table or Board',
+        body: 'Table is one line a review; Board shows each review whole.',
       ),
       TourStep(
         anchor: 'tour-customer_experience-fetch',
@@ -646,9 +662,9 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-customer_experience-reviews',
         title: 'The reviews',
         body:
-            'Write a reply under a review, or Draft with AI. Save draft keeps '
-            'it private; Publish puts it on Google under your business name, '
-            'after asking once.',
+            'Click a review to open it beside the list: the reply, the matched '
+            'customer and their job, its status, notes, and Report to Google.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-reviews-empty',

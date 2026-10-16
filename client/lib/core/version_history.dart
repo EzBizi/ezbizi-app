@@ -14,11 +14,29 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0446',
+      date: '16 Oct 2026',
+      items: [
+        'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Manage.',
+        'Leads: the server now supports filtering leads by charge, phone line, dispatcher and date, correcting a lead’s name, ZIP, classification and dispatcher, re-reading a lead with the AI, and a call timeline. The screens follow.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0445',
+      date: '16 Oct 2026',
+      items: [
+        'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards.',
+        'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0444',
       date: '16 Oct 2026',
       items: [
         'Dashboard: the Email box shows its last unread count at once and refreshes it in the background, so the Dashboard no longer waits on every inbox. Coming back to the Dashboard shows it immediately while it refreshes.',
         'Leads: RingCentral calls to the existing-client line now appear too, tagged Existing client, or Missed call when nobody answered. A missed call that never reached a queue alerts again instead of being tagged Possible spam, and the AI no longer mistakes a call’s tag for the caller’s words.',
+        'Leads: RingCentral calls now appear within 2 to 5 minutes instead of 10 to 19.',
+        'Reports: A-1’s Airtable books are copied into EzBizi every hour, with a history of every change, for the coming weekly and monthly reports.',
         'Fixed: a crash when the end-of-shift reminder was open while switching screens.',
         'Inspection: inspection report links sent to customers from A1 Tools keep opening after A1 Tools is switched off, now served by EzBizi.',
         'Human Resources: the Recruiter agreement joins the onboarding contracts.',

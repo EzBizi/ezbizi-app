@@ -53,7 +53,7 @@ class ViewScope
     ) {}
 
     /**
-     * Resolve the user's stored scope, or fall back to the whole organization.
+     * Resolve the user's stored scope, or fall back to their highest view.
      *
      * Falls back silently on anything unusable — a franchise that has since been
      * deleted, a company the user can no longer reach, a value written by an
@@ -73,6 +73,13 @@ class ViewScope
             && $request->headers->has('X-EzBizi-View')) {
             $value = $request->header('X-EzBizi-View');
             if ($value === self::ORGANIZATION) {
+                // Access runs downwards only (Jose, 2026-10-16): somebody
+                // assigned to a company or a place does not see the
+                // organization above it.
+                if (! $user->canActOnOrganization($user->organization)) {
+                    throw new AuthorizationException('That view is not available. Choose a view again.');
+                }
+
                 return new self(self::ORGANIZATION, null, $user);
             }
             if (! is_string($value) || ! preg_match('/^(company|franchise):([^:]+)$/D', $value, $parts)) {
@@ -86,9 +93,9 @@ class ViewScope
                 throw new AuthorizationException('That view is not available. Choose a view again.');
             }
             // A company or place switched off while someone stood in it: back
-            // to the whole organization (Jose, 2026-10-15).
+            // to the highest view they reach (Jose, 2026-10-15 and 10-16).
             if (self::switchedOff($type, $id)) {
-                return new self(self::ORGANIZATION, null, $user);
+                return self::home($user);
             }
 
             return new self($type, $id, $user);
@@ -97,7 +104,7 @@ class ViewScope
         $stored = $user->preferences['navigation.scope'] ?? null;
 
         if (! is_string($stored) || ! str_contains($stored, ':')) {
-            return new self(self::ORGANIZATION, null, $user);
+            return self::home($user);
         }
 
         [$type, $id] = explode(':', $stored, 2);
@@ -110,6 +117,54 @@ class ViewScope
 
         return $valid && ! self::switchedOff($type, $id)
             ? new self($type, $id, $user)
+            : self::home($user);
+    }
+
+    /**
+     * The highest view this person reaches: the organization only for somebody
+     * assigned there, otherwise their topmost company that is on, otherwise
+     * their first place. Never upwards (Jose, 2026-10-16: "access is only
+     * downwards, not upwards").
+     *
+     * When everything they reach is switched off, they stay in it rather than
+     * rising. Somebody who reaches nothing at all gets the organization type,
+     * which every list intersects with their (empty) reach, so it shows nothing.
+     */
+    public static function home(User $user): self
+    {
+        if ($user->canActOnOrganization($user->organization)) {
+            return new self(self::ORGANIZATION, null, $user);
+        }
+
+        $companies = $user->reachableCompanies();
+        $reached = $companies->modelKeys();
+        $top = $companies
+            ->filter(fn (Company $c) => ! in_array($c->parent_company_id, $reached, true))
+            ->sortBy('name')
+            ->first(fn (Company $c) => ! self::switchedOff(self::COMPANY, $c->id));
+        if ($top !== null) {
+            return new self(self::COMPANY, $top->id, $user);
+        }
+
+        $places = $user->reachableFranchises()->sortBy('name');
+        $place = $places->first(fn (Franchise $f) => ! self::switchedOff(self::FRANCHISE, $f->id));
+        if ($place !== null) {
+            return new self(self::FRANCHISE, $place->id, $user);
+        }
+
+        // Everything they reach is switched off: still their own company or
+        // place, never the organization above it.
+        $top = $companies
+            ->filter(fn (Company $c) => ! in_array($c->parent_company_id, $reached, true))
+            ->sortBy('name')
+            ->first();
+        if ($top !== null) {
+            return new self(self::COMPANY, $top->id, $user);
+        }
+        $place = $places->first();
+
+        return $place !== null
+            ? new self(self::FRANCHISE, $place->id, $user)
             : new self(self::ORGANIZATION, null, $user);
     }
 
@@ -240,6 +295,46 @@ class ViewScope
         $company = Company::find($this->id);
 
         return $company?->subtreeCompanyIds() ?? [];
+    }
+
+    /**
+     * The companies whose company-level rows this view shows, or null for no
+     * limit (the organization view, which only somebody assigned there gets).
+     * A place view shows its own company's; nothing shows a company above or
+     * beside the view (2026-10-16: "access is only downwards").
+     *
+     * @return string[]|null
+     */
+    public function companyIdsInView(): ?array
+    {
+        return match ($this->type) {
+            self::ORGANIZATION => null,
+            self::COMPANY => $this->companyIds(),
+            default => array_values(array_filter([Franchise::find($this->id)?->company_id])),
+        };
+    }
+
+    /**
+     * Narrow a query of rows filed by `company_id` / `franchise_id` to this
+     * view: a place in it, or company-level in a company in it. A row filed at
+     * organization level (both null, e.g. from an organization-wide
+     * connection) shows in every view, as the Leads list and
+     * SocialConnectionAccess already do; a sibling company's never does.
+     */
+    public function constrainPlaces(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        $places = $this->franchiseIds();
+        $companies = $this->companyIdsInView();
+
+        return $query->where(function ($q) use ($places, $companies) {
+            $q->whereIn('franchise_id', $places)
+                ->orWhere(function ($q) use ($companies) {
+                    $q->whereNull('franchise_id');
+                    if ($companies !== null) {
+                        $q->where(fn ($c) => $c->whereNull('company_id')->orWhereIn('company_id', $companies));
+                    }
+                });
+        });
     }
 
     /**

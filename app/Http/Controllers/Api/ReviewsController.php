@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\BusinessLocation;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Review;
+use App\Models\ReviewNote;
 use App\Models\ReviewReply;
 use App\Models\SocialConnection;
 use App\Services\Reviews\BusinessProfileReviews;
@@ -13,7 +17,9 @@ use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -51,9 +57,8 @@ class ReviewsController extends Controller
         $user = $request->user();
 
         $query = Review::query()
-            ->with(['reply', 'company:id,name', 'franchise:id,name'])
-            ->orderByDesc('reviewed_at')
-            ->orderByDesc('created_at');
+            ->with(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])
+            ->withCount('notes');
 
         if (! $user->canActOnOrganization($user->organization)) {
             $companyIds   = $user->reachableCompanies()->pluck('id')->all();
@@ -79,9 +84,51 @@ class ReviewsController extends Controller
             $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
         }
 
-        if (is_numeric($rating = $request->query('rating'))) {
+        $rating = $request->query('rating');
+        if (is_numeric($rating)) {
             $query->where('rating', (int) $rating);
+        } elseif ($rating === 'positive') {
+            $query->where('rating', '>=', 4);
+        } elseif ($rating === 'negative') {
+            $query->where('rating', '<=', 3);
         }
+
+        $replied = $request->query('replied');
+        if ($replied === 'yes') {
+            $query->whereHas('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+        } elseif ($replied === 'no') {
+            $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
+        }
+
+        if (is_string($from = $request->query('from')) && strtotime($from) !== false) {
+            $query->where('reviewed_at', '>=', Carbon::parse($from)->startOfDay());
+        }
+
+        // A location is its `locations/<id>`: the account part differs by grant.
+        if (is_string($location = $request->query('location')) && $location !== '') {
+            $query->where('location_name', 'like', '%/'.addcslashes($location, '%_'));
+        }
+
+        match ($request->query('matched')) {
+            'yes'   => $query->whereNotNull('customer_id'),
+            'no'    => $query->whereNull('customer_id'),
+            default => null,
+        };
+
+        if (in_array($status = $request->query('status'), Review::STATUSES, true)) {
+            $query->where('status', $status);
+        }
+
+        $locations = $this->locations(clone $query);
+
+        // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.
+        match ($request->query('sort')) {
+            'oldest'  => $query->orderBy('reviewed_at'),
+            'highest' => $query->orderByDesc('rating')->orderByDesc('reviewed_at'),
+            'lowest'  => $query->orderBy('rating')->orderByDesc('reviewed_at'),
+            default   => $query->orderByDesc('reviewed_at'),
+        };
+        $query->orderByDesc('created_at');
 
         $reviews = $query->paginate(min((int) $request->query('per_page', 50), 200));
 
@@ -90,6 +137,7 @@ class ReviewsController extends Controller
             'meta' => [
                 ...$this->pageMeta($reviews),
                 'unanswered'   => $this->unansweredCount($user),
+                'locations'    => $locations,
                 'connections'  => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
             ],
         ]);
@@ -101,8 +149,110 @@ class ReviewsController extends Controller
         $this->authorize('view', $review);
 
         return response()->json([
-            'data' => $this->present($review->load(['reply', 'company:id,name', 'franchise:id,name'])),
+            'data' => [
+                ...$this->present($review->load(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])->loadCount('notes')),
+                'notes' => $review->notes()->with('user:id,name')->get()->map(fn (ReviewNote $n) => [
+                    'id' => $n->id, 'at' => $n->created_at?->toIso8601String(), 'by' => $n->user?->name, 'text' => $n->body,
+                ])->all(),
+            ],
         ]);
+    }
+
+    /** PATCH /api/v1/reviews/{review} {status} - where working it has got to. */
+    public function update(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $input = $request->validate(['status' => ['present', 'nullable', Rule::in(Review::STATUSES)]]);
+        $review->forceFill(['status' => $input['status']])->save();
+
+        return $this->show($review);
+    }
+
+    /** POST /api/v1/reviews/{review}/notes {text} */
+    public function addNote(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $input = $request->validate(['text' => ['required', 'string', 'max:4000']]);
+        $review->notes()->create(['organization_id' => $review->organization_id,
+            'user_id' => $request->user()->getKey(), 'body' => trim($input['text']), 'created_at' => now()]);
+
+        return $this->show($review);
+    }
+
+    /**
+     * GET /api/v1/reviews/{review}/customer-suggestions?q= - customers whose
+     * name has every word of the reviewer's name (or q). A suggestion, never a
+     * match: a person picks.
+     */
+    public function customerSuggestions(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $q = trim((string) ($request->query('q') ?? $review->reviewer_name ?? ''));
+        $words = array_slice(array_filter(preg_split('/\s+/', $q) ?: []), 0, 3);
+        if ($words === []) {
+            return response()->json(['data' => []]);
+        }
+
+        $query = Customer::query();
+        foreach ($words as $word) {
+            $query->where('name', 'like', '%'.addcslashes($word, '%_').'%');
+        }
+
+        return response()->json(['data' => $query->orderBy('name')->limit(10)->get(['id', 'name', 'phone', 'email'])
+            ->map(fn (Customer $c) => $c->only(['id', 'name', 'phone', 'email']))->all()]);
+    }
+
+    /** PUT /api/v1/reviews/{review}/customer {customer_id|null} - a person's match; the job follows. */
+    public function setCustomer(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $input = $request->validate(['customer_id' => ['present', 'nullable', 'uuid']]);
+        $customer = $input['customer_id'] === null ? null : Customer::query()->find($input['customer_id']);
+        if ($input['customer_id'] !== null && $customer === null) {
+            return response()->json(['message' => 'That customer could not be found.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $review->forceFill([
+            'customer_id' => $customer?->getKey(),
+            'customer_match' => $customer === null ? null : 'manual',
+            'job_id' => $customer === null ? null : self::jobFor($customer, $review),
+        ])->save();
+
+        return $this->show($review);
+    }
+
+    /** The customer's job last scheduled before the review, else their latest. */
+    public static function jobFor(Customer $customer, Review $review): ?string
+    {
+        $jobs = Job::query()->where('customer_id', $customer->getKey())->orderByDesc('scheduled_for');
+
+        return (clone $jobs)->when($review->reviewed_at, fn ($q, $at) => $q->where('scheduled_for', '<=', $at))->value('id')
+            ?? $jobs->value('id');
+    }
+
+    /**
+     * POST /api/v1/reviews/{review}/report {reason}. The Business Profile API
+     * cannot flag a review (v4 reviews has list, get, updateReply and
+     * deleteReply only - checked 2026-10-16), so this records that it was
+     * reported and why; the report itself is made on Google's own page.
+     */
+    public function report(Request $request, Review $review): JsonResponse
+    {
+        $this->authorize('manage', $review);
+        $input = $request->validate(['reason' => ['required', 'string', 'max:1000']]);
+        $review->forceFill(['reported_at' => now(), 'report_reason' => trim($input['reason'])])->save();
+
+        return $this->show($review);
+    }
+
+    /** @return list<array{id: string, name: string}> each `locations/<id>` in the list, named. */
+    private function locations($query): array
+    {
+        $tail = fn ($n) => preg_match('~(locations/[^/]+)$~', (string) $n, $m) ? $m[1] : null;
+        $keys = $query->reorder()->distinct()->pluck('location_name')->map($tail)->filter()->unique()->values();
+        $titles = BusinessLocation::query()->get(['remote_name', 'title'])
+            ->mapWithKeys(fn ($l) => [(string) $tail($l->remote_name) => $l->title]);
+
+        return $keys->map(fn ($k) => ['id' => $k, 'name' => $titles[$k] ?? $k])->sortBy('name')->values()->all();
     }
 
     /**
@@ -421,6 +571,20 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             'was_edited'    => $review->wasEdited(),
             'company'       => $review->company?->only(['id', 'name']),
             'franchise'     => $review->franchise?->only(['id', 'name']),
+            'location'      => preg_match('~(locations/[^/]+)$~', (string) $review->location_name, $m) ? $m[1] : null,
+            'status'        => $review->status,
+            'note_count'    => (int) ($review->notes_count ?? 0),
+            'customer'      => $review->customer?->only(['id', 'name', 'phone', 'email']),
+            'match'         => $review->customer_match,
+            'job'           => $review->job === null ? null : [
+                'id'         => $review->job->id,
+                'number'     => $review->job->number,
+                'starts_at'  => $review->job->scheduled_for?->toIso8601String(),
+                'tech'       => $review->job->performedBy?->name,
+                'workiz_url' => null,
+            ],
+            'reported_at'   => $review->reported_at?->toIso8601String(),
+            'report_reason' => $review->report_reason,
             'reply'         => $reply === null ? null : [
                 'id'             => $reply->id,
                 'body'           => $reply->body,

@@ -76,14 +76,16 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
   List<_Entry> get _entries {
     final me = widget.session.me!;
     final out = <_Entry>[
-      _Entry(
-        value: 'organization',
-        label: me.organization.name,
-        icon: Icons.hub_outlined,
-        depth: 0,
-        path: me.organization.name,
-        logoPath: '/branding/organization',
-      ),
+      // Only for somebody assigned at organization level (2026-10-16).
+      if (me.organization.canView)
+        _Entry(
+          value: 'organization',
+          label: me.organization.name,
+          icon: Icons.hub_outlined,
+          depth: 0,
+          path: me.organization.name,
+          logoPath: '/branding/organization',
+        ),
     ];
 
     // Switched-off companies and places are not offered (Jose, 2026-10-15).

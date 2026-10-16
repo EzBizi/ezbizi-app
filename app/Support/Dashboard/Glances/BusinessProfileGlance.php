@@ -33,10 +33,10 @@ final class BusinessProfileGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user) {
-            $reachable = ViewScope::forUser($user)->franchiseIds();
+            $view = ViewScope::forUser($user);
 
             $locations = BusinessLocation::query()
-                ->where(fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable))
+                ->tap(fn ($q) => $view->constrainPlaces($q))
                 ->get(['id', 'verification_state', 'is_published']);
 
             if ($locations->isEmpty()) {

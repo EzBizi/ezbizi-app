@@ -72,4 +72,15 @@ class ReviewPolicy
         // not.
         return $this->update($user, $review);
     }
+
+    /** Working a review as a case: status, notes, its customer, reporting it. */
+    public function manage(User $user, Review $review): Response
+    {
+        if (! $user->hasPermission($this->permission('manage'))) {
+            return Refusal::permission('work on a review');
+        }
+
+        // Reach as a write, without also needing `edit`.
+        return $this->within($user, $review, 'work on a review', write: true);
+    }
 }

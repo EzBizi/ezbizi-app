@@ -24,6 +24,8 @@ use RuntimeException;
  */
 class ScoreReportCalls extends Command
 {
+    // Reports' ScoringWeights::DEFAULTS weighs these by key: a new or renamed
+    // check reads 0 in every saved weighting until someone sets it - tell Reports.
     public const CHECKS = ['greeted', 'got_name', 'got_address', 'found_need', 'offered_time', 'gave_price', 'asked_for_booking'];
 
     protected $signature = 'ezbizi:score-report-calls {--limit=8} {--days=7}';

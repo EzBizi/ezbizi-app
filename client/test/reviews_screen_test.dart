@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 /// blames the business for having no reviews when nothing is connected, and a
 /// published reply that looks editable.
 void main() {
+  _queue101();
   testWidgets('with nothing connected the empty state blames the connection, '
       'not the business', (tester) async {
     await _pump(tester, reviews: const [], connections: const []);
@@ -58,12 +59,14 @@ void main() {
     expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
   });
 
-  testWidgets('Publish is not offered until something is drafted',
-      (tester) async {
+  testWidgets('Publish is not offered until something is drafted', (
+    tester,
+  ) async {
     await _pump(
       tester,
       reviews: [_review(reply: null)],
       connections: _connected,
+      open: true,
     );
 
     await tester.tap(find.text('Write a reply'));
@@ -83,12 +86,14 @@ void main() {
   });
 
   /// Jose, 2026-10-12, AI item 11: AI drafts, a person edits and publishes.
-  testWidgets('Draft with AI fills the box, marked as AI until edited',
-      (tester) async {
+  testWidgets('Draft with AI fills the box, marked as AI until edited', (
+    tester,
+  ) async {
     await _pump(
       tester,
       reviews: [_review(reply: null)],
       connections: _connected,
+      open: true,
     );
     await tester.tap(find.text('Write a reply'));
     await tester.pumpAndSettle();
@@ -103,23 +108,27 @@ void main() {
     expect(find.text('Draft by AI'), findsNothing);
   });
 
-  testWidgets('a published reply is shown as published and offers no editor',
-      (tester) async {
+  testWidgets('a published reply is shown as published and offers no editor', (
+    tester,
+  ) async {
     await _pump(
       tester,
       reviews: [
-        _review(reply: {
-          'id': 'r1',
-          'body': 'Sorry about that — we have spoken to the crew.',
-          'status': 'published',
-          'drafted_by': 'person',
-          'published_at': '2026-08-26T10:00:00Z',
-          'failure_reason': null,
-          'editable': false,
-        }),
+        _review(
+          reply: {
+            'id': 'r1',
+            'body': 'Sorry about that — we have spoken to the crew.',
+            'status': 'published',
+            'drafted_by': 'person',
+            'published_at': '2026-08-26T10:00:00Z',
+            'failure_reason': null,
+            'editable': false,
+          },
+        ),
       ],
       connections: _connected,
       onlyUnanswered: false,
+      open: true,
     );
 
     expect(find.text('Your published reply'), findsOneWidget);
@@ -127,16 +136,79 @@ void main() {
     expect(find.text('Edit draft'), findsNothing);
   });
 
-  testWidgets('a review Google sent no rating for does not show as nought stars',
-      (tester) async {
+  testWidgets(
+    'a review Google sent no rating for does not show as nought stars',
+    (tester) async {
+      await _pump(
+        tester,
+        reviews: [_review(rating: null)],
+        connections: _connected,
+      );
+
+      expect(find.text('no rating'), findsOneWidget);
+      expect(find.byIcon(Icons.star), findsNothing);
+    },
+  );
+}
+
+// UI queue 101 (Jose, 2026-10-16): "table should be the default though not
+// board", and a review is worked as a case in its panel.
+void _queue101() {
+  testWidgets('the table is the default, and a review opens in its panel', (
+    tester,
+  ) async {
     await _pump(
       tester,
-      reviews: [_review(rating: null)],
+      reviews: [_review(reply: null)],
       connections: _connected,
     );
 
-    expect(find.text('no rating'), findsOneWidget);
-    expect(find.byIcon(Icons.star), findsNothing);
+    expect(find.text('REVIEW'), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-panel')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('review-panel')), findsOneWidget);
+    expect(find.text('Unverified · no customer match'), findsWidgets);
+  });
+
+  testWidgets('with reviews.manage a note is added to the review', (
+    tester,
+  ) async {
+    final calls = <String>[];
+    await _pump(
+      tester,
+      reviews: [_review(reply: null)],
+      connections: _connected,
+      permissions: const ['reviews.manage'],
+      calls: calls,
+      open: true,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('review-note')),
+      'Called the customer back.',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('review-note-add')));
+    await tester.pumpAndSettle();
+
+    expect(calls, contains(endsWith('POST /api/v1/reviews/rev-1/notes')));
+  });
+
+  testWidgets('without reviews.manage there is nothing to change', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      reviews: [_review(reply: null)],
+      connections: _connected,
+      open: true,
+    );
+
+    expect(find.byKey(const ValueKey('review-note')), findsNothing);
+    expect(find.byKey(const ValueKey('review-report')), findsNothing);
+    expect(find.byKey(const ValueKey('review-change-match')), findsNothing);
   });
 }
 
@@ -148,10 +220,7 @@ const _connected = [
   },
 ];
 
-Map<String, dynamic> _review({
-  Map<String, dynamic>? reply,
-  int? rating = 2,
-}) =>
+Map<String, dynamic> _review({Map<String, dynamic>? reply, int? rating = 2}) =>
     {
       'id': 'rev-1',
       'reviewer_name': 'Dana Whitfield',
@@ -171,6 +240,9 @@ Future<void> _pump(
   required List<Map<String, dynamic>> reviews,
   required List<Map<String, dynamic>> connections,
   bool onlyUnanswered = true,
+  bool open = false,
+  List<String> permissions = const [],
+  List<String>? calls,
   Size size = const Size(1200, 1000),
 }) async {
   tester.view.physicalSize = size;
@@ -179,6 +251,32 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      calls?.add('${request.method} ${request.url.path}');
+      if (request.url.path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'id': 'u-1',
+              'name': 'Dana',
+              'email': 'dana@brightside.example',
+              'permissions': permissions,
+              'modules': <dynamic>[],
+              'organization': {
+                'id': 'org-1',
+                'name': 'Brightside Home Services',
+              },
+              'scope': {
+                'type': 'organization',
+                'id': null,
+                'label': 'Brightside Home Services',
+                'path': ['Brightside Home Services'],
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       if (request.url.path.endsWith('/reviews')) {
         return http.Response(
           jsonEncode({
@@ -207,21 +305,35 @@ Future<void> _pump(
         );
       }
 
-      return http.Response('{}', 200,
-          headers: {'content-type': 'application/json'});
+      return http.Response(
+        '{}',
+        200,
+        headers: {'content-type': 'application/json'},
+      );
     }),
   );
+
+  final session = Session(api);
+  if (permissions.isNotEmpty) {
+    await tester.runAsync(() => session.adopt('tok'));
+  }
 
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: ReviewsScreen(api: api, session: Session(api))),
+      home: Scaffold(
+        body: ReviewsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();
 
   if (!onlyUnanswered) {
     await tester.tap(find.textContaining('Unanswered'));
+    await tester.pumpAndSettle();
+  }
+  if (open) {
+    await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
     await tester.pumpAndSettle();
   }
 }

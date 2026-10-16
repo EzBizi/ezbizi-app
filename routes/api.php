@@ -923,6 +923,12 @@ Route::prefix('v1')
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
+        // Working a review as a case (UI queue 101, 2026-10-16): reviews.manage.
+        Route::patch('reviews/{review}', [ReviewsController::class, 'update']);
+        Route::post('reviews/{review}/notes', [ReviewsController::class, 'addNote']);
+        Route::get('reviews/{review}/customer-suggestions', [ReviewsController::class, 'customerSuggestions']);
+        Route::put('reviews/{review}/customer', [ReviewsController::class, 'setCustomer']);
+        Route::post('reviews/{review}/report', [ReviewsController::class, 'report']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
         Route::post('reviews/{review}/reply/suggest', [ReviewsController::class, 'suggestReply']);
@@ -2894,6 +2900,8 @@ Route::prefix('v1')
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
 
         // API keys and the MCP endpoint: an AI acting as this person (EnforceApiKeyAccess).
+        Route::get('audit-events', [\App\Http\Controllers\Api\AuditEventsController::class, 'index'])
+            ->middleware('permission:audit.view');
         Route::get('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'index']);
         Route::post('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'store']);
         Route::delete('me/api-keys/{id}', [\App\Http\Controllers\Api\ApiKeysController::class, 'destroy'])->whereNumber('id');
@@ -3157,6 +3165,9 @@ Route::prefix('v1')
                         'postal_code' => $user->organization->postal_code,
                         'franchise_label' => $user->organization->franchise_label,
                         'is_read_only' => $user->organization->isReadOnly(),
+                        // Whether the organization view is offered: only to
+                        // somebody assigned at organization level (2026-10-16).
+                        'can_view' => $user->canActOnOrganization($user->organization),
                     ],
                     // Reach, so the client knows which franchises to offer —
                     // rather than showing all and failing on save (§4).

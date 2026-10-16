@@ -116,8 +116,22 @@ class TimeClockController extends Controller
     public function clockIn(Request $request): JsonResponse
     {
         return response()->json([
-            'data' => ['time_clock' => $this->timeClock->clockIn($request->user())],
+            'data' => ['time_clock' => $this->timeClock->clockIn($request->user(), position: $this->position($request))],
         ]);
+    }
+
+    /** The device's fix, when the client sent one (only where a clock-in zone applies). */
+    private function position(Request $request): ?array
+    {
+        $data = $request->validate([
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'accuracy' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        return isset($data['latitude'], $data['longitude'])
+            ? ['latitude' => (float) $data['latitude'], 'longitude' => (float) $data['longitude'], 'accuracy' => isset($data['accuracy']) ? (float) $data['accuracy'] : null]
+            : null;
     }
 
     /** The `/me` block on its own, for the 60-second poll (design 2026-09-08 §3.12). */
@@ -138,7 +152,7 @@ class TimeClockController extends Controller
     public function clockOut(Request $request): JsonResponse
     {
         return response()->json([
-            'data' => ['time_clock' => $this->timeClock->clockOut($request->user())],
+            'data' => ['time_clock' => $this->timeClock->clockOut($request->user(), position: $this->position($request))],
         ]);
     }
 

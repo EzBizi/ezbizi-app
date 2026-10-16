@@ -347,10 +347,10 @@ class ModuleServiceProvider extends ServiceProvider
                 // or delete action exists to grant, so tampering isn't a permission
                 // question — there is simply no code path.
                 automationExemptBecause: 'The audit log is append-only; nothing may act on it programmatically.',
-                // Omitted from the roles editor (2026-09-29): there is no audit
-                // screen or route yet, so `audit.view` would be a tick that opens
-                // nothing. Back to ROLES_SETTINGS when a screen reads it.
-                rolesGroup: ModuleDefinition::ROLES_OMIT,
+                // Read by Settings › Activity (2026-10-16), so it is a tick that
+                // opens something again.
+                rolesGroup: ModuleDefinition::ROLES_SETTINGS,
+                sidebar: false,
             ),
 
             new ModuleDefinition(
@@ -870,7 +870,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // module, since the fleet-wide one is blind to it. Not renamed
                 // to `punch`: time_clock.view is a live permission key in
                 // every role that holds it.
-                actions: ['view', 'lock_screen'],
+                // `anywhere` (2026-10-16): clock in and out away from the
+                // place's clock-in zone. A capability, not a restriction, so
+                // Administrator holding every permission means exempt.
+                actions: ['view', 'lock_screen', 'anywhere'],
+                actionLabels: ['anywhere' => 'Clock in from anywhere'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(
@@ -3000,7 +3004,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // for when we get OUR GBP Credentials."* A1Leads GBP is a bridge
                 // to somebody else's system; this is EzBizi's own module.
                 parent: 'customer_experience',
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
+                // `manage`: working a review as a case - status, notes, the
+                // customer it is about, reporting it (UI queue 101, 2026-10-16).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish', 'manage'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
