@@ -93,6 +93,7 @@ void main() {
     VoidCallback? onClose,
     Map<String, Object?>? reviewed,
     List<CompanySummary> companies = const [],
+    List<Map<String, Object?>> locations = const [],
   }) async {
     final posted = <String, Map<String, dynamic>>{};
     http.Response json(Object body, [int status = 200]) => http.Response(
@@ -109,6 +110,7 @@ void main() {
 
       return switch (path) {
         '/web/sites' => json({'data': sites}),
+        '/business-profile/locations' => json({'data': locations}),
         '/web/hours/review' => json({'data': reviewed ?? review}),
         '/web/hours/apply' =>
           apply?.call() ??
@@ -168,6 +170,30 @@ void main() {
     of: find.byKey(Key('hours-bulk-act-$day')),
     matching: find.text(label),
   );
+
+  // UI queue 104 (design 1): Business Profile listings beside the websites.
+  testWidgets('a ticked listing is reviewed with the websites', (tester) async {
+    final posted = await pump(
+      tester,
+      locations: const [
+        {
+          'id': 'loc-1',
+          'title': 'Brightside Home – Springfield',
+          'address': '14 Elm St, Springfield',
+          'company': {'id': 'co-1', 'name': 'Brightside Home'},
+        },
+      ],
+    );
+
+    expect(find.text('BUSINESS PROFILE'), findsOneWidget);
+    await tap(tester, find.byKey(const ValueKey('hours-bulk-listing-loc-1')));
+    await tap(tester, segment(5, 'Closed all day'));
+    await tap(tester, find.byKey(const Key('hours-bulk-review')));
+
+    final body = posted['/web/hours/review']!;
+    expect(body['location_ids'], ['loc-1']);
+    expect(body['destinations'], ['website', 'google_business_profile']);
+  });
 
   testWidgets('only the days asked for are sent, each as an action', (
     tester,

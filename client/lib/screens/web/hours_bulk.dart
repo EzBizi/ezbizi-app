@@ -101,6 +101,11 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
   List<Map<String, dynamic>> _sites = const [];
   final Set<String> _picked = {};
 
+  /// Business Profile listings (UI queue 104, design 1): picked beside the
+  /// websites, per company, and reviewed and applied with them.
+  List<Map<String, dynamic>> _locations = const [];
+  final Set<String> _pickedLocations = {};
+
   /// What the website list is narrowed to. A-1 Chimney runs about a hundred
   /// sites under several brands; typing "roofirst" and Select all is how one
   /// brand is picked without a hundred clicks.
@@ -124,8 +129,15 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
   }
 
   Future<void> _load() async {
+    final locations = widget.api.get('/business-profile/locations');
     final response = await widget.api.get('/web/sites');
+    final listed = await locations;
     if (!mounted) return;
+    if (listed.ok && listed.body['data'] is List) {
+      _locations = (listed.body['data'] as List)
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    }
 
     setState(() {
       _loading = false;
@@ -158,7 +170,11 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
 
   Map<String, dynamic> get _body => {
     'site_ids': _picked.toList(),
-    'destinations': ['website'],
+    'location_ids': _pickedLocations.toList(),
+    'destinations': [
+      if (_picked.isNotEmpty) 'website',
+      if (_pickedLocations.isNotEmpty) 'google_business_profile',
+    ],
     'source_timezone': _zone,
     'not_before': _notBefore == null ? null : _hhmm(_notBefore!),
     'schedule': {
@@ -237,6 +253,12 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
   }
 
   int get _willChange => _places.where((p) => p['status'] == 'change').length;
+
+  /// A website by its host; a listing by its title, marked as Google's.
+  static String _placeName(Map<String, dynamic> place) =>
+      place['destination'] == 'google_business_profile'
+      ? 'Google · ${place['name'] ?? ''}'
+      : '${place['host'] ?? place['name'] ?? ''}';
 
   @override
   Widget build(BuildContext context) {
@@ -318,9 +340,9 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         ),
       ];
     } else {
-      final sites = _picked.length;
+      final sites = _picked.length + _pickedLocations.length;
       note =
-          '${sites == 1 ? '1 website' : '$sites websites'} · '
+          '${sites == 1 ? '1 place' : '$sites places'} · '
           '${_daysAsked == 1 ? '1 day' : '$_daysAsked days'}';
       actions = [
         if (!narrow)
@@ -418,16 +440,27 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 16)],
         NumberedStep(
           number: 1,
-          title: 'Which websites',
-          note:
-              'Each keeps its own time zone. Google Business Profile is not '
-              'switched on yet.',
-          child: _sites.isEmpty
-              ? Text(
-                  'This company has no websites yet. Add one under SEO first.',
-                  style: theme.textTheme.bodyMedium,
-                )
-              : _websites(context),
+          title: 'Which places',
+          note: 'Websites and Business Profile listings. Each keeps its own time zone.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('WEBSITES', style: _groupLabel(theme)),
+              const SizedBox(height: 6),
+              _sites.isEmpty
+                  ? Text(
+                      'This company has no websites yet. Add one under SEO first.',
+                      style: theme.textTheme.bodyMedium,
+                    )
+                  : _websites(context),
+              if (_locations.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text('BUSINESS PROFILE', style: _groupLabel(theme)),
+                const SizedBox(height: 6),
+                _listings(context),
+              ],
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         NumberedStep(
@@ -454,6 +487,88 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
           note: 'Both optional.',
           child: _options(context),
         ),
+      ],
+    );
+  }
+
+  TextStyle? _groupLabel(ThemeData theme) => theme.textTheme.labelSmall?.copyWith(
+    color: theme.colorScheme.onSurfaceVariant,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 0.6,
+  );
+
+  /// Business Profile listings under each company's name, found by the same
+  /// box as the websites, with Select all.
+  Widget _listings(BuildContext context) {
+    final theme = Theme.of(context);
+    final needle = _find.trim().toLowerCase();
+    final shown = [
+      for (final l in _locations)
+        if ('${l['title'] ?? ''} ${l['address'] ?? ''}'.toLowerCase().contains(
+          needle,
+        ))
+          l,
+    ];
+    final ids = {for (final l in shown) '${l['id']}'};
+    final byCompany = <String, List<Map<String, dynamic>>>{};
+    for (final l in shown) {
+      byCompany
+          .putIfAbsent('${(l['company'] as Map?)?['name'] ?? ''}', () => [])
+          .add(l);
+    }
+
+    return Column(
+      key: const Key('hours-bulk-listings'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${_pickedLocations.length} of ${_locations.length} selected',
+              style: theme.textTheme.bodySmall,
+            ),
+            TextButton(
+              key: const Key('hours-bulk-listings-all'),
+              onPressed: ids.isEmpty || _pickedLocations.containsAll(ids)
+                  ? null
+                  : () => setState(() => _pickedLocations.addAll(ids)),
+              child: const Text('Select all'),
+            ),
+            TextButton(
+              onPressed: _pickedLocations.isEmpty
+                  ? null
+                  : () => setState(_pickedLocations.clear),
+              child: const Text('Clear'),
+            ),
+          ],
+        ),
+        for (final entry in byCompany.entries) ...[
+          if (byCompany.length > 1 && entry.key.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Text(entry.key, style: theme.textTheme.titleSmall),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final l in entry.value)
+                FilterChip(
+                  key: ValueKey('hours-bulk-listing-${l['id']}'),
+                  label: Text('${l['title'] ?? ''}'),
+                  tooltip: l['address'] as String?,
+                  selected: _pickedLocations.contains('${l['id']}'),
+                  onSelected: (on) => setState(
+                    () => on
+                        ? _pickedLocations.add('${l['id']}')
+                        : _pickedLocations.remove('${l['id']}'),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -950,7 +1065,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
 
   /// "la.everdoors.com · 5", or "· blocked", as drawn.
   String _tabLabel(Map<String, dynamic> place) {
-    final host = place['host'] as String? ?? '';
+    final host = _placeName(place);
     if (place['status'] == 'blocked') return '$host · blocked';
     final days = ((place['days'] as List?) ?? const [])
         .whereType<Map>()
@@ -997,7 +1112,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      place['host'] as String? ?? '',
+                      _placeName(place),
                       style: theme.textTheme.titleSmall,
                     ),
                     Text(
@@ -1314,7 +1429,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
           ),
         for (final p in untouched)
           line(
-            p['host'] as String? ?? '',
+            _placeName(p),
             _reviewPill(p['status'] as String?),
             ((p['reasons'] as List?) ?? const []).firstOrNull?.toString(),
           ),
