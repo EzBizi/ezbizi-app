@@ -2580,7 +2580,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // asking Grok again, and saying who handled a call, are grants of
                 // their own (Jose: "leads.* permission ticks for each").
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage', 'reclassify', 'dispatcher'],
-                actionLabels: ['manage' => 'Manage sources (connect accounts)', 'reclassify' => 'Re-classify with AI', 'dispatcher' => 'Change who handled a call'],
+                actionLabels: ['manage' => 'Manage sources (connect accounts)', 'reclassify' => 'Re-classify (AI, and new or existing caller)', 'dispatcher' => 'Change who handled a call'],
                 /*
                  * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
                  * be able to grant access by sub tab as well ... so this applies

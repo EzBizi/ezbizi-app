@@ -1212,6 +1212,16 @@ class SettingRegistry
                     .'whose code is not here stays at company level.',
             ),
             new SettingDefinition(
+                key: 'leads.new_client_queue',
+                label: 'Phone queue for new customers',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The queue a caller reaches by choosing "new customer" in your phone menu. A '
+                    .'caller who pressed it but has had a job with you before is counted as existing.',
+            ),
+            new SettingDefinition(
                 key: 'leads.existing_client_queue',
                 label: 'Phone queue for existing customers',
                 type: SettingDefinition::TYPE_STRING,

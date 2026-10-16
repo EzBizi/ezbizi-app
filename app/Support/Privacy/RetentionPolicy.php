@@ -75,7 +75,7 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 35 tables this governs today are `a1leads_review_events`
+     * The 36 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
@@ -83,7 +83,7 @@ final class RetentionPolicy
      * `call_report_conversions` (created_at), `call_report_labels` (created_at),
      * `call_report_person_reviews` (created_at),
      * `call_report_scores` (created_at),
-     * `call_report_transcripts` (created_at), `client_issues` (created_at),
+     * `call_report_transcripts` (created_at), `call_type_corrections` (created_at), `client_issues` (created_at),
      * `device_tokens` (last_registered_at),
      * `email_verifications` (created_at), `field_alerts` (created_at),
      * `field_geocodes` (updated_at), `field_locations` (recorded_at),

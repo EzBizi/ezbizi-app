@@ -37,6 +37,7 @@ return new class extends Migration
                 'IN' => 'Nationwide', 'OR' => 'Nationwide',
             ]);
             $settings->set('leads.existing_client_queue', $org, 'A1 - Existing Client');
+            $settings->set('leads.new_client_queue', $org, 'A1 - New Client');
             if (Company::query()->whereKey('019fd712-75d5-71ed-a0e2-1d5ff11bd803')->exists()) {
                 $settings->set('leads.calls_company', $org, '019fd712-75d5-71ed-a0e2-1d5ff11bd803');
             }
