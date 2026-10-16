@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
         'Marketing › Social: your choice of List or Board for posts is now remembered.',
+        'Customer Experience: Reviews and Business Profile name the connected Google account but no longer offer Disconnect. Change it in Settings › Integrations.',
       ],
     ),
     VersionRelease(
