@@ -100,6 +100,25 @@ class DashboardTest extends TestCase
         return $this->inTenant(fn () => User::find($user->id)->preferences ?? []);
     }
 
+    /**
+     * Every permission the Administrator holds, without being one. Since
+     * 2026-10-16 an Administrator reaches the whole organization whatever
+     * their assignment (Jose: not "limited to that company"), so the reach
+     * tests use somebody who is not.
+     */
+    private function notAdministratorRole(): \App\Models\Role
+    {
+        $role = \App\Models\Role::create([
+            'organization_id' => $this->alpha['org']->id,
+            'name' => 'Manager '.\Illuminate\Support\Str::random(4),
+            'is_system' => false,
+        ]);
+        // Every permission there is: an Administrator holds them implicitly.
+        $role->permissions()->sync(Permission::query()->pluck('id'));
+
+        return $role;
+    }
+
     /** A second franchise with its own user, reaching only that franchise. */
     private function secondBranch(): array
     {
@@ -112,7 +131,7 @@ class DashboardTest extends TestCase
 
             $user = User::create([
                 'organization_id' => $this->alpha['org']->id,
-                'role_id' => $this->alpha['admin']->role_id,
+                'role_id' => $this->notAdministratorRole()->id,
                 'name' => 'Branch', 'email' => 'branch@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
@@ -254,7 +273,7 @@ class DashboardTest extends TestCase
     {
         $stranger = $this->inTenant(fn () => User::create([
             'organization_id' => $this->alpha['org']->id,
-            'role_id' => $this->alpha['admin']->role_id,
+            'role_id' => $this->notAdministratorRole()->id,
             'name' => 'Stranger', 'email' => 'stranger@alpha.test',
             'password' => 'a-real-password', 'is_active' => true,
         ]));

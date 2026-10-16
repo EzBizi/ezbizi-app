@@ -401,6 +401,12 @@ class User extends Authenticatable implements HoldsPersonalData
             return false;
         }
 
+        // An Administrator reaches the whole organization, whatever they are
+        // assigned to (Jose, 2026-10-16: not "limited to that company").
+        if ($this->isAdministrator()) {
+            return true;
+        }
+
         foreach ($this->assignments as $assignment) {
             $reachable = match ($assignment->scopeType()) {
                 // Organization-level: the whole tenant.
@@ -454,6 +460,12 @@ class User extends Authenticatable implements HoldsPersonalData
             return false;
         }
 
+        // An Administrator reaches the whole organization, whatever they are
+        // assigned to (Jose, 2026-10-16: not "limited to that company").
+        if ($this->isAdministrator()) {
+            return true;
+        }
+
         foreach ($this->assignments as $assignment) {
             $reachable = match ($assignment->scopeType()) {
                 // The whole tenant, so every company in it.
@@ -501,6 +513,11 @@ class User extends Authenticatable implements HoldsPersonalData
     {
         if (! $this->is_active || $organization->getKey() !== $this->organization_id) {
             return false;
+        }
+
+        // An Administrator stands at the organization (2026-10-16).
+        if ($this->isAdministrator()) {
+            return true;
         }
 
         return $this->assignments->contains(

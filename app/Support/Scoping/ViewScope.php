@@ -74,13 +74,10 @@ class ViewScope
             $value = $request->header('X-EzBizi-View');
             if ($value === self::ORGANIZATION) {
                 // Access runs downwards only (Jose, 2026-10-16): somebody
-                // assigned to a company or a place does not see the
-                // organization above it.
-                if (! $user->canActOnOrganization($user->organization)) {
-                    throw new AuthorizationException('That view is not available. Choose a view again.');
-                }
-
-                return new self(self::ORGANIZATION, null, $user);
+                // assigned to a company or a place does not get the
+                // organization above it. Their own highest view instead, not
+                // a refusal: a client still holding the old view must load.
+                return self::home($user);
             }
             if (! is_string($value) || ! preg_match('/^(company|franchise):([^:]+)$/D', $value, $parts)) {
                 throw new AuthorizationException('That view is not available. Choose a view again.');
