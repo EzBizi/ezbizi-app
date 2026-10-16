@@ -73,7 +73,9 @@ final class RingCentralLeadCalls
      * An unanswered call, by what happened (Jose, 2026-10-16: "Menu Hang ups
      * should be excluded and also tagged appropiately as Possible Spam / 2
      * should be tagged as well as Missed Call / 3 should show a voicemail
-     * tag"). Kept in the lead's source_status, as Google's status is on LS.
+     * tag"; corrected the same day: "not excluded from leads ... but excluded
+     * from the missed call alerts"). Kept in the lead's source_status, as
+     * Google's status is on LS.
      * Measured 2026-10-15: 131 hang-ups in the menu, 43 missed, 7 voicemails.
      */
     public const POSSIBLE_SPAM = 'POSSIBLE_SPAM';

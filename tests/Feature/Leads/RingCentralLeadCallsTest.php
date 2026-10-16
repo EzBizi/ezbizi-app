@@ -167,8 +167,8 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame([], array_column($unreplied, 'id'), 'a call owes no reply');
     }
 
-    /** Jose, 2026-10-16: menu hang-ups are Possible spam and left out; missed and voicemail announced. */
-    public function test_unanswered_calls_are_tagged_and_menu_hang_ups_are_not_counted(): void
+    /** Jose, 2026-10-16: menu hang-ups are Possible spam, still leads, but "excluded from the missed call alerts". */
+    public function test_unanswered_calls_are_tagged_and_menu_hang_ups_are_not_announced(): void
     {
         $t = $this->setUpTenant();
         $unanswered = ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null];
@@ -190,8 +190,6 @@ class RingCentralLeadCallsTest extends TestCase
                 '+15550000032' => RingCentralLeadCalls::VOICEMAIL,
             ], $tags);
             $this->assertSame('Possible spam', LeadConversation::query()->where('remote_id', 'rc_30')->value('text'));
-            $this->assertSame(2, Lead::query()->counted()->count(), 'the hang-up is not counted');
-            $this->assertSame(3, Lead::query()->count(), 'but it is still listed');
         });
 
         $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
