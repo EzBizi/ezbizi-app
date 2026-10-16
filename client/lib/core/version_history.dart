@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0445',
+      date: '16 Oct 2026',
+      items: [
+        'Clock In: a place can require people to be on site to clock in or out, set under Settings › Work Hours. Roles with Clock in from anywhere are never checked.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0444',
       date: '16 Oct 2026',
       items: [
