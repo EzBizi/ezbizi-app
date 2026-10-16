@@ -545,6 +545,45 @@ class SyncWorkizJobsTest extends TestCase
         });
     }
 
+    /**
+     * A past job deleted in Workiz, on a branch on v2: the 204 from its re-read
+     * and v2's search finding no job of that number retire it, as the listing
+     * never covers the past (Nationwide, 2026-10-16: 36 of September's jobs).
+     * A job the search still finds stays.
+     */
+    public function test_a_past_job_v2_search_cannot_find_is_retired(): void
+    {
+        config(['services.workiz.retire_deleted' => true]);
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'Nationwide');
+        $this->inTenant($tenant['org'], function () use ($connection) {
+            $connection->connect(['api_token' => 'v2key', 'refresh_token' => 'v2key', 'api_version' => 'v2', 'v1' => ['api_token' => 'v1tok', 'auth_secret' => 's']]);
+            $connection->save();
+        });
+        $gone = $this->stale($tenant, $connection, 'GONE01', 'Submitted', now()->subMonth()->format('Y-m-d 09:00:00'));
+        $kept = $this->stale($tenant, $connection, 'KEPT01', 'Done', now()->subMonth()->format('Y-m-d 10:00:00'));
+        $this->inTenant($tenant['org'], function () use ($gone, $kept) {
+            $gone->forceFill(['serial_id' => 100077680])->save();
+            $kept->forceFill(['serial_id' => 100077681])->save();
+        });
+
+        Http::fake(function ($r) {
+            return match (true) {
+                str_contains($r->url(), '/api/v1/') => Http::response(null, 204),
+                str_contains($r->url(), '/v2/search') => Http::response(['limit' => 15, 'totalResults' => 0,
+                    'data' => str_contains($r->url(), '100077681') ? [['uuid' => 'KEPT01', 'serialId' => 100077681]] : []]),
+                default => Http::response(['hasMore' => false, 'data' => []]),
+            };
+        });
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 5, '--verify' => 0])->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($gone, $kept) {
+            $this->assertNull(WorkizJob::query()->find($gone->id));
+            $this->assertNotNull(WorkizJob::query()->find($kept->id), 'the search still finds it');
+        });
+    }
+
     /** Somebody moved the visit in EzBizi after the projection wrote it: the job is theirs and stays. */
     public function test_a_deleted_job_a_person_changed_keeps_its_ezbizi_job(): void
     {
