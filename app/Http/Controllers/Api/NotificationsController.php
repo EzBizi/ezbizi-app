@@ -283,6 +283,7 @@ class NotificationsController extends Controller
         \App\Models\FieldAlert::class => 'field',
         \App\Models\Onboarding::class => 'hr',
         \App\Models\Mailbox::class => 'email',
+        \App\Models\Review::class => 'reviews',
     ];
 
     /**

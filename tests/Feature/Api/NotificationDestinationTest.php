@@ -79,6 +79,19 @@ class NotificationDestinationTest extends TestCase
         $this->assertSame(['type' => 'time_clock_correction_request', 'id' => $id], $meta['record']);
     }
 
+    public function test_a_review_notification_opens_that_review(): void
+    {
+        $tenant = $this->provisionTenant('Delta');
+        $id = (string) Str::uuid7();
+        $meta = $this->metaFor($tenant,
+            ['subject_type' => \App\Models\Review::class, 'subject_id' => $id],
+            ['key' => 'review.removed', 'payload' => []],
+        );
+
+        $this->assertSame('reviews', $meta['module']);
+        $this->assertSame(['type' => 'review', 'id' => $id], $meta['record']);
+    }
+
     public function test_every_subject_module_is_a_real_module(): void
     {
         $map = (new ReflectionClassConstant(NotificationsController::class, 'SUBJECT_MODULES'))->getValue();
