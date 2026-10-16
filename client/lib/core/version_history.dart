@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0445',
       date: '16 Oct 2026',
       items: [
+        'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards.',
         'Clock In: a place can require people to be on site to clock in or out, set under Settings › Work Hours. Roles with Clock in from anywhere are never checked.',
       ],
     ),
