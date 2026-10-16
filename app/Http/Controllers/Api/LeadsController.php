@@ -1386,6 +1386,28 @@ class LeadsController extends Controller
     }
 
     /**
+     * PATCH /api/v1/leads/{lead}/conversations/{conversation}/caller-type
+     *
+     * A person's word on whether a RingCentral caller was new or existing,
+     * over the key they pressed and the evidence (CallTypeCorrections).
+     * Final, and audited. Same grant as re-classifying.
+     */
+    public function callerType(Request $request, Lead $lead, string $conversation): JsonResponse
+    {
+        $this->authorize('update', $lead);
+        abort_unless($request->user()->hasPermission('leads.reclassify'), Response::HTTP_FORBIDDEN,
+            Refusal::permission('re-classify leads')->message());
+        $input = $request->validate(['type' => ['required', Rule::in(['new', 'existing'])]]);
+        $row = $lead->conversations()->whereKey($conversation)->first();
+        abort_if($row === null || ! str_starts_with((string) $row->remote_id, 'rc_'), Response::HTTP_NOT_FOUND);
+
+        $saved = app(\App\Support\Leads\CallTypeCorrections::class)
+            ->override(substr((string) $row->remote_id, 3), $input['type'], $request->user());
+
+        return response()->json(['data' => ['corrected_type' => $saved->corrected_type, 'reason' => $saved->reason]]);
+    }
+
+    /**
      * GET /api/v1/leads/{lead}/timeline
      *
      * Everything this caller has said to the business, on every lead with
