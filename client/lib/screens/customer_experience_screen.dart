@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
@@ -32,6 +33,32 @@ class CustomerExperienceScreen extends StatefulWidget {
 class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
   /// The chip by NAME, not by index — MarketingScreen's rule and its reasons.
   String? _tab;
+
+  @override
+  void initState() {
+    super.initState();
+    _followLink();
+    DeepLinks.pending.addListener(_followLink);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_followLink);
+    super.dispose();
+  }
+
+  /// A notification about a module drawn here (a review, say) brings its chip
+  /// forward; the module's own screen then takes the link and opens the record.
+  void _followLink() {
+    final key = DeepLinks.pending.value?.module;
+    if (key == null) return;
+    for (final module in widget.session.me?.reachableModules ?? const []) {
+      if (module.key == key && module.parent == 'customer_experience') {
+        if (_tab != module.label) setState(() => _tab = module.label);
+        return;
+      }
+    }
+  }
 
   /// Built per frame: a module switched off or a role edited mid-session must
   /// take its chip with it rather than leave one that answers 403.

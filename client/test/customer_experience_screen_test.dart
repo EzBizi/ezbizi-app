@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customer_experience_screen.dart';
@@ -27,6 +28,7 @@ import 'package:http/testing.dart';
 /// server. A fixture here would otherwise only prove it agrees with itself.
 void main() {
   reviewLinkTests();
+  deepLinkTests();
   testWidgets('both children are drawn, in the order the server sent them', (
     tester,
   ) async {
@@ -135,6 +137,38 @@ void main() {
 
 /// Review links (Jose, 2026-10-15): a chip of the container's own, on
 /// Reviews' grant, drawing the funnel and the table from one endpoint.
+/// A tapped notification about a review (Notifications 6650e3cf): the shell
+/// lands on Customer Experience, which brings Reviews forward, and Reviews
+/// opens that review.
+void deepLinkTests() {
+  testWidgets('a review link brings Reviews forward and opens the review', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Business Profile'));
+    await tester.pumpAndSettle();
+    asked.clear();
+
+    DeepLinks.open(
+      const DeepLink(module: 'reviews', type: 'review', id: 'rv-42'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Reviews'))
+          .selected,
+      isTrue,
+    );
+    expect(asked, contains(endsWith('/reviews/rv-42')));
+    expect(
+      DeepLinks.pending.value,
+      isNull,
+      reason: 'taken, so it does not fire twice',
+    );
+  });
+}
+
 void reviewLinkTests() {
   testWidgets('review links ride on the Reviews grant', (tester) async {
     await _pump(tester, _handler(reachable: const ['business_profile']));
@@ -234,10 +268,13 @@ Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
 }
 
 /// The server. `reachable` null means both children are reachable.
+final asked = <String>[];
+
 MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
   bool reaches(String key) => reachable == null || reachable.contains(key);
 
   return (request) async {
+    asked.add(request.url.path);
     if (request.url.path.endsWith('/me')) {
       return _json({
         'data': {
