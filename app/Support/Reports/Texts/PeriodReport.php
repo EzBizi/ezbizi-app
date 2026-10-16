@@ -8,6 +8,7 @@ use App\Models\SocialConnection;
 use App\Support\Files\HardenedPdf;
 use App\Support\Reports\Airtable\AirtableBase;
 use App\Support\Reports\Airtable\AirtablePnl;
+use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -29,17 +30,6 @@ use Throwable;
  */
 final class PeriodReport
 {
-    /**
-     * Branch name to its table in the P&L base, which names tables by state
-     * code. ponytail: a name map; store the table on the branch when a branch
-     * is named differently.
-     */
-    private const PNL_TABLES = [
-        'New Jersey' => 'NJ', 'Connecticut' => 'CT', 'Texas' => 'TX', 'Ohio' => 'OH',
-        'Illinois' => 'IL', 'Georgia' => 'GA', 'DMV' => 'DMV', 'Washington' => 'WA',
-        'Nationwide' => 'NW', 'New York' => 'NY', 'Massachusetts' => 'MA',
-    ];
-
     /** @var array<string, list<array<string,mixed>>|null> rows per table, for one consolidated run */
     private array $tables = [];
 
@@ -92,7 +82,7 @@ final class PeriodReport
             ];
 
             $body .= '<div style="page-break-before:always"><h1>'.e(BranchName::of($branch)).'</h1>'
-                .$this->sections($f, $pnl, self::PNL_TABLES[$branch->name] ?? null, $from, $to, (string) $branch->organization_id).'</div>';
+                .$this->sections($f, $pnl, ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey()), $from, $to, (string) $branch->organization_id).'</div>';
         }
 
         $head = '<h2>Company summary</h2>'.self::table(
@@ -105,7 +95,7 @@ final class PeriodReport
 
     private function branch(Franchise $branch, string $from, string $to): string
     {
-        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to), self::PNL_TABLES[$branch->name] ?? null, $from, $to, (string) $branch->organization_id);
+        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to), ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey()), $from, $to, (string) $branch->organization_id);
     }
 
     private function sections(array $f, array $pnl, ?string $code = null, string $from = '', string $to = '', string $org = ''): string
@@ -266,10 +256,10 @@ final class PeriodReport
     public function profitAndLoss(Franchise $branch, string $from, string $to): array
     {
         $none = fn (string $why) => ['weeks' => [], 'missing' => [], 'income' => null, 'costs' => null, 'net' => null, 'why' => $why, 'monthly' => false];
-        $code = self::PNL_TABLES[$branch->name] ?? null;
+        $code = ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey());
 
         if ($code === null) {
-            return $none("this branch has no table in the Airtable P&L (looked for one named after {$branch->name})");
+            return $none('this branch has no company code set in Reports settings');
         }
 
         $rows = $this->pnlRows($branch->organization_id, $code);

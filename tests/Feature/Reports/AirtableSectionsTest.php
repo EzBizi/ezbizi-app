@@ -4,6 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Models\AirtableRecord;
 use App\Models\ReportGoal;
+use App\Models\ReportSource;
 use App\Support\Reports\Texts\AirtableSections;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -24,6 +25,16 @@ class AirtableSectionsTest extends TestCase
         parent::setUp();
         $this->tenant = $this->provisionTenant('Alpha');
         $this->org = (string) $this->tenant['org']->id;
+        // This tenant's mapping (report_sources): NJ's repair table, a shared
+        // refunds table filtered to NJ, and the office expenses.
+        $this->inTenant($this->tenant['org'], function () {
+            ReportSource::query()->create(['base_id' => 'appzD9I7nNkALmw4l', 'table_id' => 'tbliTYwmQl2KXzoxh', 'role' => 'repair', 'company' => 'NJ']);
+            foreach (['NJ', 'CT'] as $code) {
+                ReportSource::query()->create(['base_id' => 'appe1vSSRRvKToShq', 'table_id' => 'tblxCKagahNfmjaSQ', 'role' => 'refunds',
+                    'company' => $code, 'filter_field' => 'Company Name', 'filter_value' => 'A1 CHIMNEY '.$code]);
+            }
+            ReportSource::query()->create(['base_id' => 'app6ZZgY9nHX8mMih', 'table_id' => 'tblmV1sk6qs4QbUWU', 'role' => 'hq_expenses']);
+        });
     }
 
     public function test_a_repair_team_costs_and_shares_to_the_cent(): void
@@ -88,6 +99,18 @@ class AirtableSectionsTest extends TestCase
         $viewer = $this->userWithRole($this->tenant, 'Viewer', ['reports.view']);
         $this->signedInAs($viewer)->getJson('/api/v1/reports/goals')->assertOk();
         $this->signedInAs($viewer)->putJson('/api/v1/reports/goals', ['goals' => [['company' => 'NJ', 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();
+    }
+
+    public function test_another_tenants_field_names_map_onto_the_same_section(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => ReportSource::query()->create(['base_id' => 'appOther00000000a', 'table_id' => 'tblOther00000000a',
+            'role' => 'refunds', 'company' => 'ZZ', 'fields' => ['amount' => 'Money back', 'date' => 'When', 'job' => 'Ticket']]));
+        $this->row('appOther00000000a', 'tblOther00000000a', 'Mine', ['When' => '2026-10-07', 'Money back' => 12.34, 'Ticket' => 'T-1']);
+
+        $html = app(AirtableSections::class)->refunds($this->org, 'ZZ', '2026-10-05', '2026-10-11');
+
+        $this->assertStringContainsString('<td>T-1</td>', $html);
+        $this->assertStringContainsString('<b>$12.34</b>', $html);
     }
 
     private function row(string $base, string $table, string $name, array $fields): void

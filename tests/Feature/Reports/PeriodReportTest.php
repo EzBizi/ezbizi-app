@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\Franchise;
+use App\Models\ReportCompany;
 use App\Models\ReportGoal;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
@@ -105,6 +106,9 @@ class PeriodReportTest extends TestCase
             ]);
             $c->connect(['refresh_token' => 'pat', 'api_token' => 'pat', 'base_id' => 'appPNL']);
             $c->save();
+
+            // The branch's company code is a Reports setting (2026-10-16).
+            ReportCompany::query()->create(['franchise_id' => $f->id, 'code' => 'CT']);
         });
 
         return [$t, $f->fresh()];
