@@ -3001,7 +3001,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // for when we get OUR GBP Credentials."* A1Leads GBP is a bridge
                 // to somebody else's system; this is EzBizi's own module.
                 parent: 'customer_experience',
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
+                // `manage`: working a review as a case - status, notes, the
+                // customer it is about, reporting it (UI queue 101, 2026-10-16).
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish', 'manage'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
