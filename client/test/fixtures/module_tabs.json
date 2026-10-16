@@ -546,6 +546,7 @@
         "tasks.manage_members",
         "tasks.view",
         "tasks.view_all",
+        "time_clock.anywhere",
         "time_clock.lock_screen",
         "time_clock.view",
         "training.assign",

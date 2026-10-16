@@ -476,6 +476,7 @@ class LeadsController extends Controller
         $data['details'] = [
             ...LeadDetails::from($conversations
                 ->where('participant', LeadConversation::FROM_CONSUMER)
+                ->where('channel', '!=', LeadConversation::CHANNEL_PHONE_CALL)
                 ->pluck('text')->filter()->values()->all()),
             'account' => $lead->connection === null ? null : ($lead->connection->label ?: $lead->connection->display_name),
             'google_status' => $lead->source_status === null ? null : ucfirst(strtolower(str_replace('_', ' ', $lead->source_status))),

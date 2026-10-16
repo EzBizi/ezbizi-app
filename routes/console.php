@@ -29,6 +29,8 @@ Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 Schedule::command('ezbizi:warm-call-log')->dailyAt('02:30')->withoutOverlapping(30);
 Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverlapping(5);
 // Yesterday's calls AI read as booked with no Workiz job (AiBookedNoJob).
+// A-1's Airtable copied into EzBizi for the reports (A1 Leads takeover, 2026-10-16); about 8 s.
+Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
 Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Everything else's retention (§10), read off each model's own declaration.
@@ -380,7 +382,7 @@ Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone(
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
 // RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
-Schedule::command('ezbizi:leads-ringcentral')->everyFiveMinutes()->withoutOverlapping(15);
+Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlapping(15);
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);

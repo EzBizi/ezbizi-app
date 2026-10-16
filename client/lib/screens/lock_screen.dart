@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/clock_window.dart';
+import '../core/punch_position.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -98,7 +99,10 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
       _error = null;
     });
 
-    final response = await widget.api.post('/time-clock/clock-in', {});
+    final response = await widget.api.post(
+      '/time-clock/clock-in',
+      await punchPosition(widget.session.me?.timeClock.needsLocation ?? false),
+    );
     if (!mounted) return;
 
     if (response.ok && response.data is Map) {

@@ -979,6 +979,7 @@ class TimeClockStatus {
     this.extensionMinutes = 30,
     this.today,
     this.afterHours = false,
+    this.needsLocation = false,
     this.todayLabel = '',
   });
 
@@ -1015,6 +1016,10 @@ class TimeClockStatus {
   /// buys one extension, instead of "start your day" at 5 PM (2026-09-24).
   final bool afterHours;
 
+  /// A clock-in zone applies to this person (A1 Tools takeover,
+  /// 2026-10-16): a hand punch must carry where the device is.
+  final bool needsLocation;
+
   /// "Wednesday, September 30": the server's today, in the org's language.
   final String todayLabel;
 
@@ -1048,6 +1053,7 @@ class TimeClockStatus {
           ? TimeClockWindow.fromJson(Map<String, dynamic>.from(todayRaw))
           : null,
       afterHours: map['after_hours'] == true,
+      needsLocation: map['needs_location'] == true,
       todayLabel: '${map['today_label'] ?? ''}',
     );
   }

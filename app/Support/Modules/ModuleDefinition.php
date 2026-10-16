@@ -516,7 +516,9 @@ final class ModuleDefinition
      * `time_clock` (lock_screen), `training` (manage, assign) or `monitoring`
      * (cameras.manage, control) anything while all three change records.
      */
-    public const READ_ONLY_ACTIONS = ['view', 'export', 'monitor', 'lock_screen'];
+    // `anywhere` (Clock in, 2026-10-16) exempts a role from the clock-in
+    // zone; like `lock_screen` it changes how a punch is checked, not data.
+    public const READ_ONLY_ACTIONS = ['view', 'export', 'monitor', 'lock_screen', 'anywhere'];
 
     /**
      * Can this module change anything? Only a module that writes can owe an
