@@ -19,7 +19,7 @@ class VersionHistory {
       items: [
         'Customers: searching now also finds people who are still only leads, in their own card above the results (for example “Lead · LS Call · today”). Tap one to open it in Leads.',
         'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards. Administrators still see the whole organization.',
-        'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere.',
+        'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere. The zone’s centre is picked by searching an address and checking it on a map.',
         'Web › Hours: the bulk hours editor can now set hours on your Google Business Profile listings as well as your websites. It reads the live hours from Google before you review, and checks Google again after saving.',
         'Leads: RC Calls and EZ Calls now include calls to staff direct lines and the calls we make, shown as “<name> called” or No answer on the person’s lead. Calls between our own lines stay out, and only missed calls from customers alert.',
         'Leads: when Google files a call on a message lead that belongs to someone else, the call moves to a lead of its own, with a note saying where it came from.',
