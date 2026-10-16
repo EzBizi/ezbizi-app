@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Manage.',
         'Leads: the server now supports filtering leads by charge, phone line, dispatcher and date, correcting a lead’s name, ZIP, classification and dispatcher, re-reading a lead with the AI, and a call timeline. The screens follow.',
       ],
     ),
