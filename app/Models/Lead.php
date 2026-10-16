@@ -248,6 +248,16 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         return [null, null];
     }
 
+    /**
+     * Leads that count: not a RingCentral call that hung up in the phone menu
+     * (Jose, 2026-10-16: "Menu Hang ups should be excluded"). Still listed
+     * under RC Calls, tagged Possible spam.
+     */
+    public function scopeCounted(Builder $query): Builder
+    {
+        return $query->whereRaw("NOT (leads.source = 'ringcentral' AND COALESCE(leads.source_status, '') = 'POSSIBLE_SPAM')");
+    }
+
     public function scopeSourceStillConnected(Builder $query): Builder
     {
         return $query->where(function (Builder $q) {

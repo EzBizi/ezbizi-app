@@ -167,6 +167,40 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame([], array_column($unreplied, 'id'), 'a call owes no reply');
     }
 
+    /** Jose, 2026-10-16: menu hang-ups are Possible spam and left out; missed and voicemail announced. */
+    public function test_unanswered_calls_are_tagged_and_menu_hang_ups_are_not_counted(): void
+    {
+        $t = $this->setUpTenant();
+        $unanswered = ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null];
+
+        $this->inTenant($t['org'], function () use ($t, $unanswered) {
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([
+                self::rc('30', '+15550000030', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
+                self::rc('31', '+15550000031', now()->subHours(3)->toIso8601String(), extra: $unanswered + ['result' => 'Missed']),
+                self::rc('32', '+15550000032', now()->subHours(3)->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Voicemail']),
+                // The missed caller hangs up in the menu later: still Missed call.
+                self::rc('33', '+15550000031', now()->subHour()->toIso8601String(), queue: null, extra: $unanswered + ['rang' => [], 'result' => 'Accepted']),
+            ], self::LINES, $t['company']->id);
+
+            $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
+            $this->assertSame([
+                '+15550000030' => RingCentralLeadCalls::POSSIBLE_SPAM,
+                '+15550000031' => RingCentralLeadCalls::MISSED,
+                '+15550000032' => RingCentralLeadCalls::VOICEMAIL,
+            ], $tags);
+            $this->assertSame('Possible spam', LeadConversation::query()->where('remote_id', 'rc_30')->value('text'));
+            $this->assertSame(2, Lead::query()->counted()->count(), 'the hang-up is not counted');
+            $this->assertSame(3, Lead::query()->count(), 'but it is still listed');
+        });
+
+        $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
+        $this->assertSame(2, $events['lead.missed_call'] ?? 0, 'missed and voicemail, not the hang-ups');
+
+        $rc = $this->signedInAs($t['admin'])->getJson('/api/v1/leads?source=ringcentral')->json('data');
+        $this->assertCount(3, $rc, 'all three under RC Calls');
+    }
+
     public function test_line_names_place_the_company_and_market(): void
     {
         $companies = ['a' => 'A-1 Chimney', 'b' => 'Crestline Home', 'c' => 'Ace Fireplace Services', 'd' => 'Roofirst'];

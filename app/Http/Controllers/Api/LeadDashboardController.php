@@ -65,7 +65,7 @@ class LeadDashboardController extends Controller
         abort_if($days > 366, Response::HTTP_UNPROCESSABLE_ENTITY, 'Pick a range of a year or less.');
 
         $scoped = function () use ($user, $input) {
-            $q = LeadsController::scopeToReader(Lead::query(), $user)->where('leads.is_test', false);
+            $q = LeadsController::scopeToReader(Lead::query(), $user)->where('leads.is_test', false)->counted();
             if (! empty($input['company_id'])) {
                 $q->where('leads.company_id', $input['company_id']);
             }

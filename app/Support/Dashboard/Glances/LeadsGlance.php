@@ -80,6 +80,8 @@ final class LeadsGlance extends DescribedGlance
                  * it is worse than either number alone.
                  */
                 ->sourceStillConnected()
+                // Not the menu hang-ups (Jose, 2026-10-16).
+                ->counted()
                 /*
                  * And only the sources this person was granted, by exactly the
                  * argument written two paragraphs up. A dispatcher who may see
