@@ -69,7 +69,7 @@ class PhoneNumber extends Model implements StatesRetention
         'answer_with', 'answer_user_id',
         'record', 'transcribe',
         'after_hours', 'after_hours_number', 'language',
-        'messaging_service_sid', 'sms_outbound_allowed', 'emergency_address_set',
+        'messaging_service_sid', 'sms_outbound_allowed', 'lead_line', 'emergency_address_set',
         'emergency_address_sid', 'voice_caller_id_lookup', 'voicemail_transcribe',
         'capabilities', 'recording_notice', 'fallback_number',
     ];
@@ -80,6 +80,7 @@ class PhoneNumber extends Model implements StatesRetention
             'record' => 'boolean',
             'transcribe' => 'boolean',
             'sms_outbound_allowed' => 'boolean',
+            'lead_line' => 'boolean',
             'emergency_address_set' => 'boolean',
             'voice_caller_id_lookup' => 'boolean',
             'voicemail_transcribe' => 'boolean',
