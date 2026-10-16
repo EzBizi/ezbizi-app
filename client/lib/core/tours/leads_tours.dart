@@ -326,6 +326,55 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/EZ Calls': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'EZ Calls',
+        body:
+            'Calls to your EzBizi phone lines marked as lead lines, one lead '
+            'per caller, tagged Missed call, Voicemail, Possible spam or '
+            'Existing client.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'EZ Calls',
+        body:
+            'Calls to your EzBizi phone lines marked as lead lines, one lead '
+            'per caller, tagged Missed call, Voicemail, Possible spam or '
+            'Existing client.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'One caller, one lead',
+        body:
+            'A caller who already has a lead keeps it, whichever of your '
+            'lines they rang, with the recording and what was said.',
+      ),
+    ],
+  ),
+  'leads/EZ Texts': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'EZ Texts',
+        body:
+            'Texts to your EzBizi lead lines. They wait for an answer like '
+            'any message, and your reply goes back as a text from the same '
+            'line.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'EZ Texts',
+        body:
+            'Texts to your EzBizi lead lines. They wait for an answer like '
+            'any message, and your reply goes back as a text from the same '
+            'line.',
+      ),
+    ],
+  ),
   'leads/WhatsApp': Tour(
     version: 1,
     steps: [

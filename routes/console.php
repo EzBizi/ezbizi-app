@@ -383,6 +383,8 @@ Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone(
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
 // RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
 Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlapping(15);
+// Calls and texts to EzBizi's own lead lines: EZ Calls and EZ Texts (Jose, 2026-10-16).
+Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);

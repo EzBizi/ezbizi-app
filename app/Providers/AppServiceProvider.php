@@ -106,6 +106,15 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind('lead-reply-channel.whatsapp', WhatsAppReplies::class);
 
+        // EZ Texts and EZ Calls: a text back from the EzBizi line (2026-10-16).
+        foreach ([Lead::SOURCE_EZ_TEXTS, Lead::SOURCE_EZ_CALLS] as $source) {
+            $this->app->bind('lead-reply-channel.'.$source, fn ($app) => new \App\Support\Leads\EzTextReplies(
+                $source,
+                $app->make(\App\Support\Phone\PhoneTexts::class),
+                $app->make(LeadThread::class),
+            ));
+        }
+
         $this->app->tag(
             [
                 LocalServicesLeads::class,
@@ -114,6 +123,8 @@ class AppServiceProvider extends ServiceProvider
                 'lead-reply-channel.facebook',
                 'lead-reply-channel.instagram',
                 'lead-reply-channel.whatsapp',
+                'lead-reply-channel.ez_texts',
+                'lead-reply-channel.ez_calls',
             ],
             LeadReplies::TAG,
         );

@@ -74,6 +74,7 @@ class TranscribeLeadCalls extends Command
             ->whereNotNull('recording_url')
             // RingCentral calls take Reports' transcript (RingCentralLeadCalls::fillTranscripts).
             ->where('recording_url', 'not like', 'ringcentral:%')
+            ->where('recording_url', 'not like', 'twilio:%')   // EZ Calls: Phone transcribes them
             ->whereNotNull('duration_ms')          // rang out: nothing to hear
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
             ->where('occurred_at', '>=', $this->oldest())
@@ -150,6 +151,7 @@ class TranscribeLeadCalls extends Command
             ->whereNotNull('recording_url')
             // RingCentral calls take Reports' transcript (RingCentralLeadCalls::fillTranscripts).
             ->where('recording_url', 'not like', 'ringcentral:%')
+            ->where('recording_url', 'not like', 'twilio:%')   // EZ Calls: Phone transcribes them
             ->whereNotNull('duration_ms')
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
             ->where('occurred_at', '>=', $this->oldest())

@@ -746,6 +746,9 @@ abstract final class PersonColours {
     // orange (Jose, 2026-10-15: "a deep orange color to match the ring
     // central brand").
     ToneColours(Color(0xFFFF8A2B), Color(0xFF3D1400)), // deep orange
+    // EZ Texts, a full fill like RC's so a text on EzBizi's own line stands
+    // apart from Chat and LS Text (Jose, 2026-10-16).
+    ToneColours(Color(0xFF0F766E), Color(0xFFFFFFFF)), // deep teal
   ];
 
   static const _dark = [
@@ -761,6 +764,7 @@ abstract final class PersonColours {
     ToneColours(Color(0xFF27313B), Color(0xFFC3CFDB)),
     ToneColours(Color(0xFF0C3A52), Color(0xFF7DD3FC)),
     ToneColours(Color(0xFFA84800), Color(0xFFFFF1E6)),
+    ToneColours(Color(0xFF115E59), Color(0xFFE6FFFB)),
   ];
 
   /// People get the first eight, so adding a tag hue never moves anybody's

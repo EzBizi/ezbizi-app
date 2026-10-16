@@ -2624,6 +2624,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('workiz', 'Workiz'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
                     new TabDefinition('ringcentral', 'RC Calls'),
+                    // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).
+                    new TabDefinition('ez_calls', 'EZ Calls'),
+                    new TabDefinition('ez_texts', 'EZ Texts'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*

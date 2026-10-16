@@ -111,6 +111,16 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_RINGCENTRAL = 'ringcentral';
 
     /**
+     * A call or a text to one of the business's own EzBizi (Twilio) lines
+     * marked as a lead line (Jose, 2026-10-16: "LS Calls RC Calls EZ Calls ...
+     * as well as EZ Texts"). EzLeadCalls files both. A call owes no reply, as
+     * on RC Calls; a text is answered on the thread (EzTextReplies).
+     */
+    public const SOURCE_EZ_CALLS = 'ez_calls';
+
+    public const SOURCE_EZ_TEXTS = 'ez_texts';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -174,6 +184,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_INSTAGRAM,
         self::SOURCE_WHATSAPP,
         self::SOURCE_RINGCENTRAL,
+        self::SOURCE_EZ_CALLS,
+        self::SOURCE_EZ_TEXTS,
     ];
 
     /**
@@ -277,6 +289,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_WORKIZ,
         self::SOURCE_WHATSAPP,
         self::SOURCE_RINGCENTRAL,
+        self::SOURCE_EZ_CALLS,
+        self::SOURCE_EZ_TEXTS,
     ];
 
     /**

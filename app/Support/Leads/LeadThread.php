@@ -68,7 +68,8 @@ final class LeadThread
         // nothing to reopen (Jose, 2026-10-15: "non actionable"; 884 "New
         // reply" bells in 30 minutes when it counted). A missed one raises
         // lead.missed_call instead (RingCentralLeadCalls).
-        if ($row->participant === LeadConversation::FROM_CONSUMER && ! str_starts_with($remoteId, 'rc_')) {
+        if ($row->participant === LeadConversation::FROM_CONSUMER && ! str_starts_with($remoteId, 'rc_')
+            && ! str_starts_with($remoteId, EzLeadCalls::CALL)) {
             // They wrote again: whatever made it Completed is over, and
             // somebody owes them an answer.
             // Archived, Not a lead and Lost too (Jose, 2026-10-09: "customers

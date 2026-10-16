@@ -29,8 +29,6 @@ class LeadsRingCentralCalls extends Command
 
     protected $description = 'File RingCentral calls to the business lines as leads, once per call';
 
-    /** A-1 Chimney: the company A1-Group's lines belong to unless a brand line says otherwise. */
-
     public function handle(RingCentralCallLog $log, RingCentralLeadCalls $calls, TenantContext $tenant): int
     {
         $connections = SocialConnection::query()->withoutGlobalScopes()

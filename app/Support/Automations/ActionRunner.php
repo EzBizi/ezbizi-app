@@ -251,6 +251,8 @@ class ActionRunner
                 'whatsapp' => 'WhatsApp',
                 'workiz' => 'Workiz',
                 'ringcentral' => 'RingCentral call',
+                'ez_calls' => 'EZ call',
+                'ez_texts' => 'EZ text',
             ],
             'status' => [
                 'new' => 'New',

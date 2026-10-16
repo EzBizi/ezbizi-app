@@ -277,7 +277,7 @@ class LeadsController extends Controller
              */
             $query->whereIn('leads.source', Lead::INBOX_SOURCES)
                 // Calls and Google bookings owe no reply (Jose, 2026-10-15: "non actionable").
-                ->where('leads.source', '!=', Lead::SOURCE_RINGCENTRAL)
+                ->whereNotIn('leads.source', [Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS])
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
                     ->orWhereNotIn('leads.lead_type', ['PHONE_CALL', 'BOOKING'])
                     ->orWhereNull('leads.lead_type'))
@@ -1187,6 +1187,24 @@ class LeadsController extends Controller
 
         abort_if($row === null || $row->recording_url === null, Response::HTTP_NOT_FOUND);
 
+        // An EZ Call: the audio through Phone's Twilio gateway, never a Twilio URL.
+        if (str_starts_with((string) $row->recording_url, 'twilio:')) {
+            $call = \App\Models\PhoneCall::query()->find(substr((string) $row->recording_url, strlen('twilio:')));
+            abort_if($call === null || $call->recording_sid === null || $call->connection === null, Response::HTTP_NOT_FOUND);
+            try {
+                $body = app(\App\Support\Phone\TwilioGateway::class)->recordingMedia($call->connection, (string) $call->recording_sid);
+            } catch (\Throwable $e) {
+                abort(Response::HTTP_BAD_GATEWAY, 'Twilio did not give the recording.');
+            }
+            $this->audit->log('lead.recording_played', $lead, [
+                'conversation_id' => $row->id,
+                'occurred_at' => $row->occurred_at?->toIso8601String(),
+                'duration_ms' => $row->duration_ms,
+            ], actor: $request->user());
+
+            return response($body, 200, ['Content-Type' => 'audio/mpeg', 'Cache-Control' => 'private, no-store']);
+        }
+
         if (str_starts_with((string) $row->recording_url, 'ringcentral:')) {
             try {
                 $audio = app(\App\Support\Reports\Experimental\RingCentralCallLog::class)
@@ -1775,7 +1793,7 @@ class LeadsController extends Controller
      * and remove them from the lead warnings, as they are non actionable").
      */
     private const UNREAD_SQL = "(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) "
-        ."AND NOT (leads.source = 'local_services' AND leads.lead_type = 'PHONE_CALL') AND leads.source <> 'ringcentral'";
+        ."AND NOT (leads.source = 'local_services' AND leads.lead_type = 'PHONE_CALL') AND leads.source NOT IN ('ringcentral', 'ez_calls')";
 
     /** @return list<string> the fields whose value is still the one AI wrote */
     public static function aiHeld(Lead $lead): array
@@ -1841,7 +1859,7 @@ class LeadsController extends Controller
             // Null on a single-lead read means "not asked", not "read".
             'is_unread' => ! array_key_exists('read_by_me_at', $lead->getAttributes())
                 ? null
-                : $lead->kind() !== Lead::KIND_LS_CALL && $lead->source !== Lead::SOURCE_RINGCENTRAL && ($lead->read_by_me_at === null
+                : $lead->kind() !== Lead::KIND_LS_CALL && ! in_array($lead->source, [Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS], true) && ($lead->read_by_me_at === null
                     || ($lead->last_contact_at ?? $lead->received_at) > Carbon::parse($lead->read_by_me_at)),
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,
