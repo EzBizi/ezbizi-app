@@ -1186,6 +1186,41 @@ class SettingRegistry
                 editPermission: 'leads.edit',
                 help: 'The number a customer calls to reschedule, {{office_phone}} in a message. Set per branch.',
             ),
+            // Phone calls into Leads (RC Calls, EZ Calls), set per business
+            // rather than written into the code (Jose, 2026-10-16: "it all
+            // needs to be stablished as a public product would").
+            new SettingDefinition(
+                key: 'leads.calls_company',
+                label: 'Company for calls to your lines',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The company a call to one of your phone lines is filed under when the line '
+                    .'is not named after a company. Empty: your only company, or the one the phone '
+                    .'connection belongs to.',
+            ),
+            new SettingDefinition(
+                key: 'leads.line_markets',
+                label: 'Phone lines by market',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The code your line names start with, and the branch its calls go to, e.g. '
+                    .'{"NJ": "New Jersey", "CHI": "Illinois"} for a line called "NJ - GMB". A line '
+                    .'whose code is not here stays at company level.',
+            ),
+            new SettingDefinition(
+                key: 'leads.existing_client_queue',
+                label: 'Phone queue for existing customers',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                editPermission: 'leads.manage',
+                help: 'The queue a caller reaches by choosing "existing customer" in your phone menu. '
+                    .'Their calls are tagged Existing client. Empty: none are.',
+            ),
             // A1 Leads takeover, 2026-10-16: one switch that stops every call
             // to Google for a business (GoogleToken refuses the token).
             new SettingDefinition(

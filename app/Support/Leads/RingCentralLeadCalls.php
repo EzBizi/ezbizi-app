@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  * ── Which calls are leads ────────────────────────────────────────
  *
  * Inbound, from a 10-digit number, and not:
- *   - (not the "A1 - Existing Client" queue any more: every inbound call on a
+ *   - (not the existing-customer queue any more: every inbound call on a
  *     lead line shows, tagged Existing client - Jose, 2026-10-16, "some of the
  *     calls from ring central are not showing up");
  *   - a queue that is a person (a direct line), the people being everyone the
@@ -39,7 +39,7 @@ use Illuminate\Support\Facades\DB;
  * The line's name says the market and source ("NJ - GMB", "CHI - LS Ads",
  * "SEO - Main") or a brand ("AngiSweep", "Ace Fireplace"). A brand line goes to
  * the company of that name; every other line is A-1 Chimney's, placed in the
- * branch its market code maps to (MARKETS, read from which branch the matching
+ * branch its market code maps to (Settings: leads.line_markets; A-1's came from which branch the matching
  * LS leads were in, same measurement). A market without one stays at company
  * level, as most LS leads do.
  *
@@ -52,24 +52,8 @@ final class RingCentralLeadCalls
 {
     public const MATCH_SECONDS = 180;
 
-    public const EXISTING_CLIENT_QUEUE = 'A1 - Existing Client';
-
     /** Days a caller's earlier lead still collects their calls. */
     private const SAME_PERSON_DAYS = 30;
-
-    /** A-1 Chimney's market codes, by the branch the same callers' LS leads were in. */
-    public const MARKETS = [
-        'NJ' => 'New Jersey', 'PHL' => 'New Jersey', 'NJ-PHL' => 'New Jersey',
-        'CT' => 'Connecticut',
-        'CHI' => 'Illinois', 'IL' => 'Illinois',
-        'CLE' => 'Ohio', 'CBUS' => 'Ohio', 'CINCY' => 'Ohio', 'OH' => 'Ohio',
-        'ATL' => 'Georgia', 'GA' => 'Georgia',
-        'DFW' => 'Texas', 'AUS' => 'Texas', 'SAT' => 'Texas', 'HOU' => 'Texas', 'TX' => 'Texas',
-        'MD' => 'DMV', 'VA' => 'DMV', 'DC' => 'DMV', 'DMV' => 'DMV',
-        'NY' => 'New York',
-        'MA' => 'Massachusetts', 'BOS' => 'Massachusetts',
-        'IN' => 'Nationwide', 'OR' => 'Nationwide',
-    ];
 
     /*
      * An unanswered call, by what happened (Jose, 2026-10-16: "Menu Hang ups
@@ -86,7 +70,7 @@ final class RingCentralLeadCalls
 
     public const VOICEMAIL = 'VOICEMAIL';
 
-    /** Answered in the "A1 - Existing Client" queue: the caller pressed "existing customer". */
+    /** Answered in the business's existing-customer queue (Settings: leads.existing_client_queue). */
     public const EXISTING_CLIENT = 'EXISTING_CLIENT';
 
     /** A call older than this files quietly: a catch-up run announces nothing. */
@@ -120,6 +104,11 @@ final class RingCentralLeadCalls
             ->whereIn('remote_id', array_map(fn ($c) => 'rc_'.$c['id'], $calls))
             ->pluck('remote_id')->flip();
         $companies = Company::query()->pluck('name', 'id');
+        // Per business, never written into the code (Jose, 2026-10-16).
+        $org = \App\Models\Organization::query()->find(app(\App\Support\Tenancy\TenantContext::class)->idOrFail());
+        $settings = app(\App\Support\Settings\SettingsResolver::class);
+        $markets = array_change_key_case((array) $settings->get('leads.line_markets', $org), CASE_UPPER);
+        $existingQueue = (string) $settings->get('leads.existing_client_queue', $org) ?: null;
         $franchises = Franchise::query()->where('company_id', $defaultCompanyId)->pluck('id', 'name');
 
         $filed = 0;
@@ -139,12 +128,12 @@ final class RingCentralLeadCalls
             }
 
             $line = (string) ($lineNames[(string) $call['to_number']] ?? '');
-            $companyId = self::companyFor($line, $companies->all()) ?? $defaultCompanyId;
+            $companyId = self::companyFor($line, $companies->all(), $markets) ?? $defaultCompanyId;
             $franchiseId = $companyId === $defaultCompanyId
-                ? ($franchises[self::MARKETS[self::market($line)] ?? ''] ?? null)
+                ? ($franchises[$markets[self::market($line)] ?? ''] ?? null)
                 : null;
 
-            $outcome = self::outcome($call);
+            $outcome = self::outcome($call, $existingQueue);
             DB::transaction(function () use ($call, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
                 $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
@@ -268,10 +257,10 @@ final class RingCentralLeadCalls
      *
      * @param  array<string, mixed>  $call
      */
-    public static function outcome(array $call): ?string
+    public static function outcome(array $call, ?string $existingQueue = null): ?string
     {
         return match (true) {
-            $call['answered_by'] !== null => ($call['queue'] ?? null) === self::EXISTING_CLIENT_QUEUE ? self::EXISTING_CLIENT : null,
+            $call['answered_by'] !== null => $existingQueue !== null && ($call['queue'] ?? null) === $existingQueue ? self::EXISTING_CLIENT : null,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
             ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
             default => self::MISSED,
@@ -299,15 +288,16 @@ final class RingCentralLeadCalls
     /**
      * A brand line's company: the company whose name starts with the line's
      * name, or the other way round ("Crestline" / "Crestline Home"). Null for a
-     * market-coded line, which is A-1 Chimney's.
+     * market-coded line, which is the calls company's.
      *
      * @param  array<string, string>  $companies  id => name
+     * @param  array<string, string>  $markets  code => branch name
      */
-    public static function companyFor(string $line, array $companies): ?string
+    public static function companyFor(string $line, array $companies, array $markets = []): ?string
     {
         $key = fn (string $s) => preg_replace('/[^a-z0-9]/', '', strtolower($s)) ?? '';
         $name = $key(preg_replace('/^\d+\s+/', '', trim(explode(' - ', $line)[0])) ?? '');
-        if (strlen($name) < 4 || isset(self::MARKETS[self::market($line)])) {
+        if (strlen($name) < 4 || isset($markets[self::market($line)])) {
             return null;
         }
         foreach ($companies as $id => $company) {

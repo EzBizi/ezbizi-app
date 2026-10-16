@@ -30,7 +30,6 @@ class LeadsRingCentralCalls extends Command
     protected $description = 'File RingCentral calls to the business lines as leads, once per call';
 
     /** A-1 Chimney: the company A1-Group's lines belong to unless a brand line says otherwise. */
-    public const A1_COMPANY = '019fd712-75d5-71ed-a0e2-1d5ff11bd803';
 
     public function handle(RingCentralCallLog $log, RingCentralLeadCalls $calls, TenantContext $tenant): int
     {
@@ -78,16 +77,17 @@ class LeadsRingCentralCalls extends Command
     }
 
     /**
-     * Whose lines: the company the connection is scoped to; A-1 Chimney for
-     * A1-Group's env credential; otherwise an organization's only company.
+     * Whose lines: the company the connection is scoped to; the business's
+     * own choice in Settings (leads.calls_company); otherwise its only company.
      */
     private static function companyFor(Organization $organization, ?SocialConnection $connection): ?string
     {
         if ($connection?->scope_type === SocialConnection::SCOPE_COMPANY) {
             return (string) $connection->scope_id;
         }
-        if ($organization->slug === RingCentralCallLog::ENV_ORGANIZATION_SLUG) {
-            return self::A1_COMPANY;
+        $chosen = (string) app(\App\Support\Settings\SettingsResolver::class)->get('leads.calls_company', $organization);
+        if ($chosen !== '' && Company::query()->whereKey($chosen)->exists()) {
+            return $chosen;
         }
         $companies = Company::query()->pluck('id');
 
