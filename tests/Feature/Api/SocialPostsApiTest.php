@@ -886,6 +886,8 @@ class SocialPostsApiTest extends TestCase
         ])->assertCreated()->assertJsonPath('data.kind', 'image')->json('data.id');
 
         $this->signedInAs($t['admin'])->getJson('/api/v1/social/library')->assertJsonPath('data.0.name', 'Van photo');
+        $this->signedInAs($t['admin'])->patchJson('/api/v1/social/library/'.$item, ['name' => 'Van, side'])
+            ->assertOk()->assertJsonPath('data.name', 'Van, side');
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
             'connections' => [$page->getKey()], 'library_item' => $item,

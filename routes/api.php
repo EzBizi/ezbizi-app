@@ -2087,6 +2087,7 @@ Route::prefix('v1')
             Route::get('social/places', [SocialPostsController::class, 'places']);
             Route::get('social/library', [SocialLibraryController::class, 'index']);
             Route::post('social/library', [SocialLibraryController::class, 'store']);
+            Route::patch('social/library/{item}', [SocialLibraryController::class, 'update']);
             Route::delete('social/library/{item}', [SocialLibraryController::class, 'destroy']);
             Route::get('social/library/{item}/file', [SocialLibraryController::class, 'file']);
         });

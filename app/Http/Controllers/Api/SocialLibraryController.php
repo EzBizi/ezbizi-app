@@ -80,6 +80,21 @@ class SocialLibraryController extends Controller
         return response()->json(['data' => $this->present($item)], Status::HTTP_CREATED);
     }
 
+    public function update(Request $request, string $item): JsonResponse
+    {
+        $user = $this->mayEdit($request, 'rename a library item');
+        $row = $this->find($user, $item);
+
+        abort_unless(NewsletterAccess::mayWrite($user, $row), Status::HTTP_FORBIDDEN,
+            'Switch to a view that can manage this library item.');
+
+        $row->name = $request->validate(['name' => ['required', 'string', 'max:120']])['name'];
+        $this->audit->logChange('social.library_renamed', $row, $user);
+        $row->save();
+
+        return response()->json(['data' => $this->present($row)]);
+    }
+
     public function destroy(Request $request, string $item): JsonResponse
     {
         $user = $this->mayEdit($request, 'remove from the media library');
