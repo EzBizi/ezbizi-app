@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Web › Hours: the bulk hours editor can now set hours on your Google Business Profile listings as well as your websites. It reads the live hours from Google before you review, and checks Google again after saving.',
         'Leads: RC Calls and EZ Calls now include calls to staff direct lines and the calls we make, shown as “<name> called” or No answer on the person’s lead. Calls between our own lines stay out, and only missed calls from customers alert.',
         'Leads: when Google files a call on a message lead that belongs to someone else, the call moves to a lead of its own, with a note saying where it came from.',
         'Reports: in Performance and Scoring, a caller who pressed the wrong menu key counts as the new or existing client they actually were, marked ↺ with what they pressed.',
