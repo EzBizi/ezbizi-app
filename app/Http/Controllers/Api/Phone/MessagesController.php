@@ -10,7 +10,9 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Phone\NumberNames;
 use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
+use App\Support\Phone\PhoneTexts;
 use App\Support\Phone\SmsCompliance;
+use App\Support\Phone\TextRefused;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -128,48 +130,11 @@ class MessagesController extends Controller
             abort(Status::HTTP_FORBIDDEN);
         }
 
-        if (! $this->compliance->allowsOutbound($number)) {
-            return response()->json(['message' => SmsCompliance::REFUSAL], Status::HTTP_FORBIDDEN);
-        }
-
-        $connection = $number->connection;
-        if ($connection === null) {
-            abort(Status::HTTP_NOT_FOUND);
-        }
-
-        $to = (string) $input['to'];
-        $body = (string) $input['body'];
-        $from = (string) $number->e164;
-
         try {
-            $sent = $this->twilio->sendMessage($connection, $from, $to, $body, $number->account_sid);
-        } catch (Throwable $e) {
-            $reason = $e->getMessage() !== ''
-                ? $e->getMessage()
-                : 'Twilio refused to send from this phone line.';
-            if (PhoneLineHealth::isLineBreakingFault(null, $e)) {
-                $this->health->reportBroken($connection, $reason, $number);
-            }
-
-            return response()->json(['message' => $reason], Status::HTTP_BAD_GATEWAY);
+            $message = app(PhoneTexts::class)->send($number, (string) $input['to'], (string) $input['body']);
+        } catch (TextRefused $refused) {
+            return response()->json(['message' => $refused->getMessage()], $refused->getCode());
         }
-
-        $message = DB::transaction(function () use ($number, $connection, $sent, $from, $to, $body) {
-            $message = PhoneMessage::query()->create([
-                'connection_id' => $connection->id,
-                'number_id' => $number->id,
-                'twilio_sid' => $sent['sid'],
-                'direction' => PhoneMessage::DIRECTION_OUTBOUND,
-                'from_e164' => $from,
-                'to_e164' => $to,
-                'body' => $body,
-                'customer_id' => $this->matchCustomer($to),
-            ]);
-
-            $this->events->emit('phone.sms.sent', $message, $this->payload($message));
-
-            return $message;
-        });
 
         return response()->json(['data' => $this->row($message)], Status::HTTP_CREATED);
     }

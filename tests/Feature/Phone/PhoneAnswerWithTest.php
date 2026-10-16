@@ -271,6 +271,28 @@ class PhoneAnswerWithTest extends TestCase
             ->assertJsonPath('errors.answer_user_id.0', 'Choose the person this line should ring.');
     }
 
+    /** Jose, 2026-10-16: a line marked as a lead line feeds EZ Calls / EZ Texts. Off by default. */
+    public function test_a_line_can_be_marked_a_lead_line_and_starts_off(): void
+    {
+        [$number, $editor] = $this->lineToEdit();
+        $this->assertFalse((bool) $number->fresh()->lead_line);
+
+        $this->signedInAs($editor)
+            ->patchJson('/api/v1/phone/numbers/'.$number->id, ['lead_line' => true])
+            ->assertOk()
+            ->assertJsonPath('data.lead_line', true);
+    }
+
+    public function test_a_menu_hang_up_is_inbound_unanswered_no_key_no_voicemail(): void
+    {
+        $call = (new \App\Models\PhoneCall)->forceFill(['direction' => 'inbound', 'voicemail' => false]);
+        $this->assertTrue($call->isMenuHangUp());
+
+        foreach ([['menu_key' => '1'], ['voicemail' => true], ['direction' => 'outbound']] as $differs) {
+            $this->assertFalse((new \App\Models\PhoneCall)->forceFill($differs + ['direction' => 'inbound', 'voicemail' => false])->isMenuHangUp());
+        }
+    }
+
     /**
      * And a choice that names something is saved and read back.
      *

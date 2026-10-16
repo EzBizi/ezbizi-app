@@ -114,6 +114,8 @@ class NotificationDispatcher
             $userIds,
         );
 
+        $recipients = $this->withoutFlooded($recipients, $automationId);
+
         if ($recipients->isEmpty()) {
             return 0;
         }
@@ -485,6 +487,37 @@ class NotificationDispatcher
      * @param  string[]  $roleIds  empty narrows nothing
      * @return Collection<int, User>
      */
+    /**
+     * One rule may tell one person at most FLOOD_CAP things per FLOOD_WINDOW.
+     *
+     * 2026-10-15: a looping "New reply" rule wrote 884 rows in 30 minutes. A
+     * misfiring rule is a bug to fix at the rule; this keeps the bell usable
+     * meanwhile. Automations only — system and alert rows are never dropped.
+     */
+    private const FLOOD_CAP = 20;
+
+    private const FLOOD_WINDOW_MINUTES = 10;
+
+    private function withoutFlooded(Collection $recipients, ?string $automationId): Collection
+    {
+        if ($automationId === null || $recipients->isEmpty()) {
+            return $recipients;
+        }
+
+        $flooded = \App\Models\Notification::query()
+            ->where('automation_id', $automationId)
+            ->where('created_at', '>=', now()->subMinutes(self::FLOOD_WINDOW_MINUTES))
+            ->whereIn('user_id', $recipients->map->getKey()->all())
+            ->groupBy('user_id')
+            ->havingRaw('count(*) >= ?', [self::FLOOD_CAP])
+            ->pluck('user_id')
+            ->all();
+
+        return $flooded === []
+            ? $recipients
+            : $recipients->reject(fn (User $user) => in_array($user->getKey(), $flooded, true))->values();
+    }
+
     private function narrowToChosen(Collection $recipients, array $roleIds, array $userIds = []): Collection
     {
         if ($roleIds === [] && $userIds === []) {

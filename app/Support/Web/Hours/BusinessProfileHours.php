@@ -3,36 +3,44 @@
 namespace App\Support\Web\Hours;
 
 use App\Models\BusinessLocation;
-use App\Models\WebSite;
+use App\Models\SocialConnection;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\GoogleToken;
-use App\Support\Web\HoursWeek;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 /**
- * A website's Google Business Profile listing, as an hours destination.
+ * A Business Profile location's regular hours, as an hours destination.
  *
- * BUILT AND SWITCHED OFF. Jose, 2026-09-28: "we should build the system for
- * when we have GBP access of our own ... but obviously leave that side
- * inactive". It answers "not switched on" until
- * `services.google_business_profile.hours_write` is true, and then writes
- * `regularHours` through the Business Information API.
+ * Written only while `services.google_business_profile.hours_write` is true
+ * (Jose, 2026-09-28: built, and left off until we may write; 2026-10-16: on,
+ * for the A1 Leads takeover).
  *
- * ── Which listing is a website's ──
+ * ── The place is the location ──
  *
- * The synced listing (`business_locations`, from BusinessProfileLocations) in
- * the same company whose website is this site's host. No match, or more than
- * one, and it says so rather than choosing.
+ * Chosen as a Business Profile location, not found through a website's host:
+ * one site can stand for many listings and a listing can name no site at all.
+ *
+ * ── Live, both ways ──
+ *
+ * Review and apply read `regularHours` from Google, never the synced copy in
+ * `business_locations.hours`, which can be a day old; that copy is refreshed
+ * from each read. After a write it reads Google again, and only what Google
+ * then says counts as Changed.
  *
  * ── What it will not write ──
  *
- * A listing with split hours (two periods on one day) or a period that runs
- * past midnight is not a week this editor can hold, so it reads as null and a
- * Keep-existing day on it is refused rather than flattened.
+ * Split hours (two periods on one day) or a period past midnight are not a
+ * week this editor can hold: it reads as null, and a Keep-existing day on it
+ * is refused rather than flattened.
  */
 final class BusinessProfileHours implements HoursDestination
 {
     public const KEY = 'google_business_profile';
+
+    private const API = 'https://mybusinessbusinessinformation.googleapis.com/v1/';
 
     private const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
@@ -46,46 +54,72 @@ final class BusinessProfileHours implements HoursDestination
         return 'Google Business Profile';
     }
 
-    public function unavailable(WebSite $site): ?string
+    public function placeClass(): string
+    {
+        return BusinessLocation::class;
+    }
+
+    /** @param  BusinessLocation  $place */
+    public function placeName(Model $place): string
+    {
+        return (string) ($place->title ?: $place->remote_name);
+    }
+
+    /** @param  BusinessLocation  $place */
+    public function unavailable(Model $place): ?string
     {
         if (! config('services.google_business_profile.hours_write', false)) {
             return 'Google Business Profile hours are not switched on yet.';
         }
 
-        $found = $this->listings($site);
-
-        if ($found === 0) {
-            return 'No Google Business Profile listing has this website.';
+        if (str_starts_with((string) $place->remote_name, 'DEMO-')) {
+            return 'This is a demo listing, not one on Google.';
         }
 
-        return $found > 1 ? 'More than one Google Business Profile listing has this website.' : null;
+        $connection = $place->connection;
+
+        return $connection === null || $connection->status !== SocialConnection::STATUS_CONNECTED
+            ? 'The Business Profile account for this location is not connected.'
+            : null;
     }
 
-    public function read(WebSite $site): array
+    /** The branch's time zone, or the company's: a listing carries none of its own. @param  BusinessLocation  $place */
+    public function zone(Model $place): string
     {
-        $location = $this->location($site);
-        $hours = $location?->hours;
+        $scope = $place->franchise ?? $place->company;
+
+        return $scope === null ? '' : (string) app(SettingsResolver::class)->get('timezone', $scope);
+    }
+
+    /** @param  BusinessLocation  $place */
+    public function read(Model $place): array
+    {
+        $hours = $this->client($place)->get(self::API.$place->remote_name, ['readMask' => 'regularHours'])->throw()->json('regularHours') ?? ['periods' => []];
+
+        // The synced copy follows what Google just said.
+        $place->forceFill(['hours' => $hours])->save();
 
         return [
-            'week' => is_array($hours) ? self::weekFrom($hours) : null,
-            'fingerprint' => sha1(json_encode([$hours, $location?->synced_at?->toIso8601String()])),
+            'week' => self::weekFrom($hours),
+            'fingerprint' => sha1(json_encode(self::sorted($hours))."\n".$this->zone($place)),
         ];
     }
 
-    public function write(WebSite $site, array $week): void
+    /** @param  BusinessLocation  $place */
+    public function write(Model $place, array $week): void
     {
-        $location = $this->location($site) ?? throw new RuntimeException('No listing for this website.');
-        $hours = self::regularHours($week);
+        try {
+            $this->client($place)
+                ->patch(self::API.$place->remote_name.'?updateMask=regularHours', ['regularHours' => self::regularHours($week)])
+                ->throw();
+        } catch (RequestException $e) {
+            // A 4xx is Google saying no: nothing changed. A 5xx may or may not have landed.
+            if ($e->response->clientError()) {
+                throw new HoursRefused('Google refused: '.($e->response->json('error.message') ?? 'HTTP '.$e->response->status()), 0, $e);
+            }
 
-        Http::withToken(GoogleToken::forConnection($location->connection, 'business_profile'))
-            ->timeout(20)
-            ->patch('https://mybusinessbusinessinformation.googleapis.com/v1/'.$location->remote_name.'?updateMask=regularHours', [
-                'regularHours' => $hours,
-            ])
-            ->throw();
-
-        // What we wrote is what the next read compares against.
-        $location->forceFill(['hours' => $hours])->save();
+            throw $e;
+        }
     }
 
     /**
@@ -138,25 +172,17 @@ final class BusinessProfileHours implements HoursDestination
         return ['periods' => $periods];
     }
 
-    private function location(WebSite $site): ?BusinessLocation
+    /** Periods in a fixed order, so the same hours always fingerprint the same. */
+    private static function sorted(array $hours): array
     {
-        return $this->listings($site) === 1 ? $this->matching($site)->first() : null;
+        $periods = (array) ($hours['periods'] ?? []);
+        usort($periods, fn ($a, $b) => [array_search($a['openDay'] ?? '', self::DAYS, true), json_encode($a)] <=> [array_search($b['openDay'] ?? '', self::DAYS, true), json_encode($b)]);
+
+        return $periods;
     }
 
-    private function listings(WebSite $site): int
+    private function client(BusinessLocation $place): PendingRequest
     {
-        return $this->matching($site)->count();
-    }
-
-    private function matching(WebSite $site)
-    {
-        $host = preg_replace('/^www\./', '', strtolower((string) $site->host));
-
-        return BusinessLocation::query()
-            ->where('company_id', $site->company_id)
-            ->whereNotNull('website')
-            ->get()
-            ->filter(fn (BusinessLocation $l) => preg_replace('/^www\./', '', strtolower((string) parse_url($l->website, PHP_URL_HOST))) === $host)
-            ->values();
+        return Http::withToken(GoogleToken::forConnection($place->connection, 'business_profile'))->acceptJson()->timeout(20);
     }
 }

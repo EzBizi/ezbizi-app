@@ -1124,6 +1124,7 @@ class _LineFormState extends State<_LineForm> {
   late String? _groupId;
   late String? _scheduleId;
   late bool _record;
+  late bool _leadLine;
   late bool _transcribe;
   late String _afterHours;
 
@@ -1140,6 +1141,7 @@ class _LineFormState extends State<_LineForm> {
     _groupId = widget.line.ringGroupId;
     _scheduleId = widget.line.hoursScheduleId;
     _record = widget.line.record;
+    _leadLine = widget.line.leadLine;
     _transcribe = widget.line.transcribe;
     _afterHours = widget.line.afterHours;
   }
@@ -1299,6 +1301,19 @@ class _LineFormState extends State<_LineForm> {
           ),
         ],
 
+        // Jose, 2026-10-16: EZ Calls and EZ Texts in Leads.
+        SwitchListTile(
+          key: const Key('number-lead-line'),
+          contentPadding: EdgeInsets.zero,
+          value: _leadLine,
+          onChanged: (v) => setState(() => _leadLine = v),
+          title: const Text('Calls and texts to this line are leads'),
+          subtitle: Text(
+            'They appear in Leads under EZ Calls and EZ Texts.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _transcribe,
@@ -1333,6 +1348,7 @@ class _LineFormState extends State<_LineForm> {
                       'ring_group_id': _groupId,
                       'hours_schedule_id': _scheduleId,
                       'record': _record,
+                      'lead_line': _leadLine,
                       'transcribe': _transcribe,
                       'after_hours': _afterHours,
                       'after_hours_number': _afterHours == 'forward'
@@ -1368,6 +1384,7 @@ class _Line {
     required this.e164,
     required this.label,
     required this.record,
+    this.leadLine = false,
     required this.transcribe,
     required this.afterHours,
     required this.answers,
@@ -1404,6 +1421,9 @@ class _Line {
   /// "move to" list.
   final String scopeId;
   final bool record;
+
+  /// Inbound calls and texts become leads (EZ Calls / EZ Texts).
+  final bool leadLine;
   final bool transcribe;
   final String afterHours;
   final String? afterHoursNumber;
@@ -1449,6 +1469,7 @@ class _Line {
         e164: row['e164']?.toString() ?? '',
         label: row['label']?.toString() ?? '',
         record: row['record'] == true,
+        leadLine: row['lead_line'] == true,
         transcribe: row['transcribe'] == true,
         afterHours: row['after_hours']?.toString() ?? 'voicemail',
         afterHoursNumber: row['after_hours_number'] as String?,

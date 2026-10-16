@@ -310,6 +310,30 @@ class NotificationsTest extends TestCase
         $this->assertSame(1, $sent);
     }
 
+    public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
+    {
+        // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.
+        $send = fn (string $rule) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'New reply',
+            onlyTo: $this->org['admin'],
+            source: 'system',
+            automationId: $rule,
+        ));
+        $looping = (string) \Illuminate\Support\Str::uuid7();
+
+        $told = 0;
+        for ($i = 0; $i < 25; $i++) {
+            $told += $send($looping);
+        }
+
+        $this->assertSame(20, $told, 'capped at 20 per rule per person per 10 minutes');
+        // The control: another rule still reaches the same person.
+        $this->assertSame(1, $send((string) \Illuminate\Support\Str::uuid7()));
+        // And the window ends.
+        $this->travel(11)->minutes();
+        $this->assertSame(1, $send($looping));
+    }
+
     public function test_a_franchise_can_switch_itself_off_while_the_organization_stays_on(): void
     {
         // The organization says yes. The franchise the record belongs to says no,

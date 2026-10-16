@@ -2,13 +2,19 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\AuditEvent;
+use App\Models\BusinessLocation;
+use App\Models\SocialConnection;
 use App\Models\User;
+use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Support\Social\SocialProvider;
 use App\Support\Web\Hours\BusinessProfileHours;
 use App\Support\Web\Hours\WeekEdit;
 use App\Support\Web\HoursWeek;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -159,8 +165,8 @@ class HoursBatchTest extends TestCase
     public function test_a_changed_website_is_told_to_read_its_hours_now(): void
     {
         [$editor, $site, $tenant] = $this->siteWithHours();
-        \Illuminate\Support\Facades\Http::fake(['nj.a-1chimney.com/*' => \Illuminate\Support\Facades\Http::response(['fetched_at' => 1])]);
-        $this->inTenant($tenant['org'], fn () => \App\Models\WebSite::query()->findOrFail($site)
+        Http::fake(['nj.a-1chimney.com/*' => Http::response(['fetched_at' => 1])]);
+        $this->inTenant($tenant['org'], fn () => WebSite::query()->findOrFail($site)
             ->forceFill(['service_user_login' => 'ezbizi-service', 'service_password' => 'secret', 'service_rest_url' => 'https://nj.a-1chimney.com/wp-json/'])->save());
 
         $review = $this->signedInAs($editor)->postJson('/api/v1/web/hours/review', [
@@ -168,7 +174,7 @@ class HoursBatchTest extends TestCase
         ])->json('data.token');
         $this->signedInAs($editor)->postJson('/api/v1/web/hours/apply', ['token' => $review])->assertOk();
 
-        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->method() === 'POST' && $r->url() === 'https://nj.a-1chimney.com/wp-json/ezbizi/v1/refresh');
+        Http::assertSent(fn ($r) => $r->method() === 'POST' && $r->url() === 'https://nj.a-1chimney.com/wp-json/ezbizi/v1/refresh');
     }
 
     public function test_one_sites_hours_convert_from_another_zone_on_save(): void
@@ -228,16 +234,80 @@ class HoursBatchTest extends TestCase
 
     public function test_business_profile_is_built_and_switched_off(): void
     {
-        [$editor, $site] = $this->siteWithHours();
+        [$editor, , $tenant] = $this->siteWithHours();
+        $location = $this->listing($tenant);
 
         $review = $this->signedInAs($editor)->postJson('/api/v1/web/hours/review', [
-            'site_ids' => [$site], 'destinations' => ['website', 'google_business_profile'],
+            'location_ids' => [$location->id], 'destinations' => ['google_business_profile'],
             'schedule' => ['monday' => ['action' => 'closed']],
         ])->assertOk()->json('data');
 
-        $gbp = collect($review['places'])->firstWhere('destination', 'google_business_profile');
-        $this->assertSame('unavailable', $gbp['status']);
-        $this->assertStringContainsString('not switched on', $gbp['reasons'][0]);
+        $this->assertSame('unavailable', $review['places'][0]['status']);
+        $this->assertStringContainsString('not switched on', $review['places'][0]['reasons'][0]);
+    }
+
+    /**
+     * Jose, 2026-10-16 (A1 Leads takeover): a location is chosen as a location;
+     * review reads Google live, apply writes, reads Google again, and audits.
+     */
+    public function test_business_profile_hours_are_read_live_written_and_confirmed(): void
+    {
+        config(['services.google_business_profile.hours_write' => true, 'services.business_profile.client_id' => 'cid', 'services.business_profile.client_secret' => 'cs']);
+        [$editor, , $tenant] = $this->siteWithHours();
+        $location = $this->listing($tenant);
+        $before = BusinessProfileHours::regularHours($this->weekArray());
+        $after = $before;
+        $after['periods'] = array_values(array_filter($after['periods'], fn ($p) => $p['openDay'] !== 'MONDAY'));
+        $stored = $before;
+
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            'mybusinessbusinessinformation.googleapis.com/*' => function ($request) use (&$stored) {
+                if ($request->method() === 'PATCH') {
+                    $stored = $request['regularHours'];
+
+                    return Http::response([]);
+                }
+
+                return Http::response(['regularHours' => $stored]);
+            },
+        ]);
+
+        $review = $this->signedInAs($editor)->postJson('/api/v1/web/hours/review', [
+            'location_ids' => [$location->id], 'destinations' => ['google_business_profile'],
+            'schedule' => ['monday' => ['action' => 'closed']],
+        ])->assertOk()->json('data');
+        $this->assertSame('change', $review['places'][0]['status']);
+        $this->assertSame('A-1 Chimney Hallandale', $review['places'][0]['name']);
+
+        $applied = $this->signedInAs($editor)->postJson('/api/v1/web/hours/apply', ['token' => $review['token']])->assertOk()->json('data');
+
+        $this->assertSame('changed', $applied['results'][0]['status']);
+        $this->assertEquals($after, $stored);
+        Http::assertSent(fn ($r) => $r->method() === 'PATCH' && str_contains($r->url(), $location->remote_name.'?updateMask=regularHours'));
+        $this->inTenant($tenant['org'], fn () => $this->assertSame(1, AuditEvent::query()->where('action', 'web.hours.changed')->where('target_id', $location->id)->count()));
+    }
+
+    public function test_a_location_google_refuses_is_blocked_not_unconfirmed(): void
+    {
+        config(['services.google_business_profile.hours_write' => true, 'services.business_profile.client_id' => 'cid', 'services.business_profile.client_secret' => 'cs']);
+        [$editor, , $tenant] = $this->siteWithHours();
+        $location = $this->listing($tenant);
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'at', 'expires_in' => 3600]),
+            'mybusinessbusinessinformation.googleapis.com/*' => fn ($r) => $r->method() === 'PATCH'
+                ? Http::response(['error' => ['message' => 'The caller does not have permission']], 403)
+                : Http::response(['regularHours' => BusinessProfileHours::regularHours($this->weekArray())]),
+        ]);
+
+        $token = $this->signedInAs($editor)->postJson('/api/v1/web/hours/review', [
+            'location_ids' => [$location->id], 'destinations' => ['google_business_profile'],
+            'schedule' => ['monday' => ['action' => 'closed']],
+        ])->json('data.token');
+        $result = $this->signedInAs($editor)->postJson('/api/v1/web/hours/apply', ['token' => $token])->assertOk()->json('data.results.0');
+
+        $this->assertSame('blocked', $result['status']);
+        $this->assertStringContainsString('does not have permission', $result['reason']);
     }
 
     public function test_business_profile_hours_translate_both_ways(): void
@@ -253,6 +323,31 @@ class HoursBatchTest extends TestCase
     }
 
     // ── Helpers ─────────────────────────────────────────────────────
+
+    /** The test week as the seven days a destination reads. */
+    private function weekArray(): array
+    {
+        return array_map(fn ($d) => ['closed' => $d['closed'], 'open' => $d['open'], 'close' => $d['close']], HoursWeek::parse(self::WEEK));
+    }
+
+    /** A Business Profile location on a connected account, in the tenant's company. */
+    private function listing(array $tenant): BusinessLocation
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant) {
+            $connection = SocialConnection::create([
+                'organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $tenant['company']->id, 'provider' => SocialProvider::GoogleBusinessProfile->value,
+                'remote_id' => 'accounts/1', 'display_name' => 'A-1 Chimney',
+            ]);
+            $connection->connect(['refresh_token' => 'rt-good']);
+            $connection->save();
+
+            return BusinessLocation::create([
+                'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id,
+                'connection_id' => $connection->id, 'remote_name' => 'locations/123', 'title' => 'A-1 Chimney Hallandale',
+            ]);
+        });
+    }
 
     private function plan(array $edits, string $zone = 'America/New_York', ?string $source = null, ?string $floor = null, string $now = '2026-09-28 12:00'): array
     {
@@ -284,7 +379,7 @@ class HoursBatchTest extends TestCase
 
     private function editorFor(array $tenant, string $role = 'Web Editor'): User
     {
-        return $this->userWithRole($tenant, $role, ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+        return $this->userWithRole($tenant, $role, ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view', 'business_profile.view', 'business_profile.edit']);
     }
 
     private function hours(string $site): ?string

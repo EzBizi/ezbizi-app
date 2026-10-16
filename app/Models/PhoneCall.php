@@ -88,6 +88,19 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
         }
     }
 
+    /**
+     * The caller hung up in the menu: an inbound call nobody answered, no key
+     * pressed, no voicemail left. Leads' EZ Calls tags it (Jose, 2026-10-16);
+     * the rule lives here so the phone module owns what its calls mean.
+     */
+    public function isMenuHangUp(): bool
+    {
+        return $this->direction === self::DIRECTION_INBOUND
+            && $this->answered_by === null
+            && $this->menu_key === null
+            && ! $this->voicemail;
+    }
+
     public static function personalDataPurpose(): string
     {
         return 'Call and voicemail history: who dialled whom, how long it lasted, and any '

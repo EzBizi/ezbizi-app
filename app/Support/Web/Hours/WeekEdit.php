@@ -40,7 +40,7 @@ final class WeekEdit
 
     /**
      * @param  array<int, array{closed: bool, open: string, close: string}>|null  $existing  Monday first; null when the
-     *                                                                                   place has no weekly schedule (empty, or a sentence)
+     *                                                                                       place has no weekly schedule (empty, or a sentence)
      * @param  array<int, array{action: string, open: ?string, close: ?string}>  $days  Monday first; a null time is Keep existing
      * @return array{status: string, reasons: list<string>, week: ?array, days: list<array<string, mixed>>}
      */

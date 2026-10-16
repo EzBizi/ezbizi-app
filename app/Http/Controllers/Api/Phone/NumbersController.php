@@ -866,6 +866,9 @@ class NumbersController extends Controller
             'voicemail_box_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('phone_voicemail_boxes')],
             'record' => ['sometimes', 'boolean'],
             'transcribe' => ['sometimes', 'boolean'],
+
+            // Inbound calls and texts become leads (EZ Calls / EZ Texts).
+            'lead_line' => ['sometimes', 'boolean'],
             'after_hours' => ['sometimes', Rule::in(PhoneNumber::AFTER_HOURS)],
             'after_hours_number' => ['sometimes', 'nullable', 'string', 'max:16'],
 
@@ -1191,6 +1194,7 @@ class NumbersController extends Controller
             'hours_schedule_id' => $number->hours_schedule_id,
             'language' => $number->language,
             'sms_outbound_allowed' => (bool) $number->sms_outbound_allowed,
+            'lead_line' => (bool) $number->lead_line,
 
             'emergency_address_sid' => $number->emergency_address_sid,
             'emergency_address_set' => (bool) $number->emergency_address_set,

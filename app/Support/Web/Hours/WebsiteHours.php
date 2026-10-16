@@ -6,6 +6,7 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Web\HoursWeek;
 use App\Support\Web\ValueResolver;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * The hours a website publishes: its own `hours` value, or the primary site's
@@ -26,12 +27,30 @@ final class WebsiteHours implements HoursDestination
         return 'Website';
     }
 
-    public function unavailable(WebSite $site): ?string
+    public function placeClass(): string
+    {
+        return WebSite::class;
+    }
+
+    /** @param  WebSite  $place */
+    public function placeName(Model $place): string
+    {
+        return (string) $place->host;
+    }
+
+    public function unavailable(Model $place): ?string
     {
         return null;
     }
 
-    public function read(WebSite $site): array
+    /** @param  WebSite  $place */
+    public function zone(Model $place): string
+    {
+        return $this->effective($place, 'timezone');
+    }
+
+    /** @param  WebSite  $site */
+    public function read(Model $site): array
     {
         $text = $this->effective($site, 'hours');
         $week = $text === '' ? null : HoursWeek::parse($text);
@@ -44,7 +63,8 @@ final class WebsiteHours implements HoursDestination
         ];
     }
 
-    public function write(WebSite $site, array $week): void
+    /** @param  WebSite  $site */
+    public function write(Model $site, array $week): void
     {
         WebValue::query()->updateOrCreate(
             ['site_id' => $site->getKey(), 'path' => '', 'key' => 'hours'],
