@@ -394,6 +394,10 @@ final class RingCentralCallLog
             // would average in as a real short call and pull every mean down.
             'talk_seconds' => $talkSeconds,
 
+            // The record's own length, IVR and wait included. Leads uses it for
+            // an outbound call, which has no PstnToSip leg to time.
+            'duration' => isset($record['duration']) ? (int) $record['duration'] : null,
+
             /*
              * THE RECORDING'S ID, NOT ITS URL.
              *

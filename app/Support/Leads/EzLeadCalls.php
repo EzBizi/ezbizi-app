@@ -68,8 +68,11 @@ final class EzLeadCalls
             return 0;
         }
 
+        // In and out (Jose, 2026-10-16: "all calls should show up"), never one
+        // of our own lines calling another.
+        $own = PhoneNumber::query()->pluck('e164')->map(fn ($n) => self::ten($n))->filter()->flip();
         $calls = PhoneCall::query()->whereIn('number_id', $lines->keys())
-            ->where('direction', PhoneCall::DIRECTION_INBOUND)
+            ->whereIn('direction', [PhoneCall::DIRECTION_INBOUND, PhoneCall::DIRECTION_OUTBOUND])
             ->whereIn('status', self::OVER)
             ->where('created_at', '>=', $since)->orderBy('created_at')->get();
         $texts = PhoneMessage::query()->whereIn('number_id', $lines->keys())
@@ -80,15 +83,18 @@ final class EzLeadCalls
             ...$calls->map(fn ($c) => self::CALL.$c->id),
             ...$texts->map(fn ($m) => self::TEXT.$m->id),
         ])->pluck('remote_id')->flip();
-        $known = $this->names->for($calls->pluck('from_e164'));
-        $people = User::query()->whereIn('id', $calls->pluck('answered_by')->filter())->pluck('name', 'id');
+        $known = $this->names->for($calls->map(fn ($c) => self::them($c)));
+        $people = User::query()->whereIn('id', $calls->pluck('answered_by')->merge($calls->pluck('user_id'))->filter())->pluck('name', 'id');
 
         $filed = 0;
         foreach ($calls as $call) {
-            if (! isset($have[self::CALL.$call->id]) && self::ten($call->from_e164) !== null) {
-                $existing = ($known[(string) $call->from_e164]['kind'] ?? null) === NumberNames::CUSTOMER;
-                $this->fileCall($call, $lines[$call->number_id], $existing, $people[$call->answered_by] ?? null);
-                $filed++;
+            $them = self::them($call);
+            if (! isset($have[self::CALL.$call->id]) && ($d = self::ten($them)) !== null && ! isset($own[$d])) {
+                $existing = ($known[$them]['kind'] ?? null) === NumberNames::CUSTOMER;
+                $out = $call->direction === PhoneCall::DIRECTION_OUTBOUND;
+                if ($this->fileCall($call, $lines[$call->number_id], $existing, $people[$out ? $call->user_id : $call->answered_by] ?? null)) {
+                    $filed++;
+                }
             }
         }
         foreach ($texts as $text) {
@@ -111,9 +117,18 @@ final class EzLeadCalls
         };
     }
 
-    private function fileCall(PhoneCall $call, PhoneNumber $line, bool $existing, ?string $answeredBy): void
+    /** The customer's end: who called in, or whom we called. */
+    private static function them(PhoneCall $call): string
+    {
+        return (string) ($call->direction === PhoneCall::DIRECTION_OUTBOUND ? $call->to_e164 : $call->from_e164);
+    }
+
+    private function fileCall(PhoneCall $call, PhoneNumber $line, bool $existing, ?string $answeredBy): bool
     {
         $at = CarbonImmutable::parse($call->created_at);
+        if ($call->direction === PhoneCall::DIRECTION_OUTBOUND) {
+            return $this->fileOutbound($call, $line, $existing, $answeredBy, $at);
+        }
         $outcome = self::outcome($call, $existing);
 
         DB::transaction(function () use ($call, $line, $at, $outcome, $answeredBy) {
@@ -152,6 +167,37 @@ final class EzLeadCalls
                 ]]);
             }
         });
+
+        return true;
+    }
+
+    /**
+     * Our call out: on the person's lead, or a lead of its own tagged Outbound
+     * when nobody has the number; never for a customer with no lead (their
+     * calls belong on the customer). Never an alert, never "somebody wrote in".
+     */
+    private function fileOutbound(PhoneCall $call, PhoneNumber $line, bool $customer, ?string $by, CarbonImmutable $at): bool
+    {
+        $them = self::them($call);
+        if ($customer && $this->existingLead($them, $at) === null) {
+            return false;
+        }
+
+        DB::transaction(function () use ($call, $line, $at, $by, $them) {
+            $lead = $this->leadFor($them, $at, $line, Lead::SOURCE_EZ_CALLS, self::CALL.$call->id, RingCentralLeadCalls::OUTBOUND);
+            $this->thread->store($lead, self::CALL.$call->id, [
+                'channel' => LeadConversation::CHANNEL_PHONE_CALL,
+                'participant' => LeadConversation::FROM_ADVERTISER,
+                'occurred_at' => $at,
+                'duration_ms' => $call->status === PhoneCall::STATUS_COMPLETED && $call->duration_seconds ? (int) $call->duration_seconds * 1000 : null,
+                'recording_url' => $call->recording_sid !== null ? 'twilio:'.$call->id : null,
+                'transcript' => $call->transcript,
+                'text' => $by !== null ? mb_substr($by, 0, 120) : null,
+            ]);
+            $this->thread->refresh($lead);
+        });
+
+        return true;
     }
 
     private function fileText(PhoneMessage $text, PhoneNumber $line): void
@@ -172,16 +218,20 @@ final class EzLeadCalls
     }
 
     /** The caller's inbox lead from the last 30 days, or a new one on this line's company and branch. */
-    private function leadFor(string $from, CarbonImmutable $at, PhoneNumber $line, string $source, string $remoteId, ?string $outcome): Lead
+    private function existingLead(string $from, CarbonImmutable $at): ?Lead
     {
-        $digits = self::ten($from);
-        $found = Lead::query()
-            ->where('phone_digits', 'like', '%'.$digits)
+        return Lead::query()
+            ->where('phone_digits', 'like', '%'.self::ten($from))
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', '!=', Lead::STATUS_JOB_APPLICANT)
             ->where('received_at', '>=', $at->subDays(self::SAME_PERSON_DAYS))
             ->orderByDesc('received_at')
             ->first();
+    }
+
+    private function leadFor(string $from, CarbonImmutable $at, PhoneNumber $line, string $source, string $remoteId, ?string $outcome): Lead
+    {
+        $found = $this->existingLead($from, $at);
         if ($found !== null) {
             return $found;
         }

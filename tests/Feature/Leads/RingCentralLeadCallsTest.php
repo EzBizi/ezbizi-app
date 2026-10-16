@@ -60,13 +60,13 @@ class RingCentralLeadCallsTest extends TestCase
                 self::rc('2', '+15550000001', '2026-10-14T16:00:00Z', '+12160000003', null, ['talk_seconds' => null, 'answered_by' => null, 'recording_id' => null]),
                 self::rc('3', '+15550000009', '2026-10-14T15:00:00Z'),                                   // the LS call
                 self::rc('4', '+15550000004', '2026-10-14T15:10:00Z', queue: 'A1 - Existing Client'), // shown too, tagged
-                self::rc('5', '+15550000005', '2026-10-14T15:20:00Z', queue: 'Ana Diaz'),               // a person's direct line
+                self::rc('5', '+15550000005', '2026-10-14T15:20:00Z', queue: 'Ana Diaz'),               // a person's direct line: shown too (2026-10-16)
                 self::rc('6', '+15550000006', '2026-10-14T15:30:00Z', '+18000000002'),
             ], self::LINES, $t['company']->id);
 
-            $this->assertSame(4, $filed, 'calls 1, 2 (same caller), 4 and 6');
+            $this->assertSame(5, $filed, 'calls 1, 2 (same caller), 4, 5 and 6');
             $rc = Lead::query()->where('source', Lead::SOURCE_RINGCENTRAL)->orderBy('received_at')->get();
-            $this->assertCount(3, $rc, 'one lead per caller');
+            $this->assertCount(4, $rc, 'one lead per caller');
             $this->assertSame(RingCentralLeadCalls::EXISTING_CLIENT, $rc[1]->source_status, 'existing client, tagged');
 
             $first = $rc[0];
@@ -78,8 +78,8 @@ class RingCentralLeadCallsTest extends TestCase
             $this->assertSame(95000, $calls[0]->duration_ms);
             $this->assertNull($calls[1]->duration_ms, 'missed: rang out');
 
-            $this->assertSame(Company::query()->where('name', 'AngiSweep')->value('id'), $rc[2]->company_id, 'a brand line is its company');
-            $this->assertNull($rc[2]->franchise_id);
+            $this->assertSame(Company::query()->where('name', 'AngiSweep')->value('id'), $rc[3]->company_id, 'a brand line is its company');
+            $this->assertNull($rc[3]->franchise_id);
 
             // Run again: nothing twice.
             $this->assertSame(0, app(RingCentralLeadCalls::class)->file([self::rc('1', '+15550000001', '2026-10-14T14:00:00Z')], self::LINES, $t['company']->id));
@@ -243,6 +243,57 @@ class RingCentralLeadCallsTest extends TestCase
             $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
             $this->assertSame(['+13144091888' => RingCentralLeadCalls::EXISTING_CLIENT, '+13144091999' => null], $tags);
         });
+    }
+
+    /** Jose, 2026-10-16: "all calls should show up, inbound - outbound - direct, etc." */
+    public function test_our_calls_out_show_on_the_callers_lead_or_their_own_and_never_alert(): void
+    {
+        $t = $this->setUpTenant();
+        $out = fn (string $id, string $to, string $result, array $extra = []) => $extra + [
+            'id' => $id, 'direction' => 'Outbound', 'started_at' => now()->subMinutes(20)->toIso8601String(),
+            'from' => '+17320000001', 'to_number' => $to, 'caller_label' => 'Christian Francia', 'queue' => null,
+            'result' => $result, 'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 44, 'recording_id' => null,
+        ];
+
+        $this->inTenant($t['org'], function () use ($t, $out) {
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'Old Client', 'phone' => '+15550000072']);
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([self::rc('70', '+15550000070', now()->subHour()->toIso8601String())], self::LINES, $t['company']->id);
+            $calls->file([
+                $out('71', '+15550000070', 'Call connected'),                 // calling back a lead: on its thread
+                $out('72', '+15550000072', 'Call connected'),                 // a customer with no lead: not a lead
+                $out('73', '+15550000073', 'No Answer'),                      // a stranger: a lead of its own, Outbound
+                $out('74', '+18000000002', 'Call connected'),                 // one of our own lines: internal
+                self::rc('75', '+17320000001', now()->subMinutes(10)->toIso8601String()),  // our line calling in: internal
+            ], self::LINES, $t['company']->id);
+
+            $leads = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
+            $this->assertSame(['+15550000070' => null, '+15550000073' => RingCentralLeadCalls::OUTBOUND], $leads);
+            $back = LeadConversation::query()->where('remote_id', 'rc_71')->firstOrFail();
+            $this->assertSame([LeadConversation::FROM_ADVERTISER, 44000, 'Christian Francia'], [$back->participant, $back->duration_ms, $back->text]);
+            $this->assertNull(LeadConversation::query()->where('remote_id', 'rc_73')->value('duration_ms'), 'nobody picked up');
+        });
+
+        $events = \App\Models\AutomationEvent::withoutGlobalScopes()->pluck('event_key')->countBy();
+        $this->assertSame(0, $events['lead.missed_call'] ?? 0, 'our calls never alert');
+        $this->assertSame(0, $events['lead.contact_received'] ?? 0);
+
+        $thread = $this->signedInAs($t['admin'])->getJson('/api/v1/leads/'.$this->inTenant($t['org'], fn () => Lead::query()->where('phone', '+15550000070')->value('id')))->json('data.conversations');
+        $ours = collect($thread)->firstWhere('from', 'ADVERTISER');
+        $this->assertSame(['Christian Francia', null], [$ours['sent_by'], $ours['text']], 'the card says who called');
+    }
+
+    /** A missed call on a person's direct line alerts like any missed call. */
+    public function test_a_missed_call_on_a_direct_line_alerts(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], fn () => app(RingCentralLeadCalls::class)->file([
+            self::rc('80', '+15550000080', now()->subMinutes(20)->toIso8601String(), queue: 'Jason Roman',
+                extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => ['Jason Roman'], 'result' => 'Missed']),
+        ], self::LINES, $t['company']->id));
+
+        $this->assertSame(1, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->count());
+        $this->assertSame(RingCentralLeadCalls::MISSED, $this->inTenant($t['org'], fn () => Lead::query()->value('source_status')));
     }
 
     public function test_line_names_place_the_company_and_market(): void

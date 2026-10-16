@@ -989,6 +989,14 @@ class LeadsController extends Controller
     /** @return array<string, mixed> */
     private function presentConversation(LeadConversation $c, ?string $sentBy = null): array
     {
+        // Our RingCentral call out: the text holds who made it ("We called" on
+        // the card with the staff name), and "No answer" when nobody picked up.
+        if ((str_starts_with((string) $c->remote_id, 'rc_') || str_starts_with((string) $c->remote_id, \App\Support\Leads\EzLeadCalls::CALL))
+            && $c->channel === LeadConversation::CHANNEL_PHONE_CALL && $c->participant === LeadConversation::FROM_ADVERTISER) {
+            $sentBy ??= $c->text;
+            $c = (clone $c)->forceFill(['text' => $c->duration_ms === null ? 'No answer' : null]);
+        }
+
         return [
             'id' => $c->id,
             // The person who sent it from EzBizi, or null. And whether a rule

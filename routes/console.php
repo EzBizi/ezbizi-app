@@ -387,6 +387,8 @@ Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15
 Schedule::command('ezbizi:leads-ringcentral')->everyTwoMinutes()->withoutOverlapping(15);
 // Calls and texts to EzBizi's own lead lines: EZ Calls and EZ Texts (Jose, 2026-10-16).
 Schedule::command('ezbizi:leads-ez')->everyMinute()->withoutOverlapping(10);
+// A Google call filed under another person's message lead, moved to its own (2026-10-16).
+Schedule::command('ezbizi:leads-call-owner')->everyFifteenMinutes()->withoutOverlapping(15);
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);

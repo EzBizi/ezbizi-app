@@ -60,7 +60,8 @@ class LeadsRingCentralCalls extends Command
                     return;
                 }
 
-                $rows = array_values(array_filter($log->forPeriod($start, $now),
+                // Inbound and outbound (Jose, 2026-10-16: "all calls should show up").
+                $rows = array_values(array_filter($log->forPeriod($start, $now, outbound: true),
                     fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
 
                 $filed = $calls->file($rows, $log->numberNames(), $company);

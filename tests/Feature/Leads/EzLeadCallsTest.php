@@ -105,6 +105,22 @@ class EzLeadCallsTest extends TestCase
         $this->assertSame(0, $events['lead.contact_received'] ?? 0, 'a call is not somebody writing in');
     }
 
+    /** Jose, 2026-10-16: our calls out show too; never an alert; never our own lines. */
+    public function test_our_calls_out_show_and_never_alert(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            $this->ring('+12035550222', ['direction' => 'outbound', 'to_e164' => '+15550000020', 'user_id' => $this->t['admin']->id, 'duration_seconds' => 30]);
+            $this->ring('+12035550222', ['direction' => 'outbound', 'to_e164' => '+12035550333', 'user_id' => $this->t['admin']->id]);   // our other line
+            app(EzLeadCalls::class)->file(CarbonImmutable::now()->subDay());
+
+            $lead = Lead::query()->sole();
+            $this->assertSame(['+15550000020', RC::OUTBOUND], [$lead->phone, $lead->source_status]);
+            $row = $lead->conversations()->sole();
+            $this->assertSame([LeadConversation::FROM_ADVERTISER, 30000, $this->t['admin']->name], [$row->participant, $row->duration_ms, $row->text]);
+        });
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->whereIn('event_key', ['lead.missed_call', 'lead.contact_received'])->count());
+    }
+
     public function test_a_text_is_actionable_and_a_caller_keeps_one_lead_across_lines(): void
     {
         $lead = $this->inTenant($this->t['org'], function () {
