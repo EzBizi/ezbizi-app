@@ -42,7 +42,11 @@ class FinancialSource extends Model implements StatesRetention
     /** Marker meanings: values that tell rows apart. */
     public const MARKER_KEYS = ['summary', 'job', 'skip'];
 
-    public const FIELD_KEYS = ['amount', 'date', 'company', 'technician', 'team', 'job_number', 'category', 'kind', 'status', 'reason'];
+    public const FIELD_KEYS = [
+        'amount', 'date', 'company', 'technician', 'team', 'job_number', 'category', 'kind', 'status', 'reason', 'total',
+        // Repair team sheets.
+        'parts', 'tech_share', 'external_share', 'contracting', 'employee', 'helper', 'gas', 'operation', 'hours',
+    ];
 
     protected function casts(): array
     {

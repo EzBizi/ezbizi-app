@@ -188,6 +188,16 @@ class _SourcePanelState extends State<_SourcePanel> {
     'kind': 'Row kind column',
     'status': 'Status column',
     'reason': 'Reason column',
+    'total': 'Total column',
+    'parts': 'Parts cost column',
+    'tech_share': 'Technician share column',
+    'external_share': 'External company share column',
+    'contracting': 'Contracting profit column',
+    'employee': 'Employee cost column',
+    'helper': 'Helper cost column',
+    'gas': 'Gas cost column',
+    'operation': 'Operating cost column',
+    'hours': 'Hours column',
   };
 
   Future<void> _save() async {
