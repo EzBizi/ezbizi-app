@@ -870,7 +870,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // module, since the fleet-wide one is blind to it. Not renamed
                 // to `punch`: time_clock.view is a live permission key in
                 // every role that holds it.
-                actions: ['view', 'lock_screen'],
+                // `anywhere` (2026-10-16): clock in and out away from the
+                // place's clock-in zone. A capability, not a restriction, so
+                // Administrator holding every permission means exempt.
+                actions: ['view', 'lock_screen', 'anywhere'],
+                actionLabels: ['anywhere' => 'Clock in from anywhere'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(

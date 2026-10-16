@@ -21,6 +21,7 @@ import 'core/permissions.dart';
 import 'core/file_access_service.dart';
 import 'core/remote_control_service.dart';
 import 'core/screenshot_service.dart';
+import 'core/punch_position.dart';
 import 'core/session.dart';
 import 'core/sidebar_order.dart';
 import 'core/staff_session.dart';
@@ -920,7 +921,7 @@ class _HomeShellState extends State<HomeShell> {
 
     final response = await widget.api.post(
       clockedIn ? '/time-clock/clock-out' : '/time-clock/clock-in',
-      {},
+      await punchPosition(me.timeClock.needsLocation),
     );
 
     if (!mounted) return;
