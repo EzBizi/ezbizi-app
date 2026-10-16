@@ -21,6 +21,7 @@ class VersionHistory {
         'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
         'Marketing › Social: your choice of List or Board for posts is now remembered.',
         'Customer Experience: Reviews and Business Profile name the connected Google account but no longer offer Disconnect. Change it in Settings › Integrations.',
+        'Customer Experience: reviews already answered on Google no longer show as Unanswered. Replies to A-1 Chimney reviews are still published from A1 Leads, not from Reviews.',
       ],
     ),
     VersionRelease(
