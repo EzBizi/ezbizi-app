@@ -38,7 +38,8 @@ class LeadsRead extends Command
             ->whereExists(fn ($q) => $q->from('lead_conversations')
                 ->whereColumn('lead_conversations.lead_id', 'leads.id')
                 ->where('participant', LeadConversation::FROM_CONSUMER)
-                ->whereRaw("COALESCE(NULLIF(TRIM(text), ''), NULLIF(TRIM(transcript), '')) IS NOT NULL"))
+                // A call's text is our tag, not its words (RingCentralLeadCalls).
+                ->whereRaw("COALESCE(NULLIF(TRIM(CASE WHEN channel = 'PHONE_CALL' THEN NULL ELSE text END), ''), NULLIF(TRIM(transcript), '')) IS NOT NULL"))
             ->orderByDesc('received_at')
             ->limit((int) $this->option('limit'))
             ->get();

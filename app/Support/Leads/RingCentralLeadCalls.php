@@ -26,7 +26,9 @@ use Illuminate\Support\Facades\DB;
  * ── Which calls are leads ────────────────────────────────────────
  *
  * Inbound, from a 10-digit number, and not:
- *   - the "A1 - Existing Client" queue: the caller pressed "existing customer";
+ *   - (not the "A1 - Existing Client" queue any more: every inbound call on a
+ *     lead line shows, tagged Existing client - Jose, 2026-10-16, "some of the
+ *     calls from ring central are not showing up");
  *   - a queue that is a person (a direct line), the people being everyone the
  *     day's calls rang.
  * 1,973 inbound calls in those three days: 859 New Client, 514 Existing Client,
@@ -83,6 +85,12 @@ final class RingCentralLeadCalls
     public const MISSED = 'MISSED_CALL';
 
     public const VOICEMAIL = 'VOICEMAIL';
+
+    /** Answered in the "A1 - Existing Client" queue: the caller pressed "existing customer". */
+    public const EXISTING_CLIENT = 'EXISTING_CLIENT';
+
+    /** A call older than this files quietly: a catch-up run announces nothing. */
+    private const ANNOUNCE_WITHIN_MINUTES = 60;
 
     private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail'];
 
@@ -164,7 +172,8 @@ final class RingCentralLeadCalls
                 // The only RingCentral calls anybody is told about (Jose,
                 // 2026-10-15: "just report the Missed Calls instead from now on";
                 // 2026-10-16: menu hang-ups excluded, voicemails included).
-                if ($outcome === self::MISSED || $outcome === self::VOICEMAIL) {
+                if (($outcome === self::MISSED || $outcome === self::VOICEMAIL)
+                    && $times[$i]->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
                     $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
                         'phone' => $lead->phone,
                         'contact_name' => $lead->contact_name,
@@ -249,7 +258,7 @@ final class RingCentralLeadCalls
     public static function outcome(array $call): ?string
     {
         return match (true) {
-            $call['answered_by'] !== null => null,
+            $call['answered_by'] !== null => ($call['queue'] ?? null) === self::EXISTING_CLIENT_QUEUE ? self::EXISTING_CLIENT : null,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
             $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
             default => self::MISSED,
@@ -265,7 +274,6 @@ final class RingCentralLeadCalls
             && ($call['id'] ?? null) !== null
             && ($call['started_at'] ?? null) !== null
             && self::ten($call['from'] ?? null) !== null
-            && $queue !== self::EXISTING_CLIENT_QUEUE
             && ! ($queue !== null && isset($staff[$queue]));
     }
 

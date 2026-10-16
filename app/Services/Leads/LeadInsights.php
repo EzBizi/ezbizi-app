@@ -320,14 +320,17 @@ class LeadInsights
         $saidSomething = false;
 
         foreach ($rows as $row) {
-            // A call's words are its transcript, both sides in one text.
-            $said = $row->text ?? $row->transcript;
+            // A call's words are its transcript, both sides in one text. Never
+            // its text: on a RingCentral call that is our own tag ("Possible
+            // spam"), which Grok read as the customer's words (2026-10-16).
+            $isCall = $row->channel === LeadConversation::CHANNEL_PHONE_CALL;
+            $said = $isCall ? $row->transcript : ($row->text ?? $row->transcript);
             if ($said === null || trim($said) === '') {
                 continue;
             }
 
             $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Customer' : 'Business';
-            if ($row->text === null) {
+            if ($isCall || $row->text === null) {
                 $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Call from the customer' : 'Call from the business';
             }
             $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $said));
