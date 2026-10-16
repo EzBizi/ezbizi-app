@@ -5,6 +5,7 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\AuditEvent;
 use App\Support\Ai\AppAct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -21,16 +22,41 @@ class WhatsAppCommandsTest extends TestCase
         'summary' => 'Move the job',
     ];
 
-    public function test_only_real_tenant_write_routes_are_offered(): void
+    public function test_only_allowlisted_routes_are_offered(): void
     {
-        $this->assertTrue(AppAct::writable('POST', 'tasks'));
-        $this->assertFalse(AppAct::writable('GET', 'tasks'));
-        // A removal is done on the screen.
-        $this->assertFalse(AppAct::writable('DELETE', 'tasks/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'));
-        // Made up by the model.
+        $this->assertTrue(AppAct::writable('POST', 'scheduling/board/jobs/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/reschedule'));
+        $this->assertTrue(AppAct::writable('PATCH', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'));
+        // A real tenant write route nobody opted in: refused. This is the
+        // allowlist; a denylist would let it through and this goes red.
+        $this->assertFalse(AppAct::writable('POST', 'tasks'));
+        $this->assertFalse(AppAct::writable('POST', 'leads/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/book'));
+        // Wrong method on an allowed path, and a path the model made up.
+        $this->assertFalse(AppAct::writable('DELETE', 'reviews/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/reply'));
         $this->assertFalse(AppAct::writable('POST', 'ads/pause-everything'));
-        $this->assertFalse(AppAct::writable('POST', 'auth/logout'));
-        $this->assertStringNotContainsString('DELETE ', AppAct::catalogue());
+        $this->assertStringNotContainsString('tasks', AppAct::catalogue());
+    }
+
+    public function test_every_allowlisted_command_is_a_real_route_and_none_is_forbidden(): void
+    {
+        $routes = collect(Route::getRoutes()->getRoutes())
+            ->flatMap(fn ($r) => collect($r->methods())->map(fn ($m) => $m.' '.substr($r->uri(), 7)))->all();
+
+        foreach (AppAct::COMMANDS as $command) {
+            $this->assertContains($command, $routes, "$command is not a route: renamed?");
+            $this->assertFalse(AppAct::forbidden(explode(' ', $command, 2)[1]), "$command is on the never list");
+        }
+    }
+
+    public function test_the_never_list_wins_even_if_a_module_adds_the_route(): void
+    {
+        foreach ([
+            'me/api-keys', 'social/connections/{connection}', 'integrations/workiz/connect',
+            'webhooks/{webhook}', 'reports/exports', 'staff/organizations/{o}/impersonate',
+            'roles/{role}', 'billing/checkout', 'marketing/newsletters/{n}/send',
+            'automations/{automation}', 'auth/logout', 'me/password', 'leads/bulk',
+        ] as $template) {
+            $this->assertTrue(AppAct::forbidden($template), $template);
+        }
     }
 
     public function test_without_the_command_tick_nothing_is_dispatched(): void

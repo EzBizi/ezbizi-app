@@ -14,21 +14,18 @@ use Illuminate\Support\Facades\Route;
  * A staff WhatsApp command ("publish the reply to the Smith review") run as
  * the sender (A1 Leads takeover, 2026-10-16).
  *
- * Grok picks ONE write endpoint the screens already use; the bot repeats it
+ * Grok picks ONE endpoint from the COMMANDS allowlist; the bot repeats it
  * back in plain words and nothing runs until the person answers YES. It then
  * goes through the kernel as them, so the route's own Roles & Permissions
  * tick, its audit and the Automations it raises are exactly the screen's.
  * Who may command at all is the `ai_assistance.command` tick.
  *
  * Grok sees the request and the route list only. No response body is ever
- * sent to it, so AppAsk's GET/JSON privacy line is untouched. DELETE routes
- * are never offered: a removal is done on the screen.
+ * sent to it, so AppAsk's GET/JSON privacy line is untouched.
  */
 final class AppAct
 {
     public const PERMISSION = 'ai_assistance.command';
-
-    private const BLOCKED = ['auth', 'staff', 'mcp', 'me/api-keys', 'me/sessions', 'me/password', 'roles', 'billing'];
 
     private const TTL_MINUTES = 10;
 
@@ -132,44 +129,55 @@ final class AppAct
         ];
     }
 
-    /** Every tenant write endpoint (POST/PUT/PATCH), one per line. */
+    /**
+     * The ONLY routes a chat command can reach: "METHOD uri template". An
+     * allowlist, so a route added later is refused until its module opts in
+     * here. Jose's asks first (desk, 2026-10-16).
+     */
+    public const COMMANDS = [
+        'PUT reviews/{review}/reply',
+        'POST reviews/{review}/reply/publish',
+        'POST scheduling/board/jobs/{job}/reschedule',
+        'PATCH leads/{lead}',
+        'PUT scheduling/locations/notes/{company}',
+    ];
+
+    /**
+     * Never commandable, even if a module adds it above: keys, connections,
+     * exports, staff, roles, billing, mass sends, automations on/off, and
+     * anything touching who can sign in. Matched against the template.
+     */
+    private const NEVER = '#(^|/)(auth|staff|mcp|api-keys|tokens?|sessions|password|two-factor|impersonat\w*|roles?|permissions|billing|subscription|integrations|social/connections|connect|disconnect|webhooks?|exports?|downloads?|newsletters?|bulk|broadcasts?|automations)(/|$)#';
+
+    /** The allowed routes, one per line, for Grok. */
     public static function catalogue(): string
     {
-        return collect(Route::getRoutes()->getRoutes())
-            ->filter(fn (RouteObject $r) => str_starts_with($r->uri(), 'api/v1/')
-                && in_array('tenant', $r->gatherMiddleware(), true))
-            ->flatMap(fn (RouteObject $r) => collect($r->methods())
-                ->filter(fn ($m) => self::offered($m, substr($r->uri(), 7)))
-                ->map(fn ($m) => $m.' '.substr($r->uri(), 7)))
-            ->unique()->implode("\n");
+        return implode('
+', array_filter(self::COMMANDS, fn ($c) => ! self::forbidden(explode(' ', $c, 2)[1])));
     }
 
+    /** A real tenant route, on the allowlist, and not forbidden. */
     public static function writable(string $method, string $path): bool
     {
-        if (! self::offered($method, $path)) {
+        if ($path === '') {
             return false;
         }
 
-        // Must be a real tenant route for that method: a path Grok made up never runs.
         $route = collect(Route::getRoutes()->get($method) ?? [])
             ->first(fn (RouteObject $r) => $r->matches(Request::create('/api/v1/'.$path, $method)));
 
-        return $route !== null && in_array('tenant', $route->gatherMiddleware(), true);
-    }
-
-    private static function offered(string $method, string $path): bool
-    {
-        if (! in_array($method, ['POST', 'PUT', 'PATCH'], true) || $path === '') {
+        if ($route === null || ! in_array('tenant', $route->gatherMiddleware(), true)) {
             return false;
         }
 
-        foreach (self::BLOCKED as $prefix) {
-            if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
-                return false;
-            }
-        }
+        $template = substr($route->uri(), 7);
 
-        return true;
+        return in_array($method.' '.$template, self::COMMANDS, true) && ! self::forbidden($template);
+    }
+
+    public static function forbidden(string $template): bool
+    {
+        return preg_match(self::NEVER, $template) === 1;
     }
 
     private static function key(User $viewer): string
