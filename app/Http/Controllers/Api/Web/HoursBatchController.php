@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\BusinessLocation;
 use App\Models\WebSite;
+use App\Support\Audit\AuditLogger;
+use App\Support\Web\Hours\BusinessProfileHours;
 use App\Support\Web\Hours\HoursBatch;
+use App\Support\Web\Hours\WebsiteHours;
 use App\Support\Web\Hours\WeekEdit;
 use App\Support\Web\SiteRefresh;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +33,11 @@ use Illuminate\Validation\Rule;
  *   }
  *
  * A day left out is Keep existing.
+ *
+ * Websites are named by `site_ids` (the "website" destination); Business
+ * Profile locations by `location_ids` (Jose, 2026-10-16: chosen as locations,
+ * not through a website's host). Each place is checked against its own
+ * permission, and every applied place is audited.
  */
 class HoursBatchController extends Controller
 {
@@ -41,8 +50,10 @@ class HoursBatchController extends Controller
     {
         $batch = HoursBatch::make();
         $input = $request->validate([
-            'site_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'site_ids' => ['array', 'max:200'],
             'site_ids.*' => ['required', 'string', 'distinct'],
+            'location_ids' => ['array', 'max:200'],
+            'location_ids.*' => ['required', 'string', 'distinct'],
             'destinations' => ['required', 'array', 'min:1'],
             'destinations.*' => ['required', 'string', 'distinct', Rule::in(array_keys($batch->destinations()))],
             'source_timezone' => ['nullable', 'timezone:all'],
@@ -60,19 +71,32 @@ class HoursBatchController extends Controller
             return response()->json(['message' => 'Unknown day: '.implode(', ', $unknown).'.'], 422);
         }
 
-        $sites = WebSite::query()->whereIn('id', $input['site_ids'])->get();
+        $targets = [];
 
-        if ($sites->count() !== count($input['site_ids'])) {
-            return response()->json(['message' => 'One of those websites is not in this company.'], 422);
-        }
+        foreach ($input['destinations'] as $key) {
+            $website = $key === WebsiteHours::KEY;
+            $ids = $input[$website ? 'site_ids' : 'location_ids'] ?? [];
 
-        foreach ($sites as $site) {
-            $this->authorize('update', $site);
+            if ($ids === []) {
+                return response()->json(['message' => $website ? 'Choose the websites.' : 'Choose the Business Profile locations.'], 422);
+            }
+
+            $places = $website
+                ? WebSite::query()->whereIn('id', $ids)->get()->sortBy('host')
+                : BusinessLocation::query()->whereIn('id', $ids)->get()->sortBy('title');
+
+            if ($places->count() !== count($ids)) {
+                return response()->json(['message' => $website ? 'One of those websites is not in this organization.' : 'One of those locations is not in this organization.'], 422);
+            }
+
+            foreach ($places as $place) {
+                $this->authorize('update', $place);
+                $targets[] = [$key, $place];
+            }
         }
 
         $review = $batch->review(
-            $sites->sortBy('host')->values(),
-            $input['destinations'],
+            $targets,
             $this->days($input['schedule']),
             $input['source_timezone'] ?? null,
             $input['not_before'] ?? null,
@@ -83,18 +107,20 @@ class HoursBatchController extends Controller
     }
 
     /** POST /api/v1/web/hours/apply */
-    public function apply(Request $request): JsonResponse
+    public function apply(Request $request, AuditLogger $audit): JsonResponse
     {
         $input = $request->validate(['token' => ['required', 'string', 'max:200000']]);
         $user = $request->user();
+        $found = [];
 
         $result = HoursBatch::make()->apply(
             $input['token'],
             (string) $user->getKey(),
-            function (string $id) use ($user): ?WebSite {
-                $site = WebSite::query()->find($id);
+            function (string $destination, string $id) use ($user, &$found): mixed {
+                $place = ($destination === BusinessProfileHours::KEY ? BusinessLocation::query() : WebSite::query())->find($id);
+                $place = $place !== null && Gate::forUser($user)->allows('update', $place) ? $place : null;
 
-                return $site !== null && Gate::forUser($user)->allows('update', $site) ? $site : null;
+                return $found[$destination.':'.$id] = $place;
             },
         );
 
@@ -102,8 +128,15 @@ class HoursBatchController extends Controller
             return response()->json(['message' => 'That review has expired or is not yours. Review the changes again.'], 409);
         }
 
+        // Every place, whatever became of it: who asked, what week, what the destination then held.
+        foreach ($result['results'] as $row) {
+            $audit->log('web.hours.'.$row['status'], $found[$row['destination'].':'.$row['id']] ?? null, metadata: [
+                'destination' => $row['destination'], 'place' => $row['name'], 'reason' => $row['reason'], 'week' => $row['week'],
+            ]);
+        }
+
         // The websites that changed read their new hours now, not in five minutes.
-        $changed = array_column(array_filter($result['results'], fn (array $r) => $r['status'] === 'changed' && $r['destination'] === 'website'), 'site_id');
+        $changed = array_column(array_filter($result['results'], fn (array $r) => $r['status'] === 'changed' && $r['destination'] === WebsiteHours::KEY), 'id');
         SiteRefresh::later(...WebSite::query()->whereIn('id', $changed)->get()->all());
 
         return response()->json(['data' => $result]);
