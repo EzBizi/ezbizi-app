@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Notifications: a misfiring automation can no longer flood the bell. Each rule tells a person at most 20 things in 10 minutes.',
         'Settings: a new Activity tab lists who did what and when, for the companies and places you can see, filtered by time window and by person, system or staff. It needs the Audit log tick.',
         'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Manage.',
         'Leads: the server now supports filtering leads by charge, phone line, dispatcher and date, correcting a lead’s name, ZIP, classification and dispatcher, re-reading a lead with the AI, and a call timeline. The screens follow.',
