@@ -25,6 +25,7 @@ use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\RingCentralLeadCalls;
+use App\Support\Access\Refusal;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
@@ -1274,6 +1275,8 @@ class LeadsController extends Controller
         // A person's word on who handled it; RingCentral never overwrites it.
         // Blank hands it back to RingCentral.
         if (array_key_exists('dispatcher', $input)) {
+            abort_unless($request->user()->hasPermission('leads.dispatcher'), Response::HTTP_FORBIDDEN,
+                Refusal::permission('change who handled a call')->message());
             $lead->dispatcher = trim((string) $input['dispatcher']) ?: null;
             $lead->dispatcher_by_user_id = $lead->dispatcher === null ? null : $request->user()->getKey();
         }
@@ -1355,6 +1358,8 @@ class LeadsController extends Controller
     public function reclassify(Request $request, Lead $lead): JsonResponse
     {
         $this->authorize('update', $lead);
+        abort_unless($request->user()->hasPermission('leads.reclassify'), Response::HTTP_FORBIDDEN,
+            Refusal::permission('re-classify leads with AI')->message());
 
         $id = (string) $lead->getKey();
         dispatch(fn () => \Illuminate\Support\Facades\Artisan::call('ezbizi:leads-read', ['--lead' => [$id]]))->afterResponse();
