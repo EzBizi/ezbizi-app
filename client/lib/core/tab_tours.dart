@@ -1,3 +1,4 @@
+import 'tours/admin_tours.dart';
 import 'tours/assist_tours.dart';
 import 'tours/leads_tours.dart';
 import 'tours/marketing_tours.dart';
@@ -940,6 +941,7 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   ...reportsTours,
+  ...adminTours,
   ...assistTours,
   ...operationsTours,
   ...leadsTours,

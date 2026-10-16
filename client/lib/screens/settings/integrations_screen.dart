@@ -274,6 +274,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     }
 
     return ListView(
+      key: const ValueKey('tour-integrations-list'),
       padding: const EdgeInsets.all(16),
       children: [
         if (_error != null) ...[

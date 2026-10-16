@@ -27,8 +27,10 @@ void main() {
     test('$module: a real tab, and every step names a key in the code', () {
       // "reports/Report Builder": the module, then the tabs open in it.
       final root = module.split('/').first;
+      // The shell's own pages, drawn under the same header (UI queue 99).
+      const shell = {'settings', 'suggestions', 'development', 'account'};
       expect(
-        moduleScreens.containsKey(root),
+        moduleScreens.containsKey(root) || shell.contains(root),
         isTrue,
         reason: '"$root" is not a key in module_screens.dart',
       );
