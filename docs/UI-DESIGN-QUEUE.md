@@ -2965,6 +2965,11 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 103 · Leads › charge, IVR, dispatcher and date filters; edit in place; caller timeline — **sent 2026-10-16** (`docs/previews/leads-takeover-filters-layouts.html`)
+
+A1 Leads takeover slice 1 (server 3b7022a1, Leads). **1** (recommended): the four filters in the one row (Dates menu with presets + Custom), edit name / ZIP / classification /
+dispatcher in the lead's panel with Save, Back to RingCentral, Re-classify, and the caller's timeline under it. **2**: edit on the card. **3**: date chips row. Phone **4** (recommended) / **5** / **6**.
+
 ### 102 · Field › safety recordings (Record control + Recordings tab) — **sent 2026-10-16 — no answer in 10 min, went with 1 and 4** (`docs/previews/field-recordings-layouts.html` @ `1a654ec4`)
 
 Field session for the A1 takeover. Record control on the phone: **1** (recommended) card under SOS in Field › Dashboard, **2** floating button + sheet, **3** top bar while recording.
