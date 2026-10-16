@@ -70,6 +70,9 @@ final class RingCentralLeadCalls
 
     public const VOICEMAIL = 'VOICEMAIL';
 
+    /** A lead that began with our call out to a number nobody had (Jose, 2026-10-16). */
+    public const OUTBOUND = 'OUTBOUND';
+
     /** Answered in the business's existing-customer queue (Settings: leads.existing_client_queue). */
     public const EXISTING_CLIENT = 'EXISTING_CLIENT';
 
@@ -92,8 +95,11 @@ final class RingCentralLeadCalls
      */
     public function file(array $calls, array $lineNames, string $defaultCompanyId): int
     {
-        $staff = collect($calls)->pluck('rang')->flatten()->filter()->unique()->flip();
-        $calls = array_values(array_filter($calls, fn (array $c) => self::isLeadCall($c, $staff->all())));
+        // Every call with a customer on the other end, in or out, any queue or
+        // direct line (Jose, 2026-10-16: "all calls should show up, inbound -
+        // outbound - direct, etc."); never one of our own lines calling another.
+        $own = array_flip(array_filter(array_map(fn ($n) => self::ten((string) $n), array_keys($lineNames))));
+        $calls = array_values(array_filter($calls, fn (array $c) => self::isLeadCall($c, $own)));
         if ($calls === []) {
             return 0;
         }
@@ -113,13 +119,14 @@ final class RingCentralLeadCalls
 
         $filed = 0;
         foreach ($calls as $i => $call) {
-            $digits = self::ten($call['from']);
+            $out = self::outbound($call);
+            $digits = self::ten(self::customerNumber($call));
             if (isset($have['rc_'.$call['id']])) {
                 continue;
             }
             // Google's copy of this call: shown there, but RingCentral knows
             // who picked it up, which Google does not.
-            if (($lsLead = self::matches($ls[$digits] ?? [], $times[$i])) !== null) {
+            if (! $out && ($lsLead = self::matches($ls[$digits] ?? [], $times[$i])) !== null) {
                 if ($call['answered_by'] !== null) {
                     self::fillDispatcher(Lead::query()->whereKey($lsLead), (string) $call['answered_by']);
                 }
@@ -127,14 +134,20 @@ final class RingCentralLeadCalls
                 continue;
             }
 
-            $line = (string) ($lineNames[(string) $call['to_number']] ?? '');
+            $line = (string) ($lineNames[(string) ($out ? $call['from'] : $call['to_number'])] ?? '');
             $companyId = self::companyFor($line, $companies->all(), $markets) ?? $defaultCompanyId;
             $franchiseId = $companyId === $defaultCompanyId
                 ? ($franchises[$markets[self::market($line)] ?? ''] ?? null)
                 : null;
 
-            $outcome = self::outcome($call, $existingQueue, KnownCustomer::is((string) $call['from']));
-            DB::transaction(function () use ($call, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
+            $customer = KnownCustomer::is(self::customerNumber($call));
+            $outcome = $out ? self::OUTBOUND : self::outcome($call, $existingQueue, $customer);
+            // Our call to a customer with no lead belongs on the customer, not
+            // in Leads as a new enquiry.
+            if ($out && $customer && $this->leadFor($digits, $times[$i]) === null) {
+                continue;
+            }
+            DB::transaction(function () use ($call, $out, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
                 $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
                     'company_id' => $companyId,
@@ -143,19 +156,27 @@ final class RingCentralLeadCalls
                     'remote_id' => 'rc_'.$call['id'],
                     'lead_type' => 'PHONE_CALL',
                     'category' => $line !== '' ? mb_substr($line, 0, 191) : null,
-                    'phone' => Lead::e164((string) $call['from']),
-                    'phone_digits' => Lead::digits((string) $call['from']),
+                    'phone' => Lead::e164(self::customerNumber($call)),
+                    'phone_digits' => Lead::digits(self::customerNumber($call)),
                     'status' => Lead::STATUS_NEW,
                     'received_at' => $times[$i],
                     'source_status' => $outcome,
                 ]);
                 // A caller who got through (or left word) is no longer a menu
                 // hang-up; a later hang-up never relabels a real call.
-                if ($lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome && $outcome !== self::POSSIBLE_SPAM) {
+                if (! $out && $lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome && $outcome !== self::POSSIBLE_SPAM) {
                     $lead->forceFill(['source_status' => $outcome])->save();
                 }
 
-                $this->thread->store($lead, 'rc_'.$call['id'], [
+                $this->thread->store($lead, 'rc_'.$call['id'], $out ? [
+                    // Ours: "<staff> called", never the customer writing in.
+                    'channel' => LeadConversation::CHANNEL_PHONE_CALL,
+                    'participant' => LeadConversation::FROM_ADVERTISER,
+                    'occurred_at' => $times[$i],
+                    'duration_ms' => ($call['result'] ?? null) === 'Call connected' && ($call['duration'] ?? null) !== null ? (int) $call['duration'] * 1000 : null,
+                    'recording_url' => $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null,
+                    'text' => $call['caller_label'] !== null ? mb_substr((string) $call['caller_label'], 0, 120) : null,
+                ] : [
                     'channel' => LeadConversation::CHANNEL_PHONE_CALL,
                     'participant' => LeadConversation::FROM_CONSUMER,
                     'occurred_at' => $times[$i],
@@ -271,15 +292,32 @@ final class RingCentralLeadCalls
     }
 
     /** @param  array<string, mixed>  $staff  names whose phones rang, as keys */
-    public static function isLeadCall(array $call, array $staff): bool
+    /** @param  array<string, mixed>  $own  our own lines' ten digits, as keys */
+    public static function isLeadCall(array $call, array $own): bool
     {
-        $queue = $call['queue'] ?? null;
+        $them = self::ten(self::customerNumber($call));
 
-        return ($call['direction'] ?? 'Inbound') === 'Inbound'
+        return in_array($call['direction'] ?? 'Inbound', ['Inbound', 'Outbound'], true)
             && ($call['id'] ?? null) !== null
             && ($call['started_at'] ?? null) !== null
-            && self::ten($call['from'] ?? null) !== null
-            && ! ($queue !== null && isset($staff[$queue]));
+            && $them !== null
+            && ! isset($own[$them]);
+    }
+
+    /** @param  array<string, mixed>  $call */
+    public static function outbound(array $call): bool
+    {
+        return ($call['direction'] ?? 'Inbound') === 'Outbound';
+    }
+
+    /**
+     * The customer's end of the call: who called in, or whom we called.
+     *
+     * @param  array<string, mixed>  $call
+     */
+    public static function customerNumber(array $call): string
+    {
+        return (string) (self::outbound($call) ? ($call['to_number'] ?? '') : ($call['from'] ?? ''));
     }
 
     /** "NJ - GMB" => "NJ"; "AngiSweep" => "ANGISWEEP". */
