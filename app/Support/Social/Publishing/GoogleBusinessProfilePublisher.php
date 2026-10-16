@@ -8,6 +8,7 @@ use App\Support\Social\BusinessProfileOAuth;
 use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialMediaKind;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -40,7 +41,7 @@ use RuntimeException;
  * sweep deletes it. ponytail: release on success if Google proves to fetch
  * during the create.
  */
-final class GoogleBusinessProfilePublisher implements SocialPublisher
+final class GoogleBusinessProfilePublisher implements DeletesPosts, SocialPublisher
 {
     private const TIMEOUT = 30;
 
@@ -112,6 +113,28 @@ final class GoogleBusinessProfilePublisher implements SocialPublisher
         return array_values((array) $response->json('localPosts', []));
     }
 
+    /** DeletesPosts: the composer's "Delete from Google". */
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        $this->delete($connection, $remoteId);
+    }
+
+    /**
+     * A stored location's name as v4 wants it: accounts/A/locations/L. Public
+     * so the composer files the same name publish() would work out.
+     */
+    public static function v4Name(BusinessLocation $location, SocialConnection $connection): string
+    {
+        // v1 names a location "locations/L"; v4 wants it under its account.
+        $name = trim((string) $location->remote_name, '/');
+        if (str_starts_with($name, 'accounts/')) {
+            return $name;
+        }
+        $account = trim((string) ($location->account_name ?: $connection->remote_id), '/');
+
+        return (str_starts_with($account, 'accounts/') ? $account : 'accounts/'.$account).'/'.$name;
+    }
+
     /** Take a post down, by the name publish() returned. */
     public function delete(SocialConnection $connection, string $name): void
     {
@@ -140,17 +163,10 @@ final class GoogleBusinessProfilePublisher implements SocialPublisher
                 : 'This Business Profile account has '.$locations->count().' locations. Choose which one to post to.');
         }
 
-        // v1 names a location "locations/L"; v4 wants it under its account.
-        $name = trim((string) $locations->first()->remote_name, '/');
-        if (str_starts_with($name, 'accounts/')) {
-            return $name;
-        }
-        $account = trim((string) ($locations->first()->account_name ?: $connection->remote_id), '/');
-
-        return (str_starts_with($account, 'accounts/') ? $account : 'accounts/'.$account).'/'.$name;
+        return self::v4Name($locations->first(), $connection);
     }
 
-    /** @param  callable(\Illuminate\Http\Client\PendingRequest): Response  $call */
+    /** @param  callable(PendingRequest): Response  $call */
     private function send(SocialConnection $connection, callable $call): Response
     {
         try {

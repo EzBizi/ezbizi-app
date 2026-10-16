@@ -2080,6 +2080,10 @@ Route::prefix('v1')
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
         });
+        // Business Profile listings the composer may post to.
+        Route::middleware('permission:marketing.compose.view')->group(function () {
+            Route::get('social/places', [SocialPostsController::class, 'places']);
+        });
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);
