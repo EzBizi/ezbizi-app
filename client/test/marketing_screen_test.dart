@@ -1323,6 +1323,53 @@ void main() {
       expect(_publishRefusal(tester), isNull);
     });
 
+    // UI queue 105: a picture from the library is sent by its id.
+    testWidgets('From library picks an item, and Publish sends its id', (
+      tester,
+    ) async {
+      Map<String, dynamic>? sent;
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+      await _pumpSocial(tester, (request) async {
+        final path = request.url.path;
+        if (path.endsWith('/social/library')) {
+          return _json({
+            'data': [
+              {
+                'id': 'lib-1',
+                'name': 'Truck at dawn',
+                'kind': 'video',
+                'size': 1000,
+                'scope_type': 'company',
+                'created_at': '2026-10-16T12:00:00Z',
+              },
+            ],
+          });
+        }
+        if (request.method == 'POST' && path.endsWith('/social/posts')) {
+          sent = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return inner(request);
+      });
+      await _openCompose(tester);
+
+      await tester.tap(find.byKey(const ValueKey('social-from-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-item-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('library-use')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('From the library: Truck at dawn'), findsOneWidget);
+      expect(_publishRefusal(tester), contains('Tick at least one'));
+
+      await tester.tap(find.byKey(const ValueKey('social-account-conn-2')));
+      await tester.pumpAndSettle();
+      expect(_publishRefusal(tester), isNull);
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+      expect(sent?['library_item'], 'lib-1');
+    });
+
     testWidgets('the TikTok drafts detour is on the account, before Publish', (
       tester,
     ) async {
