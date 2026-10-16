@@ -2,56 +2,58 @@
 
 namespace App\Support\Reports\Texts;
 
+use App\Models\ReportGoal;
+
 /**
- * The goals the weekly and monthly report colours against, per company
- * (copied from the A1 Leads report's report-goals.js, 2026-10-16; Jose sets
- * them from here on). Red means worse than the goal.
+ * The goals the weekly and monthly report colours against, set per
+ * organization and per company in Settings (Jose, 2026-10-16: the takeover
+ * "has to fit the EzBizi system"). Nothing is preset: an unset goal colours
+ * nothing. Red means worse than the goal.
  */
 final class ReportGoals
 {
     public const RED = '#DC2626';
 
-    public const GREEN = '#16A34A';
-
-    /** Red above. */
-    public const CANCEL_RATE = 0.20;
-
-    /** Red below. */
-    public const LSA_CONVERSION = 0.70;
-
-    /** Repair teams: company share as a share of gross, red above. */
-    public const REPAIR_COST_FROM_GROSS = 0.05;
-
-    /** Average sale, red below; by the P&L table's company code. */
-    public const AVG_SALE = [
-        'NJ' => 1500, 'CT' => 2500, 'TX' => 1500, 'OH' => 2500, 'IL' => 2000,
-        'GA' => 1500, 'DMV' => 1500, 'WA' => 2000, 'NW' => 1400,
+    /** key => [label, direction]: 'max' is red above, 'min' red below. Shares are 0-1. */
+    public const KEYS = [
+        'avg_sale' => ['Average sale', 'min'],
+        'cancel_rate' => ['Cancel rate', 'max'],
+        'lsa_conversion' => ['LSA conversion', 'min'],
+        'repair_cost_from_gross' => ['Repair cost from gross', 'max'],
+        'profit_margin' => ['Profit margin', 'min'],
+        'marketing' => ['Marketing share of income', 'max'],
+        'office' => ['Office share of income', 'max'],
+        'field' => ['Field share of income', 'max'],
+        'operation' => ['Operation share of income', 'max'],
+        'royalty' => ['Royalty share of income', 'max'],
     ];
+
+    /** @param array<string, float> $goals */
+    private function __construct(private readonly array $goals) {}
 
     /**
-     * Expense buckets as a share of income, red above; profit margin is the
-     * goal itself.
+     * One company's goals: its own, over the organization-wide ones (company
+     * null). Read outside a tenant, so the organization is named.
      */
-    public const BUCKETS = [
-        'NJ' => ['margin' => .25, 'marketing' => .10, 'office' => .10, 'field' => .25, 'operation' => .25, 'royalty' => .05],
-        'CT' => ['margin' => .25, 'marketing' => .075, 'office' => .075, 'field' => .30, 'operation' => .25, 'royalty' => .05],
-        'TX' => ['margin' => .25, 'marketing' => .20, 'office' => .10, 'field' => .25, 'operation' => .15, 'royalty' => .05],
-        'OH' => ['margin' => .25, 'marketing' => .20, 'office' => .10, 'field' => .25, 'operation' => .15, 'royalty' => .05],
-        'IL' => ['margin' => .35, 'marketing' => .05, 'office' => .10, 'field' => .25, 'operation' => .20, 'royalty' => .05],
-        'GA' => ['margin' => .25, 'marketing' => .10, 'office' => .10, 'field' => .30, 'operation' => .20, 'royalty' => .05],
-        'DMV' => ['margin' => .30, 'marketing' => .10, 'office' => .10, 'field' => .25, 'operation' => .20, 'royalty' => .05],
-        'WA' => ['margin' => .15, 'marketing' => .20, 'office' => .10, 'field' => .30, 'operation' => .20, 'royalty' => .05],
-        'NW' => ['margin' => .30, 'marketing' => .35, 'office' => .25, 'field' => 0, 'operation' => .10, 'royalty' => 0],
-    ];
+    public static function for(string $organizationId, ?string $company): self
+    {
+        $rows = ReportGoal::withoutGlobalScopes()->where('organization_id', $organizationId)
+            ->where(fn ($q) => $q->whereNull('company')->when($company !== null, fn ($q) => $q->orWhere('company', $company)))
+            ->get(['company', 'key', 'value'])
+            ->sortBy(fn ($r) => $r->company !== null); // company-specific last, so it wins
 
-    /** Which bucket a P&L category counts toward. */
-    public const CATEGORY_BUCKET = [
-        'Marketing' => 'marketing', 'External Companies' => 'marketing',
-        'HQ Office Expenses' => 'office',
-        'Tech Expenses' => 'field', 'Production Expenses' => 'field',
-        'Bank Expenses' => 'operation',
-        'Owner Distributions & Royalties' => 'royalty', 'Owner Distributions & Royalitys' => 'royalty',
-    ];
+        return new self($rows->mapWithKeys(fn ($r) => [$r->key => (float) $r->value])->all());
+    }
+
+    /** Is $value worse than the goal for $key? False when no goal is set. */
+    public function bad(string $key, ?float $value): bool
+    {
+        if ($value === null || ! isset($this->goals[$key], self::KEYS[$key])) {
+            return false;
+        }
+
+        return self::KEYS[$key][1] === 'max' ? $value > $this->goals[$key] : $value < $this->goals[$key];
+    }
 
     /** A value as red text when $bad. */
     public static function mark(string $text, bool $bad): string

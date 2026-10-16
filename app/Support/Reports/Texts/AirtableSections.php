@@ -111,7 +111,7 @@ final class AirtableSections
                 ['Company share', ReportGoals::mark(self::money($company).' · '.$pct($company), $company < 0)],
                 ['Total jobs done', (string) $jobs->count()],
                 ['Total jobs amount', self::money($amount)],
-                ['Cost from gross sales', $fromGross === null ? '—' : ReportGoals::mark(self::percent($fromGross), $fromGross > ReportGoals::REPAIR_COST_FROM_GROSS)],
+                ['Cost from gross sales', $fromGross === null ? '—' : ReportGoals::mark(self::percent($fromGross), ReportGoals::for($org, $code)->bad('repair_cost_from_gross', $fromGross))],
             ], raw: true);
         }
 

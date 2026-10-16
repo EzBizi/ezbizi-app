@@ -506,6 +506,7 @@
         "reports.builder.view",
         "reports.experimental.view",
         "reports.export",
+        "reports.goals",
         "reports.library.view",
         "reports.marketing.view",
         "reports.meta.view",

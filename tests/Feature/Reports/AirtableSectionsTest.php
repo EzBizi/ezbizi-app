@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\AirtableRecord;
+use App\Models\ReportGoal;
 use App\Support\Reports\Texts\AirtableSections;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -34,6 +35,7 @@ class AirtableSectionsTest extends TestCase
         // Outside the week: not counted.
         $this->row('appzD9I7nNkALmw4l', 'tbliTYwmQl2KXzoxh', 'NJ', ['Date' => '2026-10-01', 'Team' => 'John', 'Record type' => 'Job', 'Job Amount' => 9999]);
 
+        $this->inTenant($this->tenant['org'], fn () => ReportGoal::query()->create(['company' => null, 'key' => 'repair_cost_from_gross', 'value' => 0.05]));
         $html = app(AirtableSections::class)->repairTeams($this->org, 'NJ', '2026-10-05', '2026-10-11');
 
         // 1000.10 + 200 + 100 + 50.05 + 149.85 = 1500.00; company = 1500 - 600 - 300 - 200 = 400.
@@ -69,6 +71,23 @@ class AirtableSectionsTest extends TestCase
         $this->assertStringContainsString('<td>Parking</td><td>$15.15</td>', $html);
         $this->assertStringContainsString('<b>$1,215.15</b>', $html);
         $this->assertStringNotContainsString('999', $html);
+    }
+
+    public function test_goals_are_settings_per_company_and_unset_colours_nothing(): void
+    {
+        $html = fn () => app(AirtableSections::class)->repairTeams($this->org, 'NJ', '2026-10-05', '2026-10-11');
+        $this->row('appzD9I7nNkALmw4l', 'tbliTYwmQl2KXzoxh', 'NJ', ['Date' => '2026-10-08', 'Team' => 'Kris', 'Record type' => 'Job', 'Job Amount' => 100, 'Parts Cost' => 50]);
+        $this->assertStringNotContainsString('#DC2626', $html(), 'no goal, no red');
+
+        $admin = $this->signedInAs($this->tenant['admin']);
+        $admin->putJson('/api/v1/reports/goals', ['goals' => [['company' => 'NJ', 'key' => 'repair_cost_from_gross', 'value' => 0.05]]])->assertOk()
+            ->assertJsonPath('data.goals.0.company', 'NJ');
+        $this->assertStringContainsString('#DC2626;font-weight:700">50.0%', $html());
+
+        $admin->putJson('/api/v1/reports/goals', ['goals' => [['company' => 'NJ', 'key' => 'invented', 'value' => 1]]])->assertUnprocessable();
+        $viewer = $this->userWithRole($this->tenant, 'Viewer', ['reports.view']);
+        $this->signedInAs($viewer)->getJson('/api/v1/reports/goals')->assertOk();
+        $this->signedInAs($viewer)->putJson('/api/v1/reports/goals', ['goals' => [['company' => 'NJ', 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();
     }
 
     private function row(string $base, string $table, string $name, array $fields): void

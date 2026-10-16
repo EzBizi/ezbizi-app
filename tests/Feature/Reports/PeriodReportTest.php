@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\Franchise;
+use App\Models\ReportGoal;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
@@ -43,6 +44,11 @@ class PeriodReportTest extends TestCase
             ['Week' => '21 Sep - 27 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 250],
         ]);
 
+        // Goals are Settings (2026-10-16): Connecticut's average sale and every company's cancel rate.
+        $this->inTenant($t['org'], function () {
+            ReportGoal::query()->create(['company' => 'CT', 'key' => 'avg_sale', 'value' => 2500]);
+            ReportGoal::query()->create(['company' => null, 'key' => 'cancel_rate', 'value' => 0.20]);
+        });
         $marked = app(PeriodReport::class)->html($f, '2026-09-21', '2026-09-27');
 
         // Goal colours (2026-10-16): Connecticut's average sale goal is $2,500 and

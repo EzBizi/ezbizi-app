@@ -111,9 +111,9 @@ final class PeriodReport
     private function sections(array $f, array $pnl, ?string $code = null, string $from = '', string $to = '', string $org = ''): string
     {
         // Red when worse than the company's goal (ReportGoals).
-        $avgGoal = $code === null ? null : (ReportGoals::AVG_SALE[$code] ?? null);
-        $cancel = fn ($canceled, $of) => ReportGoals::mark(e(self::share($canceled, $of)), $of > 0 && $canceled / $of > ReportGoals::CANCEL_RATE);
-        $avg = fn ($gross, $done) => $done ? ReportGoals::mark(e(self::money($gross / $done)), $avgGoal !== null && $gross / $done < $avgGoal) : '—';
+        $goals = ReportGoals::for($org, $code);
+        $cancel = fn ($canceled, $of) => ReportGoals::mark(e(self::share($canceled, $of)), $of > 0 && $goals->bad('cancel_rate', $canceled / $of));
+        $avg = fn ($gross, $done) => $done ? ReportGoals::mark(e(self::money($gross / $done)), $goals->bad('avg_sale', $gross / $done)) : '—';
         $sourceRows = fn (array $rows, bool $all) => array_map(fn ($name, $r) => array_merge(
             [e($name)],
             $all ? [(string) $r['all'], (string) $r['done'], (string) $r['open']] : [(string) $r['done']],
