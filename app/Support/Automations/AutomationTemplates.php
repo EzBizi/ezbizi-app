@@ -285,7 +285,7 @@ final class AutomationTemplates
                     ],
                 ],
                 'actions' => [
-                    ['type' => 'notify', 'message' => '{{reviewer_name}} left a {{rating}}-star review: {{comment}}'],
+                    ['type' => 'notify', 'message' => '{{reviewer_name}} left a {{rating}}-star review.', 'details' => '{{comment}}'],
                 ],
             ],
             [
