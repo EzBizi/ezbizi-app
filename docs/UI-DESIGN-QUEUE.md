@@ -2965,6 +2965,11 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 104 · Web › hours for websites + Business Profile listings; Settings › Clock In geofence centre — **sent 2026-10-16** (`docs/previews/hours-gbp-and-geofence-layouts.html`)
+
+Web 5844ed21. Hours: **1** (recommended) both groups per company in step 1, kind tag in review/results; **2** Where switch; **3** two editors; phone **4** (recommended) / **5** / **6**.
+Geofence: **7** (recommended) address search + small map with radius circle + Use this place's address; **8** click a map; **9** address only.
+
 ### 103 · Leads › charge, IVR, dispatcher and date filters; edit in place; caller timeline — **sent 2026-10-16** (`docs/previews/leads-takeover-filters-layouts.html`)
 
 A1 Leads takeover slice 1 (server 3b7022a1, Leads). **1** (recommended): the four filters in the one row (Dates menu with presets + Custom), edit name / ZIP / classification /
