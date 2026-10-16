@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
 use App\Models\Assignment;
-use App\Models\EmploymentEvent;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Services\Auth\IssueSession;
@@ -159,17 +158,17 @@ class InvitationAcceptanceController extends Controller
             // not entitled to its id, its slug or anything they could use to
             // address it elsewhere on the platform.
             'organization' => ['name' => $invitation->organization->name],
-            'role' => ['name' => $invitation->role?->name],
-            'invited_by' => ['name' => $invitation->invitedBy?->name],
+            'role'         => ['name' => $invitation->role?->name],
+            'invited_by'   => ['name' => $invitation->invitedBy?->name],
 
             // What the inviter already filled in, so the form can show it filled
             // in — and so the person can CORRECT it. The plan is explicit about
             // why that matters: an employer pre-filling a date of birth wrongly
             // and the employee fixing it on receipt should be ordinary rather
             // than a support request.
-            'email' => $invitation->email,
+            'email'      => $invitation->email,
             'first_name' => $invitation->first_name,
-            'last_name' => $invitation->last_name,
+            'last_name'  => $invitation->last_name,
 
             'expires_at' => $invitation->expires_at->toIso8601String(),
 
@@ -225,10 +224,10 @@ class InvitationAcceptanceController extends Controller
             // one optional: somebody should be able to get in with a password
             // and fill the rest of their profile afterwards, and "Your account"
             // is where that lives (the plan's one-home rule).
-            'first_name' => ['nullable', 'string', 'max:60'],
-            'last_name' => ['nullable', 'string', 'max:60'],
-            'phone' => ['nullable', 'string', 'max:40'],
-            'address' => ['nullable', 'string', 'max:500'],
+            'first_name'    => ['nullable', 'string', 'max:60'],
+            'last_name'     => ['nullable', 'string', 'max:60'],
+            'phone'         => ['nullable', 'string', 'max:40'],
+            'address'       => ['nullable', 'string', 'max:500'],
             'date_of_birth' => ['nullable', 'date'],
         ]);
 
@@ -343,7 +342,7 @@ class InvitationAcceptanceController extends Controller
     {
         return response()->json([
             'message' => $message,
-            'code' => 'invitation_superseded',
+            'code'    => 'invitation_superseded',
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 
@@ -358,25 +357,25 @@ class InvitationAcceptanceController extends Controller
     private function createAccount(Invitation $invitation, array $input): User
     {
         $first = $input['first_name'] ?? $invitation->first_name;
-        $last = $input['last_name'] ?? $invitation->last_name;
+        $last  = $input['last_name'] ?? $invitation->last_name;
 
         $user = User::create([
             'organization_id' => $invitation->organization_id,
-            'role_id' => $invitation->role_id,
+            'role_id'         => $invitation->role_id,
             // `users.name` is NOT NULL and is what every screen in the app shows.
             // Built from the two halves, and falling back to the part of the
             // address before the @ rather than to an empty string — a blank row
             // in a list is worse than an imperfect one, and they can change it
             // in "Your account" in a second.
-            'name' => trim("{$first} {$last}") ?: Str::before($invitation->email, '@'),
+            'name'  => trim("{$first} {$last}") ?: Str::before($invitation->email, '@'),
             'email' => $invitation->email,
-            'password' => $input['password'],
+            'password'  => $input['password'],
             'is_active' => true,
 
-            'first_name' => $first,
-            'last_name' => $last,
-            'phone' => $input['phone'] ?? null,
-            'address' => $input['address'] ?? null,
+            'first_name'    => $first,
+            'last_name'     => $last,
+            'phone'         => $input['phone'] ?? null,
+            'address'       => $input['address'] ?? null,
             'date_of_birth' => $input['date_of_birth'] ?? null,
         ]);
 
@@ -405,11 +404,11 @@ class InvitationAcceptanceController extends Controller
          */
         $user->forceFill(['email_verified_at' => now()])->save();
 
-        EmploymentEvent::create([
+        \App\Models\EmploymentEvent::create([
             'organization_id' => $user->organization_id,
-            'user_id' => $user->getKey(),
-            'kind' => EmploymentEvent::STARTED,
-            'occurred_on' => now()->toDateString(),
+            'user_id'         => $user->getKey(),
+            'kind'            => \App\Models\EmploymentEvent::STARTED,
+            'occurred_on'     => now()->toDateString(),
         ]);
 
         // §4's XOR, carried straight across: the invitation's three scope columns
@@ -417,12 +416,12 @@ class InvitationAcceptanceController extends Controller
         // their shape.
         Assignment::create([
             'organization_id' => $invitation->organization_id,
-            'user_id' => $user->getKey(),
+            'user_id'         => $user->getKey(),
             ...$invitation->assignmentColumns(),
         ]);
 
         $invitation->forceFill([
-            'accepted_at' => now(),
+            'accepted_at'      => now(),
             'accepted_user_id' => $user->getKey(),
         ])->save();
 
@@ -452,14 +451,14 @@ class InvitationAcceptanceController extends Controller
         // this entry exists to record.
         $this->audit->log('invitation.accepted', $invitation, metadata: [
             'email' => $invitation->email,
-            'role' => $invitation->role?->name,
+            'role'  => $invitation->role?->name,
             'scope' => ['type' => $invitation->scopeType(), 'name' => $invitation->scopeLabel()],
         ], actor: $user);
 
         $this->events->emit('user.activated', $user, ['after' => [
             'is_active' => true,
-            'role_id' => $user->role_id,
-            'via' => 'invitation',
+            'role_id'   => $user->role_id,
+            'via'       => 'invitation',
         ]], actor: $user);
 
         /*
@@ -478,13 +477,13 @@ class InvitationAcceptanceController extends Controller
          * `system` loses the one fact worth recording.
          */
         $this->events->emit('invitation.accepted', $invitation, ['after' => [
-            'status' => $invitation->status(),
-            'email' => $invitation->email,
-            'role' => $invitation->role?->name,
-            'role_id' => $invitation->role_id,
-            'scope_type' => $invitation->scopeType(),
-            'scope_id' => $invitation->scopeId(),
-            'scope' => $invitation->scopeLabel(),
+            'status'           => $invitation->status(),
+            'email'            => $invitation->email,
+            'role'             => $invitation->role?->name,
+            'role_id'          => $invitation->role_id,
+            'scope_type'       => $invitation->scopeType(),
+            'scope_id'         => $invitation->scopeId(),
+            'scope'            => $invitation->scopeLabel(),
             'accepted_user_id' => $user->getKey(),
         ]], actor: $user);
 

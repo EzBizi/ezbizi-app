@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use Closure;
+use DateTimeZone;
+use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Franchise;
 use App\Models\PhoneConnection;
 use App\Models\PhoneHoursSchedule;
 use App\Models\PhoneNumber;
-use App\Support\Phone\PhoneScope;
+use App\Models\User;
 use App\Support\Tenancy\TenantContext;
-use Closure;
-use DateTimeZone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;

@@ -189,9 +189,9 @@ class ThumbtackWebhookController extends Controller
                  * diagnostic, not a copy of the lead.
                  */
                 Log::warning('Thumbtack sent a lead event with no negotiation id.', [
-                    'event' => $event,
-                    'connection' => $connection->getKey(),
-                    'business' => $connection->remote_id,
+                    'event'        => $event,
+                    'connection'   => $connection->getKey(),
+                    'business'     => $connection->remote_id,
                     'payload_keys' => $this->shapeOf($payload),
                 ]);
 
@@ -255,9 +255,9 @@ class ThumbtackWebhookController extends Controller
              * leads are showing up".
              */
             Log::warning('Thumbtack sent an event type EzBizi does not handle.', [
-                'event' => $event === '' ? '(none found in payload)' : $event,
-                'connection' => $connection->getKey(),
-                'business' => $connection->remote_id,
+                'event'        => $event === '' ? '(none found in payload)' : $event,
+                'connection'   => $connection->getKey(),
+                'business'     => $connection->remote_id,
                 'payload_keys' => $this->shapeOf($payload),
             ]);
         }

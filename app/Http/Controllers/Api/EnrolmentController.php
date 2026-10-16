@@ -10,7 +10,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
-use PragmaRX\Google2FA\Google2FA;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -64,7 +63,7 @@ class EnrolmentController extends Controller
     public function begin(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'email' => ['required', 'email'],
+            'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
         ]);
 
@@ -72,8 +71,8 @@ class EnrolmentController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, maxAttempts: 5)) {
             return response()->json([
-                'message' => 'Too many attempts. Try again shortly.',
-                'code' => 'throttled',
+                'message'     => 'Too many attempts. Try again shortly.',
+                'code'        => 'throttled',
                 'retry_after' => RateLimiter::availableIn($key),
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
@@ -93,9 +92,9 @@ class EnrolmentController extends Controller
             RateLimiter::hit($key, decaySeconds: 900);
 
             $this->audit->logError('staff.enrolment_refused', [
-                'email' => $input['email'],
+                'email'  => $input['email'],
                 'reason' => 'credentials',
-                'ip' => $request->ip(),
+                'ip'     => $request->ip(),
             ]);
 
             return $this->rejected();
@@ -108,9 +107,9 @@ class EnrolmentController extends Controller
             // would confirm the address belongs to a working staff account, and
             // this route is unauthenticated.
             $this->audit->logError('staff.enrolment_refused', [
-                'email' => $input['email'],
+                'email'  => $input['email'],
                 'reason' => 'already enrolled',
-                'ip' => $request->ip(),
+                'ip'     => $request->ip(),
             ]);
 
             return $this->rejected();
@@ -124,7 +123,7 @@ class EnrolmentController extends Controller
         $enrolment = $staff->hasPendingTotp()
             ? [
                 'secret' => $staff->pending_totp_secret,
-                'uri' => app(Google2FA::class)
+                'uri'    => app(\PragmaRX\Google2FA\Google2FA::class)
                     ->getQRCodeUrl('EzBizi', $staff->email, $staff->pending_totp_secret),
             ]
             : $this->totp->begin($staff, $staff->email);
@@ -137,13 +136,13 @@ class EnrolmentController extends Controller
         );
 
         return response()->json([
-            'status' => 'enrolment_started',
+            'status'    => 'enrolment_started',
             // Fifteen minutes and one ability. It cannot read an organization,
             // cannot open a customer, cannot do anything but finish this.
-            'token' => $staff->createToken('enrolment', ['enrol'], expiresAt: now()->addMinutes(15))
+            'token'     => $staff->createToken('enrolment', ['enrol'], expiresAt: now()->addMinutes(15))
                 ->plainTextToken,
             'enrolment' => $enrolment,
-            'account' => ['name' => $staff->name, 'email' => $staff->email],
+            'account'   => ['name' => $staff->name, 'email' => $staff->email],
         ]);
     }
 
@@ -184,7 +183,7 @@ class EnrolmentController extends Controller
         if ($staff->hasTotp()) {
             return response()->json([
                 'message' => 'This account already has an authenticator.',
-                'code' => 'already_enrolled',
+                'code'    => 'already_enrolled',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -193,7 +192,7 @@ class EnrolmentController extends Controller
         if ($recovery === null) {
             return response()->json([
                 'message' => 'That code did not verify. Check the clock on the device, then try again.',
-                'code' => 'invalid_code',
+                'code'    => 'invalid_code',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -221,7 +220,7 @@ class EnrolmentController extends Controller
     {
         return response()->json([
             'message' => 'Those credentials do not match an account that needs setting up.',
-            'code' => 'invalid_credentials',
+            'code'    => 'invalid_credentials',
         ], Response::HTTP_UNAUTHORIZED);
     }
 }

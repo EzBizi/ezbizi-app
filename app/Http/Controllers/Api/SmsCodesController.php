@@ -53,10 +53,10 @@ class SmsCodesController extends Controller
 
         return response()->json(['data' => [
             'available' => $this->sms->configured(),
-            'number' => $this->mask($user->sms_code_number),
+            'number'    => $this->mask($user->sms_code_number),
             'consented' => $user->sms_code_consent_at !== null,
             'confirmed' => $user->sms_code_confirmed_at !== null,
-            'pending' => $user->sms_code_number !== null
+            'pending'   => $user->sms_code_number !== null
                 && $user->sms_code_confirmed_at === null,
         ]]);
     }
@@ -78,7 +78,7 @@ class SmsCodesController extends Controller
         }
 
         $input = $request->validate([
-            'phone' => ['required', 'string', 'max:20'],
+            'phone'   => ['required', 'string', 'max:20'],
             'consent' => ['required', 'in:accepted'],
         ]);
 
@@ -95,11 +95,11 @@ class SmsCodesController extends Controller
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         $user->forceFill([
-            'sms_code_number' => $number,
-            'sms_code_consent_at' => now(),
+            'sms_code_number'       => $number,
+            'sms_code_consent_at'   => now(),
             'sms_code_confirmed_at' => null,
-            'sms_code_hash' => Hash::make($code),
-            'sms_code_expires_at' => now()->addMinutes(self::CODE_TTL_MINUTES),
+            'sms_code_hash'         => Hash::make($code),
+            'sms_code_expires_at'   => now()->addMinutes(self::CODE_TTL_MINUTES),
         ])->save();
 
         // Worded to match the sample message filed with the carrier. A code
@@ -125,7 +125,7 @@ class SmsCodesController extends Controller
 
         return response()->json(['data' => [
             'number' => $this->mask($number),
-            'sent' => true,
+            'sent'   => true,
         ]]);
     }
 
@@ -133,7 +133,7 @@ class SmsCodesController extends Controller
     public function confirm(Request $request): JsonResponse
     {
         $input = $request->validate(['code' => ['required', 'string']]);
-        $user = $request->user();
+        $user  = $request->user();
 
         if ($user->sms_code_hash === null) {
             return $this->refuse('There is no code waiting to be confirmed.');
@@ -149,15 +149,15 @@ class SmsCodesController extends Controller
 
         $user->forceFill([
             'sms_code_confirmed_at' => now(),
-            'sms_code_hash' => null,
-            'sms_code_expires_at' => null,
+            'sms_code_hash'         => null,
+            'sms_code_expires_at'   => null,
         ])->save();
 
         $this->audit->log('user.sms_codes_confirmed', $user);
 
         return response()->json(['data' => [
             'confirmed' => true,
-            'number' => $this->mask($user->sms_code_number),
+            'number'    => $this->mask($user->sms_code_number),
         ]]);
     }
 
@@ -174,11 +174,11 @@ class SmsCodesController extends Controller
         $user = $request->user();
 
         $user->forceFill([
-            'sms_code_number' => null,
-            'sms_code_consent_at' => null,
+            'sms_code_number'       => null,
+            'sms_code_consent_at'   => null,
             'sms_code_confirmed_at' => null,
-            'sms_code_hash' => null,
-            'sms_code_expires_at' => null,
+            'sms_code_hash'         => null,
+            'sms_code_expires_at'   => null,
         ])->save();
 
         $this->audit->log('user.sms_codes_consent_withdrawn', $user);

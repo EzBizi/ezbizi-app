@@ -3,12 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\PlatformStaff;
-use App\Models\PlatformStaffLink;
-use App\Models\User;
-use App\Services\Auth\PasswordResets;
 use App\Services\Staff\StaffAuthenticator;
 use App\Support\Audit\AuditLogger;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -54,19 +50,19 @@ class StaffAccountsController extends Controller
         $this->authorizeManagement($request);
 
         $input = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email', 'unique:platform_staff,email'],
+            'name'     => ['required', 'string', 'max:120'],
+            'email'    => ['required', 'email', 'unique:platform_staff,email'],
             // Longer than the tenant default. This account reaches every
             // customer on the platform; the ordinary policy is not enough.
             'password' => ['required', 'string', 'min:16'],
-            'tier' => ['required', Rule::in([PlatformStaff::TIER_LEAD, PlatformStaff::TIER_DEV])],
+            'tier'     => ['required', Rule::in([PlatformStaff::TIER_LEAD, PlatformStaff::TIER_DEV])],
         ]);
 
         $staff = PlatformStaff::create([
-            'name' => $input['name'],
-            'email' => strtolower($input['email']),
-            'password' => $input['password'],
-            'tier' => $input['tier'],
+            'name'      => $input['name'],
+            'email'     => strtolower($input['email']),
+            'password'  => $input['password'],
+            'tier'      => $input['tier'],
             'is_active' => true,
         ]);
 
@@ -77,7 +73,7 @@ class StaffAccountsController extends Controller
         ]);
 
         return response()->json([
-            'data' => $this->present($staff),
+            'data'      => $this->present($staff),
             // Shown once, so the new person can scan it while you are both here.
             'enrolment' => $enrolment,
         ], Response::HTTP_CREATED);
@@ -89,8 +85,8 @@ class StaffAccountsController extends Controller
         $this->authorizeManagement($request);
 
         $input = $request->validate([
-            'name' => ['string', 'max:120'],
-            'tier' => [Rule::in([PlatformStaff::TIER_LEAD, PlatformStaff::TIER_DEV])],
+            'name'      => ['string', 'max:120'],
+            'tier'      => [Rule::in([PlatformStaff::TIER_LEAD, PlatformStaff::TIER_DEV])],
             'is_active' => ['boolean'],
 
             // The Lead Developer exemption (§4.2), which is a property of THIS
@@ -125,11 +121,11 @@ class StaffAccountsController extends Controller
          * passed, because `$before` is read off it below.
          */
         $after = (clone $staff)->forceFill([
-            'tier' => $input['tier'] ?? $staff->tier,
+            'tier'      => $input['tier'] ?? $staff->tier,
             'is_active' => $input['is_active'] ?? $staff->is_active,
         ]);
 
-        $staysLead = $after->isLeadDeveloper();
+        $staysLead   = $after->isLeadDeveloper();
         $staysActive = (bool) $after->is_active;
         $staysExempt = $input['audit_exempt'] ?? (bool) $staff->audit_exempt;
 
@@ -242,7 +238,7 @@ class StaffAccountsController extends Controller
             // its record commit together or not at all.
             $this->record($request, 'staff.account_updated', $staff, [
                 'before' => $before,
-                'after' => $staff->only(['name', 'tier', 'is_active', 'audit_exempt']),
+                'after'  => $staff->only(['name', 'tier', 'is_active', 'audit_exempt']),
             ]);
 
             return null;
@@ -312,7 +308,7 @@ class StaffAccountsController extends Controller
 
         $input = $request->validate([
             'password' => ['required', 'string'],
-            'code' => ['required', 'string'],
+            'code'     => ['required', 'string'],
         ]);
 
         /*
@@ -361,15 +357,15 @@ class StaffAccountsController extends Controller
 
         // Outside tenancy on purpose: staff span organizations, so the user being
         // linked is by definition in one this request has no context for.
-        $user = app(TenantContext::class)->runWithoutTenant(
-            fn () => User::query()->with('organization')->find($input['user_id'])
+        $user = app(\App\Support\Tenancy\TenantContext::class)->runWithoutTenant(
+            fn () => \App\Models\User::query()->with('organization')->find($input['user_id'])
         );
 
         if ($user === null) {
             return $this->refuse('No such user.');
         }
 
-        $existing = PlatformStaffLink::query()->where('user_id', $user->getKey())->first();
+        $existing = \App\Models\PlatformStaffLink::query()->where('user_id', $user->getKey())->first();
 
         if ($existing !== null && $existing->staff_id !== $staff->getKey()) {
             // One staff account per user. Silently repointing it would change who
@@ -377,14 +373,14 @@ class StaffAccountsController extends Controller
             return $this->refuse('That user is already linked to a different staff account.');
         }
 
-        PlatformStaffLink::firstOrCreate(
+        \App\Models\PlatformStaffLink::firstOrCreate(
             ['user_id' => $user->getKey()],
             ['staff_id' => $staff->getKey(), 'linked_by_staff_id' => $request->user()->getKey()],
         );
 
         $this->record($request, 'staff.account_linked', $staff, [
-            'user_id' => $user->getKey(),
-            'user_email' => $user->email,
+            'user_id'      => $user->getKey(),
+            'user_email'   => $user->email,
             'organization' => $user->organization?->name,
         ]);
 
@@ -396,7 +392,7 @@ class StaffAccountsController extends Controller
     {
         $this->authorizeManagement($request);
 
-        PlatformStaffLink::query()
+        \App\Models\PlatformStaffLink::query()
             ->where('staff_id', $staff->getKey())
             ->where('user_id', $user)
             ->delete();
@@ -427,7 +423,7 @@ class StaffAccountsController extends Controller
     {
         $this->authorizeManagement($request);
 
-        $issued = app(PasswordResets::class)->issue($staff, $request->ip());
+        $issued = app(\App\Services\Auth\PasswordResets::class)->issue($staff, $request->ip());
 
         $this->record($request, 'staff.password_reset_link_issued', $staff, [
             'expires_at' => $issued['expires_at']->toIso8601String(),
@@ -437,9 +433,9 @@ class StaffAccountsController extends Controller
             // config('ezbizi.hosts.staff'), not a literal: PasswordResetLink and
             // the customer-host middleware already read that key, and a second
             // spelling of the staff host here is the one that would not move.
-            'url' => rtrim((string) config('ezbizi.hosts.staff'), '/').'/reset?token='.$issued['token'],
+            'url'        => rtrim((string) config('ezbizi.hosts.staff'), '/').'/reset?token='.$issued['token'],
             'expires_at' => $issued['expires_at']->toIso8601String(),
-            'note' => 'Single use, one hour. Email delivery is not wired up yet '
+            'note'       => 'Single use, one hour. Email delivery is not wired up yet '
                 .'(MAIL_MAILER=log), so hand this over directly.',
         ]]);
     }
@@ -525,24 +521,24 @@ class StaffAccountsController extends Controller
     private function present(PlatformStaff $staff): array
     {
         return [
-            'id' => $staff->id,
-            'name' => $staff->name,
-            'email' => $staff->email,
-            'tier' => $staff->tier,
-            'is_active' => $staff->is_active,
+            'id'                => $staff->id,
+            'name'              => $staff->name,
+            'email'             => $staff->email,
+            'tier'              => $staff->tier,
+            'is_active'         => $staff->is_active,
             // Sent so the control plane can SHOW which account is outside the
             // business audit trail. An exemption nobody can see on a screen is
             // one nobody reviews, and §4.2 asks for it to be deliberate.
-            'audit_exempt' => (bool) $staff->audit_exempt,
-            'totp_confirmed' => $staff->hasTotp(),
-            'totp_pending' => $staff->hasPendingTotp(),
+            'audit_exempt'      => (bool) $staff->audit_exempt,
+            'totp_confirmed'    => $staff->hasTotp(),
+            'totp_pending'      => $staff->hasPendingTotp(),
             'recovery_code_count' => count($staff->recovery_codes ?? []),
-            'last_login_at' => $staff->last_login_at?->toIso8601String(),
+            'last_login_at'     => $staff->last_login_at?->toIso8601String(),
             // Which tenant logins now answer to this account's credentials.
-            'linked_users' => PlatformStaffLink::query()
+            'linked_users'      => \App\Models\PlatformStaffLink::query()
                 ->where('staff_id', $staff->getKey())
                 ->pluck('user_id'),
-            'created_at' => $staff->created_at->toIso8601String(),
+            'created_at'        => $staff->created_at->toIso8601String(),
         ];
     }
 }

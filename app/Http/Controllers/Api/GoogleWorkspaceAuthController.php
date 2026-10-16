@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Email\GoogleOAuth;
 use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\GoogleWorkspaceSignIns;
@@ -43,7 +44,7 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'open Google Workspace settings');
 
-        $user = $request->user();
+        $user   = $request->user();
         $target = $this->workspace->bindTarget($user);
         $listed = $this->workspace->connectionsVisibleTo($user)->map(
             fn (GoogleWorkspaceConnection $row) => $this->workspace->refreshStatus($row),
@@ -63,12 +64,12 @@ class GoogleWorkspaceAuthController extends Controller
                         || $health['status'] === 'needs_attention';
 
                     return [
-                        'domain' => $row->domain,
+                        'domain'      => $row->domain,
                         'admin_email' => $row->admin_email,
-                        'status' => $row->status,
+                        'status'      => $row->status,
                         'status_reason' => $row->status_reason,
-                        'scope_type' => $row->scope_type,
-                        'scope_id' => $row->scope_id,
+                        'scope_type'  => $row->scope_type,
+                        'scope_id'    => $row->scope_id,
                         'scope_label' => $this->workspace->scopeLabel($row),
                         'is_current_view' => $row->scope_type === $target['type']
                             && $row->scope_id === $target['id'],
@@ -90,9 +91,9 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'list Google Workspace addresses');
 
-        $user = $request->user();
+        $user   = $request->user();
         $target = $this->workspace->bindTarget($user);
-        $row = $this->workspace->connectionAt(
+        $row    = $this->workspace->connectionAt(
             $user->organization_id,
             $target['type'],
             $target['id'],
@@ -153,7 +154,7 @@ class GoogleWorkspaceAuthController extends Controller
         }
 
         $target = $this->workspace->bindTarget($request->user());
-        $taken = GoogleWorkspaceConnection::withoutGlobalScopes()
+        $taken  = GoogleWorkspaceConnection::withoutGlobalScopes()
             ->where('domain', $domain)
             ->where(function ($query) use ($request, $target) {
                 $query->where('organization_id', '!=', $request->user()->organization_id)
@@ -171,7 +172,7 @@ class GoogleWorkspaceAuthController extends Controller
 
         try {
             $target = $this->workspace->bindTarget($request->user());
-            $begun = $this->signIns->begin(
+            $begun  = $this->signIns->begin(
                 $request->user(),
                 $request->user()->organization,
                 $domain,
@@ -188,10 +189,10 @@ class GoogleWorkspaceAuthController extends Controller
 
         return response()->json(['data' => [
             'authorization_url' => $begun['url'],
-            'flow' => $begun['flow'],
-            'expires_at' => $begun['expires_at']->toIso8601String(),
-            'sign_in_as' => 'a Workspace administrator on '.$domain,
-            'scopes' => ['openid', 'email'],
+            'flow'              => $begun['flow'],
+            'expires_at'        => $begun['expires_at']->toIso8601String(),
+            'sign_in_as'        => 'a Workspace administrator on '.$domain,
+            'scopes'            => ['openid', 'email'],
         ]]);
     }
 
@@ -223,10 +224,10 @@ class GoogleWorkspaceAuthController extends Controller
     {
         $this->assertMayManageWorkspace($request, 'disconnect Google Workspace');
 
-        $org = $request->user()->organization;
+        $org    = $request->user()->organization;
         $target = $this->workspace->bindTarget($request->user());
-        $type = (string) $request->query('scope_type', $target['type']);
-        $id = (string) $request->query('scope_id', $target['id']);
+        $type   = (string) $request->query('scope_type', $target['type']);
+        $id     = (string) $request->query('scope_id', $target['id']);
 
         $this->assertMayActOnScope($request->user(), $type, $id, 'disconnect Google Workspace');
 
@@ -242,7 +243,7 @@ class GoogleWorkspaceAuthController extends Controller
 
         $this->audit->log('workspace.disconnected', $org, [
             'domain' => $domain,
-            'scope' => $type,
+            'scope'  => $type,
         ]);
         $this->workspace->unbind($org->getKey(), $type, $id);
 

@@ -11,7 +11,6 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Notifications\NotificationDispatcher;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -202,7 +201,7 @@ final class FieldEvaluator
         return true;
     }
 
-    /** @return Collection<int, User> ponytail: one query per active user; fine at tens of managers. */
+    /** @return \Illuminate\Support\Collection<int, User> ponytail: one query per active user; fine at tens of managers. */
     public function watchers(User $about)
     {
         return User::query()

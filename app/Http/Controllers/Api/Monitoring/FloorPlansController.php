@@ -13,7 +13,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -587,6 +586,7 @@ class FloorPlansController extends Controller
      * written back to the layout untouched.
      *
      * @param  array<string, ?string>  $storedAssignees  [nodeId => user_id] as currently stored, empty on create
+     *
      * @return array{grid: array{cols: int, rows: int}, walls: list<array>, nodes: list<array>}
      *
      * @throws ValidationException
@@ -821,7 +821,7 @@ class FloorPlansController extends Controller
          * newest device that has any. Both resolved from the one ordered
          * devices query below, never per node.
          *
-         * @var array<string, array{seen: ?Carbon, specs: ?array}>
+         * @var array<string, array{seen: ?\Illuminate\Support\Carbon, specs: ?array}>
          */
         $devices = [];
 

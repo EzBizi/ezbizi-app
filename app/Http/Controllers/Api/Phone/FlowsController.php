@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Support\Phone\PhoneScope;
 use App\Models\PhoneConnection;
 use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
-use App\Support\Phone\PhoneScope;
-use App\Support\Phone\TwimlRenderer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
+use App\Support\Phone\TwimlRenderer;
 
 /**
  * Phone call flows — the menu a caller hears (spec §7).
@@ -201,7 +201,8 @@ class FlowsController extends Controller
 
             if ($group === null || $group->connection_id !== $connection->id) {
                 throw ValidationException::withMessages([
-                    "options.$index.ring_group_id" => 'That ring group belongs to a different phone account, so this line could never reach it.',
+                    "options.$index.ring_group_id" =>
+                        'That ring group belongs to a different phone account, so this line could never reach it.',
                 ]);
             }
         }

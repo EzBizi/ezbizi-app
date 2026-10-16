@@ -38,7 +38,7 @@ use Symfony\Component\HttpFoundation\Response as Status;
  *   {@see callback} is where Google's redirect lands. It is public, it answers
  *   HTML, and the `state` it is handed is the only thing identifying anybody.
  *
- *   {@see Status} is what the screen that opened the consent window polls,
+ *   {@see status} is what the screen that opened the consent window polls,
  *   because that window stops being the client's the moment it navigates and a
  *   browser will not let an opener read across origins. The server is the only
  *   party that saw the token arrive.
@@ -145,7 +145,7 @@ class GoogleMailAuthController extends Controller
      */
     public function start(Request $request, Mailbox $mailbox): JsonResponse
     {
-        $user = $request->user();
+        $user    = $request->user();
         $refusal = $this->access->manageRefusal($user, $mailbox, 'connect this inbox');
 
         abort_if($refusal !== null, Status::HTTP_FORBIDDEN, $refusal);
@@ -298,7 +298,7 @@ class GoogleMailAuthController extends Controller
          * is nothing to key an outcome to, and nothing that could legitimately
          * be waiting on it.
          */
-        $signIn = null;
+        $signIn          = null;
         $workspaceSignIn = null;
 
         try {
@@ -423,9 +423,9 @@ class GoogleMailAuthController extends Controller
             $this->workspaceSignIns->record($signIn, GoogleWorkspaceSignIns::CONNECTED, $said);
 
             $this->audit->log('workspace.connected', $organization, [
-                'domain' => $identity['domain'],
+                'domain'      => $identity['domain'],
                 'admin_email' => $identity['email'],
-                'status' => $connection->status,
+                'status'      => $connection->status,
             ], actor: $user);
 
             $heading = $connection->status === GoogleWorkspaceConnection::STATUS_CONNECTED
@@ -609,9 +609,9 @@ class GoogleMailAuthController extends Controller
                  * somebody's privacy into the thing that published it.
                  */
                 $this->audit->log('mailbox.connected', $mailbox, [
-                    'address' => $mailbox->address,
+                    'address'  => $mailbox->address,
                     'provider' => $mailbox->provider,
-                    'how' => 'google_sign_in',
+                    'how'      => 'google_sign_in',
                 ], actor: $user);
             });
         } catch (SubscriptionLapsedException) {

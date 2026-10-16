@@ -10,7 +10,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
@@ -78,16 +77,16 @@ class AccountDeletionController extends Controller
         $user = $request->user();
 
         return response()->json(['data' => [
-            'may_delete' => $this->blockedBecause($user) === null,
+            'may_delete'   => $this->blockedBecause($user) === null,
             'blocked_because' => $this->blockedBecause($user),
-            'preview' => $this->anonymiser->preview($user),
+            'preview'      => $this->anonymiser->preview($user),
         ]]);
     }
 
     /**
      * Erase the caller.
      *
-     * @throws ValidationException
+     * @throws \Illuminate\Validation\ValidationException
      */
     public function destroy(Request $request): JsonResponse
     {
@@ -98,13 +97,13 @@ class AccountDeletionController extends Controller
             // Typed, not ticked. A checkbox is one stray tap; a word has to be
             // meant. The client asks for it and the server insists, so the
             // guard is not something a modified client can skip.
-            'confirm' => ['required', 'string', 'in:DELETE'],
+            'confirm'  => ['required', 'string', 'in:DELETE'],
         ]);
 
         if (! Hash::check($request->string('password')->toString(), $user->password)) {
             return response()->json([
                 'message' => 'That password does not match, so nothing has been deleted.',
-                'code' => 'invalid_credentials',
+                'code'    => 'invalid_credentials',
             ], Status::HTTP_UNAUTHORIZED);
         }
 
@@ -113,7 +112,7 @@ class AccountDeletionController extends Controller
         if ($blocked !== null) {
             return response()->json([
                 'message' => $blocked,
-                'code' => 'last_administrator',
+                'code'    => 'last_administrator',
             ], Status::HTTP_CONFLICT);
         }
 
@@ -127,7 +126,7 @@ class AccountDeletionController extends Controller
         DB::transaction(function () use ($user) {
             $this->audit->log('user.self_deleted', $user, [
                 'email' => $user->email,
-                'name' => $user->name,
+                'name'  => $user->name,
             ], actor: $user);
 
             // Every session, not just this one. A token left alive after the

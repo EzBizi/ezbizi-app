@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\Franchise;
-use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\TwilioGateway;
@@ -157,7 +156,7 @@ class AddressesController extends Controller
     }
 
     /** @param  array<string, mixed>  $input */
-    private function connectionFor(array $input): ?PhoneConnection
+    private function connectionFor(array $input): ?\App\Models\PhoneConnection
     {
         return $this->resolver->forScope(
             $this->tenant->idOrFail(),

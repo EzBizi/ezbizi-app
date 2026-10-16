@@ -28,9 +28,9 @@ class AddressLookupController extends Controller
                 'User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)',
             ])
             ->get('https://photon.komoot.io/api/', [
-                'q' => $query,
+                'q'     => $query,
                 'limit' => 6,
-                'lang' => 'en',
+                'lang'  => 'en',
             ]);
 
         if (! $response->successful()) {
@@ -74,15 +74,15 @@ class AddressLookupController extends Controller
 
         $street = trim((string) ($properties['street'] ?? ''));
         $number = trim((string) ($properties['housenumber'] ?? ''));
-        $name = trim((string) ($properties['name'] ?? ''));
+        $name   = trim((string) ($properties['name'] ?? ''));
 
         $line1 = trim($number.' '.$street);
         if ($line1 === '') {
             $line1 = $name;
         }
 
-        $city = $this->firstString($properties, ['city', 'town', 'village', 'district']);
-        $state = $this->stateCode($properties);
+        $city   = $this->firstString($properties, ['city', 'town', 'village', 'district']);
+        $state  = $this->stateCode($properties);
         $postal = $this->firstString($properties, ['postcode']);
 
         $label = $this->firstString($properties, ['name'])
@@ -93,15 +93,15 @@ class AddressLookupController extends Controller
         }
 
         return [
-            'label' => $label,
+            'label'         => $label,
             'address_line1' => $line1 === '' ? null : $line1,
-            'city' => $city,
-            'state' => $state,
-            'postal_code' => $postal,
+            'city'          => $city,
+            'state'         => $state,
+            'postal_code'   => $postal,
             // The country's name as the lookup gives it ("United States"), for
             // a person's home address (2026-09-30). A company and a customer
             // have no country and ignore it.
-            'country' => $this->firstString($properties, ['country']),
+            'country'       => $this->firstString($properties, ['country']),
         ];
     }
 

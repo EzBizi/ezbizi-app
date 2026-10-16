@@ -3,48 +3,46 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
+use Illuminate\Support\Str;
+use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
+use App\Support\Hr\InvitationActions;
 use App\Models\Automation;
+use App\Support\Automations\AutomationTemplates;
+use App\Support\Automations\EventScope;
+use App\Support\Scoping\ViewScope;
+use App\Models\TaskBoard;
+use App\Support\Tasks\TaskBoards;
+use App\Models\NewsletterAudience;
+use App\Models\Role;
+use App\Models\TimeClockReport;
+use App\Models\WhatsAppGroup;
+use App\Models\SavedReport;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
-use App\Models\Company;
-use App\Models\Franchise;
-use App\Models\NewsletterAudience;
-use App\Models\Role;
-use App\Models\SavedReport;
-use App\Models\TaskBoard;
-use App\Models\TimeClockReport;
-use App\Models\TrainingGuide;
-use App\Models\TrainingTest;
 use App\Models\User;
-use App\Models\WhatsAppGroup;
 use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\ActionRunner;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\AutomationSchedule;
-use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\CarriesAutomationScope;
-use App\Support\Automations\EventScope;
 use App\Support\Automations\OutboundWebhook;
-use App\Support\Hr\InvitationActions;
 use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Modules\TriggerDefinition;
 use App\Support\Privacy\SensitiveValues;
-use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingRegistry;
-use App\Support\Tasks\TaskBoards;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -187,6 +185,7 @@ class AutomationsController extends Controller
          * default to.
          */
         'training.assign',
+
 
         /*
          * ── A GENERAL "EMAIL SOMEBODY" ACTION IS NOT HERE, AND IS NOT
@@ -824,7 +823,7 @@ class AutomationsController extends Controller
      * An event with no subject is organization-level, and `covers()` is asked
      * about the organization rather than waved through.
      *
-     * @param  Collection<int, AutomationEvent>  $events
+     * @param  \Illuminate\Support\Collection<int, AutomationEvent>  $events
      * @param  list<string>  $fields
      * @param  list<string>  $messageFields
      * @return array<string, string>
@@ -1045,7 +1044,7 @@ class AutomationsController extends Controller
             ->selectRaw('automation_id, COUNT(*) AS n')->groupBy('automation_id')->pluck('n', 'automation_id');
 
         $automations = $automations->map(fn (Automation $a) => $this->present($a) + [
-            'last_run_at' => ($run = $last->get($a->id)) ? Carbon::parse($run->started_at)->toIso8601String() : null,
+            'last_run_at' => ($run = $last->get($a->id)) ? \Illuminate\Support\Carbon::parse($run->started_at)->toIso8601String() : null,
             'last_run_status' => match ($run?->status) {
                 AutomationRun::SUCCEEDED => 'worked',
                 AutomationRun::FAILED => 'failed',
@@ -2013,7 +2012,7 @@ class AutomationsController extends Controller
                 // are how somebody reaches a name their roles do not cover.
                 $parameter('user_ids', 'And these people by name', 'people', false),
                 // Task Board (Jose, 2026-10-13): only means anything on a task trigger.
-                $parameter('to_assignee', 'Also tell whoever the task is given to', 'boolean', false),
+                $parameter('to_assignee', "Also tell whoever the task is given to", 'boolean', false),
                 $parameter('urgent', 'Mark as urgent (red)', 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),

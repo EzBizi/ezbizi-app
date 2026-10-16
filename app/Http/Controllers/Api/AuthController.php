@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\Auth\AuthenticateUser;
-use App\Services\Auth\AuthenticationResult;
 use App\Services\Auth\EmailVerifications;
 use App\Services\Auth\IssueSession;
 use App\Services\Organizations\ProvisionOrganization;
-use App\Support\Audit\AuditLogger;
 use App\Support\Auth\PasswordPolicy;
+use App\Services\Auth\AuthenticationResult;
+use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -93,12 +93,12 @@ class AuthController extends Controller
         if (! config('ezbizi.signup.enabled')) {
             return response()->json([
                 'message' => 'Self-serve signup is closed. Ask whoever invited you for a link.',
-                'code' => 'signup_closed',
+                'code'    => 'signup_closed',
             ], Response::HTTP_FORBIDDEN);
         }
 
         $input = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name'  => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255'],
 
             // No `unique` rule, deliberately. The same address may hold accounts
@@ -126,7 +126,7 @@ class AuthController extends Controller
             // signups with the same 255-character business name overflowed the
             // column on the second. At 120 the suffix has nowhere near enough
             // room to matter.
-            'business_name' => ['required', 'string', 'max:120'],
+            'business_name'  => ['required', 'string', 'max:120'],
             'first_location' => ['required', 'string', 'max:120'],
 
             'device_name' => ['nullable', 'string', 'max:255'],
@@ -144,11 +144,11 @@ class AuthController extends Controller
             $tree = ($this->provision)(
                 organizationName: $input['business_name'],
                 administrator: [
-                    'name' => $input['name'],
-                    'email' => $input['email'],
+                    'name'     => $input['name'],
+                    'email'    => $input['email'],
                     'password' => $input['password'],
                 ],
-                companyName: $input['business_name'],
+                companyName:   $input['business_name'],
                 franchiseName: $input['first_location'],
 
                 // The ONE caller that passes false (TODO #22). Somebody just
@@ -181,10 +181,10 @@ class AuthController extends Controller
              */
             $this->tenant->run($tree['organization'], function () use ($tree, $request) {
                 $this->audit->log('organization.provisioned', $tree['organization'], metadata: [
-                    'company' => $tree['company']->name,
+                    'company'   => $tree['company']->name,
                     'franchise' => $tree['franchise']->name,
-                    'ip' => $request->ip(),
-                    'via' => 'self-serve signup',
+                    'ip'        => $request->ip(),
+                    'via'       => 'self-serve signup',
                 ], actor: $tree['administrator']);
             });
 
@@ -229,11 +229,11 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'email'],
+            'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
             // Only accounts linked to a staff record need this (§4.2, revised),
             // so it is optional here and demanded by the service if it applies.
-            'code' => ['nullable', 'string'],
+            'code'     => ['nullable', 'string'],
             'remember' => ['sometimes', 'boolean'],
         ]);
 
@@ -259,7 +259,7 @@ class AuthController extends Controller
             // service already equalises timing; this equalises the wording.
             return response()->json([
                 'message' => 'Those credentials do not match our records.',
-                'code' => 'invalid_credentials',
+                'code'    => 'invalid_credentials',
             ], Response::HTTP_UNAUTHORIZED);
         }
 
@@ -275,7 +275,7 @@ class AuthController extends Controller
             }
 
             return response()->json([
-                'status' => 'second_factor_required',
+                'status'  => 'second_factor_required',
 
                 // The reason when there is one — a code that did not verify —
                 // and otherwise nothing but the ask. The old text named the
@@ -292,7 +292,7 @@ class AuthController extends Controller
             // Reachable only AFTER the password verified, so it discloses
             // nothing to someone who merely guessed an address.
             return response()->json([
-                'status' => 'choose_organization',
+                'status'  => 'choose_organization',
                 'message' => 'This address has accounts in more than one organization.',
                 'choices' => $result->choices(),
             ]);
@@ -305,10 +305,10 @@ class AuthController extends Controller
     public function choose(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'user_id' => ['required', 'uuid'],
-            'email' => ['required', 'email'],
+            'user_id'  => ['required', 'uuid'],
+            'email'    => ['required', 'email'],
             'password' => ['required', 'string'],
-            'code' => ['nullable', 'string'],
+            'code'     => ['nullable', 'string'],
             'remember' => ['sometimes', 'boolean'],
         ]);
 
@@ -332,7 +332,7 @@ class AuthController extends Controller
 
             return response()->json([
                 'message' => 'Those credentials do not match our records.',
-                'code' => 'invalid_credentials',
+                'code'    => 'invalid_credentials',
             ], Response::HTTP_UNAUTHORIZED);
         }
 
@@ -359,8 +359,8 @@ class AuthController extends Controller
     private function throttled(string $key): JsonResponse
     {
         return response()->json([
-            'message' => 'Too many attempts. Try again shortly.',
-            'code' => 'throttled',
+            'message'     => 'Too many attempts. Try again shortly.',
+            'code'        => 'throttled',
             'retry_after' => RateLimiter::availableIn($key),
         ], Response::HTTP_TOO_MANY_REQUESTS);
     }

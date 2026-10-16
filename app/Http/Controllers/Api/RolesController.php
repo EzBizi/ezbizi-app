@@ -90,15 +90,15 @@ class RolesController extends Controller
 
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
-                'id' => $role->id,
-                'name' => $role->name,
+                'id'               => $role->id,
+                'name'             => $role->name,
                 'is_administrator' => $role->isAdministrator(),
-                'user_count' => $role->users_count,
+                'user_count'       => $role->users_count,
 
                 // Which roles its holders may offer when they invite, or null
                 // for "any role reaching no further than theirs".
-                'invitable_roles' => $role->invitable_role_ids,
-                'hidden_on_leads' => (bool) $role->hidden_on_leads,
+                'invitable_roles'  => $role->invitable_role_ids,
+                'hidden_on_leads'  => (bool) $role->hidden_on_leads,
 
                 // Administrator holds everything implicitly and owns no rows, so
                 // reporting its stored (empty) set would draw an editor with
@@ -118,7 +118,7 @@ class RolesController extends Controller
                 'inspections' => $inspections[$role->id] ?? [],
                 'phone_numbers' => $phoneNumbers[$role->id] ?? [],
 
-                'may_edit' => $user->can('update', $role),
+                'may_edit'   => $user->can('update', $role),
                 'may_delete' => $user->can('delete', $role),
             ])->all(),
         ]);
@@ -173,7 +173,7 @@ class RolesController extends Controller
         $actor = $request->user();
 
         $requested = $input['permissions'] ?? [];
-        $inboxes = $input['inboxes'] ?? [];
+        $inboxes   = $input['inboxes'] ?? [];
         $inspections = $input['inspections'] ?? [];
         $phoneNumbers = $input['phone_numbers'] ?? [];
 
@@ -186,8 +186,8 @@ class RolesController extends Controller
         $role = DB::transaction(function () use ($input, $requested, $inboxes, $inspections, $phoneNumbers, $actor) {
             $role = Role::create([
                 'organization_id' => $actor->organization_id,
-                'name' => trim($input['name']),
-                'is_system' => false,
+                'name'            => trim($input['name']),
+                'is_system'       => false,
             ]);
 
             $changed = $role->syncPermissionKeys($requested);
@@ -466,7 +466,7 @@ class RolesController extends Controller
             // Present-but-empty is a real instruction — "this role should hold
             // nothing" — so `array` rather than `filled`, and absent means
             // "leave the permissions alone".
-            'permissions' => ['sometimes', 'array'],
+            'permissions'   => ['sometimes', 'array'],
             'permissions.*' => ['string', 'max:120'],
 
             // The shared inboxes this role may open, by mailbox id, on exactly
@@ -475,16 +475,16 @@ class RolesController extends Controller
             // rule — it is a tenant question, answered against this
             // organization's own mail in InboxAccess::assertGrantable, where the
             // refusal can say something useful.
-            'inboxes' => ['sometimes', 'array'],
+            'inboxes'   => ['sometimes', 'array'],
             'inboxes.*' => ['string', 'max:64'],
-            'inspections' => ['sometimes', 'array'],
+            'inspections'   => ['sometimes', 'array'],
             'inspections.*' => ['string', 'max:64'],
-            'phone_numbers' => ['sometimes', 'array'],
+            'phone_numbers'   => ['sometimes', 'array'],
             'phone_numbers.*' => ['string', 'max:64'],
 
             // Which roles this role's holders may offer when they invite;
             // null puts it back on the rule by reach.
-            'invitable_roles' => ['sometimes', 'nullable', 'array'],
+            'invitable_roles'   => ['sometimes', 'nullable', 'array'],
             'invitable_roles.*' => ['uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $request->user()->organization_id)],
 
@@ -496,15 +496,15 @@ class RolesController extends Controller
     private function present(Role $role): array
     {
         return [
-            'id' => $role->id,
-            'name' => $role->name,
+            'id'               => $role->id,
+            'name'             => $role->name,
             'is_administrator' => $role->isAdministrator(),
-            'permissions' => $role->permissionKeys(),
-            'inboxes' => $this->inboxes->heldBy($role),
-            'inspections' => $this->inspections->heldBy($role),
-            'phone_numbers' => $this->phoneNumbers->heldBy($role),
-            'invitable_roles' => $role->invitable_role_ids,
-            'hidden_on_leads' => (bool) $role->hidden_on_leads,
+            'permissions'      => $role->permissionKeys(),
+            'inboxes'          => $this->inboxes->heldBy($role),
+            'inspections'      => $this->inspections->heldBy($role),
+            'phone_numbers'    => $this->phoneNumbers->heldBy($role),
+            'invitable_roles'  => $role->invitable_role_ids,
+            'hidden_on_leads'  => (bool) $role->hidden_on_leads,
         ];
     }
 }

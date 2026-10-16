@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 /**
  * Base for API controllers (plan §11.4).
@@ -22,7 +21,7 @@ abstract class Controller
      * undefined method — which surfaces as a 500 rather than as an unprotected
      * endpoint, but is worth naming so nobody removes it as unused.
      */
-    use AuthorizesRequests;
+    use \Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
     /**
      * The four pagination keys every paged list sends in `meta`. Spread it
@@ -33,10 +32,10 @@ abstract class Controller
     protected function pageMeta(LengthAwarePaginator $page): array
     {
         return [
-            'total' => $page->total(),
-            'per_page' => $page->perPage(),
+            'total'        => $page->total(),
+            'per_page'     => $page->perPage(),
             'current_page' => $page->currentPage(),
-            'last_page' => $page->lastPage(),
+            'last_page'    => $page->lastPage(),
         ];
     }
 }

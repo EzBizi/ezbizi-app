@@ -26,7 +26,8 @@ class MySignatureController extends Controller
         $png = OnboardingDocuments::drawingBytes($sent);
 
         if ($png === null) {
-            throw ValidationException::withMessages(['drawing' => 'The signature did not arrive as a PNG image under 400 KB. Draw it again and save.']);
+            throw ValidationException::withMessages(['drawing' =>
+                'The signature did not arrive as a PNG image under 400 KB. Draw it again and save.']);
         }
 
         $user = $request->user();

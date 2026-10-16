@@ -9,7 +9,6 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
-use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\Attestation;
 use App\Support\Phone\ClientIdentity;
@@ -342,7 +341,7 @@ class VoiceWebhookController extends Controller
             // And the person an extension or a one-person line was ringing.
             // Only somebody in this organization (the tenant scopes User).
             ...((string) $request->query('person', '') === ''
-                || ! User::query()->whereKey((string) $request->query('person'))->exists()
+                || ! \App\Models\User::query()->whereKey((string) $request->query('person'))->exists()
                 ? [] : ['ring_person' => (string) $request->query('person')]),
             ...($this->carriedGroup($request, $connection) === null ? [] : [
                 'overflow_group' => $this->carriedGroup($request, $connection),

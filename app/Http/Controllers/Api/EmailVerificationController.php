@@ -59,8 +59,8 @@ class EmailVerificationController extends Controller
         if ($user === null) {
             return response()->json([
                 'message' => 'That confirmation link has expired or has already been used.',
-                'code' => 'verification_token_invalid',
-                'detail' => 'Sign in and ask for another one.',
+                'code'    => 'verification_token_invalid',
+                'detail'  => 'Sign in and ask for another one.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -69,14 +69,14 @@ class EmailVerificationController extends Controller
         $this->tenant->run($user->organization, function () use ($user, $request) {
             $this->audit->logError('auth.email_verified', [
                 'user_id' => $user->getKey(),
-                'email' => $user->email,
-                'ip' => $request->ip(),
+                'email'   => $user->email,
+                'ip'      => $request->ip(),
             ]);
         });
 
         return response()->json([
             'message' => 'Your address is confirmed.',
-            'data' => ['email_verified_at' => $user->email_verified_at?->toIso8601String()],
+            'data'    => ['email_verified_at' => $user->email_verified_at?->toIso8601String()],
         ]);
     }
 

@@ -14,7 +14,6 @@ use App\Support\Web\SiteRefresh;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -256,9 +255,9 @@ class ValuesController extends Controller
      * One query rather than two, because ValueResolver splits them — and
      * because two queries could disagree if somebody saved between them.
      *
-     * @return Collection<int, WebValue>
+     * @return \Illuminate\Support\Collection<int, WebValue>
      */
-    private function rows(WebSite $site): Collection
+    private function rows(WebSite $site): \Illuminate\Support\Collection
     {
         return WebValue::query()
             ->where('site_id', $site->getKey())

@@ -49,7 +49,7 @@ class BusinessProfileController extends Controller
 
         if (! $user->canActOnOrganization($user->organization)) {
             $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-            $companyIds = $user->reachableCompanies()->pluck('id')->all();
+            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
 
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
                 $q->whereIn('company_id', $companyIds)
@@ -74,10 +74,10 @@ class BusinessProfileController extends Controller
         return response()->json([
             'data' => $locations->map(fn (BusinessLocation $l) => $this->present($l))->all(),
             'meta' => [
-                'total' => $locations->count(),
+                'total'       => $locations->count(),
                 // Counted here rather than derived on the client, so the number
                 // in the tab badge and the number in the list cannot disagree.
-                'not_live' => $locations->reject(fn (BusinessLocation $l) => $l->isLive())->count(),
+                'not_live'    => $locations->reject(fn (BusinessLocation $l) => $l->isLive())->count(),
                 'connections' => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
             ],
         ]);
@@ -141,7 +141,7 @@ class BusinessProfileController extends Controller
             // while the code named it was the guardrail's complaint.
             $this->events->emit('business_location.franchise_set', $location, [
                 'before' => ['franchise_id' => $before],
-                'after' => ['franchise_id' => $location->franchise_id],
+                'after'  => ['franchise_id' => $location->franchise_id],
             ]);
         });
 
@@ -177,7 +177,7 @@ class BusinessProfileController extends Controller
             ], Response::HTTP_CONFLICT);
         }
 
-        $totals = ['fetched' => 0, 'created' => 0, 'updated' => 0];
+        $totals   = ['fetched' => 0, 'created' => 0, 'updated' => 0];
         $failures = [];
 
         foreach ($connections as $connection) {
@@ -190,7 +190,7 @@ class BusinessProfileController extends Controller
             } catch (RuntimeException $e) {
                 $failures[] = [
                     'connection' => $connection->display_name,
-                    'because' => $e->getMessage(),
+                    'because'    => $e->getMessage(),
                 ];
             }
         }
@@ -217,29 +217,29 @@ class BusinessProfileController extends Controller
     private function present(BusinessLocation $location, bool $detailed = false): array
     {
         $row = [
-            'id' => $location->id,
-            'title' => $location->title,
-            'address' => $location->addressLine(),
-            'phone' => $location->phone,
-            'website' => $location->website,
-            'primary_category' => $location->primary_category,
+            'id'                 => $location->id,
+            'title'              => $location->title,
+            'address'            => $location->addressLine(),
+            'phone'              => $location->phone,
+            'website'            => $location->website,
+            'primary_category'   => $location->primary_category,
             'verification_state' => $location->verification_state,
-            'is_published' => $location->is_published,
-            'is_live' => $location->isLive(),
-            'synced_at' => $location->synced_at?->toIso8601String(),
-            'company' => $location->company?->only(['id', 'name']),
-            'franchise' => $location->franchise?->only(['id', 'name']),
+            'is_published'       => $location->is_published,
+            'is_live'            => $location->isLive(),
+            'synced_at'          => $location->synced_at?->toIso8601String(),
+            'company'            => $location->company?->only(['id', 'name']),
+            'franchise'          => $location->franchise?->only(['id', 'name']),
         ];
 
         if ($detailed) {
             $row['hours'] = $location->hours;
             $row['address_parts'] = [
-                'line1' => $location->address_line1,
-                'line2' => $location->address_line2,
-                'city' => $location->city,
-                'state' => $location->state,
+                'line1'       => $location->address_line1,
+                'line2'       => $location->address_line2,
+                'city'        => $location->city,
+                'state'       => $location->state,
                 'postal_code' => $location->postal_code,
-                'country' => $location->country,
+                'country'     => $location->country,
             ];
         }
 

@@ -117,10 +117,10 @@ class MarketingController extends Controller
                 'module' => ['key' => $module->key, 'label' => $module->label],
 
                 'triggers' => array_map(fn (TriggerDefinition $t) => [
-                    'key' => $t->key,
-                    'label' => $t->label,
+                    'key'         => $t->key,
+                    'label'       => $t->label,
                     'description' => $t->description,
-                    'raised' => $t->isRaised,
+                    'raised'      => $t->isRaised,
                 ], $module->triggers),
 
                 /*
@@ -134,8 +134,8 @@ class MarketingController extends Controller
                  * rule using this do anything" for every action beneath it.
                  */
                 'actions' => array_map(fn (ActionDefinition $a) => [
-                    'key' => $a->key,
-                    'label' => $a->label,
+                    'key'         => $a->key,
+                    'label'       => $a->label,
                     'description' => $a->description,
                 ], $module->automationActions),
             ],

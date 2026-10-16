@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Models\InspectionCode;
 use App\Models\InspectionDefinition;
 use App\Models\InspectionDefinitionVersion;
-use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
+use App\Support\Access\ScopeReach;
 use App\Support\Inspection\BindableFields;
 use App\Support\Inspection\FieldSet;
 use App\Support\Inspection\FieldType;
@@ -601,7 +601,7 @@ class InspectionDefinitionsController extends Controller
             // "the organization" from "the server did not say" would guess.
             'scope' => [
                 'type' => $definition->scope_type,
-                'id' => $definition->scope_id,
+                'id'   => $definition->scope_id,
             ],
             'intro' => $definition->intro,
             'layout_preset' => $definition->layout_preset ?: LayoutPreset::DEFAULT,

@@ -48,10 +48,10 @@ class SalesController extends Controller
     public function update(Request $request, string $job): JsonResponse
     {
         $data = $request->validate([
-            'stage' => ['sometimes', Rule::in(SalesDeal::STAGES)],
-            'urgency' => ['sometimes', 'nullable', Rule::in(SalesDeal::URGENCIES)],
+            'stage'          => ['sometimes', Rule::in(SalesDeal::STAGES)],
+            'urgency'        => ['sometimes', 'nullable', Rule::in(SalesDeal::URGENCIES)],
             'next_follow_up' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
-            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'notes'          => ['sometimes', 'nullable', 'string', 'max:5000'],
         ]);
 
         $model = Job::query()
@@ -75,24 +75,24 @@ class SalesController extends Controller
     private function present(Job $job, ?SalesDeal $deal): array
     {
         return [
-            'job_id' => $job->id,
-            'job_number' => $job->workizJob?->serial_id ?? $job->number,
+            'job_id'         => $job->id,
+            'job_number'     => $job->workizJob?->serial_id ?? $job->number,
             // Workiz's own CreatedDate: jobs.created_at is when the sync copied
             // the job in, wrong for 885 of A-1's 1,399 pending jobs (2026-10-14).
-            'lead_date' => substr((string) ($job->workizJob?->payload['CreatedDate'] ?? ''), 0, 10)
+            'lead_date'      => substr((string) ($job->workizJob?->payload['CreatedDate'] ?? ''), 0, 10)
                 ?: $job->created_at?->toDateString(),
-            'name' => $job->customer?->name,
-            'phone' => $job->customer?->phone,
-            'email' => $job->customer?->email,
-            'state' => $job->customer?->state ?? $job->workizJob?->state,
-            'quote_minor' => $job->amount_minor,
-            'currency' => $job->currency,
-            'job_status' => $job->status,
-            'stage' => $deal?->stage ?? 'follow_up',
-            'urgency' => $deal?->urgency,
+            'name'           => $job->customer?->name,
+            'phone'          => $job->customer?->phone,
+            'email'          => $job->customer?->email,
+            'state'          => $job->customer?->state ?? $job->workizJob?->state,
+            'quote_minor'    => $job->amount_minor,
+            'currency'       => $job->currency,
+            'job_status'     => $job->status,
+            'stage'          => $deal?->stage ?? 'follow_up',
+            'urgency'        => $deal?->urgency,
             'next_follow_up' => $deal?->next_follow_up?->toDateString(),
-            'notes' => $deal?->notes,
-            'sold_at' => $deal?->sold_at?->toIso8601String(),
+            'notes'          => $deal?->notes,
+            'sold_at'        => $deal?->sold_at?->toIso8601String(),
         ];
     }
 }

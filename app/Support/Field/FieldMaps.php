@@ -22,8 +22,8 @@ final class FieldMaps
     }
 
     /**
-     * @return array{lat: float, lng: float}|false|null false when Google says the
-     *                                                  address does not exist; null when we could not ask
+     * @return array{lat: float, lng: float}|false|null  false when Google says the
+     *     address does not exist; null when we could not ask
      */
     public function geocode(string $address): array|false|null
     {
@@ -62,7 +62,7 @@ final class FieldMaps
      * @param  array<int, array{lat: float, lng: float}>  $intermediates
      * @param  array{lat: float, lng: float}  $destination
      * @return array{order: array<int, int>, legs: array<int, array{seconds: int, meters: int}>}|null
-     *                                                                                                `order` indexes $intermediates; `legs` has one more entry than it
+     *     `order` indexes $intermediates; `legs` has one more entry than it
      */
     public function optimise(array $origin, array $intermediates, array $destination): ?array
     {
@@ -152,7 +152,7 @@ final class FieldMaps
      *
      * @param  array<int, array{lat: float, lng: float}>  $origins
      * @param  array{lat: float, lng: float}  $to
-     * @return array<int, array{seconds: int, meters: int}>|null keyed like $origins; a missing key could not be routed
+     * @return array<int, array{seconds: int, meters: int}>|null  keyed like $origins; a missing key could not be routed
      */
     public function matrix(array $origins, array $to): ?array
     {

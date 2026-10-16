@@ -276,9 +276,9 @@ class BrandingController extends Controller
         abort_if(
             $aspect === null,
             422,
-            'A logo must be exactly '.Branding::expected().' pixels. '
+            "A logo must be exactly ".Branding::expected()." pixels. "
             ."That one is {$size[0]}x{$size[1]} — use the cropper, which produces "
-            .'the right size from any image.',
+            ."the right size from any image.",
         );
 
         $previous = $subject->logo_path;

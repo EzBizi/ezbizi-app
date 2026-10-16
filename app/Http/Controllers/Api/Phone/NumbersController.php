@@ -23,7 +23,6 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -87,7 +86,7 @@ class NumbersController extends Controller
         $rows = $numbers
             ->map(fn (PhoneNumber $number) => $this->row($number, $live) + [
                 'last_call_at' => isset($lastCall[$number->id])
-                    ? Carbon::parse($lastCall[$number->id], 'UTC')->toIso8601String()
+                    ? \Illuminate\Support\Carbon::parse($lastCall[$number->id], 'UTC')->toIso8601String()
                     : null,
                 'assigned_to' => $holders->get($number->id)?->first()?->user?->name,
             ])

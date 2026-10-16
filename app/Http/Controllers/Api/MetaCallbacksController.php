@@ -69,7 +69,7 @@ class MetaCallbacksController extends Controller
 
         $this->eachOrganization($userId, function (SocialConnection $connection) use (&$revoked) {
             $connection->forceFill([
-                'status' => SocialConnection::STATUS_REVOKED,
+                'status'        => SocialConnection::STATUS_REVOKED,
                 'status_reason' => 'The account was disconnected from Meta\'s own settings.',
             ])->save();
 
@@ -101,7 +101,7 @@ class MetaCallbacksController extends Controller
         });
 
         return response()->json([
-            'url' => 'https://www.ezbizi.com/delete-account/',
+            'url'               => 'https://www.ezbizi.com/delete-account/',
             'confirmation_code' => $code,
         ]);
     }

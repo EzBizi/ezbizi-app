@@ -6,7 +6,6 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\AutomationEvent;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
-use App\Models\PhoneVoicemailBox;
 use App\Support\Automations\EventEmitter;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Tenancy\TenantContext;
@@ -68,7 +67,7 @@ class RecordingWebhookController extends Controller
                 // not the line's (TwimlRenderer::voicemail adds `box`). Only a
                 // box on this call's account is taken.
                 $box = (string) $request->query('box', '');
-                if ($box !== '' && PhoneVoicemailBox::query()
+                if ($box !== '' && \App\Models\PhoneVoicemailBox::query()
                     ->where('connection_id', $call->connection_id)->whereKey($box)->exists()) {
                     $call->voicemail_box_id = $box;
                 }

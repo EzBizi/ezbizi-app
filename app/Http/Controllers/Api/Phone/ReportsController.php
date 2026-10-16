@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
-use App\Models\Customer;
 use App\Models\PhoneCall;
 use App\Models\PhoneCallTag;
 use App\Models\PhoneNumber;
@@ -217,7 +216,7 @@ class ReportsController extends Controller
 
             // A caller's number names the customer who holds it, by the same
             // exact match the call history uses.
-            'caller' => Customer::query()->whereIn('phone', $ids)->pluck('name', 'phone')->all(),
+            'caller' => \App\Models\Customer::query()->whereIn('phone', $ids)->pluck('name', 'phone')->all(),
             default => [],
         };
     }

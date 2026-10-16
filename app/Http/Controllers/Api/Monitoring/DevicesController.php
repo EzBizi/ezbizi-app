@@ -84,7 +84,8 @@ class DevicesController extends Controller
         bool $canSeeSpecs,
         bool $canSeeCapture,
         array $exemptEmails = [],
-    ): array {
+    ): array
+    {
         $row = [
             'id' => $d->id,
             'user' => ['id' => $d->user->id, 'name' => $d->user->name],

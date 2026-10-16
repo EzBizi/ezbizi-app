@@ -147,7 +147,7 @@ class HrInvitationsController extends Controller
             'data' => collect($invitations->items())->map(fn (Invitation $i) => $this->present($i)),
             'meta' => [
                 ...$this->pageMeta($invitations),
-                'tiles' => $tiles,
+                'tiles'        => $tiles,
             ],
         ]);
     }
@@ -175,13 +175,13 @@ class HrInvitationsController extends Controller
             // MAY pre-fill the common core and does not have to; whatever is
             // left blank the person completes when they accept.
             'first_name' => ['nullable', 'string', 'max:60'],
-            'last_name' => ['nullable', 'string', 'max:60'],
+            'last_name'  => ['nullable', 'string', 'max:60'],
 
             'role_id' => ['required', 'uuid', Rule::exists('roles', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
 
             'scope_type' => ['required', Rule::in(ScopeReach::TYPES)],
-            'scope_id' => ['required', 'uuid'],
+            'scope_id'   => ['required', 'uuid'],
 
             // Optional: the paperwork starts with the invitation (Jose,
             // 2026-09-30: "yes but toggable, some people dont need contracts").
@@ -207,10 +207,10 @@ class HrInvitationsController extends Controller
 
         [$invitation, $token] = DB::transaction(function () use ($input, $actor) {
             $issued = $this->invitations->issue([
-                'email' => strtolower(trim($input['email'])),
+                'email'      => strtolower(trim($input['email'])),
                 'first_name' => $input['first_name'] ?? null,
-                'last_name' => $input['last_name'] ?? null,
-                'role_id' => $input['role_id'],
+                'last_name'  => $input['last_name'] ?? null,
+                'role_id'    => $input['role_id'],
                 'invited_by_user_id' => $actor->getKey(),
                 ...$this->scopeColumns($input['scope_type'], $input['scope_id']),
             ]);
@@ -223,7 +223,7 @@ class HrInvitationsController extends Controller
             // should be.
             $this->audit->log('invitation.sent', $invitation, metadata: [
                 'email' => $invitation->email,
-                'role' => $invitation->role?->name,
+                'role'  => $invitation->role?->name,
                 'scope' => [
                     'type' => $invitation->scopeType(),
                     'name' => $invitation->scopeLabel(),
@@ -240,10 +240,10 @@ class HrInvitationsController extends Controller
              * declares no subject for it.
              */
             $this->events->emit('user.invited', payload: ['after' => [
-                'email' => $invitation->email,
-                'role_id' => $invitation->role_id,
+                'email'      => $invitation->email,
+                'role_id'    => $invitation->role_id,
                 'scope_type' => $invitation->scopeType(),
-                'scope_id' => $invitation->scopeId(),
+                'scope_id'   => $invitation->scopeId(),
                 'expires_at' => $invitation->expires_at->toIso8601String(),
             ]], actor: $actor);
 
@@ -262,13 +262,13 @@ class HrInvitationsController extends Controller
              * `job.updated` and `job.status_changed` already make.
              */
             $this->events->emit('invitation.sent', $invitation, ['after' => [
-                'status' => $invitation->status(),
-                'email' => $invitation->email,
-                'role_id' => $invitation->role_id,
-                'role' => $invitation->role?->name,
+                'status'     => $invitation->status(),
+                'email'      => $invitation->email,
+                'role_id'    => $invitation->role_id,
+                'role'       => $invitation->role?->name,
                 'scope_type' => $invitation->scopeType(),
-                'scope_id' => $invitation->scopeId(),
-                'scope' => $invitation->scopeLabel(),
+                'scope_id'   => $invitation->scopeId(),
+                'scope'      => $invitation->scopeLabel(),
                 'expires_at' => $invitation->expires_at->toIso8601String(),
             ]], actor: $actor);
 
@@ -460,7 +460,8 @@ class HrInvitationsController extends Controller
         $email = strtolower(trim($email));
 
         if (User::query()->where('email', $email)->exists()) {
-            throw ValidationException::withMessages(['email' => 'Somebody with that address already has an account in this organization. If '
+            throw ValidationException::withMessages(['email' =>
+                'Somebody with that address already has an account in this organization. If '
                 .'they cannot sign in, a password reset is what they need, not a second '
                 .'account.',
             ]);
@@ -475,7 +476,8 @@ class HrInvitationsController extends Controller
             ->exists();
 
         if ($open) {
-            throw ValidationException::withMessages(['email' => 'That address already has an invitation waiting. Resend it to give them a '
+            throw ValidationException::withMessages(['email' =>
+                'That address already has an invitation waiting. Resend it to give them a '
                 .'fresh link, or withdraw it first if the role or the place has changed.',
             ]);
         }
@@ -486,8 +488,8 @@ class HrInvitationsController extends Controller
     {
         return [
             'assigned_organization_id' => $type === Invitation::SCOPE_ORGANIZATION ? $id : null,
-            'assigned_company_id' => $type === Invitation::SCOPE_COMPANY ? $id : null,
-            'assigned_franchise_id' => $type === Invitation::SCOPE_FRANCHISE ? $id : null,
+            'assigned_company_id'      => $type === Invitation::SCOPE_COMPANY ? $id : null,
+            'assigned_franchise_id'    => $type === Invitation::SCOPE_FRANCHISE ? $id : null,
         ];
     }
 
@@ -595,7 +597,7 @@ class HrInvitationsController extends Controller
             // put a live credential.
             Log::warning('Invitation email could not be sent.', [
                 'invitation_id' => $invitation->getKey(),
-                'reason' => $e->getMessage(),
+                'reason'        => $e->getMessage(),
             ]);
 
             return self::NOT_SENT_REFUSED;
@@ -611,35 +613,35 @@ class HrInvitationsController extends Controller
     private function present(Invitation $invitation, ?string $token = null, ?string $state = null): array
     {
         $body = [
-            'id' => $invitation->id,
-            'email' => $invitation->email,
+            'id'         => $invitation->id,
+            'email'      => $invitation->email,
             'first_name' => $invitation->first_name,
-            'last_name' => $invitation->last_name,
-            'status' => $invitation->status(),
-            'role' => [
-                'id' => $invitation->role_id,
+            'last_name'  => $invitation->last_name,
+            'status'     => $invitation->status(),
+            'role'       => [
+                'id'   => $invitation->role_id,
                 'name' => $invitation->role?->name,
             ],
             'scope' => [
                 'type' => $invitation->scopeType(),
-                'id' => $invitation->scopeId(),
+                'id'   => $invitation->scopeId(),
                 'name' => $invitation->scopeLabel(),
             ],
             'invited_by' => [
-                'id' => $invitation->invited_by_user_id,
+                'id'   => $invitation->invited_by_user_id,
                 'name' => $invitation->invitedBy?->name,
             ],
-            'sent_at' => $invitation->sent_at->toIso8601String(),
+            'sent_at'    => $invitation->sent_at->toIso8601String(),
             // Waiting for the employer's signature before it is emailed.
-            'held' => $invitation->isHeld(),
+            'held'       => $invitation->isHeld(),
             'expires_at' => $invitation->expires_at->toIso8601String(),
             // The status says WHAT became of it; these say WHEN. Carried on
             // every row rather than only on the one the status names, because a
             // withdrawn invitation that was opened first is two facts about the
             // same person and the screen shows both.
-            'opened_at' => $invitation->opened_at?->toIso8601String(),
+            'opened_at'   => $invitation->opened_at?->toIso8601String(),
             'accepted_at' => $invitation->accepted_at?->toIso8601String(),
-            'revoked_at' => $invitation->revoked_at?->toIso8601String(),
+            'revoked_at'  => $invitation->revoked_at?->toIso8601String(),
         ];
 
         // Beside the link and never without it. `emailed` answers a question
@@ -679,7 +681,7 @@ class HrInvitationsController extends Controller
             // would put a value into a field that only exists on a response
             // which cannot yet know it — and that, not the old client, is
             // where the lie would actually be manufactured.
-            $body['emailed'] = $state === null ? null : $state === self::SENT;
+            $body['emailed']    = $state === null ? null : $state === self::SENT;
             $body['sent_state'] = $state;
         }
 

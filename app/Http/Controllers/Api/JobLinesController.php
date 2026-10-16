@@ -53,19 +53,19 @@ class JobLinesController extends Controller
             $unit = (int) ($service->price_minor ?? 0);
 
             $line = $job->lines()->create([
-                'organization_id' => $job->organization_id,
-                'service_id' => $service->getKey(),
-                'name' => $service->name,
+                'organization_id'  => $job->organization_id,
+                'service_id'       => $service->getKey(),
+                'name'             => $service->name,
                 'unit_price_minor' => $unit,
-                'qty' => $input['qty'],
-                'amount_minor' => $unit * $input['qty'],
-                'position' => (int) $job->lines()->max('position') + 1,
+                'qty'              => $input['qty'],
+                'amount_minor'     => $unit * $input['qty'],
+                'position'         => (int) $job->lines()->max('position') + 1,
             ]);
 
             $job->recomputeTotal();
 
             $this->audit->log('job.line_added', $job, metadata: [
-                'name' => $line->name,
+                'name'  => $line->name,
                 'total' => $job->fresh()->amount_minor,
             ]);
 
@@ -94,7 +94,7 @@ class JobLinesController extends Controller
 
         DB::transaction(function () use ($job, $line, $input) {
             $line->forceFill([
-                'qty' => $input['qty'],
+                'qty'          => $input['qty'],
                 'amount_minor' => $line->unit_price_minor * $input['qty'],
             ])->save();
 
@@ -132,13 +132,13 @@ class JobLinesController extends Controller
     private function present(JobLine $line): array
     {
         return [
-            'id' => $line->id,
-            'service_id' => $line->service_id,
-            'name' => $line->name,
+            'id'               => $line->id,
+            'service_id'       => $line->service_id,
+            'name'             => $line->name,
             'unit_price_minor' => $line->unit_price_minor,
-            'qty' => $line->qty,
-            'amount_minor' => $line->amount_minor,
-            'position' => $line->position,
+            'qty'              => $line->qty,
+            'amount_minor'     => $line->amount_minor,
+            'position'         => $line->position,
         ];
     }
 

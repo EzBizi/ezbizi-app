@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\PhoneConnection;
-use App\Models\PhoneRingGroup;
 use App\Models\PhoneServiceRequest;
 use App\Models\User;
-use App\Support\Phone\DialPlan;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
@@ -548,8 +546,8 @@ class ConnectionsController extends Controller
     {
         $group = $connection->default_ring_group_id === null
             ? null
-            : PhoneRingGroup::query()->find($connection->default_ring_group_id);
+            : \App\Models\PhoneRingGroup::query()->find($connection->default_ring_group_id);
 
-        return $group !== null && DialPlan::batches($group, $connection) !== [];
+        return $group !== null && \App\Support\Phone\DialPlan::batches($group, $connection) !== [];
     }
 }

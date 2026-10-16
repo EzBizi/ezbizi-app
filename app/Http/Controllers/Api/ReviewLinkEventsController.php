@@ -27,8 +27,8 @@ class ReviewLinkEventsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'key' => ['required', 'string', 'max:100'],
-            'c' => ['required', 'string', 'max:120'],
+            'key'  => ['required', 'string', 'max:100'],
+            'c'    => ['required', 'string', 'max:120'],
             'kind' => ['required', Rule::in(ReviewLinkEvent::KINDS)],
         ]);
         $headers = ['Access-Control-Allow-Origin' => '*', 'Cache-Control' => 'no-store'];

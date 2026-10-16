@@ -19,7 +19,6 @@ use App\Support\Phone\TwimlRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Collection;
 use Symfony\Component\HttpFoundation\Response as Status;
 use Twilio\TwiML\VoiceResponse;
 
@@ -218,26 +217,26 @@ class CallsController extends Controller
             $query->where('voicemail', true)->where(fn ($in) => $in
                 ->where('voicemail_box_id', $boxId)
                 ->orWhere(fn ($line) => $line->whereNull('voicemail_box_id')->whereIn(
-                    'number_id',
-                    PhoneNumber::query()
-                        ->where(function ($line) use ($boxId) {
-                            $line->where('voicemail_box_id', $boxId)
-                                ->orWhere(function ($default) use ($boxId) {
-                                    // '' is a cleared field, not a choice — the
-                                    // same reading `resolved()` takes.
-                                    $default->where(fn ($unset) => $unset
-                                        ->whereNull('voicemail_box_id')
-                                        ->orWhere('voicemail_box_id', ''))
-                                        ->whereIn(
-                                            'connection_id',
-                                            PhoneConnection::query()
-                                                ->where('default_voicemail_box_id', $boxId)
-                                                ->pluck('id'),
-                                        );
-                                });
-                        })
-                        ->pluck('id'),
-                )));
+                'number_id',
+                PhoneNumber::query()
+                    ->where(function ($line) use ($boxId) {
+                        $line->where('voicemail_box_id', $boxId)
+                            ->orWhere(function ($default) use ($boxId) {
+                                // '' is a cleared field, not a choice — the
+                                // same reading `resolved()` takes.
+                                $default->where(fn ($unset) => $unset
+                                    ->whereNull('voicemail_box_id')
+                                    ->orWhere('voicemail_box_id', ''))
+                                    ->whereIn(
+                                        'connection_id',
+                                        PhoneConnection::query()
+                                            ->where('default_voicemail_box_id', $boxId)
+                                            ->pluck('id'),
+                                    );
+                            });
+                    })
+                    ->pluck('id'),
+            )));
         }
 
         // Voicemail tiles (Mia, 2026-10-02): To deal with, Dealt with, No
@@ -1137,7 +1136,7 @@ class CallsController extends Controller
     }
 
     /**
-     * @param  Collection<int, PhoneCall>  $calls
+     * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
      * @return array<string, string>
      */
     /**
@@ -1185,12 +1184,13 @@ class CallsController extends Controller
      * Resolved once for the page rather than per row, and only when a leg
      * really is an identity — a page of ordinary calls asks nothing extra.
      *
-     * @param  Collection<int, PhoneCall>  $calls
+     * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
      *
      * Keyed by BOTH forms a person can be named in a call row: the hyphen-less
      * identity a client leg carries, and the plain id in `answered_by`. One
      * pass over the page, one lookup, and the caller does not have to know
      * which shape it holds.
+     *
      * @return array<string, string> identity hex or user id => person's name
      */
     private function colleagueNames($calls): array

@@ -47,13 +47,13 @@ class TwoFactorController extends Controller
     /** GET /api/v1/me/totp — what state am I in? */
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user    = $request->user();
         $subject = $this->subject($request);
 
         return response()->json(['data' => [
-            'enabled' => $subject->hasTotp(),
-            'pending' => $subject->hasPendingTotp(),
-            'recovery_code_count' => $subject->recoveryCodeCount(),
+            'enabled'              => $subject->hasTotp(),
+            'pending'              => $subject->hasPendingTotp(),
+            'recovery_code_count'  => $subject->recoveryCodeCount(),
             'required_by_organization' => $this->required($user),
 
             // A linked account's factor lives on the staff record. It used to
@@ -125,7 +125,7 @@ class TwoFactorController extends Controller
         $input = $request->validate(['code' => ['required', 'string']]);
 
         $subject = $this->subject($request);
-        $user = $request->user();
+        $user    = $request->user();
 
         if (! $subject->hasPendingTotp()) {
             return $this->refuse('There is no pending authenticator to confirm.');
@@ -158,7 +158,7 @@ class TwoFactorController extends Controller
     public function disable(Request $request): JsonResponse
     {
         $subject = $this->subject($request);
-        $user = $request->user();
+        $user    = $request->user();
 
         $refusal = $this->reauthenticate($request, $subject);
 
@@ -216,13 +216,13 @@ class TwoFactorController extends Controller
      * for. So when a factor is already enrolled, a current code is required as
      * well — you must hold the thing you are about to remove.
      *
-     * @return string|null the refusal, or null if they proved it
+     * @return string|null  the refusal, or null if they proved it
      */
     private function reauthenticate(Request $request, $subject): ?string
     {
         $input = $request->validate([
             'password' => ['required', 'string'],
-            'code' => ['nullable', 'string'],
+            'code'     => ['nullable', 'string'],
         ]);
 
         if (! Hash::check($input['password'], $subject->password)) {

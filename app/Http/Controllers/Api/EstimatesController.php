@@ -15,7 +15,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -30,8 +29,8 @@ class EstimatesController extends Controller
 {
     /** Where each status may go. Sending the status it already has is a no-op. */
     private const NEXT = [
-        'draft' => ['sent', 'archived'],
-        'sent' => ['accepted', 'declined', 'archived'],
+        'draft'    => ['sent', 'archived'],
+        'sent'     => ['accepted', 'declined', 'archived'],
         'accepted' => ['archived'],
         'declined' => ['archived'],
         'archived' => [],
@@ -54,9 +53,9 @@ class EstimatesController extends Controller
 
         $request->validate([
             'customer_id' => ['nullable', 'uuid'],
-            'job_id' => ['nullable', 'uuid'],
-            'status' => ['nullable', Rule::in(Estimate::STATUSES)],
-            'search' => ['nullable', 'string', 'max:100'],
+            'job_id'      => ['nullable', 'uuid'],
+            'status'      => ['nullable', Rule::in(Estimate::STATUSES)],
+            'search'      => ['nullable', 'string', 'max:100'],
         ]);
 
         $reach = ViewScope::forUser($request->user())->franchiseIds();
@@ -120,11 +119,11 @@ class EstimatesController extends Controller
     {
         $input = $request->validate([
             'franchise_id' => ['required', 'uuid', $this->existsInTenant('franchises')],
-            'customer_id' => ['required', 'uuid', $this->existsInTenant('customers')],
-            'job_id' => ['nullable', 'uuid', $this->existsInTenant('jobs')],
-            'title' => ['nullable', 'string', 'max:191'],
-            'note' => ['nullable', 'string', 'max:10000'],
-            'issued_on' => ['nullable', 'date'],
+            'customer_id'  => ['required', 'uuid', $this->existsInTenant('customers')],
+            'job_id'       => ['nullable', 'uuid', $this->existsInTenant('jobs')],
+            'title'        => ['nullable', 'string', 'max:191'],
+            'note'         => ['nullable', 'string', 'max:10000'],
+            'issued_on'    => ['nullable', 'date'],
             ...$this->lineRules(),
         ]);
 
@@ -135,15 +134,15 @@ class EstimatesController extends Controller
         $estimate = DB::transaction(function () use ($input, $franchise) {
             $estimate = Estimate::create([
                 'franchise_id' => $franchise->getKey(),
-                'customer_id' => $input['customer_id'],
-                'job_id' => $input['job_id'] ?? null,
-                'number' => $this->numbers->next(RecordNumberGenerator::ESTIMATES, $franchise),
-                'title' => $input['title'] ?? null,
-                'status' => 'draft',
-                'issued_on' => $input['issued_on'] ?? null,
-                'note' => $input['note'] ?? null,
+                'customer_id'  => $input['customer_id'],
+                'job_id'       => $input['job_id'] ?? null,
+                'number'       => $this->numbers->next(RecordNumberGenerator::ESTIMATES, $franchise),
+                'title'        => $input['title'] ?? null,
+                'status'       => 'draft',
+                'issued_on'    => $input['issued_on'] ?? null,
+                'note'         => $input['note'] ?? null,
                 // From the franchise, so an amount and its currency cannot disagree.
-                'currency' => strtoupper($franchise->currency ?: 'USD'),
+                'currency'     => strtoupper($franchise->currency ?: 'USD'),
             ]);
 
             $this->replaceLines($estimate, $input['lines'] ?? []);
@@ -163,9 +162,9 @@ class EstimatesController extends Controller
         $this->authorize('update', $estimate);
 
         $input = $request->validate([
-            'status' => ['sometimes', Rule::in(Estimate::STATUSES)],
-            'title' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'note' => ['sometimes', 'nullable', 'string', 'max:10000'],
+            'status'    => ['sometimes', Rule::in(Estimate::STATUSES)],
+            'title'     => ['sometimes', 'nullable', 'string', 'max:191'],
+            'note'      => ['sometimes', 'nullable', 'string', 'max:10000'],
             'issued_on' => ['sometimes', 'nullable', 'date'],
             ...$this->lineRules(),
         ]);
@@ -201,7 +200,7 @@ class EstimatesController extends Controller
             if ($accepted) {
                 $this->events->emit('estimate.accepted', $estimate, [
                     'before' => ['status' => $before],
-                    'after' => ['status' => 'accepted'],
+                    'after'  => ['status' => 'accepted'],
                 ]);
             }
         });
@@ -227,7 +226,7 @@ class EstimatesController extends Controller
     }
 
     /** An `exists` rule scoped to this organization, as in JobsController. */
-    private function existsInTenant(string $table): Exists
+    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
     {
         return Rule::exists($table, 'id')->where('organization_id', $this->tenant->idOrFail());
     }
@@ -235,11 +234,11 @@ class EstimatesController extends Controller
     private function lineRules(): array
     {
         return [
-            'lines' => ['sometimes', 'array', 'max:200'],
-            'lines.*.service_id' => ['nullable', 'uuid', $this->existsInTenant('services')],
-            'lines.*.name' => ['required', 'string', 'max:191'],
-            'lines.*.description' => ['nullable', 'string', 'max:2000'],
-            'lines.*.quantity' => ['required', 'numeric', 'min:0.01', 'max:99999'],
+            'lines'                    => ['sometimes', 'array', 'max:200'],
+            'lines.*.service_id'       => ['nullable', 'uuid', $this->existsInTenant('services')],
+            'lines.*.name'             => ['required', 'string', 'max:191'],
+            'lines.*.description'      => ['nullable', 'string', 'max:2000'],
+            'lines.*.quantity'         => ['required', 'numeric', 'min:0.01', 'max:99999'],
             'lines.*.unit_price_minor' => ['required', 'integer', 'min:0'],
         ];
     }
@@ -251,12 +250,12 @@ class EstimatesController extends Controller
 
         foreach (array_values($lines) as $position => $line) {
             $estimate->lines()->create([
-                'service_id' => $line['service_id'] ?? null,
-                'name' => $line['name'],
-                'description' => $line['description'] ?? null,
-                'quantity' => $line['quantity'],
+                'service_id'       => $line['service_id'] ?? null,
+                'name'             => $line['name'],
+                'description'      => $line['description'] ?? null,
+                'quantity'         => $line['quantity'],
                 'unit_price_minor' => $line['unit_price_minor'],
-                'position' => $position,
+                'position'         => $position,
             ]);
         }
 
@@ -282,21 +281,21 @@ class EstimatesController extends Controller
         $e->loadMissing(['franchise', 'customer', 'job']);
 
         $base = [
-            'id' => $e->id,
-            'number' => $e->number,
-            'title' => $e->title,
-            'status' => $e->status,
-            'source' => $e->source,
-            'franchise' => ['id' => $e->franchise_id, 'name' => $e->franchise?->name],
-            'customer' => ['id' => $e->customer_id, 'name' => $e->customer?->name, 'number' => $e->customer?->number],
-            'job' => $e->job ? ['id' => $e->job_id, 'number' => $e->job->number] : null,
-            'issued_on' => $e->issued_on?->toDateString(),
+            'id'          => $e->id,
+            'number'      => $e->number,
+            'title'       => $e->title,
+            'status'      => $e->status,
+            'source'      => $e->source,
+            'franchise'   => ['id' => $e->franchise_id, 'name' => $e->franchise?->name],
+            'customer'    => ['id' => $e->customer_id, 'name' => $e->customer?->name, 'number' => $e->customer?->number],
+            'job'         => $e->job ? ['id' => $e->job_id, 'number' => $e->job->number] : null,
+            'issued_on'   => $e->issued_on?->toDateString(),
             'accepted_at' => $e->accepted_at?->toIso8601String(),
             // A1's own date on an imported row, not the import's: the importer keeps it.
-            'created_at' => $e->created_at?->toIso8601String(),
-            'currency' => $e->currency,
+            'created_at'  => $e->created_at?->toIso8601String(),
+            'currency'    => $e->currency,
             'total_minor' => $e->total_minor,
-            'note' => $e->note,
+            'note'        => $e->note,
         ];
 
         if (! $detailed) {
@@ -307,11 +306,11 @@ class EstimatesController extends Controller
 
         return $base + [
             'lines' => $e->lines->map(fn (EstimateLine $l) => [
-                'id' => $l->id,
-                'service_id' => $l->service_id,
-                'name' => $l->name,
-                'description' => $l->description,
-                'quantity' => (float) $l->quantity,
+                'id'               => $l->id,
+                'service_id'       => $l->service_id,
+                'name'             => $l->name,
+                'description'      => $l->description,
+                'quantity'         => (float) $l->quantity,
                 'unit_price_minor' => $l->unit_price_minor,
             ])->all(),
         ];

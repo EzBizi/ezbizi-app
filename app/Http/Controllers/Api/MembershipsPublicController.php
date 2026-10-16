@@ -6,11 +6,9 @@ use App\Jobs\SendMembershipVisitToWorkiz;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
-use App\Models\Job;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
 use App\Models\Organization;
-use App\Models\ReviewCode;
 use App\Models\WebSite;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -19,7 +17,6 @@ use App\Support\Memberships\CustomerLinks;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
@@ -51,11 +48,11 @@ class MembershipsPublicController extends Controller
     public function review(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'key' => ['required', 'string', 'max:100'],
-            'rating' => ['required', Rule::in(['happy', 'sad'])],
-            'c' => ['nullable', 'string', 'max:120'],
-            'phone' => ['nullable', 'string', 'max:40'],
-            'email' => ['nullable', 'email', 'max:191'],
+            'key'     => ['required', 'string', 'max:100'],
+            'rating'  => ['required', Rule::in(['happy', 'sad'])],
+            'c'       => ['nullable', 'string', 'max:120'],
+            'phone'   => ['nullable', 'string', 'max:40'],
+            'email'   => ['nullable', 'email', 'max:191'],
             'comment' => ['nullable', 'string', 'max:4000'],
         ]);
         $headers = ['Access-Control-Allow-Origin' => '*', 'Cache-Control' => 'no-store'];
@@ -84,13 +81,13 @@ class MembershipsPublicController extends Controller
             }
 
             $this->events->emit('customer.reviewed', $customer, ['after' => [
-                'rating' => $input['rating'],
-                'comment' => $input['comment'] ?? null,
-                'source' => $verified ? 'review_link' : 'asked',
-                'verified' => $verified,
-                'site' => $site->host,
+                'rating'              => $input['rating'],
+                'comment'             => $input['comment'] ?? null,
+                'source'              => $verified ? 'review_link' : 'asked',
+                'verified'            => $verified,
+                'site'                => $site->host,
                 // The job the link was sent for, when it was a job's link.
-                'job_id' => $verified ? CustomerLinks::jobId($input['c'] ?? null) : null,
+                'job_id'              => $verified ? CustomerLinks::jobId($input['c'] ?? null) : null,
                 'membership_join_url' => CustomerLinks::joinUrl($customer),
             ]]);
         });
@@ -99,9 +96,9 @@ class MembershipsPublicController extends Controller
     }
 
     /** `{{ membership_link }}`: a short code forwards to the signed join page. */
-    public function shortJoin(string $code): RedirectResponse
+    public function shortJoin(string $code): \Illuminate\Http\RedirectResponse
     {
-        $row = $this->tenant->runWithoutTenant(fn () => ReviewCode::query()->withoutGlobalScopes()
+        $row = $this->tenant->runWithoutTenant(fn () => \App\Models\ReviewCode::query()->withoutGlobalScopes()
             ->whereKey($code)->whereNull('job_id')->where('expires_at', '>=', now())->first());
         $customer = $row ? $this->tenant->runWithoutTenant(fn () => Customer::query()->withoutGlobalScopes()->find($row->customer_id)) : null;
         abort_if($customer === null, Response::HTTP_NOT_FOUND);
@@ -141,7 +138,7 @@ class MembershipsPublicController extends Controller
     {
         return $this->asWebCustomer($request, fn (?Customer $c) => [
             'member' => $c ? $this->memberJson($this->current($c)) : null,
-            'plans' => $c ? $this->plansJson() : [],
+            'plans'  => $c ? $this->plansJson() : [],
             // "Sending as Marta" on the faces' sad form, which then asks for
             // nothing the link already says (Jose, 2026-10-08). First name
             // only: the link can be forwarded.
@@ -174,12 +171,12 @@ class MembershipsPublicController extends Controller
 
             $starts = CarbonImmutable::today();
             $membership = Membership::create([
-                'franchise_id' => $c->owning_franchise_id,
-                'customer_id' => $c->getKey(),
+                'franchise_id'       => $c->owning_franchise_id,
+                'customer_id'        => $c->getKey(),
                 'membership_plan_id' => $plan->getKey(),
-                'enrollment' => Membership::query()->where('customer_id', $c->getKey())->exists() ? 'renewal' : 'new',
-                'starts_on' => $starts,
-                'ends_on' => $starts->addYear()->subDay(),
+                'enrollment'         => Membership::query()->where('customer_id', $c->getKey())->exists() ? 'renewal' : 'new',
+                'starts_on'          => $starts,
+                'ends_on'            => $starts->addYear()->subDay(),
             ]);
             $this->audit->log('membership.created', $membership, metadata: ['by' => 'customer']);
             $this->events->emit('membership.created', $membership, ['after' => MembershipsController::payload($membership)]);
@@ -215,9 +212,9 @@ class MembershipsPublicController extends Controller
 
         return [
             'plan_name' => $m->plan?->name,
-            'ends_on' => $m->ends_on->toDateString(),
-            'status' => $m->state(),
-            'visit_on' => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
+            'ends_on'   => $m->ends_on->toDateString(),
+            'status'    => $m->state(),
+            'visit_on'  => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
         ];
     }
 
@@ -269,7 +266,7 @@ class MembershipsPublicController extends Controller
                 $m->forceFill(['visit_job_id' => $job->getKey()])->save();
 
                 $this->events->emit('membership.visit_confirmed', $m, ['after' => MembershipsController::payload($m) + [
-                    'visit_on' => $date,
+                    'visit_on'   => $date,
                     'job_number' => $job->number,
                 ]]);
             });
@@ -298,10 +295,10 @@ class MembershipsPublicController extends Controller
 
         return response()->view('memberships.visit', [
             'membership' => $m,
-            'customer' => $customer,
-            'company' => $this->companyName($customer),
-            'job' => $m->visit_job_id ? Job::query()->find($m->visit_job_id) : null,
-            'error' => $error,
+            'customer'   => $customer,
+            'company'    => $this->companyName($customer),
+            'job'        => $m->visit_job_id ? \App\Models\Job::query()->find($m->visit_job_id) : null,
+            'error'      => $error,
         ]);
     }
 
@@ -352,11 +349,11 @@ class MembershipsPublicController extends Controller
     {
         return response()->view('memberships.join', [
             'customer' => $c,
-            'company' => $this->companyName($c),
+            'company'  => $this->companyName($c),
             // A preview always shows the offer, even for a customer who is a member.
-            'current' => $preview ? null : $this->current($c)?->load('plan'),
-            'plans' => MembershipPlan::query()->where('is_active', true)->orderBy('price_minor')->get(),
-            'preview' => $preview,
+            'current'  => $preview ? null : $this->current($c)?->load('plan'),
+            'plans'    => MembershipPlan::query()->where('is_active', true)->orderBy('price_minor')->get(),
+            'preview'  => $preview,
             'joinedInPreview' => $joinedInPreview,
         ]);
     }
