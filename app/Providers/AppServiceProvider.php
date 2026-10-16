@@ -461,6 +461,10 @@ class AppServiceProvider extends ServiceProvider
          * every few seconds, which is exactly the behaviour the limit above
          * exists to stop.
          */
+        // Per organization: every lookup can be a paid Google call.
+        RateLimiter::for('geocode', fn (Request $request) => Limit::perMinute(30)
+            ->by('geocode:'.($request->user()?->organization_id ?? $request->ip())));
+
         RateLimiter::for('web-chat-poll', fn (Request $request) => Limit::perMinute(60)
             ->by('chat:'.hash('sha256', (string) $request->bearerToken()))
             ->response($this->throttledWith('Asking a little too often. It will catch up shortly.')));

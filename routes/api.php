@@ -1709,6 +1709,10 @@ Route::prefix('v1')
         Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
+        // Address → formatted address + coordinates (Google), for any module's
+        // screen; the controller gates it per caller (`for=`).
+        Route::get('geocode', \App\Http\Controllers\Api\GeocodeController::class)
+            ->middleware('throttle:geocode');
         // Ask for one of your own shifts to be corrected (2026-09-30). Answered
         // under work_hours.manage below.
         Route::get('time-clock/corrections', [TimeClockCorrectionsController::class, 'mine']);

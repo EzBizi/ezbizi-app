@@ -24,7 +24,7 @@ use Throwable;
 final class AddressCheck
 {
     /**
-     * @return array{address: string, zip: ?string, exact: bool}|null  null when unknown
+     * @return array{address: string, zip: ?string, exact: bool, lat: ?float, lng: ?float}|null  null when unknown
      */
     public static function check(string $address, ?string $zip = null): ?array
     {
@@ -34,7 +34,7 @@ final class AddressCheck
             return null;
         }
 
-        return Cache::remember('lead-address:'.sha1(strtolower($query)), now()->addDays(30), function () use ($key, $query) {
+        return Cache::remember('address-check:v2:'.sha1(strtolower($query)), now()->addDays(30), function () use ($key, $query) {
             try {
                 $response = Http::timeout(8)->get('https://maps.googleapis.com/maps/api/geocode/json', [
                     'address' => $query,
@@ -56,6 +56,8 @@ final class AddressCheck
             return [
                 'address' => (string) ($result['formatted_address'] ?? ''),
                 'zip' => $zip,
+                'lat' => isset($result['geometry']['location']['lat']) ? (float) $result['geometry']['location']['lat'] : null,
+                'lng' => isset($result['geometry']['location']['lng']) ? (float) $result['geometry']['location']['lng'] : null,
                 // A street address Google placed exactly, not a town centre or
                 // a street picked because the number did not match.
                 'exact' => in_array($result['geometry']['location_type'] ?? '', ['ROOFTOP', 'RANGE_INTERPOLATED'], true)
