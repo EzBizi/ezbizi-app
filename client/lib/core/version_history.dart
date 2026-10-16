@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0444',
+      date: '16 Oct 2026',
+      items: [
+        'Dashboard: the Email box shows its last unread count at once and refreshes it in the background, so the Dashboard no longer waits on every inbox.',
+        'Fixed: a crash when the end-of-shift reminder was open while switching screens.',
+        'The app\'s freeze reports no longer count tabs left in the background.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0443',
       date: '16 Oct 2026',
       items: [
