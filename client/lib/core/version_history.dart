@@ -22,7 +22,7 @@ class VersionHistory {
         'Leads: when Google files a call on a message lead that belongs to someone else, the call moves to a lead of its own, with a note saying where it came from.',
         'Reports: in Performance and Scoring, a caller who pressed the wrong menu key counts as the new or existing client they actually were, marked ↺ with what they pressed.',
         'Field: technicians can record a job visit for their safety from the phone app. It is off until a company turns it on under Settings › Field, it stays blocked in states where everyone must agree unless the company chooses to announce it, and the technician confirms before each recording. Managers listen in the new Recordings tab, and recordings are kept 90 days unless kept on purpose.',
-        'Marketing › Social: post to your Google Business Profile listings, with a Book, Call, Order or Learn more button.',
+        'Marketing › Social: post to your Google Business Profile listings, with a Book, Call, Order or Learn more button. A From library button picks a picture or video from your company’s standard media library, where you can add, rename and remove items.',
         'Leads: a caller who pressed the wrong menu key is corrected to new or existing client, from their past jobs or, failing that, what they said on the call. The key they pressed is kept, and the Re-classify tick lets a person change it.',
         'Leads: new EZ Calls and EZ Texts tabs for calls and texts on your own EzBizi phone lines, tagged like RC Calls. Texts can be answered from the lead. Mark which lines count as leads under Communication › Settings › Numbers.',
         'Leads: a call from a known customer is never tagged Possible spam or marked Not a lead.',
