@@ -187,6 +187,14 @@ final class MailboxAccess
             return Refusal::permission($act)->message();
         }
 
+        /*
+         * REACH BEFORE VIEW (2026-10-16): the view says "switch there", which
+         * is no answer to somebody who can never stand there.
+         */
+        if (! $this->reaches($user, $mailbox)) {
+            return $this->outOfReach($user, $mailbox, $act);
+        }
+
         if (! $this->inView($user, $mailbox)) {
             return $this->outOfView($user, $mailbox, $act);
         }
@@ -200,10 +208,6 @@ final class MailboxAccess
          * both of them would be baffled. The narrower, structural fact comes
          * first.
          */
-        if (! $this->reaches($user, $mailbox)) {
-            return $this->outOfReach($user, $mailbox, $act);
-        }
-
         if (! $this->isGranted($user, $mailbox)) {
             return sprintf(
                 'You cannot %s. %s is a shared inbox, and access to each one is given out '
@@ -225,12 +229,12 @@ final class MailboxAccess
             return Refusal::permission($act)->message();
         }
 
-        if (! $this->inView($user, $mailbox)) {
-            return $this->outOfView($user, $mailbox, $act);
-        }
-
         if (! $this->reaches($user, $mailbox)) {
             return $this->outOfReach($user, $mailbox, $act);
+        }
+
+        if (! $this->inView($user, $mailbox)) {
+            return $this->outOfView($user, $mailbox, $act);
         }
 
         return null;
