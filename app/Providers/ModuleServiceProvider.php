@@ -3000,14 +3000,22 @@ class ModuleServiceProvider extends ServiceProvider
                 // `manage`: working a review as a case - status, notes, the
                 // customer it is about, reporting it (UI queue 101, 2026-10-16).
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish', 'manage'],
+                actionLabels: ['manage' => 'Work reviews as cases (status, notes, customer, report)'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
                         key: 'review.received',
                         label: 'Review received',
                         description: 'A new review arrived on a connected Business Profile. It '
-                            .'carries the rating, the text as the reviewer wrote it, and which '
-                            .'location it is about.',
+                            .'carries the rating, the text as the reviewer wrote it, which '
+                            .'location it is about, and how many days old it is (age_days).',
+                    ),
+                    new TriggerDefinition(
+                        key: 'review.removed',
+                        label: 'Review removed',
+                        description: 'Google no longer shows a review: three complete lists without it, '
+                            .'each confirmed by Google answering that the review is gone, at least two '
+                            .'hours apart. Raised once per review.',
                     ),
                     new TriggerDefinition(
                         key: 'review.reply_published',
