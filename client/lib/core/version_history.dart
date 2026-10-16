@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Leads: a caller who pressed the wrong menu key is corrected to new or existing client, from their past jobs or, failing that, what they said on the call. The key they pressed is kept, and the Re-classify tick lets a person change it.',
         'Leads: new EZ Calls and EZ Texts tabs for calls and texts on your own EzBizi phone lines, tagged like RC Calls. Texts can be answered from the lead. Mark which lines count as leads under Communication › Settings › Numbers.',
         'Leads: a call from a known customer is never tagged Possible spam or marked Not a lead.',
         'Leads: re-classifying a lead and changing its dispatcher are now their own ticks in Roles & permissions (given to everyone who could edit leads), and a Leads setting can pause all calls to Google for a business.',
