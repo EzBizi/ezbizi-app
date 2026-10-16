@@ -106,7 +106,7 @@ final class EzLeadCalls
         return match (true) {
             $call->answered_by !== null => $existingCustomer ? RingCentralLeadCalls::EXISTING_CLIENT : null,
             (bool) $call->voicemail => RingCentralLeadCalls::VOICEMAIL,
-            $call->isMenuHangUp() => RingCentralLeadCalls::POSSIBLE_SPAM,
+            $call->isMenuHangUp() => $existingCustomer ? RingCentralLeadCalls::EXISTING_CLIENT : RingCentralLeadCalls::POSSIBLE_SPAM,
             default => RingCentralLeadCalls::MISSED,
         };
     }

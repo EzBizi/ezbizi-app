@@ -133,7 +133,7 @@ final class RingCentralLeadCalls
                 ? ($franchises[$markets[self::market($line)] ?? ''] ?? null)
                 : null;
 
-            $outcome = self::outcome($call, $existingQueue);
+            $outcome = self::outcome($call, $existingQueue, KnownCustomer::is((string) $call['from']));
             DB::transaction(function () use ($call, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
                 $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
@@ -257,10 +257,13 @@ final class RingCentralLeadCalls
      *
      * @param  array<string, mixed>  $call
      */
-    public static function outcome(array $call, ?string $existingQueue = null): ?string
+    public static function outcome(array $call, ?string $existingQueue = null, bool $customer = false): ?string
     {
         return match (true) {
-            $call['answered_by'] !== null => $existingQueue !== null && ($call['queue'] ?? null) === $existingQueue ? self::EXISTING_CLIENT : null,
+            // A customer's number outranks the key pressed and the hang-up rule
+            // (Jose, 2026-10-16: a known customer is never Possible spam).
+            $call['answered_by'] !== null => $customer || ($existingQueue !== null && ($call['queue'] ?? null) === $existingQueue) ? self::EXISTING_CLIENT : null,
+            $customer && ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::EXISTING_CLIENT,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
             ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
             default => self::MISSED,

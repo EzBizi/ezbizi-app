@@ -227,6 +227,24 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-10-16 (James Blanke, C-06974): a known customer's hang-up is Existing client, never spam. */
+    public function test_a_customers_hang_up_is_existing_client_not_spam(): void
+    {
+        $t = $this->setUpTenant();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            \App\Models\Customer::factory()->create(['owning_franchise_id' => $t['franchise']->id, 'name' => 'James Blanke', 'phone' => '(314) 409-1888']);
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('50', '+13144091888', now()->subMinutes(30)->toIso8601String(), queue: null,
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted']),
+                self::rc('51', '+13144091999', now()->subMinutes(30)->toIso8601String()),   // pressed New, a stranger
+            ], self::LINES, $t['company']->id);
+
+            $tags = Lead::query()->orderBy('phone')->pluck('source_status', 'phone')->all();
+            $this->assertSame(['+13144091888' => RingCentralLeadCalls::EXISTING_CLIENT, '+13144091999' => null], $tags);
+        });
+    }
+
     public function test_line_names_place_the_company_and_market(): void
     {
         $companies = ['a' => 'A-1 Chimney', 'b' => 'Crestline Home', 'c' => 'Ace Fireplace Services', 'd' => 'Roofirst'];

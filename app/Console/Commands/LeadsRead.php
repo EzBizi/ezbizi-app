@@ -72,7 +72,10 @@ class LeadsRead extends Command
                     // Its own flag, not ARCHIVE: Grok files a declined quote or a
                     // service we may not offer as ARCHIVE too, and those are people.
                     $applicant = $answer['job_applicant'] && $before === Lead::STATUS_NEW;
-                    $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW;
+                    // Never somebody who is already a customer (Jose, 2026-10-16:
+                    // James Blanke, C-06974, was set Not a lead from a 5-second call).
+                    $junk = ! $applicant && $answer['not_a_lead'] && $before === Lead::STATUS_NEW
+                        && ! \App\Support\Leads\KnownCustomer::is($lead->phone);
                     $lost = ! $applicant && ! $junk && $answer['lost'] && $before === Lead::STATUS_NEW;
                     // Booked on the call (Jose, 2026-10-13, Rodrigo's verdict
                     // with its booking gate - LeadInsights::gate).
