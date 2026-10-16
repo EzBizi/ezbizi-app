@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Jobs\PublishSocialTarget;
 use App\Models\BusinessLocation;
 use App\Models\SocialConnection;
+use App\Models\SocialLibraryItem;
 use App\Models\SocialPost;
 use App\Models\SocialPostTarget;
 use App\Models\User;
@@ -12,6 +13,7 @@ use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
+use App\Support\Newsletter\NewsletterAccess;
 use App\Support\Social\Publishing\DeletesPosts;
 use App\Support\Social\Publishing\GoogleBusinessProfilePublisher;
 use App\Support\Social\Publishing\PostPayload;
@@ -181,6 +183,8 @@ class SocialPostsController extends Controller
             'places.*' => ['string'],
             'cta_type' => ['nullable', 'string', 'in:'.implode(',', self::CTA_TYPES)],
             'cta_url' => ['nullable', 'string', 'max:2048', 'url:https'],
+            // A picture or video from the standard library, in place of an upload.
+            'library_item' => ['nullable', 'string'],
             'body' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'title' => ['nullable', 'string', 'max:255'],
             // Wall clock in the view's own timezone, as the composer typed it.
@@ -204,9 +208,15 @@ class SocialPostsController extends Controller
         ]);
 
         $file = $request->file('media');
+        $libraryItem = null;
+
+        if ($file === null && ($data['library_item'] ?? null) !== null) {
+            $libraryItem = NewsletterAccess::visible(SocialLibraryItem::query(), $user)->find($data['library_item'])
+                ?? throw ValidationException::withMessages(['library_item' => 'That picture is no longer in the library for this view.']);
+        }
         $schedule = $this->schedule($request, $data['scheduled_for'] ?? null);
 
-        if ($file === null && trim((string) ($data['body'] ?? '')) === '') {
+        if ($file === null && $libraryItem === null && trim((string) ($data['body'] ?? '')) === '') {
             throw ValidationException::withMessages([
                 'body' => 'Write something, or attach a picture or a video.',
             ]);
@@ -226,7 +236,7 @@ class SocialPostsController extends Controller
          */
         $kind = (new PostPayload(
             body: (string) ($data['body'] ?? ''),
-            filePath: $file === null ? null : 'upload.'.$file->extension(),
+            filePath: $file !== null ? 'upload.'.$file->extension() : $libraryItem?->path,
         ))->kind();
 
         if (($data['cta_type'] ?? null) !== null && $data['cta_type'] !== 'CALL' && ($data['cta_url'] ?? null) === null) {
@@ -255,7 +265,7 @@ class SocialPostsController extends Controller
 
         $options = $this->tiktokChoices($request, $connections);
 
-        $post = DB::transaction(function () use ($connections, $places, $cta, $data, $file, $user, $schedule, $options, $refused) {
+        $post = DB::transaction(function () use ($connections, $places, $cta, $data, $file, $libraryItem, $user, $schedule, $options, $refused) {
             $post = new SocialPost([
                 'body' => $data['body'] ?? null,
                 'title' => $data['title'] ?? null,
@@ -263,6 +273,18 @@ class SocialPostsController extends Controller
                 'scheduled_for' => $schedule['for'],
                 'scheduled_timezone' => $schedule['timezone'],
             ]);
+
+            if ($file === null && $libraryItem !== null) {
+                // The post keeps its own copy, so removing the library item
+                // later cannot take a scheduled post's picture away.
+                $post->media_disk = $this->files->defaultDisk();
+                $post->media_path = $this->files->putContents(
+                    (string) $this->files->contents($libraryItem->path, $libraryItem->disk),
+                    $this->files->directoryFor('social', $user->organization_id),
+                    pathinfo($libraryItem->path, PATHINFO_EXTENSION),
+                    $post->media_disk,
+                );
+            }
 
             if ($file !== null) {
                 $post->media_disk = $this->files->defaultDisk();

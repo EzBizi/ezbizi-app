@@ -870,6 +870,49 @@ class SocialPostsApiTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('cta_url');
     }
 
+    /**
+     * The standard media library (A1 poster takeover, 2026-10-16): a picture
+     * kept once and posted from Compose. The post takes its own copy, so
+     * removing the library item afterwards leaves the post's picture alone.
+     */
+    public function test_a_library_picture_is_posted_and_the_post_keeps_its_own_copy(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-1', 'post_id' => 'fb-post-1'])]);
+
+        $item = $this->signedInAs($t['admin'])->post('/api/v1/social/library', [
+            'name' => 'Van photo', 'file' => UploadedFile::fake()->image('van.jpg'),
+        ])->assertCreated()->assertJsonPath('data.kind', 'image')->json('data.id');
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/social/library')->assertJsonPath('data.0.name', 'Van photo');
+        $this->signedInAs($t['admin'])->patchJson('/api/v1/social/library/'.$item, ['name' => 'Van, side'])
+            ->assertOk()->assertJsonPath('data.name', 'Van, side');
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$page->getKey()], 'library_item' => $item,
+        ])->assertCreated();
+
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/library/'.$item)->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            $post = SocialPost::query()->firstOrFail();
+            $this->assertNotNull($post->media_path);
+            $this->assertTrue(Storage::disk($post->media_disk)->exists($post->media_path));
+        });
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/photos'));
+    }
+
+    public function test_the_library_is_read_with_the_tab_and_changed_only_with_edit(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.compose.view']);
+
+        $this->signedInAs($reader)->getJson('/api/v1/social/library')->assertOk();
+        $this->signedInAs($reader)->post('/api/v1/social/library', ['file' => UploadedFile::fake()->image('a.jpg')])
+            ->assertForbidden();
+    }
+
     private function assertNothingWasWritten(array $t): void
     {
         $this->inTenant($t['org'], function () {
