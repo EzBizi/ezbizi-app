@@ -154,7 +154,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Call as those are not actionable").
   /// LS Booking too (Jose, 2026-10-01): Google took the booking itself, so
   /// there is nothing to answer.
-  final Set<String> _allLeftOut = {'ls_call', 'ls_booking'};
+  // Nothing to reply to (Jose, 2026-10-15: "like ls calls and LS booking").
+  final Set<String> _allLeftOut = {'ls_call', 'ls_booking', 'ringcentral'};
 
   /// What All asks for: every source this person sees, less those left out.
   /// Null when nothing is left out, so the request stays unnarrowed.
@@ -185,6 +186,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('ls_call', 'LS Call'),
     ('ls_text', 'LS Text'),
     ('ls_booking', 'LS Booking'),
+    // Calls straight to our own lines, not through Google (Jose, 2026-10-15).
+    ('ringcentral', 'RC Calls'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
@@ -207,6 +210,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.call_outlined, // Google Local Services calls
     Icons.sms_outlined, // Google Local Services texts
     Icons.event_available_outlined, // booked through Google directly
+    Icons.phone_callback_outlined, // RingCentral: a call to our own line
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -556,7 +560,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// who does not watch the Google tab still delivers every enquiry to the
   /// people who do; the reasoning, and the case where the opposite is right, is
   /// in SocialProvider::connectPermission.
-  bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
+  bool get _canConnect => widget.session.me?.can('leads.manage') ?? false;
 
   /// One tab per source, because the two are not one list yet.
   ///
@@ -616,6 +620,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'instagram': 'Instagram',
       'workiz': 'Workiz',
       'whatsapp': 'WhatsApp',
+      'ringcentral': 'RC Calls',
     }[_source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }
@@ -696,14 +701,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
         const Divider(height: 1),
         const SizedBox(height: 6),
-        _railButton(
-          theme,
-          key: const ValueKey('sources-manage'),
-          icon: Icons.link,
-          label: 'Manage',
-          tooltip: _sourcesSummary(),
-          onPressed: _openSources,
-        ),
+        if (_canConnect)
+          _railButton(
+            theme,
+            key: const ValueKey('sources-manage'),
+            icon: Icons.link,
+            label: 'Manage',
+            tooltip: _sourcesSummary(),
+            onPressed: _openSources,
+          ),
         _railButton(
           theme,
           key: const ValueKey('leads-fetch'),
@@ -1242,7 +1248,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
             children: [
               row(null, 'All sources', Icons.all_inbox),
               for (final s in _visibleSources) row(s.$1, s.$2, s.$3),
-              Padding(
+              if (_canConnect)
+                Padding(
                 padding: const EdgeInsets.all(16),
                 child: OutlinedButton.icon(
                   key: const ValueKey('sources-manage'),
@@ -1774,6 +1781,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 if (lead['credit'] is Map &&
                                     (lead['credit'] as Map)['requested_at'] == null)
                                   _Badge('Credit?', key: ValueKey('credit-badge-$id')),
+                                // An unanswered RC call: Possible spam, Missed
+                                // call or Voicemail (Jose, 2026-10-16).
+                                if (lead['source'] == 'ringcentral' &&
+                                    lead['source_status'] is String)
+                                  _Badge(
+                                    rcCallTag(lead['source_status'] as String),
+                                    key: ValueKey('rc-tag-$id'),
+                                  ),
                                 // Only when it is not New: 43,184 of 43,190 are,
                                 // and a pill on every row would say nothing.
                                 if ((lead['status'] ?? 'new') != 'new')
@@ -1991,6 +2006,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
 }
 
 /// Google / Thumbtack / Chat / Form: the short word for the row.
+/// "POSSIBLE_SPAM" → "Possible spam".
+String rcCallTag(String status) {
+  final words = status.toLowerCase().replaceAll('_', ' ');
+  return words.isEmpty ? words : words[0].toUpperCase() + words.substring(1);
+}
+
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
   'facebook' => 'Facebook',
@@ -2000,6 +2021,7 @@ String sourceBadgeWord(String? source) => switch (source) {
   'website_booking' => 'Online Booking',
   'workiz' => 'Workiz',
   'whatsapp' => 'WhatsApp',
+  'ringcentral' => 'RC Call',
   _ => 'Google',
 };
 
@@ -2069,6 +2091,7 @@ ToneColours sourceColours(BuildContext context, String word) => switch (word) {
   'Facebook' => PersonColours.hue(context, 10), // sky
   'Instagram' => PersonColours.hue(context, 8), // rose: theme.dart bans purple
   'Workiz' => PersonColours.hue(context, 3), // olive
+  'RC Call' => PersonColours.hue(context, 11), // RingCentral's deep orange
   _ => PersonColours.hue(context, 9), // slate: Tone.info is LS Call's blue
 };
 

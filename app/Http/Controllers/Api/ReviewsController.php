@@ -248,6 +248,7 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             return response()->json(['data' => $this->present($review->load('reply'))]);
         }
 
+
         try {
             $this->google->publish($reply);
         } catch (RuntimeException $e) {

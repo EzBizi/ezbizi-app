@@ -86,6 +86,35 @@ void main() {
     expect(find.text('Connect account'), findsNothing);
   });
 
+  testWidgets('RingCentral is a Reporting card with its own JWT form', (
+    tester,
+  ) async {
+    // Jose, 2026-10-15: "Shouldn't ring central also show here on
+    // Integrations?" Read by the call report, so gated like Workiz.
+    await _pump(
+      tester,
+      permissions: const ['reports.build', 'reports.experimental.view'],
+    );
+
+    expect(find.byKey(const ValueKey('provider:ringcentral')), findsOneWidget);
+    expect(find.textContaining('Reporting ·'), findsOneWidget);
+
+    await _open(tester, 'ringcentral');
+    expect(find.text('Connect account'), findsOneWidget);
+    expect(find.text('Client ID'), findsOneWidget);
+    expect(find.text('Client secret'), findsOneWidget);
+    expect(find.text('JWT'), findsOneWidget);
+  });
+
+  testWidgets('the RingCentral form is not offered without the report', (
+    tester,
+  ) async {
+    await _pump(tester, permissions: const ['reports.build']);
+
+    await _open(tester, 'ringcentral');
+    expect(find.text('Connect account'), findsNothing);
+  });
+
   testWidgets('somebody with neither is offered no reporting form at all', (
     tester,
   ) async {
@@ -164,6 +193,7 @@ Future<void> _pump(
           'data': const [
             {'value': 'airtable', 'label': 'Airtable'},
             {'value': 'workiz', 'label': 'Workiz'},
+            {'value': 'ringcentral', 'label': 'RingCentral'},
           ],
         });
       }

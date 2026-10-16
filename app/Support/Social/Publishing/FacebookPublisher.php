@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\Http;
  * briefly, to save nothing. Video gets a MediaHandoff and gets it released in
  * a `finally`, so the window is the length of one fetch.
  */
-final class FacebookPublisher implements LinksToPosts, SocialPublisher
+final class FacebookPublisher implements DeletesPosts, LinksToPosts, SocialPublisher
 {
     private const API = 'https://graph.facebook.com/v21.0';
 
@@ -197,12 +197,25 @@ final class FacebookPublisher implements LinksToPosts, SocialPublisher
      * address is not derivable from its id, and a guessed link that 404s is
      * worse than none.
      */
+    public function deleteRemote(SocialConnection $connection, string $remoteId): void
+    {
+        $this->call(fn () => Http::timeout(self::TIMEOUT)->delete(self::API.'/'.$remoteId, [
+            'access_token' => $this->token($connection),
+        ]));
+    }
+
     public function permalink(SocialConnection $connection, string $remoteId): ?string
     {
         $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
             'fields' => 'permalink_url',
             'access_token' => $this->token($connection),
         ])->json('permalink_url');
+
+        // A video's link comes back relative ("/reel/1792…/", measured
+        // 2026-10-15), which used to be thrown away; a photo's is absolute.
+        if (is_string($url) && str_starts_with($url, '/')) {
+            $url = 'https://www.facebook.com'.$url;
+        }
 
         return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }

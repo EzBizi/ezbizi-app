@@ -93,6 +93,10 @@ enum SocialProvider: string
     // ads_read never rides on the Page connect (Jose, 2026-10-12).
     case FacebookAds = 'facebook_ads';
 
+    // The organization's own RingCentral account, read by Reports' call log
+    // (Jose, 2026-10-15). Its own app's client id, secret and JWT.
+    case RingCentral = 'ringcentral';
+
     public function label(): string
     {
         return match ($this) {
@@ -112,6 +116,7 @@ enum SocialProvider: string
             self::Workiz => 'Workiz',
             self::Airtable => 'Airtable',
             self::FacebookAds => 'Facebook Ads',
+            self::RingCentral => 'RingCentral',
         };
     }
 
@@ -140,6 +145,7 @@ enum SocialProvider: string
             self::Workiz => 'workiz',
             self::Airtable => 'airtable',
             self::FacebookAds => 'facebook-ads',
+            self::RingCentral => 'ringcentral',
         };
     }
 
@@ -163,6 +169,7 @@ enum SocialProvider: string
             self::Mailchimp => 'api_key',
             self::Workiz => 'api_key',
             self::Airtable => 'api_key',
+            self::RingCentral => 'api_key',
             default => 'sign_in',
         };
     }
@@ -209,7 +216,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable, self::FacebookAds];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable, self::FacebookAds, self::RingCentral];
     }
 
     /**
@@ -307,8 +314,9 @@ enum SocialProvider: string
              * migration, and connecting an advertising account is not a
              * dispatcher's act.
              */
-            self::GoogleAds => 'leads.edit',
-            self::Thumbtack => 'leads.edit',
+            // `leads.manage` since 2026-10-15: the Manage pane is its own grant.
+            self::GoogleAds => 'leads.manage',
+            self::Thumbtack => 'leads.manage',
             self::GoogleBusinessProfile => 'reviews.edit',
             // Connecting the account you MAIL THROUGH is a newsletter act, and
             // `newsletter.send` is the permission that can actually use it —
@@ -361,6 +369,9 @@ enum SocialProvider: string
             // Spend is read by the Meta tab in Reports, like Workiz.
             self::FacebookAds => 'reports.build',
 
+            // Its calls are read by Reports, like Workiz's jobs.
+            self::RingCentral => 'reports.build',
+
             default => 'marketing.edit',
         };
     }
@@ -403,6 +414,7 @@ enum SocialProvider: string
             self::Workiz => 'connect a Workiz account',
             self::Airtable => 'connect an Airtable base',
             self::FacebookAds => 'connect a Facebook Ads account',
+            self::RingCentral => 'connect a RingCentral account',
             default => 'connect a social account',
         };
     }
@@ -519,6 +531,11 @@ enum SocialProvider: string
                     $name,
                 ),
 
+            self::RingCentral => sprintf(
+                '%s is connected to EzBizi. You can close this window — its calls appear under Reports.',
+                $name,
+            ),
+
             // The nine publishing networks. "Page" is their word and Social
             // Media Management is genuinely where they are used.
             default => $many
@@ -590,6 +607,9 @@ enum SocialProvider: string
 
             // Video, and only video.
             self::YouTube => [SocialMediaKind::Video],
+
+            // A Business Profile post: words, with a photo or without (v4 localPosts).
+            self::GoogleBusinessProfile => [SocialMediaKind::Text, SocialMediaKind::Image],
         };
     }
 

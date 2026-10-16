@@ -214,6 +214,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                   as String? ??
                               'Adding a company is the whole business’s to do.',
                     child: FilledButton.icon(
+                      key: const ValueKey('tour-org-add'),
                       onPressed: tree['organization']['may_add_company'] == true
                           ? () => _createCompany(parent: null)
                           : null,
@@ -223,6 +224,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                   ),
                 ),
                 Material(
+                  key: const ValueKey('tour-org-views'),
                   color: Theme.of(context).colorScheme.surface,
                   child: TabBarLike(
                     labels: const [
@@ -541,30 +543,26 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 orElse: () => <String, dynamic>{},
               )['name'] as String?;
 
-    final chosen = await showDialog<({String? id, String label})>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+    // A side panel, as every other edit here (UI queue 99), not a dialog.
+    final chosen = await showSidePanel<({String? id, String label})>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Move ${company['name']}',
+        subtitle: parent == null
+            ? 'Currently at the top level.'
+            : 'Currently under $parent.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Move ${company['name']}'),
-            const SizedBox(height: 4),
-            Text(
-              parent == null
-                  ? 'Currently at the top level.'
-                  : 'Currently under $parent.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            for (final d in destinations)
+              ListTile(
+                key: ValueKey('org-move-${d.id ?? 'top'}'),
+                title: Text(d.label),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).pop(d),
+              ),
           ],
         ),
-        children: [
-          for (final d in destinations)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(d),
-              child: Text(d.label),
-            ),
-        ],
       ),
     );
 

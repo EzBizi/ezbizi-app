@@ -72,6 +72,8 @@ class TranscribeLeadCalls extends Command
             ->where('channel', LeadConversation::CHANNEL_PHONE_CALL)
             ->where('participant', LeadConversation::FROM_CONSUMER)
             ->whereNotNull('recording_url')
+            // RingCentral calls take Reports' transcript (RingCentralLeadCalls::fillTranscripts).
+            ->where('recording_url', 'not like', 'ringcentral:%')
             ->whereNotNull('duration_ms')          // rang out: nothing to hear
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
             ->where('occurred_at', '>=', $this->oldest())
@@ -146,6 +148,8 @@ class TranscribeLeadCalls extends Command
             ->where('channel', LeadConversation::CHANNEL_PHONE_CALL)
             ->where('participant', LeadConversation::FROM_CONSUMER)
             ->whereNotNull('recording_url')
+            // RingCentral calls take Reports' transcript (RingCentralLeadCalls::fillTranscripts).
+            ->where('recording_url', 'not like', 'ringcentral:%')
             ->whereNotNull('duration_ms')
             ->whereNull('transcript_operation')->whereNull('transcribed_at')
             ->where('occurred_at', '>=', $this->oldest())

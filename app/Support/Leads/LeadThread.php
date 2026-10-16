@@ -64,7 +64,11 @@ final class LeadThread
             ...$fields,
         ]);
 
-        if ($row->participant === LeadConversation::FROM_CONSUMER) {
+        // A RingCentral call is not somebody writing in: nothing to reply to,
+        // nothing to reopen (Jose, 2026-10-15: "non actionable"; 884 "New
+        // reply" bells in 30 minutes when it counted). A missed one raises
+        // lead.missed_call instead (RingCentralLeadCalls).
+        if ($row->participant === LeadConversation::FROM_CONSUMER && ! str_starts_with($remoteId, 'rc_')) {
             // They wrote again: whatever made it Completed is over, and
             // somebody owes them an answer.
             // Archived, Not a lead and Lost too (Jose, 2026-10-09: "customers

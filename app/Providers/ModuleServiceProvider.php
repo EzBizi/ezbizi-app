@@ -2570,7 +2570,10 @@ class ModuleServiceProvider extends ServiceProvider
                  * is the same key it was, held by the same roles, and the
                  * automations keyed on `lead.*` are untouched.
                  */
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                // `manage` (Jose, 2026-10-15): the Manage pane, where lead sources
+                // are connected, is its own grant instead of riding on `edit`.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'manage'],
+                actionLabels: ['manage' => 'Manage sources (connect accounts)'],
                 /*
                  * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
                  * be able to grant access by sub tab as well ... so this applies
@@ -2613,6 +2616,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('instagram', 'Instagram'),
                     new TabDefinition('workiz', 'Workiz'),
                     new TabDefinition('whatsapp', 'WhatsApp'),
+                    new TabDefinition('ringcentral', 'RC Calls'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -2762,6 +2766,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'real enquiry. It carries who moved it and what it was before. The '
                             .'advertising source\'s own status is a separate field and does not '
                             .'raise this.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'lead.missed_call',
+                        label: 'Missed call',
+                        description: 'Somebody rang one of the business\'s own RingCentral lines and nobody '
+                            .'picked up. It carries their number, name when known, the line they rang '
+                            .'and when. Answered calls raise nothing.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.booking_approved',
@@ -3968,7 +3979,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export'],
+                actions: ['view', 'build', 'export', 'scoring_weights'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4066,7 +4077,10 @@ class ModuleServiceProvider extends ServiceProvider
                 actionRequires: [
                     'build' => ['reports.view'],
                     'export' => ['reports.view'],
+                    // Setting what each Scoring metric counts for (Jose, 2026-10-14).
+                    'scoring_weights' => ['reports.scoring.view'],
                 ],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights"],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',

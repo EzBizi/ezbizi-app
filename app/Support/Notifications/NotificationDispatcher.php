@@ -102,6 +102,7 @@ class NotificationDispatcher
         bool $inAppOnly = false,
         array $roleIds = [],
         array $userIds = [],
+        bool $urgent = false,
     ): int {
         if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
@@ -127,6 +128,7 @@ class NotificationDispatcher
             'source' => $source,
             'title' => $title,
             'body' => $body,
+            'urgent' => $urgent,
             'subject_type' => $subject ? $subject::class : null,
             'subject_id' => $subject?->getKey(),
             'automation_id' => $automationId,
@@ -218,7 +220,7 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
-        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $this->isUrgent($source, $eventId), $rowIds);
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $urgent || $this->isUrgent($source, $eventId), $rowIds);
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.

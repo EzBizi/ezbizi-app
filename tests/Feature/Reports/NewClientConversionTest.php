@@ -34,7 +34,7 @@ class NewClientConversionTest extends TestCase
             'experimental_reports.ringcentral.client_secret' => 'secret',
             'experimental_reports.ringcentral.jwt' => 'jwt',
         ]);
-        $t = $this->provisionTenant('Alpha');
+        $t = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->inTenant($t['org'], function () use ($t) {
             $c = new SocialConnection;

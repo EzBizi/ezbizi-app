@@ -168,12 +168,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// about 300, and the form is the half doing the work — so it takes the
   /// width back and the facts fall in underneath it.
   Widget _form(BuildContext context, {required bool wide}) {
-    final identity = IdentityCard(api: widget.api, session: widget.session);
-    final facts = AccountFactsCard(session: widget.session, dense: wide);
+    // Walkthrough anchors (UI queue 99).
+    Widget at(Key key, Widget child) => KeyedSubtree(key: key, child: child);
+    final identity = at(
+      const ValueKey('tour-account-identity'),
+      IdentityCard(api: widget.api, session: widget.session),
+    );
+    final facts = at(
+      const ValueKey('tour-account-facts'),
+      AccountFactsCard(session: widget.session, dense: wide),
+    );
 
     final rest = <Widget>[
       const SizedBox(height: 12),
-      AppearanceCard(session: widget.session),
+      at(
+        const ValueKey('tour-account-appearance'),
+        AppearanceCard(session: widget.session),
+      ),
       const SizedBox(height: 12),
       TwoFactorCard(api: widget.api, session: widget.session),
       const SizedBox(height: 12),
@@ -188,14 +199,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // real screen, not by a test.
       SmsCodesCard(api: widget.api, session: widget.session),
       const SizedBox(height: 12),
-      PasswordCard(api: widget.api, session: widget.session),
+      at(
+        const ValueKey('tour-account-signing-in'),
+        PasswordCard(api: widget.api, session: widget.session),
+      ),
       const SizedBox(height: 12),
-      _scheduleCard(),
+      at(const ValueKey('tour-account-schedule'), _scheduleCard()),
       const SizedBox(height: 12),
-      _sessionsCard(),
+      at(const ValueKey('tour-account-sessions'), _sessionsCard()),
       const SizedBox(height: 12),
       // Under the sign-ins (UI queue 62): a key is another way in as you.
-      _apiKeysCard(),
+      at(const ValueKey('tour-account-api-keys'), _apiKeysCard()),
       const SizedBox(height: 16),
       DeleteAccountCard(api: widget.api, session: widget.session),
     ];
@@ -203,14 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Your account', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(
-          "Yours, not the organization's. What an administrator controls is "
-          'in Settings.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 20),
+        // The title and its line are the page header now (UI queue 99).
         if (wide)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -245,7 +252,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         if (me != null) _hero(context, me),
 
-        _group(context, 'You', [
+        _group(context, 'You', key: const ValueKey('tour-account-group-You'), [
           _row(context, Icons.person_outline, 'Name', me?.name ?? '', () {
             _open(context, 'Who you are', _identity());
           }),
@@ -279,43 +286,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ]),
 
-        _group(context, 'Signing in', [
-          _row(context, Icons.password_outlined, 'Password', null, () {
-            _open(
-              context,
-              'Password',
-              PasswordCard(api: widget.api, session: widget.session),
-            );
-          }),
-          _row(context, Icons.shield_outlined, 'Two-factor', null, () {
-            _open(
-              context,
-              'Two-factor',
-              TwoFactorCard(api: widget.api, session: widget.session),
-            );
-          }),
+        _group(
+          context,
+          'Signing in',
+          key: const ValueKey('tour-account-group-Signing in'),
+          [
+            _row(context, Icons.password_outlined, 'Password', null, () {
+              _open(
+                context,
+                'Password',
+                PasswordCard(api: widget.api, session: widget.session),
+              );
+            }),
+            _row(context, Icons.shield_outlined, 'Two-factor', null, () {
+              _open(
+                context,
+                'Two-factor',
+                TwoFactorCard(api: widget.api, session: widget.session),
+              );
+            }),
 
-          // Beside the authenticator because it answers the same question -
-          // how do we know it is you - and not under Communication, which is
-          // the tenant's phone system. This is EzBizi texting the person.
-          _row(context, Icons.sms_outlined, 'Text me my codes', null, () {
-            _open(
-              context,
-              'Text me my codes',
-              SmsCodesCard(api: widget.api, session: widget.session),
-            );
-          }),
-        ]),
+            // Beside the authenticator because it answers the same question -
+            // how do we know it is you - and not under Communication, which is
+            // the tenant's phone system. This is EzBizi texting the person.
+            _row(context, Icons.sms_outlined, 'Text me my codes', null, () {
+              _open(
+                context,
+                'Text me my codes',
+                SmsCodesCard(api: widget.api, session: widget.session),
+              );
+            }),
+          ],
+        ),
 
-        _group(context, 'Appearance', [
-          _row(context, Icons.palette_outlined, 'Theme and sidebar', null, () {
-            _open(
+        _group(
+          context,
+          'Appearance',
+          key: const ValueKey('tour-account-group-Appearance'),
+          [
+            _row(
               context,
-              'Appearance',
-              AppearanceCard(session: widget.session),
-            );
-          }),
-        ]),
+              Icons.palette_outlined,
+              'Theme and sidebar',
+              null,
+              () {
+                _open(
+                  context,
+                  'Appearance',
+                  AppearanceCard(session: widget.session),
+                );
+              },
+            ),
+          ],
+        ),
 
         _group(context, 'Assigned to you', [
           _row(
@@ -352,22 +375,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ]),
 
-        _group(context, 'Signed in', [
-          _row(
-            context,
-            Icons.devices_outlined,
-            'Where you are signed in',
-            '${_sessions.length}',
-            () => _open(context, 'Where you are signed in', _sessionsCard()),
-          ),
-          _row(
-            context,
-            Icons.key_outlined,
-            'API keys',
-            _keyCount == null ? null : '$_keyCount',
-            () => _open(context, 'API keys', _apiKeysCard()),
-          ),
-        ]),
+        _group(
+          context,
+          'Signed in',
+          key: const ValueKey('tour-account-group-Signed in'),
+          [
+            _row(
+              context,
+              Icons.devices_outlined,
+              'Where you are signed in',
+              '${_sessions.length}',
+              () => _open(context, 'Where you are signed in', _sessionsCard()),
+            ),
+            _row(
+              context,
+              Icons.key_outlined,
+              'API keys',
+              _keyCount == null ? null : '$_keyCount',
+              () => _open(context, 'API keys', _apiKeysCard()),
+            ),
+          ],
+        ),
 
         Padding(
           padding: const EdgeInsets.all(16),
@@ -486,9 +514,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _group(BuildContext context, String title, List<Widget> rows) {
+  Widget _group(
+    BuildContext context,
+    String title,
+    List<Widget> rows, {
+    Key? key,
+  }) {
     final theme = Theme.of(context);
     return Column(
+      // The phone's walkthrough anchors (UI queue 99).
+      key: key,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(

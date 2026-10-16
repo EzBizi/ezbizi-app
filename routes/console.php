@@ -43,6 +43,9 @@ Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('Americ
 // waiting for the night they disagree.
 Schedule::command('ezbizi:expire-data')->dailyAt('03:50');
 
+// A sudden jump in errors, crashes or freezes from one app version (2026-10-15).
+Schedule::command('ezbizi:check-client-issues')->everyTenMinutes()->withoutOverlapping(5);
+
 // Close impersonation sessions past their expiry (§4.2). Every five minutes,
 // because the value is a truthful record rather than cutting off access —
 // access already stops by itself the moment the expiry passes.
@@ -376,6 +379,11 @@ Schedule::command('ezbizi:meta-ads-sync')->dailyAt('05:30')->timezone('America/N
 Schedule::command('ezbizi:suggest-meta-categories')->dailyAt('06:15')->timezone('America/New_York')->withoutOverlapping(30);
 // Grok reads new leads: sorting, and a name/ZIP a call gave (Jose, 2026-10-09).
 Schedule::command('ezbizi:leads-read')->everyTwoMinutes()->withoutOverlapping(15);
+// RingCentral calls to the business lines into Leads, never an LS call twice (Jose, 2026-10-15).
+Schedule::command('ezbizi:leads-ringcentral')->everyFiveMinutes()->withoutOverlapping(15);
+// Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
+Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
+Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
 // One batch of 4 side by side per run: the scheduler runs a minute's
 // commands in sequence, so a long run would hold the others behind it.
 Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()->withoutOverlapping(15);

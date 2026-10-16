@@ -344,8 +344,156 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   _retry(post, target);
                 }
               : null,
+          // UI queue 100: what can still be done to it, each behind the same
+          // marketing.edit the server checks.
+          onEdit: _canPost
+              ? () {
+                  Navigator.of(panel).pop();
+                  _editPost(post);
+                }
+              : null,
+          onCancel: _canPost
+              ? () async {
+                  if (await _confirm(
+                        'Cancel this post?',
+                        'It will not go out, and it is removed from the list. '
+                            'This cannot be undone.',
+                        'Cancel post',
+                      ) &&
+                      panel.mounted) {
+                    Navigator.of(panel).pop();
+                    _act(widget.api.delete('/social/posts/${post.id}'));
+                  }
+                }
+              : null,
+          onDismiss: _canPost
+              ? (target) {
+                  Navigator.of(panel).pop();
+                  _act(
+                    widget.api.post(
+                      '/social/posts/${post.id}/targets/${target.id}/dismiss',
+                      const {},
+                    ),
+                  );
+                }
+              : null,
+          onDeleteRemote: _canPost
+              ? (target) async {
+                  final network = target.providerLabel;
+                  if (await _confirm(
+                        'Delete it from $network?',
+                        'The post is taken down from $network. This cannot '
+                            'be undone.',
+                        'Delete from $network',
+                      ) &&
+                      panel.mounted) {
+                    Navigator.of(panel).pop();
+                    _act(
+                      widget.api.delete(
+                        '/social/posts/${post.id}/targets/${target.id}/remote',
+                      ),
+                    );
+                  }
+                }
+              : null,
         ),
       ),
+    );
+  }
+
+  /// Asks before something that cannot be taken back, in a side panel as
+  /// every other question here.
+  Future<bool> _confirm(String title, String body, String yes) async =>
+      await showSidePanel<bool>(
+        context,
+        builder: (panel) => SidePanel(
+          title: title,
+          actions: [
+            TextButton(
+              key: const Key('social-confirm-no'),
+              onPressed: () => Navigator.of(panel).pop(false),
+              child: const Text('Keep it'),
+            ),
+            FilledButton(
+              key: const Key('social-confirm-yes'),
+              onPressed: () => Navigator.of(panel).pop(true),
+              child: Text(yes),
+            ),
+          ],
+          child: Text(body),
+        ),
+      ) ==
+      true;
+
+  /// Runs one change, says the server's refusal when there is one, and reads
+  /// the list again either way.
+  Future<void> _act(Future<ApiResponse> call) async {
+    final response = await call;
+    if (!mounted) return;
+    if (!response.ok) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(response.reason)));
+    }
+    await _loadPosts();
+  }
+
+  /// Edit the words or move the time of a post nothing has sent yet.
+  Future<void> _editPost(_SentPost post) async {
+    final body = TextEditingController(text: post.body);
+    final wall = post.scheduledFor ?? '';
+    final when = TextEditingController(
+      text: wall.length > 16 ? wall.substring(0, 16) : wall,
+    );
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (panel) => SidePanel(
+        title: 'Edit post',
+        subtitle: 'Before it goes out',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(panel).pop(false),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            key: const Key('social-edit-save'),
+            onPressed: () => Navigator.of(panel).pop(true),
+            child: const Text('Save'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const Key('social-edit-body'),
+              controller: body,
+              minLines: 3,
+              maxLines: 10,
+              decoration: const InputDecoration(labelText: 'Post'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('social-edit-when'),
+              controller: when,
+              decoration: InputDecoration(
+                labelText: 'Goes out',
+                hintText: 'YYYY-MM-DD HH:MM',
+                helperText: clockLabel(post.scheduledTimezone).isEmpty
+                    ? 'On this view’s clock'
+                    : 'On the ${clockLabel(post.scheduledTimezone)} clock',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    await _act(
+      widget.api.patch('/social/posts/${post.id}', {
+        'body': body.text,
+        if (when.text.trim().isNotEmpty) 'scheduled_for': when.text.trim(),
+      }),
     );
   }
 
@@ -714,6 +862,7 @@ class _PostsPane extends StatelessWidget {
         );
 
         final dashboard = _PostsDashboard(
+          session: session,
           viewName: viewName,
           connections: connections,
           rows: rows,
@@ -794,6 +943,7 @@ class _PostsPane extends StatelessWidget {
 /// (docs/meta-app-review-submission.md), so they need a new review first.
 class _PostsDashboard extends StatelessWidget {
   const _PostsDashboard({
+    required this.session,
     required this.viewName,
     required this.connections,
     required this.rows,
@@ -809,6 +959,8 @@ class _PostsDashboard extends StatelessWidget {
     this.onRetry,
   });
 
+  /// Where the List | Board choice is remembered, per person.
+  final Session session;
   final String viewName;
   final List<_SocialConnection> connections;
   final List<_SentPost> rows;
@@ -832,7 +984,11 @@ class _PostsDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, box) {
-        final timeline = _timeline(context, phone: box.maxWidth < 600);
+        final timeline = _ListOrBoard(
+          session: session,
+          list: _timeline(context, phone: box.maxWidth < 600),
+          board: () => _board(context),
+        );
         final accounts = _accounts(context);
 
         return ListView(
@@ -878,6 +1034,13 @@ class _PostsDashboard extends StatelessWidget {
       picked: filter,
       onPick: onFilter,
       tiles: [
+        // Every post at once (UI queue 100).
+        FilterTile(
+          key: null,
+          label: 'All',
+          count: tiles.values.fold<int>(0, (a, b) => a + b),
+          note: 'every post',
+        ),
         FilterTile(
           key: 'scheduled',
           label: 'Scheduled',
@@ -982,6 +1145,72 @@ class _PostsDashboard extends StatelessWidget {
     );
   }
 
+  /// The same posts in four columns (UI queue 100). A part-sent post sits
+  /// under Posted, its pill saying how much of it went out.
+  Widget _board(BuildContext context) {
+    String column(_SentPost p) {
+      final statuses = p.targets.map((t) => t.status).toSet();
+      if (statuses.contains('queued')) return 'posting';
+      if (statuses.isNotEmpty && statuses.every((s) => s == 'scheduled')) {
+        return 'scheduled';
+      }
+      if (statuses.contains('sent')) return 'posted';
+      return statuses.contains('failed') ? 'failed' : 'posted';
+    }
+
+    const columns = [
+      ('scheduled', 'Scheduled'),
+      ('posting', 'Posting'),
+      ('posted', 'Posted'),
+      ('failed', 'Failed'),
+    ];
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // ponytail: columns never narrower than a row needs; past four the
+        // board scrolls sideways.
+        final width = ((box.maxWidth - 36) / 4).clamp(260.0, double.infinity);
+        return SingleChildScrollView(
+          key: const ValueKey('social-posts-board'),
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (key, label) in columns) ...[
+                if (key != 'scheduled') const SizedBox(width: 12),
+                SizedBox(
+                  width: width,
+                  child: DashboardCard(
+                    key: ValueKey('social-board-$key'),
+                    icon: switch (key) {
+                      'scheduled' => Icons.schedule,
+                      'posting' => Icons.hourglass_top,
+                      'posted' => Icons.check_circle_outline,
+                      _ => Icons.error_outline,
+                    },
+                    title:
+                        '$label · ${rows.where((p) => column(p) == key).length}',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final post in rows)
+                          if (column(post) == key)
+                            _row(post, phone: true),
+                        if (!rows.any((p) => column(p) == key))
+                          Text('None', style: theme.textTheme.bodySmall),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _row(_SentPost post, {required bool phone}) {
     final retry = onRetry;
     final retryable =
@@ -1074,19 +1303,86 @@ class _PostsDashboard extends StatelessWidget {
   }
 }
 
-/// A post's pill: "Failed", or "1 failed" when others took it.
+/// A post's pill: "Failed"; "Partly posted · 2 of 3" when some accounts took
+/// it and others refused (UI queue 100); "1 failed" while the rest wait.
 (String, Tone) _statusOf(_SentPost post) {
+  final total = post.targets.length;
   final failed = post.targets.where((t) => t.status == 'failed').length;
+  final sent = post.targets.where((t) => t.status == 'sent').length;
   if (failed > 0) {
-    final label = failed == post.targets.length ? 'Failed' : '$failed failed';
-    return (label, Tone.bad);
+    if (failed == total) return ('Failed', Tone.bad);
+    if (sent + failed == total) {
+      return ('Partly posted · $sent of $total', Tone.caution);
+    }
+    return ('$failed failed', Tone.bad);
   }
 
   return switch (post.tone) {
-    Tone.neutral => ('Sending', Tone.neutral),
+    Tone.neutral => ('Posting $sent of $total', Tone.neutral),
     Tone.info => ('Scheduled', Tone.info),
     _ => ('Sent', Tone.ok),
   };
+}
+
+/// List or Board, remembered per person (UI queue 100).
+class _ListOrBoard extends StatefulWidget {
+  const _ListOrBoard({
+    required this.session,
+    required this.list,
+    required this.board,
+  });
+
+  static const preference = 'marketing.social.posts_view';
+
+  final Session session;
+  final Widget list;
+  final Widget Function() board;
+
+  @override
+  State<_ListOrBoard> createState() => _ListOrBoardState();
+}
+
+class _ListOrBoardState extends State<_ListOrBoard> {
+  late bool _board =
+      widget.session.me?.preferences[_ListOrBoard.preference] == 'board';
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: SegmentedButton<bool>(
+            key: const ValueKey('social-posts-view'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.view_list_outlined, size: 18),
+                label: Text('List'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.view_kanban_outlined, size: 18),
+                label: Text('Board'),
+              ),
+            ],
+            selected: {_board},
+            onSelectionChanged: (picked) {
+              setState(() => _board = picked.single);
+              widget.session.setPreference(
+                _ListOrBoard.preference,
+                _board ? 'board' : 'list',
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        _board ? widget.board() : widget.list,
+      ],
+    );
+  }
 }
 
 class _DayHeading extends StatelessWidget {
@@ -1223,11 +1519,32 @@ class _TimelineRow extends StatelessWidget {
                             children: [
                               dot(_toneOf(target)),
                               const SizedBox(width: 5),
-                              Text(name(target), style: small),
+                              Flexible(
+                                child: Text(
+                                  name(target),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: small,
+                                ),
+                              ),
                             ],
                           ),
                     ],
                   ),
+                  // How far a post going out has got (UI queue 100).
+                  if (post.tone == Tone.neutral && post.targets.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 12),
+                      child: LinearProgressIndicator(
+                        key: ValueKey('social-post-progress-${post.id}'),
+                        value:
+                            post.targets
+                                .where((t) => t.status == 'sent')
+                                .length /
+                            post.targets.length,
+                        minHeight: 4,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
                   // The failure sentence is the server's. A status word on
                   // its own says something is wrong and nothing about what to
                   // do; Open shows the rest of a long one.
@@ -3342,10 +3659,14 @@ class _SentTarget {
     this.connectionId,
     this.provider,
     this.id,
+    this.canDelete = false,
   });
 
   /// For Try again, which names the target in its path.
   final String? id;
+
+  /// The server's word: sent, and its network lets EzBizi take it down.
+  final bool canDelete;
 
   final String account;
   final String providerLabel;
@@ -3372,6 +3693,7 @@ class _SentTarget {
       connectionId: json['connection_id'] as String?,
       provider: json['provider'] as String?,
       id: json['id'] as String?,
+      canDelete: json['can_delete'] as bool? ?? false,
     );
   }
 }
@@ -3928,15 +4250,28 @@ class _PostDetail extends StatelessWidget {
     required this.post,
     required this.connections,
     this.onRetry,
+    this.onEdit,
+    this.onCancel,
+    this.onDismiss,
+    this.onDeleteRemote,
   });
 
   final _SentPost post;
   final List<_SocialConnection> connections;
   final void Function(_SentTarget)? onRetry;
+  final VoidCallback? onEdit;
+  final VoidCallback? onCancel;
+  final void Function(_SentTarget)? onDismiss;
+  final void Function(_SentTarget)? onDeleteRemote;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // The server's rule: editable and cancellable only while every account
+    // is still waiting for its time.
+    final waiting =
+        post.targets.isNotEmpty &&
+        post.targets.every((t) => t.status == 'scheduled');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3946,12 +4281,39 @@ class _PostDetail extends StatelessWidget {
           const SizedBox(height: 6),
           Text('By ${post.author}', style: theme.textTheme.bodySmall),
         ],
+        if (waiting && (onEdit != null || onCancel != null)) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (onEdit != null)
+                OutlinedButton.icon(
+                  key: const Key('social-post-edit'),
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit or reschedule'),
+                ),
+              if (onCancel != null)
+                TextButton.icon(
+                  key: const Key('social-post-cancel'),
+                  onPressed: onCancel,
+                  icon: const Icon(Icons.cancel_outlined, size: 18),
+                  label: const Text('Cancel post'),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 12),
         for (final target in post.targets)
           _TargetLine(
             target: target,
             drafts: _draftsFor(target, connections),
             onRetry: onRetry == null ? null : () => onRetry!(target),
+            onDismiss: onDismiss == null ? null : () => onDismiss!(target),
+            onDeleteRemote: onDeleteRemote == null
+                ? null
+                : () => onDeleteRemote!(target),
           ),
       ],
     );
@@ -4011,7 +4373,19 @@ class _Quote extends StatelessWidget {
 /// One account's answer: posted with its link, in drafts, failed with the
 /// network's own sentence, or still going.
 class _TargetLine extends StatelessWidget {
-  const _TargetLine({required this.target, required this.drafts, this.onRetry});
+  const _TargetLine({
+    required this.target,
+    required this.drafts,
+    this.onRetry,
+    this.onDismiss,
+    this.onDeleteRemote,
+  });
+
+  /// Hide one failed account's line without trying again.
+  final VoidCallback? onDismiss;
+
+  /// Take a posted one down from its network.
+  final VoidCallback? onDeleteRemote;
 
   final _SentTarget target;
 
@@ -4031,6 +4405,7 @@ class _TargetLine extends StatelessWidget {
     final (word, tone, icon) = switch (target.status) {
       'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
       'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
+      'removed' => ('Deleted from $network', Tone.neutral, Icons.delete_outline),
       // The network's sentence, whole: "failed" says something is wrong and
       // nothing about what to do.
       'failed' => (
@@ -4098,6 +4473,41 @@ class _TargetLine extends StatelessWidget {
                     icon: const Icon(Icons.refresh, size: 16),
                     label: const Text('Try again'),
                   ),
+                if (target.status == 'failed' &&
+                    target.id != null &&
+                    onDismiss != null)
+                  TextButton.icon(
+                    key: ValueKey('social-target-dismiss-${target.id}'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: onDismiss,
+                    icon: const Icon(Icons.close, size: 16),
+                    label: const Text('Dismiss'),
+                  ),
+                if (target.status == 'sent' &&
+                    target.id != null &&
+                    onDeleteRemote != null)
+                  target.canDelete
+                      ? TextButton.icon(
+                          key: ValueKey('social-target-delete-${target.id}'),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            foregroundColor: theme.colorScheme.error,
+                          ),
+                          onPressed: onDeleteRemote,
+                          icon: const Icon(Icons.delete_outline, size: 16),
+                          label: Text('Delete from $network'),
+                        )
+                      : Text(
+                          '$network does not let EzBizi delete posts. Delete '
+                          'it in $network itself.',
+                          style: theme.textTheme.bodySmall,
+                        ),
               ],
             ),
           ),

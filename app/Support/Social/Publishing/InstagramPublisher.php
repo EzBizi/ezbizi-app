@@ -55,8 +55,9 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
     /**
      * How long this may wait, and why it is not longer.
      *
-     * ponytail: 36 seconds, because the QUEUE says so and not because Instagram
-     * does. The worker runs with no --timeout (so 60s) and the database queue's
+     * 36 seconds in THIS job, because the QUEUE says so and not because Instagram
+     * does. Past that the post is handed to FinishInstagramPost (2026-10-15:
+     * Rodrigo's reel failed at exactly this ceiling). The worker runs with no --timeout (so 60s) and the database queue's
      * retry_after is 90s, so a job that runs past either one is killed, and past
      * 90s a SECOND worker picks the same target up and posts it AGAIN. Double
      * posting to a customer's real audience is the one failure PublishSocialTarget
@@ -66,10 +67,9 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
      * Short reels — the length anyone posts from a phone — finish well inside
      * this. A long one will time out and say so, having published nothing.
      *
-     * The upgrade, when that stops being good enough: create the container in
-     * this job and hand the polling to a second, delayed job. Then the wait is
-     * bounded by nothing and no worker is held open. That is a change to
-     * PublishSocialTarget, which is why it is not being made here in passing.
+     * Longer videos are not refused: StillProcessing hands the container to a
+     * delayed job, so the wait is bounded by that job's ten minutes and no
+     * worker is held open.
      *
      * @param  int  $pollSeconds  Zero in tests.
      * @param  int  $pollAttempts  12 x 3s.
@@ -89,27 +89,61 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
         $user = $connection->remote_id;
 
         $handoff = MediaHandoff::hold($post);
+        $handedOn = false;
 
         try {
             $container = $this->container($user, $token, $post, $handoff->url);
-            $this->waitFor($container, $token);
 
-            $published = $this->call('/'.$user.'/media_publish', $token, ['creation_id' => $container]);
-            $id = $published['id'] ?? null;
+            if (! $this->waitFor($container, $token)) {
+                // Still ingesting: FinishInstagramPost carries on from a delayed
+                // job, and keeps the file fetchable until it is done.
+                $handedOn = true;
 
-            if (! is_string($id) || $id === '') {
-                throw SocialPublishFailed::network(
-                    'Instagram',
-                    'the post was prepared but publishing it returned nothing.',
-                );
+                throw new StillProcessing($container, $handoff->handle);
             }
 
-            return $id;
+            return $this->publishContainer($user, $token, $container);
         } finally {
             // Before the exception leaves, not after. A refused post is exactly
             // when a tenant's photo must stop being fetchable.
-            $handoff->release();
+            if (! $handedOn) {
+                $handoff->release();
+            }
         }
+    }
+
+    /**
+     * One look at a container handed on by StillProcessing: its post id once
+     * FINISHED and published, null while Instagram is still working, and a
+     * SocialPublishFailed when Instagram has refused it.
+     */
+    public function finish(SocialConnection $connection, string $container): ?string
+    {
+        $token = $this->token($connection);
+        $status = $this->status($container, $token);
+
+        if ($status['code'] === 'ERROR' || $status['code'] === 'EXPIRED') {
+            throw SocialPublishFailed::network('Instagram', $status['because']);
+        }
+
+        return $status['code'] === 'FINISHED'
+            ? $this->publishContainer($connection->remote_id, $token, $container)
+            : null;
+    }
+
+    private function publishContainer(string $user, string $token, string $container): string
+    {
+        $published = $this->call('/'.$user.'/media_publish', $token, ['creation_id' => $container]);
+        $id = $published['id'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            throw SocialPublishFailed::network(
+                'Instagram',
+                'the post was prepared but publishing it returned nothing.',
+            );
+        }
+
+        return $id;
     }
 
     public function cannotSend(SocialMediaKind $kind): ?string
@@ -151,13 +185,13 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
      * beats a timeout, which is what a caller would otherwise be told about a
      * file Instagram rejected in the first two seconds.
      */
-    private function waitFor(string $container, string $token): void
+    private function waitFor(string $container, string $token): bool
     {
         for ($attempt = 0; $attempt < $this->pollAttempts; $attempt++) {
             $status = $this->status($container, $token);
 
             if ($status['code'] === 'FINISHED') {
-                return;
+                return true;
             }
 
             if ($status['code'] === 'ERROR' || $status['code'] === 'EXPIRED') {
@@ -169,12 +203,7 @@ final class InstagramPublisher implements LinksToPosts, SocialPublisher
             }
         }
 
-        throw SocialPublishFailed::network(
-            'Instagram',
-            'it was still processing the video after '
-            .($this->pollAttempts * $this->pollSeconds).' seconds, so EzBizi stopped waiting. '
-            .'Nothing was posted. A shorter or smaller video will go through.',
-        );
+        return false;
     }
 
     /** @return array{code: string, because: string} */

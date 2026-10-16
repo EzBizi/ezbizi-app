@@ -29,6 +29,9 @@ void main() {
     {
       'person': 'Maya Ortiz',
       'calls_scored': 12,
+      'conversion': 25,
+      'jobs': 1,
+      'new_client': 4,
       'avg_score': 8.5,
       'checks': checks(price: 75),
       'strengths': ['Opens with the company name'],
@@ -83,6 +86,7 @@ void main() {
     WidgetTester tester, {
     List<Map<String, dynamic>>? data,
     double width = 1440,
+    bool canWeigh = false,
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -138,6 +142,7 @@ void main() {
             'from': q['from'],
             'to': q['to'],
             'min_calls_to_rank': 3,
+            'weights': {'conversion': 40, 'greeted': 60},
             'people': before
                 ? [
                     {...people()[1], 'avg_score': 5.0},
@@ -156,6 +161,7 @@ void main() {
             api: api,
             formats: DisplayFormats.fallback,
             now: () => DateTime(2026, 10, 13, 12),
+            canWeigh: canWeigh,
           ),
         ),
       ),
@@ -214,6 +220,16 @@ void main() {
     expect(find.text('#1 of 2'), findsOneWidget);
     expect(find.text('12 scored calls in these dates'), findsOneWidget);
     expect(
+      find.text('Conversion rate: 25% (1 job from 4 new-client calls)'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'The score weighs: Conversion 40% · Greeted with the company name 60%',
+      ),
+      findsOneWidget,
+    );
+    expect(
       find.text("Workiz's own score 82 / 100 over 30 calls"),
       findsOneWidget,
     );
@@ -248,6 +264,16 @@ void main() {
     await tester.tap(find.byKey(const Key('scoring-back')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('scoring-card-Sam Wu')), findsOneWidget);
+  });
+
+  testWidgets('Weights shows only for who may change what the score weighs', (
+    tester,
+  ) async {
+    await pump(tester);
+    expect(find.byKey(const Key('scoring-weights-edit')), findsNothing);
+
+    await pump(tester, canWeigh: true);
+    expect(find.byKey(const Key('scoring-weights-edit')), findsOneWidget);
   });
 
   testWidgets('Most improved puts the biggest rise first', (tester) async {

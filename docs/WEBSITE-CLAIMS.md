@@ -116,7 +116,7 @@ touches apps, monitoring, social, Google or mail.
 | AI Assistance → xAI: question + "the Library answers that person is allowed to read" + "up to five matching branches (name, phone, address and service area)" · "their phone number is not" sent | `/privacy/` Calls and messages + Who we rely on | `AssistantBrain::aiAnswer` (session/grok f11d1190): prompt = org name + readable `AssistantEntry` rows + `locations()->take(5)` + `$query`; `WhatsAppStaffBot` calls it with the message text only. **Adding the sender's number, name or history to that prompt breaks "their phone number is not"**. |
 | WhatsApp figures → xAI: "jobs by source, sales, each technician's sales and deposits by name, and how many enquiries arrived from each source other than Google Local Services" · "No customer's name or contact details" | `/privacy/` Calls and messages + Who we rely on | `ReportAsk::answer` (d883e59b): question + branch names, then `PeriodReport::figures()` (created/closed by source, techs) + `ReportAsk::leads()` (counts by `source`). `leads()` excludes `Lead::SOURCE_LOCAL_SERVICES` since 76c2bb74 (on main, with a test) — LSA counts are Google user data and Jose ruled "Facebook only for now" (2026-10-12). **Removing that where-clause breaks the page.** Workiz `job_source` values named "Google LSA" are A1's own CRM records, not Google API data, so "jobs by source" may carry that label truthfully. |
 | Device permissions: "only when you tap Download on a how-to video, permission to add that video to your photos — on an iPhone, and on Android 9 or older" · "never reads your photos" · "no camera, no contacts, no calendar" | `/privacy/` Where EzBizi runs | `client/ios/Runner/Info.plist` `NSPhotoLibraryAddUsageDescription` only (no `NSPhotoLibraryUsageDescription`, no camera/contacts/calendar keys); `AndroidManifest.xml` `WRITE_EXTERNAL_STORAGE maxSdkVersion=29`, no READ_MEDIA_*/CAMERA/READ_CONTACTS/READ_CALENDAR. From 5d3045e6 (0.0.0431). **Any new Usage key or uses-permission breaks this paragraph.** |
-| AppAsk (WhatsApp staff "ask the app") → xAI: "any record the person may see, including customers, jobs, calls, staff records, details of monitored computers, the contents of connected mailboxes, and Google Ads, Local Services and Business Profile data" · "Only text … never audio, images or files" · "read only" | `/privacy/` Calls and messages + Google user data + Who we rely on; `/google-ads-api/` | **Jose 2026-10-13: "Everything, as asked"** (relayed desk → Grok AI; supersedes "Facebook only for now" FOR THIS PATH ONLY — ReportAsk still excludes LSA). At 1a0802dd (950f1f32) BLOCKED is only auth/staff/mcp/me/api-keys/me/sessions; JSON-only gate (`Content-Type` contains json) stays; GETs run as the asker with a 2-minute token. History: 050d6753 refused, 57c80ace/35cf8644 blocked Google/mail/monitoring, 950f1f32 dropped those blocks on Jose's word. **Removing the JSON-only gate breaks "never audio, images or files"; a non-GET breaks "read only".** Gmail content to xAI also sits under Google's Workspace API user-data policy — that is a review risk, not a page falsehood. |
+| AppAsk (WhatsApp staff line AND, since 5eb754c8 / 0.0.0432, the in-app AI tab via `AssistantController` when the Library has no answer) → xAI: "any record the person may see, including customers, jobs, calls, staff records, details of monitored computers, the contents of connected mailboxes, and Google Ads, Local Services and Business Profile data" · "Only text … never audio, images or files" · "read only" | `/privacy/` Calls and messages + Google user data + Who we rely on; `/google-ads-api/` | **Jose 2026-10-13: "Everything, as asked"** (relayed desk → Grok AI; supersedes "Facebook only for now" FOR THIS PATH ONLY — ReportAsk still excludes LSA). At 1a0802dd (950f1f32) BLOCKED is only auth/staff/mcp/me/api-keys/me/sessions; JSON-only gate (`Content-Type` contains json) stays; GETs run as the asker with a 2-minute token. History: 050d6753 refused, 57c80ace/35cf8644 blocked Google/mail/monitoring, 950f1f32 dropped those blocks on Jose's word. **Removing the JSON-only gate breaks "never audio, images or files"; a non-GET breaks "read only".** Gmail content to xAI also sits under Google's Workspace API user-data policy — that is a review risk, not a page falsehood. |
 | Call recordings by number: message → xAI "only to read the number and the dates" · recordings "pass through Meta" · "not sent to xAI" | `/privacy/` Calls and messages + Meta line | `CallRecordingsRequest` (6727b341) sends the staff text to Grok for phone/from/to; `SendCallRecordings` reads `RingCentralCallLog` only (no LeadConversation, so no LSA recordings) and uploads audio to the WhatsApp Cloud `/media` endpoint. **If it ever reads Lead recordings, Google LSA audio reaches Meta — re-check.** |
 | Automations card: triggers "a lead arrives, a call is missed, a job changes status, stock runs low" · steps "send a text, open a follow-up job, assign it, email a saved report or tell the administrators" · "conditions" · "on a schedule" | `/` grid (Jose 2026-10-09: "review … and improve it") | `ModuleServiceProvider` keys `lead.received`, `phone.call.missed`, `job.status_changed`, `item.low`; actions `phone.sms.send` (to "a number you give" — so NOT "text the customer"), `job.create` (follow-up for the same customer), `job.assign_to_user`, `report.send`, `organization.notify_administrators`; `ConditionEvaluator`; trigger `automation.schedule_reached`. The old "no fix in the window" hold is superseded by Jose's ask; **removing any of those keys breaks the card**. |
 | AI & the API card: "Make an API key and an AI like Claude, or your own script, works in EzBizi as you — through an MCP server that reaches the same API the app uses, with your permissions and nothing more" · "read only, read and edit, or also delete" · "Every change made with a key is logged with each field as it was before" · "any key can be revoked" · FAQ "Administrators decide which roles may make keys" · Growth "An AI can read the conversation and draft a reply, which a person reads and sends" | `/` (Jose 2026-10-13: "update the site … AI Connections - API - MCP") | `McpController` (`list_endpoints` + `call_api` through the kernel with the caller's token; `BLOCKED` = auth, staff, mcp, me/api-keys, me/sessions — "same API" stays true while that list holds only credentials/platform); `routes/api.php` `POST mcp`; levels `viewer/editor/full` in `api_keys_card.dart`; `ApiKeysController::activity` (`before` from the audit trail) and `destroy`; the API keys permission row is administrators-only until ticked. **Measured on production 2026-10-13**: this session's own MCP key answered `GET me` 200. Growth AI line: `LeadsController` `can_suggest` = `canReply && LeadInsights::enabled()` — read `true` on a production lead the same day; `suggestReply` returns text only. **Breaks if**: `LEADS_AI_GROK` goes off (pull the Growth sentence), anything sends a draft without a person, the MCP endpoint gains OAuth-only access, or key activity stops recording `before`. Not claimed: OAuth / claude.ai or ChatGPT connectors (docblock: none), call scoring (off), Monday summary (inactive), review drafts (A1-Group-only path). |
@@ -2815,3 +2815,55 @@ Stores: Play `200`; Apple `resultCount` 1, version 0.0.0363.
 
 Still owed: lead counts by source with `is_test = 0`, the resolved ring-group
 fraction, the Scheduling count, an `estimates` row count.
+
+## 2026-10-14: the in-app AI tab started reading app data, and the pages said WhatsApp only
+
+Production `/download/windows.json` 0.0.0435 at `939fdb3a`; 0.0.0426–0.0.0436
+landed today. All 9 live files were byte-identical to `www/` at the start of
+this run (`/privacy/` Last-Modified 22:02 UTC, `c8fd1896` live).
+
+**The finding:** `5eb754c8` (in production since 0.0.0432) makes
+`AssistantController` fall through to `AppAsk::answer($user, …)` when the
+Library has no answer — so a question typed into the **AI tab in the app**
+now sends any record the asker may see to xAI, exactly the WhatsApp staff-line
+path. `/privacy/` (Calls and messages, Google section, Who we rely on) and
+`/google-ads-api/` named only the WhatsApp staff line: under-disclosure, live
+since this afternoon. Widened all four sentences to "in the AI tab or on the
+WhatsApp staff line"; `/google-ads-api/` date and both `sitemap.xml` lastmods
+to 2026-10-14. The Library paragraph (first step, Library + branches) stays
+true as the first thing that happens. **Any third caller of `AppAsk::answer`
+makes these sentences incomplete — `grep -rn "AppAsk::answer" app`.**
+
+Nothing new to claim: Task Board permissions, routing road lines, scoring
+weights (scoring itself already disclosed) and Sales lead dates change no
+sentence. Desk `0122` counts (10-13 23:05 UTC): `training_progress` 64,
+`phone_ring_groups` 3, local_services leads 45,670; no new social publisher.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
+`resultCount` 1, version 0.0.0363.
+
+## 2026-10-15: 0.0.0437-0.0.0442 shipped, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0442 at `eb3f4656` (= main). All 9 live
+files byte-identical to `www/`; `0128` is live (`/privacy/` Last-Modified 21:15 UTC).
+
+Checked against today's commits, no edit needed:
+- `a2264488` crash/freeze/failed-call reports go to our own `POST /client-issues`
+  (`client_issues`, 3 months, `ClientIssueScrubber`) - no new processor; "error
+  diagnostics" under What we collect already covers it. A native crash file is
+  sent on the next launch, i.e. while the app is in use.
+- RingCentral is now an organization's own connection (`8a640f19`, `54305ddb`);
+  `/privacy/` already says "a business's own RingCentral account where it has
+  connected one". New host `platform.ringcentral.com` = an account the customer connects.
+- `947e6cc2` adds `GoogleBusinessProfilePublisher` to `Publishers::for()` - **not a
+  sending network**: Business Profile quota is 0 until Google approves. Do not add
+  it to "Four networks send today"; the row's test is a `sent` row, not the publisher.
+- `660508eb` reads A-1 Chimney's reviews on A1 Leads' grant - one tenant, interim;
+  "reading and answering its reviews is waiting on Google" stays true for EzBizi.
+- `92a55324` edit/reschedule/delete-from-network: unsold capability, no sentence wrong.
+- `AppAsk::answer` callers still two (AssistantController, WhatsAppStaffBot).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
+ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
+`200`; Apple `resultCount` 1, 0.0.0363. Counts asked as `0129`.

@@ -402,7 +402,10 @@ class _RolesScreenState extends State<RolesScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelHeader(
-            title: 'Roles',
+            // The tab's own name (UI queue 99), not a shorter one of its own.
+            title:
+                widget.session.me?.module('roles')?.label ??
+                'Roles & permissions',
             note:
                 'Every role is this organization’s own. A role decides which '
                 'tabs the people holding it see, and what they may do inside '
@@ -414,6 +417,7 @@ class _RolesScreenState extends State<RolesScreen> {
             action: Refused(
               reason: noCreate,
               child: FilledButton.icon(
+                key: const ValueKey('tour-roles-new'),
                 onPressed: noCreate == null ? _create : null,
                 icon: const Icon(Icons.add),
                 label: const Text('New role'),

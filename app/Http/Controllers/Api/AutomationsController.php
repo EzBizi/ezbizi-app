@@ -2013,6 +2013,7 @@ class AutomationsController extends Controller
                 $parameter('user_ids', 'And these people by name', 'people', false),
                 // Task Board (Jose, 2026-10-13): only means anything on a task trigger.
                 $parameter('to_assignee', "Also tell whoever the task is given to", 'boolean', false),
+                $parameter('urgent', 'Mark as urgent (red)', 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),

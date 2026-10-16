@@ -19,6 +19,17 @@ use Illuminate\Validation\ValidationException;
  */
 class StaffHelpVideosController extends Controller
 {
+    /**
+     * The shell's own pages, which are not modules but carry the same header,
+     * walkthrough and video (UI queue 99).
+     */
+    private const PAGES = [
+        'settings' => 'Settings',
+        'suggestions' => 'Suggestions',
+        'development' => 'Development',
+        'account' => 'Your account',
+    ];
+
     public function __construct(
         private readonly ModuleRegistry $modules,
         private readonly AuditLogger $audit,
@@ -32,13 +43,17 @@ class StaffHelpVideosController extends Controller
     {
         $rows = PlatformHelpVideo::all()->keyBy('module_key');
 
-        $data = collect($this->modules->all())
-            ->map(fn ($module) => [
-                'module_key' => $module->key,
-                'label' => $module->label,
-                'video' => $rows->get($module->key)?->present(),
-                'changed_by' => $rows->get($module->key)?->changed_by,
-                'changed_at' => $rows->get($module->key)?->updated_at?->toIso8601String(),
+        $labels = collect($this->modules->all())
+            ->mapWithKeys(fn ($module) => [$module->key => $module->label])
+            ->merge(self::PAGES);
+
+        $data = $labels
+            ->map(fn (string $label, string $key) => [
+                'module_key' => $key,
+                'label' => $label,
+                'video' => $rows->get($key)?->present(),
+                'changed_by' => $rows->get($key)?->changed_by,
+                'changed_at' => $rows->get($key)?->updated_at?->toIso8601String(),
             ])
             ->sortBy('label')
             ->values();
@@ -111,7 +126,7 @@ class StaffHelpVideosController extends Controller
 
     private function known(string $module): void
     {
-        if ($this->modules->get($module) === null) {
+        if ($this->modules->get($module) === null && ! isset(self::PAGES[$module])) {
             throw ValidationException::withMessages(['module' => "'{$module}' is not a module."]);
         }
     }

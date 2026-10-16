@@ -198,6 +198,35 @@ class NotificationPushTest extends TestCase
         $this->assertSame('ezbizi_notifications', $channelOf('Trial ends tomorrow'));
     }
 
+    /** A rule's "Mark as urgent (red)": stored on the bell row, served, and pushed urgent (Jose, 2026-10-15). */
+    public function test_an_urgent_notification_is_marked_on_its_row_and_pushed_urgent(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+        ]);
+
+        $this->configureFcm();
+        $tenant = $this->provisionTenant('Alpha');
+        $this->device($tenant, $tenant['admin']->id, 'token-phone');
+
+        $this->inTenant($tenant['org'], function () use ($tenant): void {
+            $this->dispatcher()->dispatch('Possible complaint call', onlyTo: $tenant['admin'], source: 'automation', urgent: true);
+            $this->dispatcher()->dispatch('Weekly summary', onlyTo: $tenant['admin'], source: 'automation');
+        });
+
+        $channelOf = fn (string $title) => collect(Http::recorded())
+            ->map(fn ($pair) => $pair[0])
+            ->first(fn ($request) => str_contains($request->url(), 'messages:send')
+                && $request['message']['notification']['title'] === $title)['message']['android']['notification']['channel_id'];
+        $this->assertSame('ezbizi_urgent', $channelOf('Possible complaint call'));
+        $this->assertSame('ezbizi_notifications', $channelOf('Weekly summary'));
+
+        $rows = collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/notifications')->assertOk()->json('data'))->pluck('urgent', 'title');
+        $this->assertSame(true, $rows['Possible complaint call']);
+        $this->assertSame(false, $rows['Weekly summary']);
+    }
+
     /**
      * A push carries the id of the recipient's own bell row, so a tap on a
      * phone opens exactly what that row opens (Bar, 2026-10-12).

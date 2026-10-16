@@ -408,7 +408,7 @@ function ezbizi_form_shortcode($atts) {
     $redirect = ezbizi_widget_text($config, 'redirect');
     $redirect = preg_match('~^https?://~i', $redirect) ? esc_url_raw($redirect) : '';
 
-    $out .= "<script>(function(){
+    $out .= ezbizi_late_script("<script>(function(){
 var f=document.getElementById(" . wp_json_encode($id) . ");
 if(!f)return;
 var note=f.querySelector('.ezbizi-form-note');
@@ -469,7 +469,7 @@ f.addEventListener('submit',function(e){
     note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'error', 'That did not send.')) . ";
   }).then(function(){b.disabled=false;});
 });
-})();</script>";
+})();</script>");
 
     return $out . ezbizi_style_css('form', $id, $preset, array(
         'box' => '', 'title' => ' .ezbizi-form-title', 'subtitle' => ' .ezbizi-form-subtitle',
@@ -682,7 +682,7 @@ function ezbizi_chat_shortcode($atts) {
      * answer would be baked into the HTML for hours. The browser decides, in
      * the BUSINESS's zone, and fails open (any doubt and the bubble shows).
      */
-    $out .= "<script>(function(){
+    $out .= ezbizi_late_script("<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");
 if(!root)return;
 var openHours=" . wp_json_encode(isset($config['hours']) && is_array($config['hours']) ? $config['hours'] : array()) . ";
@@ -807,7 +807,7 @@ photo.addEventListener('change',function(){
   if(!photo.files||!photo.files[0]||!chat||!token)return;
   var fd=new FormData();fd.append('photo',photo.files[0]);photo.value='';send(fd,false);
 });
-})();</script>";
+})();</script>");
 
     return $out;
 }
@@ -852,6 +852,28 @@ function ezSolve(api){return fetch(api+'/api/v1/web/form/challenge').then(functi
       n+=500;if(n>c.max)throw new Error('captcha');return step();});}
   return step();});}";
 }
+
+/**
+ * A widget's script, printed in the footer instead of inside the shortcode's
+ * HTML. Jose, 2026-10-15: on a-1chimney.com/booking the page's content filters
+ * turned the script's && into &#038;&#038;, a syntax error, so typing a ZIP
+ * did nothing. The footer is outside the_content, so nothing rewrites it. Once
+ * the footer has printed (an AJAX render, an editor preview) it stays inline.
+ */
+function ezbizi_late_script($script) {
+    if (did_action('wp_footer')) {
+        return $script;
+    }
+    $GLOBALS['ezbizi_late_js'][] = $script;
+    return '';
+}
+
+add_action('wp_footer', function () {
+    foreach ($GLOBALS['ezbizi_late_js'] ?? array() as $script) {
+        echo $script; // phpcs:ignore -- built by this plugin, escaped where it is built
+    }
+    $GLOBALS['ezbizi_late_js'] = array();
+}, 99);
 
 /** The launcher's icon, inline so the widget never waits on an icon font. */
 function ezbizi_chat_icon($which = 'chat') {
@@ -1157,7 +1179,7 @@ function ezbizi_booking_shortcode($atts) {
         . '<p class="ezb-when"></p><p>' . esc_html__('We will call you shortly to confirm your appointment.', 'ezbizi') . '</p></div>'
         . '<p class="ezb-note" role="status" aria-live="polite"></p>'
         . '</div><div class="ezb-foot">' . esc_html__('No payment to book · We call to confirm', 'ezbizi') . '</div></div>'
-        . "<script>(function(){
+        . ezbizi_late_script("<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");if(!root)return;
 var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ",st={},note=root.querySelector('.ezb-note');
 " . ezbizi_solver_js() . "
@@ -1215,7 +1237,7 @@ q('[data-step=details]').addEventListener('submit',function(e){
       note.textContent=d.message||" . wp_json_encode(__('That did not send. Please try again or call us.', 'ezbizi')) . ";});
   }).catch(function(){b.disabled=false;note.textContent=" . wp_json_encode(__('That did not send. Please try again or call us.', 'ezbizi')) . ";});
 });
-})();</script>";
+})();</script>");
 }
 
 add_action('init', function () {

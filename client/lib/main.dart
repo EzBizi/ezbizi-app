@@ -15,6 +15,7 @@ import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
 import 'screens/leads_screen.dart';
 import 'core/field_tracker.dart';
+import 'core/issue_reporter.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
 import 'core/file_access_service.dart';
@@ -75,6 +76,9 @@ Future<void> main() async {
   // person out. That is the whole "an update logged me out" bug.
   await TokenStore.init();
 
+  // Crashes, freezes and failed calls reach the staff console (2026-10-15).
+  IssueReporter.install();
+
   runApp(const EzBiziApp());
 }
 
@@ -127,6 +131,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
   @override
   void initState() {
     super.initState();
+    if (IssueReporter.installed) IssueReporter.instance.attach(_api);
     _session.addListener(() => setState(() {}));
     _staffSession.addListener(() => setState(() {}));
 
@@ -1881,14 +1886,24 @@ class _HomeShellState extends State<HomeShell> {
                         // one: it is the single screen that is theirs by definition and
                         // cannot answer 403. It is what somebody whose role reaches no
                         // module at all lands on, rather than an empty frame.
+                        // UI queue 99: Settings, Suggestions, Development and
+                        // Your account get the header every module has, with
+                        // its walkthrough and how-to video.
                         child: pinnedIndex != null
-                            ? pinned[pinnedIndex].screen
+                            ? _titled(pinned[pinnedIndex])
                             : staffIndex != null
-                            ? staffOnly[staffIndex].screen
+                            ? _titled(staffOnly[staffIndex])
                             : (showingProfile || railIndex == null)
-                            ? ProfileScreen(
-                                api: widget.api,
-                                session: widget.session,
+                            ? _titled(
+                                Destination(
+                                  'Your account',
+                                  Icons.person_outline,
+                                  ProfileScreen(
+                                    api: widget.api,
+                                    session: widget.session,
+                                  ),
+                                  id: 'account',
+                                ),
                               )
                             : _titled(destinations[railIndex]),
                       ),

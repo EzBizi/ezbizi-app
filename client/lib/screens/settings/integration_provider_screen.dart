@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
+import '../../widgets/side_panel.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
 ///
@@ -71,6 +72,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.connectsBy,
     this.startPath,
     this.mayConnect = false,
+    this.onDisconnect,
     required this.onBack,
   });
 
@@ -119,6 +121,10 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// somebody the app is for other people. The sentence beneath names who can
   /// instead, which is the remedy they can act on.
   final bool mayConnect;
+
+  /// Disconnect one row, for a provider whose module lets this screen do it
+  /// (Google Workspace). Answers the refusal to show, or null on success.
+  final Future<String?> Function(IntegrationConnection row)? onDisconnect;
 
   /// Close this pane and put the grid back.
   ///
@@ -194,21 +200,11 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
   Future<void> _rename(IntegrationConnection row) async {
     final controller = TextEditingController(text: row.label ?? '');
 
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Name this ${widget.providerLabel} connection'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Name',
-            // The id, so somebody naming several in a row can tell them apart
-            // while the dialog is covering the list.
-            helperText: row.displayName,
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
+    // A side panel, as every other edit in Settings (UI queue 99).
+    final name = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Name this ${widget.providerLabel} connection',
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -219,6 +215,17 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             child: const Text('Save'),
           ),
         ],
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Name',
+            // The id, so somebody naming several in a row can tell them apart
+            // while the dialog is covering the list.
+            helperText: row.displayName,
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
       ),
     );
 
@@ -364,6 +371,15 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                             icon: const Icon(Icons.edit_outlined, size: 18),
                             onPressed: () => _rename(row),
                           )
+                        : widget.onDisconnect != null
+                        ? TextButton(
+                            key: ValueKey('disconnect:${row.id}'),
+                            onPressed: () async {
+                              final refused = await widget.onDisconnect!(row);
+                              if (mounted) setState(() => _error = refused);
+                            },
+                            child: const Text('Disconnect'),
+                          )
                         : null,
                   ),
               ],
@@ -505,7 +521,8 @@ class IntegrationConnection {
     'google_business_profile' ||
     'thumbtack' ||
     'facebook_ads' => 'leads',
-    'airtable' || 'workiz' => 'reporting',
+    'airtable' || 'workiz' || 'ringcentral' => 'reporting',
+    'google_workspace' => 'email',
     _ => 'social',
   };
 
@@ -519,6 +536,33 @@ class IntegrationConnection {
   /// What to put in front of a person, and what to put under it.
   String get title => (label ?? '').isNotEmpty ? label! : displayName;
   String? get beneath => (label ?? '').isNotEmpty ? displayName : null;
+
+  /// One row of `GET /email/workspace` — a domain, not a SocialConnection.
+  /// The domain leads; the administrator who proved it sits beneath.
+  factory IntegrationConnection.fromWorkspaceJson(Map<String, dynamic> json) {
+    final health = json['health'] as Map<String, dynamic>?;
+    final healthy =
+        (json['status'] as String? ?? '') == 'connected' &&
+        health?['status'] != 'needs_attention';
+    final admin = json['admin_email'] as String? ?? '';
+
+    return IntegrationConnection(
+      id:
+          'google_workspace:${json['scope_type'] ?? ''}:'
+          '${json['scope_id'] ?? ''}',
+      provider: 'google_workspace',
+      providerLabel: 'Google Workspace',
+      label: json['domain'] as String? ?? '',
+      displayName: admin.isEmpty ? 'Google Workspace' : 'Admin $admin',
+      scopeType: json['scope_type'] as String? ?? '',
+      scopeId: json['scope_id'] as String? ?? '',
+      connected: healthy,
+      statusReason:
+          health?['summary'] as String? ??
+          json['status_reason'] as String? ??
+          'Finish the setup in Email › Settings',
+    );
+  }
 
   factory IntegrationConnection.fromJson(Map<String, dynamic> json) =>
       IntegrationConnection(

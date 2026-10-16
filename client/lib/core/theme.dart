@@ -742,6 +742,10 @@ abstract final class PersonColours {
     ToneColours(Color(0xFFE6EBF0), Color(0xFF3A4A5A)), // slate
     // Facebook's blue, brighter than LS Call's navy (Jose, 2026-10-12).
     ToneColours(Color(0xFFE0F2FE), Color(0xFF075985)), // sky
+    // RingCentral's deep orange, a full fill so it is not Thumbtack's pale
+    // orange (Jose, 2026-10-15: "a deep orange color to match the ring
+    // central brand").
+    ToneColours(Color(0xFFFF8A2B), Color(0xFF3D1400)), // deep orange
   ];
 
   static const _dark = [
@@ -756,6 +760,7 @@ abstract final class PersonColours {
     ToneColours(Color(0xFF4A1627), Color(0xFFFFA8C5)),
     ToneColours(Color(0xFF27313B), Color(0xFFC3CFDB)),
     ToneColours(Color(0xFF0C3A52), Color(0xFF7DD3FC)),
+    ToneColours(Color(0xFFA84800), Color(0xFFFFF1E6)),
   ];
 
   /// People get the first eight, so adding a tag hue never moves anybody's
@@ -768,7 +773,7 @@ abstract final class PersonColours {
 
   /// One hue by position, for a set that must not collide (Leads' source
   /// tags, 2026-09-29): 0 blue, 1 teal, 2 green, 3 olive, 4 gold, 5 orange,
-  /// 6 coral, 7 brown, 8 rose, 9 slate, 10 sky.
+  /// 6 coral, 7 brown, 8 rose, 9 slate, 10 sky, 11 deep orange.
   static ToneColours hue(BuildContext context, int index) =>
       (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[index %
           _light.length];

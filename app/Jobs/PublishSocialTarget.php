@@ -8,6 +8,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Social\Publishing\LinksToPosts;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\Publishing\StillProcessing;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -91,6 +92,16 @@ final class PublishSocialTarget implements ShouldQueue
 
         try {
             $remoteId = $publisher->publish($connection, $payload);
+        } catch (StillProcessing $e) {
+            // Not failed and not sent: still `queued` while Instagram ingests.
+            $target->forceFill(['options' => array_merge((array) ($target->options ?? []), [
+                'instagram_container' => $e->container,
+                'handoff' => $e->handle,
+            ])])->save();
+
+            FinishInstagramPost::dispatch($target->getKey())->delay(now()->addSeconds(FinishInstagramPost::EVERY));
+
+            return;
         } catch (SocialPublishFailed $e) {
             $this->failed($target, $events, $e->getMessage());
 
@@ -117,6 +128,15 @@ final class PublishSocialTarget implements ShouldQueue
             }
         }
 
+        $this->succeeded($target, $publisher, $remoteId, $events);
+    }
+
+    /** Shared with FinishInstagramPost, which completes a post this job began. */
+    public function succeeded(SocialPostTarget $target, object $publisher, string $remoteId, EventEmitter $events): void
+    {
+        $connection = $target->connection;
+        $post = $target->post;
+
         $target->markSent($remoteId);
 
         // Where it can be seen. Best effort: the post IS out, and a network
@@ -137,7 +157,7 @@ final class PublishSocialTarget implements ShouldQueue
         ]);
     }
 
-    private function failed(SocialPostTarget $target, EventEmitter $events, string $because): void
+    public function failed(SocialPostTarget $target, EventEmitter $events, string $because): void
     {
         $target->markFailed($because);
 

@@ -68,7 +68,7 @@ class ScopeSwitcher extends StatelessWidget {
   /// shell where the two could drift apart and leave a phone bar identifying
   /// nothing at all.
   static bool hasChoices(Me me) =>
-      me.franchises.length > 1 || me.companies.length > 1;
+      me.switchableFranchises.length > 1 || me.switchableCompanies.length > 1;
 
   @override
   Widget build(BuildContext context) {

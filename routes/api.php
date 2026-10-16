@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\ClientIssuesController;
+use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
@@ -191,6 +193,7 @@ use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
+use App\Http\Controllers\Api\RingCentralConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -241,6 +244,14 @@ use Illuminate\Support\Facades\Route;
 */
 
 // ── Public: no user and no organization exist yet ────────────────
+// The apps reporting their own errors, crashes, freezes and failed calls
+// (Jose, 2026-10-15). Outside auth on purpose: a crash on the sign-in screen
+// still needs reporting. The controller reads the person from the token when
+// there is one and rate-limits per person or address; this throttle is only
+// the outer fence.
+Route::post('v1/client-issues', [ClientIssuesController::class, 'store'])
+    ->middleware('throttle:60,1');
+
 Route::prefix('v1/auth')->group(function () {
     // The front door (§3, TODO #10). One request, one transaction: the person,
     // the organization, its first company and that company's first franchise.
@@ -582,6 +593,9 @@ Route::post('v1/web/booking', [WebEnquiriesController::class, 'submitBooking'])
 Route::post('v1/web/review', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'review'])
     ->middleware('throttle:web-enquiry')
     ->name('web.review');
+// What the customer did with their review link (Customer Experience, 2026-10-15).
+Route::post('v1/web/review-link', [\App\Http\Controllers\Api\ReviewLinkEventsController::class, 'store'])
+    ->middleware('throttle:web-enquiry');
 // {{ membership_link }}: app.ezbizi.com/api/m/<code>, under /api because nginx
 // sends only /api and /q/ to Laravel.
 Route::get('m/{code}', [\App\Http\Controllers\Api\MembershipsPublicController::class, 'shortJoin'])
@@ -901,6 +915,8 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        // What customers did with their review links (Customer Experience, 2026-10-15).
+        Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
@@ -1273,6 +1289,7 @@ Route::prefix('v1')
         */
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
+        Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*
          * Profit & Loss, read live from a tenant's own Airtable base. Before
@@ -1293,6 +1310,9 @@ Route::prefix('v1')
         // Its own tab (Jose: "right now only administrators and lead manager").
         Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
         Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
+        // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
+        Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
+        Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
         Route::get('reports/scoring/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording'])->middleware('permission:reports.scoring.view');
         // Thumbtack lead spend (Jose, 2026-10-13).
@@ -1397,8 +1417,13 @@ Route::prefix('v1')
         });
 
         Route::middleware('permission:scheduling.availability.view')->group(function () {
-            Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
-            Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion']);
+            // Polled every 30 s by each open availability pane: an ETag lets an
+            // unchanged answer come back as an empty 304 (2026-10-15; done by
+            // Monitoring while Scheduling was unstaffed).
+            Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show'])
+                ->middleware('cache.headers:etag');
+            Route::get('scheduling/availability/suggestion', [SchedulingAvailabilityController::class, 'suggestion'])
+                ->middleware('cache.headers:etag');
             Route::get('scheduling/availability/fit', [SchedulingAvailabilityController::class, 'fit']);
 
             // Suggest is Availability's search box and has no other caller
@@ -2021,6 +2046,13 @@ Route::prefix('v1')
             ->middleware('permission:marketing.compose.view');
         Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry'])
             ->middleware('permission:marketing.dashboard.view,marketing.compose.view');
+        // Managing a post after Publish: from the Dashboard's side panel or Compose.
+        Route::middleware('permission:marketing.dashboard.view,marketing.compose.view')->group(function () {
+            Route::patch('social/posts/{post}', [SocialPostsController::class, 'update']);
+            Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
+            Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
+            Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
+        });
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
             Route::get('marketing/qr-codes', [QrCodesController::class, 'index']);
@@ -3141,6 +3173,9 @@ Route::prefix('v1')
                             'name' => $c->name,
                             'parent_company_id' => $c->parent_company_id,
                             'has_logo' => $c->logo_path !== null,
+                            // Switched off: kept in reach, not offered by the
+                            // view switcher (Jose, 2026-10-15).
+                            'is_active' => (bool) $c->is_active,
                         ])
                         ->all(),
 
@@ -3277,6 +3312,8 @@ Route::prefix('v1/staff')
         // HealthController for why a status code cannot answer this.
         Route::get('health', [HealthController::class, 'index']);
         Route::post('health/test-email', [HealthController::class, 'testEmail']);
+        // What the apps reported going wrong, grouped by problem (2026-10-15).
+        Route::get('health/client-issues', [StaffClientIssuesController::class, 'index']);
 
         // Global module availability — the platform-wide gate that sits above
         // every organization's own permissions (§2.1, layer 3).

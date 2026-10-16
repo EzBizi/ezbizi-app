@@ -34,6 +34,7 @@ class SocialNetworkMark extends StatelessWidget {
     // as Google.
     'google_ads': 'assets/social/google.svg',
     'google_business_profile': 'assets/social/google.svg',
+    'google_workspace': 'assets/social/google.svg',
 
     // Bundled with the Thumbtack connection and never mapped, so Leads drew
     // the grey square beside the one provider that has a mark of its own.
@@ -43,6 +44,7 @@ class SocialNetworkMark extends StatelessWidget {
     // grey square for them (Jose, 2026-10-13).
     'mailchimp': 'assets/social/mailchimp.svg',
     'workiz': 'assets/social/workiz.svg',
+    'ringcentral': 'assets/social/ringcentral.svg',
     'airtable': 'assets/social/airtable.svg',
   };
 

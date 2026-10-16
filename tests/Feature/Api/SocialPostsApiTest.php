@@ -668,6 +668,146 @@ class SocialPostsApiTest extends TestCase
         return self::ENDPOINT."/{$post}/targets/{$target}/retry";
     }
 
+    /**
+     * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post the
+     * other 5 should still go through". Pinterest cannot take words alone;
+     * Facebook can. Facebook goes out, and Pinterest is written as FAILED with
+     * the reason, so it is named on the dashboard instead of vanishing.
+     */
+    public function test_one_account_that_cannot_take_the_post_does_not_stop_the_others(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $pin = $this->connection($t, 'company', $t['company']->id, 'Pins', 'pin-1', 'pinterest');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-post-1'])]);
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$pin->getKey(), $page->getKey()], 'body' => 'Words only'])
+            ->assertCreated();
+
+        $this->inTenant($t['org'], function () use ($pin, $page) {
+            $byConnection = SocialPostTarget::query()->get()->keyBy('social_connection_id');
+            $this->assertSame(SocialPostTarget::STATUS_SENT, $byConnection[$page->getKey()]->status);
+            $this->assertSame(SocialPostTarget::STATUS_FAILED, $byConnection[$pin->getKey()]->status);
+            $this->assertNotEmpty($byConnection[$pin->getKey()]->failure);
+        });
+    }
+
+    public function test_a_post_no_ticked_account_can_take_is_refused_whole(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $pin = $this->connection($t, 'company', $t['company']->id, 'Pins', 'pin-1', 'pinterest');
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$pin->getKey()], 'body' => 'Words only'])
+            ->assertStatus(422);
+
+        $this->assertNothingWasWritten($t);
+    }
+
+    /** A post nobody has yet: its words and time can change, and it can be cancelled. */
+    public function test_a_scheduled_post_can_be_edited_rescheduled_and_cancelled(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake();
+
+        $id = $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$page->getKey()], 'body' => 'Autumn', 'scheduled_for' => '2099-03-04 09:00',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->patchJson(self::ENDPOINT.'/'.$id, [
+            'body' => 'Autumn sweeps', 'scheduled_for' => '2099-03-05 10:00',
+        ])->assertOk()->assertJsonPath('data.body', 'Autumn sweeps');
+
+        $this->inTenant($t['org'], fn () => $this->assertStringStartsWith(
+            '2099-03-05 10:00', (string) SocialPost::query()->find($id)->scheduled_for,
+        ));
+
+        $this->signedInAs($t['admin'])->deleteJson(self::ENDPOINT.'/'.$id)->assertOk();
+        $this->assertNothingWasWritten($t);
+        Http::assertNothingSent();
+    }
+
+    public function test_a_post_that_went_out_cannot_be_edited_or_cancelled(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-post-1'])]);
+
+        $id = $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$page->getKey()], 'body' => 'Now',
+        ])->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->patchJson(self::ENDPOINT.'/'.$id, ['body' => 'Changed'])->assertStatus(422);
+        $this->signedInAs($t['admin'])->deleteJson(self::ENDPOINT.'/'.$id)->assertStatus(422);
+    }
+
+    /** Taken down from Facebook, and marked removed - the link goes with it. */
+    public function test_a_sent_post_can_be_deleted_from_a_network_that_allows_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-post-1', 'success' => true])]);
+
+        $data = $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$page->getKey()], 'body' => 'Now',
+        ])->json('data');
+        $target = $data['targets'][0]['id'];
+        $this->assertTrue($data['targets'][0]['can_delete']);
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson(self::ENDPOINT."/{$data['id']}/targets/{$target}/remote")
+            ->assertOk();
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_contains($r->url(), 'fb-post-1'));
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            SocialPostTarget::STATUS_REMOVED, SocialPostTarget::query()->find($target)->status,
+        ));
+    }
+
+    /** Instagram has no delete in its API: said so, nothing sent. */
+    public function test_delete_is_refused_in_words_where_the_network_has_none(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $ig = $this->connection($t, 'company', $t['company']->id, 'IG', 'ig-1', 'instagram_professional');
+
+        $target = $this->inTenant($t['org'], function () use ($t, $ig) {
+            $post = SocialPost::create(['body' => 'x', 'created_by' => $t['admin']->id]);
+            $target = SocialPostTarget::create(['social_post_id' => $post->id, 'social_connection_id' => $ig->id, 'status' => 'queued']);
+            $target->markSent('ig-media-1');
+
+            return $target;
+        });
+        Http::fake();
+
+        $this->signedInAs($t['admin'])
+            ->deleteJson(self::ENDPOINT."/{$target->social_post_id}/targets/{$target->id}/remote")
+            ->assertStatus(422)
+            ->assertJsonPath('errors.target.0', fn (string $m) => str_contains($m, 'does not let EzBizi delete'));
+        Http::assertNothingSent();
+    }
+
+    public function test_a_failed_account_can_be_dismissed(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $pin = $this->connection($t, 'company', $t['company']->id, 'Pins', 'pin-1', 'pinterest');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-post-1'])]);
+
+        $data = $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$pin->getKey(), $page->getKey()], 'body' => 'Words only',
+        ])->json('data');
+        $failed = collect($data['targets'])->firstWhere('status', 'failed')['id'];
+        $sent = collect($data['targets'])->firstWhere('status', 'sent')['id'];
+
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$data['id']}/targets/{$sent}/dismiss")->assertStatus(422);
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$data['id']}/targets/{$failed}/dismiss")->assertOk();
+
+        $this->inTenant($t['org'], fn () => $this->assertSame([$sent], SocialPostTarget::query()->pluck('id')->all()));
+    }
+
     private function assertNothingWasWritten(array $t): void
     {
         $this->inTenant($t['org'], function () {

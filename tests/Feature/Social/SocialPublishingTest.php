@@ -10,6 +10,7 @@ use App\Support\Social\Publishing\PinterestPublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
+use App\Support\Social\Publishing\StillProcessing;
 use App\Support\Social\Publishing\ThreadsPublisher;
 use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialMediaKind;
@@ -64,7 +65,7 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+            'api.pinterest.com/v5/pins' => Http::response(['id' => 'pin-9']),
         ]);
 
         $id = (new PinterestPublisher)->publish(
@@ -108,11 +109,11 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response([
-                'data'  => ['privacy_level_options' => ['PUBLIC_TO_EVERYONE', 'SELF_ONLY']],
+                'data' => ['privacy_level_options' => ['PUBLIC_TO_EVERYONE', 'SELF_ONLY']],
                 'error' => ['code' => 'ok'],
             ]),
             'open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
-                'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-7'],
+                'data' => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-7'],
                 'error' => ['code' => 'ok'],
             ]),
             'upload.tiktok.test/put' => Http::response('', 200),
@@ -250,15 +251,15 @@ class SocialPublishingTest extends TestCase
     {
         Http::fake([
             'open.tiktokapis.com/v2/post/publish/creator_info/query/' => Http::response([
-                'data'  => ['privacy_level_options' => ['SELF_ONLY']],
+                'data' => ['privacy_level_options' => ['SELF_ONLY']],
                 'error' => ['code' => 'ok'],
             ]),
             'open.tiktokapis.com/v2/post/publish/inbox/video/init/' => Http::response([
-                'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-1'],
+                'data' => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-1'],
                 'error' => ['code' => 'ok'],
             ]),
             'open.tiktokapis.com/v2/post/publish/video/init/' => Http::response([
-                'data'  => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-2'],
+                'data' => ['upload_url' => 'https://upload.tiktok.test/put', 'publish_id' => 'pub-2'],
                 'error' => ['code' => 'ok'],
             ]),
             'upload.tiktok.test/put' => Http::response('', 200),
@@ -349,7 +350,7 @@ class SocialPublishingTest extends TestCase
     {
         Http::fake([
             'graph.threads.net/*/threads_publish' => Http::response(['id' => 'thread-7']),
-            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+            'graph.threads.net/*/threads' => Http::response(['id' => 'container-1']),
         ]);
 
         $id = (new ThreadsPublisher)->publish(
@@ -371,7 +372,7 @@ class SocialPublishingTest extends TestCase
     {
         Http::fake([
             'graph.threads.net/*/threads_publish' => Http::response([]),
-            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+            'graph.threads.net/*/threads' => Http::response(['id' => 'container-1']),
         ]);
 
         $this->expectException(SocialPublishFailed::class);
@@ -396,6 +397,7 @@ class SocialPublishingTest extends TestCase
 
         $this->assertNotNull((new InstagramPublisher)->cannotSend(SocialMediaKind::Text));
     }
+
     public function test_instagram_hands_the_photo_over_at_a_signed_url_and_takes_it_back(): void
     {
         $this->reachable();
@@ -403,8 +405,8 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'graph.instagram.com/*/media_publish' => Http::response(['id' => 'ig-post-1']),
-            'graph.instagram.com/*/media'         => Http::response(['id' => 'container-1']),
-            'graph.instagram.com/*'               => Http::response(['status_code' => 'FINISHED']),
+            'graph.instagram.com/*/media' => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*' => Http::response(['status_code' => 'FINISHED']),
         ]);
 
         $id = (new InstagramPublisher(pollSeconds: 0))->publish(
@@ -442,8 +444,8 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'graph.instagram.com/*/media_publish' => Http::response(['id' => 'ig-reel-1']),
-            'graph.instagram.com/*/media'         => Http::response(['id' => 'container-1']),
-            'graph.instagram.com/*'               => Http::response(['status_code' => 'FINISHED']),
+            'graph.instagram.com/*/media' => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*' => Http::response(['status_code' => 'FINISHED']),
         ]);
 
         $id = (new InstagramPublisher(pollSeconds: 0))->publish(
@@ -466,6 +468,69 @@ class SocialPublishingTest extends TestCase
         ]);
     }
 
+    /**
+     * 2026-10-15: Rodrigo's reel failed at the 36-second ceiling. A video still
+     * ingesting is now handed on - StillProcessing, with the file still held so
+     * Instagram can keep fetching it - instead of failed.
+     */
+    /** Facebook answers a video's link relative ("/reel/…/", measured 2026-10-15). */
+    public function test_a_facebook_video_link_is_made_whole(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['permalink_url' => '/reel/1792223185059436/'])]);
+
+        $this->assertSame(
+            'https://www.facebook.com/reel/1792223185059436/',
+            (new FacebookPublisher)->permalink($this->connection(SocialProvider::FacebookPage, remoteId: 'page-1'), '1792223185059436'),
+        );
+    }
+
+    public function test_a_slow_instagram_video_is_handed_on_not_failed(): void
+    {
+        $this->reachable();
+        $file = $this->temp('mp4', 'MP4BYTES');
+
+        Http::fake([
+            'graph.instagram.com/*/media' => Http::response(['id' => 'container-1']),
+            'graph.instagram.com/*' => Http::response(['status_code' => 'IN_PROGRESS']),
+        ]);
+
+        try {
+            (new InstagramPublisher(pollSeconds: 0))->publish(
+                $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'),
+                new PostPayload(body: 'A long reel', filePath: $file),
+            );
+            $this->fail('a video still processing should have been handed on');
+        } catch (StillProcessing $e) {
+            $this->assertSame('container-1', $e->container);
+            $this->assertSame([MediaHandoff::pathFor($e->handle)], Storage::disk('local')->allFiles('social-handoff'));
+        }
+
+        Http::assertNotSent(fn ($r) => str_ends_with($r->url(), '/media_publish'));
+    }
+
+    public function test_finishing_publishes_only_once_instagram_is_done(): void
+    {
+        $connection = $this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1');
+
+        Http::fake(['graph.instagram.com/*' => Http::sequence()
+            ->push(['status_code' => 'IN_PROGRESS'])
+            ->push(['status_code' => 'FINISHED'])
+            ->push(['id' => 'ig-reel-9'])]);
+
+        $this->assertNull((new InstagramPublisher)->finish($connection, 'container-1'));
+        $this->assertSame('ig-reel-9', (new InstagramPublisher)->finish($connection, 'container-1'));
+    }
+
+    public function test_finishing_passes_on_instagrams_refusal(): void
+    {
+        Http::fake(['graph.instagram.com/*' => Http::response(['status_code' => 'ERROR', 'status' => 'Unsupported codec.'])]);
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessageMatches('/Unsupported codec/');
+
+        (new InstagramPublisher)->finish($this->connection(SocialProvider::InstagramProfessional, remoteId: 'ig-1'), 'container-1');
+    }
+
     public function test_instagram_passes_on_the_reason_the_media_was_rejected(): void
     {
         $this->reachable();
@@ -473,9 +538,9 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'graph.instagram.com/*/media' => Http::response(['id' => 'container-1']),
-            'graph.instagram.com/*'       => Http::response([
+            'graph.instagram.com/*' => Http::response([
                 'status_code' => 'ERROR',
-                'status'      => 'The video is longer than 15 minutes.',
+                'status' => 'The video is longer than 15 minutes.',
             ]),
         ]);
 
@@ -630,7 +695,7 @@ class SocialPublishingTest extends TestCase
 
         Http::fake([
             'graph.threads.net/*/threads_publish' => Http::response(['id' => 'thread-9']),
-            'graph.threads.net/*/threads'         => Http::response(['id' => 'container-1']),
+            'graph.threads.net/*/threads' => Http::response(['id' => 'container-1']),
         ]);
 
         $id = (new ThreadsPublisher(pollSeconds: 0))->publish(
@@ -730,12 +795,22 @@ class SocialPublishingTest extends TestCase
         return $path;
     }
 
+    /** Delete from the network (2026-10-15). */
+    public function test_pinterest_deletes_the_pin_it_published(): void
+    {
+        Http::fake();
+
+        (new PinterestPublisher)->deleteRemote($this->connection(SocialProvider::Pinterest, 'pin-account'), 'pin-9');
+
+        Http::assertSent(fn ($r) => $r->method() === 'DELETE' && str_ends_with($r->url(), '/v5/pins/pin-9'));
+    }
+
     private function connection(SocialProvider $provider, string $remoteId = 'remote-1'): SocialConnection
     {
         $connection = new SocialConnection;
         $connection->forceFill([
-            'provider'     => $provider->value,
-            'remote_id'    => $remoteId,
+            'provider' => $provider->value,
+            'remote_id' => $remoteId,
             'display_name' => 'Test account',
         ]);
         $connection->connect(['refresh_token' => 'r', 'access_token' => 'a-token']);

@@ -33,7 +33,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** Running saved reports is a weaker right and must not open this. */
     public function test_reports_view_alone_cannot_read_it(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $runner = $this->userWithRole($tenant, 'Runner', ['reports.view']);
 
@@ -45,7 +45,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** Somebody with no Reports permission at all gets nothing. */
     public function test_a_person_with_no_reports_permission_cannot_read_it(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $nobody = $this->userWithRole($tenant, 'Technician', ['jobs.view']);
 
@@ -57,7 +57,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** `reports.build` is the permission that already means organization-wide. */
     public function test_reports_build_can_read_it(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $builder = $this->userWithRole($tenant, 'Analyst', [
             'reports.build',
@@ -72,6 +72,26 @@ class ExperimentalCallReportApiTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Jose, 2026-10-15: people assigned to one company "should be able to see
+     * it regardless". The tab is the gate, and every branch's Workiz counts.
+     */
+    public function test_the_tab_alone_reads_it_from_one_branch(): void
+    {
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->connected($tenant);
+
+        $branchOnly = $this->userWithRole($tenant, 'Lead Manager', ['reports.experimental.view'], onlyAt: $tenant['franchise']);
+
+        $report = $this->signedInAs($branchOnly)
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json();
+        $this->assertSame(['Nationwide', 'New Jersey'], collect($report['workiz_accounts'])->pluck('name')->sort()->values()->all());
+
+        $this->assertNotSame(403, $this->signedInAs($branchOnly)->get('/api/v1/reports/experimental/calls/rec-9/recording')->status());
+    }
+
     // ── an absent vendor is a state, not an empty report ─────────
 
     /**
@@ -80,7 +100,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_a_missing_ringcentral_reads_as_not_connected(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->notConnected();
 
@@ -98,7 +118,7 @@ class ExperimentalCallReportApiTest extends TestCase
 
     public function test_it_returns_the_day_per_person(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->connected($tenant);
 
@@ -117,7 +137,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** Workiz's own scores per person, beside ours (Jose, 2026-10-12). */
     public function test_workiz_scores_are_summed_per_person_for_the_dates(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
@@ -151,7 +171,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_the_timezone_the_day_was_cut_in_is_in_the_payload(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->connected($tenant);
 
@@ -165,7 +185,7 @@ class ExperimentalCallReportApiTest extends TestCase
 
     public function test_an_unparseable_timezone_is_refused_rather_than_guessed(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->signedInAs($tenant['admin'])
             ->getJson('/api/v1/reports/experimental/calls?timezone=Pacific/Nowhere')
@@ -179,7 +199,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_it_names_the_workiz_accounts_it_covers(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
 
         $this->connected($tenant);
 
@@ -219,7 +239,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_the_calls_behind_the_numbers_are_in_the_payload(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $calls = $this->signedInAs($tenant['admin'])
@@ -242,7 +262,7 @@ class ExperimentalCallReportApiTest extends TestCase
 
     public function test_a_recording_needs_the_same_permission_as_the_report(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $runner = $this->userWithRole($tenant, 'Runner', ['reports.view']);
@@ -266,7 +286,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_a_recording_refused_for_permission_says_where_the_fix_is(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         Http::fake([
@@ -287,7 +307,7 @@ class ExperimentalCallReportApiTest extends TestCase
 
     public function test_a_recording_that_loads_comes_back_as_audio(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         Http::fake([
@@ -318,7 +338,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_jobs_come_from_the_synced_copy_and_workiz_is_not_called(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
@@ -340,7 +360,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** A week runs Monday to Sunday around the day asked for. */
     public function test_a_week_is_asked_of_ringcentral_monday_to_sunday(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
@@ -364,7 +384,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** Any range, or one date, chosen by hand - and not more than a quarter. */
     public function test_a_custom_range_is_read_from_its_first_day_to_its_last(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
@@ -387,7 +407,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** A dispatcher's tag is set by hand and comes back on their row. */
     public function test_a_dispatcher_tag_is_set_and_shown(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $this->signedInAs($tenant['admin'])
@@ -415,7 +435,7 @@ class ExperimentalCallReportApiTest extends TestCase
      */
     public function test_convert_to_booked_marks_the_call_and_records_who(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
         $before = $this->signedInAs($tenant['admin'])
@@ -441,7 +461,7 @@ class ExperimentalCallReportApiTest extends TestCase
     /** Both writes sit behind the pane's own gate. */
     public function test_tag_and_convert_need_the_experimental_tab(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $builder = $this->userWithRole($tenant, 'Analyst', ['reports.view', 'reports.build']);
 
         $this->signedInAs($builder)

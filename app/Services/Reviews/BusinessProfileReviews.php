@@ -67,6 +67,11 @@ class BusinessProfileReviews
         $created = 0;
         $updated = 0;
 
+        // The first import is the backlog, not news: nothing is announced until
+        // the connection already holds its reviews (A-1's 13,000 would otherwise
+        // each raise review.received - "no backlogged notifications").
+        $announce = Review::query()->where('connection_id', $connection->getKey())->exists();
+
         foreach ($this->locations($token, $account) as $location) {
             $pageToken = null;
             $pages     = 0;
@@ -81,7 +86,7 @@ class BusinessProfileReviews
 
                     if ($result['created']) {
                         $created++;
-                        $this->events->emitAfterCommit('review.received', $result['review'], [
+                        $announce && $this->events->emitAfterCommit('review.received', $result['review'], [
                             'after' => $result['review']->only([
                                 'rating', 'reviewer_name', 'location_name', 'reviewed_at',
                             ]),
@@ -168,7 +173,11 @@ class BusinessProfileReviews
             try {
                 $response = Http::withToken($token)
                     ->timeout(self::TIMEOUT)
-                    ->get(BusinessProfileOAuth::LEGACY_V4."/accounts/{$account}/locations", array_filter([
+                    // v1 Business Information, not v4: Google retired v4's location
+                    // list (404 on 0.0.0441's first real sync, 2026-10-15). Reviews
+                    // themselves are still v4, under accounts/A/locations/L.
+                    ->get('https://mybusinessbusinessinformation.googleapis.com/v1/accounts/'.$account.'/locations', array_filter([
+                        'readMask'  => 'name',
                         'pageSize'  => 100,
                         'pageToken' => $pageToken,
                     ], fn ($v) => $v !== null));
@@ -281,9 +290,35 @@ class BusinessProfileReviews
             }
 
             $review->save();
+            $this->keepGooglesReply($review, (array) ($raw['reviewReply'] ?? []));
 
             return ['review' => $review, 'created' => $created];
         });
+    }
+
+    /**
+     * The answer Google already shows, so a review answered on Google (or by
+     * A1 Leads) is not counted Unanswered. Never over a reply drafted or
+     * published here: those are this organization's own words.
+     *
+     * @param  array<string, mixed>  $reply
+     */
+    private function keepGooglesReply(Review $review, array $reply): void
+    {
+        $body = trim((string) ($reply['comment'] ?? ''));
+        $mine = $review->reply()->first();
+
+        if ($body === '' || ($mine !== null && $mine->drafted_by !== ReviewReply::BY_GOOGLE)) {
+            return;
+        }
+
+        ($mine ?? new ReviewReply(['organization_id' => $review->organization_id, 'review_id' => $review->getKey()]))
+            ->fill([
+                'body' => $body,
+                'status' => ReviewReply::STATUS_PUBLISHED,
+                'drafted_by' => ReviewReply::BY_GOOGLE,
+                'published_at' => isset($reply['updateTime']) ? Carbon::parse((string) $reply['updateTime']) : now(),
+            ])->save();
     }
 
     /**

@@ -95,6 +95,9 @@ function add_action($hook, $cb, $p = 10, $a = 1) { $GLOBALS['actions'][$hook][] 
 function do_action($hook, ...$args) {
     foreach ($GLOBALS['actions'][$hook] ?? [] as $cb) { $cb(...$args); }
 }
+// The checks below read each widget's script from its shortcode's own output,
+// which is what a render after the footer gives (ezbizi_late_script).
+function did_action($hook) { return $GLOBALS['did_action'][$hook] ?? 1; }
 function wp_schedule_single_event($ts, $hook) { $GLOBALS['scheduled'][] = $hook; return true; }
 function wp_clear_scheduled_hook($hook) { return true; }
 
@@ -1893,10 +1896,17 @@ check('light by default', str_contains($faces, 'color:#fff}'), false);
 check('the review is told to EzBizi', str_contains($faces, "/api/v1/web/review'"), true);
 check('with the personal link when the page has one', str_contains($faces, "get('c')") && str_contains($faces, 'if(c)v.c=c'), true);
 // Jose, 2026-10-13: the green face goes straight to Google, with no step between.
-check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});location.href=google;return;}"), true);
+check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});track('google');location.href=google;return;}"), true);
 check('to the review link', str_contains($faces, 'google="https:\/\/g.page\/r\/a1chimney\/review"'), true);
 check('and says so', str_contains($faces, 'Tap to share it on Google'), true);
 check('the review is told even as the page leaves', str_contains($faces, 'keepalive:true'), true);
+// Jose, 2026-10-15: the link's activity, for the Customer Experience report.
+check('the link reports what was done with it', str_contains($faces, "api+'/api/v1/web/review-link'"), true);
+check('only when the page came by a link', str_contains($faces, 'function track(k){if(!c)return;'), true);
+check('opening it', str_contains($faces, "track('opened');"), true);
+check('which face', str_contains($faces, 'track(go);'), true);
+check('going on to Google', str_contains($faces, "track('google');location.href=google"), true);
+check('and a sent complaint', str_contains($faces, "track('submitted');show('sent')"), true);
 check('and no membership offer on the page (Jose, 2026-10-08: it is a text of its own)', str_contains($faces, "'/api/v1/web/membership/join'"), false);
 check('without one it asks, and can be skipped', str_contains($faces, 'data-step="ask"') && str_contains($faces, 'ezbizi-rf-skip'), true);
 check('a sad face is told too, with what happened', str_contains($faces, "tell({rating:'sad'"), true);
@@ -2376,6 +2386,24 @@ check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?f
 // and the social title templates can be corrected like the search ones.
 check('the SEO Helper carries the X title', ezbizi_seo_keys()['twitter_title'] ?? null, '_yoast_wpseo_twitter-title');
 check('and the social title template for pages', ezbizi_seo_site_fields()['social_page_title_template'] ?? null, 'social-title-page');
+
+// 2026-10-15: on a-1chimney.com/booking the page's content filters turned the
+// widget script's && into &#038;&#038; and the ZIP step did nothing. Before the
+// footer, the script waits for it instead of riding inside the shortcode's HTML.
+$GLOBALS['did_action']['wp_footer'] = 0;
+$GLOBALS['ezbizi_late_js'] = [];
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+$early = $GLOBALS['sc']['ezbizi_form']([]);
+check('before the footer a form carries no script', str_contains($early, '<script'), false);
+$GLOBALS['did_action']['wp_footer'] = 1;
+ob_start();
+do_action('wp_footer');
+$footer = (string) ob_get_clean();
+preg_match('/id="(ezbizi-form-[0-9]+)"/', $early, $late);
+check('and the footer prints it, for that form', str_contains($footer, '<script') && str_contains($footer, $late[1] ?? 'x'), true);
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"

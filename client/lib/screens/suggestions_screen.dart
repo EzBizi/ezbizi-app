@@ -378,8 +378,9 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The title is the page header now (UI queue 99); the privacy line
+        // stays here, where the writing happens.
         const PanelHeader(
-          title: 'Suggestions',
           note:
               'Tell EzBizi what the software should do differently. Only you '
               'and EzBizi staff can read what you write here — nobody at '
@@ -447,6 +448,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
           child: SizedBox(
             width: double.infinity,
             child: FilledButton(
+              key: const ValueKey('tour-suggestions-new'),
               onPressed: _startCompose,
               child: const Text('Write a suggestion'),
             ),
@@ -835,6 +837,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: TextField(
+              key: const ValueKey('tour-suggestions-write'),
               controller: controller,
               enabled: !sending,
               autofocus: autofocus,
@@ -848,6 +851,9 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                 isCollapsed: true,
                 filled: false,
                 border: InputBorder.none,
+                // A label that stays once you type (UI queue 99).
+                labelText: 'Your suggestion',
+                floatingLabelBehavior: FloatingLabelBehavior.always,
                 hintText: 'What should EzBizi do differently?',
                 counterText: '',
               ),
@@ -879,6 +885,7 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                       const SizedBox(width: 8),
                     ],
                     FilledButton(
+                      key: const ValueKey('tour-suggestions-send'),
                       onPressed: (!sending && hasText) ? onSend : null,
                       child: sending
                           ? SizedBox(

@@ -2316,7 +2316,12 @@ class _LeadThreadState extends State<LeadThread> {
                   runSpacing: 2,
                   children: [
                     Text(
-                      '$who called · ${formatDuration(ms as num?)}',
+                      // An unanswered RingCentral call says what happened
+                      // ("Missed call", "Voicemail", "Possible spam") rather
+                      // than 0:00 (Jose, 2026-10-16).
+                      ms == null && (c['text'] as String? ?? '').isNotEmpty
+                          ? '$who called · ${c['text']}'
+                          : '$who called · ${formatDuration(ms as num?)}',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -2522,6 +2527,7 @@ String sourceWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
   'whatsapp' => 'WhatsApp',
   'workiz' => 'Workiz',
+  'ringcentral' => 'RingCentral',
   _ => 'Google Ads',
 };
 

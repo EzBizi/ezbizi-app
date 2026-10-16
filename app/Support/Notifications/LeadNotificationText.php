@@ -89,6 +89,7 @@ final class LeadNotificationText
                 default => 'Workiz',
             },
             'whatsapp' => 'WhatsApp',
+            'ringcentral' => 'RingCentral Call',
             // A source added later still says something true rather than
             // throwing inside a queue worker; its owner adds its line here.
             default => ucwords(str_replace('_', ' ', $source)),

@@ -26,14 +26,12 @@ use Symfony\Component\HttpFoundation\Response as Status;
  * the question. It reads two outside vendors and nothing in EzBizi's database,
  * which is why it has no scope rules: there is nothing tenant-shaped to scope.
  *
- * ── It is gated on `reports.build`, not on the module ────────────
+ * ── It is gated on its tab, reports.experimental.view ────────────
  *
- * The payload names every member of staff and how many calls they took. That
- * is the disclosure this module already got wrong once by reasoning about
- * where a record lives instead of who may see it. `reports.build` is the
- * permission that already means "may see across the whole organization", so it
- * is the honest gate — running a saved report is a weaker right and must not
- * open this.
+ * It names every member of staff and how many calls they took, across every
+ * branch. It once also asked for organization-level reach, which refused
+ * people assigned to one company; Jose, 2026-10-15: they "should be able to
+ * see it regardless". Who holds the tab is decided in Roles.
  *
  * ── A DAY IS A TIMEZONE, and a wrong one moves every number ──────
  *
@@ -115,7 +113,6 @@ class ExperimentalCallReportController extends Controller
      */
     public function recording(Request $request, string $recording, RingCentralCallLog $calls): mixed
     {
-        $this->authorize('createOnOrganization', SavedReport::class);
 
         try {
             $audio = $calls->recording($recording);
@@ -138,7 +135,6 @@ class ExperimentalCallReportController extends Controller
         // Organization-wide by nature: it names everyone and belongs to no
         // company or franchise, so this is the organization gate, not the
         // place-scoped one.
-        $this->authorize('createOnOrganization', SavedReport::class);
 
         $validated = $request->validate([
             'day' => ['nullable', 'date_format:Y-m-d'],
@@ -199,14 +195,16 @@ class ExperimentalCallReportController extends Controller
             ->get();
 
         $jobs = [];
-        $accounts = $workiz->accounts($request->user());
+        // Every account, whoever reads: the tab permission is the gate (Jose,
+        // 2026-10-15), not the reader's branch.
+        $accounts = $workiz->allAccounts();
         $failed = [];
 
         $syncedAt = null;
 
-        if ($workiz->configured($request->user())) {
+        if ($accounts !== []) {
             // The synced copy, not Workiz live - see WorkizJobs::stored().
-            $stored = $workiz->stored($request->user(), $start->subDays(self::LOOKBACK_DAYS)->toDateString());
+            $stored = $workiz->storedAll($start->subDays(self::LOOKBACK_DAYS)->toDateString());
             $jobs = $stored['jobs'];
             $syncedAt = $stored['synced_at'];
         }
@@ -325,6 +323,7 @@ class ExperimentalCallReportController extends Controller
      */
     public function tag(Request $request): JsonResponse
     {
+        // Writes stay organization-wide (reports.build); reading needs only the tab.
         $this->authorize('createOnOrganization', SavedReport::class);
 
         $data = $request->validate([
@@ -353,6 +352,7 @@ class ExperimentalCallReportController extends Controller
      */
     public function convert(Request $request, string $call): JsonResponse
     {
+        // Writes stay organization-wide (reports.build); reading needs only the tab.
         $this->authorize('createOnOrganization', SavedReport::class);
 
         $data = $request->validate([

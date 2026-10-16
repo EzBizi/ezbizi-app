@@ -40,7 +40,7 @@ class LabelReportCallsTest extends TestCase
 
     public function test_it_does_nothing_while_switched_off(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([$this->rcCall('rc-1', 'A1 - Existing Client')]);
         $asked = $this->fakeTaggers();
 
@@ -55,7 +55,7 @@ class LabelReportCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true]);
 
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([
             $this->rcCall('rc-existing', 'A1 - Existing Client'),
             $this->rcCall('rc-new', 'A1 - New Client'),
@@ -173,7 +173,7 @@ class LabelReportCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true, 'services.grok_cli.home' => '/var/lib/ezbizi-grok']);
 
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([$this->rcCall('rc-new', 'A1 - New Client')]);
         $this->transcript($tenant, 'rc-new', 'Thank you for calling. Hi, how much is a sweep? It is 199.');
         $this->fakeTaggers();
@@ -208,7 +208,7 @@ class LabelReportCallsTest extends TestCase
         config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true,
             'services.grok_cli.home' => '/var/lib/ezbizi-grok', 'services.grok_cli.concurrency' => 2]);
 
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([]);
         foreach (['a', 'b', 'c', 'd', 'e'] as $id) {
             $this->transcript($tenant, "rc-$id", 'Hello. It is 199.');
@@ -238,7 +238,7 @@ class LabelReportCallsTest extends TestCase
         config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true,
             'services.grok_cli.home' => '/var/lib/ezbizi-grok', 'services.grok_cli.since' => '2026-10-07']);
 
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([$this->rcCall('rc-new', 'A1 - New Client')]);
         $this->transcript($tenant, 'rc-new', 'Hello. It is 199.');
         $asked = $this->fakeTaggers();
@@ -264,7 +264,7 @@ class LabelReportCallsTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-06 15:00', 'America/New_York'));
         config(['app.timezone' => 'America/New_York', 'experimental_reports.tagging.enabled' => true]);
 
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([
             $this->rcCall('rc-other', 'A1 - Existing Client'),
             $this->rcCall('rc-eta', 'A1 - Existing Client'),
@@ -299,7 +299,7 @@ class LabelReportCallsTest extends TestCase
     public function test_the_report_carries_each_providers_label(): void
     {
         config(['app.timezone' => 'America/New_York']);
-        $tenant = $this->provisionTenant('Alpha');
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->ringCentral([$this->rcCall('rc-1', 'A1 - New Client', '2026-09-14T17:00:00Z')]);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {

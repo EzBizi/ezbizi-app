@@ -4,7 +4,9 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/api_key_connect_form.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
+import '../email/mailbox_panels.dart';
 import 'integration_provider_screen.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
@@ -72,6 +74,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   bool _loading = true;
   String? _error;
 
+  /// Google Workspace domains in this view (Jose, 2026-10-15: "On
+  /// Integrations we are also missing Google Workspace connections").
+  ///
+  /// Not a SocialProvider row: a domain is bound by GoogleWorkspaceAuthController
+  /// and read from `GET /email/workspace`, which already answers for the
+  /// current view (a sibling company's domain is never in it). This screen
+  /// lists what that endpoint lists and connects and disconnects through the
+  /// same endpoints Email › Settings uses — no second flow.
+  List<IntegrationConnection> _workspace = const [];
+
+  /// The server's `can_connect`: false once this view has a domain.
+  bool _workspaceCanConnect = false;
+
   /// Which provider's pane is open in place of the grid, by catalogue value.
   ///
   /// Jose, 2026-09-23: *"Every Single Integration Card violates the containment
@@ -107,10 +122,25 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       'include': 'data_sources',
     });
 
+    // Only for somebody the endpoint answers; anybody else would be told
+    // "not connected" about a domain they simply cannot read.
+    final workspace = _mayManageWorkspace
+        ? await widget.api.get('/email/workspace')
+        : null;
+
     if (!mounted) return;
 
     setState(() {
       _loading = false;
+
+      final data = workspace != null && workspace.ok
+          ? workspace.body['data'] as Map<String, dynamic>?
+          : null;
+      _workspaceCanConnect = data?['can_connect'] == true;
+      _workspace = ((data?['connections'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(IntegrationConnection.fromWorkspaceJson)
+          .toList();
 
       if (!response.ok) {
         _error = response.reason;
@@ -173,6 +203,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'mailing' => 'Marketing › Newsletter',
     'social' => 'Marketing › Social Media Management › Accounts',
     'leads' => 'Leads',
+    'email' => 'Email › Settings',
     // Reporting connects HERE — its pane carries the form instead.
     _ => null,
   };
@@ -198,14 +229,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     final byProvider = <String, List<IntegrationConnection>>{};
-    for (final c in _connections) {
+    for (final c in [..._connections, ..._workspace]) {
       byProvider.putIfAbsent(c.provider, () => []).add(c);
     }
 
     // Everything connected, plus everything offered. A provider with rows but
     // no catalogue entry still gets a card: the connection is the stronger
     // evidence that it exists.
-    final providers = {...byProvider.keys, ..._catalogue.keys};
+    final providers = {
+      ...byProvider.keys,
+      ..._catalogue.keys,
+      if (_mayManageWorkspace) 'google_workspace',
+    };
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
     final open = _open;
@@ -222,6 +257,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           'mailing' => 'newsletter',
           'social' => 'marketing',
           'leads' => 'leads',
+          'email' => 'email',
           _ => null,
         },
         connectForms: _formsFor(open),
@@ -229,12 +265,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         startPath: _catalogue[open]?['start_path'] as String?,
         mayConnect: _mayConnectProvider(open),
         canName: _familyOf(open) == 'reporting',
+        onDisconnect: open == 'google_workspace' && _mayManageWorkspace
+            ? _disconnectWorkspace
+            : null,
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
     }
 
     return ListView(
+      key: const ValueKey('tour-integrations-list'),
       padding: const EdgeInsets.all(16),
       children: [
         if (_error != null) ...[
@@ -253,6 +293,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'sent through the company\'s own account, so one has to be '
               'connected before anything can go out.',
         ),
+        if (_mayManageWorkspace) ...[
+          const SizedBox(height: 12),
+          _family(
+            context,
+            title: 'Email',
+            icon: Icons.inbox_outlined,
+            family: 'email',
+            providers: providers,
+            byProvider: byProvider,
+            empty: 'No Google Workspace connected in $_viewName.',
+          ),
+        ],
         const SizedBox(height: 12),
         _family(
           context,
@@ -322,6 +374,47 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// The server permission is deliberately left alone. It is an authorisation
   /// floor and `reports.build` is the right one; what was wrong is the OFFER,
   /// and offering is this screen's job.
+  /// What Email › Settings needs to show and change a Workspace domain: the
+  /// route's `email.settings.view` and the controller's `email.edit`.
+  bool get _mayManageWorkspace =>
+      _mayConnect('email.settings.view') && _mayConnect('email.edit');
+
+  /// Connect, through Email's own panel and endpoints.
+  List<Widget> _workspaceForm() => [
+    if (_workspaceCanConnect)
+      Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton(
+          key: const ValueKey('connect:google_workspace'),
+          onPressed: () async {
+            final connected = await showSidePanel<bool>(
+              context,
+              builder: (_) => ConnectWorkspacePanel(api: widget.api),
+            );
+            if (connected == true) await _load();
+          },
+          child: const Text('Connect Workspace'),
+        ),
+      )
+    else
+      DashboardNote(
+        '$_viewName already has a Google Workspace connected. Disconnect it '
+        'above to connect a different domain.',
+      ),
+  ];
+
+  /// Disconnect, through the same `DELETE /email/workspace` Email uses.
+  /// Answers the server's refusal, or null when it went.
+  Future<String?> _disconnectWorkspace(IntegrationConnection row) async {
+    final response = await widget.api.delete('/email/workspace', {
+      'scope_type': row.scopeType,
+      'scope_id': row.scopeId,
+    });
+    if (!response.ok) return response.reason;
+    await _load();
+    return null;
+  }
+
   bool get _maySeeExperimental =>
       _mayConnect('reports.build') && _mayConnect('reports.experimental.view');
 
@@ -334,6 +427,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   List<Widget> Function()? _formsFor(String provider) => switch (provider) {
     'airtable' when _mayConnect('profit_loss.view') => _airtableForm,
     'workiz' when _maySeeExperimental => _workizForm,
+    'ringcentral' when _maySeeExperimental => _ringCentralForm,
+    'google_workspace' when _mayManageWorkspace => _workspaceForm,
     _ => null,
   };
 
@@ -394,6 +489,31 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           'API secret',
           'Only for a v1 token: the secret beside it',
         ),
+      ],
+      onConnected: _load,
+    ),
+  ];
+
+  /// Jose, 2026-10-15: "Shouldn't ring central also show here on
+  /// Integrations?" The organization's own RingCentral app, JWT flow — the
+  /// same three values the call report read from the server's env.
+  List<Widget> _ringCentralForm() => [
+    Text('RingCentral', style: Theme.of(context).textTheme.titleSmall),
+    const SizedBox(height: 4),
+    Text(
+      'Create a private server app in the RingCentral Developer Console with '
+      'the Read Call Log permission, then paste its credentials and a JWT.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/ringcentral',
+      submitLabel: 'Connect account',
+      fields: const [
+        ('client_id', 'Client ID', 'From the app\'s Credentials'),
+        ('client_secret', 'Client secret', 'Beside the client ID'),
+        ('jwt', 'JWT', 'From Credentials › JWT, for this app'),
       ],
       onConnected: _load,
     ),
@@ -472,6 +592,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   String _label(String provider) =>
+      (provider == 'google_workspace' ? 'Google Workspace' : null) ??
       (_catalogue[provider]?['label'] as String?) ??
       // A provider with rows but no catalogue entry — the connection's own
       // label is better than the raw key, which is what this fell back to
@@ -510,6 +631,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'thumbtack': 'Leads and messages from Thumbtack.',
     'workiz': 'Jobs and calls from Workiz, for reports.',
     'airtable': 'A base read by Profit & Loss.',
+    'ringcentral': 'Calls from RingCentral, for reports.',
+    'google_workspace': 'Shared inboxes from your Google Workspace domain.',
   };
 
   /// What a card with nothing connected offers: Connect where connecting can
@@ -537,9 +660,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     }
     // Reporting is gated by its own forms (see [_formsFor]); the rest by the
     // catalogue's permission.
-    final may = _familyOf(provider) == 'reporting'
-        ? _formsFor(provider) != null
-        : _mayConnectProvider(provider);
+    // Reporting and Email are gated by their own forms (see [_formsFor]).
+    final may = switch (_familyOf(provider)) {
+      'reporting' || 'email' => _formsFor(provider) != null,
+      _ => _mayConnectProvider(provider),
+    };
     if (!may) {
       return Text(
         'Ask an administrator to connect it.',

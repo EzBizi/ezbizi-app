@@ -100,6 +100,21 @@ class HelpVideosTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('module');
     }
 
+    /** UI queue 99: Settings, Suggestions, Development and Your account have videos too. */
+    public function test_the_shells_own_pages_take_a_video_and_are_listed(): void
+    {
+        $this->asStaff()->putJson('/api/v1/staff/help-videos/account', ['url' => 'https://ezbizi.com/account.mp4'])
+            ->assertOk();
+
+        $this->asTenant()->getJson('/api/v1/help/videos')
+            ->assertJsonPath('data.account.url', 'https://ezbizi.com/account.mp4');
+
+        $rows = collect($this->asStaff()->getJson('/api/v1/staff/help-videos')->json('data'))->keyBy('module_key');
+        $this->assertSame('Your account', $rows['account']['label']);
+        $this->assertNull($rows['settings']['video']);
+        $this->assertNull($rows['tasks']['video']);
+    }
+
     public function test_removing_a_video_takes_the_button_away(): void
     {
         PlatformHelpVideo::create(['module_key' => 'scheduling', 'url' => 'https://ezbizi.com/a.mp4']);

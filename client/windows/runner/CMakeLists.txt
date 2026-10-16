@@ -13,6 +13,7 @@ add_executable(${BINARY_NAME} WIN32
   "monitoring_screenshot.cpp"
   "monitoring_input.cpp"
   "utils.cpp"
+  "watchdog.cpp"
   "win32_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"

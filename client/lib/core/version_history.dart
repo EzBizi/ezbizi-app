@@ -14,6 +14,88 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0443',
+      date: '16 Oct 2026',
+      items: [
+        'Leads: RC Calls nobody answered are tagged Possible spam (hung up in the phone menu), Missed call or Voicemail, and the call card says which instead of 0:00. Possible spam calls no longer raise a missed-call alert.',
+        'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
+        'Marketing › Social: your choice of List or Board for posts is now remembered.',
+        'Customer Experience: Reviews and Business Profile name the connected Google account but no longer offer Disconnect. Change it in Settings › Integrations.',
+        'Customer Experience: reviews already answered on Google no longer show as Unanswered.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0442',
+      date: '15 Oct 2026',
+      items: [
+        'Leads: a direct call from someone who already has a Local Services lead stays on that lead under RC Calls instead of being withdrawn as a duplicate.',
+        'Leads: RingCentral calls, Google calls and Google bookings are left out of All and Unreplied, and stay in their own tabs. An answered RingCentral call no longer raises a reply notification. A missed one can notify you through a rule on Missed call.',
+        'Leads: RC Call tags are RingCentral orange.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0441',
+      date: '15 Oct 2026',
+      items: [
+        'Scheduling: the availability screen stays just as current while using far less data. It downloads again only when something changed, and checks less often while the window is in the background.',
+        'EzBizi now reports its own errors, crashes and freezes so we can fix them faster. It sends only what went wrong and where, never what you typed.',
+        'Settings › Integrations: connect your RingCentral account on its own card. Reports’ call reports read it.',
+        'Settings › Integrations: your Google Workspace domains now appear under Email.',
+        'Leads: calls made straight to your own phone lines (from the website, the Google profile or ads) now appear under RC Calls, one lead per caller, with the recording and transcript. A Google Local Services call never appears twice.',
+        'Settings: the Settings tab now lists every module\'s own settings, so each one can be opened from one place. Settings, Suggestions, Development and Your account get the same header as other modules, with a Walkthrough button.',
+        'Settings › Organization: moving a company and renaming an integration now open in a side panel.',
+        'Customer Experience: A-1 Chimney Google reviews and listings now sync on their own: listings and standing every morning, reviews every 6 hours.',
+        'Marketing › Social: the Dashboard has an All tile. A post shows Posting N of M with a progress bar while it goes out, and Partly posted when some accounts took it and others refused.',
+        'Marketing › Social: a post goes out to every ticked account that can take it and names the ones that cannot. Long Instagram videos no longer fail while Instagram is still processing them, and Facebook video posts now link to the live post.',
+        'Marketing › Social: a scheduled post can be edited, rescheduled or cancelled, a failed account can be dismissed, and a sent post can be deleted from Facebook, LinkedIn, X, Pinterest and Bluesky without leaving EzBizi. Posts can be shown as a List or a Board.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0440',
+      date: '15 Oct 2026',
+      items: [
+        'Customer Experience: a new Review links tab shows, by branch and by person, how many review texts went out, how many were opened, whether the customer picked the green or the red face, and whether they went on to Google or filed a complaint. Texts sent count back to 8 October; the rest count from this release.',
+        'Switch view: companies that are switched off, and their places, no longer appear in the picker. Anyone viewing one is moved to the whole organization. Settings › Organization still lists them so they can be switched back on.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0439',
+      date: '15 Oct 2026',
+      items: [
+        'Automations: a rule that sends a notification can mark it as urgent. Urgent notifications show a red icon in the notification list.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0438',
+      date: '15 Oct 2026',
+      items: [
+        'Reports: Performance and Scoring open for anyone with the tab, whatever company or branch they are assigned to, and show every branch\'s Workiz jobs.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0437',
+      date: '15 Oct 2026',
+      items: [
+        'Roles & permissions: Leads has a new tick, Manage sources (connect accounts). Only roles with it see the Manage button in Leads and can connect Google Ads or Thumbtack. Every role that could connect sources before keeps it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0436',
+      date: '14 Oct 2026',
+      items: [
+        'Reports: Scoring now counts each person\'s conversion rate (the same one Performance shows) and the AI\'s overall call score alongside the seven call checks, each weighted. The default weights are conversion 50%, AI call score 15% and 5% for each check.',
+        'Reports: a Weights button on Scoring sets how much each part counts, with a slider per part. Save waits until they add up to 100, and Back to the defaults restores them. It needs the Set Scoring\'s weights permission, which Administrators have.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0435',
+      date: '14 Oct 2026',
+      items: [
+        'Scheduling: in the web app, Routing draws each road route along the right roads again; it had gone off the map.',
+        'Field: in the web app, the Map’s drive line to a job follows the roads again instead of crossing the globe.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0434',
       date: '14 Oct 2026',
       items: [

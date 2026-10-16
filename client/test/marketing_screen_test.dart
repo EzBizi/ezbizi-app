@@ -1745,6 +1745,58 @@ void main() {
       expect(find.byKey(const ValueKey('social-post-s1')), findsOneWidget);
     });
 
+    // UI queue 100: an All tile, and a post some accounts took and one
+    // refused says so rather than reading as a plain failure.
+    testWidgets('All counts every tile, and a part-sent post is Partly '
+        'posted', (tester) async {
+      final sent = _landed('sent');
+      final failed = _landed('failed', failure: 'No boards.');
+      final partly = {
+        ...sent,
+        'id': 'p1',
+        'body': 'Post p1',
+        'targets': [
+          ...(sent['targets'] as List<dynamic>),
+          ...(failed['targets'] as List<dynamic>),
+        ],
+      };
+      final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'GET' &&
+            request.url.path.endsWith('/social/posts')) {
+          return _json({
+            'data': [partly],
+            'meta': {
+              'tiles': {'scheduled': 1, 'sent': 37, 'failed': 1},
+            },
+          });
+        }
+
+        return inner(request);
+      });
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('social-posts-tile-all')),
+          matching: find.text('39'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Partly posted · 1 of 2'), findsOneWidget);
+
+      // Board puts it under Posted, not Failed.
+      await tester.tap(find.text('Board'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('social-board-posted')),
+          matching: find.byKey(const ValueKey('social-post-p1')),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('Retry on a failed row sends that account again', (
       tester,
     ) async {
@@ -1771,6 +1823,87 @@ void main() {
 
       expect(retried, isTrue);
       expect(find.text('Posting… 0 of 1 done'), findsOneWidget);
+    });
+
+    // UI queue 100: a post's panel deletes from a network that allows it,
+    // says so for one that does not, and cancels a post still waiting.
+    testWidgets('the post panel deletes from the network, and cancels a '
+        'scheduled post', (tester) async {
+      final calls = <String>[];
+      final posted = _landed('sent', url: 'https://pin.example/1');
+      final both = {
+        ...posted,
+        'targets': [
+          // The server says which can be taken down; the screen asks no list.
+          {
+            ...((posted['targets'] as List<dynamic>).single
+                as Map<String, Object?>),
+            'can_delete': true,
+          },
+          {
+            'id': 'target-2',
+            'account': '@everdoors',
+            'provider': 'instagram_professional',
+            'provider_label': 'Instagram',
+            'status': 'sent',
+            'can_delete': false,
+          },
+        ],
+      };
+      final later = {
+        ..._landed('scheduled', scheduledFor: '2030-01-02 09:00'),
+        'id': 'post-2',
+      };
+      final inner = _handler(
+        canEdit: true,
+        connections: const [_pinterestBoard],
+        postsFor: () => [both, later],
+      );
+
+      await _pumpSocial(tester, (request) async {
+        if (request.method == 'DELETE') {
+          calls.add(request.url.path);
+          return _json({'data': <String, Object?>{}});
+        }
+        return inner(request);
+      });
+
+      await tester.tap(find.byKey(const ValueKey('social-post-post-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Instagram does not let EzBizi delete posts. Delete it in '
+          'Instagram itself.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('social-target-delete-target-2')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('social-post-cancel')), findsNothing);
+
+      await tester.tap(
+        find.byKey(const ValueKey('social-target-delete-target-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-confirm-yes')));
+      await tester.pumpAndSettle();
+
+      expect(calls, [
+        endsWith('/social/posts/post-1/targets/target-1/remote'),
+      ]);
+
+      await tester.tap(find.byKey(const ValueKey('social-post-post-2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('social-post-edit')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('social-post-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('social-confirm-yes')));
+      await tester.pumpAndSettle();
+
+      expect(calls.last, endsWith('/social/posts/post-2'));
     });
   });
 

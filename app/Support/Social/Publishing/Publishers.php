@@ -45,6 +45,8 @@ final class Publishers
             SocialProvider::Pinterest => new PinterestPublisher,
             SocialProvider::LinkedIn  => new LinkedInPublisher,
             SocialProvider::YouTube   => new YouTubePublisher,
+            // Rodrigo's Social Poster target (2026-10-15); on our quota, 0 until approved.
+            SocialProvider::GoogleBusinessProfile => new GoogleBusinessProfilePublisher,
             SocialProvider::TikTok    => new TikTokPublisher(
                 toDrafts: $toDrafts ?? ! self::tiktokIsAudited(),
             ),

@@ -11,6 +11,8 @@ import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
 import 'report_dates.dart';
 import 'scoring_person_calls.dart';
+import '../../widgets/side_panel.dart';
+import 'scoring_weights_panel.dart';
 
 /// Reports › Scoring (Jose, 2026-10-13: "the Scoring and Performance of each
 /// employee ... the employees as cards, and clicking on them shows me the
@@ -31,11 +33,15 @@ class ScoringReport extends StatefulWidget {
     required this.api,
     required this.formats,
     this.now,
+    this.canWeigh = false,
   });
 
   final ApiClient api;
   final DisplayFormats formats;
   final DateTime Function()? now;
+
+  /// May change what the score weighs (reports.scoring_weights).
+  final bool canWeigh;
 
   @override
   State<ScoringReport> createState() => _ScoringReportState();
@@ -52,6 +58,9 @@ const _checks = {
   'asked_for_booking': 'Asked to book',
 };
 
+/// The two metrics beside the checks in the weighted score.
+const _metricNames = {'conversion': 'Conversion', 'quality': 'AI call score'};
+
 const _caveat =
     'Scored by AI from the transcript. A guide for coaching, not a verdict: '
     'the transcript can mishear, and some calls cannot be won.';
@@ -65,7 +74,12 @@ class _Person {
   _Person(Map<String, dynamic> row)
     : name = '${row['person']}',
       n = (row['calls_scored'] as num?)?.toInt() ?? 0,
-      avg = (row['avg_score'] as num?)?.toDouble() ?? 0,
+      // The weighted score (conversion and the checks, Jose 2026-10-14);
+      // AI's plain call average where the server sends no weighted one.
+      avg = ((row['score'] ?? row['avg_score']) as num?)?.toDouble() ?? 0,
+      conversion = (row['conversion'] as num?)?.toInt(),
+      jobs = (row['jobs'] as num?)?.toInt() ?? 0,
+      newClient = (row['new_client'] as num?)?.toInt() ?? 0,
       rank = (row['rank'] as num?)?.toInt(),
       checks = {
         for (final key in _checks.keys)
@@ -80,6 +94,9 @@ class _Person {
   final String name;
   final int n;
   final double avg;
+  final int? conversion;
+  final int jobs;
+  final int newClient;
   final int? rank;
   final Map<String, double> checks;
   final List<String> strengths;
@@ -99,10 +116,13 @@ class _Person {
 }
 
 class _Team {
-  _Team(this.people, this.minCalls);
+  _Team(this.people, this.minCalls, [this.weights = const {}]);
 
   final List<_Person> people;
   final int minCalls;
+
+  /// What each metric counts for in the score, summing to 100.
+  final Map<String, int> weights;
   double? before;
 
   int get calls => people.fold(0, (s, p) => s + p.n);
@@ -139,6 +159,19 @@ class _ScoringReportState extends State<ScoringReport> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// UI queue 97: the weights in a side panel; the scores are read again
+  /// once they change.
+  Future<void> _editWeights() async {
+    final saved = await showSidePanel<bool>(
+      context,
+      builder: (_) => ScoringWeightsPanel(
+        api: widget.api,
+        labels: {..._metricNames, ..._checks},
+      ),
+    );
+    if (saved == true && mounted) _load();
   }
 
   Future<void> _load() async {
@@ -185,11 +218,18 @@ class _ScoringReportState extends State<ScoringReport> {
 
   static _Team _read(Map<String, dynamic> body) {
     final data = (body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    return _Team([
-      for (final row in (data['people'] as List?) ?? const [])
-        if (row is Map && row['person'] is String)
-          _Person(row.cast<String, dynamic>()),
-    ], (data['min_calls_to_rank'] as num?)?.toInt() ?? 3);
+    return _Team(
+      [
+        for (final row in (data['people'] as List?) ?? const [])
+          if (row is Map && row['person'] is String)
+            _Person(row.cast<String, dynamic>()),
+      ],
+      (data['min_calls_to_rank'] as num?)?.toInt() ?? 3,
+      {
+        for (final e in ((data['weights'] as Map?) ?? const {}).entries)
+          '${e.key}': (e.value as num?)?.toInt() ?? 0,
+      },
+    );
   }
 
   List<_Person> _sorted(_Team team) {
@@ -295,6 +335,13 @@ class _ScoringReportState extends State<ScoringReport> {
                     ],
                     selected: {_sort},
                     onSelectionChanged: (v) => setState(() => _sort = v.first),
+                  ),
+                if (open == null && widget.canWeigh)
+                  OutlinedButton.icon(
+                    key: const Key('scoring-weights-edit'),
+                    onPressed: _editWeights,
+                    icon: const Icon(Icons.balance, size: 18),
+                    label: const Text('Weights'),
                   ),
               ],
             ),
@@ -960,10 +1007,31 @@ class _DetailState extends State<_Detail> {
       ),
     );
 
+    final weights = [
+      for (final e in team.weights.entries)
+        if (e.value > 0)
+          '${_metricNames[e.key] ?? _checks[e.key] ?? e.key} '
+              '${e.value}%',
+    ];
     final checks = section(
       'The seven checks',
       Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Performance's conversion rate, counted in the score (Jose,
+          // 2026-10-14).
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              p.conversion == null
+                  ? 'Conversion rate: no new-client calls in these dates'
+                  : 'Conversion rate: ${p.conversion}% '
+                        '(${p.jobs} ${p.jobs == 1 ? 'job' : 'jobs'} from '
+                        '${p.newClient} new-client calls)',
+              key: const Key('scoring-conversion'),
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
           for (final key in _checks.keys)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
@@ -1022,6 +1090,15 @@ class _DetailState extends State<_Detail> {
                     ),
                   ),
                 ],
+              ),
+            ),
+          if (weights.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'The score weighs: ${weights.join(' · ')}',
+                key: const Key('scoring-weights'),
+                style: muted,
               ),
             ),
         ],

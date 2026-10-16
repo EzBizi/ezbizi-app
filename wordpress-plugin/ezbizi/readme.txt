@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.15
+Stable tag: 1.26.17
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,16 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.17 =
+* NEW: The review faces tell EzBizi what a customer did with their review
+  link - opened it, which face, the complaint sent, on to Google - for the
+  Customer Experience report. Only for a visit that came by a link.
+
+= 1.26.16 =
+* FIX: The booking, form and chat widgets print their script in the page
+  footer. Content filters on some pages turned its && into &#038;, so typing
+  a ZIP in the booking widget did nothing.
 
 = 1.26.15 =
 * NEW: The booking widget reads a lead's own link (?l=): the booking lands on

@@ -342,7 +342,18 @@ function fit(stage) {
   const c = stage.querySelector('.v-card');
   if (c) c.style.transform = `scale(${stage.clientWidth / 1920})`;
 }
-function draw(stage) { stage.innerHTML = CARDS[stage.dataset.card](); fit(stage); }
+// A one-word name too wide for its column ("Communication", "Automations")
+// steps down until it fits; names with spaces wrap instead.
+function fitTitles(root) {
+  root.querySelectorAll('h1').forEach(h => {
+    let size = parseFloat(getComputedStyle(h).fontSize);
+    while (h.scrollWidth > h.clientWidth + 1 && size > 56) {
+      size -= 4;
+      h.style.fontSize = size + 'px';
+    }
+  });
+}
+function draw(stage) { stage.innerHTML = CARDS[stage.dataset.card](); fitTitles(stage); fit(stage); }
 
 if (q.has('render')) {
   // Frame capture: one card at 1920x1080; window.seek(t) holds every
@@ -351,9 +362,12 @@ if (q.has('render')) {
   const out = document.getElementById('out');
   out.innerHTML = CARDS[q.get('render')]();
   window.seek = (t) => document.getAnimations().forEach(a => { a.pause(); a.currentTime = t * 1000; });
-  window.ready = document.fonts.ready.then(() => Promise.all([...document.images].map(i => i.decode().catch(() => {}))));
+  window.ready = document.fonts.ready
+    .then(() => Promise.all([...document.images].map(i => i.decode().catch(() => {}))))
+    .then(() => fitTitles(out));
 } else {
   document.querySelectorAll('.stage').forEach(draw);
+  document.fonts.ready.then(() => document.querySelectorAll('.stage').forEach(draw));
   document.querySelectorAll('.phn.mini').forEach(p => {
     p.innerHTML = `<div class="sb"></div><div class="ab"><span class="t">Scheduling</span></div>
       <div class="pb" style="background:rgba(0,0,0,.28);padding:0;justify-content:flex-end">

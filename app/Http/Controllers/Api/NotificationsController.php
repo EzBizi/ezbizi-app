@@ -249,6 +249,7 @@ class NotificationsController extends Controller
             'source' => $notification->source,
             'title' => $notification->title,
             'body' => $notification->body,
+            'urgent' => (bool) $notification->urgent,
             'subject' => [
                 'type' => $notification->subject_type ? class_basename($notification->subject_type) : null,
                 'id' => $notification->subject_id,

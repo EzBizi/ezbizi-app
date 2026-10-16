@@ -293,6 +293,39 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/RC Calls': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'RC Calls',
+        body:
+            'Calls straight to your own phone lines, from your website, '
+            'Google profile or ads. A Google Local Services call is never '
+            'shown here twice.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'RC Calls',
+        body:
+            'Calls straight to your own phone lines, from your website, '
+            'Google profile or ads. A Google Local Services call is never '
+            'shown here twice.',
+      ),
+      TourStep(
+        anchor: 'leads-list',
+        title: 'One caller, one lead',
+        body:
+            'Each caller is one lead, with every call they made, the line '
+            'they rang, the recording and what was said.',
+      ),
+      TourStep(
+        anchor: 'lead-call',
+        title: 'Call them back',
+        body: "Opens EzBizi's dial pad with their number on it.",
+      ),
+    ],
+  ),
   'leads/WhatsApp': Tour(
     version: 1,
     steps: [
@@ -606,8 +639,8 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-reviews-profile',
         title: 'The profile',
         body:
-            'Which Business Profile the reviews come from. Disconnect removes '
-            'the stored permission and deletes nothing.',
+            'Which Business Profile the reviews come from. Change it in '
+            'Settings › Integrations.',
       ),
       TourStep(
         anchor: 'tour-customer_experience-reviews',
@@ -645,8 +678,8 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-business-profile-account',
         title: 'The profile',
         body:
-            'Which Business Profile is connected. Disconnect removes the '
-            'stored permission and deletes nothing.',
+            'Which Business Profile is connected. Change it in Settings › '
+            'Integrations.',
       ),
       TourStep(
         anchor: 'tour-business-profile-listings',

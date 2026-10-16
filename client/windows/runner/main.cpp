@@ -5,6 +5,7 @@
 #include "flutter_window.h"
 #include "win32_window.h"
 #include "utils.h"
+#include "watchdog.h"
 
 // Lets a click on an EzBizi toast START EzBizi when it is not running.
 //
@@ -47,6 +48,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (!::AttachConsole(ATTACH_PARENT_PROCESS) && ::IsDebuggerPresent()) {
     CreateAndAttachConsole();
   }
+
+  // First, so a crash anywhere after this leaves a marker the next launch
+  // reports (watchdog.h, 2026-10-15).
+  InstallCrashMarker();
 
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.

@@ -2965,6 +2965,41 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 101 · Customer Experience › Reviews takes over A1Leads GBP — **sent 2026-10-16 — Jose: "as you recommend" — 1 and 4, then "table should be the default though not board"** (`docs/previews/reviews-takeover-layouts.html` @ `4c8d1950`)
+
+Jose 2026-10-16: "take whatever is valuable from there towards Customer Experience tab and delete the a1leads gbp tab"; and "we are also building how the system
+functions in ezbizi for when we replace his API with ours" — so Status, Notes, customer match, Report to Google and replies are EzBizi's own data and endpoints. **1** (recommended):
+one filter row (rating incl. Negative, reply, time, sort, location, match), Board | Table, side panel with reply, customer + Workiz job, Status, Notes, Report. **2**: table with row
+actions. **3**: tall cards with everything inline. Phone **4** (recommended, in place) / **5** / **6**. Unanswered must count replies already on Google. Server: Customer Experience.
+
+### 100 · Marketing › Social poster: views, live progress, post detail — **sent 2026-10-15 — Jose: "go ahead" (to Marketing, on my recommendation) — 1 and 4** (`docs/previews/social-poster-layouts.html` @ `697e84df`)
+
+Jose via the desk and Marketing, 2026-10-15: enhance ours from Rodrigo's poster; links to verify posts; delete them. **1** (recommended): the list stays with All · Scheduled · Posting · Posted · Failed tiles,
+a List | Board | Calendar switch remembered per person, a pulsing tab dot and "Posting 2 of 3", an honest "Partly posted", and a side panel per post: each account's link, reason, Try again /
+Dismiss, Edit / Reschedule / Cancel while scheduled, Delete from the network only where the network allows. **2**: board first. **3**: calendar first. Phone **4** (recommended, opens in place) / **5** / **6**.
+Server routes are Marketing's (PATCH/DELETE post, DELETE target remote, POST dismiss).
+
+### 99 · Settings, Suggestions, Development and Your account: UI overhaul — **sent 2026-10-15 14:30 — Jose: "Looks good", desktop 1 and phone 4, plus: "settings works as a hub for all the other settings in the app ... the settings tab should be in sync with them and have the full parity, so all settings can be found there"** (`docs/previews/settings-overhaul-layouts.html`)
+
+Jose 2026-10-15 via the desk: overhaul Settings, Suggestions and Development and all their sub tabs, then walkthroughs and videos. He also asked directly for a walkthrough and
+video for Your account. **1** (recommended): the module header (title, ▶ How to, Walkthrough) plus a sticky group index on the long pages (Settings groups, Your
+account sections), Organization's List | Structure moved into its header, dialogs turned into side panels, and Development tabs kept open. **2**: a Settings home of cards. **3**: one in-page side
+menu. Phone **4** (recommended, Jump to chips; Your account opens in place) / **5** / **6**. The help videos need the server to accept these page keys.
+
+### 98 · Customer Experience › Review links (link activity) — **sent 2026-10-15 10:57 — Jose: "as u recommend" — 1 and 4** (`docs/previews/review-links-layouts.html`)
+
+Jose 2026-10-15 via Customer Experience: a tab that measures the review links sent (green, red, opened, sent). There are six counts by branch and by person
+for a date range. **1** (recommended): a Sent → Opened → Green/Red → Google/Complaint funnel, then a Branch | Person table with a total row. **2**: one table
+of rates. **3**: happy and unhappy paths as bar cards. Phone **4** (recommended) / **5** / **6** match. Customer Experience builds it.
+
+### 97 · Reports › Scoring › what the score weighs — **sent 2026-10-14 18:03; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): desktop 1, phone 4** — **BUILT `2360c162`** (nine weights with Reports 90e9d8a5) (`docs/previews/scoring-weights-layouts.html`)
+
+Reports (051fa5e6): the Scoring score is now conversion plus the AI's seven call checks, weighted. There are eight whole-number weights that must total 100
+(defaults: conversion 40, greeted 5, explained the price 5, the other five 10 each), set with the new reports.scoring_weights tick. **1** (recommended):
+a ⚖ Weights button beside Score / Most improved opens a side panel with a split bar, a slider and a number for each part, a "100 of 100" total
+(amber "95 of 100: add 5" until it adds up, and Save waits), and Back to the defaults. **2**: the split as a strip on the tab, with Edit for number boxes. **3**: two steps,
+conversion against calls, then the checks rescale within the calls' share. Phone **4** (recommended) / **5** / **6** match.
+
 ### 96 · How-to videos › the opening card, with the EzBizi logo — **sent 2026-10-14 15:34; no answer in 10 min — went with the recommendation (Jose's standing rule, 2026-10-06): 3** — **BUILT** in `H:\Development\EzBizi-videos\kit` (Scheduling and Guidelines first) (`docs/previews/help-video-title-card-layouts.html`)
 
 Jose 2026-10-14 via the desk: "do improve the Initial Screen, use the EzBizi Logo, make it look better, cause right now it looks like

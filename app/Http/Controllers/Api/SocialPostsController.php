@@ -6,12 +6,15 @@ use App\Jobs\PublishSocialTarget;
 use App\Models\SocialConnection;
 use App\Models\SocialPost;
 use App\Models\SocialPostTarget;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
+use App\Support\Social\Publishing\DeletesPosts;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
+use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Social\SocialProvider;
@@ -216,11 +219,11 @@ class SocialPostsController extends Controller
 
         $connections = $this->resolve($request, $data['connections']);
 
-        $this->assertEveryNetworkTakesThis($connections, $kind);
+        $refused = $this->whatEachNetworkRefuses($connections, $kind);
 
         $options = $this->tiktokChoices($request, $connections);
 
-        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options) {
+        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options, $refused) {
             $post = new SocialPost([
                 'body' => $data['body'] ?? null,
                 'title' => $data['title'] ?? null,
@@ -240,13 +243,24 @@ class SocialPostsController extends Controller
             $post->save();
 
             foreach ($connections as $connection) {
-                $post->targets()->create([
+                $because = $refused[$connection->getKey()] ?? null;
+
+                // An account that cannot take this post is written as failed,
+                // with its reason, so it shows under Needs attention instead
+                // of quietly not being there.
+                $target = $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
                     'options' => $options[$connection->getKey()] ?? null,
-                    'status' => $schedule['for'] === null
-                        ? SocialPostTarget::STATUS_QUEUED
-                        : SocialPostTarget::STATUS_SCHEDULED,
+                    'status' => match (true) {
+                        $because !== null => SocialPostTarget::STATUS_FAILED,
+                        $schedule['for'] === null => SocialPostTarget::STATUS_QUEUED,
+                        default => SocialPostTarget::STATUS_SCHEDULED,
+                    },
                 ]);
+
+                if ($because !== null) {
+                    $target->forceFill(['failure' => $because])->save();
+                }
             }
 
             return $post;
@@ -268,7 +282,9 @@ class SocialPostsController extends Controller
          */
         if ($schedule['for'] === null) {
             foreach ($post->targets as $target) {
-                PublishSocialTarget::dispatch($target->getKey());
+                if ($target->status === SocialPostTarget::STATUS_QUEUED) {
+                    PublishSocialTarget::dispatch($target->getKey());
+                }
             }
         }
 
@@ -365,6 +381,152 @@ class SocialPostsController extends Controller
      *
      * @return array{for: string|null, timezone: string|null}
      */
+    /*
+     * ── Managing a post after Publish (A1 poster takeover, 2026-10-15) ──
+     *
+     * Edit, reschedule and cancel act on a post whose every account is still
+     * scheduled: once any account has it, the words are out and changing them
+     * here would describe a post nobody can see. Dismiss clears a failed
+     * account from the list; delete takes a sent one down from the network
+     * where its API allows (DeletesPosts). All are marketing.edit, audited.
+     */
+
+    /** PATCH social/posts/{post}: words and/or time, while still scheduled. */
+    public function update(Request $request, SocialPost $post): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $this->assertStillScheduled($user, $post);
+
+        $data = $request->validate([
+            'body' => ['sometimes', 'nullable', 'string', 'max:63206'],
+            'scheduled_for' => ['sometimes', 'required', 'string'],
+        ]);
+
+        if (array_key_exists('body', $data)) {
+            $post->body = $data['body'];
+        }
+
+        if (array_key_exists('scheduled_for', $data)) {
+            $schedule = $this->schedule($request, $data['scheduled_for']);
+            $post->forceFill([
+                'scheduled_for' => $schedule['for'],
+                'scheduled_timezone' => $schedule['timezone'],
+            ]);
+        }
+
+        $this->audit->logChange('social.post_edited', $post, $user);
+        $post->save();
+
+        $post->load('targets.connection');
+
+        return response()->json(['data' => [
+            'id' => $post->getKey(),
+            'body' => $post->body,
+            'scheduled_for' => $post->scheduled_for,
+            'targets' => $post->targets->map(fn (SocialPostTarget $t) => $this->presentTarget($t, $t->connection))->all(),
+        ]]);
+    }
+
+    /** DELETE social/posts/{post}: cancel a post nobody has received yet. */
+    public function cancel(Request $request, SocialPost $post): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $this->assertStillScheduled($user, $post);
+
+        $this->audit->log('social.post_cancelled', $post, ['body' => mb_substr((string) $post->body, 0, 200)], actor: $user);
+        $post->delete();
+
+        return response()->json(['data' => ['id' => $post->getKey()]]);
+    }
+
+    /** POST social/posts/{post}/targets/{target}/dismiss: a failed account, cleared. */
+    public function dismiss(Request $request, SocialPost $post, SocialPostTarget $target): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $connection = $this->targetInView($user, $post, $target);
+
+        if ($target->status !== SocialPostTarget::STATUS_FAILED) {
+            throw ValidationException::withMessages(['target' => 'Only an account that failed can be dismissed.']);
+        }
+
+        $this->audit->log('social.target_dismissed', $post, ['account' => $connection->display_name], actor: $user);
+        $target->delete();
+
+        return response()->json(['data' => ['id' => $target->getKey()]]);
+    }
+
+    /** DELETE social/posts/{post}/targets/{target}/remote: take it down from the network. */
+    public function deleteRemote(Request $request, SocialPost $post, SocialPostTarget $target): JsonResponse
+    {
+        $user = $this->mayManage($request);
+        $connection = $this->targetInView($user, $post, $target);
+
+        if ($target->status !== SocialPostTarget::STATUS_SENT || ! is_string($target->remote_id) || $target->remote_id === '') {
+            throw ValidationException::withMessages(['target' => 'Only a post that went out can be deleted from '.$connection->providerLabel().'.']);
+        }
+
+        $publisher = Publishers::for($connection->providerEnum());
+
+        if (! $publisher instanceof DeletesPosts) {
+            throw ValidationException::withMessages([
+                'target' => $connection->providerLabel().' does not let EzBizi delete posts. Delete it in '.$connection->providerLabel().' itself.',
+            ]);
+        }
+
+        try {
+            $publisher->deleteRemote($connection, $target->remote_id);
+        } catch (SocialPublishFailed $e) {
+            throw ValidationException::withMessages(['target' => $e->getMessage()]);
+        }
+
+        $target->forceFill(['status' => SocialPostTarget::STATUS_REMOVED, 'url' => null])->save();
+        $this->audit->log('social.post_deleted_remotely', $post, [
+            'account' => $connection->display_name, 'remote_id' => $target->remote_id,
+        ], actor: $user);
+
+        return response()->json(['data' => $this->presentTarget($target->fresh(), $connection)]);
+    }
+
+    private function mayManage(Request $request): User
+    {
+        $user = $request->user();
+
+        abort_unless($user->hasPermission('marketing.edit'), Status::HTTP_FORBIDDEN,
+            Refusal::permission('change a social post')->message());
+
+        return $user;
+    }
+
+    /** Every account of the post in view, and every one still waiting for its time. */
+    private function assertStillScheduled(User $user, SocialPost $post): void
+    {
+        $targets = $post->targets()->with('connection')->get();
+
+        abort_if($targets->isEmpty() || $targets->contains(
+            fn (SocialPostTarget $t) => $t->connection === null || ! $this->access->inView($user, $t->connection),
+        ), Status::HTTP_NOT_FOUND);
+
+        if ($targets->contains(fn (SocialPostTarget $t) => $t->status !== SocialPostTarget::STATUS_SCHEDULED)) {
+            throw ValidationException::withMessages([
+                'post' => 'This post has already started going out, so it can no longer be edited or cancelled.',
+            ]);
+        }
+    }
+
+    private function targetInView(User $user, SocialPost $post, SocialPostTarget $target): SocialConnection
+    {
+        $connection = $target->connection;
+
+        abort_if(
+            $target->social_post_id !== $post->getKey()
+                || $connection === null
+                || ! $this->access->inView($user, $connection),
+            Status::HTTP_NOT_FOUND,
+        );
+
+        return $connection;
+    }
+
     private function schedule(Request $request, ?string $wall): array
     {
         if ($wall === null || trim($wall) === '') {
@@ -487,8 +649,11 @@ class SocialPostsController extends Controller
     /**
      * @param  Collection<int, SocialConnection>  $connections
      */
-    private function assertEveryNetworkTakesThis(Collection $connections, SocialMediaKind $kind): void
+    /** @return array<string, string> connection id => why that network cannot take this post */
+    private function whatEachNetworkRefuses(Collection $connections, SocialMediaKind $kind): array
     {
+        $refused = [];
+
         foreach ($connections as $connection) {
             $provider = $connection->providerEnum();
 
@@ -518,17 +683,22 @@ class SocialPostsController extends Controller
                 ?? Publishers::for($provider)?->cannotSend($kind);
 
             if ($because !== null) {
-                /*
-                 * The whole post is refused rather than the one target dropped.
-                 * Silently posting to two of three accounts is the outcome
-                 * nobody asked for: the person meant all three, and finding out
-                 * afterwards that Pinterest was skipped is worse than being told
-                 * now, while the words are still in the box and a picture can
-                 * still be attached.
-                 */
-                throw ValidationException::withMessages(['connections' => $because]);
+                $refused[$connection->getKey()] = $because;
             }
         }
+
+        /*
+         * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post
+         * the other 5 should still go through". So one account that cannot take
+         * this post no longer stops the rest; it is written as failed with its
+         * reason. Only when NONE can take it is the post refused, every reason
+         * named, so nothing is written for nobody.
+         */
+        if ($refused !== [] && count($refused) === $connections->count()) {
+            throw ValidationException::withMessages(['connections' => implode(' ', array_unique($refused))]);
+        }
+
+        return $refused;
     }
 
     /**
@@ -571,6 +741,9 @@ class SocialPostsController extends Controller
             'failure' => $target->failure,
             'sent_at' => $target->sent_at?->toIso8601String(),
             'url' => $target->url,
+            // The server's answer, so the Delete button never drifts from what works.
+            'can_delete' => $target->status === SocialPostTarget::STATUS_SENT
+                && Publishers::for($connection?->providerEnum()) instanceof DeletesPosts,
         ];
     }
 }

@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Console\Commands\ScoreReportCalls;
 use App\Models\CallReportPersonReview;
 use App\Models\CallReportScore;
 use App\Models\CallReportTranscript;
+use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\Scoring\ScoringWeights;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -58,6 +61,44 @@ class ScoringReportTest extends TestCase
 
         $this->assertSame(['c1'], array_column($get('&q=214-555-0001'), 'call_id'), 'by number, only Ada\'s');
         $this->assertSame(['c3'], array_column($get('&q=gas'), 'call_id'), 'by words');
+    }
+
+    /** Jose, 2026-10-14: conversion counts most, every metric has a weight, and they sum to 100. */
+    public function test_the_score_weighs_conversion_and_the_checks_by_the_saved_weights(): void
+    {
+        config(['app.timezone' => 'America/New_York', 'services.grok_cli.since' => '2026-10-13']);
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach (['a1', 'a2', 'a3'] as $i => $id) {
+                CallReportTranscript::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'transcript' => 'x',
+                    'source' => 'whisper', 'answered_by' => 'Ada', 'call_started_at' => '2026-10-13 1'.$i.':00:00']);
+                CallReportScore::query()->create(['organization_id' => $t['org']->id, 'call_id' => $id, 'score' => 7,
+                    'checks' => array_fill_keys(ScoreReportCalls::CHECKS, true)]);
+            }
+        });
+        // Performance's People row for Ada: 4 new-client calls, 1 job.
+        $this->mock(PerformancePeople::class)->shouldReceive('for')->andReturn(['Ada' => ['new_client' => 4, 'jobs' => 1]]);
+
+        $admin = $this->signedInAs($t['admin']);
+        $ada = fn () => $admin->getJson('/api/v1/reports/scoring?from=2026-10-13&to=2026-10-13')->assertOk()->json('data.people.0');
+
+        // Defaults: conversion 50 at 25%, quality 15 at 70%, every check met (35 at 100%):
+        // (1250 + 1050 + 3500) / 100 = 58% -> 5.8.
+        $this->assertSame(25, $ada()['conversion']);
+        $this->assertEquals(5.8, $ada()['score']);
+
+        $all = array_fill_keys(ScoringWeights::metrics(), 0);
+        $admin->putJson('/api/v1/reports/scoring/weights', ['weights' => ['conversion' => 50] + $all])
+            ->assertUnprocessable()->assertJsonValidationErrors('weights');
+
+        $admin->putJson('/api/v1/reports/scoring/weights', ['weights' => ['conversion' => 100] + $all])
+            ->assertOk()->assertJsonPath('data.weights.conversion', 100);
+        $this->assertEquals(2.5, $ada()['score'], 'conversion alone');
+
+        $viewer = $this->userWithRole($t, 'Lead Manager', ['reports.scoring.view']);
+        $this->signedInAs($viewer)->getJson('/api/v1/reports/scoring/weights')->assertOk()->assertJsonPath('data.weights.conversion', 100);
+        $this->signedInAs($viewer)->putJson('/api/v1/reports/scoring/weights', ['weights' => ['conversion' => 100] + $all])->assertForbidden();
     }
 
     public function test_people_are_averaged_and_ranked_from_the_ai_start_day(): void

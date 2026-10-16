@@ -37,6 +37,9 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
   final _codeFormKey = GlobalKey<FormState>();
 
   int _index = 0;
+
+  /// The tabs opened at least once, kept alive behind the one on screen.
+  final Set<int> _opened = {0};
   bool _busy = false;
   String? _error;
 
@@ -202,6 +205,7 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
     ];
 
     final index = _index.clamp(0, tabs.length - 1);
+    _opened.add(index);
 
     return Column(
       children: [
@@ -210,15 +214,29 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
           focusedAt: widget.session.me?.development?.focusedAt,
         ),
         Material(
+          key: const ValueKey('tour-development-tabs'),
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             labels: tabs.map((t) => (t.$1, t.$2)).toList(),
             selected: index,
-            onSelected: (i) => setState(() => _index = i),
+            onSelected: (i) => setState(() {
+              _index = i;
+              _opened.add(i);
+            }),
           ),
         ),
         const Divider(height: 1),
-        Expanded(child: tabs[index].$3),
+        // Each tab opened stays alive, as Settings' do (UI queue 99): coming
+        // back to Health or Modules no longer reloads it from scratch.
+        Expanded(
+          child: Stack(
+            children: [
+              for (final (i, t) in tabs.indexed)
+                if (_opened.contains(i))
+                  Offstage(offstage: i != index, child: t.$3),
+            ],
+          ),
+        ),
       ],
     );
   }
