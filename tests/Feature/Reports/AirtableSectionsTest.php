@@ -128,4 +128,24 @@ class AirtableSectionsTest extends TestCase
         $this->signedInAs($viewer)->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => null, 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();
         $this->assertSame(1, FinancialSource::withoutGlobalScopes()->count(), 'goals do not touch the mapping');
     }
+
+    /** Roles & Permissions, 2026-10-16: goals follow the reader's view. */
+    public function test_a_branch_manager_sets_and_sees_only_their_own_branchs_goals(): void
+    {
+        $sibling = (string) $this->extraFranchise($this->t, 'Sibling')->id;
+        $this->inTenant($this->t['org'], function () use ($sibling) {
+            ReportGoal::query()->create(['franchise_id' => $sibling, 'key' => 'avg_sale', 'value' => 900]);
+            ReportGoal::query()->create(['franchise_id' => null, 'key' => 'avg_sale', 'value' => 800]);
+        });
+        $manager = $this->userWithRole($this->t, 'Branch Manager', ['reports.view', 'reports.settings'], onlyAt: $this->t['franchise']);
+        $as = $this->signedInAs($manager);
+
+        $as->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => $this->branch, 'key' => 'avg_sale', 'value' => 1000]]])->assertOk();
+        $as->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => $sibling, 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();
+        $as->putJson('/api/v1/reports/goals', ['goals' => [['franchise_id' => null, 'key' => 'avg_sale', 'value' => 1]]])->assertForbidden();
+
+        $seen = collect($as->getJson('/api/v1/reports/goals')->assertOk()->json('data.goals'));
+        $this->assertSame([$this->branch], $seen->pluck('franchise_id')->all(), 'neither the sibling nor the organization-wide row');
+        $this->assertCount(3, collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/reports/goals')->json('data.goals')));
+    }
 }
