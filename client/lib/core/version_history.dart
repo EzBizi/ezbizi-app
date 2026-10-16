@@ -17,6 +17,8 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Financials: link your Airtable tables, choose which table plays which part (repair teams, refunds, HQ expenses and so on) under Financials › Settings, and split repair-team costs between companies to the cent.',
+        'Reports: the weekly and monthly report adds repair teams, refunds, disputes and returned checks, and HQ office expenses, read from the tables mapped in Financials. Goals per branch colour the figures once someone sets them, which needs the new Reports settings tick.',
         'Workiz: jobs deleted in Workiz no longer count in EzBizi’s reports.',
         'Communication › Settings › Numbers: a new switch marks a line’s calls and texts as leads, ready for the EZ Calls and EZ Texts tabs coming to Leads.',
         'Notifications: a misfiring automation can no longer flood the bell. Each rule tells a person at most 20 things in 10 minutes.',
