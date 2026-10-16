@@ -14,86 +14,9 @@ void main() {
   testWidgets('switched-off companies, their subs and places are not offered', (
     tester,
   ) async {
-    final api = ApiClient(
-      client: MockClient(
-        (request) async => !request.url.path.endsWith('/me')
-            ? http.Response('{}', 404)
-            : http.Response(
-                jsonEncode({
-                  'data': {
-                    'id': 'u',
-                    'name': 'Dana',
-                    'email': 'dana@brightside.example',
-                    'organization': {'id': 'org', 'name': 'Brightside Group'},
-                    'scope': {
-                      'type': 'organization',
-                      'id': null,
-                      'label': 'Brightside Group',
-                      'path': ['Brightside Group'],
-                    },
-                    'companies': [
-                      {
-                        'id': 'on',
-                        'name': 'Brightside Home',
-                        'parent_company_id': null,
-                        'is_active': true,
-                      },
-                      {
-                        'id': 'off',
-                        'name': 'Old Sweep Co',
-                        'parent_company_id': null,
-                        'is_active': false,
-                      },
-                      {
-                        'id': 'off-sub',
-                        'name': 'Old Sweep East',
-                        'parent_company_id': 'off',
-                        'is_active': true,
-                      },
-                    ],
-                    'franchises': [
-                      {
-                        'id': 'f1',
-                        'name': 'Springfield',
-                        'company_id': 'on',
-                        'is_active': true,
-                      },
-                      {
-                        'id': 'f2',
-                        'name': 'Closed shop',
-                        'company_id': 'on',
-                        'is_active': false,
-                      },
-                      {
-                        'id': 'f3',
-                        'name': 'Old Sweep North',
-                        'company_id': 'off',
-                        'is_active': true,
-                      },
-                      {
-                        'id': 'f4',
-                        'name': 'Old Sweep East branch',
-                        'company_id': 'off-sub',
-                        'is_active': true,
-                      },
-                    ],
-                  },
-                }),
-                200,
-              ),
-      ),
-    );
-    final session = Session(api);
-    await session.adopt('token');
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ScopePickerPanel(api: api, session: session),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    final session = await _pump(tester, canView: true);
 
+    expect(find.text('Brightside Group'), findsOneWidget);
     expect(find.text('Brightside Home'), findsOneWidget);
     expect(find.text('Springfield'), findsOneWidget);
     for (final hidden in [
@@ -108,4 +31,103 @@ void main() {
     // Still in reach: Settings › Organization lists them to switch back on.
     expect(session.me!.companies, hasLength(3));
   });
+
+  /// Jose, 2026-10-16: "people who are assigned to a-1chimney are seeing
+  /// Triplex Group on the picker, they shouldn't, access is only downwards".
+  testWidgets(
+    'somebody assigned to a company is not offered the organization',
+    (tester) async {
+      await _pump(tester, canView: false);
+
+      expect(find.text('Brightside Group'), findsNothing);
+      expect(find.text('Brightside Home'), findsOneWidget);
+    },
+  );
+}
+
+Future<Session> _pump(WidgetTester tester, {required bool canView}) async {
+  final api = ApiClient(
+    client: MockClient(
+      (request) async => !request.url.path.endsWith('/me')
+          ? http.Response('{}', 404)
+          : http.Response(
+              jsonEncode({
+                'data': {
+                  'id': 'u',
+                  'name': 'Dana',
+                  'email': 'dana@brightside.example',
+                  'organization': {
+                    'id': 'org',
+                    'name': 'Brightside Group',
+                    'can_view': canView,
+                  },
+                  'scope': {
+                    'type': 'organization',
+                    'id': null,
+                    'label': 'Brightside Group',
+                    'path': ['Brightside Group'],
+                  },
+                  'companies': [
+                    {
+                      'id': 'on',
+                      'name': 'Brightside Home',
+                      'parent_company_id': null,
+                      'is_active': true,
+                    },
+                    {
+                      'id': 'off',
+                      'name': 'Old Sweep Co',
+                      'parent_company_id': null,
+                      'is_active': false,
+                    },
+                    {
+                      'id': 'off-sub',
+                      'name': 'Old Sweep East',
+                      'parent_company_id': 'off',
+                      'is_active': true,
+                    },
+                  ],
+                  'franchises': [
+                    {
+                      'id': 'f1',
+                      'name': 'Springfield',
+                      'company_id': 'on',
+                      'is_active': true,
+                    },
+                    {
+                      'id': 'f2',
+                      'name': 'Closed shop',
+                      'company_id': 'on',
+                      'is_active': false,
+                    },
+                    {
+                      'id': 'f3',
+                      'name': 'Old Sweep North',
+                      'company_id': 'off',
+                      'is_active': true,
+                    },
+                    {
+                      'id': 'f4',
+                      'name': 'Old Sweep East branch',
+                      'company_id': 'off-sub',
+                      'is_active': true,
+                    },
+                  ],
+                },
+              }),
+              200,
+            ),
+    ),
+  );
+  final session = Session(api);
+  await session.adopt('token');
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: ScopePickerPanel(api: api, session: session),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return session;
 }

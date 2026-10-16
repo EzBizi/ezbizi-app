@@ -6,9 +6,11 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\User;
+use App\Support\Automations\EventScope;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\DescribedGlance;
 use App\Support\Dashboard\GlancePayload;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 
 /**
@@ -29,18 +31,32 @@ final class AutomationsGlance extends DescribedGlance
 
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
-        return app(TenantContext::class)->run($user->organization, function () {
+        return app(TenantContext::class)->run($user->organization, function () use ($user) {
+            // The rules this person's view lists, asked the way the
+            // Automations list asks (AutomationsController::index), so the box
+            // never counts a sibling company's rules (2026-10-16).
+            $view = ViewScope::forUser($user);
+            $chain = EventScope::chainFor($view->isOrganization() ? null : $view->type, $view->id);
+            $visible = Automation::query()->get()
+                ->filter(fn (Automation $a) => $view->isOrganization()
+                    || $a->coversScope($view->type, $view->id, companyChain: $chain));
+            $ids = $visible->modelKeys();
+            // The event queue is the whole organization's, so only somebody
+            // standing there is told how far behind it is.
+            $wholeQueue = $view->isOrganization();
+
             $recent = AutomationRun::query()
+                ->whereIn('automation_id', $ids)
                 ->orderByDesc('started_at')
                 ->limit(100)
                 ->pluck('status');
 
-            $waiting = AutomationEvent::query()->whereNull('delivered_at')->count();
+            $waiting = $wholeQueue ? AutomationEvent::query()->whereNull('delivered_at')->count() : 0;
 
             // No date: the organization chooses its date format and that lives in
             // the client, so a stamp composed here would be written in the wrong
             // one. The card carries the WHEN; this box carries the THAT.
-            $off = Automation::query()->whereNotNull('disabled_at')->pluck('name');
+            $off = $visible->whereNotNull('disabled_at')->pluck('name');
             $stopped = match (true) {
                 $off->isEmpty() => null,
                 $off->count() === 1 => "'{$off->first()}' stopped itself and is still off.",
@@ -117,9 +133,9 @@ final class AutomationsGlance extends DescribedGlance
             // a quarter of an hour (the worker is behind or stopped). Caution:
             // a live rule that has failed enough times in a row to be close to
             // switching itself off.
-            $stuck = AutomationEvent::query()->whereNull('delivered_at')
+            $stuck = ! $wholeQueue ? 0 : AutomationEvent::query()->whereNull('delivered_at')
                 ->where('available_at', '<', now()->subMinutes(15))->count();
-            $nearly = Automation::query()->where('is_active', true)->whereNull('disabled_at')
+            $nearly = Automation::query()->whereIn('id', $ids)->where('is_active', true)->whereNull('disabled_at')
                 ->where('consecutive_failures', '>=', Automation::FAILURE_LIMIT - 2)->count();
 
             $attention = array_values(array_filter([
