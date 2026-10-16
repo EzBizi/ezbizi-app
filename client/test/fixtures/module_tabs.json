@@ -90,7 +90,10 @@
         "financials": {
             "label": "Financials",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "Bases",
+                "Settings"
+            ]
         },
         "fleet_management": {
             "label": "Fleet Management",
@@ -335,6 +338,7 @@
         "ads_performance.manage",
         "ads_performance.view",
         "ai_assistance.ai.view",
+        "ai_assistance.command",
         "ai_assistance.library.view",
         "ai_assistance.manage",
         "ai_assistance.settings.view",
@@ -383,9 +387,11 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financials.bases.view",
         "financials.create",
         "financials.delete",
         "financials.edit",
+        "financials.settings.view",
         "financials.view",
         "fleet_management.assign",
         "fleet_management.create",

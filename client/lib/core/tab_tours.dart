@@ -442,6 +442,34 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-tabs',
+        title: 'Financials',
+        body:
+            'Your bases of tables, and the settings that say which Airtable table is which.',
+      ),
+      TourStep(
+        anchor: 'tour-financials-views',
+        title: 'Views',
+        body:
+            'Grid, kanban, calendar, gallery, form and split. Filters and sorts save on the view.',
+      ),
+    ],
+  ),
+  'financials/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-sources',
+        title: 'Airtable sources',
+        body:
+            'Say which Airtable table holds which part of your books, and for which place. The reports read this list.',
+      ),
+    ],
+  ),
   'services': Tour(
     version: 1,
     steps: [

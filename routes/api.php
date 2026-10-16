@@ -1013,11 +1013,13 @@ Route::prefix('v1')
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
-        Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
-        Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
-        Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
-        Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
-        Route::prefix('financials')->controller(FinancialsController::class)->group(function (): void {
+        Route::middleware('permission:financials.settings.view')->group(function (): void {
+            Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
+            Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
+            Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
+            Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
+        });
+        Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
             Route::get('bases', 'bases');
             Route::post('bases', 'storeBase');
             Route::patch('bases/{base}', 'updateBase');

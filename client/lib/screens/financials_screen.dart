@@ -5,6 +5,7 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/tab_bar_like.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
@@ -14,6 +15,19 @@ import 'financials/financial_views.dart';
 /// Bases hold tables; a table has typed fields, records and saved views
 /// (grid, kanban, calendar, gallery, form). Filters, sorts, grouping and
 /// hidden fields are saved on the view, so everybody opening it sees the same.
+class FinancialBases extends StatefulWidget {
+  const FinancialBases({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<FinancialBases> createState() => _FinancialsScreenState();
+}
+
+/// Financials — the Airtable replacement (Jose, 2026-10-14). Two tabs:
+/// Bases (the work) and Settings (which Airtable table is which part of the
+/// books). Each is its own grant.
 class FinancialsScreen extends StatefulWidget {
   const FinancialsScreen({super.key, required this.api, required this.session});
 
@@ -21,7 +35,62 @@ class FinancialsScreen extends StatefulWidget {
   final Session session;
 
   @override
-  State<FinancialsScreen> createState() => _FinancialsScreenState();
+  State<FinancialsScreen> createState() => _FinancialsHostState();
+}
+
+class _FinancialsHostState extends State<FinancialsScreen> {
+  int _tab = 0;
+
+  bool _may(String tab) =>
+      widget.session.me?.permissions.contains('financials.$tab.view') ?? false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      if (_may('bases'))
+        (
+          'Bases',
+          Icons.table_chart_outlined,
+          FinancialBases(api: widget.api, session: widget.session),
+        ),
+      if (_may('settings'))
+        (
+          'Settings',
+          Icons.tune,
+          FinancialSourcesSettings(api: widget.api, me: widget.session.me!),
+        ),
+    ];
+    if (tabs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No Financials tabs have been granted to your role.'),
+        ),
+      );
+    }
+    final selected = _tab < tabs.length ? _tab : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            key: const ValueKey('tour-financials-tabs'),
+            labels: [for (final t in tabs) (t.$1, t.$2)],
+            selected: selected,
+            onSelected: (i) => setState(() => _tab = i),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: IndexedStack(
+            index: selected,
+            children: [for (final t in tabs) t.$3],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 const _viewTypes = <String, (String, IconData)>{
@@ -33,7 +102,7 @@ const _viewTypes = <String, (String, IconData)>{
   'split': ('Split', Icons.call_split),
 };
 
-class _FinancialsScreenState extends State<FinancialsScreen> {
+class _FinancialsScreenState extends State<FinancialBases> {
   List<Map> _bases = [];
   String? _baseId;
   String? _tableId;
@@ -423,17 +492,6 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                   label: const Text('New base'),
                   onPressed: _newBase,
                 ),
-              IconButton(
-                tooltip: 'Financials settings',
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => showSidePanel<void>(
-                  context,
-                  builder: (_) => FinancialSourcesPanel(
-                    api: widget.api,
-                    me: widget.session.me!,
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -493,6 +551,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Wrap(
+              key: const ValueKey('tour-financials-views'),
               spacing: 6,
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
