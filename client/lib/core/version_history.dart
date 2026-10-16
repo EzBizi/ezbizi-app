@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0443',
+      date: '16 Oct 2026',
+      items: [
+        'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0442',
       date: '15 Oct 2026',
       items: [
