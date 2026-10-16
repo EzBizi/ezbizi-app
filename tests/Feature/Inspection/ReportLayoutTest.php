@@ -198,6 +198,38 @@ class ReportLayoutTest extends TestCase
         $this->assertStringContainsString('Rain cap, gone', $html);
     }
 
+    /**
+     * A section the inspection never asked is not printed and not counted.
+     *
+     * A built-in fireplace report printed the masonry, wood-stove, furnace and
+     * electric sections as blank findings and said "1 of 31 items" — found by
+     * rendering the A1 form end to end (2026-10-16).
+     */
+    public function test_questions_the_inspection_did_not_ask_are_not_printed(): void
+    {
+        $html = $this->render([
+            ['name' => 'The system', 'fields' => [
+                ['key' => 'system_type', 'label' => 'System', 'type' => 'choice', 'print' => 'ignore', 'options' => ['masonry', 'wood']],
+                ['type' => 'divider', 'label' => 'Wood stove', 'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood']],
+                ['key' => 'stove', 'label' => 'Stove condition', 'type' => 'choice', 'print' => 'root',
+                    'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood'],
+                    'options' => [['value' => 'ok', 'variant' => 'pass']]],
+                ['key' => 'firebox', 'label' => 'Firebox condition', 'type' => 'choice', 'print' => 'root',
+                    'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'masonry'],
+                    'options' => [['value' => 'ok', 'variant' => 'pass'], ['value' => 'bad', 'variant' => 'fail']]],
+            ]],
+            ['name' => 'Exterior', 'visible_if' => ['field' => 'system_type', 'op' => 'eq', 'value' => 'wood'], 'fields' => [
+                ['key' => 'crown', 'label' => 'Chimney crown', 'type' => 'text'],
+            ]],
+        ], ['system_type' => 'masonry', 'firebox' => 'bad']);
+
+        $this->assertStringContainsString('Firebox condition', $html);
+        $this->assertStringNotContainsString('Stove condition', $html);
+        $this->assertStringNotContainsString('Wood stove', $html);
+        $this->assertStringNotContainsString('Chimney crown', $html);
+        $this->assertStringContainsString('1 of 1 item did not meet standards', $html);
+    }
+
     /** @param list<array<string, mixed>> $screens */
     private function render(array $screens, array $answers): string
     {
