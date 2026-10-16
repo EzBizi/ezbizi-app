@@ -87,10 +87,14 @@ class ShiftReminderController {
     await showDialog<void>(
       context: ctx,
       barrierDismissible: false,
-      builder: (_) => ShiftReminderDialog(
+      // Formatted with the DIALOG's context: `ctx` is the app's own, above
+      // MaterialLocalizations, and `format(ctx)` threw "Null check operator
+      // used on a null value" in Scheduling and Work Hours (client_issues,
+      // 2026-10-16). Fixed by Monitoring while Clock In was not at the desk.
+      builder: (dialogContext) => ShiftReminderDialog(
         endAt: end,
         extensionMinutes: status.extensionMinutes,
-        endLabel: TimeOfDay.fromDateTime(end.toLocal()).format(ctx),
+        endLabel: TimeOfDay.fromDateTime(end.toLocal()).format(dialogContext),
         onExtend: () => _post('/time-clock/extend'),
         onClockOut: () => _post('/time-clock/clock-out'),
         onExpired: _refetchSoon,
