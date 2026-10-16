@@ -145,6 +145,7 @@ use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
 use App\Http\Controllers\Api\QrCodesController;
+use App\Http\Controllers\Api\SocialLibraryController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -2084,6 +2085,10 @@ Route::prefix('v1')
         // Business Profile listings the composer may post to.
         Route::middleware('permission:marketing.compose.view')->group(function () {
             Route::get('social/places', [SocialPostsController::class, 'places']);
+            Route::get('social/library', [SocialLibraryController::class, 'index']);
+            Route::post('social/library', [SocialLibraryController::class, 'store']);
+            Route::delete('social/library/{item}', [SocialLibraryController::class, 'destroy']);
+            Route::get('social/library/{item}/file', [SocialLibraryController::class, 'file']);
         });
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {
