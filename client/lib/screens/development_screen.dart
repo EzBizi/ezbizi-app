@@ -214,6 +214,7 @@ class _DevelopmentScreenState extends State<DevelopmentScreen> {
           focusedAt: widget.session.me?.development?.focusedAt,
         ),
         Material(
+          key: const ValueKey('tour-development-tabs'),
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             labels: tabs.map((t) => (t.$1, t.$2)).toList(),

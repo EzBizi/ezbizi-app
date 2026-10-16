@@ -131,6 +131,7 @@ class _SettingsShellState extends State<SettingsShell> {
     return Column(
       children: [
         Material(
+          key: const ValueKey('tour-settings-tabs'),
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],

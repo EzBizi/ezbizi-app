@@ -417,6 +417,7 @@ class _RolesScreenState extends State<RolesScreen> {
             action: Refused(
               reason: noCreate,
               child: FilledButton.icon(
+                key: const ValueKey('tour-roles-new'),
                 onPressed: noCreate == null ? _create : null,
                 icon: const Icon(Icons.add),
                 label: const Text('New role'),

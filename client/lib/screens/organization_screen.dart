@@ -214,6 +214,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                   as String? ??
                               'Adding a company is the whole business’s to do.',
                     child: FilledButton.icon(
+                      key: const ValueKey('tour-org-add'),
                       onPressed: tree['organization']['may_add_company'] == true
                           ? () => _createCompany(parent: null)
                           : null,
@@ -223,6 +224,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                   ),
                 ),
                 Material(
+                  key: const ValueKey('tour-org-views'),
                   color: Theme.of(context).colorScheme.surface,
                   child: TabBarLike(
                     labels: const [

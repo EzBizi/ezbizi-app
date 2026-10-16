@@ -69,6 +69,23 @@ final class RingCentralLeadCalls
         'IN' => 'Nationwide', 'OR' => 'Nationwide',
     ];
 
+    /*
+     * An unanswered call, by what happened (Jose, 2026-10-16: "Menu Hang ups
+     * should be excluded and also tagged appropiately as Possible Spam / 2
+     * should be tagged as well as Missed Call / 3 should show a voicemail
+     * tag"; corrected the same day: "not excluded from leads ... but excluded
+     * from the missed call alerts"). Kept in the lead's source_status, as
+     * Google's status is on LS.
+     * Measured 2026-10-15: 131 hang-ups in the menu, 43 missed, 7 voicemails.
+     */
+    public const POSSIBLE_SPAM = 'POSSIBLE_SPAM';
+
+    public const MISSED = 'MISSED_CALL';
+
+    public const VOICEMAIL = 'VOICEMAIL';
+
+    private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail'];
+
     public function __construct(
         private readonly LeadThread $thread,
         private readonly \App\Support\Automations\EventEmitter $events,
@@ -110,7 +127,8 @@ final class RingCentralLeadCalls
                 ? ($franchises[self::MARKETS[self::market($line)] ?? ''] ?? null)
                 : null;
 
-            DB::transaction(function () use ($call, $digits, $line, $companyId, $franchiseId, $times, $i) {
+            $outcome = self::outcome($call);
+            DB::transaction(function () use ($call, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
                 $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
                     'company_id' => $companyId,
@@ -123,7 +141,13 @@ final class RingCentralLeadCalls
                     'phone_digits' => Lead::digits((string) $call['from']),
                     'status' => Lead::STATUS_NEW,
                     'received_at' => $times[$i],
+                    'source_status' => $outcome,
                 ]);
+                // A caller who got through (or left word) is no longer a menu
+                // hang-up; a later hang-up never relabels a real call.
+                if ($lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome && $outcome !== self::POSSIBLE_SPAM) {
+                    $lead->forceFill(['source_status' => $outcome])->save();
+                }
 
                 $this->thread->store($lead, 'rc_'.$call['id'], [
                     'channel' => LeadConversation::CHANNEL_PHONE_CALL,
@@ -132,12 +156,15 @@ final class RingCentralLeadCalls
                     // Null when nobody picked up: "rang out", as on a Google call.
                     'duration_ms' => $call['talk_seconds'] === null ? null : (int) $call['talk_seconds'] * 1000,
                     'recording_url' => $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null,
+                    // What happened, said on the card instead of "0:00".
+                    'text' => self::WORDS[$outcome] ?? null,
                 ]);
                 $this->thread->refresh($lead);
 
-                // The only RingCentral call anybody is told about (Jose,
-                // 2026-10-15: "just report the Missed Calls instead from now on").
-                if ($call['answered_by'] === null) {
+                // The only RingCentral calls anybody is told about (Jose,
+                // 2026-10-15: "just report the Missed Calls instead from now on";
+                // 2026-10-16: menu hang-ups excluded, voicemails included).
+                if ($outcome === self::MISSED || $outcome === self::VOICEMAIL) {
                     $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
                         'phone' => $lead->phone,
                         'contact_name' => $lead->contact_name,
@@ -211,6 +238,22 @@ final class RingCentralLeadCalls
         }
 
         return $filled;
+    }
+
+    /**
+     * Null when somebody picked up. A call that never left the phone menu (no
+     * queue, nobody's phone rang) is a hang-up: robocalls, mostly.
+     *
+     * @param  array<string, mixed>  $call
+     */
+    public static function outcome(array $call): ?string
+    {
+        return match (true) {
+            $call['answered_by'] !== null => null,
+            ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
+            $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
+            default => self::MISSED,
+        };
     }
 
     /** @param  array<string, mixed>  $staff  names whose phones rang, as keys */

@@ -2965,6 +2965,13 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 101 · Customer Experience › Reviews takes over A1Leads GBP — **sent 2026-10-16 — Jose: "as you recommend" — 1 and 4, then "table should be the default though not board"** (`docs/previews/reviews-takeover-layouts.html` @ `4c8d1950`)
+
+Jose 2026-10-16: "take whatever is valuable from there towards Customer Experience tab and delete the a1leads gbp tab"; and "we are also building how the system
+functions in ezbizi for when we replace his API with ours" — so Status, Notes, customer match, Report to Google and replies are EzBizi's own data and endpoints. **1** (recommended):
+one filter row (rating incl. Negative, reply, time, sort, location, match), Board | Table, side panel with reply, customer + Workiz job, Status, Notes, Report. **2**: table with row
+actions. **3**: tall cards with everything inline. Phone **4** (recommended, in place) / **5** / **6**. Unanswered must count replies already on Google. Server: Customer Experience.
+
 ### 100 · Marketing › Social poster: views, live progress, post detail — **sent 2026-10-15 — Jose: "go ahead" (to Marketing, on my recommendation) — 1 and 4** (`docs/previews/social-poster-layouts.html` @ `697e84df`)
 
 Jose via the desk and Marketing, 2026-10-15: enhance ours from Rodrigo's poster; links to verify posts; delete them. **1** (recommended): the list stays with All · Scheduled · Posting · Posted · Failed tiles,

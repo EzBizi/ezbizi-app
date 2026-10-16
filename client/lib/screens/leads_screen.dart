@@ -1781,6 +1781,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 if (lead['credit'] is Map &&
                                     (lead['credit'] as Map)['requested_at'] == null)
                                   _Badge('Credit?', key: ValueKey('credit-badge-$id')),
+                                // An unanswered RC call: Possible spam, Missed
+                                // call or Voicemail (Jose, 2026-10-16).
+                                if (lead['source'] == 'ringcentral' &&
+                                    lead['source_status'] is String)
+                                  _Badge(
+                                    rcCallTag(lead['source_status'] as String),
+                                    key: ValueKey('rc-tag-$id'),
+                                  ),
                                 // Only when it is not New: 43,184 of 43,190 are,
                                 // and a pill on every row would say nothing.
                                 if ((lead['status'] ?? 'new') != 'new')
@@ -1998,6 +2006,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
 }
 
 /// Google / Thumbtack / Chat / Form: the short word for the row.
+/// "POSSIBLE_SPAM" → "Possible spam".
+String rcCallTag(String status) {
+  final words = status.toLowerCase().replaceAll('_', ' ');
+  return words.isEmpty ? words : words[0].toUpperCase() + words.substring(1);
+}
+
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
   'facebook' => 'Facebook',

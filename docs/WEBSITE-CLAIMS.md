@@ -2842,3 +2842,28 @@ sentence. Desk `0122` counts (10-13 23:05 UTC): `training_progress` 64,
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple
 `resultCount` 1, version 0.0.0363.
+
+## 2026-10-15: 0.0.0437-0.0.0442 shipped, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0442 at `eb3f4656` (= main). All 9 live
+files byte-identical to `www/`; `0128` is live (`/privacy/` Last-Modified 21:15 UTC).
+
+Checked against today's commits, no edit needed:
+- `a2264488` crash/freeze/failed-call reports go to our own `POST /client-issues`
+  (`client_issues`, 3 months, `ClientIssueScrubber`) - no new processor; "error
+  diagnostics" under What we collect already covers it. A native crash file is
+  sent on the next launch, i.e. while the app is in use.
+- RingCentral is now an organization's own connection (`8a640f19`, `54305ddb`);
+  `/privacy/` already says "a business's own RingCentral account where it has
+  connected one". New host `platform.ringcentral.com` = an account the customer connects.
+- `947e6cc2` adds `GoogleBusinessProfilePublisher` to `Publishers::for()` - **not a
+  sending network**: Business Profile quota is 0 until Google approves. Do not add
+  it to "Four networks send today"; the row's test is a `sent` row, not the publisher.
+- `660508eb` reads A-1 Chimney's reviews on A1 Leads' grant - one tenant, interim;
+  "reading and answering its reviews is waiting on Google" stays true for EzBizi.
+- `92a55324` edit/reschedule/delete-from-network: unsold capability, no sentence wrong.
+- `AppAsk::answer` callers still two (AssistantController, WhatsAppStaffBot).
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
+ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
+`200`; Apple `resultCount` 1, 0.0.0363. Counts asked as `0129`.
