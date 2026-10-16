@@ -230,6 +230,15 @@ class PreferenceRegistry
                 'help' => "Set by finishing or declining a tab's walkthrough.",
             ],
 
+            // Social › Dashboard: the posts as a list or a board (UI queue 100).
+            'marketing.social.posts_view' => [
+                'label' => 'Social posts view',
+                'type' => 'enum',
+                'default' => 'list',
+                'options' => ['list', 'board'],
+                'help' => 'Pick List or Board above the posts.',
+            ],
+
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',

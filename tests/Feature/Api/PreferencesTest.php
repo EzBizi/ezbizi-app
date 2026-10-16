@@ -131,6 +131,16 @@ class PreferencesTest extends TestCase
         $this->assertSame('blocks', $data['navigation.style']);
     }
 
+    /** UI queue 100: Social's List | Board is remembered per person. */
+    public function test_the_social_posts_view_is_remembered(): void
+    {
+        $data = $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['marketing.social.posts_view' => 'board'],
+        ])->assertOk()->json('data');
+
+        $this->assertSame('board', $data['marketing.social.posts_view']);
+    }
+
     public function test_a_value_outside_the_permitted_set_is_refused(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [
