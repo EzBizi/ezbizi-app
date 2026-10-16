@@ -55,8 +55,9 @@ class BusinessLocation extends Model implements HoldsPersonalData, StatesRetenti
             .'trading name, address, phone, hours and whether Google is showing it. Held for as '
             .'long as the profile is connected and deleted when somebody disconnects it. It is a '
             .'copy of a listing the business publishes itself; erasing it here removes EzBizi'
-            .'s copy and changes nothing the public can see, because EzBizi does not own the '
-            .'listing and never writes to it.'
+            .'s copy and changes nothing the public can see. EzBizi does not own the listing; '
+            .'the only thing it sends to Google for it is a post somebody publishes from '
+            .'Marketing, which lives on Google and is deleted there, not here.'
         );
     }
 
