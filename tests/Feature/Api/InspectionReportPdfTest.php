@@ -445,7 +445,7 @@ class InspectionReportPdfTest extends TestCase
      */
     public function test_an_a1_report_link_serves_its_capture_only_when_signed(): void
     {
-        $tenant = $this->provisionTenant('A1-Group');
+        $tenant = $this->provisionTenant('Triplex Group'); // renamed from A1-Group; the lookup must not use the name
         $files = app(\App\Support\Files\FileStore::class);
         $dir = $files->directoryFor('a1-inspection-reports', $tenant['org']->id).'/links';
         $disk = Storage::disk($files->defaultDisk());
