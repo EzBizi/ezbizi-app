@@ -7,6 +7,7 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
+use App\Support\Files\FileStore;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inspection\LooksLikeJobNumber;
 use App\Support\Inspection\ReportPdf;
@@ -17,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -179,6 +181,43 @@ class InspectionReportsController extends Controller
                 'Cache-Control' => 'private, no-store',
             ]);
         });
+    }
+
+    /**
+     * An A1 Tools report link, after A1 Tools is gone.
+     *
+     * Customers hold links A1's emails and texts sent them
+     * (app.a-1chimney.com/api/inspection_report_view.php?id=…&t=…). Before the
+     * shutdown each was opened once and what it showed was saved, byte for
+     * byte, under `a1-inspection-reports/<A1-Group>/links/`. That box now
+     * redirects a link whose id AND token match to this route's signed URL, so
+     * A1's token check is still what lets somebody in; nothing here knows the
+     * tokens.
+     *
+     * Three of them were never PDFs, just A1's page with its photographs
+     * (inlined at capture). Those are served as captured, in a sandbox:
+     * nothing in them may run or reach out.
+     */
+    public function a1Link(FileStore $files, string $id): Response
+    {
+        $org = Organization::query()->where('name', 'A1-Group')->sole();
+        $disk = Storage::disk($files->defaultDisk());
+        $base = $files->directoryFor('a1-inspection-reports', $org->id).'/links/inspection-report-'.$id;
+
+        foreach (['pdf' => 'application/pdf', 'html' => 'text/html; charset=utf-8'] as $ext => $type) {
+            if ($disk->exists("{$base}.{$ext}")) {
+                return response($disk->get("{$base}.{$ext}"), 200, [
+                    'Content-Type' => $type,
+                    'Content-Disposition' => 'inline; filename="inspection-report-'.$id.'.'.$ext.'"',
+                    'Content-Security-Policy' => "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
+                    'X-Content-Type-Options' => 'nosniff',
+                    'Referrer-Policy' => 'no-referrer',
+                    'Cache-Control' => 'private, no-store',
+                ]);
+            }
+        }
+
+        abort(Response::HTTP_NOT_FOUND);
     }
 
     /**

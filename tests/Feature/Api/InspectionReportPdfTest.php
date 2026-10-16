@@ -438,6 +438,32 @@ class InspectionReportPdfTest extends TestCase
         $this->get($url)->assertNotFound();
     }
 
+    /**
+     * An old A1 link lands on the capture saved for it: a PDF as a PDF, A1's
+     * page sandboxed, and only through a signed URL (A1's box hands those out
+     * after checking A1's own token).
+     */
+    public function test_an_a1_report_link_serves_its_capture_only_when_signed(): void
+    {
+        $tenant = $this->provisionTenant('A1-Group');
+        $files = app(\App\Support\Files\FileStore::class);
+        $dir = $files->directoryFor('a1-inspection-reports', $tenant['org']->id).'/links';
+        $disk = Storage::disk($files->defaultDisk());
+        $disk->put("{$dir}/inspection-report-67.pdf", '%PDF-1.4 sixty-seven');
+        $disk->put("{$dir}/inspection-report-27.html", '<p>twenty-seven</p>');
+
+        $pdf = \Illuminate\Support\Facades\URL::signedRoute('inspection.a1.link', ['id' => 67]);
+        $this->get($pdf)->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->assertSame('%PDF-1.4 sixty-seven', $this->get($pdf)->getContent());
+
+        $page = $this->get(\Illuminate\Support\Facades\URL::signedRoute('inspection.a1.link', ['id' => 27]))->assertOk();
+        $this->assertSame('<p>twenty-seven</p>', $page->getContent());
+        $this->assertStringStartsWith('sandbox;', (string) $page->headers->get('content-security-policy'));
+
+        $this->get('/api/v1/inspections/a1/67')->assertForbidden();
+        $this->get(\Illuminate\Support\Facades\URL::signedRoute('inspection.a1.link', ['id' => 68]))->assertNotFound();
+    }
+
     // ── helpers ──────────────────────────────────────────────────
 
     private function textScreen(bool $required = true): array
