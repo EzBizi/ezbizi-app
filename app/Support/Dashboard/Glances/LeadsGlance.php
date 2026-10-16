@@ -42,7 +42,7 @@ final class LeadsGlance extends DescribedGlance
     public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
     {
         return app(TenantContext::class)->run($user->organization, function () use ($user, $period) {
-            $reachable = ViewScope::forUser($user)->franchiseIds();
+            $view = ViewScope::forUser($user);
 
             // Period bounds are wall times in the view timezone; received_at is
             // stored UTC. Bind UTC instants so "now" in New York is not compared
@@ -88,9 +88,9 @@ final class LeadsGlance extends DescribedGlance
                  * they cannot reconcile is the one they will believe.
                  */
                 ->sourceVisibleTo($user)
-                ->where(
-                    fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
-                );
+                // The view's own places and companies: a sibling company's
+                // company-level leads are not counted (2026-10-16).
+                ->tap(fn ($q) => $view->constrainPlaces($q));
 
             $total = (int) $inReach(Lead::query())->count();
 

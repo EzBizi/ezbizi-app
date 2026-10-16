@@ -3155,6 +3155,9 @@ Route::prefix('v1')
                         'postal_code' => $user->organization->postal_code,
                         'franchise_label' => $user->organization->franchise_label,
                         'is_read_only' => $user->organization->isReadOnly(),
+                        // Whether the organization view is offered: only to
+                        // somebody assigned at organization level (2026-10-16).
+                        'can_view' => $user->canActOnOrganization($user->organization),
                     ],
                     // Reach, so the client knows which franchises to offer —
                     // rather than showing all and failing on save (§4).
