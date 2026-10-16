@@ -289,6 +289,52 @@ void main() {
     // Two with the bug (Jobs and Phone), none if the fallback broke.
     expect(find.text('Nothing to show.'), findsOneWidget);
   });
+
+  /// Jose, 2026-10-16: "takes too long when it should be instant". Coming
+  /// back to the dashboard paints the last one at once and refreshes under
+  /// it; the second visit's fetch never answers here, and the boxes are
+  /// already on screen with no spinner.
+  testWidgets('a second visit paints the last dashboard before the fetch answers', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final inner = _handler();
+    final hang = Completer<http.Response>();
+    var visit = 1;
+    final api = ApiClient(
+      client: MockClient((request) {
+        if (visit == 2 && request.url.path.endsWith('/dashboard')) {
+          return hang.future;
+        }
+        return inner(request);
+      }),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    Widget screen() => MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: DashboardScreen(api: api, session: session)),
+    );
+
+    await tester.pumpWidget(screen());
+    await tester.pumpAndSettle();
+    expect(find.text('1 person on the books.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    visit = 2;
+    await tester.pumpWidget(screen());
+    await tester.pump();
+
+    expect(find.text('1 person on the books.'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    hang.complete(http.Response('{}', 500));
+    await tester.pumpAndSettle();
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {
