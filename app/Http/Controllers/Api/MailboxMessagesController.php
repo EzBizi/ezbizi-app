@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Mailbox;
+use App\Models\MessageSeen;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -11,6 +12,7 @@ use App\Support\Email\CannotReachHost;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\DealtState;
 use App\Support\Email\EmailPictureLoader;
+use App\Support\Email\GoogleWorkspaceRefused;
 use App\Support\Email\HeaderCache;
 use App\Support\Email\HtmlEmailSanitiser;
 use App\Support\Email\MailboxAccess;
@@ -20,6 +22,7 @@ use App\Support\Email\MessageSummary;
 use App\Support\Email\PictureTokens;
 use App\Support\Email\PictureUnavailable;
 use App\Support\Email\ReadState;
+use App\Support\Email\RecordingMailboxReader;
 use App\Support\Email\ReplyComposer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -41,7 +44,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * The owner: *"we don't want to store thousands and thousands of emails on our
  * database."* No route in this file persists a message, a body or an attachment.
- * The only rows written are {@see \App\Models\MessageSeen} — a mailbox, an
+ * The only rows written are {@see MessageSeen} — a mailbox, an
  * opaque provider id, a person and a time — and the header cache, which is in
  * the cache store with a sixty-second life and is described in full on
  * {@see HeaderCache}.
@@ -86,16 +89,16 @@ class MailboxMessagesController extends Controller
         $input = $request->validate([
             'search' => ['sometimes', 'nullable', 'string', 'max:500'],
             'cursor' => ['sometimes', 'nullable', 'string', 'max:2048'],
-            'limit'  => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'label'  => ['sometimes', 'nullable', 'string', 'max:32'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'label' => ['sometimes', 'nullable', 'string', 'max:32'],
             'unread' => ['sometimes', 'boolean'],
         ]);
 
         $reader = $this->readers->for($mailbox);
-        $limit  = (int) ($input['limit'] ?? 25);
+        $limit = (int) ($input['limit'] ?? 25);
         $search = trim((string) ($input['search'] ?? ''));
         $cursor = $input['cursor'] ?? null;
-        $label  = strtoupper((string) ($input['label'] ?? 'INBOX'));
+        $label = strtoupper((string) ($input['label'] ?? 'INBOX'));
         if ($request->boolean('unread')) {
             $search = trim('is:unread '.$search);
         }
@@ -249,7 +252,7 @@ class MailboxMessagesController extends Controller
                 'reply' => [
                     'as' => [
                         'address' => $mailbox->address,
-                        'name'    => $mailbox->display_name,
+                        'name' => $mailbox->display_name,
                     ],
                     'to' => array_values(array_filter([$detail->summary->fromAddress])),
                     'subject' => app(ReplyComposer::class)
@@ -311,7 +314,7 @@ class MailboxMessagesController extends Controller
         $this->cache->forget($mailbox);
 
         $this->audit->log('mailbox.replied', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             'message_id' => $message,
             // The words are NOT recorded. An audit log holding the text of every
             // reply is a second copy of the correspondence — exactly the store
@@ -320,7 +323,7 @@ class MailboxMessagesController extends Controller
         ]);
 
         $this->events->emit('email.replied', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             'message_id' => $message,
         ]);
 
@@ -364,10 +367,10 @@ class MailboxMessagesController extends Controller
             // A list, because the envelope takes one RCPT per recipient and a
             // To field that quietly delivered to the first address only would
             // look like success on both ends.
-            'to'      => ['required', 'array', 'min:1', 'max:25'],
-            'to.*'    => ['required', 'string', 'email', 'max:254'],
+            'to' => ['required', 'array', 'min:1', 'max:25'],
+            'to.*' => ['required', 'string', 'email', 'max:254'],
             'subject' => ['nullable', 'string', 'max:255'],
-            'body'    => ['required', 'string', 'max:50000'],
+            'body' => ['required', 'string', 'max:50000'],
 
             /*
              * Files arrive INSIDE this request and are never written down.
@@ -384,7 +387,7 @@ class MailboxMessagesController extends Controller
              * a message that passes here sends the same on all three
              * providers rather than on two of them.
              */
-            'attachments'   => ['sometimes', 'array', 'max:5'],
+            'attachments' => ['sometimes', 'array', 'max:5'],
             'attachments.*' => ['file', 'max:2048'],
         ]);
 
@@ -420,7 +423,7 @@ class MailboxMessagesController extends Controller
         $this->cache->forget($mailbox);
 
         $this->audit->log('mailbox.sent', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             // Recipients are recorded; the words are NOT. Same rule as the
             // reply path — an audit log holding the text of every message is a
             // second copy of the correspondence, arriving through a side door.
@@ -429,13 +432,13 @@ class MailboxMessagesController extends Controller
             // How many files, never their names. A filename is content —
             // "Smith-eviction-notice.pdf" says as much as a sentence of the
             // body would, and the body is deliberately not here.
-            'files'      => count($attachments),
+            'files' => count($attachments),
         ]);
 
         $this->events->emit('email.sent', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             'recipients' => count($input['to']),
-            'files'      => count($attachments),
+            'files' => count($attachments),
         ]);
 
         return response()->json([
@@ -509,10 +512,10 @@ class MailboxMessagesController extends Controller
         }
 
         $total = 0;
-        $out   = [];
+        $out = [];
 
         foreach ($files as $file) {
-            $bytes  = (string) file_get_contents($file->getRealPath());
+            $bytes = (string) file_get_contents($file->getRealPath());
             $total += strlen($bytes);
 
             if ($total > 2 * 1024 * 1024) {
@@ -522,8 +525,8 @@ class MailboxMessagesController extends Controller
             $out[] = [
                 // The name the person sees on the file, not the temporary path
                 // PHP parked it at.
-                'name'  => $file->getClientOriginalName(),
-                'mime'  => $file->getMimeType() ?: 'application/octet-stream',
+                'name' => $file->getClientOriginalName(),
+                'mime' => $file->getMimeType() ?: 'application/octet-stream',
                 'bytes' => $bytes,
             ];
         }
@@ -550,12 +553,12 @@ class MailboxMessagesController extends Controller
 
         try {
             $picture = $this->pictureLoader->load($mailbox, $message, $token);
-        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|\App\Support\Email\GoogleWorkspaceRefused) {
+        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|GoogleWorkspaceRefused) {
             return response()->json(['message' => 'That picture could not be loaded.'], 404);
         }
 
         return response($picture->bytes, 200, [
-            'Content-Type'  => $picture->mime,
+            'Content-Type' => $picture->mime,
             'Cache-Control' => 'private, max-age=300',
             'X-Content-Type-Options' => 'nosniff',
         ]);
@@ -589,7 +592,7 @@ class MailboxMessagesController extends Controller
 
         try {
             $file = $this->readers->for($mailbox)->downloadAttachment($mailbox, $target, $attachmentId);
-        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|\App\Support\Email\GoogleWorkspaceRefused) {
+        } catch (PictureUnavailable|CannotReachHost|CannotReadMailbox|GoogleWorkspaceRefused) {
             return response()->json(['message' => 'That file could not be loaded.'], 404);
         }
 
@@ -657,15 +660,15 @@ class MailboxMessagesController extends Controller
         $this->dealtState->markDealt($mailbox, $message, $user);
 
         $this->audit->log('mailbox.message_dealt', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             'message_id' => $message,
         ]);
 
         return response()->json([
             'data' => [
                 'message_id' => $message,
-                'dealt'      => $this->dealtState->dealtWith($mailbox, [$message])[$message] ?? null,
-                'at_source'  => $this->alsoMarkAtSource($mailbox, $message),
+                'dealt' => $this->dealtState->dealtWith($mailbox, [$message])[$message] ?? null,
+                'at_source' => $this->alsoMarkAtSource($mailbox, $message),
             ],
         ]);
     }
@@ -694,7 +697,7 @@ class MailboxMessagesController extends Controller
         $this->dealtState->forgetDealt($mailbox, $message);
 
         $this->audit->log('mailbox.message_undealt', $mailbox, [
-            'address'    => $mailbox->address,
+            'address' => $mailbox->address,
             'message_id' => $message,
         ]);
 
@@ -724,9 +727,9 @@ class MailboxMessagesController extends Controller
         return response()->json([
             'data' => [
                 'message_id' => $message,
-                'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
-                'shared'     => $this->readState->isShared($mailbox),
-                'at_source'  => $this->alsoMarkAtSource($mailbox, $message),
+                'seen_by' => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
+                'shared' => $this->readState->isShared($mailbox),
+                'at_source' => $this->alsoMarkAtSource($mailbox, $message),
             ],
         ]);
     }
@@ -751,7 +754,7 @@ class MailboxMessagesController extends Controller
      * indistinguishable from one that is.
      *
      * A genuinely broken connection still surfaces the usual way: the reader
-     * is wrapped by {@see \App\Support\Email\RecordingMailboxReader}, which
+     * is wrapped by {@see RecordingMailboxReader}, which
      * raises `email.mailbox_broken` when a call fails for a reason that means
      * the connection is gone.
      *
@@ -772,7 +775,7 @@ class MailboxMessagesController extends Controller
      * read-only grants by design; asking them anyway would make a failing call
      * on every open of every such inbox for no outcome.
      *
-     * @return bool|null  true marked, false tried and refused, null not asked for
+     * @return bool|null true marked, false tried and refused, null not asked for
      */
     private function alsoMarkAtSource(Mailbox $mailbox, string $message, bool $read = true): ?bool
     {
@@ -813,9 +816,9 @@ class MailboxMessagesController extends Controller
         return response()->json([
             'data' => [
                 'message_id' => $message,
-                'seen_by'    => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
-                'shared'     => $this->readState->isShared($mailbox),
-                'at_source'  => $this->alsoMarkAtSource($mailbox, $message, read: false),
+                'seen_by' => $this->readState->seenBy($mailbox, [$message], $user)[$message] ?? [],
+                'shared' => $this->readState->isShared($mailbox),
+                'at_source' => $this->alsoMarkAtSource($mailbox, $message, read: false),
             ],
         ]);
     }
@@ -857,8 +860,8 @@ class MailboxMessagesController extends Controller
 
         $input = $request->validate([
             'action' => ['required', 'in:trash,seen,unseen'],
-            'ids'    => ['required', 'array', 'min:1', 'max:50'],
-            'ids.*'  => ['string', 'max:256'],
+            'ids' => ['required', 'array', 'min:1', 'max:50'],
+            'ids.*' => ['string', 'max:256'],
         ]);
 
         $ids = array_values(array_unique($input['ids']));
@@ -868,8 +871,8 @@ class MailboxMessagesController extends Controller
         try {
             foreach ($ids as $id) {
                 match ($input['action']) {
-                    'trash'  => $reader->trash($mailbox, $id),
-                    'seen'   => $this->readState->markSeen($mailbox, $id, $user),
+                    'trash' => $reader->trash($mailbox, $id),
+                    'seen' => $this->readState->markSeen($mailbox, $id, $user),
                     'unseen' => $this->readState->forgetSeen($mailbox, $id, $user),
                 };
 
@@ -918,11 +921,11 @@ class MailboxMessagesController extends Controller
         $ids = array_map(fn (MessageSummary $m) => $m->id, $decorated);
 
         return [
-            'messages'    => array_map(fn (MessageSummary $m) => $m->toArray(), $decorated),
-            'dealt'       => $this->dealtState->dealtWith($mailbox, $ids),
+            'messages' => array_map(fn (MessageSummary $m) => $m->toArray(), $decorated),
+            'dealt' => $this->dealtState->dealtWith($mailbox, $ids),
             'next_cursor' => $page->nextCursor,
             'approximate_total' => $page->approximateTotal,
-            'from_cache'  => $page->fromCache,
+            'from_cache' => $page->fromCache,
         ];
     }
 
@@ -930,11 +933,11 @@ class MailboxMessagesController extends Controller
     private function mailboxHeader(Mailbox $mailbox): array
     {
         return [
-            'id'           => $mailbox->getKey(),
-            'address'      => $mailbox->address,
+            'id' => $mailbox->getKey(),
+            'address' => $mailbox->address,
             'display_name' => $mailbox->display_name,
             'read_state_shared' => $this->readState->isShared($mailbox),
-            'read_state_note'   => $this->readState->explain($mailbox),
+            'read_state_note' => $this->readState->explain($mailbox),
         ];
     }
 

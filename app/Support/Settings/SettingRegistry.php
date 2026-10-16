@@ -1244,15 +1244,50 @@ class SettingRegistry
                 editPermission: 'field.manage',
                 help: 'A phone that should be reporting and has been silent this long raises an alert.',
             ),
+            // Safety recordings capture the customer's voice, so they are off
+            // until a company turns them on, and states where every party must
+            // consent either block them or require announcing them (desk,
+            // 2026-10-16, pending Jose's ruling on the defaults).
+            new SettingDefinition(
+                key: 'field.recording_enabled',
+                label: 'Technicians may record job visits',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                editPermission: 'field.manage',
+                help: 'Off by default. When on, people whose role may record can record a visit for their '
+                    .'safety. Check the recording laws where you work before turning it on.',
+            ),
             new SettingDefinition(
                 key: 'field.recording_notice_states',
-                label: 'States where the customer is told about recording',
+                label: 'States where every party must consent',
                 type: SettingDefinition::TYPE_STRING,
-                // A1 Tools' list, approved by Jose 2026-07-09.
-                default: 'FL, CA, PA, IL, CT',
+                default: 'CA, CT, DE, FL, IL, MD, MA, MI, MT, NV, NH, OR, PA, VT, WA',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 editPermission: 'field.manage',
-                help: 'Two-letter state codes, separated by commas. On a job in one of these states, the technician is shown '
-                    .'a line to say to the customer before recording.',
+                help: 'Two-letter state codes, separated by commas. Recording on a job in one of these states '
+                    .'follows the rule below.',
+            ),
+            new SettingDefinition(
+                key: 'field.recording_all_party_rule',
+                label: 'In those states',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'block',
+                options: ['block', 'announce'],
+                optionLabels: [
+                    'block' => 'Do not allow recording',
+                    'announce' => 'Allow it once the technician confirms they told the customer',
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                editPermission: 'field.manage',
+            ),
+            new SettingDefinition(
+                key: 'field.recording_notice_text',
+                label: 'What the technician tells the customer',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'This visit may be recorded for safety and quality.',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                editPermission: 'field.manage',
             ),
         ];
     }

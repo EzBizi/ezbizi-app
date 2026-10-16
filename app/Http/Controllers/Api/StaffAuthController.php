@@ -35,9 +35,9 @@ class StaffAuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'email'    => ['required', 'email'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string'],
-            'code'     => ['required', 'string'],
+            'code' => ['required', 'string'],
         ]);
 
         // Tighter than the tenant login (5 per 5 min): fewer accounts exist here
@@ -47,8 +47,8 @@ class StaffAuthController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, maxAttempts: 5)) {
             return response()->json([
-                'message'     => 'Too many attempts. Try again shortly.',
-                'code'        => 'throttled',
+                'message' => 'Too many attempts. Try again shortly.',
+                'code' => 'throttled',
                 'retry_after' => RateLimiter::availableIn($key),
             ], Response::HTTP_TOO_MANY_REQUESTS);
         }
@@ -67,7 +67,7 @@ class StaffAuthController extends Controller
         if (! $staff->hasTotp()) {
             return response()->json([
                 'message' => 'This account has not completed authenticator setup and cannot sign in yet.',
-                'code'    => 'totp_enrolment_required',
+                'code' => 'totp_enrolment_required',
             ], Response::HTTP_FORBIDDEN);
         }
 
@@ -100,21 +100,21 @@ class StaffAuthController extends Controller
             staffId: $staff->getKey(),
             staffLabel: "{$staff->name} <{$staff->email}>",
             metadata: [
-                'ip'         => $request->ip(),
+                'ip' => $request->ip(),
                 'user_agent' => $request->userAgent(),
-                'tier'       => $staff->tier,
+                'tier' => $staff->tier,
                 'recovery_code_count' => count($staff->recovery_codes ?? []),
             ],
         );
 
         return response()->json([
             'status' => 'authenticated',
-            'token'  => $token->plainTextToken,
-            'staff'  => [
-                'id'    => $staff->id,
-                'name'  => $staff->name,
+            'token' => $token->plainTextToken,
+            'staff' => [
+                'id' => $staff->id,
+                'name' => $staff->name,
                 'email' => $staff->email,
-                'tier'  => $staff->tier,
+                'tier' => $staff->tier,
             ],
         ]);
     }
@@ -141,13 +141,13 @@ class StaffAuthController extends Controller
         $staff = $request->user();
 
         return response()->json(['data' => [
-            'id'    => $staff->id,
-            'name'  => $staff->name,
+            'id' => $staff->id,
+            'name' => $staff->name,
             'email' => $staff->email,
-            'tier'  => $staff->tier,
+            'tier' => $staff->tier,
             'may_enter_without_approval' => $staff->mayEnterWithoutApproval(),
-            'recovery_code_count'   => count($staff->recovery_codes ?? []),
-            'last_login_at'              => $staff->last_login_at?->toIso8601String(),
+            'recovery_code_count' => count($staff->recovery_codes ?? []),
+            'last_login_at' => $staff->last_login_at?->toIso8601String(),
         ]]);
     }
 
@@ -163,15 +163,15 @@ class StaffAuthController extends Controller
     private function rejected(Request $request, string $email, string $stage): JsonResponse
     {
         $this->audit->logError('staff.sign_in_failed', [
-            'email'      => $email,
-            'stage'      => $stage,   // 'password' or 'second_factor'
-            'ip'         => $request->ip(),
+            'email' => $email,
+            'stage' => $stage,   // 'password' or 'second_factor'
+            'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
 
         return response()->json([
             'message' => 'Those credentials do not match our records.',
-            'code'    => 'invalid_credentials',
+            'code' => 'invalid_credentials',
         ], Response::HTTP_UNAUTHORIZED);
     }
 }

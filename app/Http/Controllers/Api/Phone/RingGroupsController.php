@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
-use App\Support\Phone\DialPlan;
-use App\Support\Phone\PhoneScope;
 use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Phone\DialPlan;
+use App\Support\Phone\PhoneScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;

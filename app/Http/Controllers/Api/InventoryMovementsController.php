@@ -16,6 +16,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * One item's History: every receive, issue, transfer, adjustment and sale
@@ -89,7 +90,7 @@ class InventoryMovementsController extends Controller
         ]);
     }
 
-    /** @param  \Illuminate\Support\Collection<string, int>  $visible */
+    /** @param  Collection<string, int>  $visible */
     private function received(InventoryItem $item, $visible, bool $withMoney): array
     {
         return InventoryReceiveLine::query()

@@ -71,7 +71,7 @@ class DataController extends Controller
     public function catalogue(Request $request): array
     {
         $user = $request->user();
-        $out  = [];
+        $out = [];
 
         foreach (ResourceMap::all() as $key => $definition) {
             if (! $user->hasPermission($definition['permission'])) {
@@ -79,9 +79,9 @@ class DataController extends Controller
             }
 
             $out[] = [
-                'key'        => $key,
-                'label'      => $definition['label'],
-                'columns'    => ResourceMap::columnsFor($definition, $user),
+                'key' => $key,
+                'label' => $definition['label'],
+                'columns' => ResourceMap::columnsFor($definition, $user),
 
                 /*
                  * Whether this person may take the whole resource, as one
@@ -125,16 +125,16 @@ class DataController extends Controller
                  * the tab can render the control with the sentence rather than
                  * silently omit it.
                  */
-                'importable'        => isset($definition['import']),
+                'importable' => isset($definition['import']),
                 'import_permission' => $definition['import']['permission'] ?? null,
-                'import_columns'    => isset($definition['import'])
+                'import_columns' => isset($definition['import'])
                     ? array_keys($definition['import']['columns'])
                     : [],
             ];
         }
 
         return [
-            'resources'    => $out,
+            'resources' => $out,
             'organization' => $this->wholeOrganizationAnswers($user),
         ];
     }
@@ -222,7 +222,7 @@ class DataController extends Controller
         // whoever read them.
         $this->audit->log('data.exported', metadata: [
             'resource' => $resource,
-            'format'   => 'csv',
+            'format' => 'csv',
             'sensitive_values_requested' => $includeSensitive,
         ]);
 
@@ -257,7 +257,7 @@ class DataController extends Controller
 
         $this->audit->log('data.exported', metadata: [
             'resource' => 'all',
-            'format'   => 'json',
+            'format' => 'json',
             'sensitive_values_requested' => $includeSensitive,
         ]);
 
@@ -350,10 +350,10 @@ class DataController extends Controller
         $input = $request->validate([
             // The file, or the same content pasted in — the second is what makes
             // this testable and scriptable, and costs one line.
-            'file'         => ['required_without:csv', 'file', 'mimes:csv,txt', 'max:10240'],
-            'csv'          => ['required_without:file', 'string'],
+            'file' => ['required_without:csv', 'file', 'mimes:csv,txt', 'max:10240'],
+            'csv' => ['required_without:file', 'string'],
             'franchise_id' => ['required', 'uuid'],
-            'dry_run'      => ['boolean'],
+            'dry_run' => ['boolean'],
         ]);
 
         $franchise = Franchise::findOrFail($input['franchise_id']);

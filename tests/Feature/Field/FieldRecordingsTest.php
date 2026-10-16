@@ -8,6 +8,7 @@ use App\Models\FieldRecording;
 use App\Models\Job;
 use App\Models\User;
 use App\Support\Files\FileStore;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -35,12 +36,34 @@ class FieldRecordingsTest extends TestCase
         $this->t = $this->provisionTenant();
         $this->tech = $this->userWithRole($this->t, 'Technician', ['field.view', 'field.tracked', 'field.record']);
         $this->manager = $this->userWithRole($this->t, 'Dispatcher', ['field.view', 'field.listen', 'field.manage']);
+        $this->set('field.recording_enabled', true);
+    }
+
+    private function set(string $key, mixed $value): void
+    {
+        $this->inTenant($this->t['org'], fn () => app(SettingsResolver::class)->set($key, $this->t['org'], $value));
+    }
+
+    /** A job at a customer in [$state], with the technician standing at it. */
+    private function jobIn(string $state): Job
+    {
+        return $this->inTenant($this->t['org'], function () use ($state) {
+            $customer = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'state' => $state]);
+            $job = Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
+            FieldPresence::query()->updateOrCreate(['user_id' => $this->tech->id], [
+                'latitude' => 40, 'longitude' => -75, 'last_seen_at' => now(),
+                'anchor_latitude' => 40, 'anchor_longitude' => -75, 'anchored_at' => now(), 'at_job_id' => $job->id,
+            ]);
+
+            return $job;
+        });
     }
 
     private function record(User $who): string
     {
-        return $this->signedInAs($who)->postJson('/api/v1/field/recordings', ['started_at' => '2026-10-16T13:00:00Z'])
-            ->assertCreated()->json('data.id');
+        return $this->signedInAs($who)->postJson('/api/v1/field/recordings', [
+            'started_at' => '2026-10-16T13:00:00Z', 'disclosure_confirmed' => true,
+        ])->assertCreated()->json('data.id');
     }
 
     private function chunk(string $id, int $seq, string $bytes = 'audio-bytes', ?string $sha = null)
@@ -119,26 +142,51 @@ class FieldRecordingsTest extends TestCase
         $this->assertCount(1, $disk->allFiles("field-audio/{$this->t['org']->id}/{$kept}"));
     }
 
-    public function test_the_phone_is_told_it_may_record_and_when_to_give_notice(): void
+    public function test_recording_is_off_until_a_company_turns_it_on(): void
     {
+        $this->set('field.recording_enabled', false);
+
+        $this->signedInAs($this->tech)->getJson('/api/v1/field/me')->assertJsonPath('data.recording.allowed', false);
+        $this->postJson('/api/v1/field/recordings', ['started_at' => '2026-10-16T13:00:00Z', 'disclosure_confirmed' => true])
+            ->assertForbidden();
+    }
+
+    public function test_the_technician_must_confirm_the_disclosure(): void
+    {
+        $this->signedInAs($this->tech)->postJson('/api/v1/field/recordings', ['started_at' => '2026-10-16T13:00:00Z'])
+            ->assertStatus(422)->assertJsonValidationErrors('disclosure_confirmed');
+    }
+
+    public function test_an_all_party_state_blocks_by_default_or_needs_the_customer_told(): void
+    {
+        $job = $this->jobIn('wa');
+        $body = ['started_at' => '2026-10-16T13:00:00Z', 'disclosure_confirmed' => true, 'job_id' => $job->id];
+
         $this->signedInAs($this->tech)->getJson('/api/v1/field/me')
-            ->assertJsonPath('data.may_record', true)->assertJsonPath('data.at_job', null);
-
-        $job = $this->inTenant($this->t['org'], function () {
-            $customer = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'state' => 'fl']);
-            $job = Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
-            FieldPresence::query()->create([
-                'user_id' => $this->tech->id, 'latitude' => 40, 'longitude' => -75, 'last_seen_at' => now(),
-                'anchor_latitude' => 40, 'anchor_longitude' => -75, 'anchored_at' => now(), 'at_job_id' => $job->id,
-            ]);
-
-            return $job;
-        });
-
-        $this->getJson('/api/v1/field/me')
             ->assertJsonPath('data.at_job.id', $job->id)
-            ->assertJsonPath('data.at_job.notice', true);
-        $this->signedInAs($this->manager)->getJson('/api/v1/field/me')->assertJsonPath('data.may_record', false);
+            ->assertJsonPath('data.recording.allowed', false);
+        $this->postJson('/api/v1/field/recordings', $body)->assertForbidden();
+
+        $this->set('field.recording_all_party_rule', 'announce');
+        $this->getJson('/api/v1/field/me')
+            ->assertJsonPath('data.recording.allowed', true)
+            ->assertJsonPath('data.recording.announce', true)
+            ->assertJsonPath('data.recording.notice', 'This visit may be recorded for safety and quality.');
+        $this->postJson('/api/v1/field/recordings', $body)->assertStatus(422);
+        $this->postJson('/api/v1/field/recordings', $body + ['customer_told' => true])->assertCreated();
+    }
+
+    public function test_a_one_party_state_records_without_notice(): void
+    {
+        $job = $this->jobIn('tx');
+
+        $this->signedInAs($this->tech)->getJson('/api/v1/field/me')
+            ->assertJsonPath('data.recording.allowed', true)
+            ->assertJsonPath('data.recording.announce', false);
+        $this->postJson('/api/v1/field/recordings', [
+            'started_at' => '2026-10-16T13:00:00Z', 'disclosure_confirmed' => true, 'job_id' => $job->id,
+        ])->assertCreated();
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/me')->assertJsonPath('data.recording.allowed', false);
     }
 
     public function test_keeping_a_recording_needs_manage(): void

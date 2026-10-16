@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Phone\Concerns;
 
 use App\Models\PhoneConnection;
 use App\Models\User;
+use App\Policies\Concerns\ScopedToPhoneConnection;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Rules\Exists;
  * Which Twilio connections a caller may read, and tenant-safe exists rules.
  *
  * The read side is the query mirror of
- * {@see \App\Policies\Concerns\ScopedToPhoneConnection}: the policy answers
+ * {@see ScopedToPhoneConnection}: the policy answers
  * "may this person touch THIS one", this answers "which ones may they see at
  * all". They have to agree, so they are named after each other on purpose — a
  * list that showed a row the policy then refused would be a screen offering a

@@ -8,6 +8,7 @@ use App\Models\PhoneConnection;
 use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadTexts;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Tenancy\TenantContext;
@@ -82,8 +83,8 @@ class SmsWebhookController extends Controller
             // Never at the cost of the text itself: a failure here must not roll back
             // the PhoneMessage above (desk, 2026-10-13).
             try {
-                app(\App\Support\Leads\LeadTexts::class)->absorbInbound($from, $body, $sid);
-            } catch (\Throwable $e) {
+                app(LeadTexts::class)->absorbInbound($from, $body, $sid);
+            } catch (Throwable $e) {
                 report($e);
             }
         });

@@ -41,17 +41,17 @@ class StaffController extends Controller
             ->orderBy('name')
             ->get()
             ->map(fn (Organization $o) => [
-                'id'              => $o->id,
-                'name'            => $o->name,
-                'slug'            => $o->slug,
+                'id' => $o->id,
+                'name' => $o->name,
+                'slug' => $o->slug,
                 'franchise_label' => $o->franchise_label,
-                'is_active'       => $o->is_active,
-                'is_demo'         => $o->is_demo,
-                'is_read_only'    => $o->isReadOnly(),
-                'trial_ends_at'   => $o->trial_ends_at?->toIso8601String(),
-                'counts'          => [
-                    'users'      => $o->users_count,
-                    'companies'  => $o->all_companies_count,
+                'is_active' => $o->is_active,
+                'is_demo' => $o->is_demo,
+                'is_read_only' => $o->isReadOnly(),
+                'trial_ends_at' => $o->trial_ends_at?->toIso8601String(),
+                'counts' => [
+                    'users' => $o->users_count,
+                    'companies' => $o->all_companies_count,
                     'franchises' => $o->franchises_count,
                 ],
                 'created_at' => $o->created_at->toIso8601String(),
@@ -71,16 +71,16 @@ class StaffController extends Controller
             $flag = $flags->get($key);
 
             return [
-                'key'   => $key,
+                'key' => $key,
                 'label' => $module->label,
                 // No row means available — see ModuleAvailability::isAvailable
                 // for why this one gate fails open where permissions fail closed.
                 'state' => $flag?->state ?? PlatformModuleFlag::ENABLED,
-                'is_default'             => $flag === null,
-                'reason'                 => $flag?->reason,
-                'changed_by'             => $flag?->changed_by,
-                'beta_organization_ids'  => $flag?->beta_organization_ids ?? [],
-                'permissions'            => $module->permissionKeys(),
+                'is_default' => $flag === null,
+                'reason' => $flag?->reason,
+                'changed_by' => $flag?->changed_by,
+                'beta_organization_ids' => $flag?->beta_organization_ids ?? [],
+                'permissions' => $module->permissionKeys(),
             ];
         })->values();
 
@@ -91,9 +91,9 @@ class StaffController extends Controller
     public function setModuleState(Request $request, string $key): JsonResponse
     {
         $input = $request->validate([
-            'state'                   => ['required', 'string'],
-            'reason'                  => ['nullable', 'string', 'max:1000'],
-            'beta_organization_ids'   => ['array'],
+            'state' => ['required', 'string'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+            'beta_organization_ids' => ['array'],
             'beta_organization_ids.*' => ['uuid', 'exists:organizations,id'],
         ]);
 
@@ -133,18 +133,18 @@ class StaffController extends Controller
             staffId: $staff->getKey(),
             staffLabel: "{$staff->name} <{$staff->email}>",
             metadata: [
-                'module'                => $key,
-                'before'                => $before,
-                'after'                 => $flag->state,
-                'reason'                => $flag->reason,
+                'module' => $key,
+                'before' => $before,
+                'after' => $flag->state,
+                'reason' => $flag->reason,
                 'beta_organization_ids' => $flag->beta_organization_ids ?? [],
             ],
         );
 
         return response()->json(['data' => [
-            'key'                   => $flag->module_key,
-            'state'                 => $flag->state,
-            'reason'                => $flag->reason,
+            'key' => $flag->module_key,
+            'state' => $flag->state,
+            'reason' => $flag->reason,
             'beta_organization_ids' => $flag->beta_organization_ids ?? [],
         ]]);
     }
@@ -155,9 +155,9 @@ class StaffController extends Controller
     public function impersonate(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'organization_id'  => ['required', 'uuid', 'exists:organizations,id'],
-            'reason'           => ['required', 'string', 'min:10', 'max:1000'],
-            'minutes'          => ['integer', 'min:1', 'max:120'],
+            'organization_id' => ['required', 'uuid', 'exists:organizations,id'],
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+            'minutes' => ['integer', 'min:1', 'max:120'],
         ]);
 
         try {
@@ -228,21 +228,21 @@ class StaffController extends Controller
     private function present(StaffImpersonation $session): array
     {
         return [
-            'id'              => $session->id,
-            'organization'    => [
-                'id'   => $session->organization_id,
+            'id' => $session->id,
+            'organization' => [
+                'id' => $session->organization_id,
                 'name' => $session->organization?->name,
             ],
-            'staff'           => [
-                'id'    => $session->staff_id,
-                'name'  => $session->staff?->name,
+            'staff' => [
+                'id' => $session->staff_id,
+                'name' => $session->staff?->name,
                 'email' => $session->staff?->email,
             ],
-            'reason'          => $session->reason,
-            'started_at'      => $session->started_at->toIso8601String(),
-            'expires_at'      => $session->expires_at->toIso8601String(),
-            'ended_at'        => $session->ended_at?->toIso8601String(),
-            'is_active'       => $session->isActive(),
+            'reason' => $session->reason,
+            'started_at' => $session->started_at->toIso8601String(),
+            'expires_at' => $session->expires_at->toIso8601String(),
+            'ended_at' => $session->ended_at?->toIso8601String(),
+            'is_active' => $session->isActive(),
             'client_approved' => $session->wasApproved(),
         ];
     }

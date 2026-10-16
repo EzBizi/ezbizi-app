@@ -8,6 +8,7 @@ use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -132,7 +133,7 @@ class SchedulingPatternController extends Controller
      * reach and have it rewritten alongside ones it can — the bulk operation
      * must not be a way to reach further than the single-area one.
      *
-     * @return array{0: \Illuminate\Support\Collection<int, ServiceArea>, 1: array<int, array{weekday:int, start_time:string, end_time:string, max_jobs:int}>}
+     * @return array{0: Collection<int, ServiceArea>, 1: array<int, array{weekday:int, start_time:string, end_time:string, max_jobs:int}>}
      */
     private function intent(Request $request, string $ability): array
     {
@@ -177,9 +178,9 @@ class SchedulingPatternController extends Controller
      * came from the database or from the request.
      *
      * @param  array<int, array{weekday:int, start_time:string, end_time:string, max_jobs:int}>  $slots
-     * @return \Illuminate\Support\Collection<int, ServiceAreaSlot>
+     * @return Collection<int, ServiceAreaSlot>
      */
-    private function hydrate(array $slots): \Illuminate\Support\Collection
+    private function hydrate(array $slots): Collection
     {
         return collect($slots)->map(fn (array $s) => new ServiceAreaSlot([
             'weekday' => $s['weekday'],

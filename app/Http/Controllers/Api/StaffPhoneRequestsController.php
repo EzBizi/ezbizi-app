@@ -41,7 +41,7 @@ class StaffPhoneRequestsController extends Controller
         $rows = PhoneServiceRequest::query()
             ->withoutGlobalScopes()
             ->with(['organization:id,name', 'requester:id,name', 'companies.company:id,name'])
-            ->orderByRaw("CASE WHEN status = ? THEN 0 ELSE 1 END", [PhoneServiceRequest::STATUS_PENDING])
+            ->orderByRaw('CASE WHEN status = ? THEN 0 ELSE 1 END', [PhoneServiceRequest::STATUS_PENDING])
             ->latest('created_at')
             ->limit(200)
             ->get()

@@ -94,6 +94,28 @@ final class FieldTracking
         return (int) $this->setting('field.lost_signal_minutes', $user);
     }
 
+    /**
+     * May this person start a recording on a job in this state, and must they
+     * confirm they told the customer first?
+     *
+     * @return array{allowed: bool, announce: bool, reason: ?string, notice: string}
+     */
+    public function recordingRule(User $user, ?string $state): array
+    {
+        $notice = (string) $this->setting('field.recording_notice_text', $user);
+        if (! $user->hasPermission('field.record') || ! $this->setting('field.recording_enabled', $user)) {
+            return ['allowed' => false, 'announce' => false, 'notice' => $notice,
+                'reason' => 'Recording is not turned on for you.'];
+        }
+        $allParty = $state !== null && in_array(strtoupper($state), $this->recordingNoticeStates($user), true);
+        if ($allParty && $this->setting('field.recording_all_party_rule', $user) === 'block') {
+            return ['allowed' => false, 'announce' => false, 'notice' => $notice,
+                'reason' => 'Recording is not allowed in '.strtoupper($state).', where everyone must consent.'];
+        }
+
+        return ['allowed' => true, 'announce' => $allParty, 'notice' => $notice, 'reason' => null];
+    }
+
     /** @return list<string> two-letter codes, upper case */
     public function recordingNoticeStates(User $user): array
     {

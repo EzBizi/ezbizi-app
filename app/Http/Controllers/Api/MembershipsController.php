@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Membership;
 use App\Models\MembershipPlan;
@@ -17,6 +18,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -64,10 +66,10 @@ class MembershipsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'customer_id'        => ['required', 'uuid', $this->existsInTenant('customers')],
+            'customer_id' => ['required', 'uuid', $this->existsInTenant('customers')],
             'membership_plan_id' => ['required', 'uuid', $this->existsInTenant('membership_plans')],
-            'starts_on'          => ['nullable', 'date'],
-            'paid_minor'         => ['nullable', 'integer', 'min:0'],
+            'starts_on' => ['nullable', 'date'],
+            'paid_minor' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $customer = Customer::findOrFail($input['customer_id']);
@@ -78,14 +80,14 @@ class MembershipsController extends Controller
         $previous = Membership::query()->where('customer_id', $customer->getKey())->exists();
 
         $membership = Membership::create([
-            'franchise_id'       => $customer->owning_franchise_id,
-            'customer_id'        => $customer->getKey(),
+            'franchise_id' => $customer->owning_franchise_id,
+            'customer_id' => $customer->getKey(),
             'membership_plan_id' => $input['membership_plan_id'],
-            'enrollment'         => $previous ? 'renewal' : 'new',
-            'starts_on'          => $starts,
+            'enrollment' => $previous ? 'renewal' : 'new',
+            'starts_on' => $starts,
             // Jose: "it sets a timer for 1 year".
-            'ends_on'            => $starts->addYear()->subDay(),
-            'paid_minor'         => $input['paid_minor'] ?? 0,
+            'ends_on' => $starts->addYear()->subDay(),
+            'paid_minor' => $input['paid_minor'] ?? 0,
         ]);
 
         $this->audit->log('membership.created', $membership);
@@ -98,8 +100,8 @@ class MembershipsController extends Controller
     {
         $input = $request->validate([
             'membership_plan_id' => ['sometimes', 'uuid', $this->existsInTenant('membership_plans')],
-            'paid_minor'         => ['sometimes', 'integer', 'min:0'],
-            'cancelled'          => ['sometimes', 'boolean'],
+            'paid_minor' => ['sometimes', 'integer', 'min:0'],
+            'cancelled' => ['sometimes', 'boolean'],
         ]);
 
         $this->need($request->user(), 'memberships.edit', 'change a membership');
@@ -163,15 +165,15 @@ class MembershipsController extends Controller
         $required = $plan ? 'sometimes' : 'required';
 
         return $request->validate([
-            'name'        => [$required, 'string', 'max:120', Rule::unique('membership_plans')
+            'name' => [$required, 'string', 'max:120', Rule::unique('membership_plans')
                 ->where('organization_id', $this->tenant->idOrFail())->ignore($plan?->getKey())],
             // What a visit includes, one line, shown on the join page.
             'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price_minor' => [$required, 'integer', 'min:0'],
-            'billing'     => [$required, Rule::in(MembershipPlan::BILLINGS)],
+            'billing' => [$required, Rule::in(MembershipPlan::BILLINGS)],
             // Jose: the Workiz job type a confirmed visit carries, per plan.
             'workiz_job_type' => ['sometimes', 'nullable', 'string', 'max:120'],
-            'is_active'   => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
         ]);
     }
 
@@ -183,30 +185,30 @@ class MembershipsController extends Controller
         $customer = $m->customer;
 
         return [
-            'id'            => $m->getKey(),
-            'customer_id'   => $m->customer_id,
+            'id' => $m->getKey(),
+            'customer_id' => $m->customer_id,
             'customer_name' => $customer?->name,
             // Jose: "show the phone number as well on members, and email if available".
             'customer_phone' => Customer::realPhone($customer?->phone),
             'customer_email' => Customer::realEmail($customer?->email),
-            'state'         => $customer?->state,
-            'zip'           => $customer?->postal_code,
-            'enrollment'    => $m->enrollment,
-            'plan_id'       => $plan->getKey(),
-            'plan_name'     => $plan->name,
-            'billing'       => $plan->billing,
-            'starts_on'     => $m->starts_on->toDateString(),
-            'ends_on'       => $m->ends_on->toDateString(),
-            'status'        => $m->state(),
-            'reminded_at'   => $m->reminded_at?->toIso8601String(),
+            'state' => $customer?->state,
+            'zip' => $customer?->postal_code,
+            'enrollment' => $m->enrollment,
+            'plan_id' => $plan->getKey(),
+            'plan_name' => $plan->name,
+            'billing' => $plan->billing,
+            'starts_on' => $m->starts_on->toDateString(),
+            'ends_on' => $m->ends_on->toDateString(),
+            'status' => $m->state(),
+            'reminded_at' => $m->reminded_at?->toIso8601String(),
             // The next visit the reminder's link booked, if any: its day (the
             // stored wall-clock date, no zone arithmetic) and its job number.
-            'visit_on'         => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
+            'visit_on' => $m->visitJob ? substr((string) $m->visitJob->getRawOriginal('scheduled_for'), 0, 10) ?: null : null,
             'visit_job_number' => $m->visitJob?->number,
-            'currency'      => $plan->currency,
-            'price_minor'   => $money ? $plan->price_minor : null,
-            'paid_minor'    => $money ? $m->paid_minor : null,
-            'due_minor'     => $money ? $m->dueMinor() : null,
+            'currency' => $plan->currency,
+            'price_minor' => $money ? $plan->price_minor : null,
+            'paid_minor' => $money ? $m->paid_minor : null,
+            'due_minor' => $money ? $m->dueMinor() : null,
             // Jose: "plan + avg job value" — the plan's year plus what one of
             // their jobs usually bills.
             'estimated_gross_minor' => $money ? $plan->price_minor + ($avgJob[$m->customer_id] ?? 0) : null,
@@ -229,13 +231,13 @@ class MembershipsController extends Controller
     public static function payload(Membership $m): array
     {
         return [
-            'plan_name'  => $m->plan?->name,
+            'plan_name' => $m->plan?->name,
             'enrollment' => $m->enrollment,
-            'starts_on'  => $m->starts_on->toDateString(),
-            'ends_on'    => $m->ends_on->toDateString(),
+            'starts_on' => $m->starts_on->toDateString(),
+            'ends_on' => $m->ends_on->toDateString(),
             // For a message to read naturally: "Hi Marta, ... on October 4, 2027".
             'customer_name' => Customer::query()->whereKey($m->customer_id)->value('name'),
-            'ends_on_text'  => $m->ends_on->format('F j, Y'),
+            'ends_on_text' => $m->ends_on->format('F j, Y'),
         ];
     }
 
@@ -254,13 +256,13 @@ class MembershipsController extends Controller
 
     private function reach(User $user, string $franchiseId, string $act): void
     {
-        $franchise = \App\Models\Franchise::findOrFail($franchiseId);
+        $franchise = Franchise::findOrFail($franchiseId);
         if (! $user->canActOnFranchise($franchise)) {
             throw new AuthorizationException(Refusal::noReach($user, Refusal::AT_FRANCHISE, $act, $franchise->name)->message());
         }
     }
 
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')->where('organization_id', $this->tenant->idOrFail());
     }

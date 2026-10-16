@@ -65,35 +65,35 @@ class BlueskyConnectController extends Controller
         if (! $connection->exists) {
             $connection->forceFill([
                 'organization_id' => $user->organization_id,
-                'scope_type'      => $scopeType,
-                'scope_id'        => $scopeId,
-                'provider'        => SocialProvider::Bluesky->value,
-                'remote_id'       => $session['did'],
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'provider' => SocialProvider::Bluesky->value,
+                'remote_id' => $session['did'],
             ]);
         }
 
         $connection->forceFill([
             'display_name' => $session['handle'],
-            'handle'       => $session['handle'],
+            'handle' => $session['handle'],
         ]);
         $connection->connect([
             'refresh_token' => $session['refresh_jwt'],
-            'access_token'  => $session['access_jwt'],
+            'access_token' => $session['access_jwt'],
         ]);
         $connection->save();
 
         $this->audit->log('social.connected', $connection, [
-            'provider'     => SocialProvider::Bluesky->value,
+            'provider' => SocialProvider::Bluesky->value,
             'display_name' => $connection->display_name,
-            'scope_type'   => $connection->scope_type,
+            'scope_type' => $connection->scope_type,
         ]);
 
         return response()->json(['data' => [
-            'id'             => $connection->getKey(),
-            'provider'       => SocialProvider::Bluesky->value,
+            'id' => $connection->getKey(),
+            'provider' => SocialProvider::Bluesky->value,
             'provider_label' => SocialProvider::Bluesky->label(),
-            'display_name'   => $connection->display_name,
-            'handle'         => $connection->handle,
+            'display_name' => $connection->display_name,
+            'handle' => $connection->handle,
         ]]);
     }
 }

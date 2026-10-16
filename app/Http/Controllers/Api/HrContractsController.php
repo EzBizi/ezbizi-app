@@ -127,7 +127,7 @@ class HrContractsController extends Controller
     private static function coverRules(): array
     {
         return [
-            'cover'        => ['nullable', 'array'],
+            'cover' => ['nullable', 'array'],
             'cover.source' => ['required_with:cover', Rule::in(array_keys(ContractVersion::COVER_SOURCES))],
             // The staged upload, for a cover of the tenant's own. Required
             // WITH the file source rather than always: a `logo` cover carries
@@ -176,19 +176,18 @@ class HrContractsController extends Controller
 
         if ((string) ($cover['source'] ?? '') === ContractVersion::COVER_LOGO) {
             return [
-                'source'    => ContractVersion::COVER_LOGO,
-                'png'       => $this->organizationLogo($request),
+                'source' => ContractVersion::COVER_LOGO,
+                'png' => $this->organizationLogo($request),
                 'upload_id' => null,
-                'filename'  => null,
+                'filename' => null,
             ];
         }
 
         $upload = $this->stagedCover($cover['upload_id'] ?? null);
-        $png    = $upload->png();
+        $png = $upload->png();
 
         if ($png === null) {
-            throw ValidationException::withMessages(['cover.upload_id' =>
-                'The cover that was uploaded is no longer on the disk, so there is nothing to '
+            throw ValidationException::withMessages(['cover.upload_id' => 'The cover that was uploaded is no longer on the disk, so there is nothing to '
                 .'put on the front page. Choose the image again — publishing a version whose '
                 .'cover is missing would produce a contract with a blank first page and '
                 .'nothing saying why.',
@@ -196,10 +195,10 @@ class HrContractsController extends Controller
         }
 
         return [
-            'source'    => ContractVersion::COVER_FILE,
-            'png'       => $png,
+            'source' => ContractVersion::COVER_FILE,
+            'png' => $png,
             'upload_id' => $upload->getKey(),
-            'filename'  => $upload->original_name,
+            'filename' => $upload->original_name,
         ];
     }
 
@@ -218,8 +217,7 @@ class HrContractsController extends Controller
             : null;
 
         if ($upload === null) {
-            throw ValidationException::withMessages(['cover.upload_id' =>
-                'That cover was not found, so this version has nothing to put on its front '
+            throw ValidationException::withMessages(['cover.upload_id' => 'That cover was not found, so this version has nothing to put on its front '
                 .'page. Upload the image again and publish with the id that comes back — a '
                 .'cover is part of the version, so it has to be a file this organization '
                 .'actually has.',
@@ -251,8 +249,7 @@ class HrContractsController extends Controller
             : $this->files->contents($organization->logo_path);
 
         if ($bytes === null) {
-            throw ValidationException::withMessages(['cover.source' =>
-                'This business has no logo uploaded yet, so there is nothing to put on the '
+            throw ValidationException::withMessages(['cover.source' => 'This business has no logo uploaded yet, so there is nothing to put on the '
                 .'cover. Upload one under the organization’s branding and it will be offered '
                 .'here — or attach a file to this contract instead, which is the other way to '
                 .'make a cover.',
@@ -325,17 +322,17 @@ class HrContractsController extends Controller
         );
 
         $organizationId = $request->user()->organization_id;
-        $disk           = $this->files->defaultDisk();
+        $disk = $this->files->defaultDisk();
 
         $upload = new ContractCoverUpload([
             'organization_id' => $organizationId,
-            'path'            => $this->files->put(
+            'path' => $this->files->put(
                 $file,
                 $this->files->directoryFor('contract-covers', $organizationId),
             ),
-            'disk'            => $disk,
-            'original_name'   => (string) $file->getClientOriginalName(),
-            'size_bytes'      => (int) $file->getSize(),
+            'disk' => $disk,
+            'original_name' => (string) $file->getClientOriginalName(),
+            'size_bytes' => (int) $file->getSize(),
             'uploaded_by_user_id' => $request->user()->getKey(),
         ]);
 
@@ -345,12 +342,12 @@ class HrContractsController extends Controller
         // the front page of an agreement.
         $this->audit->log('contract.cover_uploaded', $upload, metadata: [
             'filename' => $upload->original_name,
-            'bytes'    => $upload->size_bytes,
+            'bytes' => $upload->size_bytes,
         ]);
 
         return response()->json(['data' => [
             'upload_id' => $upload->getKey(),
-            'filename'  => $upload->original_name,
+            'filename' => $upload->original_name,
             // Where it can be read back. Answered by the server rather than
             // assembled by the client, so the route is decided in one place.
             'image_path' => '/hr/contracts/covers/'.$upload->getKey(),
@@ -407,7 +404,7 @@ class HrContractsController extends Controller
     private function coverChange(?ContractVersion $current, ?array $cover): array
     {
         $from = $current?->cover_source;
-        $to   = $cover['source'] ?? null;
+        $to = $cover['source'] ?? null;
 
         $changed = $from !== $to
             || ($to !== null && $current?->coverPng() !== $cover['png']);
@@ -462,11 +459,11 @@ class HrContractsController extends Controller
          */
         $reserved = array_map(
             fn (string $key) => [
-                'key'      => $key,
-                'label'    => CommonCore::labelFor($key),
-                'is'       => CommonCore::describe($key),
-                'reason'   => CommonCore::refusalFor($key),
-                'asked'    => CommonCore::isAsked($key),
+                'key' => $key,
+                'label' => CommonCore::labelFor($key),
+                'is' => CommonCore::describe($key),
+                'reason' => CommonCore::refusalFor($key),
+                'asked' => CommonCore::isAsked($key),
                 'required' => CommonCore::isRequired($key),
             ],
             CommonCore::keys(),
@@ -496,10 +493,10 @@ class HrContractsController extends Controller
              */
             'field_types' => array_map(
                 fn (string $key) => [
-                    'key'           => $key,
-                    'label'         => FieldType::ALL[$key],
+                    'key' => $key,
+                    'label' => FieldType::ALL[$key],
                     'takes_options' => FieldType::takesOptions($key),
-                    'merges'        => FieldType::merges($key),
+                    'merges' => FieldType::merges($key),
                 ],
                 FieldType::keys(),
             ),
@@ -543,8 +540,8 @@ class HrContractsController extends Controller
              * logo is held to and neither list is restated here.
              */
             'cover' => [
-                'sources'       => self::pairs(ContractVersion::COVER_SOURCES),
-                'format'        => Branding::MIME,
+                'sources' => self::pairs(ContractVersion::COVER_SOURCES),
+                'format' => Branding::MIME,
                 'max_kilobytes' => self::MAX_COVER_KILOBYTES,
                 // Branding's SHAPES are deliberately absent. A logo is cropped
                 // to one of two exact sizes so a row of marks lines up; a cover
@@ -575,16 +572,16 @@ class HrContractsController extends Controller
              * wire does not get to describe the other.
              */
             'merge_tags' => [
-                'open'            => MergeTags::OPEN,
-                'close'           => MergeTags::CLOSE,
-                'example'         => MergeTags::OPEN.'first_name'.MergeTags::CLOSE,
+                'open' => MergeTags::OPEN,
+                'close' => MergeTags::CLOSE,
+                'example' => MergeTags::OPEN.'first_name'.MergeTags::CLOSE,
                 'max_body_length' => MergeTags::MAX_BODY_LENGTH,
             ] + self::contractFreeTags(),
             'limits' => [
-                'max_fields'        => FieldSet::MAX_FIELDS,
-                'max_options'       => FieldSet::MAX_OPTIONS,
+                'max_fields' => FieldSet::MAX_FIELDS,
+                'max_options' => FieldSet::MAX_OPTIONS,
                 'max_option_length' => FieldSet::MAX_OPTION_LENGTH,
-                'max_body_length'   => MergeTags::MAX_BODY_LENGTH,
+                'max_body_length' => MergeTags::MAX_BODY_LENGTH,
             ],
         ]]);
     }
@@ -622,7 +619,7 @@ class HrContractsController extends Controller
         }
 
         return [
-            'core'  => $groups[MergeTags::SOURCE_CORE],
+            'core' => $groups[MergeTags::SOURCE_CORE],
             'facts' => $groups[MergeTags::SOURCE_FACT],
         ];
     }
@@ -706,22 +703,22 @@ class HrContractsController extends Controller
         $this->authorize('create', Contract::class);
 
         $input = $request->validate([
-            'name'        => ['required', 'string', 'max:150', $this->uniqueName()],
+            'name' => ['required', 'string', 'max:150', $this->uniqueName()],
             'description' => ['nullable', 'string', 'max:2000'],
-            'notes'       => ['nullable', 'string', 'max:500'],
-            'fields'      => ['required', 'array'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'fields' => ['required', 'array'],
             // No `max` here: the limit is MergeTags::MAX_BODY_LENGTH and it is
             // enforced with the sentence explaining why, one line down. A `max`
             // rule as well would be a second copy of the number, and the two
             // would answer with different words.
-            'body'        => ['nullable', 'string'],
+            'body' => ['nullable', 'string'],
         ] + self::coverRules());
 
         // Validated before anything is written, and by the same class that will
         // validate every later version — so the first field list is held to
         // exactly the rules the second one will be.
         $fields = FieldSet::fromInput($request->input('fields'));
-        $body   = MergeTags::normalise($input['body'] ?? null);
+        $body = MergeTags::normalise($input['body'] ?? null);
 
         // The wording is checked against the field list it is published WITH,
         // never against the one already stored: they arrive together and they
@@ -733,17 +730,17 @@ class HrContractsController extends Controller
 
         $contract = DB::transaction(function () use ($input, $fields, $body, $cover, $request) {
             $contract = Contract::create([
-                'name'        => $input['name'],
+                'name' => $input['name'],
                 'description' => $input['description'] ?? null,
-                'created_by'  => $request->user()->getKey(),
+                'created_by' => $request->user()->getKey(),
             ]);
 
             $this->publish($contract, $fields, $body, $cover, $input['notes'] ?? null, $request);
 
             $this->audit->log('contract.created', $contract, metadata: [
-                'fields'   => count($fields->fields),
+                'fields' => count($fields->fields),
                 'has_body' => $body !== null,
-                'cover'    => $cover['source'] ?? null,
+                'cover' => $cover['source'] ?? null,
             ]);
 
             return $contract;
@@ -768,12 +765,12 @@ class HrContractsController extends Controller
         $this->authorize('update', $contract);
 
         $input = $request->validate([
-            'name'        => ['sometimes', 'string', 'max:150', $this->uniqueName($contract)],
+            'name' => ['sometimes', 'string', 'max:150', $this->uniqueName($contract)],
             'description' => ['nullable', 'string', 'max:2000'],
             // `missing` rather than absent-by-omission: a client that sends
             // fields here is doing something it believes will take effect, and
             // the reply has to be the reason rather than silence.
-            'fields'      => ['missing'],
+            'fields' => ['missing'],
             /*
              * And the body, for a reason that is stronger rather than merely
              * consistent. `description` on this same request is a note ABOUT the
@@ -782,7 +779,7 @@ class HrContractsController extends Controller
              * typo in the name — with no version, no diff, and nothing in the
              * history saying the terms had moved.
              */
-            'body'        => ['missing'],
+            'body' => ['missing'],
             /*
              * And the cover, which is the newest member of the same family and
              * belongs here for the strongest version of the argument. The cover
@@ -790,7 +787,7 @@ class HrContractsController extends Controller
              * — so a cover this endpoint could change would be a signed
              * document whose front page is not the one that was signed.
              */
-            'cover'       => ['missing'],
+            'cover' => ['missing'],
         ], [
             'fields.missing' => 'Changing the fields publishes a new version of the template, '
                 .'which is a separate, deliberate act — POST to this contract’s /versions '
@@ -828,7 +825,7 @@ class HrContractsController extends Controller
         // against the one BEFORE it — walking newest-first would need the list
         // twice over to find each predecessor.
         $ordered = $contract->versions()->reorder('version')->with('createdBy:id,name')->get();
-        $out     = [];
+        $out = [];
         $previous = null;
 
         foreach ($ordered as $version) {
@@ -860,8 +857,8 @@ class HrContractsController extends Controller
         $this->authorize('update', $contract);
 
         $input = $request->validate([
-            'fields'  => ['required', 'array'],
-            'notes'   => ['nullable', 'string', 'max:500'],
+            'fields' => ['required', 'array'],
+            'notes' => ['nullable', 'string', 'max:500'],
             'preview' => ['boolean'],
             /*
              * ABSENT MEANS EMPTY, and this is the one place that is dangerous
@@ -876,7 +873,7 @@ class HrContractsController extends Controller
              * rather than folding it in with an edit: the person clicking publish
              * sees it named before they click.
              */
-            'body'    => ['nullable', 'string'],
+            'body' => ['nullable', 'string'],
         ] + self::coverRules());
 
         $fields = FieldSet::fromInput(
@@ -899,20 +896,20 @@ class HrContractsController extends Controller
          */
         $cover = $this->resolveCover($request);
 
-        $current     = $contract->currentVersion;
-        $diff        = VersionDiff::between($current?->fieldSet(), $fields, $current?->body, $body);
+        $current = $contract->currentVersion;
+        $diff = VersionDiff::between($current?->fieldSet(), $fields, $current?->body, $body);
         $coverChange = $this->coverChange($current, $cover);
 
         if ($request->boolean('preview')) {
             return response()->json(['data' => [
                 'preview' => true,
-                'diff'    => $diff->toArray(),
+                'diff' => $diff->toArray(),
                 // Beside the diff rather than inside it: VersionDiff compares
                 // field lists and bodies and is also what the version-history
                 // screen renders, so growing it is a change to a shared shape.
                 // Reported here because a publish that silently dropped a cover
                 // is exactly what "a diff a person can read" exists to prevent.
-                'cover'   => $coverChange,
+                'cover' => $coverChange,
                 // The version number this WOULD take, so the screen can name it.
                 'version' => (int) ($contract->versions()->max('version') ?? 0) + 1,
             ]]);
@@ -929,8 +926,7 @@ class HrContractsController extends Controller
          * something a new version should be minted for.
          */
         if ($diff->isEmpty() && ! $coverChange['changed'] && $current !== null) {
-            throw ValidationException::withMessages(['fields' =>
-                'That is the field list, the wording and the cover this contract already has, '
+            throw ValidationException::withMessages(['fields' => 'That is the field list, the wording and the cover this contract already has, '
                 .'so there is nothing to publish. A version that changes nothing still splits '
                 .'the records that follow it away from the ones before, and the version list '
                 .'stops being a record of what actually changed.',
@@ -952,11 +948,11 @@ class HrContractsController extends Controller
              */
             $this->audit->log('contract.version_published', $contract, metadata: [
                 'version' => $version->version,
-                'notes'   => $version->notes,
-                'diff'    => $diff->toArray(),
+                'notes' => $version->notes,
+                'diff' => $diff->toArray(),
                 // §10 wants the record of the ACT, and swapping the front page
                 // of the agreement is one. The two labels, never the bytes.
-                'cover'   => $coverChange,
+                'cover' => $coverChange,
             ]);
 
             /*
@@ -989,14 +985,14 @@ class HrContractsController extends Controller
             $changes = $diff->toArray();
 
             $this->events->emit('contract.version_published', $version, ['after' => [
-                'contract'        => $contract->name,
-                'contract_id'     => $contract->getKey(),
-                'version'         => $version->version,
-                'field_count'     => count($version->liveFields()),
-                'has_body'        => $version->hasBody(),
-                'added'           => count($changes['added']),
-                'changed'         => count($changes['changed']),
-                'retired'         => count($changes['retired']),
+                'contract' => $contract->name,
+                'contract_id' => $contract->getKey(),
+                'version' => $version->version,
+                'field_count' => count($version->liveFields()),
+                'has_body' => $version->hasBody(),
+                'added' => count($changes['added']),
+                'changed' => count($changes['changed']),
+                'retired' => count($changes['retired']),
                 'wording_changed' => $changes['body'] !== null,
                 /*
                  * And the cover, for the same reason `wording_changed` is here
@@ -1010,9 +1006,9 @@ class HrContractsController extends Controller
                  * will write, and it cannot be derived from `cover_changed`
                  * alone. Labels only; no bytes reach a webhook.
                  */
-                'cover_changed'   => $coverChange['changed'],
-                'has_cover'       => $version->hasCover(),
-                'cover_source'    => $version->cover_source,
+                'cover_changed' => $coverChange['changed'],
+                'has_cover' => $version->hasCover(),
+                'cover_source' => $version->cover_source,
             ]], actor: $request->user());
 
             return $version;
@@ -1021,9 +1017,9 @@ class HrContractsController extends Controller
         return response()->json([
             'data' => [
                 'contract' => $this->present($contract->fresh(), detailed: true),
-                'diff'     => $diff->toArray(),
-                'cover'    => $coverChange,
-                'version'  => $version->version,
+                'diff' => $diff->toArray(),
+                'cover' => $coverChange,
+                'version' => $version->version,
             ],
         ], Response::HTTP_CREATED);
     }
@@ -1082,11 +1078,11 @@ class HrContractsController extends Controller
 
         $input = $request->validate([
             'fields' => ['required', 'array'],
-            'body'   => ['nullable', 'string'],
+            'body' => ['nullable', 'string'],
         ] + self::coverRules());
 
         $fields = FieldSet::fromInput($request->input('fields'), $contract->pinnedKeyProperties());
-        $body   = MergeTags::normalise($input['body'] ?? null);
+        $body = MergeTags::normalise($input['body'] ?? null);
 
         MergeTags::validate($body, $fields);
 
@@ -1107,17 +1103,17 @@ class HrContractsController extends Controller
                 // Off the contract rather than off the session: the document
                 // names the business the AGREEMENT belongs to, and `assertMine`
                 // has already established those are the same one.
-                organizationName:    (string) $contract->organization->name,
+                organizationName: (string) $contract->organization->name,
                 organizationAddress: (string) ($contract->organization->address ?? ''),
-                contractName:        (string) $contract->name,
-                version:          $version,
-                fields:           $fields,
-                body:             $body,
+                contractName: (string) $contract->name,
+                version: $version,
+                fields: $fields,
+                body: $body,
                 // The DRAFT's cover, from this request. Nothing is stored: a
                 // preview writes nothing, and a cover that had to be saved
                 // before it could be looked at would be a file belonging to a
                 // version that may never exist.
-                coverPng:         $cover['png'] ?? null,
+                coverPng: $cover['png'] ?? null,
             ),
             'mime' => DocumentRenderer::MIME,
             /*
@@ -1174,19 +1170,19 @@ class HrContractsController extends Controller
 
         $version = ContractVersion::create([
             'contract_id' => $contract->getKey(),
-            'version'     => $next,
-            'fields'      => $fields->toArray(),
+            'version' => $next,
+            'fields' => $fields->toArray(),
             // Written in the same statement as the fields, into the same
             // write-once row. That is what makes "the wording is versioned with
             // the questions" a property of the schema rather than a convention.
-            'body'        => $body,
+            'body' => $body,
             // And the cover, in that same statement, for that same reason.
-            'cover_source'   => $cover['source'] ?? null,
-            'cover_path'     => $coverPath,
+            'cover_source' => $cover['source'] ?? null,
+            'cover_path' => $coverPath,
             'cover_upload_id' => $cover['upload_id'] ?? null,
             'cover_filename' => $cover['filename'] ?? null,
-            'notes'          => $notes,
-            'created_by'     => $request->user()->getKey(),
+            'notes' => $notes,
+            'created_by' => $request->user()->getKey(),
         ]);
 
         $contract->forceFill(['current_version_id' => $version->getKey()])->save();
@@ -1212,10 +1208,10 @@ class HrContractsController extends Controller
         $current = $contract->currentVersion;
 
         $base = [
-            'id'          => $contract->id,
-            'name'        => $contract->name,
+            'id' => $contract->id,
+            'name' => $contract->name,
             'description' => $contract->description,
-            'version'     => $current?->version,
+            'version' => $current?->version,
             'versions_count' => $contract->versions_count ?? $contract->versions()->count(),
             // What onboarding would ask today, counted. The number people check
             // at a glance, and it is the LIVE count — a list showing retired
@@ -1236,7 +1232,7 @@ class HrContractsController extends Controller
              * A flag rather than the text, because the list is every template in
              * the organization and the text is pages.
              */
-            'has_body'   => $current?->hasBody() ?? false,
+            'has_body' => $current?->hasBody() ?? false,
             /*
              * Whether the document opens on a cover page, and where its mark
              * came from.
@@ -1263,7 +1259,7 @@ class HrContractsController extends Controller
              * out with no front page" is a question about all of them at once,
              * and opening eleven templates is not an answer.
              */
-            'cover'      => $current?->coverPayload(),
+            'cover' => $current?->coverPayload(),
             'updated_at' => $contract->updated_at?->toIso8601String(),
         ];
 
@@ -1302,9 +1298,9 @@ class HrContractsController extends Controller
              */
             'merge_tags' => MergeTags::resolvable($current?->fieldSet()),
             'current_version' => $current === null ? null : [
-                'id'         => $current->id,
-                'version'    => $current->version,
-                'notes'      => $current->notes,
+                'id' => $current->id,
+                'version' => $current->version,
+                'notes' => $current->notes,
                 'created_at' => $current->created_at?->toIso8601String(),
             ],
         ];
@@ -1313,23 +1309,23 @@ class HrContractsController extends Controller
     private function presentVersion(ContractVersion $version, Contract $contract, ?ContractVersion $previous): array
     {
         return [
-            'id'         => $version->id,
-            'version'    => $version->version,
+            'id' => $version->id,
+            'version' => $version->version,
             'is_current' => $version->id === $contract->current_version_id,
-            'notes'      => $version->notes,
+            'notes' => $version->notes,
             // Per version, because that is the whole point of the cover living
             // here: "what did version 3 look like" has an answer, and it is not
             // "whatever the logo is today".
             'has_cover' => $version->hasCover(),
-            'cover'     => $version->coverPayload(),
+            'cover' => $version->coverPayload(),
             'created_at' => $version->created_at?->toIso8601String(),
             'created_by' => $version->createdBy?->name,
-            'fields'     => $version->fieldSet()->toArray(),
+            'fields' => $version->fieldSet()->toArray(),
             // The wording as this version had it. Sent in full, per version,
             // because "what did version 3 say" is the question this screen
             // exists to answer and a length or a flag does not answer it. It is
             // what MergeTags::MAX_BODY_LENGTH is sized against.
-            'body'       => $version->body,
+            'body' => $version->body,
             /*
              * What this publish changed, against the version before it.
              *

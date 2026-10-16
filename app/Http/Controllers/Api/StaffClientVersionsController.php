@@ -59,19 +59,19 @@ class StaffClientVersionsController extends Controller
                 $row = $rows->get($platform);
 
                 return [
-                    'platform'        => $platform,
+                    'platform' => $platform,
                     'minimum_version' => $row?->minimum_version,
 
                     // No row, or a row with no minimum, both mean the same thing
                     // to the gate — nobody is refused — so they must read the
                     // same on the screen. Surfacing them differently would
                     // invite somebody to conclude that one of them blocks.
-                    'is_enforced'     => $row?->minimum_version !== null,
+                    'is_enforced' => $row?->minimum_version !== null,
 
-                    'download_url'    => $row?->download_url,
-                    'note'            => $row?->note,
-                    'changed_by'      => $row?->changed_by,
-                    'changed_at'      => $row?->updated_at?->toIso8601String(),
+                    'download_url' => $row?->download_url,
+                    'note' => $row?->note,
+                    'changed_by' => $row?->changed_by,
+                    'changed_at' => $row?->updated_at?->toIso8601String(),
 
                     // Web has no installer, so the screen should not offer a
                     // field for one. Stated by the server rather than hardcoded
@@ -116,8 +116,8 @@ class StaffClientVersionsController extends Controller
          */
         $input = $request->validate([
             'minimum_version' => ['present', 'nullable', 'string', 'max:64'],
-            'download_url'    => ['nullable', 'string', 'max:2048', 'url'],
-            'note'            => ['nullable', 'string', 'max:500'],
+            'download_url' => ['nullable', 'string', 'max:2048', 'url'],
+            'note' => ['nullable', 'string', 'max:500'],
         ]);
 
         // Validated by hand rather than through the route parameter, so the
@@ -131,7 +131,7 @@ class StaffClientVersionsController extends Controller
         }
 
         $minimumVersion = $this->normalisedVersion($input['minimum_version'] ?? null);
-        $downloadUrl    = $this->normalisedDownloadUrl($platform, $input['download_url'] ?? null);
+        $downloadUrl = $this->normalisedDownloadUrl($platform, $input['download_url'] ?? null);
 
         $staff = $request->user();
         $label = "{$staff->name} <{$staff->email}>";
@@ -140,17 +140,17 @@ class StaffClientVersionsController extends Controller
 
         $before = [
             'minimum_version' => $row?->minimum_version,
-            'download_url'    => $row?->download_url,
-            'note'            => $row?->note,
+            'download_url' => $row?->download_url,
+            'note' => $row?->note,
         ];
 
         $row = PlatformMinimumClientVersion::updateOrCreate(
             ['platform' => $platform],
             [
                 'minimum_version' => $minimumVersion,
-                'download_url'    => $downloadUrl,
-                'note'            => $this->blankToNull($input['note'] ?? null),
-                'changed_by'      => $label,
+                'download_url' => $downloadUrl,
+                'note' => $this->blankToNull($input['note'] ?? null),
+                'changed_by' => $label,
             ],
         );
 
@@ -173,23 +173,23 @@ class StaffClientVersionsController extends Controller
             target: $row,
             metadata: [
                 'platform' => $platform,
-                'before'   => $before,
-                'after'    => [
+                'before' => $before,
+                'after' => [
                     'minimum_version' => $row->minimum_version,
-                    'download_url'    => $row->download_url,
-                    'note'            => $row->note,
+                    'download_url' => $row->download_url,
+                    'note' => $row->note,
                 ],
             ],
         );
 
         return response()->json(['data' => [
-            'platform'        => $row->platform,
+            'platform' => $row->platform,
             'minimum_version' => $row->minimum_version,
-            'is_enforced'     => $row->minimum_version !== null,
-            'download_url'    => $row->download_url,
-            'note'            => $row->note,
-            'changed_by'      => $row->changed_by,
-            'changed_at'      => $row->updated_at?->toIso8601String(),
+            'is_enforced' => $row->minimum_version !== null,
+            'download_url' => $row->download_url,
+            'note' => $row->note,
+            'changed_by' => $row->changed_by,
+            'changed_at' => $row->updated_at?->toIso8601String(),
         ]]);
     }
 

@@ -38,11 +38,11 @@ class HealthController extends Controller
     public function index(Request $request, MailStatus $mail): array
     {
         return [
-            'backups'  => $this->backups(),
-            'mail'     => $mail->summary(),
-            'outbox'   => $this->outbox(),
+            'backups' => $this->backups(),
+            'mail' => $mail->summary(),
+            'outbox' => $this->outbox(),
             'certificate' => $this->certificate(),
-            'peer'     => $this->peer(),
+            'peer' => $this->peer(),
             'checked_at' => now()->toIso8601String(),
         ];
     }
@@ -61,7 +61,7 @@ class HealthController extends Controller
 
         if (! $mail->delivers()) {
             return [
-                'sent'    => false,
+                'sent' => false,
                 'message' => 'This installation cannot deliver mail yet.',
                 'missing' => $mail->missing(),
             ];
@@ -102,7 +102,7 @@ class HealthController extends Controller
         );
 
         return [
-            'sent'    => true,
+            'sent' => true,
             'message' => "Accepted by the transport for {$input['address']}.",
             'missing' => [],
         ];
@@ -114,41 +114,41 @@ class HealthController extends Controller
 
         if (! is_readable($path)) {
             return [
-                'ok'      => false,
+                'ok' => false,
                 'problem' => 'No verdict has ever been written. The nightly timer has not run.',
             ];
         }
 
         $status = json_decode((string) file_get_contents($path), true) ?: [];
-        $at     = isset($status['at']) ? Carbon::parse($status['at']) : null;
-        $age    = $at === null ? null : (int) $at->diffInHours(now());
+        $at = isset($status['at']) ? Carbon::parse($status['at']) : null;
+        $age = $at === null ? null : (int) $at->diffInHours(now());
 
         // Age is judged here rather than trusting `ok`, because a stopped timer
         // leaves yesterday's success sitting in the file indefinitely.
         $stale = $at === null || $age > config('ezbizi.backups.max_age_hours');
 
         return [
-            'ok'         => ! $stale && ($status['ok'] ?? false) === true
+            'ok' => ! $stale && ($status['ok'] ?? false) === true
                             && ($status['stage'] ?? '') === 'restore-check',
-            'at'         => $at?->toIso8601String(),
-            'age_hours'  => $age,
-            'stage'      => $status['stage'] ?? null,
-            'verified'   => ($status['stage'] ?? '') === 'restore-check' && isset($status['tables']),
+            'at' => $at?->toIso8601String(),
+            'age_hours' => $age,
+            'stage' => $status['stage'] ?? null,
+            'verified' => ($status['stage'] ?? '') === 'restore-check' && isset($status['tables']),
 
             // Reported separately from `ok` because they fail differently: a
             // restore that works proves the dump is good, and an off-site copy
             // proves it will still exist. A green tick for the first while the
             // second is missing is the reassurance this screen exists to avoid.
-            'offsite'    => $status['offsite'] ?? false,
+            'offsite' => $status['offsite'] ?? false,
             'restored_from' => $status['from'] ?? null,
-            'errors'     => $status['errors'] ?? [],
+            'errors' => $status['errors'] ?? [],
 
             // Never null when ok is false. The card renders `problem` as its
             // explanation, and a fresh backup that simply has not been
             // restore-checked yet produced ok=false, problem=null, errors=[] —
             // a red icon beside an empty sentence, which is the least useful
             // thing a health screen can do.
-            'problem'    => $this->problem($status, $stale),
+            'problem' => $this->problem($status, $stale),
         ];
     }
 
@@ -188,13 +188,13 @@ class HealthController extends Controller
      */
     private function peer(): array
     {
-        $url  = trim((string) config('ezbizi.peer.url'));
+        $url = trim((string) config('ezbizi.peer.url'));
         $host = parse_url($url, PHP_URL_HOST) ?: 'the other box';
 
         if ($url === '') {
             return [
-                'ok'      => false,
-                'host'    => $host,
+                'ok' => false,
+                'host' => $host,
                 'problem' => 'EZBIZI_PEER_URL is not set, so this screen cannot name the other '
                     .'box. The watchdog has nothing to ask — and the old default was this box '
                     .'asking itself whether it was alive.',
@@ -205,22 +205,22 @@ class HealthController extends Controller
 
         if (! is_readable($path)) {
             return [
-                'ok'      => false,
-                'host'    => $host,
+                'ok' => false,
+                'host' => $host,
                 'problem' => 'No peer verdict has ever been written. The watchdog has not run.',
             ];
         }
 
         $status = json_decode((string) file_get_contents($path), true) ?: [];
-        $at     = isset($status['at']) ? Carbon::parse($status['at']) : null;
-        $age    = $at === null ? null : (int) $at->diffInMinutes(now());
-        $stale  = $at === null || $age > (int) config('ezbizi.peer.max_age_minutes');
-        $ok     = ! $stale && ($status['ok'] ?? false) === true;
+        $at = isset($status['at']) ? Carbon::parse($status['at']) : null;
+        $age = $at === null ? null : (int) $at->diffInMinutes(now());
+        $stale = $at === null || $age > (int) config('ezbizi.peer.max_age_minutes');
+        $ok = ! $stale && ($status['ok'] ?? false) === true;
 
         return [
-            'ok'      => $ok,
-            'host'    => $status['host'] ?? $host,
-            'at'      => $at?->toIso8601String(),
+            'ok' => $ok,
+            'host' => $status['host'] ?? $host,
+            'at' => $at?->toIso8601String(),
             'problem' => $ok ? null : (
                 $stale
                     ? 'The other box has not been heard from recently. The watchdog has stopped or the peer is down.'
@@ -237,10 +237,10 @@ class HealthController extends Controller
             ->value('occurred_at');
 
         return [
-            'pending'        => AutomationEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
+            'pending' => AutomationEvent::withoutGlobalScopes()->whereNull('delivered_at')->count(),
             'oldest_minutes' => $oldest ? (int) Carbon::parse($oldest)->diffInMinutes(now()) : null,
-            'failed_jobs'    => DB::table('failed_jobs')->count(),
-            'ok'             => $oldest === null || Carbon::parse($oldest)->diffInMinutes(now()) < 15,
+            'failed_jobs' => DB::table('failed_jobs')->count(),
+            'ok' => $oldest === null || Carbon::parse($oldest)->diffInMinutes(now()) < 15,
         ];
     }
 
@@ -262,8 +262,8 @@ class HealthController extends Controller
      */
     private function certificate(): array
     {
-        $host    = (string) config('ezbizi.tls.host');
-        $port    = (int) config('ezbizi.tls.port');
+        $host = (string) config('ezbizi.tls.host');
+        $port = (int) config('ezbizi.tls.port');
         $minDays = (int) config('ezbizi.tls.min_days');
 
         $context = stream_context_create(['ssl' => [
@@ -273,14 +273,14 @@ class HealthController extends Controller
             // and an already-expired or mismatched certificate is precisely the
             // case that has to produce an answer — with verification on, the one
             // reading that matters most becomes a refused connection instead.
-            'verify_peer'       => false,
-            'verify_peer_name'  => false,
+            'verify_peer' => false,
+            'verify_peer_name' => false,
 
             // Still sent, because the host serves two names off one address and
             // without SNI it would hand back whichever it lists first — which is
             // not necessarily the certificate anyone is being served.
-            'SNI_enabled'       => true,
-            'peer_name'         => $host,
+            'SNI_enabled' => true,
+            'peer_name' => $host,
         ]]);
 
         $socket = @stream_socket_client(
@@ -312,15 +312,15 @@ class HealthController extends Controller
         // is read as "days left" and rounding it the wrong way at the boundary
         // turns the last day of warning into no warning.
         $expires = Carbon::createFromTimestampUTC($parsed['validTo_time_t']);
-        $days    = (int) floor(($expires->getTimestamp() - now()->getTimestamp()) / 86400);
+        $days = (int) floor(($expires->getTimestamp() - now()->getTimestamp()) / 86400);
 
         return [
-            'ok'             => $days >= $minDays,
-            'host'           => $host,
-            'common_name'    => $parsed['subject']['CN'] ?? null,
-            'expires_at'     => $expires->toIso8601String(),
+            'ok' => $days >= $minDays,
+            'host' => $host,
+            'common_name' => $parsed['subject']['CN'] ?? null,
+            'expires_at' => $expires->toIso8601String(),
             'days_remaining' => $days,
-            'problem'        => $days >= $minDays ? null : $this->certificateProblem($days, $minDays),
+            'problem' => $days >= $minDays ? null : $this->certificateProblem($days, $minDays),
         ];
     }
 
@@ -334,12 +334,12 @@ class HealthController extends Controller
     private function noCertificateReading(string $host, string $problem): array
     {
         return [
-            'ok'             => false,
-            'host'           => $host,
-            'common_name'    => null,
-            'expires_at'     => null,
+            'ok' => false,
+            'host' => $host,
+            'common_name' => null,
+            'expires_at' => null,
             'days_remaining' => null,
-            'problem'        => $problem.' A certificate nobody can read is reported as a failure,'
+            'problem' => $problem.' A certificate nobody can read is reported as a failure,'
                 .' because "I could not tell" and "it is fine" look identical on this screen.',
         ];
     }

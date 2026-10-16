@@ -12,6 +12,7 @@ use App\Support\Files\UploadLimits;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -80,8 +81,8 @@ class AttachmentsController extends Controller
             // the configured value to what PHP will carry.
             'limits' => [
                 'max_kilobytes' => $this->limits->maxKilobytes(),
-                'max_readable'  => $this->limits->humanMax(),
-                'extensions'    => $this->limits->extensions(),
+                'max_readable' => $this->limits->humanMax(),
+                'extensions' => $this->limits->extensions(),
             ],
         ]);
     }
@@ -167,9 +168,9 @@ class AttachmentsController extends Controller
             $this->authorize('reveal', $subject);
 
             $this->audit->log('sensitive_value.revealed', $subject, metadata: [
-                'via'        => 'attachment download',
+                'via' => 'attachment download',
                 'attachment' => $attachment->getKey(),
-                'fields'     => $discloses,
+                'fields' => $discloses,
             ]);
         }
 
@@ -237,7 +238,7 @@ class AttachmentsController extends Controller
         $refusal = $attachment->deletionRefusal();
 
         if ($refusal !== null) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['attachment' => $refusal]);
+            throw ValidationException::withMessages(['attachment' => $refusal]);
         }
 
         $disk = $attachment->disk;
@@ -249,10 +250,10 @@ class AttachmentsController extends Controller
             // only "an attachment was deleted" answers nothing anybody would ask.
             $this->audit->log('attachment.removed', $attachment, metadata: [
                 'original_name' => $attachment->original_name,
-                'checksum'      => $attachment->checksum,
-                'attached_to'   => [
+                'checksum' => $attachment->checksum,
+                'attached_to' => [
                     'type' => $attachment->attachable_type,
-                    'id'   => $attachment->attachable_id,
+                    'id' => $attachment->attachable_id,
                 ],
             ]);
 
@@ -272,7 +273,7 @@ class AttachmentsController extends Controller
      * Service photos are 1:1. Not a picture, or not square, is the same
      * sentence — the requirement is the square, not the file type.
      */
-    private function assertSquareServicePhoto(\Illuminate\Http\UploadedFile $file, string $mime): void
+    private function assertSquareServicePhoto(UploadedFile $file, string $mime): void
     {
         if (! str_starts_with($mime, 'image/')) {
             throw ValidationException::withMessages([
@@ -334,7 +335,7 @@ class AttachmentsController extends Controller
     {
         $input = $request->validate([
             'attachable_type' => ['required', 'string', Attachables::rule()],
-            'attachable_id'   => ['required', 'uuid'],
+            'attachable_id' => ['required', 'uuid'],
         ]);
 
         $class = Attachables::classFor($input['attachable_type']);

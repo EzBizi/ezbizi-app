@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Support\Leads\AddressCheck;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Support\Leads\AddressCheck;
 use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Reschedules;

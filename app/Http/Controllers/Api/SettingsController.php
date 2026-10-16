@@ -86,7 +86,7 @@ class SettingsController extends Controller
         if ($definition === null) {
             return response()->json([
                 'message' => "Unknown setting '{$key}'.",
-                'code'    => 'unknown_setting',
+                'code' => 'unknown_setting',
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -113,9 +113,9 @@ class SettingsController extends Controller
                     action: 'settings.updated',
                     target: $scope,
                     changes: [
-                        'key'    => $key,
+                        'key' => $key,
                         'before' => $definition->isSensitive ? '[redacted]' : $before,
-                        'after'  => $definition->isSensitive ? '[redacted]' : $after,
+                        'after' => $definition->isSensitive ? '[redacted]' : $after,
                     ],
                 );
 
@@ -145,7 +145,7 @@ class SettingsController extends Controller
         if ($definition === null) {
             return response()->json([
                 'message' => "Unknown setting '{$key}'.",
-                'code'    => 'unknown_setting',
+                'code' => 'unknown_setting',
             ], Response::HTTP_NOT_FOUND);
         }
 
@@ -215,16 +215,16 @@ class SettingsController extends Controller
         }
 
         $this->events->emit('organization.settings_changed', $this->tenant->get(), [
-            'key'        => $key,
-            'setting'    => $definition->label,
+            'key' => $key,
+            'setting' => $definition->label,
             'scope_type' => $this->scopeTypeOf($scope),
-            'scope_id'   => $scope->getKey(),
+            'scope_id' => $scope->getKey(),
             // Nested under before/after because that is the shape
             // `ConditionEvaluator` reads "changed to" and "changed from" from.
             // A sensitive setting is redacted here for the same reason it is in
             // the audit log: this payload is read by tenant-authored rules.
-            'before'     => ['value' => $definition->isSensitive ? '[redacted]' : $before],
-            'after'      => ['value' => $definition->isSensitive ? '[redacted]' : $after],
+            'before' => ['value' => $definition->isSensitive ? '[redacted]' : $before],
+            'after' => ['value' => $definition->isSensitive ? '[redacted]' : $after],
         ]);
     }
 
@@ -251,8 +251,8 @@ class SettingsController extends Controller
     private function row(Request $request, string $key, SettingDefinition $definition, Model $scope): array
     {
         $scopeType = $this->scopeTypeOf($scope);
-        $source    = $this->resolver->sourceOf($key, $scope);
-        $group     = $this->registry->groupOf($key);
+        $source = $this->resolver->sourceOf($key, $scope);
+        $group = $this->registry->groupOf($key);
 
         // Asked once, and answered here rather than in the client, so the
         // disabled control and the 403 behind it cannot come to disagree: they
@@ -260,12 +260,12 @@ class SettingsController extends Controller
         // would have performed — the Reset button's refusal is the same one
         // worded for DELETE, and destroy() asks for it separately.
         $allowsScope = $definition->allowsScope($scopeType);
-        $refused     = $this->refusalFor($request->user(), $definition, $scope, 'change');
+        $refused = $this->refusalFor($request->user(), $definition, $scope, 'change');
 
         return [
-            'key'            => $key,
-            'label'          => $definition->label,
-            'type'           => $definition->type,
+            'key' => $key,
+            'label' => $definition->label,
+            'type' => $definition->type,
 
             // Which concern it belongs to, and what that concern is called.
             //
@@ -275,12 +275,12 @@ class SettingsController extends Controller
             // that `numbering.*` means "Document numbering" is not in the
             // string. So the grouping travels with the row, from the registry
             // that actually knows it, in registration order.
-            'group'          => $group['key'],
-            'group_label'    => $group['label'],
-            'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
-            'is_sensitive'   => $definition->isSensitive,
-            'options'        => $this->optionsOf($definition, $scope),
-            'help'           => $definition->help,
+            'group' => $group['key'],
+            'group_label' => $group['label'],
+            'value' => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
+            'is_sensitive' => $definition->isSensitive,
+            'options' => $this->optionsOf($definition, $scope),
+            'help' => $definition->help,
 
             // Does this setting do anything yet, and if not, what is it waiting
             // for? Null means it is in effect. A string is a sentence written
@@ -299,13 +299,13 @@ class SettingsController extends Controller
             'not_yet_in_effect' => $definition->notYetInEffect,
 
             // Can this SCOPE hold it? Inheritance, not permission.
-            'editable_here'  => $allowsScope,
+            'editable_here' => $allowsScope,
 
             // Can this PERSON set it here? Two separate questions, and the
             // client had only the first — so somebody without
             // `organizations.edit` saw every control live, changed one, and
             // got a 403 from a switch that had already animated.
-            'may_edit'       => $allowsScope && $refused === null,
+            'may_edit' => $allowsScope && $refused === null,
 
             // And WHY not, in words, when the answer is no.
             //
@@ -322,10 +322,10 @@ class SettingsController extends Controller
             'may_edit_reason' => $allowsScope ? $refused : null,
 
             'allowed_scopes' => $definition->allowedScopes,
-            'source'         => $source === null ? null : [
-                'type'      => $this->scopeTypeOf($source),
-                'id'        => $source->getKey(),
-                'name'      => $source->name,
+            'source' => $source === null ? null : [
+                'type' => $this->scopeTypeOf($source),
+                'id' => $source->getKey(),
+                'name' => $source->name,
                 'inherited' => ! $source->is($scope),
             ],
         ];
@@ -350,7 +350,7 @@ class SettingsController extends Controller
             }
 
             $from = trim((string) ($item['was'] ?? ''));
-            $to   = trim((string) ($item['value'] ?? ''));
+            $to = trim((string) ($item['value'] ?? ''));
 
             if ($from === '' || $to === '' || $from === $to) {
                 continue;
@@ -416,15 +416,15 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'scope_type' => ['required', 'in:organization,company,franchise'],
-            'scope_id'   => ['required', 'uuid'],
+            'scope_id' => ['required', 'uuid'],
         ]);
 
         $model = match ($validated['scope_type']) {
             'organization' => $this->tenant->get()?->getKey() === $validated['scope_id']
                 ? $this->tenant->get()
                 : null,
-            'company'      => Company::find($validated['scope_id']),
-            'franchise'    => Franchise::find($validated['scope_id']),
+            'company' => Company::find($validated['scope_id']),
+            'franchise' => Franchise::find($validated['scope_id']),
         };
 
         abort_if($model === null, Response::HTTP_NOT_FOUND, 'Scope not found.');
@@ -630,8 +630,8 @@ class SettingsController extends Controller
     {
         return match (true) {
             $scope instanceof Organization => 'organization',
-            $scope instanceof Company      => 'company',
-            $scope instanceof Franchise    => 'franchise',
+            $scope instanceof Company => 'company',
+            $scope instanceof Franchise => 'franchise',
         };
     }
 }

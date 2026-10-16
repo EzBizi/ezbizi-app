@@ -29,7 +29,7 @@ class FieldRecording extends Model implements HoldsPersonalData
 
     protected $fillable = [
         'organization_id', 'user_id', 'job_id', 'started_at', 'ended_at', 'stop_reason',
-        'duration_s', 'chunk_count', 'total_bytes', 'events', 'flagged', 'flag_reason', 'flagged_by',
+        'duration_s', 'chunk_count', 'total_bytes', 'events', 'customer_told', 'flagged', 'flag_reason', 'flagged_by',
     ];
 
     protected function casts(): array
@@ -39,6 +39,7 @@ class FieldRecording extends Model implements HoldsPersonalData
             'ended_at' => 'datetime',
             'events' => 'array',
             'flagged' => 'bool',
+            'customer_told' => 'bool',
         ];
     }
 

@@ -7,7 +7,6 @@ use App\Models\Franchise;
 use App\Models\Service;
 use App\Models\ServiceGroup;
 use App\Models\ServiceLabel;
-use App\Models\User;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -19,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -43,7 +43,7 @@ class ServicesController extends Controller
         private readonly EventEmitter $events,
     ) {}
 
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());

@@ -3,18 +3,18 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
-use App\Support\Phone\PhoneScope;
+use App\Models\Company;
 use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
+use App\Models\PhoneRingGroup;
 use App\Models\PhoneVoicemailBox;
+use App\Models\User;
+use App\Support\Phone\PhoneScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\User;
-use App\Models\PhoneRingGroup;
-use App\Models\PhoneNumber;
-use App\Models\Company;
 
 /**
  * Voicemail boxes: the greeting a caller hears, and who is told about it.
@@ -114,7 +114,7 @@ class VoicemailBoxesController extends Controller
         // Lines pointing here fall back to the built-in greeting rather than
         // to silence. Leaving a dangling id would have the renderer look up
         // nothing and take a message with no greeting at all.
-        \App\Models\PhoneNumber::query()
+        PhoneNumber::query()
             ->where('voicemail_box_id', $box->id)
             ->update(['voicemail_box_id' => null]);
 

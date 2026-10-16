@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Branding\Branding;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -68,18 +69,18 @@ class CompaniesController extends Controller
             // that answered 403. Both are asked properly here rather than
             // approximated in Dart, because §4 has one home.
             $addFranchise = Gate::inspect('create', [Franchise::class, $company]);
-            $addSub       = $company->parent_company_id === null
+            $addSub = $company->parent_company_id === null
                 ? Gate::inspect('create', [Company::class, $company])
                 : null;
-            $move         = Gate::inspect('reparent', $company);
-            $blocking     = $this->subCompaniesBlocking($company);
+            $move = Gate::inspect('reparent', $company);
+            $blocking = $this->subCompaniesBlocking($company);
 
             return [
-                'id'         => $company->id,
-                'name'       => $company->name,
-                'is_active'  => $company->is_active,
+                'id' => $company->id,
+                'name' => $company->name,
+                'is_active' => $company->is_active,
                 'parent_company_id' => $company->parent_company_id,
-                'may_edit'   => $user->can('update', $company),
+                'may_edit' => $user->can('update', $company),
 
                 'may_add_franchise' => $addFranchise->allowed(),
                 // The policy's own sentence, carried so the disabled control can
@@ -118,14 +119,14 @@ class CompaniesController extends Controller
                 // Whether it has one OF ITS OWN. A company with none renders
                 // the organization's, and the difference matters here: this is
                 // the screen where you would set or clear it.
-                'has_logo'    => $company->logo_path !== null,
+                'has_logo' => $company->logo_path !== null,
                 'logo_aspect' => $company->logo_aspect,
                 'address_line1' => $company->address_line1,
                 'address_line2' => $company->address_line2,
-                'city'          => $company->city,
-                'state'         => $company->state,
-                'postal_code'   => $company->postal_code,
-                'phone'         => $company->phone,
+                'city' => $company->city,
+                'state' => $company->state,
+                'postal_code' => $company->postal_code,
+                'phone' => $company->phone,
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
@@ -133,12 +134,12 @@ class CompaniesController extends Controller
                         $edit = Gate::inspect('update', $f);
 
                         return [
-                            'id'        => $f->id,
-                            'name'      => $f->name,
-                            'timezone'  => $f->timezone,
-                            'currency'  => $f->currency,
+                            'id' => $f->id,
+                            'name' => $f->name,
+                            'timezone' => $f->timezone,
+                            'currency' => $f->currency,
                             'is_active' => $f->is_active,
-                            'may_edit'  => $edit->allowed(),
+                            'may_edit' => $edit->allowed(),
                             // A chip whose menu simply does not open is
                             // indistinguishable from one that is broken.
                             'may_edit_reason' => $edit->allowed() ? null : $edit->message(),
@@ -156,7 +157,7 @@ class CompaniesController extends Controller
 
         return [
             'organization' => [
-                'id'   => $request->user()->organization->id,
+                'id' => $request->user()->organization->id,
                 'name' => $request->user()->organization->name,
                 // Whether the person may add a whole new branch to the business.
                 'may_add_company' => $addCompany->allowed(),
@@ -167,12 +168,12 @@ class CompaniesController extends Controller
                 'may_add_company_reason' => $addCompany->allowed()
                     ? null
                     : $addCompany->message(),
-                'has_logo'        => $request->user()->organization->logo_path !== null,
-                'logo_aspect'     => $request->user()->organization->logo_aspect,
-                'logo_version'    => \App\Support\Branding\Branding::version(
+                'has_logo' => $request->user()->organization->logo_path !== null,
+                'logo_aspect' => $request->user()->organization->logo_aspect,
+                'logo_version' => Branding::version(
                     null, $request->user()->organization,
                 ),
-                'may_edit'        => $user->hasPermission('organizations.edit'),
+                'may_edit' => $user->hasPermission('organizations.edit'),
 
                 // Whether this person may change the arrangement EVERYBODY
                 // sees, and why not when they may not.
@@ -190,7 +191,7 @@ class CompaniesController extends Controller
                 // worded its own refusal is how a dead control and the server
                 // come to disagree, and `may_add_company_reason` beside it
                 // exists for exactly that reason.
-                'may_arrange'        => $arrangeRefusal === null,
+                'may_arrange' => $arrangeRefusal === null,
                 'may_arrange_reason' => $arrangeRefusal,
             ],
 
@@ -277,12 +278,12 @@ class CompaniesController extends Controller
             // that touches one.
             'address_line1' => ['nullable', 'string', 'max:200'],
             'address_line2' => ['nullable', 'string', 'max:200'],
-            'city'          => ['nullable', 'string', 'max:100'],
-            'state'         => ['nullable', 'string', 'size:2'],
-            'postal_code'   => ['nullable', 'string', 'max:12'],
-            'phone'         => ['nullable', 'string', 'max:40'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'size:2'],
+            'postal_code' => ['nullable', 'string', 'max:12'],
+            'phone' => ['nullable', 'string', 'max:40'],
 
-            'franchise.name'     => ['required', 'string', 'max:120'],
+            'franchise.name' => ['required', 'string', 'max:120'],
             'franchise.timezone' => ['nullable', 'string', 'timezone'],
             // §7, and the same reasoning as FranchisesController::store —
             // permanent once jobs carry it, so `size:3` let a typo mislabel a
@@ -308,17 +309,17 @@ class CompaniesController extends Controller
 
         $company = DB::transaction(function () use ($input, $parent, $request) {
             $company = Company::create([
-                'organization_id'   => $request->user()->organization_id,
+                'organization_id' => $request->user()->organization_id,
                 'parent_company_id' => $parent?->id,
-                'name'              => trim($input['name']),
+                'name' => trim($input['name']),
                 ...$this->contactFrom($input),
-                'is_active'         => true,
+                'is_active' => true,
             ]);
 
             $franchise = Franchise::create([
                 'organization_id' => $request->user()->organization_id,
-                'company_id'      => $company->id,
-                'name'            => trim($input['franchise']['name']),
+                'company_id' => $company->id,
+                'name' => trim($input['franchise']['name']),
                 // Inherited from the organization when not given, rather than
                 // defaulted to a constant. A business in one timezone should not
                 // have to restate it for every place it operates.
@@ -330,7 +331,7 @@ class CompaniesController extends Controller
             ]);
 
             $this->audit->log('company.created', $company, metadata: [
-                'parent'          => $parent?->name,
+                'parent' => $parent?->name,
                 'first_franchise' => $franchise->name,
             ]);
 
@@ -367,10 +368,10 @@ class CompaniesController extends Controller
             [
                 'address_line1' => $input['address_line1'] ?? null,
                 'address_line2' => $input['address_line2'] ?? null,
-                'city'          => $input['city'] ?? null,
-                'state'         => isset($input['state']) ? strtoupper($input['state']) : null,
-                'postal_code'   => $input['postal_code'] ?? null,
-                'phone'         => $input['phone'] ?? null,
+                'city' => $input['city'] ?? null,
+                'state' => isset($input['state']) ? strtoupper($input['state']) : null,
+                'postal_code' => $input['postal_code'] ?? null,
+                'phone' => $input['phone'] ?? null,
             ],
             fn ($v) => $v !== null,
         );
@@ -379,16 +380,16 @@ class CompaniesController extends Controller
     public function update(Request $request, Company $company): array
     {
         $input = $request->validate([
-            'name'      => ['sometimes', 'string', 'max:120'],
+            'name' => ['sometimes', 'string', 'max:120'],
             'is_active' => ['sometimes', 'boolean'],
             'parent_company_id' => ['missing'],
 
             'address_line1' => ['sometimes', 'nullable', 'string', 'max:200'],
             'address_line2' => ['sometimes', 'nullable', 'string', 'max:200'],
-            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
-            'state'         => ['sometimes', 'nullable', 'string', 'size:2'],
-            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:12'],
-            'phone'         => ['sometimes', 'nullable', 'string', 'max:40'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state' => ['sometimes', 'nullable', 'string', 'size:2'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:12'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:40'],
         ]);
 
         if (isset($input['state'])) {
@@ -518,10 +519,10 @@ class CompaniesController extends Controller
     private function reparented(Company $company): array
     {
         return [
-            'id'                => $company->id,
-            'name'              => $company->name,
+            'id' => $company->id,
+            'name' => $company->name,
             'parent_company_id' => $company->parent_company_id,
-            'is_sub_company'    => $company->isSubCompany(),
+            'is_sub_company' => $company->isSubCompany(),
         ];
     }
 

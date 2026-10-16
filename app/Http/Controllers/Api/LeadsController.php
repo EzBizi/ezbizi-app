@@ -25,6 +25,8 @@ use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -33,6 +35,7 @@ use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -716,7 +719,7 @@ class LeadsController extends Controller
     /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */
     public static function bookingWhen(WebBooking $booking): string
     {
-        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+        $at = fn (string $t) => CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
 
         return $booking->date->format('l, F j').', between '.$at((string) $booking->start_time).' and '.$at((string) $booking->end_time);
     }
@@ -724,7 +727,7 @@ class LeadsController extends Controller
     /** "8:00 AM - 11:00 AM" */
     public static function bookingWindow(WebBooking $booking): string
     {
-        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+        $at = fn (string $t) => CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
 
         return $at((string) $booking->start_time).' - '.$at((string) $booking->end_time);
     }
@@ -762,8 +765,8 @@ class LeadsController extends Controller
         $tz = (string) app(SettingsResolver::class)->get('timezone', $booking->lead?->organization);
         // Scheduling's own scoring (2799bf9a): the chosen window, and a
         // strictly better one only when there is one.
-        $fit = app(\App\Support\Scheduling\NearbySuggestion::class)->fit($area, $zip, $booking->date->toDateString(),
-            substr((string) $booking->start_time, 0, 5), \App\Support\Scheduling\Openings::tomorrow($tz));
+        $fit = app(NearbySuggestion::class)->fit($area, $zip, $booking->date->toDateString(),
+            substr((string) $booking->start_time, 0, 5), Openings::tomorrow($tz));
         $better = $fit['better'] ?? null;
         $shown = $better ?? $fit['chosen'];
         $miles = $shown['nearest_miles'] ?? null;
@@ -1065,12 +1068,12 @@ class LeadsController extends Controller
      * suggests the reason; a person presses the button, because it is a claim
      * made to Google in the business's name.
      */
-    public function requestCredit(Request $request, Lead $lead, \App\Services\Leads\LocalServicesLeads $google): JsonResponse
+    public function requestCredit(Request $request, Lead $lead, LocalServicesLeads $google): JsonResponse
     {
         $this->authorize('update', $lead);
 
         $input = $request->validate([
-            'reason' => ['required', 'string', \Illuminate\Validation\Rule::in(['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH', 'GEO_MISMATCH', 'DUPLICATE', 'NOT_READY_TO_BOOK', 'OTHER_DISSATISFIED_REASON'])],
+            'reason' => ['required', 'string', Rule::in(['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH', 'GEO_MISMATCH', 'DUPLICATE', 'NOT_READY_TO_BOOK', 'OTHER_DISSATISFIED_REASON'])],
             'comment' => ['nullable', 'string', 'max:1000', 'required_if:reason,OTHER_DISSATISFIED_REASON'],
         ]);
 
@@ -1159,9 +1162,9 @@ class LeadsController extends Controller
 
         if (str_starts_with((string) $row->recording_url, 'ringcentral:')) {
             try {
-                $audio = app(\App\Support\Reports\Experimental\RingCentralCallLog::class)
+                $audio = app(RingCentralCallLog::class)
                     ->recording(substr((string) $row->recording_url, strlen('ringcentral:')));
-            } catch (\RuntimeException $e) {
+            } catch (RuntimeException $e) {
                 abort(Response::HTTP_BAD_GATEWAY, 'RingCentral did not give the recording: '.$e->getMessage());
             }
             $this->audit->log('lead.recording_played', $lead, [
@@ -1675,7 +1678,7 @@ class LeadsController extends Controller
      * Call (Jose, 2026-10-13: "for LS CALLS automatically mark them as read
      * and remove them from the lead warnings, as they are non actionable").
      */
-    private const UNREAD_SQL = "(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) "
+    private const UNREAD_SQL = '(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) '
         ."AND NOT (leads.source = 'local_services' AND leads.lead_type = 'PHONE_CALL') AND leads.source <> 'ringcentral'";
 
     /** @return list<string> the fields whose value is still the one AI wrote */

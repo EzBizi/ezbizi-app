@@ -3,20 +3,23 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
-use Illuminate\Support\Collection;
-use Illuminate\Database\Eloquent\Model;
 use App\Models\Franchise;
+use App\Models\WorkizRecord;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Customers\ReassignCustomerOwner;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Customers\ReassignCustomerOwner;
-use InvalidArgumentException;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
+use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -49,7 +52,7 @@ class CustomersController extends Controller
      * ids is an existence oracle: it tells a caller which ids are real somewhere
      * else on the platform. Scoping the rule makes both cases identical.
      */
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());
@@ -61,12 +64,12 @@ class CustomersController extends Controller
         $this->authorize('viewAny', Customer::class);
 
         $request->validate([
-            'segment'   => ['nullable', Rule::in(['repeat', 'none'])],
-            'sort'      => ['nullable', Rule::in(array_keys(self::SORTS))],
+            'segment' => ['nullable', Rule::in(['repeat', 'none'])],
+            'sort' => ['nullable', Rule::in(array_keys(self::SORTS))],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ]);
 
-        $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
+        $scope = ViewScope::forUser($request->user());
 
         /*
          * Every filter, with the segment optional — the chips count "how many
@@ -138,9 +141,9 @@ class CustomersController extends Controller
         // First page only: "Load more" changes no count, and each is a query.
         if ($customers->currentPage() === 1) {
             $meta['segment_counts'] = [
-                'all'    => $filtered(null)->count(),
+                'all' => $filtered(null)->count(),
                 'repeat' => $filtered('repeat')->count(),
-                'none'   => $filtered('none')->count(),
+                'none' => $filtered('none')->count(),
             ];
         }
 
@@ -183,7 +186,7 @@ class CustomersController extends Controller
      */
     private function money(Customer $customer, ?string $today, Request $request): array
     {
-        $reachable = \App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds();
+        $reachable = ViewScope::forUser($request->user())->franchiseIds();
         $open = "workiz_records.type = 'estimate' AND workiz_records.status IN ('Pending', 'Unsent', 'Approved')";
         // What an invoice still owes: the LOWER of Workiz's amountDue and the
         // invoice less the payments that name it. Each source errs only high.
@@ -198,7 +201,7 @@ class CustomersController extends Controller
         ), 0)), 0)";
         $invoice = "workiz_records.type = 'invoice'";
 
-        return \App\Models\WorkizRecord::query()
+        return WorkizRecord::query()
             ->join('jobs', 'jobs.id', '=', 'workiz_records.job_id')
             ->where('jobs.customer_id', $customer->getKey())
             ->whereIn('jobs.franchise_id', $reachable)
@@ -256,7 +259,7 @@ class CustomersController extends Controller
     {
         $this->authorize('viewAny', Customer::class);
 
-        $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
+        $scope = ViewScope::forUser($request->user());
         $mode = (string) $this->settings->get('customers.duplicate_match_on', $scope->settingsScope());
 
         if ($mode === 'off') {
@@ -314,7 +317,7 @@ class CustomersController extends Controller
             // commit together or not at all (§10).
             $this->audit->log('customer.created', $customer, metadata: [
                 'owning_franchise' => $franchise->name,
-                'number'           => $customer->number,
+                'number' => $customer->number,
             ]);
 
             $this->events->emit('customer.created', $customer, ['after' => $customer->only([
@@ -346,7 +349,7 @@ class CustomersController extends Controller
             $customer->fill($input);
 
             $changed = $customer->getDirty();
-            $before  = array_intersect_key($customer->getOriginal(), $changed);
+            $before = array_intersect_key($customer->getOriginal(), $changed);
 
             $this->audit->logChange('customer.updated', $customer);
 
@@ -373,7 +376,7 @@ class CustomersController extends Controller
     {
         $input = $request->validate([
             'owning_franchise_id' => ['required', 'uuid', $this->existsInTenant('franchises')],
-            'reason'              => ['nullable', 'string', 'max:500'],
+            'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         $newOwner = Franchise::findOrFail($input['owning_franchise_id']);
@@ -404,7 +407,7 @@ class CustomersController extends Controller
             return response()->json([
                 'message' => 'This customer has jobs. Deactivate them instead — '
                     .'removing them would leave that work with no one attached to it.',
-                'code'    => 'has_jobs',
+                'code' => 'has_jobs',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -432,37 +435,37 @@ class CustomersController extends Controller
             'owning_franchise_id' => $forUpdate
                 ? ['missing']
                 : ['required', 'uuid', $this->existsInTenant('franchises')],
-            'name'          => [$required, 'string', 'max:200'],
-            'email'         => ['nullable', 'email', 'max:200'],
-            'phone'         => ['nullable', 'string', 'max:40'],
+            'name' => [$required, 'string', 'max:200'],
+            'email' => ['nullable', 'email', 'max:200'],
+            'phone' => ['nullable', 'string', 'max:40'],
             'address_line1' => ['nullable', 'string', 'max:200'],
             'address_line2' => ['nullable', 'string', 'max:200'],
-            'city'          => ['nullable', 'string', 'max:100'],
-            'state'         => ['nullable', 'string', 'size:2'],
-            'postal_code'   => ['nullable', 'string', 'max:12'],
-            'notes'         => ['nullable', 'string', 'max:5000'],
-            'is_active'     => ['boolean'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'state' => ['nullable', 'string', 'size:2'],
+            'postal_code' => ['nullable', 'string', 'max:12'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'is_active' => ['boolean'],
         ];
     }
 
     private function present(Customer $customer, bool $detailed = false): array
     {
         $base = [
-            'id'     => $customer->id,
+            'id' => $customer->id,
             'number' => $customer->number,
             // Workiz's own client numbers, beside EzBizi's (Jose, 2026-09-29).
             // Eager-loaded by every list that presents customers.
             'workiz_client_ids' => $customer->workizClients->pluck('client_id')
                 ->map(fn ($id) => (int) $id)->sort()->values()->all(),
-            'name'   => $customer->name,
-            'email'  => $customer->email,
-            'phone'  => $customer->phone,
+            'name' => $customer->name,
+            'email' => $customer->email,
+            'phone' => $customer->phone,
             'is_active' => $customer->is_active,
             // Always present, on every representation. Its whole job is to stop
             // somebody acting on another franchise's customer without realising,
             // so it cannot be something the detail view alone carries (§5.2).
             'owning_franchise' => [
-                'id'   => $customer->owning_franchise_id,
+                'id' => $customer->owning_franchise_id,
                 'name' => $customer->owningFranchise?->name,
                 /*
                  * Which company that franchise belongs to.
@@ -483,7 +486,7 @@ class CustomersController extends Controller
             'jobs_count' => $customer->jobs_count ?? $customer->jobs()->count(),
             // On the LIST row too, for its City column. The full address stays
             // in the detailed payload; a list row needs where, not the door.
-            'city'  => $customer->city,
+            'city' => $customer->city,
             'state' => $customer->state,
             // When the RECORD was made in EzBizi, which is not when somebody
             // became a customer: every row the Workiz import wrote reads
@@ -498,16 +501,16 @@ class CustomersController extends Controller
 
         return $base + [
             'address' => [
-                'line1'       => $customer->address_line1,
-                'line2'       => $customer->address_line2,
-                'city'        => $customer->city,
-                'state'       => $customer->state,
+                'line1' => $customer->address_line1,
+                'line2' => $customer->address_line2,
+                'city' => $customer->city,
+                'state' => $customer->state,
                 'postal_code' => $customer->postal_code,
             ],
             'notes' => $customer->notes,
             // Derived from jobs, never stored (§5.2).
             'served_by_franchise_ids' => $customer->servedByFranchiseIds(),
-            'shared_in_practice'      => $customer->isSharedInPractice(),
+            'shared_in_practice' => $customer->isSharedInPractice(),
             'warn_on_cross_franchise_edit' => (bool) $this->settings->get(
                 'customers.warn_on_cross_franchise_edit',
                 $customer->owningFranchise ?? $customer->organization,
@@ -525,13 +528,13 @@ class CustomersController extends Controller
      * something the screen never showed. Every key is a column on screen.
      */
     private const SORTS = [
-        'name'    => 'name',
-        'number'  => 'number',
-        'phone'   => 'phone',
-        'email'   => 'email',
-        'city'    => 'city',
-        'owner'   => 'owner',
-        'jobs'    => 'jobs_count',
+        'name' => 'name',
+        'number' => 'number',
+        'phone' => 'phone',
+        'email' => 'email',
+        'city' => 'city',
+        'owner' => 'owner',
+        'jobs' => 'jobs_count',
         'created' => 'created_at',
     ];
 

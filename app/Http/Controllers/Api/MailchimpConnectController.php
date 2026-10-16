@@ -48,9 +48,9 @@ class MailchimpConnectController extends Controller
             'api_key.required' => 'Paste the API key from your Mailchimp account.',
         ]);
 
-        $view      = ViewScope::forUser($user);
+        $view = ViewScope::forUser($user);
         $scopeType = $view->isOrganization() ? SocialConnection::SCOPE_ORGANIZATION : $view->type;
-        $scopeId   = $view->isOrganization() ? (string) $user->organization_id : (string) $view->id;
+        $scopeId = $view->isOrganization() ? (string) $user->organization_id : (string) $view->id;
 
         // §4's fourth gate: holding the permission is not the same as being able
         // to act HERE.
@@ -76,39 +76,39 @@ class MailchimpConnectController extends Controller
         if (! $connection->exists) {
             $connection->forceFill([
                 'organization_id' => $user->organization_id,
-                'scope_type'      => $scopeType,
-                'scope_id'        => $scopeId,
-                'provider'        => SocialProvider::Mailchimp->value,
-                'remote_id'       => $account['dc'].':'.$account['email'],
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'provider' => SocialProvider::Mailchimp->value,
+                'remote_id' => $account['dc'].':'.$account['email'],
             ]);
         }
 
         $connection->forceFill([
             'display_name' => $account['account_name'],
-            'handle'       => $account['email'],
+            'handle' => $account['email'],
         ]);
 
         // Stored under `credentials`, which is encrypted and masked on every
         // serialisation — the key never comes back out through any API path.
         $connection->connect([
             'refresh_token' => $data['api_key'],
-            'api_key'       => $data['api_key'],
+            'api_key' => $data['api_key'],
             'account_email' => $account['email'],
         ]);
         $connection->save();
 
         $this->audit->log('social.connected', $connection, [
-            'provider'     => SocialProvider::Mailchimp->value,
+            'provider' => SocialProvider::Mailchimp->value,
             'display_name' => $connection->display_name,
-            'scope_type'   => $connection->scope_type,
+            'scope_type' => $connection->scope_type,
         ], actor: $user);
 
         return response()->json(['data' => [
-            'id'             => $connection->getKey(),
-            'provider'       => SocialProvider::Mailchimp->value,
+            'id' => $connection->getKey(),
+            'provider' => SocialProvider::Mailchimp->value,
             'provider_label' => SocialProvider::Mailchimp->label(),
-            'display_name'   => $connection->display_name,
-            'handle'         => $connection->handle,
+            'display_name' => $connection->display_name,
+            'handle' => $connection->handle,
         ]], Status::HTTP_CREATED);
     }
 

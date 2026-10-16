@@ -41,7 +41,7 @@ class MicrosoftMailAuthController extends Controller
 
     public function start(Request $request, Mailbox $mailbox): JsonResponse
     {
-        $user    = $request->user();
+        $user = $request->user();
         $refusal = $this->access->manageRefusal($user, $mailbox, 'connect this inbox');
 
         abort_if($refusal !== null, Status::HTTP_FORBIDDEN, $refusal);
@@ -73,10 +73,10 @@ class MicrosoftMailAuthController extends Controller
 
         return response()->json(['data' => [
             'authorization_url' => $begun['url'],
-            'flow'              => $begun['flow'],
-            'expires_at'        => $begun['expires_at']->toIso8601String(),
-            'sign_in_as'        => $mailbox->address,
-            'scopes'            => [
+            'flow' => $begun['flow'],
+            'expires_at' => $begun['expires_at']->toIso8601String(),
+            'sign_in_as' => $mailbox->address,
+            'scopes' => [
                 MicrosoftOAuth::SCOPE_READ,
                 MicrosoftOAuth::SCOPE_SEND,
                 MicrosoftOAuth::SCOPE_OFFLINE,
@@ -103,7 +103,7 @@ class MicrosoftMailAuthController extends Controller
      */
     public function callback(Request $request): Response
     {
-        $state  = (string) $request->query('state', '');
+        $state = (string) $request->query('state', '');
         $signIn = null;
 
         try {
@@ -222,9 +222,9 @@ class MicrosoftMailAuthController extends Controller
                 $mailbox->save();
 
                 $this->audit->log('mailbox.connected', $mailbox, [
-                    'address'  => $mailbox->address,
+                    'address' => $mailbox->address,
                     'provider' => $mailbox->provider,
-                    'how'      => 'microsoft_sign_in',
+                    'how' => 'microsoft_sign_in',
                 ], actor: $user);
             });
         } catch (SubscriptionLapsedException) {

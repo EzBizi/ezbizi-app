@@ -158,7 +158,10 @@ class FieldRecorder with WidgetsBindingObserver {
     await send();
   }
 
-  Future<bool> start({String? jobId}) async {
+  /// [customerTold]: the technician confirmed they said the organization's
+  /// notice (needed where /field/me says `recording.announce`). Starting at
+  /// all means they confirmed the disclosure; the card asks before calling.
+  Future<bool> start({String? jobId, bool customerTold = false}) async {
     if (active) return true;
     if (!await _mic.hasPermission()) {
       state.value = state.value.copyWith(
@@ -171,6 +174,8 @@ class FieldRecorder with WidgetsBindingObserver {
     final response = await _api.post('/field/recordings', {
       'started_at': now.toUtc().toIso8601String(),
       'job_id': ?jobId,
+      'disclosure_confirmed': true,
+      'customer_told': customerTold,
     });
     if (!response.ok) {
       state.value = state.value.copyWith(error: response.message);

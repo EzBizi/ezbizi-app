@@ -50,14 +50,10 @@ class FieldController extends Controller
         $job = FieldPresence::query()->where('user_id', $user->getKey())->first()?->atJob()->with('customer:id,state')->first();
 
         return response()->json(['data' => $this->tracking->status($user) + [
-            'may_record' => $user->hasPermission('field.record'),
-            // The job the phone is standing at, for the record control; notice
-            // says the customer is to be told first (a notice state).
-            'at_job' => $job === null ? null : [
-                'id' => $job->id,
-                'number' => $job->number,
-                'notice' => in_array(strtoupper((string) $job->customer?->state), $this->tracking->recordingNoticeStates($user), true),
-            ],
+            // The record card: whether recording is allowed here and now, and
+            // whether the technician must confirm they told the customer.
+            'recording' => $this->tracking->recordingRule($user, $job?->customer?->state),
+            'at_job' => $job === null ? null : ['id' => $job->id, 'number' => $job->number],
         ]]);
     }
 

@@ -35,18 +35,32 @@ final class FieldRecordingsController extends Controller
         $data = $request->validate([
             'started_at' => ['required', 'date'],
             'job_id' => ['nullable', 'uuid'],
+            'disclosure_confirmed' => ['accepted'],
+            'customer_told' => ['nullable', 'boolean'],
         ]);
-        $jobId = $data['job_id'] ?? null;
-        if ($jobId !== null && ! Job::query()->whereKey($jobId)
-            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->exists()) {
-            $jobId = null; // a job you cannot see is not one to file this under
+        $job = isset($data['job_id']) ? Job::query()->with('customer:id,state')->whereKey($data['job_id'])
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->first() : null;
+
+        // Decided here, not on the phone: an old build, or one that skips the
+        // card, still cannot record where it may not.
+        $rule = $this->tracking->recordingRule($request->user(), $job?->customer?->state);
+        if (! $rule['allowed']) {
+            throw new AuthorizationException($rule['reason']);
         }
+        if ($rule['announce'] && empty($data['customer_told'])) {
+            return response()->json(['message' => 'Tell the customer first: "'.$rule['notice'].'"'], 422);
+        }
+        $jobId = $job?->getKey();
 
         $recording = FieldRecording::query()->create([
+            'customer_told' => (bool) ($data['customer_told'] ?? false),
             'user_id' => $request->user()->getKey(),
             'job_id' => $jobId,
             'started_at' => Carbon::parse($data['started_at'])->utc(),
         ]);
+
+        $this->audit->log('field.recording_started', $recording,
+            metadata: ['job_id' => $jobId, 'customer_told' => $recording->customer_told]);
 
         return response()->json(['data' => ['id' => $recording->getKey()]], 201);
     }
@@ -200,6 +214,7 @@ final class FieldRecordingsController extends Controller
             'duration_s' => $r->duration_s,
             'chunks' => $r->chunk_count,
             'events' => $r->events ?? [],
+            'customer_told' => $r->customer_told,
             'flagged' => $r->flagged,
             'flag_reason' => $r->flag_reason,
             'delete_on' => $r->flagged ? null : $r->started_at->copy()->addDays(FieldRecording::KEEP_DAYS)->toDateString(),

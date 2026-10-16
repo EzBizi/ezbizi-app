@@ -17,6 +17,7 @@ use App\Support\Training\LapsedPasses;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -565,7 +566,7 @@ class DashboardController extends Controller
     /**
      * @return array{0: 'guide'|'test', 1: TrainingGuide|TrainingTest}
      *
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     * @throws ModelNotFoundException
      */
     private function findVisibleItem(string $id, User $user, ViewScope $scope): array
     {
@@ -581,7 +582,7 @@ class DashboardController extends Controller
             return ['test', $test];
         }
 
-        throw new \Illuminate\Database\Eloquent\ModelNotFoundException("No training item [{$id}].");
+        throw new ModelNotFoundException("No training item [{$id}].");
     }
 
     // ── Assignment audience: one query, plus one for role members ─────

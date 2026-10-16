@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Organization;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Tenancy\TenantContext;
@@ -43,12 +44,12 @@ class OrganizationProfileController extends Controller
         }
 
         $input = $request->validate([
-            'address'       => ['sometimes', 'nullable', 'string', 'max:500'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:500'],
             'address_line1' => ['sometimes', 'nullable', 'string', 'max:200'],
             'address_line2' => ['sometimes', 'nullable', 'string', 'max:200'],
-            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
-            'state'         => ['sometimes', 'nullable', 'string', 'size:2'],
-            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:12'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state' => ['sometimes', 'nullable', 'string', 'size:2'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:12'],
         ]);
 
         $organization = $this->tenant->get();
@@ -90,17 +91,17 @@ class OrganizationProfileController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function present(\App\Models\Organization $organization): array
+    private function present(Organization $organization): array
     {
         return [
-            'id'            => $organization->id,
-            'name'          => $organization->name,
-            'address'       => $organization->address,
+            'id' => $organization->id,
+            'name' => $organization->name,
+            'address' => $organization->address,
             'address_line1' => $organization->address_line1,
             'address_line2' => $organization->address_line2,
-            'city'          => $organization->city,
-            'state'         => $organization->state,
-            'postal_code'   => $organization->postal_code,
+            'city' => $organization->city,
+            'state' => $organization->state,
+            'postal_code' => $organization->postal_code,
         ];
     }
 }

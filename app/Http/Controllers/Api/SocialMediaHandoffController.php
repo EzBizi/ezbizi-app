@@ -37,7 +37,7 @@ class SocialMediaHandoffController extends Controller
             // Meta reads the type off the response, not off the URL. Serving
             // everything as octet-stream makes Instagram reject the container
             // with a message about the format of a perfectly good JPEG.
-            'Content-Type'  => MediaHandoff::mimeFor($handle),
+            'Content-Type' => MediaHandoff::mimeFor($handle),
             'Cache-Control' => 'private, no-store',
         ]);
     }

@@ -26,6 +26,8 @@ return new class extends Migration
             $table->unsignedInteger('chunk_count')->default(0);
             $table->unsignedBigInteger('total_bytes')->default(0);
             $table->json('events')->nullable();
+            // The technician confirmed they told the customer (all-party states).
+            $table->boolean('customer_told')->default(false);
             $table->boolean('flagged')->default(false);
             $table->string('flag_reason', 500)->nullable();
             $table->uuid('flagged_by')->nullable();

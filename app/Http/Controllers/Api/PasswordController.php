@@ -55,8 +55,8 @@ class PasswordController extends Controller
 
             $this->audit->logError('auth.password_reset_requested', [
                 'subject' => class_basename($subject),
-                'email'   => $subject->email,
-                'ip'      => $request->ip(),
+                'email' => $subject->email,
+                'ip' => $request->ip(),
             ]);
         }
 
@@ -86,7 +86,7 @@ class PasswordController extends Controller
     public function reset(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'token'    => ['required', 'string'],
+            'token' => ['required', 'string'],
             'password' => [...PasswordPolicy::rules(), 'confirmed'],
         ]);
 
@@ -104,7 +104,7 @@ class PasswordController extends Controller
         if ($subject === null) {
             return response()->json([
                 'message' => 'That link has expired or has already been used. Ask for a new one.',
-                'code'    => 'invalid_token',
+                'code' => 'invalid_token',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
@@ -150,14 +150,14 @@ class PasswordController extends Controller
         if (! Hash::check($input['current_password'], $subject->password)) {
             return response()->json([
                 'message' => 'That is not your current password.',
-                'code'    => 'wrong_password',
+                'code' => 'wrong_password',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         if (Hash::check($input['password'], $subject->password)) {
             return response()->json([
                 'message' => 'That is the password you already have.',
-                'code'    => 'unchanged',
+                'code' => 'unchanged',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 

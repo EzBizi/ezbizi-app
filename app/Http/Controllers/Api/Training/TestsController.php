@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -66,7 +67,7 @@ class TestsController extends Controller
      * Two different answers for two different ids is an existence oracle — it
      * tells a caller which ids are real somewhere else on the platform.
      */
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());

@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Mailbox;
+use App\Models\MailboxGrant;
+use App\Models\Organization;
 use App\Models\User;
-use App\Support\Access\Refusal;
 use App\Support\Access\InboxAccess;
-use App\Support\Automations\MailboxAlerts;
+use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\MailboxAlerts;
 use App\Support\Email\CannotReachHost;
 use App\Support\Email\GoogleWorkspace;
 use App\Support\Email\GoogleWorkspaceRefused;
@@ -57,7 +59,7 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * — is drawn by the roles editor, and both halves of it are written there:
  * `email.*` comes from the module registry through the roles catalogue, and
- * this organization's own inboxes come from {@see \App\Models\MailboxGrant}
+ * this organization's own inboxes come from {@see MailboxGrant}
  * through App\Support\Access\InboxAccess. That separation is the whole point
  * of MailboxGrant — the static half is platform data every tenant shares, the
  * per-inbox half is this organization's own — and composing them on one screen
@@ -124,7 +126,7 @@ class MailboxesController extends Controller
         );
 
         $manageable = $this->access->manageable($user);
-        $readable   = $this->access->readable($user);
+        $readable = $this->access->readable($user);
 
         /*
          * The union, keyed by id. Somebody may READ an inbox they cannot manage
@@ -170,15 +172,15 @@ class MailboxesController extends Controller
                  * means something else.
                  */
                 'providers' => array_map(fn (MailboxProvider $p) => [
-                    'value'    => $p->value,
-                    'label'    => $p->label(),
+                    'value' => $p->value,
+                    'label' => $p->label(),
                     'needs_host' => $p->needsHost(),
                     'connects_by' => $p->connectsBy(),
-                    'usable'   => $this->readers->forProvider($p)->notReadyBecause() === null,
+                    'usable' => $this->readers->forProvider($p)->notReadyBecause() === null,
                     'unusable_because' => $this->readers->forProvider($p)->notReadyBecause(),
                     // The IMAP warning, published by the server so every client
                     // shows the same words. See MailboxProvider::caution.
-                    'caution'  => $p->caution(),
+                    'caution' => $p->caution(),
                 ], MailboxProvider::all()),
 
                 'imap_ports' => RemoteHostGuard::IMAP_PORTS,
@@ -278,15 +280,15 @@ class MailboxesController extends Controller
         );
 
         $input = $request->validate([
-            'scope_type'   => ['required', 'in:organization,company,franchise'],
-            'scope_id'     => ['required', 'uuid'],
-            'address'      => ['required', 'email:rfc', 'max:255'],
+            'scope_type' => ['required', 'in:organization,company,franchise'],
+            'scope_id' => ['required', 'uuid'],
+            'address' => ['required', 'email:rfc', 'max:255'],
             'display_name' => ['required', 'string', 'max:255'],
-            'provider'     => ['required', 'in:'.implode(',', array_map(
+            'provider' => ['required', 'in:'.implode(',', array_map(
                 fn (MailboxProvider $p) => $p->value,
                 MailboxProvider::all(),
             ))],
-            'mail_server'  => ['sometimes', 'array'],
+            'mail_server' => ['sometimes', 'array'],
         ]);
 
         $scope = $this->resolveScope($input['scope_type'], $input['scope_id']);
@@ -294,18 +296,18 @@ class MailboxesController extends Controller
         $this->assertReaches($user, $scope, $input['scope_type'], 'add a shared inbox here');
 
         $provider = MailboxProvider::from($input['provider']);
-        $server   = $this->mailServerFor($provider, $input['mail_server'] ?? []);
+        $server = $this->mailServerFor($provider, $input['mail_server'] ?? []);
 
         try {
             $mailbox = DB::transaction(function () use ($input, $scope, $provider, $server) {
                 $mailbox = Mailbox::create([
                     'organization_id' => $this->organizationIdOf($scope),
-                    'scope_type'      => $input['scope_type'],
-                    'scope_id'        => $scope->getKey(),
-                    'address'         => strtolower($input['address']),
-                    'display_name'    => $input['display_name'],
-                    'provider'        => $provider->value,
-                    'mail_server'     => $server,
+                    'scope_type' => $input['scope_type'],
+                    'scope_id' => $scope->getKey(),
+                    'address' => strtolower($input['address']),
+                    'display_name' => $input['display_name'],
+                    'provider' => $provider->value,
+                    'mail_server' => $server,
                 ]);
 
                 if ($provider === MailboxProvider::GmailWorkspace) {
@@ -313,9 +315,9 @@ class MailboxesController extends Controller
                 }
 
                 $this->audit->log('mailbox.added', $mailbox, [
-                    'address'  => $mailbox->address,
+                    'address' => $mailbox->address,
                     'provider' => $mailbox->provider,
-                    'scope'    => $input['scope_type'],
+                    'scope' => $input['scope_type'],
                 ]);
 
                 return $mailbox;
@@ -356,10 +358,10 @@ class MailboxesController extends Controller
         );
 
         $input = $request->validate([
-            'scope_type'               => ['required', 'in:organization,company,franchise'],
-            'scope_id'                 => ['required', 'uuid'],
-            'addresses'                => ['required', 'array', 'min:1', 'max:50'],
-            'addresses.*.address'      => ['required', 'email:rfc', 'max:255'],
+            'scope_type' => ['required', 'in:organization,company,franchise'],
+            'scope_id' => ['required', 'uuid'],
+            'addresses' => ['required', 'array', 'min:1', 'max:50'],
+            'addresses.*.address' => ['required', 'email:rfc', 'max:255'],
             'addresses.*.display_name' => ['required', 'string', 'max:255'],
         ]);
 
@@ -373,8 +375,8 @@ class MailboxesController extends Controller
         // place -- the same question attach() asks of a real one.
         $probe = new Mailbox([
             'organization_id' => $organizationId,
-            'scope_type'      => $input['scope_type'],
-            'scope_id'        => $scope->getKey(),
+            'scope_type' => $input['scope_type'],
+            'scope_id' => $scope->getKey(),
         ]);
 
         $connection = $this->workspace->connectionForMailbox($probe);
@@ -411,20 +413,20 @@ class MailboxesController extends Controller
                 $mailbox = DB::transaction(function () use ($one, $address, $input, $scope, $organizationId, $directory) {
                     $mailbox = Mailbox::create([
                         'organization_id' => $organizationId,
-                        'scope_type'      => $input['scope_type'],
-                        'scope_id'        => $scope->getKey(),
-                        'address'         => $address,
-                        'display_name'    => $one['display_name'],
-                        'provider'        => MailboxProvider::GmailWorkspace->value,
-                        'mail_server'     => null,
+                        'scope_type' => $input['scope_type'],
+                        'scope_id' => $scope->getKey(),
+                        'address' => $address,
+                        'display_name' => $one['display_name'],
+                        'provider' => MailboxProvider::GmailWorkspace->value,
+                        'mail_server' => null,
                     ]);
 
                     $this->workspace->attachFrom($mailbox, $directory);
 
                     $this->audit->log('mailbox.added', $mailbox, [
-                        'address'  => $mailbox->address,
+                        'address' => $mailbox->address,
                         'provider' => $mailbox->provider,
-                        'scope'    => $input['scope_type'],
+                        'scope' => $input['scope_type'],
                     ]);
 
                     return $mailbox;
@@ -460,7 +462,7 @@ class MailboxesController extends Controller
 
         $input = $request->validate([
             'display_name' => ['sometimes', 'string', 'max:255'],
-            'mail_server'  => ['sometimes', 'array'],
+            'mail_server' => ['sometimes', 'array'],
             'mark_read_at_source' => ['sometimes', 'boolean'],
         ]);
 
@@ -621,7 +623,7 @@ class MailboxesController extends Controller
 
             // What happened, never what was handed over.
             $this->audit->log('mailbox.connected', $mailbox, [
-                'address'  => $mailbox->address,
+                'address' => $mailbox->address,
                 'provider' => $mailbox->provider,
             ]);
         });
@@ -732,7 +734,7 @@ class MailboxesController extends Controller
         if ($this->inboxes->givePerson($mailbox, $person)) {
             $this->audit->log('mailbox.person_granted', $mailbox, [
                 'address' => $mailbox->address,
-                'person'  => $person->name,
+                'person' => $person->name,
             ]);
         }
 
@@ -750,7 +752,7 @@ class MailboxesController extends Controller
         if ($this->inboxes->takeFromPerson($mailbox, $user)) {
             $this->audit->log('mailbox.person_revoked', $mailbox, [
                 'address' => $mailbox->address,
-                'person'  => $user->name,
+                'person' => $user->name,
             ]);
         }
 
@@ -875,13 +877,12 @@ class MailboxesController extends Controller
         $person = fn (User $u) => ['id' => $u->getKey(), 'name' => $u->name, 'email' => $u->email];
 
         return [
-            'people'     => $given->map($person)->values()->all(),
-            'roles'      => $this->inboxes->rolesOn($mailbox)
+            'people' => $given->map($person)->values()->all(),
+            'roles' => $this->inboxes->rolesOn($mailbox)
                 ->map(fn ($r) => ['id' => $r->getKey(), 'name' => $r->name])->values()->all(),
             'candidates' => $candidates->map($person)->all(),
         ];
     }
-
 
     // ── the response ─────────────────────────────────────────────
 
@@ -895,16 +896,16 @@ class MailboxesController extends Controller
      */
     private function row(Mailbox $mailbox, User $user): array
     {
-        $reader     = $this->readers->for($mailbox);
+        $reader = $this->readers->for($mailbox);
         $readRefusal = $this->access->readRefusal($user, $mailbox, 'open this inbox');
 
         return [
-            'id'           => $mailbox->getKey(),
-            'address'      => $mailbox->address,
+            'id' => $mailbox->getKey(),
+            'address' => $mailbox->address,
             'display_name' => $mailbox->display_name,
             // Inbox tab reads `label`; Settings reads `display_name`. Same fact.
-            'label'        => $mailbox->display_name,
-            'provider'     => $mailbox->provider,
+            'label' => $mailbox->display_name,
+            'provider' => $mailbox->provider,
             'provider_label' => $mailbox->providerEnum()?->label(),
 
             /*
@@ -915,7 +916,7 @@ class MailboxesController extends Controller
              * which provider can mark mail read is a second dictionary that
              * will one day disagree with the one that decides.
              */
-            'mark_read_at_source'     => (bool) $mailbox->mark_read_at_source,
+            'mark_read_at_source' => (bool) $mailbox->mark_read_at_source,
             'can_mark_read_at_source' => $this->readers->for($mailbox)->canMarkReadAtSource($mailbox),
 
             /*
@@ -935,8 +936,8 @@ class MailboxesController extends Controller
              * path built from their own vocabulary rather than a string this
              * controller could compose.
              */
-            'scope_type'   => $mailbox->scope_type,
-            'scope_id'     => $mailbox->scope_id,
+            'scope_type' => $mailbox->scope_type,
+            'scope_id' => $mailbox->scope_id,
 
             /*
              * ── THE THREE FIELDS THE STATUS SCREEN IS FOR ────────
@@ -961,7 +962,7 @@ class MailboxesController extends Controller
              * which is a different thing entirely and must not be drawn as
              * "never worked" on an inbox somebody is reading mail in.
              */
-            'status'        => $mailbox->status,
+            'status' => $mailbox->status,
             'status_reason' => $mailbox->status_reason,
             'last_reached_at' => $mailbox->last_reached_at?->toIso8601String(),
 
@@ -981,20 +982,20 @@ class MailboxesController extends Controller
             // The host, never the password. `mail_server` holds only these.
             'mail_server' => $mailbox->mail_server,
 
-            'may_read'        => $readRefusal === null,
+            'may_read' => $readRefusal === null,
             'may_read_reason' => $readRefusal,
-            'may_manage'      => $this->access->mayManage($user, $mailbox),
+            'may_manage' => $this->access->mayManage($user, $mailbox),
 
             'read_state_shared' => $this->readState->isShared($mailbox),
-            'read_state_note'   => $this->readState->explain($mailbox),
+            'read_state_note' => $this->readState->explain($mailbox),
 
             /*
              * Inbox-tab names for the same facts. There is no separate "may
              * reply" permission: an inbox somebody can read and not answer is
              * not a shared inbox. `can_reply` is therefore `may_read`.
              */
-            'shared_read'   => $this->readState->isShared($mailbox),
-            'can_reply'     => $readRefusal === null,
+            'shared_read' => $this->readState->isShared($mailbox),
+            'can_reply' => $readRefusal === null,
             'reply_refusal' => $readRefusal,
         ];
     }
@@ -1005,8 +1006,8 @@ class MailboxesController extends Controller
     {
         $model = match ($type) {
             'organization' => $this->tenant->get()?->getKey() === $id ? $this->tenant->get() : null,
-            'company'      => Company::find($id),
-            'franchise'    => Franchise::find($id),
+            'company' => Company::find($id),
+            'franchise' => Franchise::find($id),
         };
 
         // Tenant-scoped lookups, so an id from another organization is simply
@@ -1018,7 +1019,7 @@ class MailboxesController extends Controller
 
     private function organizationIdOf(Model $scope): string
     {
-        return $scope instanceof \App\Models\Organization ? $scope->getKey() : $scope->organization_id;
+        return $scope instanceof Organization ? $scope->getKey() : $scope->organization_id;
     }
 
     /**
@@ -1032,8 +1033,8 @@ class MailboxesController extends Controller
     {
         $reaches = match ($type) {
             'organization' => $user->canActOnOrganization($user->organization),
-            'company'      => $user->canActOnCompany($scope),
-            'franchise'    => $user->canActOnFranchise($scope),
+            'company' => $user->canActOnCompany($scope),
+            'franchise' => $user->canActOnFranchise($scope),
         };
 
         if ($reaches) {

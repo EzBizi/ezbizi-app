@@ -21,7 +21,7 @@ class ReviewLinkReportController extends Controller
         $this->authorize('viewAny', Review::class);
         $input = $request->validate([
             'from' => ['nullable', 'date'],
-            'to'   => ['nullable', 'date', 'after:from'],
+            'to' => ['nullable', 'date', 'after:from'],
         ]);
         $to = isset($input['to']) ? CarbonImmutable::parse($input['to']) : CarbonImmutable::now();
         $from = isset($input['from']) ? CarbonImmutable::parse($input['from']) : $to->subDays(30);

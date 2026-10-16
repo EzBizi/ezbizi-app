@@ -14,9 +14,9 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Training\LapsedPasses;
-use App\Support\Training\TrainingMediaLinks;
 use App\Support\Training\LearnerView;
 use App\Support\Training\TestGrader;
+use App\Support\Training\TrainingMediaLinks;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -739,16 +739,14 @@ class LearnController extends Controller
         Collection $attemptsTowardCap,
     ): ?array {
         $content = match (true) {
-            $assignment->test_id !== null && $tests->has($assignment->test_id)
-                => $this->presentTest(
-                    $tests->get($assignment->test_id),
-                    $lapsedTestIds,
-                    $lastAttempts->get($assignment->test_id),
-                    $attemptCounts->get($assignment->test_id, 0),
-                    $attemptsTowardCap->get($assignment->test_id, 0),
-                ),
-            $assignment->guide_id !== null && $guides->has($assignment->guide_id)
-                => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
+            $assignment->test_id !== null && $tests->has($assignment->test_id) => $this->presentTest(
+                $tests->get($assignment->test_id),
+                $lapsedTestIds,
+                $lastAttempts->get($assignment->test_id),
+                $attemptCounts->get($assignment->test_id, 0),
+                $attemptsTowardCap->get($assignment->test_id, 0),
+            ),
+            $assignment->guide_id !== null && $guides->has($assignment->guide_id) => $this->presentGuide($guides->get($assignment->guide_id), $guideProgress->get($assignment->guide_id)),
             default => null,
         };
 

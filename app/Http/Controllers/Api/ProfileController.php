@@ -57,26 +57,26 @@ class ProfileController extends Controller
         $user = $request->user();
 
         $input = $request->validate([
-            'first_name'  => ['sometimes', 'required', 'string', 'max:60'],
+            'first_name' => ['sometimes', 'required', 'string', 'max:60'],
             'middle_name' => ['sometimes', 'nullable', 'string', 'max:60'],
-            'last_name'   => ['sometimes', 'required', 'string', 'max:60'],
-            'phone'       => ['sometimes', 'nullable', 'string', 'max:40'],
-            'address'     => ['sometimes', 'nullable', 'string', 'max:500'],
+            'last_name' => ['sometimes', 'required', 'string', 'max:60'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:500'],
 
             // The home address in parts, as the lookup fills them (Jose,
             // 2026-09-30). Sent, they replace the one line: `address` is
             // composed from them below.
             'address_line1' => ['sometimes', 'nullable', 'string', 'max:191'],
             'address_line2' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
-            'state'         => ['sometimes', 'nullable', 'string', 'max:64'],
-            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:20'],
-            'country'       => ['sometimes', 'nullable', 'string', 'max:100'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:100'],
 
             // Free text, not an `in:` rule. A closed list is wrong for somebody
             // and then needs a deploy to fix; the client suggests the common
             // answers and this accepts what a person actually says.
-            'gender'      => ['sometimes', 'nullable', 'string', 'max:40'],
+            'gender' => ['sometimes', 'nullable', 'string', 'max:40'],
 
             // `before:today` rather than a minimum age. This is a profile
             // field, not an eligibility check, and inventing an age limit here
@@ -130,7 +130,7 @@ class ProfileController extends Controller
         // erasure cannot reach would be the wrong place to keep it.
         $this->audit->log('user.profile_updated', $user, changes: [
             'before' => array_diff_key($before, ['date_of_birth' => null]),
-            'after'  => array_diff_key($changed, ['date_of_birth' => null]),
+            'after' => array_diff_key($changed, ['date_of_birth' => null]),
             'fields' => array_keys($changed),
         ]);
 
@@ -182,7 +182,7 @@ class ProfileController extends Controller
     /** Serve a picture, to people entitled to see it. */
     public function avatar(Request $request, string $user)
     {
-        $subject = \App\Models\User::find($user);
+        $subject = User::find($user);
 
         // Same organization only. An avatar endpoint that serves any id is a
         // way to enumerate the staff of every customer on the platform.
@@ -216,16 +216,16 @@ class ProfileController extends Controller
     private function present($user): array
     {
         return [
-            'name'          => $user->name,
-            'first_name'    => $user->first_name,
-            'middle_name'   => $user->middle_name,
-            'last_name'     => $user->last_name,
-            'phone'         => $user->phone,
-            'address'       => $user->address,
+            'name' => $user->name,
+            'first_name' => $user->first_name,
+            'middle_name' => $user->middle_name,
+            'last_name' => $user->last_name,
+            'phone' => $user->phone,
+            'address' => $user->address,
             ...$user->addressParts(),
-            'gender'        => $user->gender,
+            'gender' => $user->gender,
             'date_of_birth' => $user->date_of_birth?->toDateString(),
-            'has_avatar'    => $user->avatar_path !== null,
+            'has_avatar' => $user->avatar_path !== null,
         ];
     }
 
@@ -274,7 +274,7 @@ class ProfileController extends Controller
      */
     public function revokeOtherSessions(Request $request): array
     {
-        $user    = $request->user();
+        $user = $request->user();
         $current = $user->currentAccessToken();
 
         $revoked = ApiKey::except($user->tokens())
@@ -289,7 +289,7 @@ class ProfileController extends Controller
     /** Where this person can act, so the profile can show it rather than imply it. */
     public function sessions(Request $request): array
     {
-        $user    = $request->user();
+        $user = $request->user();
         $current = $user->currentAccessToken();
 
         return [
@@ -298,11 +298,11 @@ class ProfileController extends Controller
                 ->orderByDesc('last_used_at')
                 ->get()
                 ->map(fn ($token) => [
-                    'id'           => $token->id,
-                    'name'         => $token->name,
+                    'id' => $token->id,
+                    'name' => $token->name,
                     'last_used_at' => $token->last_used_at?->toIso8601String(),
-                    'created_at'   => $token->created_at?->toIso8601String(),
-                    'ip'           => $token->ip_address,
+                    'created_at' => $token->created_at?->toIso8601String(),
+                    'ip' => $token->ip_address,
 
                     // Five rows all reading "web" tell nobody which one to sign
                     // out. The description is what makes a row identifiable.
@@ -310,7 +310,7 @@ class ProfileController extends Controller
                     // Named rather than inferred client-side: "which of these am
                     // I" is the first thing anybody asks of a session list, and
                     // guessing it from a timestamp gets it wrong.
-                    'current'      => $current !== null && $token->getKey() === $current->getKey(),
+                    'current' => $current !== null && $token->getKey() === $current->getKey(),
                 ])->all(),
         ];
     }

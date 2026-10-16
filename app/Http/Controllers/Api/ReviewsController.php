@@ -56,7 +56,7 @@ class ReviewsController extends Controller
             ->orderByDesc('created_at');
 
         if (! $user->canActOnOrganization($user->organization)) {
-            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+            $companyIds = $user->reachableCompanies()->pluck('id')->all();
             $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
 
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
@@ -89,8 +89,8 @@ class ReviewsController extends Controller
             'data' => array_map(fn (Review $r) => $this->present($r), $reviews->items()),
             'meta' => [
                 ...$this->pageMeta($reviews),
-                'unanswered'   => $this->unansweredCount($user),
-                'connections'  => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
+                'unanswered' => $this->unansweredCount($user),
+                'connections' => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
             ],
         ]);
     }
@@ -134,12 +134,12 @@ class ReviewsController extends Controller
         $reply = DB::transaction(function () use ($review, $reply, $input) {
             $reply ??= new ReviewReply([
                 'organization_id' => $review->organization_id,
-                'review_id'       => $review->getKey(),
-                'drafted_by'      => ReviewReply::BY_PERSON,
+                'review_id' => $review->getKey(),
+                'drafted_by' => ReviewReply::BY_PERSON,
             ]);
 
             $reply->fill([
-                'body'   => $input['body'],
+                'body' => $input['body'],
                 'status' => ReviewReply::STATUS_DRAFT,
                 // A previous failure is not carried forward onto a new attempt;
                 // leaving it would have the screen explain a refusal of text
@@ -178,16 +178,16 @@ class ReviewsController extends Controller
         try {
             $answer = GrokCli::ask(
                 "Write a reply from {$business} (a home-services company: chimneys, fireplaces, garage "
-                ."doors) to this Google review. Warm, specific to what the reviewer said, 2 to 4 "
-                ."sentences, no emojis, no hashtags. Thank them by first name if one is given. For a "
-                ."low rating: apologise once, do not argue or admit fault in detail, and invite them to "
-                ."call the office to put it right. Never invent facts, names, prices or dates.
+                .'doors) to this Google review. Warm, specific to what the reviewer said, 2 to 4 '
+                .'sentences, no emojis, no hashtags. Thank them by first name if one is given. For a '
+                .'low rating: apologise once, do not argue or admit fault in detail, and invite them to '
+                .'call the office to put it right. Never invent facts, names, prices or dates.
 
-"
-                ."Reviewer: ".($review->reviewer_name ?? 'unknown')."
-Stars: ".($review->rating ?? '?')
-                ."
-Review: ".($review->comment ?: '(no text, stars only)'),
+'
+                .'Reviewer: '.($review->reviewer_name ?? 'unknown').'
+Stars: '.($review->rating ?? '?')
+                .'
+Review: '.($review->comment ?: '(no text, stars only)'),
                 [
                     'type' => 'object',
                     'properties' => ['reply' => ['type' => 'string']],
@@ -248,7 +248,6 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             return response()->json(['data' => $this->present($review->load('reply'))]);
         }
 
-
         try {
             $this->google->publish($reply);
         } catch (RuntimeException $e) {
@@ -271,7 +270,7 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             // transaction to inherit. Nothing was rolling this back.
             DB::transaction(function () use ($reply, $review, $e) {
                 $reply->forceFill([
-                    'status'         => ReviewReply::STATUS_FAILED,
+                    'status' => ReviewReply::STATUS_FAILED,
                     'failure_reason' => $e->getMessage(),
                 ])->save();
 
@@ -293,10 +292,10 @@ Review: ".($review->comment ?: '(no text, stars only)'),
 
         DB::transaction(function () use ($reply, $review, $request) {
             $reply->forceFill([
-                'status'               => ReviewReply::STATUS_PUBLISHED,
+                'status' => ReviewReply::STATUS_PUBLISHED,
                 'published_by_user_id' => $request->user()->getKey(),
-                'published_at'         => now(),
-                'failure_reason'       => null,
+                'published_at' => now(),
+                'failure_reason' => null,
             ])->save();
 
             $this->audit->log('review.reply_published', $review, metadata: [
@@ -354,7 +353,7 @@ Review: ".($review->comment ?: '(no text, stars only)'),
             } catch (RuntimeException $e) {
                 $failures[] = [
                     'connection' => $connection->display_name,
-                    'because'    => $e->getMessage(),
+                    'because' => $e->getMessage(),
                 ];
             }
         }
@@ -385,7 +384,7 @@ Review: ".($review->comment ?: '(no text, stars only)'),
         );
 
         if (! $user->canActOnOrganization($user->organization)) {
-            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+            $companyIds = $user->reachableCompanies()->pluck('id')->all();
             $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
 
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
@@ -411,24 +410,24 @@ Review: ".($review->comment ?: '(no text, stars only)'),
         $reply = $review->reply;
 
         return [
-            'id'            => $review->id,
+            'id' => $review->id,
             'reviewer_name' => $review->reviewer_name,
             'reviewer_photo_url' => $review->reviewer_photo_url,
-            'rating'        => $review->rating,
-            'comment'       => $review->comment,
-            'reviewed_at'   => $review->reviewed_at?->toIso8601String(),
-            'edited_at'     => $review->edited_at?->toIso8601String(),
-            'was_edited'    => $review->wasEdited(),
-            'company'       => $review->company?->only(['id', 'name']),
-            'franchise'     => $review->franchise?->only(['id', 'name']),
-            'reply'         => $reply === null ? null : [
-                'id'             => $reply->id,
-                'body'           => $reply->body,
-                'status'         => $reply->status,
-                'drafted_by'     => $reply->drafted_by,
-                'published_at'   => $reply->published_at?->toIso8601String(),
+            'rating' => $review->rating,
+            'comment' => $review->comment,
+            'reviewed_at' => $review->reviewed_at?->toIso8601String(),
+            'edited_at' => $review->edited_at?->toIso8601String(),
+            'was_edited' => $review->wasEdited(),
+            'company' => $review->company?->only(['id', 'name']),
+            'franchise' => $review->franchise?->only(['id', 'name']),
+            'reply' => $reply === null ? null : [
+                'id' => $reply->id,
+                'body' => $reply->body,
+                'status' => $reply->status,
+                'drafted_by' => $reply->drafted_by,
+                'published_at' => $reply->published_at?->toIso8601String(),
                 'failure_reason' => $reply->failure_reason,
-                'editable'       => $reply->isEditable(),
+                'editable' => $reply->isEditable(),
             ],
         ];
     }

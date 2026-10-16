@@ -2,13 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Alert;
+use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
+use App\Models\FieldAlert;
+use App\Models\Lead;
+use App\Models\Mailbox;
 use App\Models\Notification;
+use App\Models\Onboarding;
+use App\Models\Suggestion;
+use App\Models\TimeClockCorrectionRequest;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\PushSender;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -89,7 +100,7 @@ class NotificationsController extends Controller
      *
      * @return list<array{id: string, title: string, body: ?string, sender: ?string, created_at: ?string}>
      */
-    private function openAlerts(\Illuminate\Database\Eloquent\Builder $base): array
+    private function openAlerts(Builder $base): array
     {
         $rows = (clone $base)
             ->where('source', 'alert')
@@ -98,8 +109,8 @@ class NotificationsController extends Controller
             ->limit(50)
             ->get(['id', 'title', 'body', 'subject_type', 'subject_id', 'created_at']);
 
-        $senders = \App\Models\Alert::query()
-            ->whereIn('id', $rows->where('subject_type', \App\Models\Alert::class)->pluck('subject_id'))
+        $senders = Alert::query()
+            ->whereIn('id', $rows->where('subject_type', Alert::class)->pluck('subject_id'))
             ->with('sender:id,name')
             ->get(['id', 'sender_id'])
             ->keyBy('id');
@@ -240,7 +251,7 @@ class NotificationsController extends Controller
      * accepts a record to open within it yet. `subject.id` is in the payload
      * for whoever builds that.
      *
-     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events  keyed by id
+     * @param  Collection<string, AutomationEvent>  $events  keyed by id
      */
     private function present(Notification $notification, $events): array
     {
@@ -276,20 +287,20 @@ class NotificationsController extends Controller
      * @var array<class-string, string>
      */
     private const SUBJECT_MODULES = [
-        \App\Models\Suggestion::class => 'suggestions',
-        \App\Models\Lead::class => 'leads',
-        \App\Models\TimeClockCorrectionRequest::class => 'work_hours',
-        \App\Models\Automation::class => self::AUTOMATIONS_MODULE,
-        \App\Models\FieldAlert::class => 'field',
-        \App\Models\Onboarding::class => 'hr',
-        \App\Models\Mailbox::class => 'email',
+        Suggestion::class => 'suggestions',
+        Lead::class => 'leads',
+        TimeClockCorrectionRequest::class => 'work_hours',
+        Automation::class => self::AUTOMATIONS_MODULE,
+        FieldAlert::class => 'field',
+        Onboarding::class => 'hr',
+        Mailbox::class => 'email',
     ];
 
     /**
      * Where a notification points: a module, what to narrow it to, and the
      * exact record to open.
      *
-     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events
+     * @param  Collection<string, AutomationEvent>  $events
      * @return array{module: ?string, filter: ?string, record: ?array{type: string, id: string, mailbox?: ?string}}
      */
     private function destination(Notification $notification, $events): array
@@ -325,7 +336,7 @@ class NotificationsController extends Controller
         }
 
         return [
-            'type' => \Illuminate\Support\Str::snake(class_basename($notification->subject_type)),
+            'type' => Str::snake(class_basename($notification->subject_type)),
             'id' => (string) $notification->subject_id,
         ];
     }

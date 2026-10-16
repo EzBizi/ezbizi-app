@@ -38,7 +38,7 @@ class FranchisesController extends Controller
                 Rule::exists('companies', 'id')
                     ->where('organization_id', $request->user()->organization_id),
             ],
-            'name'     => ['required', 'string', 'max:120'],
+            'name' => ['required', 'string', 'max:120'],
             'timezone' => ['nullable', 'string', 'timezone'],
             // §7: single currency in v1. `size:3` accepted ZZZ, and a currency
             // is stamped onto every job created at this franchise and is then
@@ -60,8 +60,8 @@ class FranchisesController extends Controller
         $franchise = DB::transaction(function () use ($input, $company, $request) {
             $franchise = Franchise::create([
                 'organization_id' => $request->user()->organization_id,
-                'company_id'      => $company->id,
-                'name'            => trim($input['name']),
+                'company_id' => $company->id,
+                'name' => trim($input['name']),
                 'timezone' => $input['timezone']
                     ?? $this->settings->get('timezone', $company),
                 'currency' => strtoupper($input['currency']
@@ -99,11 +99,11 @@ class FranchisesController extends Controller
     public function update(Request $request, Franchise $franchise): array
     {
         $input = $request->validate([
-            'name'      => ['sometimes', 'string', 'max:120'],
-            'timezone'  => ['sometimes', 'string', 'timezone'],
+            'name' => ['sometimes', 'string', 'max:120'],
+            'timezone' => ['sometimes', 'string', 'timezone'],
             'is_active' => ['sometimes', 'boolean'],
             'company_id' => ['missing'],
-            'currency'   => ['missing'],
+            'currency' => ['missing'],
         ]);
 
         if (array_key_exists('is_active', $input) && ! $input['is_active']) {

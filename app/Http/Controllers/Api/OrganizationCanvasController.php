@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Structure\PromoteCanvasArrangements;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -195,7 +196,7 @@ class OrganizationCanvasController extends Controller
      * DashboardController::ORDER_PREFERENCE is public.
      *
      * The old key is not merely unused: it is stripped from every user by
-     * {@see \App\Support\Structure\PromoteCanvasArrangements}, which runs once at
+     * {@see PromoteCanvasArrangements}, which runs once at
      * the migration that retires it. Nothing reads it and nothing may.
      */
     public const SETTING = 'organization.structure_canvas';
@@ -402,12 +403,12 @@ class OrganizationCanvasController extends Controller
     public function save(Request $request): array
     {
         $input = $request->validate([
-            'orientation'  => ['sometimes', 'string', Rule::in(self::ORIENTATIONS)],
-            'boxes'        => ['present', 'array', 'max:'.self::MAX_BOXES],
+            'orientation' => ['sometimes', 'string', Rule::in(self::ORIENTATIONS)],
+            'boxes' => ['present', 'array', 'max:'.self::MAX_BOXES],
             'boxes.*.kind' => ['required', 'string', Rule::in(self::KINDS)],
-            'boxes.*.id'   => ['required', 'uuid'],
-            'boxes.*.x'    => ['required', 'numeric'],
-            'boxes.*.y'    => ['required', 'numeric'],
+            'boxes.*.id' => ['required', 'uuid'],
+            'boxes.*.x' => ['required', 'numeric'],
+            'boxes.*.y' => ['required', 'numeric'],
         ], [
             // The cap states itself. A bare "may not have more than 500 items"
             // tells somebody the number without telling them what to do, and
@@ -424,7 +425,7 @@ class OrganizationCanvasController extends Controller
                 .'nothing else.',
         ]);
 
-        $user         = $request->user();
+        $user = $request->user();
         $organization = $user->organization;
 
         // Asked here and asked identically on the tree payload, from ONE
@@ -444,7 +445,7 @@ class OrganizationCanvasController extends Controller
             // outside would be a read of what was stored a moment ago.
             $arrangement = self::clean([
                 'orientation' => $input['orientation'] ?? $before['orientation'],
-                'boxes'       => $input['boxes'],
+                'boxes' => $input['boxes'],
             ]);
 
             $this->settings->set(self::SETTING, $organization, $arrangement);
@@ -478,11 +479,11 @@ class OrganizationCanvasController extends Controller
              * observe — and this is no longer one of those.
              */
             $this->audit->log(
-                action:  'organization.structure_arranged',
-                target:  $organization,
+                action: 'organization.structure_arranged',
+                target: $organization,
                 changes: [
                     'boxes_before' => count($before['boxes']),
-                    'boxes_after'  => count($arrangement['boxes']),
+                    'boxes_after' => count($arrangement['boxes']),
                     // Two short words rather than sixty kilobytes of x and y,
                     // and they earn their place: turning the whole chart round
                     // is the one thing anybody does here that a colleague
@@ -491,7 +492,7 @@ class OrganizationCanvasController extends Controller
                     // after", which is an audit entry saying nothing happened
                     // about the most visible change this endpoint can make.
                     'orientation_before' => $before['orientation'],
-                    'orientation_after'  => $arrangement['orientation'],
+                    'orientation_after' => $arrangement['orientation'],
                 ],
             );
 
@@ -764,7 +765,7 @@ class OrganizationCanvasController extends Controller
             }
 
             $kind = $box['kind'] ?? null;
-            $id   = $box['id'] ?? null;
+            $id = $box['id'] ?? null;
 
             // POSITIONED_KINDS rather than KINDS, which is what drops a place's
             // coordinate in both directions. The two lists are two questions —
@@ -801,7 +802,7 @@ class OrganizationCanvasController extends Controller
 
         return [
             'orientation' => $orientation,
-            'boxes'       => array_slice(array_values($kept), 0, self::MAX_BOXES),
+            'boxes' => array_slice(array_values($kept), 0, self::MAX_BOXES),
         ];
     }
 

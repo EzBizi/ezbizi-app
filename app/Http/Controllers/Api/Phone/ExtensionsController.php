@@ -9,6 +9,7 @@ use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
 use App\Models\PhoneRingGroup;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -465,7 +466,7 @@ class ExtensionsController extends Controller
         abort_unless(
             $user->hasPermission('phone.users.view') || $user->hasPermission('phone.settings.view'),
             403,
-            \App\Support\Access\Refusal::permission('open this tab')->message(),
+            Refusal::permission('open this tab')->message(),
         );
     }
 }
