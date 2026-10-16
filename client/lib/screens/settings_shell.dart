@@ -7,6 +7,7 @@ import '../widgets/api_activity.dart';
 import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
+import 'settings/activity_screen.dart';
 import 'settings/integrations_screen.dart';
 import 'settings/settings_hub.dart';
 
@@ -98,6 +99,15 @@ class _SettingsShellState extends State<SettingsShell> {
           roles.label,
           Icons.badge_outlined,
           () => RolesScreen(api: widget.api, session: widget.session),
+        ),
+      // Who did what in this view (A1 Leads takeover, 2026-10-16). Its own
+      // module grant, like Roles, because the log is not a setting.
+      if (me.can('audit.view'))
+        (
+          'activity',
+          'Activity',
+          Icons.history,
+          () => ActivityScreen(api: widget.api, session: widget.session),
         ),
       // Everything anybody did with an API key, for administrators (UI queue
       // 66). After Roles, where the kinds of key are decided; a key's owner
