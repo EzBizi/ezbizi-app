@@ -17,6 +17,8 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Leads: RC Calls and EZ Calls now include calls to staff direct lines and the calls we make, shown as “<name> called” or No answer on the person’s lead. Calls between our own lines stay out, and only missed calls from customers alert.',
+        'Leads: when Google files a call on a message lead that belongs to someone else, the call moves to a lead of its own, with a note saying where it came from.',
         'Reports: in Performance and Scoring, a caller who pressed the wrong menu key counts as the new or existing client they actually were, marked ↺ with what they pressed.',
         'Field: technicians can record a job visit for their safety from the phone app. It is off until a company turns it on under Settings › Field, it stays blocked in states where everyone must agree unless the company chooses to announce it, and the technician confirms before each recording. Managers listen in the new Recordings tab, and recordings are kept 90 days unless kept on purpose.',
         'Marketing › Social: post to your Google Business Profile listings, with a Book, Call, Order or Learn more button.',
