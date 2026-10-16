@@ -386,6 +386,11 @@ class SettingsController extends Controller
             ));
         }
 
+        if ($definition->type === SettingDefinition::TYPE_COMPANY) {
+            return Company::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Company $c) => ['value' => $c->id, 'label' => $c->name])->all();
+        }
+
         if ($definition->options === []) {
             return null;
         }

@@ -170,6 +170,30 @@ class SettingsApiTest extends TestCase
         ], $earned['options']);
     }
 
+    public function test_a_company_setting_offers_this_organizations_companies(): void
+    {
+        $registry = new SettingRegistry();
+        $registry->register(new SettingDefinition(
+            key: 'test.company', label: 'Test company', type: SettingDefinition::TYPE_COMPANY,
+            default: null, allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+        ));
+        $this->app->instance(SettingRegistry::class, $registry);
+        $this->app->forgetInstance(SettingsResolver::class);
+
+        ['organization' => $org, 'administrator' => $admin, 'company' => $company] = $this->org('Alpha', 'a@a.test');
+        ['company' => $other] = $this->org('Beta', 'b@b.test');
+        Sanctum::actingAs($admin);
+
+        $row = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'))
+            ->firstWhere('key', 'test.company');
+
+        $this->assertSame([['value' => $company->id, 'label' => $company->name]], $row['options'], "Beta's company must not be offered.");
+        $this->assertNotSame($other->id, $company->id);
+
+        $this->patchJson("/api/v1/settings/test.company?scope_type=organization&scope_id={$org->id}", ['value' => $company->id])
+            ->assertOk()->assertJsonPath('data.value', $company->id);
+    }
+
     public function test_a_subset_stores_each_choice_once_and_refuses_anything_but_text(): void
     {
         ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');

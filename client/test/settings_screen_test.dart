@@ -292,6 +292,34 @@ void main() {
     });
   }
 
+  testWidgets('a company setting is a picker of company names', (tester) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'leads.calls_company',
+            label: 'Company that takes calls',
+            type: 'company',
+            value: 'co-1',
+            options: const [
+              {'value': 'co-1', 'label': 'A-1 Chimney'},
+              {'value': 'co-2', 'label': 'Everdoors Garage'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(find.byType(SearchPickerField<Object>), findsOneWidget);
+    expect(find.text('A-1 Chimney'), findsWidgets);
+    expect(find.text('co-1'), findsNothing);
+  });
+
   testWidgets('a subset is ticked from the words, and saved as the values', (
     tester,
   ) async {

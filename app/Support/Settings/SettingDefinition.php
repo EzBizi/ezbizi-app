@@ -61,6 +61,16 @@ final class SettingDefinition
      */
     public const TYPE_SUBSET     = 'subset';
 
+    /**
+     * One of this organization's companies, by id; null when none is chosen.
+     *
+     * The choices are the organization's companies, sent as `options` and
+     * drawn as the enum dropdown. Not validated against them in cast(): a
+     * company can be deleted after it is chosen, so the reader treats an id it
+     * cannot find as unset.
+     */
+    public const TYPE_COMPANY    = 'company';
+
     /** In week order, which is the order they are shown in. */
     public const WEEKDAYS = [
         'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -264,6 +274,7 @@ final class SettingDefinition
             self::TYPE_TIME_RANGE => $this->castTimeRange($value),
             self::TYPE_LIST    => $this->castList($value),
             self::TYPE_SUBSET  => $this->castSubset($value),
+            self::TYPE_COMPANY => ($value === null || trim((string) $value) === '') ? null : trim((string) $value),
             default            => $value,
         };
     }
