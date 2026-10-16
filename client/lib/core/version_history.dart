@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Customers: searching now also finds people who are still only leads, in their own card above the results (for example “Lead · LS Call · today”). Tap one to open it in Leads.',
         'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards. Administrators still see the whole organization.',
         'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere.',
         'Web › Hours: the bulk hours editor can now set hours on your Google Business Profile listings as well as your websites. It reads the live hours from Google before you review, and checks Google again after saving.',
