@@ -20,6 +20,7 @@ import '../../widgets/dashboard_card.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
@@ -1663,6 +1664,33 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   final TextEditingController _body = TextEditingController();
   final Set<String> _picked = <String>{};
 
+  /// Business Profile listings, posted to beside the accounts (A1 takeover,
+  /// "compose once for many locations"). A listing Google will not take a
+  /// post on (suspended, unverified) starts unticked and says why.
+  List<Map<String, dynamic>> _places = const [];
+  final Set<String> _pickedPlaces = <String>{};
+
+  /// The listing's button: none, or BOOK / ORDER / SHOP / LEARN_MORE /
+  /// SIGN_UP / CALL. Only asked while a listing is ticked.
+  String? _cta;
+  final TextEditingController _ctaUrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlaces();
+  }
+
+  Future<void> _loadPlaces() async {
+    final response = await widget.api.get('/social/places');
+    if (!mounted || !response.ok) return;
+    setState(
+      () => _places = List<Map<String, dynamic>>.from(
+        (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
+      ),
+    );
+  }
+
   /// Per ticked TikTok account, what the person chose (see TikTokChoice).
   final Map<String, TikTokChoice> _tiktok = <String, TikTokChoice>{};
   PickedBytes? _media;
@@ -1716,6 +1744,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   void dispose() {
     _body.dispose();
     _when.dispose();
+    _ctaUrl.dispose();
     _releaseMedia();
     super.dispose();
   }
@@ -1750,15 +1779,23 @@ class _ComposeColumnState extends State<_ComposeColumn> {
 
     if (unpermitted != null) return unpermitted;
 
-    if (widget.connections.isEmpty) {
+    if (widget.connections.isEmpty && _places.isEmpty) {
       return 'No account is connected in ${widget.viewName}, so there is '
           'nowhere to publish.';
     }
-    if (!widget.connections.any((c) => c.canPublish)) {
+    if (_places.isEmpty && !widget.connections.any((c) => c.canPublish)) {
       return 'None of the accounts connected in ${widget.viewName} can be '
           'posted to from EzBizi yet.';
     }
-    if (_picked.isEmpty) return 'Tick at least one account to post to.';
+    if (_picked.isEmpty && _pickedPlaces.isEmpty) {
+      return 'Tick at least one account or listing to post to.';
+    }
+    if (_pickedPlaces.isNotEmpty &&
+        _cta != null &&
+        _cta != 'CALL' &&
+        !_ctaUrl.text.trim().startsWith('https://')) {
+      return "The listing's button needs a web address starting https://.";
+    }
     if (_body.text.trim().isEmpty && _media == null) {
       return 'Write something, or attach a picture or a video.';
     }
@@ -1929,6 +1966,10 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       // pairs, so `connections[]` three times would arrive as one value.
       for (final (index, id) in _picked.indexed) 'connections[$index]': id,
       for (final id in _picked) ...?_tiktok[id]?.fields(id),
+      for (final (index, id) in _pickedPlaces.indexed) 'places[$index]': id,
+      if (_pickedPlaces.isNotEmpty && _cta != null) 'cta_type': _cta!,
+      if (_pickedPlaces.isNotEmpty && _cta != null && _cta != 'CALL')
+        'cta_url': _ctaUrl.text.trim(),
     };
 
     final media = _media;
@@ -1937,6 +1978,10 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         ? await widget.api.post('/social/posts', {
             'body': fields['body'],
             'connections': _picked.toList(),
+            'places': _pickedPlaces.toList(),
+            if (_pickedPlaces.isNotEmpty && _cta != null) 'cta_type': _cta,
+            if (_pickedPlaces.isNotEmpty && _cta != null && _cta != 'CALL')
+              'cta_url': _ctaUrl.text.trim(),
             if (when.isNotEmpty) 'scheduled_for': when,
           })
         : await widget.api.postFile(
@@ -1980,6 +2025,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _releaseMedia();
       _media = null;
       _picked.clear();
+      _pickedPlaces.clear();
+      _cta = null;
+      _ctaUrl.clear();
       _tiktok.clear();
       _when.clear();
       _scheduling = false;
@@ -2104,6 +2152,91 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
+            const SizedBox(height: 14),
+          ],
+          if (_places.isNotEmpty) ...[
+            label('Business Profile listings'),
+            Wrap(
+              key: const ValueKey('social-places'),
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final place in _places)
+                  FilterChip(
+                    key: ValueKey('social-place-${place['id']}'),
+                    showCheckmark: false,
+                    avatar: const SocialNetworkMark(
+                      network: 'google_business_profile',
+                      size: 16,
+                    ),
+                    label: Text(
+                      place['postable'] == false
+                          ? '${place['title']} · ${place['state'] ?? 'cannot post'}'
+                          : '${place['title']}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    tooltip: place['address'] as String?,
+                    selected: _pickedPlaces.contains(place['id']),
+                    onSelected: _sending
+                        ? null
+                        : (on) => setState(
+                            () => on
+                                ? _pickedPlaces.add('${place['id']}')
+                                : _pickedPlaces.remove(place['id']),
+                          ),
+                  ),
+              ],
+            ),
+            if (_pickedPlaces.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 200,
+                    child: SearchPickerField<String?>(
+                      key: const ValueKey('social-place-cta'),
+                      value: _cta,
+                      isDense: true,
+                      hint: 'No button',
+                      options: const [
+                        SearchOption(value: null, label: 'No button'),
+                        SearchOption(value: 'BOOK', label: 'Book'),
+                        SearchOption(value: 'ORDER', label: 'Order'),
+                        SearchOption(value: 'SHOP', label: 'Shop'),
+                        SearchOption(value: 'LEARN_MORE', label: 'Learn more'),
+                        SearchOption(value: 'SIGN_UP', label: 'Sign up'),
+                        SearchOption(value: 'CALL', label: 'Call'),
+                      ],
+                      onChanged: (v) => setState(() => _cta = v),
+                    ),
+                  ),
+                  if (_cta != null && _cta != 'CALL')
+                    SizedBox(
+                      width: 320,
+                      child: TextField(
+                        key: const ValueKey('social-place-cta-url'),
+                        controller: _ctaUrl,
+                        enabled: !_sending,
+                        keyboardType: TextInputType.url,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          labelText: 'Where the button goes (https://...)',
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Listings take words and pictures, not video.',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 14),
           ],
           label('Words'),
