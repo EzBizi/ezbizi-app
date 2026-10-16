@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Dashboard: the Email box shows its last unread count at once and refreshes it in the background, so the Dashboard no longer waits on every inbox. Coming back to the Dashboard shows it immediately while it refreshes.',
         'Leads: RingCentral calls to the existing-client line now appear too, tagged Existing client, or Missed call when nobody answered. A missed call that never reached a queue alerts again instead of being tagged Possible spam, and the AI no longer mistakes a call’s tag for the caller’s words.',
+        'Leads: RingCentral calls now appear within 2 to 5 minutes instead of 10 to 19.',
         'Fixed: a crash when the end-of-shift reminder was open while switching screens.',
         'Inspection: inspection report links sent to customers from A1 Tools keep opening after A1 Tools is switched off, now served by EzBizi.',
         'Human Resources: the Recruiter agreement joins the onboarding contracts.',
