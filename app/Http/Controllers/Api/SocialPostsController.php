@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\PublishSocialTarget;
+use App\Models\BusinessLocation;
 use App\Models\SocialConnection;
 use App\Models\SocialPost;
 use App\Models\SocialPostTarget;
@@ -12,6 +13,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
 use App\Support\Files\UploadLimits;
 use App\Support\Social\Publishing\DeletesPosts;
+use App\Support\Social\Publishing\GoogleBusinessProfilePublisher;
 use App\Support\Social\Publishing\PostPayload;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
@@ -69,6 +71,9 @@ class SocialPostsController extends Controller
 
     /** The Posts tiles, in the order the screen draws them. */
     private const TILES = ['scheduled', 'sent', 'failed'];
+
+    /** Business Profile's call-to-action buttons (v4 localPosts actionType). */
+    private const CTA_TYPES = ['BOOK', 'ORDER', 'SHOP', 'LEARN_MORE', 'SIGN_UP', 'CALL'];
 
     public function __construct(
         private readonly SocialConnectionAccess $access,
@@ -168,8 +173,14 @@ class SocialPostsController extends Controller
         $this->limits->assertUploadArrived($request, 'media');
 
         $data = $request->validate([
-            'connections' => ['required', 'array', 'min:1'],
+            'connections' => ['required_without:places', 'array'],
             'connections.*' => ['string'],
+            // Business Profile listings, by BusinessLocation id: a place is a
+            // target of its own, and one Google account can hold many.
+            'places' => ['nullable', 'array'],
+            'places.*' => ['string'],
+            'cta_type' => ['nullable', 'string', 'in:'.implode(',', self::CTA_TYPES)],
+            'cta_url' => ['nullable', 'string', 'max:2048', 'url:https'],
             'body' => ['nullable', 'string', 'max:'.self::MAX_BODY],
             'title' => ['nullable', 'string', 'max:255'],
             // Wall clock in the view's own timezone, as the composer typed it.
@@ -183,7 +194,8 @@ class SocialPostsController extends Controller
                 'max:'.$this->limits->maxKilobytes(),
             ],
         ], [
-            'connections.required' => 'Tick at least one account to post to.',
+            'connections.required_without' => 'Tick at least one account or place to post to.',
+            'cta_url.url' => 'A button needs a full https:// address.',
             'media.mimes' => 'Social networks take pictures and video: '
                 .implode(', ', SocialMediaKind::extensions()).'.',
             'media.max' => $this->limits->tooLargeMessage(),
@@ -217,13 +229,33 @@ class SocialPostsController extends Controller
             filePath: $file === null ? null : 'upload.'.$file->extension(),
         ))->kind();
 
-        $connections = $this->resolve($request, $data['connections']);
+        if (($data['cta_type'] ?? null) !== null && $data['cta_type'] !== 'CALL' && ($data['cta_url'] ?? null) === null) {
+            throw ValidationException::withMessages(['cta_url' => 'A button needs a full https:// address.']);
+        }
 
-        $refused = $this->whatEachNetworkRefuses($connections, $kind);
+        $connections = $this->resolve($request, $data['connections'] ?? []);
+        $places = $this->resolvePlaces($request, $data['places'] ?? []);
+
+        $refused = $this->whatEachNetworkRefuses($connections, $kind)
+            + $this->whatEachPlaceRefuses($places, $kind);
+
+        /*
+         * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post
+         * the other 5 should still go through". Only when NONE can take it is
+         * the post refused, every reason named, so nothing is written.
+         */
+        if (count($refused) === $connections->count() + $places->count()) {
+            throw ValidationException::withMessages(['connections' => implode(' ', array_unique($refused))]);
+        }
+
+        $cta = array_filter([
+            'cta_type' => $data['cta_type'] ?? null,
+            'cta_url' => $data['cta_url'] ?? null,
+        ]);
 
         $options = $this->tiktokChoices($request, $connections);
 
-        $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule, $options, $refused) {
+        $post = DB::transaction(function () use ($connections, $places, $cta, $data, $file, $user, $schedule, $options, $refused) {
             $post = new SocialPost([
                 'body' => $data['body'] ?? null,
                 'title' => $data['title'] ?? null,
@@ -251,6 +283,27 @@ class SocialPostsController extends Controller
                 $target = $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
                     'options' => $options[$connection->getKey()] ?? null,
+                    'status' => match (true) {
+                        $because !== null => SocialPostTarget::STATUS_FAILED,
+                        $schedule['for'] === null => SocialPostTarget::STATUS_QUEUED,
+                        default => SocialPostTarget::STATUS_SCHEDULED,
+                    },
+                ]);
+
+                if ($because !== null) {
+                    $target->forceFill(['failure' => $because])->save();
+                }
+            }
+
+            foreach ($places as $place) {
+                $because = $refused[$place->getKey()] ?? null;
+
+                $target = $post->targets()->create([
+                    'social_connection_id' => $place->connection_id,
+                    'options' => [
+                        'gbp_location' => GoogleBusinessProfilePublisher::v4Name($place, $place->connection),
+                        'gbp_title' => $place->title,
+                    ] + $cta,
                     'status' => match (true) {
                         $because !== null => SocialPostTarget::STATUS_FAILED,
                         $schedule['for'] === null => SocialPostTarget::STATUS_QUEUED,
@@ -687,15 +740,70 @@ class SocialPostsController extends Controller
             }
         }
 
-        /*
-         * Jose, 2026-10-15: "if I choose 7 accounts but 2 aren't able to post
-         * the other 5 should still go through". So one account that cannot take
-         * this post no longer stops the rest; it is written as failed with its
-         * reason. Only when NONE can take it is the post refused, every reason
-         * named, so nothing is written for nobody.
-         */
-        if ($refused !== [] && count($refused) === $connections->count()) {
-            throw ValidationException::withMessages(['connections' => implode(' ', array_unique($refused))]);
+        return $refused;
+    }
+
+    /**
+     * Business Profile listings this view may post to, for the composer.
+     * `postable` is false for a listing Google is not showing (suspended,
+     * unverified, unpublished), which the composer leaves unticked.
+     */
+    public function places(Request $request): JsonResponse
+    {
+        $rows = $this->placesInView($request->user());
+
+        return response()->json(['data' => $rows->map(fn (BusinessLocation $l) => [
+            'id' => $l->getKey(),
+            'title' => $l->title,
+            'address' => $l->addressLine(),
+            'connection_id' => $l->connection_id,
+            'state' => $l->verification_state,
+            'postable' => $l->isLive(),
+        ])->values()->all()]);
+    }
+
+    /** @return Collection<int, BusinessLocation> */
+    private function placesInView(User $user): Collection
+    {
+        return BusinessLocation::query()->with('connection')->orderBy('title')->get()
+            ->filter(fn (BusinessLocation $l) => $l->connection !== null
+                && $l->connection->providerEnum() === SocialProvider::GoogleBusinessProfile
+                && $this->access->inView($user, $l->connection))
+            ->values();
+    }
+
+    /** @return Collection<int, BusinessLocation> */
+    private function resolvePlaces(Request $request, array $ids): Collection
+    {
+        if ($ids === []) {
+            return collect();
+        }
+
+        $found = $this->placesInView($request->user())->whereIn('id', $ids)->values();
+
+        if ($found->count() !== count(array_unique($ids))) {
+            throw ValidationException::withMessages([
+                'places' => 'One of those places is not connected in this view any more. Reload Marketing and tick them again.',
+            ]);
+        }
+
+        return $found;
+    }
+
+    /** @return array<string, string> location id => why it cannot take this post */
+    private function whatEachPlaceRefuses(Collection $places, SocialMediaKind $kind): array
+    {
+        $refused = [];
+
+        foreach ($places as $place) {
+            $because = SocialProvider::GoogleBusinessProfile->refuses($kind)
+                ?? ($place->isLive() ? null
+                    : $place->title.' is not live on Google (it is '.strtolower((string) $place->verification_state)
+                        .' or unpublished), so Google would not show the post. Nothing was sent there.');
+
+            if ($because !== null) {
+                $refused[$place->getKey()] = $because;
+            }
         }
 
         return $refused;
@@ -734,7 +842,8 @@ class SocialPostsController extends Controller
         return [
             'id' => $target->getKey(),
             'connection_id' => $target->social_connection_id,
-            'account' => $connection?->display_name,
+            // A Business Profile target is one listing of the account: name the place.
+            'account' => ($target->options['gbp_title'] ?? null) ?: $connection?->display_name,
             'provider' => $connection?->provider,
             'provider_label' => $connection?->providerLabel(),
             'status' => $target->status,
