@@ -17,7 +17,8 @@ class VersionHistory {
       version: '0.0.0444',
       date: '16 Oct 2026',
       items: [
-        'Dashboard: the Email box shows its last unread count at once and refreshes it in the background, so the Dashboard no longer waits on every inbox.',
+        'Dashboard: the Email box shows its last unread count at once and refreshes it in the background, so the Dashboard no longer waits on every inbox. Coming back to the Dashboard shows it immediately while it refreshes.',
+        'Leads: RingCentral calls to the existing-client line now appear too, tagged Existing client, or Missed call when nobody answered. A missed call that never reached a queue alerts again instead of being tagged Possible spam, and the AI no longer mistakes a call’s tag for the caller’s words.',
         'Fixed: a crash when the end-of-shift reminder was open while switching screens.',
         'The app\'s freeze reports no longer count tabs left in the background.',
       ],
