@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Workiz: jobs deleted in Workiz no longer count in EzBizi’s reports.',
         'Communication › Settings › Numbers: a new switch marks a line’s calls and texts as leads, ready for the EZ Calls and EZ Texts tabs coming to Leads.',
         'Notifications: a misfiring automation can no longer flood the bell. Each rule tells a person at most 20 things in 10 minutes.',
         'Settings: a new Activity tab lists who did what and when, for the companies and places you can see, filtered by time window and by person, system or staff. It needs the Audit log tick.',
