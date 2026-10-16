@@ -18,6 +18,7 @@ class VersionHistory {
       date: '16 Oct 2026',
       items: [
         'Settings, Suggestions, Development and Your account: each tab now has a walkthrough behind its (?) button, on desktop and phone.',
+        'Marketing › Social: your choice of List or Board for posts is now remembered.',
       ],
     ),
     VersionRelease(
