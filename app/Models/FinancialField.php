@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /** Financials (the Airtable replacement) — see the create_financials_tables migration. */
-#[Fillable(['table_id', 'name', 'type', 'options', 'is_primary', 'position'])]
+#[Fillable(['table_id', 'name', 'source_name', 'type', 'options', 'is_primary', 'position'])]
 class FinancialField extends Model implements StatesRetention
 {
     use BelongsToTenant;

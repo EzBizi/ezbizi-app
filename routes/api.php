@@ -175,6 +175,7 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
+use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -1012,12 +1013,19 @@ Route::prefix('v1')
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
+        Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
+        Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
+        Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
+        Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
         Route::prefix('financials')->controller(FinancialsController::class)->group(function (): void {
             Route::get('bases', 'bases');
             Route::post('bases', 'storeBase');
             Route::patch('bases/{base}', 'updateBase');
             Route::delete('bases/{base}', 'destroyBase');
             Route::post('bases/{base}/tables', 'storeTable');
+            Route::get('airtable-tables', 'airtableTables');
+            Route::post('bases/{base}/airtable-links', 'linkAirtable');
+            Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');
@@ -1031,6 +1039,7 @@ Route::prefix('v1')
             Route::delete('records/{record}', 'destroyRecord');
             Route::post('tables/{table}/views', 'storeView');
             Route::patch('views/{view}', 'updateView');
+            Route::get('views/{view}/split', 'split');
             Route::delete('views/{view}', 'destroyView');
         });
         /*

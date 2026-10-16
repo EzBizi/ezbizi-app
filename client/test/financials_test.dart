@@ -137,6 +137,7 @@ const _table = {
 
 Future<List<http.Request>> _pump(
   WidgetTester tester, {
+  Map<String, dynamic> table = _table,
   Map<String, dynamic> scope = const {
     'type': 'organization',
     'id': 'org-1',
@@ -214,7 +215,33 @@ Future<List<http.Request>> _pump(
           'data': {'id': 'b1'},
         }, 201);
       }
-      if (path.endsWith('/financials/tables/t1')) return json({'data': _table});
+      if (path.endsWith('/financials/sources')) {
+        return json({
+          'data': [
+            {
+              'id': 's1',
+              'base_id': 'appR',
+              'table_id': 'tblNJ',
+              'role': 'repair',
+              'company_id': null,
+              'franchise_id': null,
+              'place': null,
+              'field_map': {'team': 'Team'},
+            },
+          ],
+          'roles': {'repair': 'Repair team sheet', 'pnl': 'Profit & loss'},
+          'field_keys': ['amount', 'team'],
+          'airtable_tables': [
+            {
+              'base_id': 'appR',
+              'table_id': 'tblNJ',
+              'table_name': 'Repair NJ',
+              'rows': 12,
+            },
+          ],
+        });
+      }
+      if (path.endsWith('/financials/tables/t1')) return json({'data': table});
       return json({'message': 'Nothing stubbed for $path.'}, 500);
     }),
   );
@@ -233,6 +260,40 @@ Future<List<http.Request>> _pump(
 }
 
 void screenTests() {
+  testWidgets('settings list which Airtable table is which part of the books', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await tester.tap(find.byTooltip('Financials settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Repair team sheet · Repair NJ'), findsOneWidget);
+    expect(find.text('Whole organization · 1 column mapped'), findsOneWidget);
+    expect(find.text('Add source'), findsOneWidget);
+  });
+
+  testWidgets('a table that mirrors Airtable says so and offers no writing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      table: {
+        ..._table,
+        'mirror': {
+          'base_id': 'appX',
+          'table_id': 'tblR',
+          'synced_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      },
+    );
+    expect(
+      find.textContaining('Mirrors Airtable, read-only here'),
+      findsOneWidget,
+    );
+    expect(find.text('Refresh now'), findsOneWidget);
+    expect(find.text('Add record'), findsNothing);
+    expect(find.text('Diesel'), findsOneWidget);
+  });
+
   testWidgets('the grid shows records with a total, and kanban stacks them', (
     tester,
   ) async {

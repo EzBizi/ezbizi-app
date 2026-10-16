@@ -11,6 +11,8 @@ use App\Models\FinancialView;
 use App\Models\Franchise;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Financials\AirtableMirror;
+use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
 use App\Support\Financials\Templates;
 use App\Support\Inventory\InventoryVisibility;
@@ -34,7 +36,7 @@ class FinancialsController extends Controller
     // ponytail: a table loads whole; page it if a table outgrows this.
     private const MAX_RECORDS = 5000;
 
-    private const VIEW_TYPES = ['grid', 'kanban', 'calendar', 'gallery', 'form'];
+    private const VIEW_TYPES = ['grid', 'kanban', 'calendar', 'gallery', 'form', 'split'];
 
     public function __construct(
         private readonly AuditLogger $audit,
@@ -160,6 +162,7 @@ class FinancialsController extends Controller
     public function storeField(Request $request, FinancialTable $table): JsonResponse
     {
         $this->authorize('update', $table->base);
+        $this->refuseMirror($table);
         $input = $this->validateField($request, $table);
 
         $field = $table->fields()->create($input + ['position' => (int) $table->fields()->max('position') + 1]);
@@ -202,6 +205,7 @@ class FinancialsController extends Controller
     public function destroyField(Request $request, FinancialField $field): JsonResponse
     {
         $this->authorize('delete', $field->table->base);
+        $this->refuseMirror($field->table);
         if ($field->is_primary) {
             throw ValidationException::withMessages(['field' => 'The first column names each record and cannot be deleted. Rename it instead.']);
         }
@@ -216,6 +220,7 @@ class FinancialsController extends Controller
     public function storeRecord(Request $request, FinancialTable $table): JsonResponse
     {
         $this->authorize('update', $table->base);
+        $this->refuseMirror($table);
         $values = $this->cleanValues($table, $request->validate(['values' => ['present', 'array']])['values']);
 
         $record = $table->records()->create([
@@ -234,6 +239,7 @@ class FinancialsController extends Controller
     {
         $table = $record->table;
         $this->authorize('update', $table->base);
+        $this->refuseMirror($table);
         $input = $request->validate(['values' => ['sometimes', 'array'], 'position' => ['sometimes', 'integer', 'min:0']]);
 
         if (isset($input['values'])) {
@@ -255,6 +261,7 @@ class FinancialsController extends Controller
     public function destroyRecord(Request $request, FinancialRecord $record): JsonResponse
     {
         $this->authorize('delete', $record->table->base);
+        $this->refuseMirror($record->table);
         $this->audit->log('financials.record_deleted', $record, metadata: ['values' => $record->values], actor: $request->user());
         $record->delete();
 
@@ -300,6 +307,21 @@ class FinancialsController extends Controller
         return response()->json(null, 204);
     }
 
+    /** A split view's figures: each group's cost shared by job count, to the cent. */
+    public function split(Request $request, FinancialView $view): JsonResponse
+    {
+        $this->authorize('view', $view->table->base);
+        $range = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        if ($view->type !== 'split') {
+            throw ValidationException::withMessages(['view' => 'Only a split view has a split.']);
+        }
+
+        return response()->json(['data' => CostSplit::run($view->table, (array) ($view->config ?? []), $range['from'] ?? null, $range['to'] ?? null)]);
+    }
+
     // ── CSV ─────────────────────────────────────────────────
 
     public function export(Request $request, FinancialTable $table): Response
@@ -330,6 +352,7 @@ class FinancialsController extends Controller
     public function import(Request $request, FinancialTable $table): JsonResponse
     {
         $this->authorize('update', $table->base);
+        $this->refuseMirror($table);
         $csv = $request->validate(['csv' => ['required', 'string', 'max:5000000']])['csv'];
 
         $rows = array_map('str_getcsv', preg_split('/\r\n|\n|\r/', trim($csv)));
@@ -378,7 +401,48 @@ class FinancialsController extends Controller
         return response()->json(['data' => ['imported' => $count, 'table' => $this->tableShape($table->refresh())]]);
     }
 
+    // ── Airtable mirrors ────────────────────────────────────
+
+    /** Tables in the Airtable copy that a base can mirror. */
+    public function airtableTables(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', FinancialBase::class);
+
+        return response()->json(['data' => AirtableMirror::available()]);
+    }
+
+    public function linkAirtable(Request $request, FinancialBase $base): JsonResponse
+    {
+        $this->authorize('update', $base);
+        $input = $request->validate([
+            'base_id' => ['required', 'string', 'max:32'],
+            'table_id' => ['required', 'string', 'max:32'],
+        ]);
+        $table = AirtableMirror::link($base, $input['base_id'], $input['table_id']);
+        $this->audit->log('financials.airtable_linked', $table, metadata: $input, actor: $request->user());
+
+        return response()->json(['data' => $this->tableShape($table)], 201);
+    }
+
+    public function refreshAirtable(Request $request, FinancialTable $table): JsonResponse
+    {
+        $this->authorize('update', $table->base);
+        if (! $table->isMirror()) {
+            throw ValidationException::withMessages(['table' => 'This table is not linked to Airtable.']);
+        }
+        $done = AirtableMirror::refresh($table);
+
+        return response()->json(['data' => ['refreshed' => $done, 'table' => $this->tableShape($table->refresh())]]);
+    }
+
     // ── Helpers ─────────────────────────────────────────────
+
+    private function refuseMirror(FinancialTable $table): void
+    {
+        if ($table->isMirror()) {
+            throw ValidationException::withMessages(['table' => 'This table mirrors Airtable and refreshes every hour. Change it in Airtable.']);
+        }
+    }
 
     private function validateField(Request $request, FinancialTable $table, ?FinancialField $field = null): array
     {
@@ -432,6 +496,7 @@ class FinancialsController extends Controller
             'id' => $t->id,
             'base_id' => $t->base_id,
             'name' => $t->name,
+            'mirror' => $t->isMirror() ? ['base_id' => $t->source_base_id, 'table_id' => $t->source_table_id, 'synced_at' => $t->synced_at?->toIso8601String()] : null,
             'fields' => $t->fields()->get()->map(fn ($f) => $this->fieldShape($f))->values(),
             'views' => $t->views()->get()->map(fn ($v) => $this->viewShape($v))->values(),
             'records' => $t->records()->limit(self::MAX_RECORDS)->get()->map(fn ($r) => $this->recordShape($r))->values(),
