@@ -1950,7 +1950,11 @@ class _HomeShellState extends State<HomeShell> {
                   widget.session.setPreference('navigation.order', order),
             ),
     );
-    return OpenDestination(open: _open, child: shell);
+    return OpenDestination(
+      open: _open,
+      openLead: (lead) => _show(_Rail.modules, 'leads', openLead: lead),
+      child: shell,
+    );
   }
 
   /// Android's Back on a phone: the drawer if it is open, else the ← of the

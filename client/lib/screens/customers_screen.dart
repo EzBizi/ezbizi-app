@@ -9,6 +9,7 @@ import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
 import '../widgets/grouped_rows.dart';
+import '../widgets/open_destination.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
@@ -55,6 +56,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _customers = [];
+
+  /// Leads the search also found (page one of a search only).
+  List<Map<String, dynamic>> _leads = const [];
   int _total = 0;
   // Page one only, until asked. The header used to claim a total the list did
   // not render, with no next-page control and nothing saying records were
@@ -178,6 +182,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
       final rows = List<Map<String, dynamic>>.from(response.data as List);
       _customers = page == 1 ? rows : [..._customers, ...rows];
+      if (page == 1) {
+        _leads = (response.body['leads'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+      }
 
       final meta = response.body['meta'] as Map<String, dynamic>?;
       _total = meta?['total'] as int? ?? _customers.length;
@@ -511,7 +520,85 @@ class _CustomersScreenState extends State<CustomersScreen> {
   /// a header click follows, so the picker lists the likelier choice first.
   static bool _firstDirection(String key) => !(key == 'created' || key == 'jobs');
 
+  /// People found by the search who are still only leads (2026-10-16): their
+  /// own rows above the customers, never mixed in, each opening the lead.
+  Widget _leadRows(BuildContext context) {
+    final theme = Theme.of(context);
+    final openLead = OpenDestination.leadOf(context);
+    String when(String? iso) {
+      final at = DateTime.tryParse(iso ?? '')?.toLocal();
+      if (at == null) return '';
+      final days = DateTime.now().difference(at).inDays;
+      return days == 0
+          ? 'today'
+          : days == 1
+          ? 'yesterday'
+          : '${at.month}/${at.day}/${at.year}';
+    }
+
+    return Card(
+      key: const ValueKey('customers-search-leads'),
+      margin: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+            child: Text(
+              _leads.length == 1
+                  ? '1 lead, not yet a customer'
+                  : '${_leads.length} leads, not yet customers',
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          for (final lead in _leads)
+            ListTile(
+              key: ValueKey('customers-lead-${lead['id']}'),
+              dense: true,
+              leading: const Icon(Icons.call_received, size: 20),
+              title: Text(
+                [
+                  '${lead['name'] ?? ''}'.trim(),
+                  formatPhoneNumber(lead['phone'] as String?),
+                ].where((s) => s.isNotEmpty).join(' · '),
+              ),
+              subtitle: Text(
+                [
+                  'Lead',
+                  '${lead['source_label'] ?? lead['source'] ?? ''}',
+                  when(lead['created_at'] as String?),
+                  '${lead['status'] ?? ''}',
+                ].where((s) => s.isNotEmpty).join(' · '),
+              ),
+              trailing: openLead == null
+                  ? null
+                  : const Icon(Icons.chevron_right),
+              onTap: openLead == null
+                  ? null
+                  : () => openLead('${lead['id']}'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _body(BuildContext context, {required bool wide}) {
+    if (_leads.isEmpty || _search.text.trim().isEmpty) {
+      return _customersBody(context, wide: wide);
+    }
+    if (_customers.isEmpty) return ListView(children: [_leadRows(context)]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _leadRows(context),
+        Expanded(child: _customersBody(context, wide: wide)),
+      ],
+    );
+  }
+
+  Widget _customersBody(BuildContext context, {required bool wide}) {
     if (_customers.isEmpty) {
       final term = _search.text.trim();
 

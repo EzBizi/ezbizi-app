@@ -13,6 +13,47 @@ import 'package:http/testing.dart';
 /// The list is not a dead end. The API already knew how to show, edit,
 /// deactivate, delete and reassign a customer; these pin the missing face.
 void main() {
+  // Jose, 2026-10-16: a caller who is only a lead was not found by a
+  // Customers search. Leads are their own rows, never mixed in.
+  testWidgets('a search shows matching leads as their own rows', (tester) async {
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (request.url.path.endsWith('/customers') &&
+            (request.url.queryParameters['search'] ?? '').isNotEmpty) {
+          return _json({
+            'data': const [],
+            'meta': {'total': 0, 'last_page': 1},
+            'leads': [
+              {
+                'id': 'lead-9',
+                'name': 'Jordan Price',
+                'phone': '+12175550142',
+                'email': null,
+                'source': 'local_services',
+                'source_label': 'LS Call',
+                'status': 'New',
+                'created_at': DateTime.now().toUtc().toIso8601String(),
+              },
+            ],
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('tour-customers-search')),
+      'Jordan',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('customers-search-leads')), findsOneWidget);
+    expect(find.textContaining('Lead · LS Call · today'), findsOneWidget);
+    expect(find.textContaining('Nothing matches'), findsNothing);
+  });
+
   /// A franchise NAME does not identify a franchise: two companies in one
   /// organization may each have a Florida. The tag is what stops somebody
   /// acting on another franchise's customer, so it has to say which.
