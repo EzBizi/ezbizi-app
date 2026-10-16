@@ -269,9 +269,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         if (_profile != null)
           ConnectedAccount(
             key: const ValueKey('tour-reviews-profile'),
-            api: widget.api,
             connection: _profile!,
-            onDisconnected: _load,
           ),
         if (_notice != null)
           Padding(

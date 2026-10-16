@@ -639,8 +639,8 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-reviews-profile',
         title: 'The profile',
         body:
-            'Which Business Profile the reviews come from. Disconnect removes '
-            'the stored permission and deletes nothing.',
+            'Which Business Profile the reviews come from. Change it in '
+            'Settings › Integrations.',
       ),
       TourStep(
         anchor: 'tour-customer_experience-reviews',
@@ -678,8 +678,8 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-business-profile-account',
         title: 'The profile',
         body:
-            'Which Business Profile is connected. Disconnect removes the '
-            'stored permission and deletes nothing.',
+            'Which Business Profile is connected. Change it in Settings › '
+            'Integrations.',
       ),
       TourStep(
         anchor: 'tour-business-profile-listings',
