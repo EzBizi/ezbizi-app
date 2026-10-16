@@ -13,6 +13,7 @@ use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizTwins;
 use Carbon\CarbonInterface;
+use App\Support\Workiz\WorkizV2;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -293,6 +294,12 @@ class SyncWorkizJobs extends Command
                 if (config('services.workiz.retire_deleted') && $listedSince !== null && ! in_array($row->status, self::CLOSED, true)
                     && $row->scheduled_for !== null && $row->scheduled_for->gte($listedSince)) {
                     $gone[] = $row;
+                } elseif (config('services.workiz.retire_deleted') && WorkizV2::uses($connection) && self::searchFindsNone($connection, $row)) {
+                    // A past or finished job the listing never covers: v2's search,
+                    // which reaches every job, is the second signal. 36 of
+                    // Nationwide's September jobs were deleted in Workiz and kept
+                    // here, so EzBizi's counts ran past Workiz's report (2026-10-16).
+                    $gone[] = $row;
                 } else {
                     WorkizJob::query()->whereKey($row->id)->update(['synced_at' => now()]);
                 }
@@ -403,6 +410,19 @@ class SyncWorkizJobs extends Command
      * Done — is open and worth re-reading.
      */
     private const CLOSED = ['Done', 'Canceled'];
+
+    /** v2's search answers for this job's number with no job of that number. A refusal is not an answer. */
+    private static function searchFindsNone(SocialConnection $connection, WorkizJob $row): bool
+    {
+        if ($row->serial_id === null) {
+            return false;
+        }
+
+        $read = WorkizV2::send($connection, 'GET', '/search', ['term' => (string) $row->serial_id, 'type' => 'job', 'limit' => 15]);
+
+        return $read['refused'] === null && is_array($read['data']['data'] ?? null)
+            && ! collect($read['data']['data'])->contains(fn ($hit) => (string) ($hit['serialId'] ?? '') === (string) $row->serial_id);
+    }
 
     /**
      * Workiz cannot tell us its own account's name, so a connection with no
