@@ -3,75 +3,58 @@
 namespace App\Support\Reports\Airtable;
 
 use App\Models\AirtableRecord;
-use App\Models\ReportSource;
+use App\Models\FinancialSource;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
- * An organization's mapping of its Airtable tables into the reports, and the
- * rows a role holds for a company (report_sources over airtable_records).
- * Read outside a tenant, so the organization is always named.
+ * The rows an organization's mapped Airtable tables hold for one part of the
+ * report and one branch: Financials' mapping (financial_sources, set in
+ * Financials → Settings) over the hourly copy (airtable_records). Read
+ * outside a tenant, so the organization is always named.
  */
 final class ReportSources
 {
-    /** role => what it is, for the Settings screen. */
-    public const ROLES = [
-        'pnl' => 'Profit & loss (one table per company)',
-        'repair' => 'Repair teams',
-        'deposits' => 'Deposits',
-        'refunds' => 'Refunds',
-        'disputes' => 'Disputes',
-        'check_returns' => 'Returned checks',
-        'hq_expenses' => 'HQ office expenses',
-        'weekly_data' => 'Weekly data per company',
-        'office_per_job' => 'Office cost per job',
-        'monthly_bills' => 'Monthly bills',
-        'lease_reviews' => 'Lease and reviews cost',
-        'marketing' => 'Other marketing performance',
-        'companies' => 'Companies',
-    ];
-
-    /** role => logical field => the field name used when a mapping names none. */
+    /**
+     * Column names used when a source's field map names none. They are only a
+     * starting point for a new mapping; each tenant's own map wins.
+     *
+     * role => logical key => column
+     */
     public const FIELDS = [
-        'refunds' => ['date' => 'Date', 'job' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Refund Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
-        'disputes' => ['date' => 'Date', 'job' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Dispute Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
-        'check_returns' => ['date' => 'Date', 'job' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Amount of check', 'total' => 'Total Jobs', 'reason' => 'Type', 'status' => 'Open/Close Job'],
-        'repair' => ['date' => 'Date', 'team' => 'Team', 'type' => 'Record type', 'summary' => 'Weekly Summary', 'job_amount' => 'Job Amount', 'parts' => 'Parts Cost',
+        'refunds' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Refund Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
+        'disputes' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Dispute Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
+        'check_returns' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Amount of check', 'total' => 'Total Jobs', 'reason' => 'Type', 'status' => 'Open/Close Job'],
+        'repair' => ['date' => 'Date', 'team' => 'Team', 'kind' => 'Record type', 'amount' => 'Job Amount', 'parts' => 'Parts Cost',
             'tech_share' => 'Total Tech Share', 'external_share' => 'External Company Share', 'contracting' => 'Total Contracting Profit',
             'employee' => 'Employee Cost', 'helper' => 'Helper Cost', 'gas' => 'Gas Cost', 'operation' => 'Ave Operation Cost', 'hours' => 'Total Hours '],
-        'hq_expenses' => ['date' => 'Date', 'name' => 'Category Name', 'amount' => 'Cost', 'skip' => 'Total'],
+        'hq_expenses' => ['date' => 'Date', 'category' => 'Category Name', 'amount' => 'Cost'],
+        'pnl' => [],
     ];
 
     /**
-     * Each live row of $role for $company dated in the window, its fields
-     * renamed to the logical names (FIELDS) so a section reads one shape.
-     * $company null is the role's rows for every company.
+     * Each live row of $role dated in the window, renamed to the logical keys.
+     * With a branch: only sources mapped to it (a per-place source with no
+     * branch yet is not mapped, and reads as nothing). Without: the
+     * organization's own (HQ) sources.
      *
      * @return Collection<int, array<string, mixed>>
      */
-    public static function rows(string $org, string $role, ?string $company, string $from, string $to): Collection
+    public static function rows(string $org, string $role, ?string $franchiseId, string $from, string $to): Collection
     {
         $out = collect();
-        $sources = ReportSource::withoutGlobalScopes()->where('organization_id', $org)->where('role', $role)
-            ->when($company !== null, fn ($q) => $q->where(fn ($q) => $q->where('company', $company)->orWhereNull('company')))
-            ->get();
 
-        foreach ($sources as $source) {
-            $names = array_merge(self::FIELDS[$role] ?? [], (array) $source->fields);
+        foreach (self::sources($org, $role, $franchiseId) as $source) {
+            $names = array_merge(self::FIELDS[$role] ?? [], (array) $source->field_map);
 
-            $records = AirtableRecord::withoutGlobalScopes()->where('organization_id', $org)
-                ->where('base_id', $source->base_id)->where('table_id', $source->table_id)->whereNull('gone_at')->get();
-
-            foreach ($records as $record) {
-                $f = $record->fields;
-                if ($source->filter_field !== null && strcasecmp(trim((string) ($f[$source->filter_field] ?? '')), (string) $source->filter_value) !== 0) {
+            foreach (self::records($org, $source) as $f) {
+                if (! $source->owns($f)) {
                     continue;
                 }
                 $date = (string) ($f[$names['date'] ?? 'Date'] ?? '');
-                if ($date < $from || $date > $to || $date === '') {
+                if ($date === '' || $date < $from || $date > $to) {
                     continue;
                 }
-                $row = ['company' => $source->company];
+                $row = [];
                 foreach ($names as $logical => $field) {
                     $row[$logical] = $f[$field] ?? null;
                 }
@@ -82,17 +65,46 @@ final class ReportSources
         return $out;
     }
 
-    /** The company code a branch reports as, or null when it has none set. */
-    public static function companyOf(string $org, string $franchiseId): ?string
+    /** @return list<array<string, mixed>> every live row's fields of $role for the branch, undated (the P&L reads weeks itself) */
+    public static function allRows(string $org, string $role, ?string $franchiseId): array
     {
-        return DB::table('report_companies')->where('organization_id', $org)->where('franchise_id', $franchiseId)->value('code');
+        $out = [];
+        foreach (self::sources($org, $role, $franchiseId) as $source) {
+            foreach (self::records($org, $source) as $f) {
+                if ($source->owns($f)) {
+                    $out[] = $f;
+                }
+            }
+        }
+
+        return $out;
     }
 
-    /** The logical value the mapping uses as a marker (repair 'summary', HQ 'skip'). */
-    public static function marker(string $org, string $role, string $logical): string
+    /** A value marker of the role's first source (repair 'summary', HQ 'skip'), or $default. */
+    public static function marker(string $org, string $role, ?string $franchiseId, string $key, string $default = ''): string
     {
-        $mapped = ReportSource::withoutGlobalScopes()->where('organization_id', $org)->where('role', $role)->first()?->fields;
+        return self::sources($org, $role, $franchiseId)->first()?->marker($key) ?? $default;
+    }
 
-        return (string) (($mapped[$logical] ?? null) ?? self::FIELDS[$role][$logical] ?? '');
+    /** Is any source of $role mapped for this branch (or for HQ, with null)? */
+    public static function mapped(string $org, string $role, ?string $franchiseId): bool
+    {
+        return self::sources($org, $role, $franchiseId)->isNotEmpty();
+    }
+
+    /** @return Collection<int, FinancialSource> */
+    private static function sources(string $org, string $role, ?string $franchiseId): Collection
+    {
+        return FinancialSource::withoutGlobalScopes()->where('organization_id', $org)->where('role', $role)
+            ->when($franchiseId !== null, fn ($q) => $q->where('franchise_id', $franchiseId), fn ($q) => $q->whereNull('franchise_id')->whereNull('company_id'))
+            ->get();
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function records(string $org, FinancialSource $source): array
+    {
+        return AirtableRecord::withoutGlobalScopes()->where('organization_id', $org)
+            ->where('base_id', $source->base_id)->where('table_id', $source->table_id)->whereNull('gone_at')
+            ->pluck('fields')->map(fn ($f) => is_array($f) ? $f : (array) json_decode((string) $f, true))->all();
     }
 }

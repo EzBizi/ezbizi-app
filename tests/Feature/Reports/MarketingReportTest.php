@@ -8,14 +8,15 @@ use App\Models\WorkizJob;
 use App\Support\Reports\MarketingReport;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\MapsAirtableTables;
 use Tests\TestCase;
 
 /** Jose, 2026-10-12: ad cost against jobs, sales and profit per source. */
 class MarketingReportTest extends TestCase
 {
     use BuildsTenants;
+    use MapsAirtableTables;
     use RefreshDatabase;
 
     public function test_cost_jobs_sales_and_estimated_profit_per_source(): void
@@ -43,13 +44,10 @@ class MarketingReportTest extends TestCase
         });
 
         // Income 1,000, marketing 200, net 300: 50% before marketing.
-        Http::fake([
-            'api.airtable.com/v0/meta/bases/*' => Http::response(['tables' => [['id' => 'tbl1', 'name' => 'CT']]]),
-            'api.airtable.com/*' => Http::response(['records' => array_map(fn ($r) => ['fields' => $r], [
-                ['Week' => '21 Sep - 27 Sep', 'Income' => 'Cash', 'Income Amount' => 1000],
-                ['Week' => '21 Sep - 27 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 200],
-                ['Week' => '21 Sep - 27 Sep', 'Payroll' => 'Techs', 'Payroll Amount' => 500],
-            ])]),
+        $this->airtableTable($t, (string) $f->id, 'pnl', [
+            ['Week' => '21 Sep - 27 Sep', 'Income' => 'Cash', 'Income Amount' => 1000],
+            ['Week' => '21 Sep - 27 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 200],
+            ['Week' => '21 Sep - 27 Sep', 'Payroll' => 'Techs', 'Payroll Amount' => 500],
         ]);
 
         $rows = app(MarketingReport::class)

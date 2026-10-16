@@ -9,23 +9,26 @@ use Illuminate\Support\Collection;
  * The weekly and monthly report's sections built from the organization's own
  * mapped Airtable tables (ReportSources over the hourly copy): refunds,
  * disputes and returned checks; repair teams; HQ office expenses. Each takes
- * the organization (reports run outside a tenant), the company code and the
- * inclusive Y-m-d dates.
+ * the organization (reports run outside a tenant), the branch and the
+ * inclusive Y-m-d dates. A part nobody mapped says so.
  *
  * HTML fragments in PeriodReport's table style; money in whole cents so sums
  * are exact.
  */
 final class AirtableSections
 {
-    public function refunds(string $org, string $code, string $from, string $to): string
+    public function refunds(string $org, string $branch, string $from, string $to): string
     {
         $out = '';
         foreach (['refunds' => 'Refunds', 'disputes' => 'Disputes', 'check_returns' => 'Returned checks'] as $role => $title) {
-            $rows = ReportSources::rows($org, $role, $code, $from, $to)
-                ->filter(fn ($r) => $r['company'] === $code)
-                ->sortBy('date')->values();
-
             $out .= '<h3>'.e($title).'</h3>';
+            if (! ReportSources::mapped($org, $role, $branch)) {
+                $out .= '<p class="na">No table is mapped for this branch (Financials → Settings).</p>';
+
+                continue;
+            }
+
+            $rows = ReportSources::rows($org, $role, $branch, $from, $to)->sortBy('date')->values();
             if ($rows->isEmpty()) {
                 $out .= '<p class="na">None in these dates.</p>';
 
@@ -39,7 +42,7 @@ final class AirtableSections
                 $job = self::cents($r['total']);
 
                 return [
-                    e((string) $r['job']),
+                    e((string) $r['job_number']),
                     e(trim((string) $r['reason'])),
                     self::money($cents),
                     $job > 0 ? ($cents >= $job ? 'Full' : 'Partial') : '—',
@@ -60,21 +63,27 @@ final class AirtableSections
      * row (or its job rows, where a team files them there), the shares from
      * its job rows, and the company's share of the cost.
      */
-    public function repairTeams(string $org, string $code, string $from, string $to): string
+    public function repairTeams(string $org, string $branch, string $from, string $to): string
     {
-        $rows = ReportSources::rows($org, 'repair', $code, $from, $to)->filter(fn ($r) => $r['company'] === $code);
+        if (! ReportSources::mapped($org, 'repair', $branch)) {
+            return '<p class="na">No repair team table is mapped for this branch (Financials → Settings).</p>';
+        }
+
+        $rows = ReportSources::rows($org, 'repair', $branch, $from, $to);
 
         if ($rows->isEmpty()) {
             return '<p class="na">No repair team rows in these dates.</p>';
         }
 
-        $summaryType = ReportSources::marker($org, 'repair', 'summary');
-        $goals = ReportGoals::for($org, $code);
+        // The value of the kind column on a team's weekly summary row; with
+        // none set every row is a job row and carries the week's costs.
+        $summaryType = ReportSources::marker($org, 'repair', $branch, 'summary');
+        $goals = ReportGoals::for($org, $branch);
         $out = '';
 
         foreach ($rows->groupBy(fn ($r) => (string) ($r['team'] ?? 'No team'))->sortKeys() as $team => $teamRows) {
-            $summary = $teamRows->filter(fn ($r) => $r['type'] === $summaryType);
-            $jobs = $teamRows->reject(fn ($r) => $r['type'] === $summaryType);
+            $summary = $summaryType === '' ? collect() : $teamRows->filter(fn ($r) => $r['kind'] === $summaryType);
+            $jobs = $summaryType === '' ? $teamRows : $teamRows->reject(fn ($r) => $r['kind'] === $summaryType);
             $sum = fn (Collection $c, string $field) => $c->sum(fn ($r) => self::cents($r[$field]));
             $costs = $summary->isNotEmpty() ? $summary : $jobs;
 
@@ -84,7 +93,7 @@ final class AirtableSections
             $operation = $sum($costs, 'operation');
             $hours = $costs->sum(fn ($r) => (float) $r['hours']);
             $parts = $sum($jobs, 'parts');
-            $amount = $sum($jobs, 'job_amount');
+            $amount = $sum($jobs, 'amount');
             $tech = $sum($jobs, 'tech_share');
             $external = $sum($jobs, 'external_share');
             $contracting = $sum($jobs, 'contracting');
@@ -118,11 +127,15 @@ final class AirtableSections
     /** The organization-wide office expenses, rows of one name merged (in cents). */
     public function hqExpenses(string $org, string $from, string $to): string
     {
-        $skip = ReportSources::marker($org, 'hq_expenses', 'skip');
+        if (! ReportSources::mapped($org, 'hq_expenses', null)) {
+            return '<p class="na">No office expenses table is mapped (Financials → Settings).</p>';
+        }
+
+        $skip = ReportSources::marker($org, 'hq_expenses', null, 'skip');
         $byName = [];
 
         foreach (ReportSources::rows($org, 'hq_expenses', null, $from, $to) as $r) {
-            $name = trim((string) $r['name']);
+            $name = trim((string) $r['category']);
             // A subtotal row the sheet keeps is not an expense.
             if ($name === '' || ($skip !== '' && strcasecmp($name, $skip) === 0)) {
                 continue;

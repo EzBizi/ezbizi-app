@@ -1336,9 +1336,6 @@ Route::prefix('v1')
         // The weekly/monthly report's goals (A1 Leads takeover, 2026-10-16).
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
-        Route::get('reports/sources', [\App\Http\Controllers\Api\ReportGoalsController::class, 'sources'])->middleware('permission:reports.settings');
-        Route::put('reports/sources', [\App\Http\Controllers\Api\ReportGoalsController::class, 'saveSources'])->middleware('permission:reports.settings');
-        Route::put('reports/companies', [\App\Http\Controllers\Api\ReportGoalsController::class, 'saveCompanies'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).

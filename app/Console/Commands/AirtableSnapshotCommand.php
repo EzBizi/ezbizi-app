@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\FinancialSource;
 use App\Models\Organization;
-use App\Models\ReportSource;
 use App\Models\SocialConnection;
 use App\Support\Reports\Airtable\AirtableSnapshot;
 use App\Support\Social\SocialProvider;
@@ -19,7 +19,7 @@ class AirtableSnapshotCommand extends Command
 
     public function handle(AirtableSnapshot $snapshot, TenantContext $tenant): int
     {
-        $orgs = ReportSource::query()->withoutGlobalScopes()
+        $orgs = FinancialSource::query()->withoutGlobalScopes()
             ->when($this->option('organization'), fn ($q, $id) => $q->where('organization_id', $id))
             ->distinct()->pluck('organization_id');
 

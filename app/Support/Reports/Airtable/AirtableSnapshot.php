@@ -4,13 +4,13 @@ namespace App\Support\Reports\Airtable;
 
 use App\Models\AirtableRecord;
 use App\Models\AirtableRecordVersion;
-use App\Models\ReportSource;
+use App\Models\FinancialSource;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
  * Copies the Airtable tables an organization mapped into its reports
- * (report_sources) into airtable_records, keeping a version of every row that
+ * (financial_sources, set in Financials) into airtable_records, keeping a version of every row that
  * changed and marking a row Airtable no longer has as gone (2026-10-16). Each
  * tenant's own mapping says what is copied; nothing here names a tenant.
  *
@@ -18,6 +18,43 @@ use RuntimeException;
  */
 class AirtableSnapshot
 {
+    /**
+     * The tables the copy started from (0.0.0444), kept only for
+     * ezbizi:financial-sources-from-snapshot to write them as that tenant's
+     * financial_sources once. Nothing at run time reads it.
+     *
+     * base id => [table id => what it is]
+     */
+    public const TABLES = [
+        // Deposits: one table per company.
+        'appadTMQltMGmGrse' => [
+            'tbljbx2p8nsQ7adRL' => 'deposits', 'tbl81ZTowT57Ex9UD' => 'deposits', 'tblGzCgHbjzrH3gfO' => 'deposits',
+            'tblMvDkzefX4qqq5W' => 'deposits', 'tblxLlYqi1uMsjEUc' => 'deposits', 'tblxmCTEwSXPahQyd' => 'deposits',
+            'tblhykuZPesNQgy1i' => 'deposits', 'tblz2mqN2mssahf7j' => 'deposits', 'tblBi6eDJL6MDVRSK' => 'deposits',
+        ],
+        // Invoices System: Ace/Angi marketing, HQ expenses, weekly data, monthly bills, lease and reviews.
+        'app6ZZgY9nHX8mMih' => [
+            'tblqhXDymSAR6S3G6' => 'marketing', 'tblXCVvrqnN304ERY' => 'marketing', 'tblxgh8Ow0XpuKg5B' => 'marketing',
+            'tblmV1sk6qs4QbUWU' => 'hq_expenses', 'tblDaxgxfcaUBeQPT' => 'office_per_job', 'tblzC1laiwxmLw50S' => 'weekly_data',
+            'tblC2qB7ew6in1YTC' => 'companies', 'tbl0xxoIuToQWIYmN' => 'monthly_bills', 'tblQRWVs4Xz53H8Xf' => 'lease_reviews',
+        ],
+        // P&L: one table per company (MA's added after the contract, measured 2026-10-16).
+        'appWhbwht0xgB5Yut' => [
+            'tblDUxGZlTStCb2UH' => 'pnl', 'tblhqHFPpYAiW8WPw' => 'pnl', 'tbltOW4Ye5LqwKaLa' => 'pnl', 'tblpKJk2XEMlkX4lG' => 'pnl',
+            'tblMZBfVXxXmNzNTd' => 'pnl', 'tbl1YNRbZeLgaJChN' => 'pnl', 'tblENNwJUcW7ySb8P' => 'pnl', 'tblifiOssYgLOaz3X' => 'pnl',
+            'tbl06qeoIY5E7PfxH' => 'pnl', 'tblunO193lu8YMcIq' => 'pnl', 'tblhIqc5V5yH6m0H0' => 'pnl',
+        ],
+        // Repair Teams: one table per region.
+        'appzD9I7nNkALmw4l' => [
+            'tbliTYwmQl2KXzoxh' => 'repair', 'tblLaCAXBIFj2H5hu' => 'repair', 'tblDUxGZlTStCb2UH' => 'repair', 'tblhW7kHAtYzleqde' => 'repair',
+            'tblM8GHLc5ssy12nj' => 'repair', 'tblhc4CJLOkMCNopv' => 'repair', 'tbl7GHGQpvlyWg4dG' => 'repair', 'tblo2IX58b5GWiU7E' => 'repair', 'tbl9IYzaoNxKAZJNx' => 'repair',
+        ],
+        // Refunds, Disputes and Checks Returns (never Debt & Loans).
+        'appe1vSSRRvKToShq' => [
+            'tblxCKagahNfmjaSQ' => 'refunds', 'tblxkLPCe759GoPzn' => 'disputes', 'tblpTKRRhUrirBRpy' => 'check_returns',
+        ],
+    ];
+
     private const API = 'https://api.airtable.com/v0';
 
     /**
@@ -28,7 +65,7 @@ class AirtableSnapshot
         $done = ['tables' => 0, 'rows' => 0, 'changed' => 0, 'gone' => 0, 'failed' => []];
         $now = now();
 
-        $mapped = ReportSource::query()->get(['base_id', 'table_id'])->groupBy('base_id')
+        $mapped = FinancialSource::query()->get(['base_id', 'table_id'])->groupBy('base_id')
             ->map(fn ($rows) => $rows->pluck('table_id')->unique()->values()->all());
 
         foreach ($mapped as $baseId => $tables) {

@@ -4,7 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Models\AirtableRecord;
 use App\Models\AirtableRecordVersion;
-use App\Models\ReportSource;
+use App\Models\FinancialSource;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,9 +28,8 @@ class AirtableSnapshotTest extends TestCase
                 'provider' => SocialProvider::Airtable->value, 'remote_id' => 'appWhbwht0xgB5Yut', 'display_name' => 'P&L']);
             $c->connect(['api_token' => 'pat']);
             $c->save();
-            // Only what the tenant mapped is copied.
-            ReportSource::query()->create(['base_id' => 'appe1vSSRRvKToShq', 'table_id' => 'tblxCKagahNfmjaSQ', 'role' => 'refunds', 'company' => 'NJ',
-                'filter_field' => 'Company Name', 'filter_value' => 'A1 CHIMNEY NJ']);
+            // Only what the tenant mapped (Financials' sources) is copied.
+            FinancialSource::query()->create(['base_id' => 'appe1vSSRRvKToShq', 'table_id' => 'tblxCKagahNfmjaSQ', 'role' => 'refunds']);
         });
 
         $refunds = [['id' => 'rec1', 'createdTime' => '2026-10-01T10:00:00.000Z', 'fields' => ['Refund Amount' => 120, 'Job Number' => '901']],

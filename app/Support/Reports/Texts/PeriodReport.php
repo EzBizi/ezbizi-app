@@ -4,42 +4,27 @@ namespace App\Support\Reports\Texts;
 
 use App\Models\Franchise;
 use App\Models\Organization;
-use App\Models\SocialConnection;
 use App\Support\Files\HardenedPdf;
-use App\Support\Reports\Airtable\AirtableBase;
 use App\Support\Reports\Airtable\AirtablePnl;
 use App\Support\Reports\Airtable\ReportSources;
-use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 /**
- * The weekly and monthly PDF, per branch and consolidated: EzBizi's
- * replacement for the Rodrigo bot's (docs/REPLACING-RODRIGO-BOT.md, report C).
- *
- * Jose, 2026-10-06, choosing between core-now and full parity: "Ship core,
- * switch now". So this holds the sections EzBizi can read by API today: ad
- * sources (created and closed), field performance with deposits, and the
- * Airtable profit and loss. Rodrigo's Workiz profit (scraped), LSA by
- * location, reviews, repair teams, refunds and disputes, HQ office expenses,
- * monthly bills and goal colours are not here yet.
+ * The weekly and monthly PDF, per branch and consolidated, for any
+ * organization: ad sources (created and closed), field performance with
+ * deposits, repair teams, refunds and disputes, the profit and loss, and HQ
+ * office expenses on the consolidated one. The Airtable parts come from the
+ * tables the organization mapped in Financials → Settings (ReportSources);
+ * colours from its goals (ReportGoals). Not here yet: LSA by location,
+ * reviews, monthly bills.
  *
  * Workiz stamps are the account's own clock, compared as wall-clock text.
- * The Meta session sends it, after Merav approves.
+ * The Meta session sends it, after the approver approves.
  */
 final class PeriodReport
 {
-    /** @var array<string, list<array<string,mixed>>|null> rows per table, for one consolidated run */
-    private array $tables = [];
-
-    /** @var array<string, list<string>> each base's table names, asked once per run */
-    private array $baseTables = [];
-
-    public function __construct(
-        private readonly AirtableBase $airtable,
-        private readonly AirtablePnl $pnl,
-    ) {}
+    public function __construct(private readonly AirtablePnl $pnl) {}
 
     /** One branch's report, as PDF bytes. $from and $to are Y-m-d, inclusive. */
     public function forFranchise(Franchise $branch, string $from, string $to): string
@@ -82,7 +67,7 @@ final class PeriodReport
             ];
 
             $body .= '<div style="page-break-before:always"><h1>'.e(BranchName::of($branch)).'</h1>'
-                .$this->sections($f, $pnl, ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey()), $from, $to, (string) $branch->organization_id).'</div>';
+                .$this->sections($f, $pnl, (string) $branch->getKey(), $from, $to, (string) $branch->organization_id).'</div>';
         }
 
         $head = '<h2>Company summary</h2>'.self::table(
@@ -95,13 +80,13 @@ final class PeriodReport
 
     private function branch(Franchise $branch, string $from, string $to): string
     {
-        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to), ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey()), $from, $to, (string) $branch->organization_id);
+        return $this->sections($this->figures($branch, $from, $to), $this->profitAndLoss($branch, $from, $to), (string) $branch->getKey(), $from, $to, (string) $branch->organization_id);
     }
 
-    private function sections(array $f, array $pnl, ?string $code = null, string $from = '', string $to = '', string $org = ''): string
+    private function sections(array $f, array $pnl, ?string $branchId = null, string $from = '', string $to = '', string $org = ''): string
     {
         // Red when worse than the company's goal (ReportGoals).
-        $goals = ReportGoals::for($org, $code);
+        $goals = ReportGoals::for($org, $branchId);
         $cancel = fn ($canceled, $of) => ReportGoals::mark(e(self::share($canceled, $of)), $of > 0 && $goals->bad('cancel_rate', $canceled / $of));
         $avg = fn ($gross, $done) => $done ? ReportGoals::mark(e(self::money($gross / $done)), $goals->bad('avg_sale', $gross / $done)) : '—';
         $sourceRows = fn (array $rows, bool $all) => array_map(fn ($name, $r) => array_merge(
@@ -123,8 +108,8 @@ final class PeriodReport
                 $cancel($t['canceled'], $t['done'] + $t['canceled']),
                 e(self::money($t['gross'])), $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
             ], $f['techs']), raw: true)
-            .($code === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $code, $from, $to)
-                .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $code, $from, $to))
+            .($branchId === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $branchId, $from, $to)
+                .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $branchId, $from, $to))
             .'<h2>Profit &amp; loss</h2>'.$this->pnlSection($pnl);
     }
 
@@ -256,16 +241,16 @@ final class PeriodReport
     public function profitAndLoss(Franchise $branch, string $from, string $to): array
     {
         $none = fn (string $why) => ['weeks' => [], 'missing' => [], 'income' => null, 'costs' => null, 'net' => null, 'why' => $why, 'monthly' => false];
-        $code = ReportSources::companyOf((string) $branch->organization_id, (string) $branch->getKey());
-
-        if ($code === null) {
-            return $none('this branch has no company code set in Reports settings');
+        // The branch's P&L table, as mapped in Financials → Settings, read
+        // from the hourly copy.
+        if (! ReportSources::mapped((string) $branch->organization_id, 'pnl', (string) $branch->getKey())) {
+            return $none('no profit & loss table is mapped for this branch (Financials → Settings)');
         }
 
-        $rows = $this->pnlRows($branch->organization_id, $code);
+        $rows = ReportSources::allRows((string) $branch->organization_id, 'pnl', (string) $branch->getKey());
 
-        if ($rows === null) {
-            return $none("no Airtable base with a {$code} table that has weeks in it");
+        if ($this->pnl->weeks($rows) === []) {
+            return $none('the mapped profit & loss table has no weeks in it yet');
         }
 
         $labels = [];
@@ -280,7 +265,7 @@ final class PeriodReport
         $missing = array_values(array_diff($labels, $have));
 
         if ($weeks === []) {
-            return $none('the '.$code.' table has no week '.implode(', ', $labels).' yet');
+            return $none('the profit & loss table has no week '.implode(', ', $labels).' yet');
         }
 
         // A total only when every week is there and complete: a missing week
@@ -289,46 +274,6 @@ final class PeriodReport
         $sum = fn ($key) => $whole ? array_sum(array_column($weeks, $key)) : null;
 
         return ['weeks' => $weeks, 'missing' => $missing, 'income' => $sum('income'), 'costs' => $sum('costs'), 'net' => $sum('net'), 'why' => '', 'monthly' => count($labels) > 1];
-    }
-
-    private function pnlRows(string $organizationId, string $code): ?array
-    {
-        $key = $organizationId.'/'.$code;
-
-        if (array_key_exists($key, $this->tables)) {
-            return $this->tables[$key];
-        }
-
-        $connections = SocialConnection::query()->withoutGlobalScopes()
-            ->where('organization_id', $organizationId)
-            ->where('provider', SocialProvider::Airtable->value)
-            ->get();
-
-        foreach ($connections as $c) {
-            $token = (string) (($c->credentials ?? [])['api_token'] ?? '');
-
-            try {
-                // Asked once per base per run: the Marketing tab reads every
-                // branch, and asking each time cost a round trip per branch.
-                $tables = $this->baseTables[$c->getKey()] ??= $this->airtable->verify($token, (string) $c->remote_id)['tables'];
-
-                if (! in_array($code, $tables, true)) {
-                    continue;
-                }
-
-                $rows = $this->airtable->records($token, (string) $c->remote_id, $code);
-            } catch (Throwable $e) {
-                report($e);
-
-                continue;
-            }
-
-            if ($this->pnl->weeks($rows) !== []) {
-                return $this->tables[$key] = $rows;
-            }
-        }
-
-        return $this->tables[$key] = null;
     }
 
     private function title(string $name, string $from, string $to): string

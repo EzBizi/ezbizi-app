@@ -3,7 +3,6 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\Franchise;
-use App\Models\ReportCompany;
 use App\Models\ReportGoal;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
@@ -11,14 +10,15 @@ use App\Models\WorkizRecord;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\MapsAirtableTables;
 use Tests\TestCase;
 
 /** Rodrigo's weekly and monthly PDF, core sections (Jose: "Ship core, switch now"). */
 class PeriodReportTest extends TestCase
 {
     use BuildsTenants;
+    use MapsAirtableTables;
     use RefreshDatabase;
 
     public function test_a_week_reads_sources_techs_deposits_and_the_pnl(): void
@@ -40,15 +40,15 @@ class PeriodReportTest extends TestCase
             $this->payment($f, 'USR-ann', 400, '2026-09-24 12:00:00');
         });
 
-        $this->fakeAirtable([
+        $this->airtableTable($t, (string) $f->id, 'pnl', [
             ['Week' => '21 Sep - 27 Sep', 'Income' => 'Cash', 'Income Amount' => 1000],
             ['Week' => '21 Sep - 27 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 250],
         ]);
 
         // Goals are Settings (2026-10-16): Connecticut's average sale and every company's cancel rate.
-        $this->inTenant($t['org'], function () {
-            ReportGoal::query()->create(['company' => 'CT', 'key' => 'avg_sale', 'value' => 2500]);
-            ReportGoal::query()->create(['company' => null, 'key' => 'cancel_rate', 'value' => 0.20]);
+        $this->inTenant($t['org'], function () use ($f) {
+            ReportGoal::query()->create(['franchise_id' => $f->id, 'key' => 'avg_sale', 'value' => 2500]);
+            ReportGoal::query()->create(['franchise_id' => null, 'key' => 'cancel_rate', 'value' => 0.20]);
         });
         $marked = app(PeriodReport::class)->html($f, '2026-09-21', '2026-09-27');
 
@@ -75,9 +75,9 @@ class PeriodReportTest extends TestCase
 
     public function test_a_month_with_a_week_not_entered_has_no_totals(): void
     {
-        [, $f] = $this->connecticut();
+        [$t, $f] = $this->connecticut();
 
-        $this->fakeAirtable([
+        $this->airtableTable($t, (string) $f->id, 'pnl', [
             ['Week' => '7 Sep - 13 Sep', 'Income' => 'Cash', 'Income Amount' => 1000],
             ['Week' => '7 Sep - 13 Sep', 'Marketing' => 'Ads', 'Marketing Amount' => 250],
         ]);
@@ -106,9 +106,6 @@ class PeriodReportTest extends TestCase
             ]);
             $c->connect(['refresh_token' => 'pat', 'api_token' => 'pat', 'base_id' => 'appPNL']);
             $c->save();
-
-            // The branch's company code is a Reports setting (2026-10-16).
-            ReportCompany::query()->create(['franchise_id' => $f->id, 'code' => 'CT']);
         });
 
         return [$t, $f->fresh()];
@@ -117,14 +114,6 @@ class PeriodReportTest extends TestCase
     private function row(string ...$cells): string
     {
         return '<tr>'.implode('', array_map(fn ($c) => '<td>'.e($c).'</td>', $cells)).'</tr>';
-    }
-
-    private function fakeAirtable(array $records): void
-    {
-        Http::fake([
-            'api.airtable.com/v0/meta/bases/*' => Http::response(['tables' => [['id' => 'tbl1', 'name' => 'CT']]]),
-            'api.airtable.com/*' => Http::response(['records' => array_map(fn ($f) => ['fields' => $f], $records)]),
-        ]);
     }
 
     private function job($franchise, array $attributes): void

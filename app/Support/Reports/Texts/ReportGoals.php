@@ -6,7 +6,7 @@ use App\Models\ReportGoal;
 
 /**
  * The goals the weekly and monthly report colours against, set per
- * organization and per company in Settings (Jose, 2026-10-16: the takeover
+ * organization and per branch in Reports settings (Jose, 2026-10-16: the takeover
  * "has to fit the EzBizi system"). Nothing is preset: an unset goal colours
  * nothing. Red means worse than the goal.
  */
@@ -32,15 +32,15 @@ final class ReportGoals
     private function __construct(private readonly array $goals) {}
 
     /**
-     * One company's goals: its own, over the organization-wide ones (company
+     * One branch's goals: its own, over the organization-wide ones (branch
      * null). Read outside a tenant, so the organization is named.
      */
-    public static function for(string $organizationId, ?string $company): self
+    public static function for(string $organizationId, ?string $franchiseId): self
     {
         $rows = ReportGoal::withoutGlobalScopes()->where('organization_id', $organizationId)
-            ->where(fn ($q) => $q->whereNull('company')->when($company !== null, fn ($q) => $q->orWhere('company', $company)))
-            ->get(['company', 'key', 'value'])
-            ->sortBy(fn ($r) => $r->company !== null); // company-specific last, so it wins
+            ->where(fn ($q) => $q->whereNull('franchise_id')->when($franchiseId !== null, fn ($q) => $q->orWhere('franchise_id', $franchiseId)))
+            ->get(['franchise_id', 'key', 'value'])
+            ->sortBy(fn ($r) => $r->franchise_id !== null); // the branch's own last, so it wins
 
         return new self($rows->mapWithKeys(fn ($r) => [$r->key => (float) $r->value])->all());
     }
