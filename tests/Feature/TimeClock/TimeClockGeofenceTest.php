@@ -31,21 +31,21 @@ class TimeClockGeofenceTest extends TestCase
     {
         [$alpha, $tech] = $this->tenant(zoneOn: true);
 
-        $this->assertTrue($this->signedInAs($tech)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
+        $this->assertTrue($this->phone($tech)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
 
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-in', [])
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-in', [])
             ->assertStatus(422)->assertJsonPath('errors.location.0', fn ($m) => str_contains($m, 'location is needed'));
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-in', self::FAR)
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-in', self::FAR)
             ->assertStatus(422)->assertJsonPath('errors.location.0', fn ($m) => str_contains($m, 'm away (allowed 100 m)'));
         $this->assertSame(0, $this->shifts($tech));
         $this->assertSame(2, AuditEvent::query()->withoutGlobalScopes()->where('action', 'time_clock.geofence_blocked')->count());
 
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-in', self::NEAR)->assertOk();
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-in', self::NEAR)->assertOk();
         $this->assertSame(1, $this->shifts($tech));
 
         // Leaving by hand is checked too.
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-out', self::FAR)->assertStatus(422);
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-out', self::NEAR)->assertOk();
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-out', self::FAR)->assertStatus(422);
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-out', self::NEAR)->assertOk();
     }
 
     /** The controls: a role that may clock in from anywhere, and a place with the zone off. */
@@ -54,19 +54,30 @@ class TimeClockGeofenceTest extends TestCase
         [$alpha, $tech] = $this->tenant(zoneOn: true);
         $office = $this->userWithRole($alpha, 'Dispatcher', ['time_clock.view', 'time_clock.anywhere'], 'office@alpha.test');
 
-        $this->assertFalse($this->signedInAs($office)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
-        $this->signedInAs($office)->postJson('/api/v1/time-clock/clock-in', [])->assertOk();
+        $this->assertFalse($this->phone($office)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
+        $this->phone($office)->postJson('/api/v1/time-clock/clock-in', [])->assertOk();
 
         [, $elsewhere] = $this->tenant(zoneOn: false, name: 'Beta');
-        $this->assertFalse($this->signedInAs($elsewhere)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
-        $this->signedInAs($elsewhere)->postJson('/api/v1/time-clock/clock-in', [])->assertOk();
+        $this->assertFalse($this->phone($elsewhere)->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
+        $this->phone($elsewhere)->postJson('/api/v1/time-clock/clock-in', [])->assertOk();
+    }
+
+    /** Jose, 2026-10-16: the zone is for phones. The desktop app and the web are never asked. */
+    public function test_the_desktop_app_and_the_web_are_never_checked(): void
+    {
+        [, $tech] = $this->tenant(zoneOn: true);
+
+        $this->assertFalse($this->signedInAs($tech)->withHeader('X-EzBizi-Client-Platform', 'windows')
+            ->getJson('/api/v1/time-clock/me')->json('data.time_clock.needs_location'));
+        $this->signedInAs($tech)->withHeader('X-EzBizi-Client-Platform', 'windows')
+            ->postJson('/api/v1/time-clock/clock-in', [])->assertOk();
     }
 
     /** The end-of-day close never carries a device and must always close. */
     public function test_the_automatic_close_ignores_the_zone(): void
     {
         [$alpha, $tech] = $this->tenant(zoneOn: true);
-        $this->signedInAs($tech)->postJson('/api/v1/time-clock/clock-in', self::NEAR)->assertOk();
+        $this->phone($tech)->postJson('/api/v1/time-clock/clock-in', self::NEAR)->assertOk();
 
         $this->inTenant($alpha['org'], fn () => app(TimeClock::class)->clockOut($tech, endedBy: TimeClockShift::ENDED_BY_SCHEDULE));
 
@@ -83,6 +94,11 @@ class TimeClockGeofenceTest extends TestCase
         $set('time_clock.geofence_center', self::CENTER);
 
         return [$t, $this->userWithRole($t, 'Tech', ['time_clock.view'], 'tech@'.strtolower($name).'.test')];
+    }
+
+    private function phone(User $user)
+    {
+        return $this->signedInAs($user)->withHeader('X-EzBizi-Client-Platform', 'android');
     }
 
     private function shifts(User $user): int

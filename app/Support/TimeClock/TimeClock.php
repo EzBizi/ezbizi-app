@@ -908,6 +908,14 @@ final class TimeClock
      */
     public function geofenceFor(User $user): ?array
     {
+        // Phones only (Jose, 2026-10-16: "clock in zone should only affect
+        // mobile users"). Desktop and web have no reliable location, and the
+        // zone is for people out in the field. The platform header is the
+        // client's own word, so a modified desktop client skips the zone;
+        // that is the rule as given, not a lock.
+        if (! in_array(request()->header('X-EzBizi-Client-Platform'), ['android', 'ios'], true)) {
+            return null;
+        }
         if ($user->hasPermission('time_clock.anywhere')) {
             return null;
         }
