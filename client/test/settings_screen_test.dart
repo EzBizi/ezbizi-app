@@ -47,6 +47,55 @@ String _refusedToChange(String label) =>
     'roles can add it to yours.';
 
 void main() {
+  // UI queue 104, design 7: a place setting is found by address, not typed
+  // as coordinates.
+  testWidgets('a location setting is set by finding an address', (tester) async {
+    Object? written;
+    await _pumpSettings(tester, (request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) return _json({'data': _me});
+      if (path.endsWith('/geocode')) {
+        return _json({
+          'data': {
+            'address': '14 Elm St, Riverton',
+            'zip': '06001',
+            'exact': true,
+            'lat': 41.0534,
+            'lng': -73.5387,
+          },
+        });
+      }
+      if (path.endsWith('/field/map/tiles')) return _json({'message': 'No.'}, 403);
+      final row = _row(
+        'time_clock.geofence_center',
+        label: 'Clock-in zone centre',
+        type: 'location',
+        value: written ?? '',
+        source: _source('organization', 'org-1', 'Everdoors', false),
+      );
+      if (request.method == 'GET') return _json({'data': [row]});
+      written = (jsonDecode(request.body) as Map)['value'];
+      return _json({'data': {...row, 'value': written}});
+    });
+
+    await tester.tap(find.byKey(const ValueKey('location-setting')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('location-address')),
+      '14 Elm St, Riverton',
+    );
+    await tester.tap(find.byKey(const ValueKey('location-find')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('14 Elm St, Riverton'), findsWidgets);
+    expect(find.byKey(const ValueKey('location-map')), findsNothing);
+    expect(find.text('See it on Google Maps'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('location-save')));
+    await tester.pumpAndSettle();
+    expect(written, '41.053400, -73.538700');
+  });
+
   testWidgets('changing a setting moves its row and nothing else', (
     tester,
   ) async {

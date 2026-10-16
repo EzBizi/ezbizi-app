@@ -12,6 +12,7 @@ import '../widgets/search_picker.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/sending_server_panel.dart';
+import '../widgets/location_setting.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -662,6 +663,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     formats: widget.session.me!.display,
                     onChanged: _update,
                     onReset: _reset,
+                    api: widget.api,
                   ),
                 ],
               ],
@@ -1197,9 +1199,13 @@ class _SettingRow extends StatelessWidget {
     required this.formats,
     required this.onChanged,
     required this.onReset,
+    this.api,
   });
 
   final Map<String, dynamic> setting;
+
+  /// For the editors that look something up (a place's address).
+  final ApiClient? api;
 
   /// In force at this scope. Used by the shaped editors below, which show
   /// times, and to say so when the value in a row is one this build cannot
@@ -1493,6 +1499,17 @@ class _SettingRow extends StatelessWidget {
         editable: editable,
         formats: formats,
         help: setting['help'] as String?,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
+    // A place: an address search and a map (UI queue 104, design 7).
+    if (type == 'location' && api != null) {
+      return LocationButton(
+        label: setting['label'] as String,
+        value: value,
+        editable: editable,
+        api: api!,
         onChanged: (v) => onChanged(key, v),
       );
     }

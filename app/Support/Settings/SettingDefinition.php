@@ -71,6 +71,14 @@ final class SettingDefinition
      */
     public const TYPE_COMPANY    = 'company';
 
+    /**
+     * A place, stored as "lat, lng" exactly as TYPE_STRING was, so nothing
+     * that reads one changes. Its own type so the settings screen can draw an
+     * address search and a map for it (UI queue 104, design 7) — the editor
+     * switches on the type, never the key.
+     */
+    public const TYPE_LOCATION   = 'location';
+
     /** In week order, which is the order they are shown in. */
     public const WEEKDAYS = [
         'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -268,7 +276,7 @@ final class SettingDefinition
             self::TYPE_DURATION => $this->castInt($value),
             self::TYPE_DECIMAL => $this->castDecimal($value),
             self::TYPE_ENUM    => $this->castEnum($value),
-            self::TYPE_STRING  => (string) $value,
+            self::TYPE_STRING, self::TYPE_LOCATION => (string) $value,
             self::TYPE_JSON    => $this->castJson($value),
             self::TYPE_HOURS   => $this->castHours($value),
             self::TYPE_TIME_RANGE => $this->castTimeRange($value),
