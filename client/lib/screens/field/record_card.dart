@@ -28,6 +28,11 @@ class _RecordCardState extends State<RecordCard> {
   bool _asking = false;
   bool _busy = false;
 
+  /// Start was pressed: the disclosure (and the notice, where it is owed)
+  /// is on screen, waiting for a yes. Asked every time, as the server asks.
+  bool _confirming = false;
+  bool _told = false;
+
   FieldRecorder? get _recorder =>
       widget.recorder ?? FieldTracker.current?.recorder;
   ValueNotifier<Map<String, dynamic>?>? get _me =>
@@ -73,11 +78,31 @@ class _RecordCardState extends State<RecordCard> {
         valueListenable: recorder.state,
         builder: (context, state, _) {
           final job = me?['at_job'] as Map?;
+          final rules = (me?['recording'] as Map?) ?? const {};
           final idle = state.status == FieldRecorderStatus.idle;
           // Not offered without the grant; a recording already running is
           // always shown, so it can be stopped.
           if (idle && me?['may_record'] != true) return const SizedBox.shrink();
-          return _card(context, recorder, state, job);
+          // Off for this company, or a state where it may not be used: say
+          // why, or nothing when there is no reason to give.
+          if (idle && rules['allowed'] != true) {
+            final reason = rules['reason'] as String?;
+            if (reason == null || reason.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return Card(
+              key: const ValueKey('tour-field-record'),
+              child: ListTile(
+                leading: const Icon(Icons.mic_off_outlined),
+                title: const Text('Safety recording'),
+                subtitle: Text(
+                  reason,
+                  key: const ValueKey('field-record-reason'),
+                ),
+              ),
+            );
+          }
+          return _card(context, recorder, state, job, rules);
         },
       ),
     );
@@ -88,6 +113,7 @@ class _RecordCardState extends State<RecordCard> {
     FieldRecorder recorder,
     FieldRecorderState state,
     Map? job,
+    Map rules,
   ) {
     final theme = Theme.of(context);
     final small = theme.textTheme.bodySmall;
@@ -132,17 +158,6 @@ class _RecordCardState extends State<RecordCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // A state that requires it: the line to say first.
-            if (idle && job?['notice'] == true)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Let the customer know this visit may be recorded for '
-                  'safety and quality.',
-                  key: const ValueKey('field-record-notice'),
-                  style: small?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
             Row(
               children: [
                 dot,
@@ -163,11 +178,12 @@ class _RecordCardState extends State<RecordCard> {
                       backgroundColor: theme.colorScheme.error,
                       foregroundColor: theme.colorScheme.onError,
                     ),
-                    onPressed: _busy
+                    onPressed: _busy || _confirming
                         ? null
-                        : () => _run(
-                            () => recorder.start(jobId: job?['id'] as String?),
-                          ),
+                        : () => setState(() {
+                            _confirming = true;
+                            _told = false;
+                          }),
                     icon: const Icon(Icons.fiber_manual_record, size: 16),
                     label: const Text('Start'),
                   )
@@ -190,6 +206,60 @@ class _RecordCardState extends State<RecordCard> {
                 ],
               ],
             ),
+            // Before every start: what is recorded and who hears it, and in
+            // a state that requires it, the notice the customer is told.
+            if (idle && _confirming) ...[
+              const SizedBox(height: 10),
+              Text(
+                'This records the sound around your phone: you, and anyone '
+                'near you. Field managers can listen to it. It is deleted '
+                'after 90 days unless somebody keeps it.',
+                key: const ValueKey('field-record-disclosure'),
+                style: small,
+              ),
+              if (rules['announce'] == true) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Tell the customer: "${rules['notice'] ?? ''}"',
+                  key: const ValueKey('field-record-notice'),
+                  style: small?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                CheckboxListTile(
+                  key: const ValueKey('field-record-told'),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: _told,
+                  onChanged: (v) => setState(() => _told = v ?? false),
+                  title: const Text('I told the customer'),
+                ),
+              ],
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() => _confirming = false),
+                    child: const Text('Cancel'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    key: const ValueKey('field-record-confirm'),
+                    onPressed: _busy || (rules['announce'] == true && !_told)
+                        ? null
+                        : () {
+                            setState(() => _confirming = false);
+                            _run(
+                              () => recorder.start(
+                                jobId: job?['id'] as String?,
+                                customerTold:
+                                    rules['announce'] == true && _told,
+                              ),
+                            );
+                          },
+                    child: const Text('Start recording'),
+                  ),
+                ],
+              ),
+            ],
             if (state.error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 6),

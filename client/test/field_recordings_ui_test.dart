@@ -40,19 +40,70 @@ void main() {
       expect(find.byKey(const ValueKey('field-record-start')), findsNothing);
     });
 
-    testWidgets('at a job in a notice state, the line to say comes first', (
-      tester,
-    ) async {
+    testWidgets(
+      'switched off for the company, it says why and offers no Start',
+      (tester) async {
+        await pump(
+          tester,
+          me: {
+            'may_record': true,
+            'recording': {
+              'allowed': false,
+              'announce': false,
+              'reason': 'Recording is off for Brightside Home.',
+            },
+          },
+        );
+        expect(
+          find.text('Recording is off for Brightside Home.'),
+          findsOneWidget,
+        );
+        expect(find.byKey(const ValueKey('field-record-start')), findsNothing);
+      },
+    );
+
+    testWidgets('Start shows the disclosure, and where announced it waits '
+        'for "I told the customer"', (tester) async {
       await pump(
         tester,
         me: {
           'may_record': true,
-          'at_job': {'id': 'j1', 'number': 1042, 'notice': true},
+          'at_job': {'id': 'j1', 'number': 1042},
+          'recording': {
+            'allowed': true,
+            'announce': true,
+            'notice': 'This visit may be recorded for safety and quality.',
+          },
         },
       );
       expect(find.text('At JOB-1042'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('field-record-start')));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('field-record-disclosure')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('field-record-notice')), findsOneWidget);
-      expect(find.byKey(const ValueKey('field-record-start')), findsOneWidget);
+      final start = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('field-record-confirm')),
+      );
+      expect(
+        start.onPressed,
+        isNull,
+        reason: 'The customer must be told first.',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('field-record-told')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.byKey(const ValueKey('field-record-confirm')),
+            )
+            .onPressed,
+        isNotNull,
+      );
     });
 
     testWidgets('recording shows the time and Stop asks why, inline', (

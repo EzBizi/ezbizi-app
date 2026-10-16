@@ -466,6 +466,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
               _time(r['started_at'] as String?),
               _clock(total),
               if (reason != null) 'stopped: $reason',
+              if (r['customer_told'] == true) 'customer told',
             ].join(' · '),
             style: small,
           ),
