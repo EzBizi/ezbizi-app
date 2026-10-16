@@ -146,6 +146,38 @@ class EmailGlanceTest extends TestCase
         $this->assertSame(4, $payload['data']['slices'][0]['total']);
     }
 
+    /**
+     * The dashboard never waits on the provider twice (Jose, 2026-10-16:
+     * "takes too long when it should be instant" -- this box was 10-19 s of
+     * A1-Group's load). A counted inbox is served from the last count; once
+     * that is older than two minutes it is re-asked AFTER the response, and
+     * the load after that has the new number.
+     */
+    public function test_a_counted_inbox_is_served_at_once_and_refreshed_after_the_response(): void
+    {
+        $user = $this->userWithPermissions(['email.view']);
+        $mailbox = $this->grantedInbox($user);
+        $this->withScriptedProvider();
+        $id = (string) $mailbox->getKey();
+        $unread = fn () => app(EmailGlance::class)->resolve($user, DashboardPeriod::for($user), [])->toArray()['data']['slices'][0]['total'];
+
+        ScriptedMailboxReader::$unread[$id] = 4;
+        $this->assertSame(4, $unread(), 'never counted: asked live');
+        $this->assertSame(1, ScriptedMailboxReader::$unreadAsked);
+
+        ScriptedMailboxReader::$unread[$id] = 9;
+        $this->assertSame(4, $unread(), 'fresh: the stored count, no call');
+        $this->assertSame(1, ScriptedMailboxReader::$unreadAsked);
+
+        $this->travel(3)->minutes();
+        $this->assertSame(4, $unread(), 'stale: still served at once');
+        $this->assertSame(1, ScriptedMailboxReader::$unreadAsked, 'not asked during the request');
+
+        $this->app->terminate();
+        $this->assertSame(2, ScriptedMailboxReader::$unreadAsked, 'asked once the response has gone');
+        $this->assertSame(9, $unread());
+    }
+
     public function test_an_unreadable_mailbox_is_named_and_omitted_from_slices(): void
     {
         $user = $this->userWithPermissions(['email.view']);

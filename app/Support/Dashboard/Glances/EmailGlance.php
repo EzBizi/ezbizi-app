@@ -12,6 +12,8 @@ use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\MailboxAccess;
 use App\Support\Email\MailboxReaders;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Email box: unread per readable inbox in the current view (snapshot).
@@ -30,6 +32,9 @@ final class EmailGlance extends DescribedGlance
 
     /** How long an inbox may be silent before the home screen says so. Jose, 2026-09-14. */
     private const SILENT_HOURS = 24;
+
+    /** How old a served unread count may be before it is re-asked after the response. */
+    private const FRESH_SECONDS = 120;
 
     public function __construct(
         private readonly MailboxAccess $access,
@@ -78,7 +83,7 @@ final class EmailGlance extends DescribedGlance
                 try {
                     $slices[] = [
                         'label' => $this->sliceLabel($mailbox),
-                        'total' => $this->readers->for($mailbox)->unreadCount($mailbox),
+                        'total' => $this->unread($user, $mailbox),
                     ];
                 } catch (CannotReadMailbox|CannotReachHost) {
                     $failedJustNow = true;
@@ -237,6 +242,50 @@ final class EmailGlance extends DescribedGlance
      * finished". That belongs to the `unconfigured` status and its own screen.
      * A mailbox added and abandoned is a real gap and this is not its guard.
      */
+    /**
+     * Unread for one inbox, without making the dashboard wait on the provider.
+     *
+     * Asking every inbox live made this box 10-19 seconds of A1-Group's
+     * dashboard load (measured on production 2026-10-16; every other box
+     * together was about 3) -- Jose: "takes too long when it should be
+     * instant". So the last count is served at once, and one older than
+     * FRESH_SECONDS is re-asked AFTER the response has gone, in this worker,
+     * so the next load has it. Only an inbox never counted is asked live, which
+     * keeps a failing one named on first sight. A refresh that fails keeps the
+     * last count; a broken or silent inbox is still said from its status and
+     * last_reached_at, which WatchMailboxes keeps current.
+     */
+    private function unread(User $user, Mailbox $mailbox): int
+    {
+        $key = 'dashboard.email.unread.'.$mailbox->getKey();
+        $hit = Cache::get($key);
+
+        if (is_array($hit) && isset($hit['n'], $hit['at'])) {
+            if ($hit['at'] < now()->getTimestamp() - self::FRESH_SECONDS && Cache::add($key.'.refreshing', 1, 60)) {
+                $organization = $user->organization;
+                dispatch(function () use ($organization, $mailbox, $key) {
+                    try {
+                        app(TenantContext::class)->run($organization, fn () => Cache::forever($key, [
+                            'n' => $this->readers->for($mailbox)->unreadCount($mailbox),
+                            'at' => now()->getTimestamp(),
+                        ]));
+                    } catch (Throwable) {
+                        // Keep the last count; the next load tries again.
+                    } finally {
+                        Cache::forget($key.'.refreshing');
+                    }
+                })->afterResponse();
+            }
+
+            return (int) $hit['n'];
+        }
+
+        $count = $this->readers->for($mailbox)->unreadCount($mailbox);
+        Cache::forever($key, ['n' => $count, 'at' => now()->getTimestamp()]);
+
+        return $count;
+    }
+
     private function silentTooLong(Mailbox $mailbox): bool
     {
         return $mailbox->last_reached_at !== null
