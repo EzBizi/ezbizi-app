@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
+use App\Jobs\PlanWhatsAppCommand;
 use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
@@ -12,6 +13,7 @@ use App\Models\StaffBotMenu;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Ai\AppAct;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
@@ -107,6 +109,14 @@ final class WhatsAppStaffBot
         }
 
         $text = trim((string) $inbound->body);
+
+        // YES / NO to a command held for this person (AppAct).
+        if ($viewer !== null && ($held = AppAct::pending($viewer)) !== null
+            && preg_match('/^(yes|y|si|sí|ok|confirm|no|n|cancel)$/iu', $text) === 1) {
+            $this->commandAnswer($number, $to, $viewer, $held, preg_match('/^(no|n|cancel)$/i', $text) !== 1);
+
+            return;
+        }
 
         // An image, a voice note or a sticker arrives with no words; the
         // menu is the useful answer to all of them.
@@ -468,6 +478,14 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // "Publish the reply to the Smith review": a command, held for a YES.
+        // ponytail: a verb list decides command vs question; add verbs as staff use them.
+        if ($viewer?->hasPermission(AppAct::PERMISSION) && GrokCli::configured() && self::isCommand($query)) {
+            PlanWhatsAppCommand::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         // A question about the figures goes to AI before the Library's word
         // match, which answered "how much did we sell" with the CSIA entry.
         if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && self::asksFigures($query)) {
@@ -602,6 +620,50 @@ final class WhatsAppStaffBot
         }
 
         $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
+    }
+
+    public static function isCommand(string $query): bool
+    {
+        return preg_match('/^\s*(please\s+)?(pause|resume|publish|post|reply|approve|schedule|reschedule|book|assign|mark|create|add|send|update|set|move|rebuild|sync|start|stop|enable|disable)\b/i', $query) === 1;
+    }
+
+    /** PlanWhatsAppCommand's half: repeat the command back, run nothing. */
+    public function commandPlan(WhatsAppNumber $number, string $to, User $viewer, string $query): void
+    {
+        try {
+            $plan = AppAct::plan($query);
+        } catch (\RuntimeException) {
+            $plan = null;
+        }
+
+        if ($plan === null) {
+            $this->text($number, $to, "\u{1F937} I could not match that to something EzBizi does. Do it in the app, or say it another way.", preview: false);
+
+            return;
+        }
+
+        AppAct::hold($viewer, $plan);
+        // The model's summary is not trusted on its own: the exact call and
+        // values that will run are shown under it, so a "pause" that is
+        // really an "enable" is visible before the YES.
+        $exact = $plan['method'].' '.$plan['path'].($plan['body'] === [] ? '' : "\n".json_encode($plan['body'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $this->text($number, $to, "\u{2753} *".$plan['summary']."*\n\n```".$exact."```\n\nReply *YES* to do it, or *NO* to cancel. _Expires in 10 minutes._", preview: false);
+    }
+
+    private function commandAnswer(WhatsAppNumber $number, string $to, User $viewer, array $held, bool $yes): void
+    {
+        if (! $yes) {
+            AppAct::drop($viewer);
+            $this->text($number, $to, "\u{1F44D} Cancelled. Nothing was changed.");
+
+            return;
+        }
+
+        $result = AppAct::run($viewer, $held);
+
+        $this->text($number, $to, $result['ok']
+            ? "\u{2705} Done: ".$held['summary']
+            : "\u{274C} Not done (".$result['status'].'). '.($result['message'] !== '' ? $result['message'] : 'Nothing was changed.'), preview: false);
     }
 
     /** AnswerWhatsAppFromApp's half: Grok reads the app as the asker, GET only. */

@@ -802,12 +802,14 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'ai_assistance',
                 label: 'AI Assistance',
-                actions: ['view', 'manage'],
+                // `command`: run app actions from the staff WhatsApp line
+                // (AppAct). Each action still needs its own screen's tick.
+                actions: ['view', 'manage', 'command'],
                 // No actionRequires: `manage` is spent on two tabs, Library
                 // (answers) and Settings (name, welcome), so requiring either
                 // tab would grant a pane somebody may not have been meant to
                 // see. Each tab's own grant decides where manage can be used.
-                actionLabels: ['manage' => 'Edit answers and settings'],
+                actionLabels: ['manage' => 'Edit answers and settings', 'command' => 'Do things from WhatsApp'],
                 tabs: [
                     new TabDefinition('ai', 'AI'),
                     new TabDefinition('library', 'Library'),
