@@ -17,6 +17,8 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards. Administrators still see the whole organization.',
+        'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere.',
         'Web › Hours: the bulk hours editor can now set hours on your Google Business Profile listings as well as your websites. It reads the live hours from Google before you review, and checks Google again after saving.',
         'Leads: RC Calls and EZ Calls now include calls to staff direct lines and the calls we make, shown as “<name> called” or No answer on the person’s lead. Calls between our own lines stay out, and only missed calls from customers alert.',
         'Leads: when Google files a call on a message lead that belongs to someone else, the call moves to a lead of its own, with a note saying where it came from.',
@@ -38,14 +40,6 @@ class VersionHistory {
         'Settings: a new Activity tab lists who did what and when, for the companies and places you can see, filtered by time window and by person, system or staff. It needs the Audit log tick.',
         'Customer Experience: reviews can be worked as cases, with a status (Can’t locate, Working on it, Awaiting report, Done), notes, the customer and job the review is about, and a record that it was reported to Google. Filter by stars, replied, date, location and match, in a Table (the default) or a Board. It needs the new Reviews tick, Work reviews as cases.',
         'Leads: filter by charge, IVR source, dispatcher and dates (behind More filters on a phone). An Edit panel on each lead corrects the name, ZIP, classification and dispatcher, re-reads the lead with the AI, and shows the caller’s timeline across leads with their recordings.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0445',
-      date: '16 Oct 2026',
-      items: [
-        'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards. Administrators still see the whole organization.',
-        'Clock In: a place can require clock-ins from the phone app to be on site (Work Hours › Settings, off by default). Desktop and web are never checked, nor are roles with Clock in from anywhere.',
       ],
     ),
     VersionRelease(
