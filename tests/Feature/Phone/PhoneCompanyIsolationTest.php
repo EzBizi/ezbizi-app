@@ -212,8 +212,9 @@ class PhoneCompanyIsolationTest extends TestCase
             return [$reachable, $outOfReach, $theirs, $notTheirs];
         });
 
-        // Assigned to A-1 Chimney AND Everdoors — two companies, so there is
-        // no single company view and ViewScope falls back to the organization.
+        // Assigned to A-1 Chimney AND Everdoors — two companies. Since
+        // 2026-10-16 (access only downwards) that is not the organization
+        // view: they stand in one of their companies at a time.
         $user = $this->inTenant($t['org'], function () use ($t, $reachable) {
             $role = Role::query()->create([
                 'organization_id' => $t['org']->id,
@@ -243,7 +244,9 @@ class PhoneCompanyIsolationTest extends TestCase
         });
 
         $names = collect(
-            $this->signedInAs($user)->getJson('/api/v1/phone/flows')->assertOk()->json('data')
+            $this->signedInAs($user)
+                ->withHeader('X-EzBizi-View', 'company:'.$reachable->id)
+                ->getJson('/api/v1/phone/flows')->assertOk()->json('data')
         )->pluck('name')->all();
 
         $this->assertContains('Everdoors Menu', $names);
