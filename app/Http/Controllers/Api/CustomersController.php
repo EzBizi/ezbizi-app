@@ -147,6 +147,17 @@ class CustomersController extends Controller
         return response()->json([
             'data' => collect($customers->items())->map(fn (Customer $c) => $this->present($c)),
             'meta' => $meta,
+            /*
+             * People who are still only leads (Jose, 2026-10-16): a dispatcher
+             * searched Customers for a caller who existed only as an LS Call
+             * lead and found nobody. Their own list, never mixed into `data`,
+             * and only on page one of a search. LeadSearch owns the rules --
+             * leads.view, each source's tick, branch reach -- so a reader
+             * without them gets an empty list here, not a refusal.
+             */
+            'leads' => filled($request->query('search')) && $customers->currentPage() === 1
+                ? \App\Support\Leads\LeadSearch::forUser($request->user(), (string) $request->query('search'))
+                : [],
         ]);
     }
 
