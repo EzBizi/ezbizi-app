@@ -19,7 +19,7 @@ class VersionHistory {
       items: [
         'WhatsApp: staff with the new Do things from WhatsApp tick can ask the EzBizi bot to reply to or publish a review reply, reschedule a job, change a lead’s status, or update a location’s scheduling note. The bot shows exactly what it will do and waits for YES first, and each person’s own permissions still apply.',
         'Financials: link your Airtable tables, choose which table plays which part (repair teams, refunds, HQ expenses and so on) under Financials › Settings, and split repair-team costs between companies to the cent.',
-        'Reports: the weekly and monthly report adds repair teams, refunds, disputes and returned checks, and HQ office expenses, read from the tables mapped in Financials.',
+        'Reports: the weekly and monthly report adds repair teams, refunds, disputes and returned checks, and HQ office expenses, read from the tables mapped in Financials. Goals per branch, set under Settings › Reports with the new Reports settings tick, colour the figures that miss them.',
         'Workiz: jobs deleted in Workiz no longer count in EzBizi’s reports.',
         'Communication › Settings › Numbers: a new switch marks a line’s calls and texts as leads, ready for the EZ Calls and EZ Texts tabs coming to Leads.',
         'Notifications: a misfiring automation can no longer flood the bell. Each rule tells a person at most 20 things in 10 minutes.',
