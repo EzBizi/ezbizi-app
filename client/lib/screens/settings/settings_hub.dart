@@ -8,6 +8,7 @@ import '../email/settings_tab.dart';
 import '../guidelines_screen.dart';
 import '../marketing/newsletter_settings.dart';
 import '../phone/settings_tab.dart';
+import '../reports/report_goals_settings.dart';
 import '../scheduling_screen.dart';
 import '../services/service_settings.dart';
 import '../training/settings_tab.dart';
@@ -135,6 +136,14 @@ class _SettingsHubState extends State<SettingsHub> {
           label('guidelines', 'Guidelines'),
           Icons.menu_book_outlined,
           () => GuidelinesTab(api: api, session: session, editing: true),
+        ),
+      // The weekly and monthly report's goals (2026-10-16).
+      if (reach('reports') && me.can('reports.settings'))
+        (
+          'reports',
+          label('reports', 'Reports'),
+          Icons.flag_outlined,
+          () => ReportGoalsSettings(api: api, session: session),
         ),
       if (reach('ai_assistance') && me.can('ai_assistance.settings.view'))
         (
