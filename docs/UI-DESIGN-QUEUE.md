@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 102 · Field › safety recordings (Record control + Recordings tab) — **sent 2026-10-16** (`docs/previews/field-recordings-layouts.html`)
+### 102 · Field › safety recordings (Record control + Recordings tab) — **sent 2026-10-16 — no answer in 10 min, went with 1 and 4** (`docs/previews/field-recordings-layouts.html` @ `1a654ec4`)
 
 Field session for the A1 takeover. Record control on the phone: **1** (recommended) card under SOS in Field › Dashboard, **2** floating button + sheet, **3** top bar while recording.
 Recordings tab: **4** (recommended) table + side-panel player with gaps and Keep, **5** by person, **6** on each job. Stop asks Done / The customer asked / Personal; notice line in notice states.
