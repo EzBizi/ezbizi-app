@@ -923,6 +923,12 @@ Route::prefix('v1')
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
+        // Working a review as a case (UI queue 101, 2026-10-16): reviews.manage.
+        Route::patch('reviews/{review}', [ReviewsController::class, 'update']);
+        Route::post('reviews/{review}/notes', [ReviewsController::class, 'addNote']);
+        Route::get('reviews/{review}/customer-suggestions', [ReviewsController::class, 'customerSuggestions']);
+        Route::put('reviews/{review}/customer', [ReviewsController::class, 'setCustomer']);
+        Route::post('reviews/{review}/report', [ReviewsController::class, 'report']);
         Route::put('reviews/{review}/reply', [ReviewsController::class, 'draftReply']);
         Route::delete('reviews/{review}/reply', [ReviewsController::class, 'discardReply']);
         Route::post('reviews/{review}/reply/suggest', [ReviewsController::class, 'suggestReply']);

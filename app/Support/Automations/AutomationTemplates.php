@@ -271,6 +271,33 @@ final class AutomationTemplates
                     ['type' => 'notify', 'message' => '{{reviewer_name}} left a {{rating}}-star review. It is worth answering today.'],
                 ],
             ],
+            // A1 Leads takeover P0 (2026-10-16): his alerts, as rules.
+            [
+                'key' => 'recent-two-star-review',
+                'name' => 'Alert on a new review of 2 stars or less',
+                'description' => 'Only reviews written in the last 14 days, so a profile added '
+                    .'later does not alert on its old reviews.',
+                'trigger_key' => 'review.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'rating', 'op' => 'lte', 'value' => '2'],
+                        ['field' => 'age_days', 'op' => 'lte', 'value' => '14'],
+                    ],
+                ],
+                'actions' => [
+                    ['type' => 'notify', 'message' => '{{reviewer_name}} left a {{rating}}-star review: {{comment}}'],
+                ],
+            ],
+            [
+                'key' => 'review-removed',
+                'name' => 'Say when Google removes a review',
+                'description' => 'Google stopped showing a review, confirmed three times, two hours apart.',
+                'trigger_key' => 'review.removed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'Google removed the {{rating}}-star review by {{reviewer_name}}.'],
+                ],
+            ],
             [
                 'key' => 'review-reply-failed',
                 'name' => 'Say something when a review reply does not publish',
