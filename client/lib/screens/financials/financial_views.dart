@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api_client.dart';
+
 import '../../core/theme.dart';
 import '../../widgets/month_calendar.dart';
 import 'financial_cells.dart';
@@ -603,6 +605,161 @@ class _FormViewState extends State<FormView> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A split view: each group's cost shared across its people by job count,
+/// worked out on the server to the cent.
+class SplitView extends StatefulWidget {
+  const SplitView({super.key, required this.api, required this.view});
+
+  final ApiClient api;
+  final Map view;
+
+  @override
+  State<SplitView> createState() => _SplitViewState();
+}
+
+class _SplitViewState extends State<SplitView> {
+  String _range = 'this_week';
+  List<Map>? _groups;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(SplitView old) {
+    super.didUpdateWidget(old);
+    if (old.view != widget.view) _load();
+  }
+
+  (String, String)? get _period {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    String d(DateTime t) => t.toIso8601String().substring(0, 10);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    return switch (_range) {
+      'this_week' => (d(monday), d(monday.add(const Duration(days: 6)))),
+      'last_week' => (
+        d(monday.subtract(const Duration(days: 7))),
+        d(monday.subtract(const Duration(days: 1))),
+      ),
+      'this_month' => (
+        d(DateTime(now.year, now.month)),
+        d(DateTime(now.year, now.month + 1, 0)),
+      ),
+      'last_month' => (
+        d(DateTime(now.year, now.month - 1)),
+        d(DateTime(now.year, now.month, 0)),
+      ),
+      _ => null,
+    };
+  }
+
+  Future<void> _load() async {
+    final p = _period;
+    final r = await widget.api.get(
+      '/financials/views/${widget.view['id']}/split',
+      {if (p != null) 'from': p.$1, if (p != null) 'to': p.$2},
+    );
+    if (!mounted) return;
+    setState(() {
+      _groups = r.ok ? (r.body['data'] as List).cast<Map>() : null;
+      _error = r.ok ? null : r.message;
+    });
+  }
+
+  String _money(int cents) =>
+      formatCell(const {'type': 'currency', 'options': {}}, cents / 100);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    const ranges = {
+      'this_week': 'This week',
+      'last_week': 'Last week',
+      'this_month': 'This month',
+      'last_month': 'Last month',
+      'all': 'All dates',
+    };
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        Wrap(
+          spacing: 6,
+          children: [
+            for (final e in ranges.entries)
+              ChoiceChip(
+                label: Text(e.value),
+                selected: _range == e.key,
+                onSelected: (_) {
+                  setState(() => _range = e.key);
+                  _load();
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_error != null) Text(_error!),
+        if (_groups case final groups? when groups.isEmpty)
+          const Text('Nothing to split in this period.'),
+        for (final g in _groups ?? const <Map>[])
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${g['group']}',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                      Text(
+                        g['status'] == 'unavailable'
+                            ? 'Unavailable'
+                            : '${g['jobs']} jobs · ${_money(g['total_cents'] as int)}',
+                      ),
+                    ],
+                  ),
+                  if (g['reason'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${g['reason']}',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ),
+                  for (final p in (g['people'] as List).cast<Map>())
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text('${p['person']}')),
+                          SizedBox(width: 80, child: Text('${p['jobs']} jobs')),
+                          SizedBox(
+                            width: 110,
+                            child: Text(
+                              _money(p['cents'] as int),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

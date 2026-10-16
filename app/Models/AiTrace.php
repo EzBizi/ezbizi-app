@@ -40,7 +40,7 @@ class AiTrace extends Model implements HoldsPersonalData
             new PersonalDataEntry('prompt', PersonalDataEntry::CONTENT,
                 'The text sent to the AI, which can include a call transcript or a staff question.', Erasure::drop('A month-old trace; dropping it loses only the debugging record.')),
             new PersonalDataEntry('response', PersonalDataEntry::CONTENT,
-                'What the AI answered.', Erasure::drop('As the prompt.')),
+                'What the AI answered, which can repeat names or details from the prompt.', Erasure::drop('A month-old trace; dropping it loses only the debugging record.')),
         ];
     }
 

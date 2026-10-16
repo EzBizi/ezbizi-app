@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../widgets/ai_mark.dart';
@@ -98,10 +99,20 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   void initState() {
     super.initState();
     _load();
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
+  }
+
+  /// A tapped notification about a review opens that review.
+  void _takeLink() {
+    final link = DeepLinks.take('reviews');
+    if (link == null || link.type != 'review') return;
+    _openReview({'id': link.id});
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _draft.dispose();
     _note.dispose();
     _reason.dispose();

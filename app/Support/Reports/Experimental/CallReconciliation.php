@@ -2,7 +2,9 @@
 
 namespace App\Support\Reports\Experimental;
 
+use App\Support\Leads\CallTypeCorrections;
 use App\Support\Phone\NumberNames;
+use App\Support\Tenancy\TenantContext;
 
 /**
  * One day, per person: calls taken, what the caller wanted, jobs booked (TEMPORARY).
@@ -116,6 +118,14 @@ final class CallReconciliation
          * card or list can include one.
          */
         $calls = array_values(array_filter($calls, fn (array $call) => $this->outcome($call) !== 'spam'));
+
+        /*
+         * THE WRONG KEY PRESSED (Jose, 2026-10-16). A new client who pressed
+         * "existing", or the reverse, is counted as what they were: Leads
+         * decides from a matched customer or job, or the transcript, and
+         * keeps the key pressed beside it (CallTypeCorrections).
+         */
+        $calls = $this->corrected($calls);
 
         /*
          * OUTBOUND CALLS NOBODY PICKED UP (Jose, 2026-10-12: "on missed calls
@@ -368,6 +378,9 @@ final class CallReconciliation
                 'from' => $call['from'] ?? null,
                 'caller_label' => $call['caller_label'] ?? null,
                 'queue' => $call['queue'] ?? null,
+                // Set when the caller pressed the other queue's key: what was
+                // pressed and why it was re-classified.
+                'reclassified' => $call['reclassified'] ?? null,
                 'result' => $call['result'] ?? null,
                 'outcome' => $this->outcome($call),
                 'booked' => $this->isBooked($call, $bookedPhones, $converted),
@@ -479,5 +492,42 @@ final class CallReconciliation
         $phone = NumberNames::lastTen($call['from'] ?? null);
 
         return $phone !== null && isset($bookedPhones[$phone]);
+    }
+
+    /**
+     * Each inbound call's queue swapped for the corrected caller type, where
+     * Leads has one.
+     *
+     * @param  list<array<string, mixed>>  $calls
+     * @return list<array<string, mixed>>
+     */
+    private function corrected(array $calls): array
+    {
+        // Corrections are a tenant's own; a run outside one counts as pressed.
+        if (! app(TenantContext::class)->has()) {
+            return $calls;
+        }
+
+        $fixes = CallTypeCorrections::forCalls(array_values(array_filter(array_map(fn ($c) => isset($c['id']) ? (string) $c['id'] : null, $calls))));
+
+        return array_map(function (array $call) use ($fixes) {
+            $fix = $fixes[(string) ($call['id'] ?? '')] ?? null;
+            $queue = match ($fix['corrected_type'] ?? null) {
+                'new' => RingCentralCallLog::NEW_CLIENT_QUEUE,
+                'existing' => RingCentralCallLog::EXISTING_CLIENT_QUEUE,
+                default => null,
+            };
+
+            if ($queue === null || ($call['direction'] ?? 'Inbound') === 'Outbound' || $queue === ($call['queue'] ?? null)) {
+                return $call;
+            }
+
+            return ['queue' => $queue, 'reclassified' => [
+                'pressed' => $call['queue'] ?? null,
+                'reason' => $fix['reason'] ?? null,
+                'evidence' => $fix['evidence'] ?? null,
+                'by_person' => ($fix['decided_by'] ?? null) !== null,
+            ]] + $call;
+        }, $calls);
     }
 }

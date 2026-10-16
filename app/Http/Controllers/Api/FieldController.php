@@ -46,7 +46,15 @@ class FieldController extends Controller
     /** GET /field/me — the phone's instructions. Anybody signed in may ask about themselves. */
     public function me(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->tracking->status($request->user())]);
+        $user = $request->user();
+        $job = FieldPresence::query()->where('user_id', $user->getKey())->first()?->atJob()->with('customer:id,state')->first();
+
+        return response()->json(['data' => $this->tracking->status($user) + [
+            // The record card: whether recording is allowed here and now, and
+            // whether the technician must confirm they told the customer.
+            'recording' => $this->tracking->recordingRule($user, $job?->customer?->state),
+            'at_job' => $job === null ? null : ['id' => $job->id, 'number' => $job->number],
+        ]]);
     }
 
     /** POST /field/locations */

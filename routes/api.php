@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ClientIssuesController;
 use App\Http\Controllers\Api\StaffClientIssuesController;
 use App\Http\Controllers\Api\InstagramCommentsController;
 use App\Http\Controllers\Api\FieldController;
+use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\GuidelinesController;
@@ -145,6 +146,7 @@ use App\Http\Controllers\Api\SocialAuthController;
 use App\Http\Controllers\Api\SocialConnectionsController;
 use App\Http\Controllers\Api\SocialMediaHandoffController;
 use App\Http\Controllers\Api\QrCodesController;
+use App\Http\Controllers\Api\SocialLibraryController;
 use App\Http\Controllers\Api\SocialPostsController;
 use App\Http\Controllers\Api\SocialProvidersController;
 use App\Http\Controllers\Api\StaffAccountsController;
@@ -175,6 +177,7 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
+use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -1013,12 +1016,21 @@ Route::prefix('v1')
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
         // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
-        Route::prefix('financials')->controller(FinancialsController::class)->group(function (): void {
+        Route::middleware('permission:financials.settings.view')->group(function (): void {
+            Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
+            Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
+            Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
+            Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
+        });
+        Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
             Route::get('bases', 'bases');
             Route::post('bases', 'storeBase');
             Route::patch('bases/{base}', 'updateBase');
             Route::delete('bases/{base}', 'destroyBase');
             Route::post('bases/{base}/tables', 'storeTable');
+            Route::get('airtable-tables', 'airtableTables');
+            Route::post('bases/{base}/airtable-links', 'linkAirtable');
+            Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');
@@ -1032,6 +1044,7 @@ Route::prefix('v1')
             Route::delete('records/{record}', 'destroyRecord');
             Route::post('tables/{table}/views', 'storeView');
             Route::patch('views/{view}', 'updateView');
+            Route::get('views/{view}/split', 'split');
             Route::delete('views/{view}', 'destroyView');
         });
         /*
@@ -1325,6 +1338,9 @@ Route::prefix('v1')
         Route::get('reports/scoring', [ScoringReportController::class, 'show'])->middleware('permission:reports.scoring.view');
         Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
         // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
+        // The weekly/monthly report's goals (A1 Leads takeover, 2026-10-16).
+        Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
+        Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
         // A scored call's recording, for Scoring alone (Performance's own needs Performance).
@@ -1510,6 +1526,16 @@ Route::prefix('v1')
             Route::get('field/people', [FieldController::class, 'people']);
             Route::get('field/route', [FieldController::class, 'route']);
         });
+        // Safety recordings (from A1 Tools, 2026-10-16). Listing and playback
+        // check own-or-field.listen in the controller; keeping, field.manage.
+        Route::middleware('permission:field.record')->group(function () {
+            Route::post('field/recordings', [FieldRecordingsController::class, 'begin'])->middleware('throttle:30,1');
+            Route::post('field/recordings/{recording}/chunks', [FieldRecordingsController::class, 'chunk'])->middleware('throttle:120,1');
+            Route::post('field/recordings/{recording}/finish', [FieldRecordingsController::class, 'finish']);
+        });
+        Route::get('field/recordings', [FieldRecordingsController::class, 'index']);
+        Route::get('field/recordings/{recording}/audio/{seq}', [FieldRecordingsController::class, 'audio'])->whereNumber('seq');
+        Route::post('field/recordings/{recording}/flag', [FieldRecordingsController::class, 'flag']);
 
         // Training — guides people read, the tests they take, and (later
         // tasks) who has been given which. `view`/`monitor`/`manage`/
@@ -2066,6 +2092,15 @@ Route::prefix('v1')
             Route::delete('social/posts/{post}', [SocialPostsController::class, 'cancel']);
             Route::post('social/posts/{post}/targets/{target}/dismiss', [SocialPostsController::class, 'dismiss']);
             Route::delete('social/posts/{post}/targets/{target}/remote', [SocialPostsController::class, 'deleteRemote']);
+        });
+        // Business Profile listings the composer may post to.
+        Route::middleware('permission:marketing.compose.view')->group(function () {
+            Route::get('social/places', [SocialPostsController::class, 'places']);
+            Route::get('social/library', [SocialLibraryController::class, 'index']);
+            Route::post('social/library', [SocialLibraryController::class, 'store']);
+            Route::patch('social/library/{item}', [SocialLibraryController::class, 'update']);
+            Route::delete('social/library/{item}', [SocialLibraryController::class, 'destroy']);
+            Route::get('social/library/{item}/file', [SocialLibraryController::class, 'file']);
         });
         // Marketing > QR Codes. Writes also need marketing.edit (controller).
         Route::middleware('permission:marketing.qr_codes.view')->group(function () {

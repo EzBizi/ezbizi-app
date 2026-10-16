@@ -36,7 +36,7 @@ class AiEvalCase extends Model implements HoldsPersonalData
     {
         return [
             new PersonalDataEntry('prompt', PersonalDataEntry::CONTENT,
-                'The text sent to the AI, which can include a call transcript.', Erasure::drop('Dropping the case only loses one test.')),
+                'The text sent to the AI, which can include a call transcript.', Erasure::drop('Dropping the case only loses one regression test for the AI.')),
         ];
     }
 

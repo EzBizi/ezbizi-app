@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\AutomationEvent;
+use App\Models\BusinessLocation;
 use App\Models\Company;
 use App\Models\SocialConnection;
 use App\Models\SocialPost;
@@ -806,6 +807,110 @@ class SocialPostsApiTest extends TestCase
         $this->signedInAs($t['admin'])->postJson(self::ENDPOINT."/{$data['id']}/targets/{$failed}/dismiss")->assertOk();
 
         $this->inTenant($t['org'], fn () => $this->assertSame([$sent], SocialPostTarget::query()->pluck('id')->all()));
+    }
+
+    private function place(array $t, SocialConnection $gbp, string $title, string $state = 'VERIFIED'): BusinessLocation
+    {
+        return $this->inTenant($t['org'], fn () => BusinessLocation::create([
+            'organization_id' => $t['org']->id, 'connection_id' => $gbp->id,
+            'remote_name' => 'locations/'.strtolower(str_replace(' ', '', $title)),
+            'account_name' => 'accounts/1', 'title' => $title,
+            'verification_state' => $state, 'is_published' => true,
+        ]));
+    }
+
+    /**
+     * Business Profile as a post target (A1 poster takeover, 2026-10-16): each
+     * listing is its own target with the button the post carries; a listing
+     * Google is not showing is written as failed while the rest go out.
+     */
+    public function test_a_post_goes_to_business_profile_places_with_a_button(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $gbp = $this->connection($t, 'company', $t['company']->id, 'Google', 'accounts/1', 'google_business_profile');
+        config(['services.business_profile.client_id' => 'cid', 'services.business_profile.client_secret' => 'sec']);
+        $live = $this->place($t, $gbp, 'Miami Shop');
+        $down = $this->place($t, $gbp, 'Old Shop', 'SUSPENDED');
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'g-token', 'expires_in' => 3600]),
+            'mybusiness.googleapis.com/*' => Http::response(['name' => 'accounts/1/locations/miamishop/localPosts/9']),
+        ]);
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/social/places')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'Miami Shop')->assertJsonPath('data.0.postable', true)
+            ->assertJsonPath('data.1.postable', false);
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'places' => [$live->id, $down->id], 'body' => 'Book a sweep',
+            'cta_type' => 'BOOK', 'cta_url' => 'https://a-1chimney.com/book',
+        ])->assertCreated();
+
+        $this->inTenant($t['org'], function () {
+            $targets = SocialPostTarget::query()->get();
+            $sent = $targets->firstWhere('status', SocialPostTarget::STATUS_SENT);
+            $failed = $targets->firstWhere('status', SocialPostTarget::STATUS_FAILED);
+            $this->assertSame('accounts/1/locations/miamishop', $sent->options['gbp_location']);
+            $this->assertSame('BOOK', $sent->options['cta_type']);
+            $this->assertStringContainsString('not live on Google', $failed->failure);
+        });
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'accounts/1/locations/miamishop/localPosts')
+            && ($r->data()['callToAction']['actionType'] ?? null) === 'BOOK');
+    }
+
+    public function test_a_button_other_than_call_needs_an_address(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $gbp = $this->connection($t, 'company', $t['company']->id, 'Google', 'accounts/1', 'google_business_profile');
+        $live = $this->place($t, $gbp, 'Miami Shop');
+
+        $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, [
+            'places' => [$live->id], 'body' => 'Book', 'cta_type' => 'BOOK',
+        ])->assertStatus(422)->assertJsonValidationErrors('cta_url');
+    }
+
+    /**
+     * The standard media library (A1 poster takeover, 2026-10-16): a picture
+     * kept once and posted from Compose. The post takes its own copy, so
+     * removing the library item afterwards leaves the post's picture alone.
+     */
+    public function test_a_library_picture_is_posted_and_the_post_keeps_its_own_copy(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $page = $this->connection($t, 'company', $t['company']->id, 'Page', 'page-1', 'facebook_page');
+        Http::fake(['graph.facebook.com/*' => Http::response(['id' => 'fb-1', 'post_id' => 'fb-post-1'])]);
+
+        $item = $this->signedInAs($t['admin'])->post('/api/v1/social/library', [
+            'name' => 'Van photo', 'file' => UploadedFile::fake()->image('van.jpg'),
+        ])->assertCreated()->assertJsonPath('data.kind', 'image')->json('data.id');
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/social/library')->assertJsonPath('data.0.name', 'Van photo');
+        $this->signedInAs($t['admin'])->patchJson('/api/v1/social/library/'.$item, ['name' => 'Van, side'])
+            ->assertOk()->assertJsonPath('data.name', 'Van, side');
+
+        $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
+            'connections' => [$page->getKey()], 'library_item' => $item,
+        ])->assertCreated();
+
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/library/'.$item)->assertOk();
+
+        $this->inTenant($t['org'], function () {
+            $post = SocialPost::query()->firstOrFail();
+            $this->assertNotNull($post->media_path);
+            $this->assertTrue(Storage::disk($post->media_disk)->exists($post->media_path));
+        });
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/photos'));
+    }
+
+    public function test_the_library_is_read_with_the_tab_and_changed_only_with_edit(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $reader = $this->userWithRole($t, 'Reader', ['marketing.view', 'marketing.compose.view']);
+
+        $this->signedInAs($reader)->getJson('/api/v1/social/library')->assertOk();
+        $this->signedInAs($reader)->post('/api/v1/social/library', ['file' => UploadedFile::fake()->image('a.jpg')])
+            ->assertForbidden();
     }
 
     private function assertNothingWasWritten(array $t): void

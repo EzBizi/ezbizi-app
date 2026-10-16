@@ -49,6 +49,70 @@ void main() {
     expect(field.onlyGroup, 'field');
   });
 
+  // 2026-10-16: the report goals, set behind reports.settings.
+  testWidgets('Reports lists its goals with the grant, and saves dollars and '
+      'percents', (tester) async {
+    Map<String, dynamic>? put;
+    final keys = [
+      {'key': 'avg_sale', 'label': 'Average sale', 'red_when': 'below'},
+      {'key': 'cancel_rate', 'label': 'Cancel rate', 'red_when': 'above'},
+    ];
+    await _pump(
+      tester,
+      modules: [_module('reports', 'Reports')],
+      permissions: ['organizations.settings.view', 'reports.settings'],
+      handle: (request) async {
+        if (!request.url.path.endsWith('/reports/goals')) return null;
+        if (request.method == 'PUT') {
+          put = jsonDecode(request.body) as Map<String, dynamic>;
+        }
+        return _json({
+          'data': {
+            'keys': keys,
+            'goals': [
+              {'franchise_id': null, 'key': 'avg_sale', 'value': 1500},
+            ],
+          },
+        });
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('settings-hub-item-reports')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('report-goal-avg_sale')))
+          .controller!
+          .text,
+      '1500',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('report-goal-cancel_rate')),
+      '20',
+    );
+    await tester.tap(find.byKey(const Key('report-goals-save')));
+    await tester.pumpAndSettle();
+
+    final sent = (put!['goals'] as List).cast<Map>();
+    expect(sent.firstWhere((g) => g['key'] == 'cancel_rate')['value'], 0.2);
+    expect(sent.firstWhere((g) => g['key'] == 'avg_sale')['value'], 1500);
+    expect(sent.every((g) => g['franchise_id'] == null), isTrue);
+  });
+
+  testWidgets('without reports.settings there is no Reports entry', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      modules: [_module('reports', 'Reports')],
+      permissions: ['organizations.settings.view', 'reports.view'],
+    );
+    expect(
+      find.byKey(const ValueKey('settings-hub-item-reports')),
+      findsNothing,
+    );
+  });
+
   testWidgets('narrow, the index is a Jump to chip row', (tester) async {
     await _pump(
       tester,
@@ -79,6 +143,7 @@ Future<void> _pump(
   required List<Map<String, dynamic>> modules,
   required List<String> permissions,
   double width = 1400,
+  Future<http.Response?> Function(http.Request request)? handle,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1.0;
@@ -86,6 +151,8 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      final handled = await handle?.call(request);
+      if (handled != null) return handled;
       if (request.url.path.endsWith('/me')) {
         return _json({
           'data': {

@@ -629,6 +629,77 @@ class _ViewSettingsPanelState extends State<ViewSettingsPanel> {
               onChanged: (v) => setState(() => _config['date_field'] = v),
             ),
           ],
+          if (type == 'split') ...[
+            const Divider(),
+            Text('Split', style: heading),
+            const Text(
+              "Each group's cost is shared across its people by how many jobs each did, to the cent.",
+            ),
+            for (final (key, label, clear) in const [
+              ('group_field', 'Group (for example Team)', false),
+              ('person_field', 'Person (for example Technician)', false),
+              ('kind_field', 'Row kind column (optional)', true),
+              ('job_key_field', 'Job number, must not repeat (optional)', true),
+              ('date_field', 'Date column for the period (optional)', true),
+            ])
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: SearchPickerField<String>(
+                  label: label,
+                  isDense: true,
+                  allowClear: clear,
+                  value: _config[key] as String?,
+                  options: _fieldOptions,
+                  onChanged: (v) => setState(() => _config[key] = v),
+                ),
+              ),
+            if (_config['kind_field'] != null)
+              for (final (key, label, hint) in const [
+                ('job_kind', 'Value that marks a job row', 'Job'),
+                (
+                  'cost_kind',
+                  'Value that marks a cost row (blank: costs sit on job rows)',
+                  'Weekly Summary',
+                ),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: TextFormField(
+                    initialValue: _config[key] as String?,
+                    decoration: InputDecoration(
+                      labelText: label,
+                      hintText: hint,
+                      isDense: true,
+                    ),
+                    onChanged: (t) =>
+                        _config[key] = t.trim().isEmpty ? null : t.trim(),
+                  ),
+                ),
+            const SizedBox(height: 8),
+            const Text('Cost columns added together'),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final f in widget.fields)
+                  if (isNumeric('${f['type']}'))
+                    FilterChip(
+                      label: Text('${f['name']}'),
+                      selected: (_config['cost_fields'] as List? ?? const [])
+                          .contains(f['id']),
+                      onSelected: (on) => setState(() {
+                        final costs = {
+                          ...(_config['cost_fields'] as List? ?? const []).map(
+                            (e) => '$e',
+                          ),
+                        };
+                        on ? costs.add('${f['id']}') : costs.remove(f['id']);
+                        _config['cost_fields'] = costs.toList();
+                      }),
+                    ),
+              ],
+            ),
+          ],
           const Divider(),
           Text('Fields shown', style: heading),
           for (final f in widget.fields)

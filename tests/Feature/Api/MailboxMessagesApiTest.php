@@ -399,7 +399,13 @@ class MailboxMessagesApiTest extends TestCase
      * everything and gets in — so the refusal is about the assignment rather
      * than about the module being broken.
      */
-    public function test_the_administrators_waiver_covers_the_grant_and_not_reach(): void
+    /**
+     * Superseded 2026-10-16. Jose, asked "Should Administrators assigned to
+     * one company stay limited to that company?": "No". An Administrator now
+     * reaches the whole organization whatever their assignment, so the branch
+     * administrator below opens the company inbox.
+     */
+    public function test_an_administrator_assigned_to_one_branch_reaches_the_company_inbox(): void
     {
         $this->withFakeProvider();
 
@@ -429,14 +435,9 @@ class MailboxMessagesApiTest extends TestCase
 
         FakeMailboxReader::$page = new MessagePage([$this->summary()]);
 
-        $message = $this->signedInAs($branchAdmin)
+        $this->signedInAs($branchAdmin)
             ->getJson("/api/v1/email/mailboxes/{$companyInbox->id}/messages")
-            ->assertForbidden()
-            ->json('message');
-
-        // Refused for WHERE they stand, not for what their role holds.
-        $this->assertStringContainsString('assigned', $message);
-        $this->assertStringNotContainsString('has not been given', $message);
+            ->assertOk();
 
         // THE CONTROL — the organization-wide administrator gets in, so this is
         // an assignment rule and not a broken module.

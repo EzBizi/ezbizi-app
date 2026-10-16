@@ -1463,7 +1463,8 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
-    if (type == 'enum') {
+    // A company is an enum whose choices the server reads from the tree.
+    if (type == 'enum' || type == 'company') {
       return _EnumControl(
         value: value,
         choices: _settingChoices(setting['options']),

@@ -39,7 +39,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>EzBizi saves a how-to video to your Photos when you tap Download on it. It only adds that video; it never reads your photos.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
+	<string>EzBizi uses the microphone so you can speak on phone calls made and received in the app, and to record a job visit for your safety when you choose to start a recording. It is used only during a call or a recording you started.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

@@ -54,7 +54,7 @@ class ViewScopeDownwardsTest extends TestCase
             ->assertJsonPath('data.scope.type', 'organization');
     }
 
-    public function test_the_organization_header_is_refused_to_a_company_person(): void
+    public function test_the_organization_header_gives_a_company_person_their_company(): void
     {
         $t = $this->provisionTenant();
         $person = $this->atCompany($t);
@@ -62,7 +62,9 @@ class ViewScopeDownwardsTest extends TestCase
         $this->signedInAs($person)
             ->withHeader('X-EzBizi-View', 'organization')
             ->getJson('/api/v1/me')
-            ->assertForbidden();
+            ->assertOk()
+            ->assertJsonPath('data.scope.type', 'company')
+            ->assertJsonPath('data.scope.id', $t['company']->id);
 
         $this->signedInAs($t['admin'])
             ->withHeader('X-EzBizi-View', 'organization')
@@ -113,5 +115,24 @@ class ViewScopeDownwardsTest extends TestCase
 
         $this->assertContains('Ours', $names);
         $this->assertNotContains('Theirs', $names);
+    }
+
+    /** Jose, 2026-10-16: an Administrator is not "limited to that company". */
+    public function test_an_administrator_assigned_to_a_company_still_has_the_organization(): void
+    {
+        $t = $this->provisionTenant();
+        $admin = $this->atCompany($t);
+        app(TenantContext::class)->run($t['org'], fn () => $admin
+            ->forceFill(['role_id' => $t['admin']->role_id])->save());
+        $this->assertTrue(app(TenantContext::class)->run($t['org'], fn () => $t['admin']->fresh()->isAdministrator()));
+
+        $this->signedInAs($admin->fresh())->getJson('/api/v1/me')
+            ->assertJsonPath('data.organization.can_view', true)
+            ->assertJsonPath('data.scope.type', 'organization');
+
+        $this->signedInAs($admin->fresh())
+            ->withHeader('X-EzBizi-View', 'organization')
+            ->getJson('/api/v1/me')
+            ->assertOk();
     }
 }

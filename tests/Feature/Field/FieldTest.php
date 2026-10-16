@@ -116,7 +116,7 @@ class FieldTest extends TestCase
         $module = app(ModuleRegistry::class)->get('field');
 
         $this->assertSame(
-            ['field.view', 'field.tracked', 'field.manage',
+            ['field.view', 'field.tracked', 'field.manage', 'field.record', 'field.listen',
                 'field.dashboard.view', 'field.map.view', 'field.route.view', 'field.settings.view'],
             $module->permissionKeys(),
         );

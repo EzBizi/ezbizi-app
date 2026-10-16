@@ -5,7 +5,9 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/tab_bar_like.dart';
 import 'financials/financial_panels.dart';
+import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
 
 /// Financials — the Airtable replacement (Jose, 2026-10-14).
@@ -13,6 +15,19 @@ import 'financials/financial_views.dart';
 /// Bases hold tables; a table has typed fields, records and saved views
 /// (grid, kanban, calendar, gallery, form). Filters, sorts, grouping and
 /// hidden fields are saved on the view, so everybody opening it sees the same.
+class FinancialBases extends StatefulWidget {
+  const FinancialBases({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<FinancialBases> createState() => _FinancialsScreenState();
+}
+
+/// Financials — the Airtable replacement (Jose, 2026-10-14). Two tabs:
+/// Bases (the work) and Settings (which Airtable table is which part of the
+/// books). Each is its own grant.
 class FinancialsScreen extends StatefulWidget {
   const FinancialsScreen({super.key, required this.api, required this.session});
 
@@ -20,7 +35,62 @@ class FinancialsScreen extends StatefulWidget {
   final Session session;
 
   @override
-  State<FinancialsScreen> createState() => _FinancialsScreenState();
+  State<FinancialsScreen> createState() => _FinancialsHostState();
+}
+
+class _FinancialsHostState extends State<FinancialsScreen> {
+  int _tab = 0;
+
+  bool _may(String tab) =>
+      widget.session.me?.permissions.contains('financials.$tab.view') ?? false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      if (_may('bases'))
+        (
+          'Bases',
+          Icons.table_chart_outlined,
+          FinancialBases(api: widget.api, session: widget.session),
+        ),
+      if (_may('settings'))
+        (
+          'Settings',
+          Icons.tune,
+          FinancialSourcesSettings(api: widget.api, me: widget.session.me!),
+        ),
+    ];
+    if (tabs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No Financials tabs have been granted to your role.'),
+        ),
+      );
+    }
+    final selected = _tab < tabs.length ? _tab : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: Theme.of(context).colorScheme.surface,
+          child: TabBarLike(
+            key: const ValueKey('tour-financials-tabs'),
+            labels: [for (final t in tabs) (t.$1, t.$2)],
+            selected: selected,
+            onSelected: (i) => setState(() => _tab = i),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: IndexedStack(
+            index: selected,
+            children: [for (final t in tabs) t.$3],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 const _viewTypes = <String, (String, IconData)>{
@@ -29,9 +99,10 @@ const _viewTypes = <String, (String, IconData)>{
   'calendar': ('Calendar', Icons.calendar_month_outlined),
   'gallery': ('Gallery', Icons.photo_library_outlined),
   'form': ('Form', Icons.dynamic_form_outlined),
+  'split': ('Split', Icons.call_split),
 };
 
-class _FinancialsScreenState extends State<FinancialsScreen> {
+class _FinancialsScreenState extends State<FinancialBases> {
   List<Map> _bases = [];
   String? _baseId;
   String? _tableId;
@@ -114,6 +185,49 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
       builder: (_) => _NewBasePanel(api: widget.api, me: widget.session.me!),
     );
     if (created != null) await _loadBases(select: created);
+  }
+
+  Future<void> _linkAirtable() async {
+    final r = await widget.api.get('/financials/airtable-tables');
+    if (!mounted) return;
+    if (!r.ok) return _say(r.message);
+    final tables = (r.body['data'] as List).cast<Map>();
+    if (tables.isEmpty) {
+      return _say(
+        'No Airtable copy yet. Connect Airtable in Integrations; the copy refreshes every hour.',
+      );
+    }
+    final picked = await showSearchPicker<Map>(
+      context,
+      title: 'Mirror an Airtable table',
+      options: [
+        for (final t in tables)
+          SearchOption(
+            value: t,
+            label: '${t['table_name']} (${t['rows']} rows)',
+          ),
+      ],
+    );
+    if (picked == null || _baseId == null) return;
+    final linked = await widget.api.post(
+      '/financials/bases/$_baseId/airtable-links',
+      {'base_id': picked['base_id'], 'table_id': picked['table_id']},
+    );
+    if (!mounted) return;
+    if (!linked.ok) return _say(linked.message);
+    _tableId = (linked.body['data'] as Map)['id'] as String;
+    await _loadBases();
+  }
+
+  Future<void> _refreshMirror() async {
+    final r = await widget.api.post('/financials/tables/$_tableId/refresh', {});
+    if (!mounted) return;
+    if (!r.ok) return _say(r.message);
+    final done = (r.body['data'] as Map)['refreshed'] as Map;
+    _say(
+      'Up to date: ${done['added']} added, ${done['changed']} changed, ${done['removed']} removed.',
+    );
+    await _reload();
   }
 
   Future<void> _newTable() async {
@@ -235,8 +349,8 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
         fields: _fields,
         record: record,
         initial: initial,
-        canEdit: _can('edit'),
-        canDelete: _can('delete'),
+        canEdit: _can('edit') && _table?['mirror'] == null,
+        canDelete: _can('delete') && _table?['mirror'] == null,
       ),
     );
     if (changed == true) await _reload();
@@ -331,6 +445,8 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
     final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
     final rows = applyView(_records, _fields, config, _search);
     final canEdit = _can('edit');
+    // A mirrored table takes views and settings, never cells.
+    final canWrite = canEdit && _table?['mirror'] == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -401,13 +517,41 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                   label: const Text('Add table'),
                   onPressed: _newTable,
                 ),
+              if (canEdit)
+                TextButton.icon(
+                  icon: const Icon(Icons.sync_alt),
+                  label: const Text('Mirror Airtable'),
+                  onPressed: _linkAirtable,
+                ),
             ],
           ),
         ),
+        if (_table?['mirror'] case final Map mirror)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Row(
+              children: [
+                const Icon(Icons.sync, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Mirrors Airtable, read-only here. Refreshed '
+                    '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
+                  ),
+                ),
+                if (canEdit)
+                  TextButton(
+                    onPressed: _refreshMirror,
+                    child: const Text('Refresh now'),
+                  ),
+              ],
+            ),
+          ),
         if (_table != null) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Wrap(
+              key: const ValueKey('tour-financials-views'),
               spacing: 6,
               runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -449,7 +593,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                     icon: const Icon(Icons.delete_outline),
                     onPressed: _deleteView,
                   ),
-                if (canEdit)
+                if (canWrite)
                   IconButton(
                     tooltip: 'Import CSV',
                     icon: const Icon(Icons.upload_file_outlined),
@@ -460,7 +604,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                   icon: const Icon(Icons.download_outlined),
                   onPressed: _export,
                 ),
-                if (canEdit)
+                if (canWrite)
                   FilledButton.icon(
                     icon: const Icon(Icons.add),
                     label: const Text('Add record'),
@@ -479,7 +623,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                 config: config,
                 onOpen: _openRecord,
                 onPatch: _patch,
-                canEdit: canEdit,
+                canEdit: canWrite,
               ),
               'calendar' => CalendarView(
                 fields: shown,
@@ -488,6 +632,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                 config: config,
                 onOpen: _openRecord,
               ),
+              'split' => SplitView(api: widget.api, view: view!),
               'gallery' => GalleryView(
                 fields: shown,
                 allFields: _fields,
@@ -497,7 +642,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
               'form' => FormView(
                 fields: shown,
                 allFields: _fields,
-                canEdit: canEdit,
+                canEdit: canWrite,
                 onSubmit: (values) async {
                   final r = await widget.api.post(
                     '/financials/tables/$_tableId/records',
@@ -515,7 +660,7 @@ class _FinancialsScreenState extends State<FinancialsScreen> {
                 onOpen: _openRecord,
                 onPatch: _patch,
                 onField: _editField,
-                canEdit: canEdit,
+                canEdit: canWrite,
               ),
             },
           ),
@@ -678,4 +823,13 @@ class _NewBasePanelState extends State<_NewBasePanel> {
       ),
     );
   }
+}
+
+String _ago(String? iso) {
+  final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+  if (at == null) return 'never';
+  final minutes = DateTime.now().difference(at).inMinutes;
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return '$minutes min ago';
+  return '${minutes ~/ 60} h ago';
 }

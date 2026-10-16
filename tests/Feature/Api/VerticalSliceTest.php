@@ -137,12 +137,21 @@ class VerticalSliceTest extends TestCase
                 'is_active'       => true,
             ]);
 
+            // Not the Administrator role: since 2026-10-16 an Administrator
+            // reaches the whole organization whatever their assignment.
+            $role = \App\Models\Role::create([
+                'organization_id' => $alpha['org']->id,
+                'name' => 'Branch manager', 'is_system' => false,
+            ]);
+            $role->syncPermissionKeys(['customers.view', 'jobs.view']);
+
             $user = User::create([
                 'organization_id' => $alpha['org']->id,
-                'role_id'         => $alpha['admin']->role_id,
+                'role_id'         => $role->id,
                 'name' => 'Second', 'email' => 'second@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);
+            $user->forceFill(['email_verified_at' => now()])->save();
 
             Assignment::create([
                 'organization_id'      => $alpha['org']->id,
@@ -165,8 +174,10 @@ class VerticalSliceTest extends TestCase
         ])->assertCreated();
 
         // The customer IS visible to the other franchise — that is what sharing
-        // means, and the owning-franchise tag is what keeps it honest.
-        $this->as($secondUser)->getJson('/api/v1/customers')
+        // means, and the owning-franchise tag is what keeps it honest. Found by
+        // searching: standing in their own place (never the organization above
+        // it, 2026-10-16) the plain list is that place's own customers.
+        $this->as($secondUser)->getJson('/api/v1/customers?search=Shared')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.owning_franchise.name', $alpha['franchise']->name);

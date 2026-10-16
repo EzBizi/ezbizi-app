@@ -802,12 +802,14 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'ai_assistance',
                 label: 'AI Assistance',
-                actions: ['view', 'manage'],
+                // `command`: run app actions from the staff WhatsApp line
+                // (AppAct). Each action still needs its own screen's tick.
+                actions: ['view', 'manage', 'command'],
                 // No actionRequires: `manage` is spent on two tabs, Library
                 // (answers) and Settings (name, welcome), so requiring either
                 // tab would grant a pane somebody may not have been meant to
                 // see. Each tab's own grant decides where manage can be used.
-                actionLabels: ['manage' => 'Edit answers and settings'],
+                actionLabels: ['manage' => 'Edit answers and settings', 'command' => 'Do things from WhatsApp'],
                 tabs: [
                     new TabDefinition('ai', 'AI'),
                     new TabDefinition('library', 'Library'),
@@ -2238,6 +2240,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'financials',
                 label: 'Financials',
+                // Bases is the work; Settings is which Airtable table is which
+                // part of the books (organization configuration).
+                tabs: [
+                    new TabDefinition('bases', 'Bases'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 auditActionPrefixes: ['financials'],
                 subject: new AutomationSubject(FinancialRecord::class, 'Record', key: 'financial_record'),
                 emits: [FinancialRecord::class],
@@ -3010,14 +3018,22 @@ class ModuleServiceProvider extends ServiceProvider
                 // `manage`: working a review as a case - status, notes, the
                 // customer it is about, reporting it (UI queue 101, 2026-10-16).
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish', 'manage'],
+                actionLabels: ['manage' => 'Work reviews as cases (status, notes, customer, report)'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
                         key: 'review.received',
                         label: 'Review received',
                         description: 'A new review arrived on a connected Business Profile. It '
-                            .'carries the rating, the text as the reviewer wrote it, and which '
-                            .'location it is about.',
+                            .'carries the rating, the text as the reviewer wrote it, which '
+                            .'location it is about, and how many days old it is (age_days).',
+                    ),
+                    new TriggerDefinition(
+                        key: 'review.removed',
+                        label: 'Review removed',
+                        description: 'Google no longer shows a review: three complete lists without it, '
+                            .'each confirmed by Google answering that the review is gone, at least two '
+                            .'hours apart. Raised once per review.',
                     ),
                     new TriggerDefinition(
                         key: 'review.reply_published',
@@ -3991,7 +4007,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4091,8 +4107,10 @@ class ModuleServiceProvider extends ServiceProvider
                     'export' => ['reports.view'],
                     // Setting what each Scoring metric counts for (Jose, 2026-10-14).
                     'scoring_weights' => ['reports.scoring.view'],
+                    // The weekly/monthly report's goals (2026-10-16).
+                    'settings' => ['reports.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights"],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals"],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',
@@ -4279,11 +4297,13 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'field',
                 label: 'Field',
-                actions: ['view', 'tracked', 'manage'],
+                // record: makes safety recordings; listen: hears other people's.
+                actions: ['view', 'tracked', 'manage', 'record', 'listen'],
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('map', 'Map'),
                     new TabDefinition('route', 'Route'),
+                    new TabDefinition('recordings', 'Recordings'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['field'],

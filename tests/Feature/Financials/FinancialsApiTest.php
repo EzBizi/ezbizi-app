@@ -73,7 +73,7 @@ class FinancialsApiTest extends TestCase
             ->postJson('/api/v1/financials/bases', ['name' => 'Books'])->assertCreated()->json('data');
         $tableId = $base['tables'][0]['id'];
 
-        $viewer = $this->userWithRole($alpha, 'Viewer', ['financials.view']);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['financials.view', 'financials.bases.view', 'financials.settings.view']);
         $this->signedInAs($viewer)->getJson("/api/v1/financials/tables/{$tableId}")->assertOk();
         $this->signedInAs($viewer)->postJson("/api/v1/financials/tables/{$tableId}/records", ['values' => []])->assertForbidden();
         $this->signedInAs($viewer)->postJson('/api/v1/financials/bases', ['name' => 'Mine'])->assertForbidden();
