@@ -59,9 +59,9 @@ final class GrokCli
      *                          or answers without the structured output: loud,
      *                          never an empty answer
      */
-    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT): array
+    public static function ask(string $prompt, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
     {
-        $answer = self::askMany([$prompt], $schema, $timeout)[0];
+        $answer = self::askMany([$prompt], $schema, $timeout, $files)[0];
 
         if ($answer instanceof RuntimeException) {
             throw $answer;
@@ -80,10 +80,11 @@ final class GrokCli
      * Grok starts refusing on the plan's rate limit.
      *
      * @param  list<string>  $prompts
+     * @param  array<string, string>  $files  name => bytes put beside the question for it to read (a photo), read-only
      * @param  array<string, mixed>  $schema
      * @return list<array<string, mixed>|RuntimeException> in the prompts' order
      */
-    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT): array
+    public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
     {
         $home = (string) config('services.grok_cli.home');
         $answers = [];
@@ -95,6 +96,9 @@ final class GrokCli
                 $works[$i] = storage_path('app/grok-'.bin2hex(random_bytes(6)));
                 File::ensureDirectoryExists($works[$i].'/cwd', 0700);
                 File::put($works[$i].'/prompt.txt', $prompt);
+                foreach ($files as $name => $bytes) {
+                    File::put($works[$i].'/cwd/'.basename((string) $name), $bytes);
+                }
             }
 
             try {
@@ -107,10 +111,13 @@ final class GrokCli
                         $home.'/.grok/bin/grok',
                         '--prompt-file', $work.'/prompt.txt',
                         '--json-schema', json_encode($schema),
-                        '--max-turns', '1',
+                        // A photo (a bill) is read by the CLI's read_file tool from a
+                        // folder holding only that file (measured on prod 2026-10-16:
+                        // no other way in; `read` gave no structured output).
+                        '--max-turns', $files === [] ? '1' : '3',
                         '--disable-web-search',
                         '--no-subagents',
-                        '--tools', '',
+                        '--tools', $files === [] ? '' : 'read_file',
                         '--cwd', $work.'/cwd',
                         // Measured on prod 2026-10-13, one 2.3k-char call:
                         // default 215 s, low 61 s, same speakers and summary.

@@ -56,4 +56,20 @@ class AiTraceEvalTest extends TestCase
         $this->assertSame(['label' => 'not_booked'], AiEvalCase::sole()->expected);
         $this->assertSame([], AiEval::misses(['n' => 2], ['n' => 2, 'extra' => 1]));
     }
+
+    public function test_a_photo_goes_beside_the_question_with_only_the_read_tool(): void
+    {
+        $this->grokSays(['total' => '88.10']);
+
+        $this->assertSame(['total' => '88.10'], GrokCli::ask('Read bill.png', ['type' => 'object'], 30, ['bill.png' => 'PNGBYTES']));
+
+        Process::assertRan(function ($process) {
+            $cmd = (array) $process->command;
+            $cwd = $cmd[array_search('--cwd', $cmd) + 1];
+
+            return $cmd[array_search('--tools', $cmd) + 1] === 'read_file'
+                && $cmd[array_search('--max-turns', $cmd) + 1] === '3'
+                && str_ends_with($cwd, '/cwd');
+        });
+    }
 }
