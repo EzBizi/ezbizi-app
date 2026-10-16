@@ -84,6 +84,23 @@ class LeadsReadTest extends TestCase
         $this->assertSame(2, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.classified')->count());
     }
 
+    /** Re-classify by hand (A1 Leads takeover): a read lead, at any age, read again. */
+    public function test_a_named_lead_is_read_again_whatever_its_age(): void
+    {
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'classification' => 'BOOK', 'summary' => 'Wants a sweep.', 'name' => null, 'zip' => null,
+            'not_a_lead' => false, 'lost' => false, 'job_applicant' => false,
+        ]]))]);
+        $old = $this->callLead('Kim', 'I need a sweep');
+        $this->inTenant($this->t['org'], fn () => $old->forceFill(['classification' => 'ARCHIVE', 'received_at' => now()->subMonth()])->save());
+
+        $this->artisan('ezbizi:leads-read')->assertSuccessful();
+        $this->assertSame('ARCHIVE', $this->inTenant($this->t['org'], fn () => $old->refresh()->classification), 'the routine run leaves it');
+
+        $this->artisan('ezbizi:leads-read', ['--lead' => [$old->id]])->assertSuccessful();
+        $this->assertSame('BOOK', $this->inTenant($this->t['org'], fn () => $old->refresh()->classification));
+    }
+
     public function test_spam_is_tagged_not_a_lead(): void
     {
         Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
