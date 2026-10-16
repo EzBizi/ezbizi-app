@@ -2240,6 +2240,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'financials',
                 label: 'Financials',
+                // Bases is the work; Settings is which Airtable table is which
+                // part of the books (organization configuration).
+                tabs: [
+                    new TabDefinition('bases', 'Bases'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 auditActionPrefixes: ['financials'],
                 subject: new AutomationSubject(FinancialRecord::class, 'Record', key: 'financial_record'),
                 emits: [FinancialRecord::class],

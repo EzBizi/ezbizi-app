@@ -189,6 +189,8 @@ Future<List<http.Request>> _pump(
             ],
             'permissions': [
               'financials.view',
+              'financials.bases.view',
+              'financials.settings.view',
               'financials.create',
               'financials.edit',
               'financials.delete',
@@ -264,7 +266,7 @@ void screenTests() {
     tester,
   ) async {
     await _pump(tester);
-    await tester.tap(find.byTooltip('Financials settings'));
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Repair team sheet · Repair NJ'), findsOneWidget);
     expect(find.text('Whole organization · 1 column mapped'), findsOneWidget);

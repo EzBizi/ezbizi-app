@@ -46,7 +46,7 @@ class FinancialSourcesTest extends TestCase
 
         $this->inTenant($alpha['org'], fn () => $this->assertSame('Crew', FinancialSource::forRole('repair')->first()->field('team')));
 
-        $viewer = $this->userWithRole($alpha, 'Viewer', ['financials.view']);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['financials.view', 'financials.bases.view', 'financials.settings.view']);
         $this->signedInAs($viewer)->getJson('/api/v1/financials/sources')->assertOk();
         $this->signedInAs($viewer)->deleteJson("/api/v1/financials/sources/{$id}")->assertForbidden();
 

@@ -7,17 +7,22 @@ import '../../widgets/side_panel.dart';
 
 /// Financials → Settings: which of the organization's Airtable tables is which
 /// part of its books, and which column means what. Reports read this map.
-class FinancialSourcesPanel extends StatefulWidget {
-  const FinancialSourcesPanel({super.key, required this.api, required this.me});
+class FinancialSourcesSettings extends StatefulWidget {
+  const FinancialSourcesSettings({
+    super.key,
+    required this.api,
+    required this.me,
+  });
 
   final ApiClient api;
   final Me me;
 
   @override
-  State<FinancialSourcesPanel> createState() => _FinancialSourcesPanelState();
+  State<FinancialSourcesSettings> createState() =>
+      _FinancialSourcesPanelState();
 }
 
-class _FinancialSourcesPanelState extends State<FinancialSourcesPanel> {
+class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
   Map<String, dynamic>? _data;
   String? _error;
 
@@ -66,60 +71,64 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesPanel> {
   Widget build(BuildContext context) {
     final roles = (_data?['roles'] as Map?) ?? const {};
     final sources = ((_data?['data'] as List?) ?? const []).cast<Map>();
-    return SidePanel(
-      title: 'Financials settings',
-      subtitle: 'Airtable sources',
-      actions: [
-        if (_canEdit && _data != null)
-          FilledButton.icon(
-            icon: const Icon(Icons.add),
-            label: const Text('Add source'),
-            onPressed: () => _edit(null),
+    return ListView(
+      key: const ValueKey('tour-financials-sources'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Airtable sources',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (_canEdit && _data != null)
+              FilledButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Add source'),
+                onPressed: () => _edit(null),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Say which Airtable table holds which part of your books. The hourly '
+          'Airtable copy and the weekly and monthly reports read this list.',
+        ),
+        if (!_canEdit)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'Changing these needs Financials edit, from the organization view.',
+            ),
+          ),
+        if (_error != null) Text(_error!),
+        if (_data == null && _error == null)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        if (_data != null && sources.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 16),
+            child: Text('No sources yet.'),
+          ),
+        for (final s in sources)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('${roles[s['role']] ?? s['role']} · ${_tableName(s)}'),
+            subtitle: Text(
+              [
+                s['place'] ?? 'Whole organization',
+                if ((s['field_map'] as Map).isNotEmpty)
+                  '${(s['field_map'] as Map).length} column${(s['field_map'] as Map).length == 1 ? '' : 's'} mapped',
+              ].join(' · '),
+            ),
+            trailing: _canEdit ? const Icon(Icons.chevron_right) : null,
+            onTap: _canEdit ? () => _edit(s) : null,
           ),
       ],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Say which Airtable table holds which part of your books. The hourly '
-            'Airtable copy and the weekly and monthly reports read this list.',
-          ),
-          if (!_canEdit)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Text(
-                'Changing these needs Financials edit, from the organization view.',
-              ),
-            ),
-          if (_error != null) Text(_error!),
-          if (_data == null && _error == null)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (_data != null && sources.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: Text('No sources yet.'),
-            ),
-          for (final s in sources)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                '${roles[s['role']] ?? s['role']} · ${_tableName(s)}',
-              ),
-              subtitle: Text(
-                [
-                  s['place'] ?? 'Whole organization',
-                  if ((s['field_map'] as Map).isNotEmpty)
-                    '${(s['field_map'] as Map).length} column${(s['field_map'] as Map).length == 1 ? '' : 's'} mapped',
-                ].join(' · '),
-              ),
-              trailing: _canEdit ? const Icon(Icons.chevron_right) : null,
-              onTap: _canEdit ? () => _edit(s) : null,
-            ),
-        ],
-      ),
     );
   }
 }
