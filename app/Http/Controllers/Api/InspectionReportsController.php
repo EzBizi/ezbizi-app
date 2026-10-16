@@ -200,13 +200,19 @@ class InspectionReportsController extends Controller
      */
     public function a1Link(FileStore $files, string $id): Response
     {
-        $org = Organization::query()->where('name', 'A1-Group')->sole();
+        // Found by the archive's own folder, not by organization name: the
+        // organization was renamed (A1-Group → Triplex Group) after the
+        // archive was written, and a name lookup would have 500'd every link.
         $disk = Storage::disk($files->defaultDisk());
-        $base = $files->directoryFor('a1-inspection-reports', $org->id).'/links/inspection-report-'.$id;
 
-        foreach (['pdf' => 'application/pdf', 'html' => 'text/html; charset=utf-8'] as $ext => $type) {
-            if ($disk->exists("{$base}.{$ext}")) {
-                return response($disk->get("{$base}.{$ext}"), 200, [
+        foreach ($disk->directories('a1-inspection-reports') as $orgDir) {
+            foreach (['pdf' => 'application/pdf', 'html' => 'text/html; charset=utf-8'] as $ext => $type) {
+                $path = "{$orgDir}/links/inspection-report-{$id}.{$ext}";
+                if (! $disk->exists($path)) {
+                    continue;
+                }
+
+                return response($disk->get($path), 200, [
                     'Content-Type' => $type,
                     'Content-Disposition' => 'inline; filename="inspection-report-'.$id.'.'.$ext.'"',
                     'Content-Security-Policy' => "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
