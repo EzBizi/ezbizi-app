@@ -561,7 +561,7 @@ class SyncWorkizJobsTest extends TestCase
             $connection->save();
         });
         $gone = $this->stale($tenant, $connection, 'GONE01', 'Submitted', now()->subMonth()->format('Y-m-d 09:00:00'));
-        $kept = $this->stale($tenant, $connection, 'KEPT01', 'Done', now()->subMonth()->format('Y-m-d 10:00:00'));
+        $kept = $this->stale($tenant, $connection, 'KEPT01', 'Submitted', now()->subMonth()->format('Y-m-d 10:00:00'));
         $this->inTenant($tenant['org'], function () use ($gone, $kept) {
             $gone->forceFill(['serial_id' => 100077680])->save();
             $kept->forceFill(['serial_id' => 100077681])->save();
