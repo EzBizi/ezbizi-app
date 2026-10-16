@@ -17,7 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
-        'Reports: the weekly and monthly report adds repair teams, refunds, disputes and returned checks, HQ office expenses, and goal colours.',
+        'Leads: the server now supports filtering leads by charge, phone line, dispatcher and date, correcting a lead’s name, ZIP, classification and dispatcher, re-reading a lead with the AI, and a call timeline. The screens follow.',
       ],
     ),
     VersionRelease(
