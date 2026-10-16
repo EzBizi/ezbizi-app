@@ -53,6 +53,6 @@ class FinancialSourcesTest extends TestCase
         $this->assertSame([], $this->signedInAs($beta['admin'])->getJson('/api/v1/financials/sources')->json('data'));
         $this->signedInAs($beta['admin'])->deleteJson("/api/v1/financials/sources/{$id}")->assertNotFound();
 
-        $as->deleteJson("/api/v1/financials/sources/{$id}")->assertNoContent();
+        $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/financials/sources/{$id}")->assertNoContent();
     }
 }
