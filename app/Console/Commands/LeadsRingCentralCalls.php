@@ -64,6 +64,8 @@ class LeadsRingCentralCalls extends Command
                     fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
 
                 $filed = $calls->file($rows, $log->numberNames(), $company);
+                // New or existing, from evidence rather than the key pressed (2026-10-16).
+                app(\App\Support\Leads\CallTypeCorrections::class)->decide($rows);
                 $withdrawn = $calls->withdrawDuplicates($now->subDays(2));
                 $words = $calls->fillTranscripts();
 

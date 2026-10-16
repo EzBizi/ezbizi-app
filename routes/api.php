@@ -1005,6 +1005,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/follow-up-handled', [LeadsController::class, 'followUpHandled']);
         Route::post('leads/{lead}/reclassify', [LeadsController::class, 'reclassify']);
         Route::get('leads/{lead}/timeline', [LeadsController::class, 'timeline']);
+        Route::patch('leads/{lead}/conversations/{conversation}/caller-type', [LeadsController::class, 'callerType']);
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
