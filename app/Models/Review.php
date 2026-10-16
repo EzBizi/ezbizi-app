@@ -98,7 +98,11 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
         'organization_id', 'company_id', 'franchise_id', 'connection_id',
         'remote_name', 'location_name', 'reviewer_name', 'reviewer_photo_url',
         'rating', 'comment', 'reviewed_at', 'edited_at', 'synced_at',
+        'status', 'customer_id', 'customer_match', 'job_id', 'reported_at', 'report_reason',
     ];
+
+    /** Where somebody working the review has got to (UI queue 101, 2026-10-16). */
+    public const STATUSES = ['cant_locate', 'working', 'awaiting_report', 'done'];
 
     protected function casts(): array
     {
@@ -107,6 +111,7 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
             'reviewed_at' => 'datetime',
             'edited_at'   => 'datetime',
             'synced_at'   => 'datetime',
+            'reported_at' => 'datetime',
         ];
     }
 
@@ -128,6 +133,21 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SocialConnection::class, 'connection_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function job(): BelongsTo
+    {
+        return $this->belongsTo(Job::class);
+    }
+
+    public function notes(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ReviewNote::class)->orderBy('created_at');
     }
 
     /** One, because Google allows one. */

@@ -516,6 +516,7 @@
         "reviews.create",
         "reviews.delete",
         "reviews.edit",
+        "reviews.manage",
         "reviews.publish",
         "reviews.view",
         "roles.create",
