@@ -138,12 +138,11 @@ class IssueReporter {
   ///    than [freezeAfter] to answer means the window's thread was blocked,
   ///    which is what the 10-06 freeze was.
   void startWatchdogs() {
-    var last = DateTime.now();
+    _last = DateTime.now();
+    _life ??= AppLifecycleListener(onStateChange: noteLifecycle);
     _uiWatch ??= Timer.periodic(_tick, (_) {
-      final now = DateTime.now();
-      final stall = uiStall(last, now);
-      last = now;
-      if (stall != null && _resumed) {
+      final stall = checkTick(DateTime.now(), resumed: _resumed);
+      if (stall != null) {
         record(
           'freeze',
           'The app did not respond for ${stall.inMilliseconds} ms',
@@ -153,6 +152,41 @@ class IssueReporter {
     });
 
     _platformWatch ??= Timer.periodic(const Duration(seconds: 5), (_) => _ping());
+  }
+
+  // ── Away is not frozen (2026-10-16) ──────────────────────────────
+  //
+  // The first day of reports was 175 web "freezes" of 3-59 s, 108 of them in
+  // Scheduling, and they were background tabs: Chrome throttles a hidden
+  // tab's timers to about once a minute, the late tick fired the moment the
+  // tab came back, and by then the state read "resumed". Two tabs of one
+  // person reported the same freeze in the same second, which no real freeze
+  // does. So time spent away (hidden, minimized, unfocused) restarts the
+  // clock instead of counting, whatever the state when the tick finally runs.
+  AppLifecycleListener? _life;
+  DateTime _last = DateTime.now();
+  bool _wasAway = false;
+  int _awayEpoch = 0;
+
+  /// The lifecycle feed. Public for the test.
+  void noteLifecycle(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _wasAway = true;
+      _awayEpoch++;
+    }
+  }
+
+  /// One watchdog tick at [now]: the stall to report, or null. Public for the
+  /// test.
+  Duration? checkTick(DateTime now, {required bool resumed}) {
+    if (!resumed || _wasAway) {
+      _last = now;
+      if (resumed) _wasAway = false;
+      return null;
+    }
+    final stall = uiStall(_last, now);
+    _last = now;
+    return stall;
   }
 
   static const Duration _tick = Duration(milliseconds: 500);
@@ -180,10 +214,12 @@ class IssueReporter {
     if (_pingOutstanding || _pingUnsupported) return;
     _pingOutstanding = true;
     final started = DateTime.now();
+    final epoch = _awayEpoch;
     try {
       await _watchdog.invokeMethod<void>('ping');
       final took = DateTime.now().difference(started);
-      if (took >= freezeAfter && _resumed) {
+      // Minimized or hidden while waiting: a slow answer is not a freeze.
+      if (took >= freezeAfter && _resumed && epoch == _awayEpoch) {
         record(
           'freeze',
           'The window did not respond for ${took.inMilliseconds} ms',
@@ -222,6 +258,8 @@ class IssueReporter {
     _uiWatch?.cancel();
     _platformWatch?.cancel();
     _flushTimer = _uiWatch = _platformWatch = null;
+    _life?.dispose();
+    _life = null;
   }
 
   static String _clip(String s, int max) => s.length <= max ? s : s.substring(0, max);
