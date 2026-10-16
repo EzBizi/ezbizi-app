@@ -16,7 +16,7 @@ No user-generated public content, no feed and no public profiles. Everything wri
 
 PERMISSIONS
 The app asks for three permissions, each only at the moment it is needed:
-- Microphone: the first time someone makes or takes a phone call in the app, and used only during that call.
+- Microphone: the first time someone makes or takes a phone call in the app, or starts a safety recording. A safety recording is started by the technician with a tap, only for staff whose employer allows it; it records the visit for the technician's safety and training, continues while the phone is locked (the audio background mode, with iOS's microphone indicator showing), and stops when they tap Stop, leave the job, or after four hours.
 - Notifications: so a job assigned to someone reaches their phone.
 - Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when location is shared: while clocked in, during scheduled hours, or at all times the app is running. It is used for staff safety, SOS, recording arrival at a job, and routing between jobs. Sharing starts only while the app is open; iOS then shows its blue location indicator whenever location is used in the background.
 It does not use contacts, camera, photos or App Tracking Transparency.

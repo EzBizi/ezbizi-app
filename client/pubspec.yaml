@@ -71,6 +71,11 @@ dependencies:
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   battery_plus: ^7.1.1
+  # Field safety recordings (from A1 Tools, 2026-10-16): AAC on the phone,
+  # one-minute files kept in app support until the server has each one.
+  record: ^6.2.1
+  path_provider: ^2.1.5
+  crypto: ^3.0.6
   webview_flutter: ^4.14.1
 
   # A PDF drawn as its pages, for the onboarding contract's PDF view (Jose,

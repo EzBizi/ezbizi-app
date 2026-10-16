@@ -4297,11 +4297,13 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'field',
                 label: 'Field',
-                actions: ['view', 'tracked', 'manage'],
+                // record: makes safety recordings; listen: hears other people's.
+                actions: ['view', 'tracked', 'manage', 'record', 'listen'],
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard'),
                     new TabDefinition('map', 'Map'),
                     new TabDefinition('route', 'Route'),
+                    new TabDefinition('recordings', 'Recordings'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['field'],

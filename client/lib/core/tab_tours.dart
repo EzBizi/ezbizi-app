@@ -531,12 +531,15 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   'field': Tour(
-    version: 1,
+    // 2: safety recordings (UI queue 102).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-field-tabs',
         title: 'Field',
-        body: 'Dashboard, Map, Route and Settings, as your role allows.',
+        body:
+            'Dashboard, Map, Route, Recordings and Settings, as your role '
+            'allows.',
       ),
       TourStep(
         anchor: 'tour-field-sos',
@@ -544,6 +547,14 @@ const Map<String, Tour> tabTours = {
         body:
             'Whether your location is being shared right now. SOS takes two '
             'taps, so it is never sent by accident.',
+      ),
+      TourStep(
+        anchor: 'tour-field-record',
+        since: 2,
+        title: 'Safety recording',
+        body:
+            'On your phone at a job: Start, Pause and Stop. It stops by itself '
+            'when you leave the job or after four hours.',
       ),
       TourStep(
         anchor: 'tour-field-counts',
