@@ -51,6 +51,11 @@ final class ReportDocument
         $screens = $report->version?->screens ?? [];
         $answers = $report->answers ?? [];
 
+        // Only what this inspection asked. A masonry report must not print the
+        // wood-stove, furnace and electric sections as blank findings, nor
+        // count them in "N of M items" — the same conditions the run used.
+        $screens = self::asked($screens, $answers);
+
         // Keyed by id so a photo answer, which holds ids, can find its bytes
         // without a query per picture.
         $photos = $report->attachments->keyBy('id');
@@ -311,6 +316,33 @@ final class ReportDocument
      * @param  list<array<string, mixed>>  $screens
      * @param  array<string, mixed>  $answers
      */
+    /**
+     * The screens and fields this inspection showed, judged by the same
+     * Condition::passes the run used — the printed report and the walk agree.
+     *
+     * @param  list<mixed>  $screens
+     * @param  array<string, mixed>  $answers
+     * @return list<array<string, mixed>>
+     */
+    private static function asked(array $screens, array $answers): array
+    {
+        $out = [];
+
+        foreach ($screens as $screen) {
+            if (! is_array($screen) || ! Condition::passes($screen['visible_if'] ?? null, $answers)) {
+                continue;
+            }
+
+            $screen['fields'] = array_values(array_filter(
+                is_array($screen['fields'] ?? null) ? $screen['fields'] : [],
+                static fn ($field) => is_array($field) && Condition::passes($field['visible_if'] ?? null, $answers),
+            ));
+            $out[] = $screen;
+        }
+
+        return $out;
+    }
+
     private function summary(array $screens, array $answers): string
     {
         $total = 0;
