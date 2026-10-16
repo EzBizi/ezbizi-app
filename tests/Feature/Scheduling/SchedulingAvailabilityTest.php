@@ -1062,6 +1062,31 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * A1 Leads takeover (2026-10-16): the second auto-reply offers ONE open
+     * window, inside the dates the customer asked for when it can, preferring
+     * a day beside booked work, and nothing for a zip nobody serves.
+     */
+    public function test_a_slot_offer_is_one_open_window_for_a_zip(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->located($tenant, '2026-08-03 08:00:00', 32.7870, -96.7990);
+        $this->located($tenant, '2026-10-12 08:00:00', 32.7900, -96.8010);
+        app(TenantContext::class)->set($tenant['org']);
+        $offer = app(\App\Support\Scheduling\SlotOffer::class);
+        $from = CarbonImmutable::parse('2026-10-01');
+
+        $any = $offer->for('75201', $from);
+        $this->assertSame(['2026-10-12', '07:00', true], [$any['date'], $any['start_time'], $any['beside_booked_work']]);
+        $this->assertSame('Mon Oct 12, 7–11 AM', $any['label']);
+
+        $asked = $offer->for('75201-1234', $from, ['start' => '2026-10-05', 'end' => '2026-10-06']);
+        $this->assertSame(['2026-10-05', '07:00', false, true], [$asked['date'], $asked['start_time'], $asked['beside_booked_work'], $asked['in_requested_window']]);
+
+        $this->assertNull($offer->for('99999', $from));
+    }
+
+    /**
      * Grok's review of the live list (2026-10-14): a reschedule must be worth
      * the phone call. Each pair below would be suggested without one rule;
      * only the Houston pair passes them all.
