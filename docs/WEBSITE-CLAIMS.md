@@ -2889,3 +2889,16 @@ Checked against today's commits, no edit needed:
 
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0363.
+
+## 2026-10-17: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0444 at `f13ac816`. Main gained only
+`4d3e66ed` (geocode coordinates moved off the lead payload; Photon already listed)
+and a Field test — no sentence touched. Live = repo except `/privacy/` and
+`sitemap.xml`, both still exactly `c1dfbf1a` (Last-Modified 10-16 18:45 UTC): the
+stale deploy recorded yesterday, `6d82a948` rides 0.0.0446. `AppAsk::answer`
+callers still two. Desk silent on `0131`; not re-asked, its counts still stand.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
+ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
+`200`; Apple `resultCount` 1, 0.0.0363.
