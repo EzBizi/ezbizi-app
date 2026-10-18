@@ -2902,3 +2902,14 @@ callers still two. Desk silent on `0131`; not re-asked, its counts still stand.
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
 ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
 `200`; Apple `resultCount` 1, 0.0.0363.
+
+## 2026-10-18: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` still 0.0.0444 at `f13ac816`; main gained
+nothing since `1cccfb13`. Live = repo except `/privacy/` and `sitemap.xml`, both
+still exactly `c1dfbf1a` (Last-Modified 10-16 18:45 UTC) — the same stale deploy;
+`6d82a948` rides 0.0.0446. Desk still silent on `0131`; not re-asked.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
+ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
+`200`; Apple `resultCount` 1, now 0.0.0443 (the download card names no version).
