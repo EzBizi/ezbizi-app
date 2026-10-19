@@ -84,6 +84,22 @@ void main() {
     expect(find.text('Everdoors · Connecticut'), findsOneWidget);
   });
 
+  // Jose, 2026-10-19: at organization level the list says which company each
+  // customer belongs to; with one company selected the column would repeat it.
+  testWidgets('a Company column only in the organization view', (tester) async {
+    await _pump(tester, customers: const [_alice]);
+    expect(find.text('Company'), findsOneWidget);
+    expect(find.text('Everdoors'), findsOneWidget);
+
+    await _pump(tester, customers: const [_alice], scope: const {
+      'type': 'franchise',
+      'id': 'fr-1',
+      'label': 'Connecticut',
+      'path': ['Everdoors', 'Connecticut'],
+    });
+    expect(find.text('Company'), findsNothing);
+  });
+
   testWidgets('a server that sends no company still reads as it always did', (
     tester,
   ) async {

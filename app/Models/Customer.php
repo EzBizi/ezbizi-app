@@ -221,6 +221,19 @@ class Customer extends Model implements HoldsPersonalData
         return $this->belongsTo(Franchise::class, 'owning_franchise_id');
     }
 
+    /**
+     * `owning_company` on an export (Jose, 2026-10-19: at organization level the
+     * list says which company a customer belongs to). The company of the
+     * owning franchise; not `company`, which would read as the customer's own.
+     *
+     * ponytail: two lazy loads per exported row. Add an eager load to the
+     * export query if a large organization's export gets slow.
+     */
+    public function getOwningCompanyAttribute(): ?string
+    {
+        return $this->owningFranchise?->company?->name;
+    }
+
     public function jobs(): HasMany
     {
         return $this->hasMany(Job::class);

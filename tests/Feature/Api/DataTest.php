@@ -121,6 +121,19 @@ class DataTest extends TestCase
         $this->assertStringNotContainsString('Beta Person', $body);
     }
 
+    public function test_the_customer_export_names_the_owning_company(): void
+    {
+        $this->makeCustomer($this->alpha, ['name' => 'Alpha Person']);
+        $company = 'Co'; // provision()'s companyName
+
+        [$header, $row] = array_map('str_getcsv', array_slice(explode("
+", trim(
+            ltrim($this->as($this->alpha)->get('/api/v1/exports/customers')->assertOk()->streamedContent(), "ï»¿")
+        )), 0, 2));
+
+        $this->assertSame($company, $row[array_search('owning_company', $header, true)]);
+    }
+
     public function test_a_formula_in_a_name_is_defused(): void
     {
         $this->makeCustomer($this->alpha, ['name' => '=HYPERLINK("http://evil","Click")']);

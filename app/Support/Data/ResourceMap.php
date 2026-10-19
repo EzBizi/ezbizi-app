@@ -66,6 +66,9 @@ final class ResourceMap
                     'number', 'name', 'email', 'phone',
                     'address_line1', 'address_line2', 'city', 'state', 'postal_code',
                     'notes', 'is_active', 'created_at',
+                    // Which company the owning franchise belongs to (Jose,
+                    // 2026-10-19). Read-only: not in `import` below.
+                    'owning_company',
                 ],
                 'import' => [
                     'permission' => 'customers.create',

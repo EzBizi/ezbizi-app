@@ -738,6 +738,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
             overflow: TextOverflow.ellipsis,
           ),
         ),
+      // Which company each row belongs to, when the view is the whole
+      // organization (Jose, 2026-10-19). One company selected: no column.
+      if (widget.session.me!.scope.type == 'organization')
+        TableColumn(
+          'Company',
+          flex: 2,
+          cell: (_, c) => Text(
+            '${(c['owning_franchise'] as Map?)?['company']?['name'] ?? ''}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       TableColumn(
         'Name',
         flex: 3,
