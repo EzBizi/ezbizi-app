@@ -3224,12 +3224,15 @@ class ActionRunner
     {
         // "Book online now: {{booking_link}}" is a line, not a message: with no
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
-        if (preg_match('/\{\{\s*booking_link\s*\}\}/i', $template)
-            && blank($subject?->getAttribute('booking_link'))) {
-            $template = implode("\n", array_filter(
-                explode("\n", $template),
-                fn (string $line) => ! preg_match('/\{\{\s*booking_link\s*\}\}/i', $line),
-            ));
+        // The same for an offered slot with no open window (2026-10-19).
+        foreach (['booking_link', 'offered_slot'] as $field) {
+            if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
+                && blank($subject?->getAttribute($field))) {
+                $template = implode("\n", array_filter(
+                    explode("\n", $template),
+                    fn (string $line) => ! preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $line),
+                ));
+            }
         }
 
         // Only the fields EzBizi composes itself keep their Markdown; anything
