@@ -476,6 +476,16 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials/Bills': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-bills',
+        title: 'Bills',
+        body: "Read a photo of a period's bills into lines. It saves once they add up to the photo's total.",
+      ),
+    ],
+  ),
   'financials/Settings': Tour(
     version: 1,
     steps: [

@@ -6,6 +6,7 @@ import '../core/session.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
+import 'financials/financial_bills.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
@@ -52,6 +53,12 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Bases',
           Icons.table_chart_outlined,
           FinancialBases(api: widget.api, session: widget.session),
+        ),
+      if (_may('bills'))
+        (
+          'Bills',
+          Icons.receipt_long_outlined,
+          FinancialBillsTab(api: widget.api, me: widget.session.me!),
         ),
       if (_may('settings'))
         (
