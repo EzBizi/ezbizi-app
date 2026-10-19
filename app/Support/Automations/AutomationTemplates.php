@@ -351,6 +351,17 @@ final class AutomationTemplates
                 ],
             ],
             [
+                'key' => 'business-profile-daily-digest',
+                'name' => 'Daily Business Profile summary',
+                'description' => 'Every morning: new reviews, low-star ones, reviews Google removed, and '
+                    .'what changed on your listings. Nothing on a quiet day.',
+                'trigger_key' => 'business_location.daily_digest',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'Business Profile, the last 24 hours', 'details' => '{{summary}}'],
+                ],
+            ],
+            [
                 'key' => 'review-removed',
                 'name' => 'Say when Google removes a review',
                 'description' => 'Google stopped showing a review, confirmed three times, two hours apart.',

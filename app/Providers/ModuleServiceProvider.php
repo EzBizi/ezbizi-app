@@ -3143,6 +3143,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'changes it — so this fires when a person decides, and never when '
                             .'Google is read.',
                     ),
+                    new TriggerDefinition(
+                        key: 'business_location.daily_digest',
+                        label: 'Daily Business Profile summary',
+                        description: 'Once a day at 7 AM Eastern, when anything happened in the last 24 hours: '
+                            .'new reviews and how many had 2 stars or fewer, reviews Google removed, and '
+                            .'every listing change on Google. Not raised on a quiet day. The text is in '
+                            .'{{summary}}.',
+                    ),
                 ],
             ),
 
