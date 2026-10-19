@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Settings: Activity in a company or branch view now lists what happened there. Administrators also see the organization\'s own activity, including everything recorded before today.',
         'Leads: a more compact header. The list\'s extra filters fold behind a Filters button, and a lead\'s number, tags and source sit on one line.',
+        'Reports: Performance, Scoring, Marketing, Thumbtack and Meta show only the company or branch you are looking at. RingCentral calls belong to the company that owns the phone account.',
+        'Reports: a call recording can be downloaded from Performance and Scoring.',
       ],
     ),
     VersionRelease(
