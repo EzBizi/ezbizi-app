@@ -2081,6 +2081,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             ? Text.rich(
                                 TextSpan(
                                   children: [
+                                    // Which website, first (Jose, 2026-10-19:
+                                    // "Forms not showing which website it
+                                    // came from").
+                                    if ((lead['site'] as String?)?.isNotEmpty ==
+                                        true)
+                                      TextSpan(text: '${lead['site']} · '),
                                     if (mine)
                                       TextSpan(
                                         text: 'You: ',

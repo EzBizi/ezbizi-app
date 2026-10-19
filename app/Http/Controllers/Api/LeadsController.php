@@ -1902,6 +1902,8 @@ class LeadsController extends Controller
                 : $lead->kind() !== Lead::KIND_LS_CALL && ! in_array($lead->source, [Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS], true) && ($lead->read_by_me_at === null
                     || ($lead->last_contact_at ?? $lead->received_at) > Carbon::parse($lead->read_by_me_at)),
             'source_status' => $lead->source_status,
+            // The website a chat, form or booking came from (Jose, 2026-10-19).
+            'site' => $lead->site_host,
             'charge_status' => $lead->charge_status,
             'received_at' => $lead->received_at?->toIso8601String(),
 

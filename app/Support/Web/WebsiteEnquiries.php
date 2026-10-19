@@ -519,6 +519,8 @@ final class WebsiteEnquiries
             'marketing_consent_at' => $consented ? now() : null,
             'marketing_consent_text' => $consented ? mb_substr($consentText, 0, 500) : null,
             'summary' => $site->host,
+            // Its own column: Grok's one-line read replaces `summary` (2026-10-19).
+            'site_host' => $site->host,
             'lead_type' => $visitor['lead_type'] ?? null,
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
