@@ -113,6 +113,27 @@ void main() {
     );
   });
 
+  testWidgets('Leads settings are in the hub for whoever manages Leads', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      modules: [_module('leads', 'Leads')],
+      permissions: ['organizations.settings.view', 'leads.manage'],
+    );
+
+    expect(find.byKey(const ValueKey('settings-hub-item-leads')), findsOne);
+    await tester.tap(find.byKey(const ValueKey('settings-hub-item-leads')));
+    await tester.pumpAndSettle();
+    final leads = tester.widget<SettingsScreen>(
+      find.descendant(
+        of: find.byKey(const ValueKey('settings-hub-leads')),
+        matching: find.byType(SettingsScreen),
+      ),
+    );
+    expect(leads.onlyGroup, 'leads');
+  });
+
   testWidgets('narrow, the index is a Jump to chip row', (tester) async {
     await _pump(
       tester,

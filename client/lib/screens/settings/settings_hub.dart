@@ -81,6 +81,15 @@ class _SettingsHubState extends State<SettingsHub> {
             onlyGroup: 'work_hours',
           ),
         ),
+      // Leads' settings: lines, markets, queues, Pause all Google calls,
+      // replies and booking (Leads, 2026-10-19).
+      if (reach('leads') && me.can('leads.manage'))
+        (
+          'leads',
+          label('leads', 'Leads'),
+          Icons.call_received,
+          () => SettingsScreen(api: api, session: session, onlyGroup: 'leads'),
+        ),
       if (reach('phone') && me.can('phone.settings.view'))
         (
           'phone',
