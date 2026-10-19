@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0451',
+      date: '19 Oct 2026',
+      items: [
+        'Settings: Activity in a company or branch view now lists what happened there. Administrators also see the organization\'s own activity, including everything recorded before today.',
+        'Leads: a more compact header. The list\'s extra filters fold behind a Filters button, and a lead\'s number, tags and source sit on one line.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0450',
       date: '19 Oct 2026',
       items: [
