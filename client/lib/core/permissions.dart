@@ -332,7 +332,16 @@ class RoleSummary {
     this.lockedReason,
     this.invitableRoles,
     this.hiddenOnLeads = false,
+    this.people,
   });
+
+  /// Some of the people who hold it, for "Who has it" (UI queue 111).
+  ///
+  /// Null when the server did not send the field, which is a different
+  /// statement from an empty list: an older server says nothing about who, and
+  /// the screen then shows [userCount] alone rather than an empty row of faces.
+  /// The list may be shorter than [userCount]; the rest are shown as "+N".
+  final List<({String id, String name})>? people;
 
   /// Whether its holders are left off "X is viewing this lead" - marketing,
   /// people inspecting rather than answering (Mia, 2026-10-02).
@@ -405,6 +414,10 @@ class RoleSummary {
         json['editable'] as bool? ??
         json['is_administrator'] != true,
     lockedReason: json['locked_reason'] as String?,
+    people: (json['people'] as List<dynamic>?)
+        ?.whereType<Map<String, dynamic>>()
+        .map((p) => (id: '${p['id']}', name: p['name'] as String? ?? ''))
+        .toList(growable: false),
   );
 
   static List<RoleSummary> listFrom(dynamic data) => data is List
