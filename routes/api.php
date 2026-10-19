@@ -1518,6 +1518,7 @@ Route::prefix('v1')
             Route::get('field/map/tiles', [FieldController::class, 'tiles']);
             Route::get('field/map/attribution', [FieldController::class, 'attribution']);
             Route::get('field/places', [FieldController::class, 'places']);
+            Route::get('field/closest-office', [FieldController::class, 'closestOffice'])->middleware('throttle:60,1');
             // Jobs on the map and a dispatcher's ETA also need jobs.view (checked inside).
             Route::get('field/jobs', [FieldController::class, 'jobs']);
             Route::get('field/eta', [FieldController::class, 'eta']);
