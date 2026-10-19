@@ -1278,6 +1278,8 @@ void main() {
               {
                 'id': 'place-1',
                 'title': 'Brightside Home – Springfield',
+                'label': 'Brightside Home · Springfield, IL',
+                'branch': 'Springfield',
                 'address': '14 Elm St, Springfield',
                 'connection_id': 'conn-g',
                 'state': 'verified',
@@ -1299,6 +1301,9 @@ void main() {
       await _openCompose(tester);
 
       expect(find.textContaining('Riverton · suspended'), findsOneWidget);
+      // Each listing says which it is, under its branch (Jose, 2026-10-19).
+      expect(find.text('Brightside Home · Springfield, IL'), findsOneWidget);
+      expect(find.text('Springfield'), findsOneWidget);
       expect(find.byKey(const ValueKey('social-place-cta')), findsNothing);
 
       final words = find.widgetWithText(TextField, 'What should go out?');
