@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 110 · Settings › the whole tab reviewed (Organization, Preferences, Integrations + every service page, Roles, Activity, API activity) — **sent 2026-10-19** (`docs/previews/settings-review-layouts.html`)
+### 110 · Settings › the whole tab reviewed (Organization, Preferences, Integrations + every service page, Roles, Activity, API activity) — **sent 2026-10-19 — Jose: "Good, go ahead" (1 and 4)** (`docs/previews/settings-review-layouts.html`)
 
 Jose 2026-10-19: "review the Entire Settings tab". **1** (recommended) one header/states/breakpoint/disabled-with-reason pattern for every tab; Settings sub tab renamed Preferences; Integrations lists every service (Twilio, WhatsApp, sending server, one Facebook);
 each service page = what it's for, Connected rows (sync, error, Edit, Disconnect with confirm), Connect with plain-word fields; Activity rows as sentences that open. **2** Integrations as list + detail. **3** fix only what's broken. Phone **4** (recommended) / **5** / **6**.
