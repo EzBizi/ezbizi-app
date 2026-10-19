@@ -30,6 +30,12 @@ const googlePlayUrl =
 /// QR code opens, so a phone's camera lands somewhere with the right button.
 const downloadUrl = 'https://www.ezbizi.com/download';
 
+/// The published Windows installer and the Mac App Store listing, both live
+/// (measured 2026-10-19: the installer the download page links, and the same
+/// App Store app id, whose listing names macOS).
+const windowsInstallerUrl = 'https://www.ezbizi.com/download/EzBizi-setup.exe';
+const macAppStoreUrl = 'https://apps.apple.com/app/id6805979795?platform=mac';
+
 const _used = 'apps.phone_used';
 const _dismissed = 'apps.phone_card_dismissed';
 
@@ -217,9 +223,12 @@ class GetTheAppsPanel extends StatelessWidget {
                   const SizedBox(height: 10),
                   FilledButton(
                     key: const Key('get-the-apps-computer'),
-                    onPressed: () => _open(downloadUrl),
+                    onPressed: () =>
+                        _open(mac ? macAppStoreUrl : windowsInstallerUrl),
                     child: Text(
-                      mac ? 'Get it for Mac' : 'Download for Windows',
+                      mac
+                          ? 'Get it on the Mac App Store'
+                          : 'Download for Windows',
                     ),
                   ),
                 ],
@@ -227,6 +236,75 @@ class GetTheAppsPanel extends StatelessWidget {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// The sign-in page's Get the app (UI queue 106, design 1 and 4; Jose,
+/// 2026-10-19: "we should also have the offer to download the app, desktop -
+/// android - ios"). The web only. A phone's browser sees its own store; a
+/// computer sees all four, its own platform first.
+class GetTheAppRow extends StatelessWidget {
+  const GetTheAppRow({super.key, this.web = kIsWeb});
+
+  /// For tests, which do not run as the web.
+  final bool web;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!web) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final platform = defaultTargetPlatform;
+
+    final windows = (
+      'windows',
+      'Windows',
+      Icons.desktop_windows_outlined,
+      windowsInstallerUrl,
+    );
+    final mac = ('mac', 'Mac App Store', Icons.laptop_mac, macAppStoreUrl);
+    final android = ('android', 'Google Play', Icons.shop, googlePlayUrl);
+    final ios = ('ios', 'App Store', Icons.apple, appStoreUrl);
+
+    final buttons = switch (platform) {
+      TargetPlatform.android => [android],
+      TargetPlatform.iOS => [ios],
+      TargetPlatform.macOS => [mac, windows, android, ios],
+      _ => [windows, mac, android, ios],
+    };
+
+    return Column(
+      key: const Key('get-the-app-row'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Get the app',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (i, (key, label, icon, url)) in buttons.indexed)
+              i == 0
+                  ? FilledButton.tonalIcon(
+                      key: Key('get-the-app-$key'),
+                      onPressed: () => _open(url),
+                      icon: Icon(icon, size: 18),
+                      label: Text(label),
+                    )
+                  : OutlinedButton.icon(
+                      key: Key('get-the-app-$key'),
+                      onPressed: () => _open(url),
+                      icon: Icon(icon, size: 18),
+                      label: Text(label),
+                    ),
+          ],
+        ),
       ],
     );
   }
