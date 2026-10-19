@@ -112,7 +112,10 @@ final class RingCentralLeadCalls
         $settings = app(\App\Support\Settings\SettingsResolver::class);
         $markets = array_change_key_case((array) $settings->get('leads.line_markets', $org), CASE_UPPER);
         $existingQueue = (string) $settings->get('leads.existing_client_queue', $org) ?: null;
-        $franchises = Franchise::query()->where('company_id', $defaultCompanyId)->pluck('id', 'name');
+        // The map holds a branch id (Settings' place picker) or, for values
+        // migrated before it existed, a branch name: both resolve.
+        $franchises = Franchise::query()->where('company_id', $defaultCompanyId)->get(['id', 'name'])
+            ->flatMap(fn ($f) => [$f->name => $f->id, (string) $f->id => $f->id]);
 
         $filed = 0;
         foreach ($calls as $i => $call) {

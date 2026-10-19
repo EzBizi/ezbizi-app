@@ -63,7 +63,10 @@ final class WebsiteEnquiries
     {
         [$plain, $hash] = WebChat::mintToken();
 
-        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_CHAT, 'chat_'.Str::uuid()->toString(), $visitor);
+        // A chat joins only an earlier CHAT: its replies go back through the
+        // chat, which a form's lead has no way to do.
+        $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_CHAT])
+            ?? $this->lead($site, Lead::SOURCE_WEBSITE_CHAT, 'chat_'.Str::uuid()->toString(), $visitor);
 
         $chat = new WebChat([
             'site_id' => $site->getKey(),
@@ -360,7 +363,7 @@ final class WebsiteEnquiries
         // The same phone sending a form again within a day joins its earlier
         // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
         // twice, 6 minutes apart, and showed as two leads - "yes, it should").
-        $lead = self::recentForm($visitor['phone'] ?? null)
+        $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
         $lines = self::condensed($fields, $visitor);
@@ -399,7 +402,8 @@ final class WebsiteEnquiries
         $remoteId = 'booking_'.Str::uuid()->toString();
         // From the lead's own booking link (Jose, 2026-10-13): the request joins
         // that lead's thread rather than starting a second lead.
-        $lead = $existing ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
+        $lead = $existing ?? self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
+            ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
         $visitor['name'] = ($visitor['name'] ?? '') !== '' ? $visitor['name'] : $lead->contact_name;
         $visitor['phone'] = ($visitor['phone'] ?? '') !== '' ? $visitor['phone'] : $lead->phone;
 
@@ -446,18 +450,31 @@ final class WebsiteEnquiries
      *
      * @param  array{name?: ?string, email?: ?string, phone?: ?string, page_url?: ?string}  $visitor
      */
-    /** This phone's form lead from the last 24 hours, in this tenant, or null. */
-    private static function recentForm(?string $phone): ?Lead
+    /**
+     * The same person's website lead from the last 24 hours, in the site's own
+     * company: by phone, or by email when they gave no phone (Jose, 2026-10-19:
+     * a repeat form, Bad Rating, chat or booking "joins the earlier lead's
+     * thread"). The message then lands there, and LeadThread reopens it.
+     *
+     * @param  list<string>  $sources
+     */
+    public static function recentWebLead(WebSite $site, array $visitor, array $sources): ?Lead
     {
-        $digits = Lead::digits((string) Lead::e164($phone));
-        if ($digits === null || strlen($digits) < 10) {
+        $digits = Lead::digits((string) Lead::e164($visitor['phone'] ?? null));
+        $email = mb_strtolower(trim((string) ($visitor['email'] ?? '')));
+        $q = Lead::query()->whereIn('source', $sources)
+            ->where('company_id', $site->company_id)
+            ->where(fn ($w) => $w->where('last_contact_at', '>=', now()->subDay())->orWhere('received_at', '>=', now()->subDay()));
+
+        if ($digits !== null && strlen($digits) >= 10) {
+            $q->where('phone_digits', 'like', '%'.substr($digits, -10));
+        } elseif ($email !== '' && str_contains($email, '@')) {
+            $q->whereRaw('LOWER(email) = ?', [$email]);
+        } else {
             return null;
         }
 
-        return Lead::query()->where('source', Lead::SOURCE_WEBSITE_FORM)
-            ->where('phone_digits', 'like', '%'.substr($digits, -10))
-            ->where('received_at', '>=', now()->subDay())
-            ->latest('received_at')->first();
+        return $q->latest('received_at')->first();
     }
 
     private function lead(WebSite $site, string $source, string $remoteId, array $visitor, bool $looksLikeSpam = false): Lead

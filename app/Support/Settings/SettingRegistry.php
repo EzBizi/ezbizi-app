@@ -1192,8 +1192,8 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'leads.calls_company',
                 label: 'Company for calls to your lines',
-                type: SettingDefinition::TYPE_STRING,
-                default: '',
+                type: SettingDefinition::TYPE_COMPANY,
+                default: null,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
                 help: 'The company a call to one of your phone lines is filed under when the line '
@@ -1203,13 +1203,12 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'leads.line_markets',
                 label: 'Phone lines by market',
-                type: SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_FRANCHISE_MAP,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
-                help: 'The code your line names start with, and the branch its calls go to, e.g. '
-                    .'{"NJ": "New Jersey", "CHI": "Illinois"} for a line called "NJ - GMB". A line '
-                    .'whose code is not here stays at company level.',
+                help: 'The code your line names start with, and the branch its calls go to: NJ for a '
+                    .'line called "NJ - GMB". A line whose code is not here stays at company level.',
             ),
             new SettingDefinition(
                 key: 'leads.new_client_queue',

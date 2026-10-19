@@ -86,7 +86,7 @@ class LeadsRingCentralCalls extends Command
         if ($connection?->scope_type === SocialConnection::SCOPE_COMPANY) {
             return (string) $connection->scope_id;
         }
-        $chosen = (string) app(\App\Support\Settings\SettingsResolver::class)->get('leads.calls_company', $organization);
+        $chosen = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('leads.calls_company', $organization) ?? '');
         if ($chosen !== '' && Company::query()->whereKey($chosen)->exists()) {
             return $chosen;
         }
