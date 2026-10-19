@@ -169,7 +169,7 @@ class AuditEventsApiTest extends TestCase
         $this->assertSame(['dana.done'], array_keys($this->field("?actor_id={$dana}", 'action')));
     }
 
-    public function test_the_module_filter_takes_a_registry_key_and_matches_its_prefix_only(): void
+    public function test_the_module_filter_takes_one_prefix_word_and_matches_it_only(): void
     {
         $tenant = $this->provisionTenant();
         $this->event($tenant, 'time_clock.punched', 'organization', $tenant['org']->id);
@@ -180,7 +180,10 @@ class AuditEventsApiTest extends TestCase
         $this->signedInAs($this->userWithRole($tenant, 'Auditor', ['audit.view']));
 
         $this->assertSame(['time_clock.punched'], array_keys($this->field('?module=time_clock', 'action')));
-        $this->getJson('/api/v1/audit-events?module=not_a_module')->assertUnprocessable()->assertJsonValidationErrors('module');
+        // The prefix the logger writes, not the registry key: `lead`, not `leads`.
+        $this->assertSame(['inspection.done'], array_keys($this->field('?module=inspection', 'action')));
+        $this->getJson('/api/v1/audit-events?module='.urlencode('time%'))->assertUnprocessable()->assertJsonValidationErrors('module');
+        $this->getJson('/api/v1/audit-events?module=Time_Clock')->assertUnprocessable()->assertJsonValidationErrors('module');
     }
 
     public function test_the_search_matches_the_target_and_its_wildcards_literally(): void

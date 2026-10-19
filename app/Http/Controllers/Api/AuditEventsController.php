@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Models\AuditEvent;
 use App\Models\Company;
 use App\Models\Franchise;
-use App\Support\Modules\ModuleRegistry;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -38,11 +37,13 @@ class AuditEventsController
             'source' => ['nullable', 'in:user,staff,system'],
             'before' => ['nullable', 'date'],
             // The redesigned Activity tab's Who / module / search filters (UI
-            // queue 111). `module` is the action's prefix, and only a key the
-            // module registry declares is accepted, so nothing a caller types
-            // reaches the LIKE but a name the software itself defines.
+            // queue 111). `module` is the action's PREFIX as AuditLogger
+            // writes it (`lead.`, `job.`, `time_clock.`), which is not the
+            // registry's key (`leads`, `jobs`): checked against the registry,
+            // most modules found nothing. So one lowercase word, escaped, and
+            // never a pattern: nothing a caller types reaches the LIKE as one.
             'actor_id' => ['nullable', 'string', 'max:64'],
-            'module'   => ['nullable', 'string', Rule::in(array_keys(app(ModuleRegistry::class)->all()))],
+            'module'   => ['nullable', 'string', 'regex:/^[a-z][a-z_]{0,39}$/'],
             'q'        => ['nullable', 'string', 'max:100'],
         ]);
 
