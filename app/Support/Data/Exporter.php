@@ -268,7 +268,7 @@ class Exporter
 
     private function scoped(array $definition, ?array $reach): Builder
     {
-        $query = $definition['model']::query();
+        $query = $definition['model']::query()->with($definition['with'] ?? []);
 
         return $reach === null
             ? $query

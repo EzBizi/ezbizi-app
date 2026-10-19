@@ -71,6 +71,41 @@ void main() {
     expect(paths.any((p) => p == 'DELETE /api/v1/jobs/j-1'), isTrue);
   });
 
+  // Jose, 2026-10-19: at organization level each job says its company.
+  testWidgets('at organization level a Company column names each company', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      jobs: [
+        {..._crown, 'company': {'id': 'co-1', 'name': 'A-1 Chimney'}},
+      ],
+    );
+
+    expect(find.text('Company'), findsOneWidget);
+    expect(find.text('A-1 Chimney'), findsOneWidget);
+  });
+
+  testWidgets('with one company selected there is no Company column', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      jobs: [
+        {..._crown, 'company': {'id': 'co-1', 'name': 'A-1 Chimney'}},
+      ],
+      scope: {
+        'type': 'company',
+        'id': 'co-1',
+        'label': 'A-1 Chimney',
+        'path': ['Everdoors', 'A-1 Chimney'],
+      },
+    );
+
+    expect(find.text('Company'), findsNothing);
+    expect(find.text('Crown inspection'), findsOneWidget, reason: 'the control');
+  });
+
   testWidgets('a Workiz job shows its Workiz number beside ours, list and panel', (
     tester,
   ) async {
@@ -263,6 +298,7 @@ Future<void> _pump(
   List<Map<String, dynamic>> jobs = const [],
   http.Response? Function(http.Request request)? onRequest,
   Size size = const Size(1280, 900),
+  Map<String, dynamic>? scope,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -277,7 +313,11 @@ Future<void> _pump(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': permissions},
+          'data': {
+            ..._me,
+            'permissions': permissions,
+            'scope': ?scope,
+          },
         });
       }
 

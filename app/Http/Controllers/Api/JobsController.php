@@ -210,7 +210,7 @@ class JobsController extends Controller
             // every time with a UTC offset. `assignedRole` because the base
             // payload carries the role column, `serviceArea` the area column.
             ->with([
-                'franchise:id,name,timezone',
+                'franchise:id,name,timezone,company_id', 'franchise.company:id,name',
                 'customer:id,name,number,owning_franchise_id',
                 'assignedRole:id,name',
                 'serviceArea',
@@ -693,7 +693,7 @@ class JobsController extends Controller
         // ran on every list row, for a panel nobody had opened (UI/UX measured
         // it, 2026-09-24; JobListQueryCountTest pins it).
         $job->loadMissing([
-            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id',
+            'franchise:id,name,timezone,company_id', 'franchise.company:id,name', 'customer:id,name,number,owning_franchise_id',
             'assignedRole:id,name', 'serviceArea',
         ]);
 
@@ -712,6 +712,12 @@ class JobsController extends Controller
             'franchise' => [
                 'id'   => $job->franchise_id,
                 'name' => $job->franchise?->name,
+            ],
+            // Through the franchise: the list's Company column at organization
+            // level (Jose, 2026-10-19).
+            'company' => [
+                'id'   => $job->franchise?->company_id,
+                'name' => $job->franchise?->company?->name,
             ],
             'customer' => [
                 'id'     => $job->customer_id,

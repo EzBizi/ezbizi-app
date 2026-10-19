@@ -137,6 +137,12 @@ class Job extends Model implements StatesRetention
     }
 
     /** The Workiz mirror row this job was projected from, if any -- where its money lives. */
+    /** The company the job's franchise belongs to, by name: the export's `company`. */
+    public function getCompanyAttribute(): ?string
+    {
+        return $this->franchise?->company?->name;
+    }
+
     public function workizJob(): HasOne
     {
         return $this->hasOne(WorkizJob::class);

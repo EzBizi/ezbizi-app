@@ -987,6 +987,17 @@ class _JobsScreenState extends State<JobsScreen> {
         flex: 3,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
+      // Which company, only when looking at the whole organization (Jose,
+      // 2026-10-19); one company selected already says it.
+      if (widget.session.me?.scope.type == 'organization')
+        TableColumn(
+          'Company',
+          flex: 2,
+          cell: (_, job) => Text(
+            '${(job['company'] as Map?)?['name'] ?? '—'}',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       // Franchise and area in one column (queue 25): "Illinois · Chicago".
       TableColumn(
         'Where',

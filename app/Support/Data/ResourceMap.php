@@ -119,7 +119,11 @@ final class ResourceMap
                     'number', 'title', 'description', 'status',
                     'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
                     'created_at',
+                    // Job::company, its franchise's company (Jose, 2026-10-19).
+                    'company',
                 ],
+                // Loaded once per chunk, so `company` costs no query per row.
+                'with'       => ['franchise:id,company_id', 'franchise.company:id,name'],
                 // Export-only, on purpose. A job has to land on a real customer
                 // and a real franchise, and a CSV of names cannot say WHICH
                 // "J. Smith" — importing them means guessing, and a wrong guess
