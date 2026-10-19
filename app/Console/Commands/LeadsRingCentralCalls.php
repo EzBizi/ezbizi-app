@@ -63,6 +63,17 @@ class LeadsRingCentralCalls extends Command
                 // Inbound and outbound (Jose, 2026-10-16: "all calls should show up").
                 $rows = array_values(array_filter($log->forPeriod($start, $now, outbound: true),
                     fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
+                // Live calls, which the call log shows as "Accepted": In progress,
+                // re-read when they end. No list, no filing this run - guessing
+                // would tag live calls Missed and alert on them.
+                try {
+                    $live = $log->activeCallIds();
+                } catch (\RuntimeException $e) {
+                    $this->warn("{$organization->name}: {$e->getMessage()} Skipped this run.");
+
+                    return;
+                }
+                $rows = array_map(fn (array $c) => $c + ['live' => isset($live[(string) $c['id']])], $rows);
 
                 $filed = $calls->file($rows, $log->numberNames(), $company);
                 // New or existing, from evidence rather than the key pressed (2026-10-16).

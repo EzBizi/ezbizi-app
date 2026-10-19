@@ -484,6 +484,27 @@ final class RingCentralCallLog
      *
      * @return array<string, string>
      */
+    /**
+     * The calls going on right now, by the same id the call log uses.
+     *
+     * The call log never says "In Progress": a live call is listed there as
+     * "Accepted" with no answered leg yet, so it read as missed (Jose,
+     * 2026-10-19, +1 732-275-7027 at 1:05 PM). Only active-calls says so -
+     * measured that day: its ids are the call log's.
+     *
+     * @return array<string, true>
+     */
+    public function activeCallIds(): array
+    {
+        $response = Http::withToken($this->token())->acceptJson()
+            ->get($this->server().'/restapi/v1.0/account/~/active-calls', ['view' => 'Simple', 'perPage' => 1000]);
+        if ($response->failed()) {
+            throw new RuntimeException('RingCentral did not list the calls in progress ('.$response->status().').');
+        }
+
+        return collect($response->json('records') ?? [])->pluck('id')->filter()->mapWithKeys(fn ($id) => [(string) $id => true])->all();
+    }
+
     public function numberNames(): array
     {
         if (is_array($cached = Cache::get($this->namesKey()))) {

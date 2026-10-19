@@ -315,6 +315,42 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(1, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->count());
     }
 
+    /**
+     * Jose, 2026-10-19 ("the in progress does not seem to be working still"):
+     * RingCentral's call log lists a live call as "Accepted", queue reached,
+     * nobody answered yet - never "In Progress". Only active-calls says it is
+     * live, and the command marks it so.
+     */
+    public function test_a_call_on_the_active_list_is_in_progress_whatever_the_log_says(): void
+    {
+        $t = $this->setUpTenant();
+        $asLogged = ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted'];
+
+        $this->inTenant($t['org'], function () use ($t, $asLogged) {
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('97', '+17322757027', now()->subMinutes(3)->toIso8601String(), extra: $asLogged + ['live' => true]),
+            ], self::LINES, $t['company']->id);
+
+            $this->assertSame(RingCentralLeadCalls::IN_PROGRESS, Lead::query()->value('source_status'));
+            $this->assertSame('In progress', LeadConversation::query()->where('remote_id', 'rc_97')->value('text'));
+        });
+        $this->assertSame(0, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->count(), 'no alert on a live call');
+
+        // The active list, read by the same ids the call log uses.
+        $this->inTenant($t['org'], function () use ($t) {
+            $rc = new \App\Models\SocialConnection;
+            $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'ringcentral', 'remote_id' => '123', 'display_name' => 'RingCentral']);
+            $rc->connect(['refresh_token' => '-', 'server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+            $rc->save();
+            \Illuminate\Support\Facades\Http::fake([
+                'rc.test/restapi/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 't', 'expires_in' => 3600]),
+                'rc.test/restapi/v1.0/account/~/active-calls*' => \Illuminate\Support\Facades\Http::response(['records' => [['id' => 'ALz3', 'result' => 'In Progress']]]),
+            ]);
+            $this->assertSame(['ALz3' => true], app(RingCentralCallLog::class)->activeCallIds());
+        });
+    }
+
     /** A missed call on a person's direct line alerts like any missed call. */
     public function test_a_missed_call_on_a_direct_line_alerts(): void
     {

@@ -346,10 +346,12 @@ final class RingCentralLeadCalls
     public static function outcome(array $call, ?string $existingQueue = null, bool $customer = false): ?string
     {
         return match (true) {
+            // On RingCentral's active-calls list right now (the call log says
+            // "Accepted" for a live call, never "In Progress").
+            ! empty($call['live']) || ($call['result'] ?? null) === 'In Progress' => self::IN_PROGRESS,
             // A customer's number outranks the key pressed and the hang-up rule
             // (Jose, 2026-10-16: a known customer is never Possible spam).
             $call['answered_by'] !== null => $customer || ($existingQueue !== null && ($call['queue'] ?? null) === $existingQueue) ? self::EXISTING_CLIENT : null,
-            ($call['result'] ?? null) === 'In Progress' => self::IN_PROGRESS,
             $customer && ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::EXISTING_CLIENT,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
             ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
