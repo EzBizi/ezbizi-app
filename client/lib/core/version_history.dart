@@ -17,6 +17,8 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Leads: RC Calls and EZ Calls no longer show as Overdue, and Bad Ratings from the review page get their own tab (granted to everyone who could see Forms).',
+        'Leads: a call from someone whose lead was archived brings that lead back to New.',
         'Customer Experience: Review links now counts opens, faces and Google taps. Until now the websites’ tracking was refused, so only texts sent were counted.',
         'Customers: searching now also finds people who are still only leads, in their own card above the results (for example “Lead · LS Call · today”). Tap one to open it in Leads.',
         'Security: people assigned to a company or a place can no longer switch to the whole organization, and lists and dashboard boxes no longer show other companies’ records. Access only reaches downwards. Administrators still see the whole organization.',
