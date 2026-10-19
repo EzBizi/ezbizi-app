@@ -2965,6 +2965,12 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 108 · Leads › compact list header and lead header — **sent 2026-10-19** (`docs/previews/leads-compact-layouts.html`)
+
+Jose 2026-10-19: "how can we make this a bit more compressed, feel like we are using too much space inproperly." **1** (recommended) list: search + status + Filters (n) on one row, quick toggles as small chips;
+Filters panel holds charge/IVR/dispatcher/dates and the In All sources. **2** (recommended) lead: three lines (name+phone+tags+source; AI line; address + Check availability + Add a note), slim customer bar.
+**3** everything behind Filters and a Details fold. Phone **4** (recommended) / **5** / **6** no change.
+
 ### 107 · Leads › Stats (A1 takeover) — **sent 2026-10-19 — no answer in 10 min, went with 1 and 4** (`docs/previews/leads-stats-layouts.html` @ `fbc48f3c5`)
 
 Leads 2f83e1218 + Field's map. **1** (recommended) one page: period/branch, four numbers with a booking gauge, map (offices sized by leads, coloured by booking rate; leads by ZIP; jobs; outcome chips)
