@@ -528,6 +528,7 @@ class IntegrationConnection {
     'facebook_ads' => 'leads',
     'airtable' || 'workiz' || 'ringcentral' => 'reporting',
     'google_workspace' => 'email',
+    'whatsapp' => 'messaging',
     _ => 'social',
   };
 

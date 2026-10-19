@@ -23,9 +23,10 @@ final class SocialOAuthDrivers
         GoogleAdsOAuth $googleAds,
         ThumbtackOAuth $thumbtack,
         FacebookAdsOAuth $facebookAds,
+        WhatsAppOAuth $whatsApp,
     ) {
         foreach ([$facebook, $instagram, $threads, $linkedin, $tiktok, $pinterest, $youtube, $x,
-            $businessProfile, $googleAds, $thumbtack, $facebookAds] as $driver) {
+            $businessProfile, $googleAds, $thumbtack, $facebookAds, $whatsApp] as $driver) {
             $this->byRoute[$driver->routeKey()] = $driver;
             $this->byProvider[$driver->provider()->value] = $driver;
         }

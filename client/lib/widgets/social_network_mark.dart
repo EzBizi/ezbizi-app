@@ -46,6 +46,7 @@ class SocialNetworkMark extends StatelessWidget {
     'workiz': 'assets/social/workiz.svg',
     'ringcentral': 'assets/social/ringcentral.svg',
     'airtable': 'assets/social/airtable.svg',
+    'whatsapp': 'assets/social/whatsapp.svg',
   };
 
   @override

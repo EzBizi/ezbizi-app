@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Models\User;
+use App\Models\WhatsAppNumber;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Social\Publishing\Publishers;
@@ -544,6 +545,14 @@ class SocialConnectionsController extends Controller
             // half somebody has to finish by hand on Thumbtack.
             'not_tidied' => $problems === [] ? null : $problems,
         ], actor: $user);
+
+        // A business's own WhatsApp number stops routing and sending with its
+        // connection: the row is what the webhook and every send resolve, and
+        // left behind it would send with the global token on a number the
+        // business has taken back. EzBizi's own numbers have no connection.
+        WhatsAppNumber::query()->withoutGlobalScopes()
+            ->where('social_connection_id', $row->getKey())
+            ->delete();
 
         $row->delete();
 

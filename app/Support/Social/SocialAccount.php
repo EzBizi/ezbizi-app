@@ -20,5 +20,7 @@ final readonly class SocialAccount
         public ?string $loginCustomerId = null,
         /** Google Ads only: a manager (MCC) account, as Google says. */
         public bool $isManager = false,
+        /** WhatsApp only: the business account (WABA) the number lives in - subscribing and templates are per WABA. */
+        public ?string $wabaId = null,
     ) {}
 }

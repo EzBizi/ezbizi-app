@@ -149,6 +149,13 @@ return [
         // Facebook Ads (ads_read), its own connect and its own registered URI.
         'facebook_ads_redirect' => env('META_FACEBOOK_ADS_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook-ads/callback',
+        // WhatsApp Embedded Signup: a tenant connects its OWN number. The
+        // Login for Business configuration carries the scopes (whatsapp_
+        // business_management + _messaging) and a never-expiring business
+        // system user token, so the dialog takes config_id and no scope.
+        'whatsapp_signup_config' => env('META_WHATSAPP_SIGNUP_CONFIG_ID', '1772377890501449'),
+        'whatsapp_redirect' => env('META_WHATSAPP_REDIRECT_URI')
+            ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/whatsapp/callback',
         /*
         | Instagram is its own app inside the same Meta app too - the console
         | calls it EzBizi-IG and gives it an Instagram app id and secret
