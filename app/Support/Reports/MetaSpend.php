@@ -23,6 +23,7 @@ final class MetaSpend
             ->where('i.organization_id', app(TenantContext::class)->idOrFail())
             ->whereBetween('i.date', [$from, $to])
             ->where('i.region', $region ?? '')
+            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('c.franchise_id', $ids))
             ->when($state, fn ($w, $s) => $w->where('c.state', $s))
             ->when($category, fn ($w, $cat) => $cat === 'none' ? $w->whereNull('c.service_group_id') : $w->where('c.service_group_id', $cat))
             ->groupBy('c.id', 'c.name', 'c.state', 'c.service_group_id', 'g.name', 'f.name')

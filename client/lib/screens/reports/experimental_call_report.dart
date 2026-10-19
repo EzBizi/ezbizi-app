@@ -2361,6 +2361,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 dense: true,
                 autoplay: true,
                 load: () => _recording(id),
+                downloadName: RecordingPlaybackBar.nameFor(
+                  call['started_at'],
+                  call['from'],
+                ),
               ),
             ),
           ),
@@ -2419,6 +2423,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 player: _player,
                 dense: true,
                 load: () => _recording(id!),
+                downloadName: RecordingPlaybackBar.nameFor(
+                  call['started_at'],
+                  call['from'],
+                ),
               ),
             ),
           ],

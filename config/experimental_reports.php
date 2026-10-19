@@ -23,6 +23,9 @@ return [
         'client_id' => env('RINGCENTRAL_CLIENT_ID'),
         'client_secret' => env('RINGCENTRAL_CLIENT_SECRET'),
         'jwt' => env('RINGCENTRAL_JWT'),
+        // The company whose account this is: only a view covering it reads
+        // these calls (2026-10-19). Unset, only the organization view does.
+        'company_id' => env('REPORT_RINGCENTRAL_COMPANY'),
     ],
 
     // Transcribing the call report's calls (ezbizi:transcribe-report-calls).

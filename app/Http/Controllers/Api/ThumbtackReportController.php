@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,7 +32,8 @@ class ThumbtackReportController extends Controller
         $leads = fn () => DB::table('leads')
             ->where('leads.organization_id', app(TenantContext::class)->idOrFail())
             ->where('leads.source', 'thumbtack')
-            ->where('leads.is_test', false);
+            ->where('leads.is_test', false)
+            ->when(ReportView::franchiseIds(), fn ($w, $ids) => $w->whereIn('leads.franchise_id', $ids));
 
         $rows = $leads()
             ->leftJoin('franchises as f', 'f.id', '=', 'leads.franchise_id')

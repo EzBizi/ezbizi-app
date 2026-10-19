@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/files.dart';
 import 'recording_player.dart';
 
 /// Play, pause, scrub, and how far through you are.
@@ -35,6 +36,7 @@ class RecordingPlaybackBar extends StatefulWidget {
     this.dense = false,
     this.autoplay = false,
     this.knownLength,
+    this.downloadName,
   });
 
   final RecordingPlayer player;
@@ -55,6 +57,22 @@ class RecordingPlaybackBar extends StatefulWidget {
   /// duration - so the time reads "0:00 / 3:14" before anything is fetched
   /// instead of "--:--".
   final Duration? knownLength;
+
+  /// With a name ("2026-10-19 1432 +12125551212"), a Download button saves
+  /// the recording as that file (Jose, 2026-10-19). A screen passes one only
+  /// where it lets the person play the recording.
+  final String? downloadName;
+
+  /// A file name for a call's recording: its time and the caller's number.
+  static String nameFor(Object? startedAt, Object? number) {
+    final t = DateTime.tryParse('$startedAt')?.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final when = t == null
+        ? 'recording'
+        : '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}${two(t.minute)}';
+    final digits = '${number ?? ''}'.replaceAll(RegExp(r'[^0-9+]'), '');
+    return digits.isEmpty ? when : '$when $digits';
+  }
 
   @override
   State<RecordingPlaybackBar> createState() => _RecordingPlaybackBarState();
@@ -164,7 +182,8 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
   /// again every two seconds and plays the moment a device is there (Jose,
   /// 2026-09-28: "it should still play like any other app").
   void _waitForOutput() {
-    _error = 'Waiting for speakers or headphones. It will play as soon as '
+    _error =
+        'Waiting for speakers or headphones. It will play as soon as '
         'some are connected.';
     var trying = false;
     _waiting = Timer.periodic(const Duration(seconds: 2), (_) async {
@@ -285,6 +304,16 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
                         _ => 1.0,
                       },
                     ),
+                  if (widget.downloadName != null)
+                    IconButton(
+                      key: const Key('recording-download'),
+                      visualDensity: widget.dense
+                          ? VisualDensity.compact
+                          : null,
+                      tooltip: 'Download the recording',
+                      onPressed: _busy ? null : _download,
+                      icon: const Icon(Icons.download_outlined, size: 20),
+                    ),
                 ],
               ),
             ),
@@ -304,6 +333,37 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
       },
     );
   }
+
+  /// The recording as a file, fetched once like play does.
+  Future<void> _download() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final bytes = _bytes ?? await widget.load();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (bytes == null) {
+        _error = 'The recording could not be fetched.';
+      } else {
+        _bytes = bytes;
+      }
+    });
+    if (bytes != null) {
+      Files.download('${widget.downloadName}${_extension(bytes)}', bytes);
+    }
+  }
+
+  /// What the bytes are, from their first bytes: WAV, or else MP3.
+  static String _extension(List<int> bytes) =>
+      bytes.length > 3 &&
+          bytes[0] == 0x52 &&
+          bytes[1] == 0x49 &&
+          bytes[2] == 0x46 &&
+          bytes[3] == 0x46
+      ? '.wav'
+      : '.mp3';
 
   /// One speed. With [next], the single stepping button of a narrow bar:
   /// it shows the speed playing and moves to [next].

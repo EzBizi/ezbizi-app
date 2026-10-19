@@ -4,6 +4,9 @@ namespace Tests\Feature\Reports;
 
 use App\Models\CallReportConversion;
 use App\Models\CallReportDispatcherTag;
+use App\Models\CallReportScore;
+use App\Models\CallReportTranscript;
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Models\WorkizCall;
@@ -72,6 +75,43 @@ class ExperimentalCallReportApiTest extends TestCase
             ->assertOk();
     }
 
+    /** Jose, 2026-10-19: "im on everdoors and it's showing all the a-1chimney info". */
+    public function test_a_company_view_reads_only_that_companys_calls_and_workiz(): void
+    {
+        // The organization the env RingCentral account belongs to.
+        $tenant = $this->provisionTenant('A-1 Chimney');
+        $this->connected($tenant);
+        // The env RingCentral account and both Workiz branches are the first company's.
+        config(['experimental_reports.ringcentral.company_id' => $tenant['company']->id]);
+        $other = $this->inTenant($tenant['org'], fn () => Company::create(['organization_id' => $tenant['org']->id, 'name' => 'Everdoors']));
+        $doors = $this->extraFranchise($tenant, 'Doors Branch');
+        $this->inTenant($tenant['org'], fn () => $doors->forceFill(['company_id' => $other->id])->save());
+        $this->workizBranchAt($tenant, $doors, 'doors');
+
+        // One scored call of the first company's account.
+        config(['services.grok_cli.since' => '2026-09-01']);
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            CallReportTranscript::query()->create(['organization_id' => $tenant['org']->id, 'call_id' => 'c-1', 'transcript' => 'x',
+                'source' => 'whisper', 'answered_by' => 'Trey Brannan', 'call_started_at' => '2026-09-14 15:00:00']);
+            CallReportScore::query()->create(['organization_id' => $tenant['org']->id, 'call_id' => 'c-1', 'score' => 8, 'checks' => []]);
+        });
+
+        $as = fn (string $view) => $this->signedInAs($tenant['admin'])->withHeader('X-EzBizi-View', $view)
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')->assertOk()->json();
+
+        $mine = $as('company:'.$tenant['company']->id);
+        $this->assertTrue($mine['connected']);
+        $this->assertSame(['Nationwide', 'New Jersey'], collect($mine['workiz_accounts'])->pluck('name')->sort()->values()->all());
+
+        $theirs = $as('company:'.$other->id);
+        $this->assertFalse($theirs['connected'], "the first company's RingCentral calls are not Everdoors'");
+
+        $scoring = fn (string $view) => $this->signedInAs($tenant['admin'])->withHeader('X-EzBizi-View', $view)
+            ->getJson('/api/v1/reports/scoring?from=2026-09-14&to=2026-09-14')->assertOk()->json('data.people');
+        $this->assertCount(1, $scoring('company:'.$tenant['company']->id));
+        $this->assertSame([], $scoring('company:'.$other->id));
+    }
+
     /**
      * Jose, 2026-10-15: people assigned to one company "should be able to see
      * it regardless". The tab is the gate, and every branch's Workiz counts.
@@ -81,13 +121,17 @@ class ExperimentalCallReportApiTest extends TestCase
         $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
         $this->connected($tenant);
 
+        // The env RingCentral account is this branch's company's (2026-10-19).
+        config(['experimental_reports.ringcentral.company_id' => $tenant['company']->id]);
         $branchOnly = $this->userWithRole($tenant, 'Lead Manager', ['reports.experimental.view'], onlyAt: $tenant['franchise']);
 
         $report = $this->signedInAs($branchOnly)
             ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
             ->assertOk()
             ->json();
-        $this->assertSame(['Nationwide', 'New Jersey'], collect($report['workiz_accounts'])->pluck('name')->sort()->values()->all());
+        // Jose, 2026-10-19: Reports follows the current view. A branch-only
+        // reader sees the branches in their view, which here have no Workiz.
+        $this->assertSame([], $report['workiz_accounts']);
 
         $this->assertNotSame(403, $this->signedInAs($branchOnly)->get('/api/v1/reports/experimental/calls/rec-9/recording')->status());
     }
@@ -540,6 +584,21 @@ class ExperimentalCallReportApiTest extends TestCase
      * A branch with a Workiz account attached, which is where the tokens live
      * now — `scope_type = franchise`, per Jose's ruling.
      */
+    private function workizBranchAt(array $tenant, Franchise $franchise, string $token): string
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $franchise, $token) {
+            $connection = new SocialConnection;
+            $connection->forceFill([
+                'organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $franchise->id,
+                'provider' => SocialProvider::Workiz->value, 'remote_id' => $franchise->id, 'display_name' => $franchise->name,
+            ]);
+            $connection->connect(['refresh_token' => $token, 'api_token' => $token]);
+            $connection->save();
+
+            return (string) $connection->getKey();
+        });
+    }
+
     private function workizBranch(array $tenant, string $name, string $token): string
     {
         return $this->inTenant($tenant['org'], function () use ($tenant, $name, $token) {
