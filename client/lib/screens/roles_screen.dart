@@ -7,6 +7,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 
 /// The organization's roles, and what each of them may do (plan §4).
@@ -157,6 +158,20 @@ class _RolesScreenState extends State<RolesScreen> {
   /// Which of them each role already holds, off the same answer as the roles.
   Map<String, Set<String>> _held = const {};
 
+  /// The role on the right, by id so it survives the reload every save ends
+  /// in. Null picks the first one in the list.
+  String? _selectedId;
+
+  /// The role drawn beside it, read-only, or null for none.
+  String? _compareId;
+
+  /// On a narrow tab the list and the role page take turns; this says which.
+  bool _pageOpen = false;
+
+  /// Bumped on every load and on Discard, so the page is rebuilt from what the
+  /// server holds rather than keeping edits that were saved or thrown away.
+  int _generation = 0;
+
   @override
   void initState() {
     super.initState();
@@ -204,6 +219,9 @@ class _RolesScreenState extends State<RolesScreen> {
 
       _error = null;
       _roles = RoleSummary.listFrom(roles.data);
+      // A fresh page for what the server now holds, so a saved edit is shown
+      // as saved rather than kept as a local copy of it.
+      _generation++;
       _held = inboxHoldingsFrom(roles.data);
       // The whole body, not `data`: this endpoint answers with `modules` at the
       // top level. PermissionCatalogue.fromResponse reads either.
@@ -253,57 +271,15 @@ class _RolesScreenState extends State<RolesScreen> {
     required String hint,
     String initial = '',
   }) async {
-    final controller = TextEditingController(text: initial);
-
     final value = await showSidePanel<String>(
       context,
-      builder: (context) => SidePanel(
-        title: title,
-        subtitle: hint,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-        child: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
-        ),
-      ),
+      builder: (context) =>
+          _NamePanel(title: title, hint: hint, initial: initial),
     );
-
-    controller.dispose();
 
     return (value == null || value.isEmpty) ? null : value;
   }
 
-  /// Open a role. Read-only roles open too — see [_RoleEditor].
-  Future<void> _open(RoleSummary role) async {
-    final saved = await showSidePanel<bool>(
-      context,
-      builder: (context) => _RoleEditor(
-        role: role,
-        catalogue: _catalogue,
-        inboxes: _inboxes,
-        heldInboxes: _held[role.id] ?? const {},
-        allRoles: _roles,
-        onSave: (name, permissions, nested, invitable, hiddenOnLeads) =>
-            _save(role, name, permissions, nested, invitable, hiddenOnLeads),
-      ),
-    );
-
-    if (saved == true) await _load();
-  }
 
   /// Returns null when the server accepted it, or the sentence to show when it
   /// did not — the panel stays open on a refusal, because a permission tree
@@ -386,7 +362,36 @@ class _RolesScreenState extends State<RolesScreen> {
     }
 
     _snack('Deleted ${role.name}');
+    setState(() {
+      if (_selectedId == role.id) {
+        _selectedId = null;
+        _pageOpen = false;
+      }
+      if (_compareId == role.id) _compareId = null;
+    });
     await _load();
+  }
+
+  /// Below this width of the tab itself the list and the role take turns.
+  ///
+  /// Measured from the space the tab is given, not from the window: Settings
+  /// draws this inside a shell with its own sidebar, so a 1000pt window can
+  /// leave the tab well under the width two panes need.
+  static const double _twoPanesFrom = 760;
+
+  RoleSummary? get _selected {
+    for (final role in _roles) {
+      if (role.id == _selectedId) return role;
+    }
+    final ordered = [..._builtIn, ..._composed];
+    return ordered.isEmpty ? null : ordered.first;
+  }
+
+  RoleSummary? get _compare {
+    for (final role in _roles) {
+      if (role.id == _compareId) return role;
+    }
+    return null;
   }
 
   @override
@@ -402,14 +407,8 @@ class _RolesScreenState extends State<RolesScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           PanelHeader(
-            // The tab's own name (UI queue 99), not a shorter one of its own.
-            title:
-                widget.session.me?.module('roles')?.label ??
-                'Roles & permissions',
-            note:
-                'Every role is this organization’s own. A role decides which '
-                'tabs the people holding it see, and what they may do inside '
-                'them.',
+            // No title: the Settings chip above already names the tab.
+            note: 'Who can open what, and what they can do there.',
             // The one place in the client that ever consulted the permission
             // set — and it HID the button, which leaves somebody looking for
             // "New role" concluding the screen is broken. Shown and refused,
@@ -427,25 +426,121 @@ class _RolesScreenState extends State<RolesScreen> {
           Expanded(
             child: _roles.isEmpty
                 ? const Center(child: Text('There are no roles to show.'))
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                    children: [
-                      for (final role in _builtIn)
-                        _card(role),
-                      if (_builtIn.isNotEmpty && _composed.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        const Divider(height: 1),
-                        const SizedBox(height: 8),
-                      ],
-                      for (final role in _composed)
-                        _card(role),
-                    ],
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final selected = _selected;
+                      if (constraints.maxWidth < _twoPanesFrom) {
+                        return _pageOpen && selected != null
+                            ? _page(selected, narrow: true)
+                            : _list(narrow: true);
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(width: 240, child: _list(narrow: false)),
+                          const VerticalDivider(width: 1),
+                          Expanded(
+                            child: selected == null
+                                ? const SizedBox.shrink()
+                                : _page(selected, narrow: false),
+                          ),
+                        ],
+                      );
+                    },
                   ),
           ),
         ],
       ),
     );
   }
+
+  /// The roles, "Built in" first and then the ones this organization wrote.
+  Widget _list({required bool narrow}) {
+    final theme = Theme.of(context);
+    final selected = _selected;
+
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        text,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+
+    Widget row(RoleSummary role) => ListTile(
+      key: ValueKey('role-row:${role.id}'),
+      dense: true,
+      // On a phone nothing is "selected": the list is the whole screen and a
+      // highlighted row would be a claim about a page that is not showing.
+      selected: !narrow && role.id == selected?.id,
+      title: Text(role.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: Text(
+        narrow ? '${role.userCount} ›' : '${role.userCount}',
+        style: theme.textTheme.bodySmall,
+      ),
+      onTap: () => setState(() {
+        _selectedId = role.id;
+        _pageOpen = true;
+      }),
+    );
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        if (_builtIn.isNotEmpty) ...[
+          heading('Built in'),
+          for (final role in _builtIn) row(role),
+        ],
+        if (_composed.isNotEmpty) ...[
+          heading('Yours'),
+          for (final role in _composed) row(role),
+        ],
+      ],
+    );
+  }
+
+  Widget _page(RoleSummary role, {required bool narrow}) => _RolePage(
+    key: ValueKey('role-page:${role.id}:$_generation'),
+    role: role,
+    catalogue: _catalogue,
+    inboxes: _inboxes,
+    heldInboxes: _held[role.id] ?? const {},
+    allRoles: _roles,
+    narrow: narrow,
+    compare: _compare?.id == role.id ? null : _compare,
+    onCompare: (id) => setState(() => _compareId = id),
+    onBack: narrow ? () => setState(() => _pageOpen = false) : null,
+    askForName: (initial) => _askForName(
+      title: 'Rename ${role.name}',
+      hint: 'The people holding it keep it; only the name changes.',
+      initial: initial,
+    ),
+    onSave: (name, permissions, nested, invitable, hiddenOnLeads) =>
+        _save(role, name, permissions, nested, invitable, hiddenOnLeads),
+    onSaved: _load,
+    onDiscard: () => setState(() => _generation++),
+    onDelete: role.mayDelete ? () => _delete(role) : null,
+    // The server's sentence for the built-in administrator when it sends one,
+    // and the session's own refusal for somebody who may not change roles.
+    renameRefusal: !role.editable
+        ? (role.lockedReason ??
+              'This is the built-in administrator role, so it cannot be '
+                  'renamed.')
+        : role.mayEdit
+        ? null
+        : (widget.session.me?.refusal('roles.edit', 'change a role') ??
+              'You may not change this role.'),
+    deleteRefusal: role.mayDelete
+        ? null
+        : !role.editable
+        ? (role.lockedReason ??
+              'This is the built-in administrator role, so it cannot be '
+                  'deleted.')
+        : (widget.session.me?.refusal('roles.delete', 'delete a role') ??
+              'You may not delete this role.'),
+  );
 
   /// The built-in administrator first, then the ones this organization wrote.
   ///
@@ -457,28 +552,75 @@ class _RolesScreenState extends State<RolesScreen> {
 
   List<RoleSummary> get _composed =>
       _roles.where((role) => role.editable).toList();
+}
 
-  Widget _card(RoleSummary role) => _RoleCard(
-    role: role,
-    moduleCount: _reachableTabs(role),
-    onOpen: () => _open(role),
-    onDelete: role.mayDelete ? () => _delete(role) : null,
+/// The side panel that asks for a role's name.
+///
+/// A widget of its own so the text controller lives exactly as long as the
+/// panel does. It was created and disposed around the `await`, which disposed
+/// it while the panel was still sliding out and reading from it.
+class _NamePanel extends StatefulWidget {
+  const _NamePanel({
+    required this.title,
+    required this.hint,
+    required this.initial,
+  });
+
+  final String title;
+  final String hint;
+  final String initial;
+
+  @override
+  State<_NamePanel> createState() => _NamePanelState();
+}
+
+class _NamePanelState extends State<_NamePanel> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
   );
 
-  /// How many tabs this role can actually open — the number somebody reading
-  /// the list wants, rather than a count of permission keys that means nothing
-  /// on its own.
-  int _reachableTabs(RoleSummary role) => _catalogue.modules
-      .where(
-        (m) =>
-            m.isSidebarTab &&
-            m.viewKey != null &&
-            role.permissions.contains(m.viewKey),
-      )
-      .length;
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    title: widget.title,
+    subtitle: widget.hint,
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+        child: const Text('Save'),
+      ),
+    ],
+    child: TextField(
+      controller: _controller,
+      autofocus: true,
+      decoration: const InputDecoration(
+        labelText: 'Name',
+        border: OutlineInputBorder(),
+      ),
+      onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
+    ),
+  );
 }
 
 String _people(int count) => count == 1 ? '1 person' : '$count people';
+
+/// "Dana Reyes" -> "DR"; one name gives one letter.
+String _initials(String name) {
+  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
+  if (parts.isEmpty) return '?';
+  final first = parts.first[0];
+  final last = parts.length > 1 ? parts.last[0] : '';
+  return '$first$last'.toUpperCase();
+}
 
 class _RoleSection {
   const _RoleSection({
@@ -499,70 +641,36 @@ class _RoleSection {
   bool get isTab => modules.first.isOwnDestination;
 }
 
-class _RoleCard extends StatelessWidget {
-  const _RoleCard({
-    required this.role,
-    required this.moduleCount,
-    required this.onOpen,
-    required this.onDelete,
-  });
-
-  final RoleSummary role;
-  final int moduleCount;
-  final VoidCallback onOpen;
-  final VoidCallback? onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        onTap: onOpen,
-        title: Text(
-          role.name,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        subtitle: Text(
-          '${_people(role.userCount)} · '
-          '${moduleCount == 1 ? '1 tab' : '$moduleCount tabs'}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (onDelete != null)
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
-                // Named, because there is one of these per row and "Delete
-                // this role" is the same words on all of them.
-                tooltip: 'Delete ${role.name}',
-                onPressed: onDelete,
-              ),
-            // The word changes with what opening it will let you do, so the
-            // affordance is honest before it is pressed.
-            TextButton(
-              onPressed: onOpen,
-              child: Text(role.mayEdit ? 'Edit' : 'View'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One role's permissions, as tabs with an expandable detail.
-class _RoleEditor extends StatefulWidget {
-  const _RoleEditor({
+/// One role: a row per module, opened in place to its full list of grants
+/// (UI queue 111, option 1). Read-only roles are drawn the same way, dead.
+class _RolePage extends StatefulWidget {
+  const _RolePage({
+    super.key,
     required this.role,
     required this.catalogue,
     required this.inboxes,
     required this.heldInboxes,
     required this.onSave,
+    required this.onSaved,
+    required this.onDiscard,
+    required this.onCompare,
+    required this.askForName,
+    required this.narrow,
     this.allRoles = const [],
+    this.compare,
+    this.onBack,
+    this.onDelete,
+    this.renameRefusal,
+    this.deleteRefusal,
   });
+
+  /// Why Rename or Delete is greyed, or null when it may be used.
+  final String? renameRefusal;
+  final String? deleteRefusal;
 
   final RoleSummary role;
 
-  /// Every role, for "who they can invite".
+  /// Every role, for "who they can invite" and "Compare with".
   final List<RoleSummary> allRoles;
   final PermissionCatalogue catalogue;
 
@@ -571,6 +679,20 @@ class _RoleEditor extends StatefulWidget {
 
   /// The ones this role already holds.
   final Set<String> heldInboxes;
+
+  /// The role drawn beside this one, read-only.
+  final RoleSummary? compare;
+  final ValueChanged<String?> onCompare;
+
+  /// The phone layout: one column, a back arrow, rows that say "5 of 9 ›".
+  final bool narrow;
+  final VoidCallback? onBack;
+
+  /// Null when this person may not delete it; the button is drawn refused.
+  final VoidCallback? onDelete;
+
+  /// The side panel that asks for a name, or null when it was cancelled.
+  final Future<String?> Function(String initial) askForName;
 
   /// Answers null on success, or the sentence to show on a refusal.
   ///
@@ -585,14 +707,20 @@ class _RoleEditor extends StatefulWidget {
   )
   onSave;
 
+  /// After a save the server accepted: reload, which rebuilds this page from
+  /// what the server now holds.
+  final VoidCallback onSaved;
+
+  /// Throw the edits away, by rebuilding the page from the role as loaded.
+  final VoidCallback onDiscard;
+
   @override
-  State<_RoleEditor> createState() => _RoleEditorState();
+  State<_RolePage> createState() => _RolePageState();
 }
 
-class _RoleEditorState extends State<_RoleEditor> {
-  late final TextEditingController _name = TextEditingController(
-    text: widget.role.name,
-  );
+class _RolePageState extends State<_RolePage> {
+  /// The name, as edited. Changed only by Rename, which saves at once.
+  late String _name = widget.role.name;
 
   /// What the role holds, as edited — ALL of it, including keys this person
   /// cannot change.
@@ -664,12 +792,6 @@ class _RoleEditorState extends State<_RoleEditor> {
     return ids;
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
   /// What the role holds under this module.
   ///
   /// Matched on the key's prefix, which is how the server derives a module from
@@ -687,27 +809,6 @@ class _RoleEditorState extends State<_RoleEditor> {
   Iterable<InboxOption> _inboxesUnder(String moduleKey) => widget.inboxes
       .under(moduleKey)
       .where((inbox) => _inboxes.contains(inbox.id));
-
-  /// The tab: on when the role holds the module's view permission.
-  ///
-  /// Three states, and the middle one is the point:
-  ///
-  ///   false — the tab is hidden, and nothing inside it is granted
-  ///   null  — the tab is visible, and some of its actions are withheld
-  ///   true  — the tab is visible and every action inside it is granted
-  ///
-  /// About the ACTIONS, and deliberately not about the inboxes. Folding those in
-  /// would mean a full tick could not be reached without granting every address
-  /// the organization has, and the one state this control must never suggest is
-  /// that switching Email on came with the mail. The inbox count is its own line
-  /// underneath — see [_inboxTally].
-  bool? _tabState(PermissionModule module) {
-    final viewKey = module.viewKey;
-
-    if (viewKey == null || !_held.contains(viewKey)) return false;
-
-    return module.actions.every((a) => _held.contains(a.key)) ? true : null;
-  }
 
   /// One tap, one meaning: the tab goes on or it goes off.
   ///
@@ -1033,7 +1134,7 @@ class _RoleEditorState extends State<_RoleEditor> {
   }
 
   Future<void> _save() async {
-    final name = _name.text.trim();
+    final name = _name.trim();
 
     if (name.isEmpty) {
       setState(() => _error = 'A role needs a name.');
@@ -1063,31 +1164,158 @@ class _RoleEditorState extends State<_RoleEditor> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    setState(() => _saving = false);
+    widget.onSaved();
+  }
+
+  /// Which modules are open to their full list.
+  final Set<String> _expanded = {};
+
+  /// What "Find a permission" holds, lower-cased.
+  String _query = '';
+
+  bool _sameSet(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  /// Whether anything differs from the role as it was loaded.
+  bool get _dirty =>
+      _name != widget.role.name ||
+      !_sameSet(_held, widget.role.permissions) ||
+      !_sameSet(_inboxes, widget.heldInboxes) ||
+      _invitableChange != null ||
+      _hiddenOnLeads != widget.role.hiddenOnLeads;
+
+  /// How many modules this role can open, as edited.
+  int get _modulesOpen => widget.catalogue.modules
+      .where((m) => m.viewKey != null && _held.contains(m.viewKey))
+      .length;
+
+  /// Inviting somebody is `hr.create` (InvitationPolicy::create), so "who
+  /// they can invite" is summarised on the row that grants it and nowhere
+  /// else. The choice itself is made under the grid, because it is about the
+  /// role rather than about any one module.
+  static const String _inviteKey = 'hr.create';
+
+  static const double _openWidth = 56;
+  static const double _tabsWidth = 72;
+  static const double _compareWidth = 96;
+  static const double _chevronWidth = 32;
+
+  bool _labelMatches(PermissionModule module) =>
+      _query.isEmpty || module.label.toLowerCase().contains(_query);
+
+  bool _actionMatches(PermissionAction action) =>
+      action.label.toLowerCase().contains(_query);
+
+  bool _inboxMatches(InboxOption inbox) =>
+      inbox.heading.toLowerCase().contains(_query) ||
+      inbox.address.toLowerCase().contains(_query);
+
+  /// Whether "Find a permission" leaves this row on screen: its own name, a
+  /// grant inside it, or an inbox under it.
+  bool _matches(PermissionModule module) =>
+      _labelMatches(module) ||
+      module.actions.any(_actionMatches) ||
+      widget.inboxes.under(module.key).any(_inboxMatches);
+
+  /// Open when somebody opened it, or when the search found something INSIDE
+  /// it — a match nobody can see without a click is not much of a match.
+  bool _isExpanded(PermissionModule module) =>
+      _expanded.contains(module.key) ||
+      (_query.isNotEmpty && !_labelMatches(module));
+
+  /// What they can do there, not counting the tabs: the column of that name.
+  Iterable<PermissionAction> _doActions(PermissionModule module) =>
+      module.actions.where((a) => !a.tab);
+
+  /// The box in "What they can do", for this role or the one beside it.
+  ///
+  /// Three states, and the middle one is the point:
+  ///
+  ///   false — the module does not open, and nothing inside it is granted
+  ///   null  — it opens, and some of what can be done there is withheld
+  ///   true  — it opens and everything that can be done there is granted
+  ///
+  /// About the ACTIONS, and deliberately not about the inboxes. Folding those in
+  /// would mean a full box could not be reached without granting every address
+  /// the organization has, and the one state this control must never suggest is
+  /// that switching Email on came with the mail. The inbox count is its own line
+  /// under the module's name — see [_inboxTally].
+  bool? _canDoState(PermissionModule module, Set<String> held) {
+    final viewKey = module.viewKey;
+
+    if (viewKey == null || !held.contains(viewKey)) return false;
+
+    return _doActions(module).every((a) => held.contains(a.key)) ? true : null;
+  }
+
+  String _tabsSummary(PermissionModule module) {
+    final tabs = module.actions.where((a) => a.tab).toList();
+    if (tabs.isEmpty || _canDoState(module, _held) == false) return '—';
+    final held = tabs.where((a) => _held.contains(a.key)).length;
+    return held == tabs.length ? 'all' : '$held of ${tabs.length}';
+  }
+
+  String _canDoSummary(PermissionModule module) {
+    final actions = _doActions(module).toList();
+    final state = _canDoState(module, _held);
+    if (state == false || actions.isEmpty) return '—';
+    if (state == true) return 'all ${actions.length}';
+    final held = actions.where((a) => _held.contains(a.key)).toList();
+    final names = held.take(3).map((a) => a.label.toLowerCase()).join(', ');
+    return '${held.length} of ${actions.length} · $names';
+  }
+
+  /// The phone's one number per row: "off", "all", or "5 of 9".
+  String _phoneSummary(PermissionModule module) {
+    final state = _canDoState(module, _held);
+    if (state == false) return 'off';
+    if (state == true) return 'all';
+    final actions = _doActions(module).toList();
+    final held = actions.where((a) => _held.contains(a.key)).length;
+    return '$held of ${actions.length}';
+  }
+
+  String _inviteSummary(PermissionModule module) {
+    if (!module.actions.any((a) => a.key == _inviteKey) ||
+        !_held.contains(_inviteKey)) {
+      return '—';
+    }
+    final chosen = _invitable;
+    if (chosen == null) return 'Roles within their own';
+    if (chosen.isEmpty) return 'Nobody';
+    return [
+      for (final role in widget.allRoles)
+        if (chosen.contains(role.id)) role.name,
+    ].join(', ');
+  }
+
+  Future<void> _rename() async {
+    final name = await widget.askForName(_name);
+    if (name == null || !mounted) return;
+    setState(() => _name = name);
+    await _save();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final narrow = widget.narrow;
+    final side = narrow ? 16.0 : 24.0;
 
-    return SidePanel(
-      title: widget.role.name,
-      subtitle: '${_people(widget.role.userCount)} hold this role.',
-      width: 560,
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(_writable ? 'Cancel' : 'Close'),
-        ),
-        if (_writable)
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
-          ),
-      ],
+    return SingleChildScrollView(
+      key: const ValueKey('role-page'),
+      padding: EdgeInsets.fromLTRB(side, narrow ? 4 : 16, side, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _header(theme),
+          const SizedBox(height: 12),
+          if (_writable) ...[_saveBar(theme), const SizedBox(height: 12)],
+          if (_error != null) ...[
+            ErrorNote(_error!),
+            const SizedBox(height: 12),
+          ],
           if (!widget.role.editable) _lockedNote(theme),
           if (widget.role.editable && !widget.role.mayEdit)
             _note(
@@ -1104,27 +1332,16 @@ class _RoleEditorState extends State<_RoleEditor> {
             const SizedBox(height: 4),
           ],
 
-          TextField(
-            controller: _name,
-            enabled: _writable,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 20),
-          _whoTheyCanInvite(theme),
-          const SizedBox(height: 20),
-
           // Which state means what, said once, above the thing it describes. A
-          // dash in a checkbox is not self-explanatory and this screen has a lot
-          // of them.
+          // dash in a box is not self-explanatory and this screen has a lot of
+          // them.
           Text(
-            'Ticking a tab lets this role open it — the same tabs, in the same '
-            'order, as the sidebar. The tick fills in when every action inside '
-            'is granted and shows a dash when only some are. Settings at the '
-            'bottom of the sidebar is not a work tab; Organization lives inside '
-            'it. The grants under those headings are what you can do there.',
+            'Ticking Open lets this role open a module — the same tabs, in the '
+            'same order, as the sidebar. A full box means everything they can '
+            'do there is granted, a dash means only some is. '
+            '${narrow ? 'Tap' : 'Click'} a row for its full list. Settings at '
+            'the bottom of the sidebar is not a work tab; Organization lives '
+            'inside it.',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -1138,31 +1355,10 @@ class _RoleEditorState extends State<_RoleEditor> {
               ),
             )
           else
-            for (final section in _sections(widget.catalogue.modules)) ...[
-              if (!section.isTab) ...[
-                const SizedBox(height: 16),
-                Text(
-                  section.label,
-                  style: theme.textTheme.titleSmall,
-                ),
-                if (section.hint != null) ...[
-                  const SizedBox(height: 4),
-                  Text(section.hint!, style: theme.textTheme.bodySmall),
-                ],
-                const SizedBox(height: 8),
-              ],
-              for (final module in section.modules)
-                // Indented under the tab it is drawn inside, which is the only
-                // thing on this screen that says so.
-                if (module.parent == null)
-                  _moduleTile(module)
-                else
-                  Padding(
-                    padding: const EdgeInsets.only(left: 24),
-                    child: _moduleTile(module),
-                  ),
-            ],
+            _grid(theme),
 
+          const SizedBox(height: 24),
+          _whoTheyCanInvite(theme),
           const SizedBox(height: 16),
           SwitchListTile(
             key: const ValueKey('role-seen-on-leads'),
@@ -1181,12 +1377,589 @@ class _RoleEditorState extends State<_RoleEditor> {
                 ? (seen) => setState(() => _hiddenOnLeads = !seen)
                 : null,
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            ErrorNote(_error!),
-          ],
+          const SizedBox(height: 16),
+          _whoHasIt(theme),
         ],
       ),
+    );
+  }
+
+  /// Name, counts, search, Compare with, Rename and Delete.
+  Widget _header(ThemeData theme) {
+    final role = widget.role;
+    final narrow = widget.narrow;
+    final modules = _modulesOpen;
+
+    final title = Text(
+      role.name,
+      key: const ValueKey('role-title'),
+      style: theme.textTheme.titleLarge,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+    final counts = Text(
+      '${_people(role.userCount)} · '
+      '${modules == 1 ? '1 module' : '$modules modules'}',
+      key: const ValueKey('role-counts'),
+      style: theme.textTheme.bodySmall,
+    );
+
+    final search = SizedBox(
+      width: narrow ? double.infinity : 220,
+      child: TextField(
+        key: const ValueKey('role-search'),
+        onChanged: (value) =>
+            setState(() => _query = value.trim().toLowerCase()),
+        decoration: const InputDecoration(
+          isDense: true,
+          hintText: 'Find a permission',
+          prefixIcon: Icon(Icons.search, size: 18),
+          border: OutlineInputBorder(),
+        ),
+      ),
+    );
+
+    final compare = SizedBox(
+      width: 200,
+      child: SearchPickerField<String>(
+        key: const ValueKey('role-compare'),
+        value: widget.compare?.id,
+        label: 'Compare with',
+        isDense: true,
+        allowClear: true,
+        border: const OutlineInputBorder(),
+        options: [
+          for (final other in widget.allRoles)
+            if (other.id != role.id)
+              SearchOption(
+                value: other.id,
+                label: other.name,
+                detail: _people(other.userCount),
+              ),
+        ],
+        onChanged: widget.onCompare,
+      ),
+    );
+
+    // Greyed with the reason rather than hidden, the same as New role: a
+    // missing button reads as a broken screen.
+    final rename = Refused(
+      reason: widget.renameRefusal,
+      child: OutlinedButton(
+        key: const ValueKey('role-rename'),
+        onPressed: _writable && !_saving ? _rename : null,
+        child: const Text('Rename'),
+      ),
+    );
+    final delete = Refused(
+      reason: widget.deleteRefusal,
+      child: OutlinedButton(
+        key: const ValueKey('role-delete'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: theme.colorScheme.error,
+        ),
+        onPressed: widget.onDelete,
+        child: const Text('Delete'),
+      ),
+    );
+
+    if (narrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('role-back'),
+                tooltip: 'All roles',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onBack,
+              ),
+              Expanded(child: title),
+            ],
+          ),
+          counts,
+          const SizedBox(height: 8),
+          search,
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [compare, rename, delete],
+          ),
+        ],
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [title, counts],
+          ),
+        ),
+        search,
+        compare,
+        rename,
+        delete,
+      ],
+    );
+  }
+
+  Widget _saveBar(ThemeData theme) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          _dirty ? 'Unsaved changes.' : 'No changes yet.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ),
+      if (_dirty)
+        TextButton(
+          onPressed: _saving ? null : widget.onDiscard,
+          child: const Text('Discard'),
+        ),
+      const SizedBox(width: 8),
+      FilledButton(
+        onPressed: _saving ? null : _save,
+        child: Text(_saving ? 'Saving…' : 'Save'),
+      ),
+    ],
+  );
+
+  /// The grid: a row per module, in the sidebar's order, with Organization
+  /// and Settings under their own headings.
+  Widget _grid(ThemeData theme) {
+    final rows = <Widget>[];
+
+    for (final section in _sections(widget.catalogue.modules)) {
+      final visible = section.modules.where(_matches).toList();
+      if (visible.isEmpty) continue;
+
+      if (!section.isTab) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(section.label, style: theme.textTheme.titleSmall),
+                if (section.hint != null) ...[
+                  const SizedBox(height: 4),
+                  Text(section.hint!, style: theme.textTheme.bodySmall),
+                ],
+              ],
+            ),
+          ),
+        );
+      }
+
+      for (final module in visible) {
+        // Indented under the tab it is drawn inside, which is the only thing
+        // on this screen that says so.
+        rows.add(_moduleRow(module, theme, indent: module.parent != null));
+      }
+    }
+
+    return Column(
+      key: const ValueKey('roles-grid'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.narrow) _gridHeader(theme),
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No module or permission matches that.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          )
+        else
+          ...rows,
+      ],
+    );
+  }
+
+  Widget _gridHeader(ThemeData theme) {
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      letterSpacing: 0.6,
+    );
+    Widget cell(String text, {Key? key}) => Text(
+      text,
+      key: key,
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: cell('MODULE')),
+          SizedBox(width: _openWidth, child: Center(child: cell('OPEN'))),
+          SizedBox(width: _tabsWidth, child: cell('TABS')),
+          Expanded(flex: 4, child: cell('WHAT THEY CAN DO')),
+          Expanded(flex: 2, child: cell('INVITE')),
+          if (widget.compare case final other?)
+            SizedBox(
+              width: _compareWidth,
+              child: Center(
+                child: cell(
+                  other.name,
+                  key: const ValueKey('compare-heading'),
+                ),
+              ),
+            ),
+          const SizedBox(width: _chevronWidth),
+        ],
+      ),
+    );
+  }
+
+  /// A box that says all, some or none — drawn, never pressed.
+  Widget _triBox(ThemeData theme, bool? state, {required Key key}) => Icon(
+    state == true
+        ? Icons.check_box
+        : state == null
+        ? Icons.indeterminate_check_box
+        : Icons.check_box_outline_blank,
+    key: key,
+    size: 20,
+    color: state == false
+        ? theme.colorScheme.outline
+        : theme.colorScheme.primary,
+    semanticLabel: state == true
+        ? 'All granted'
+        : state == null
+        ? 'Some granted'
+        : 'None granted',
+  );
+
+  /// One module: its row in the grid, and under it, once opened, the full
+  /// list of what can be granted there.
+  Widget _moduleRow(
+    PermissionModule module,
+    ThemeData theme, {
+    required bool indent,
+  }) {
+    // Two separate reasons a row can be dead, and they are not the same
+    // sentence. One is about this person and this role; the other is about the
+    // whole organization and is nothing an administrator here can undo.
+    final live = _writable && module.available;
+
+    // A module the platform has switched off is SHOWN, greyed, with the reason
+    // (§13). Removing it from the list would leave somebody hunting for a tab
+    // that used to be there and concluding the editor is broken — and the kill
+    // switch exists to be used mid-incident, when that guess costs the most.
+    final muted = module.available
+        ? null
+        : theme.colorScheme.onSurface.withValues(alpha: 0.45);
+
+    final expanded = _isExpanded(module);
+    final viewKey = module.viewKey;
+    final compare = widget.compare;
+    final small = theme.textTheme.bodySmall;
+
+    // Open IS the module's view permission — the one switch. Ticking it grants
+    // view and nothing else; unticking it clears the module, or refuses.
+    final open = Checkbox(
+      value: viewKey != null && _held.contains(viewKey),
+      onChanged:
+          live && viewKey != null && widget.catalogue.mayGrant(viewKey)
+          ? (_) => _toggleModule(module)
+          : null,
+    );
+
+    final subtitle = module.available
+        ? _inboxTally(module, theme)
+        : Text(
+            module.unavailableReason ??
+                'Switched off for your organization by EzBizi.',
+            style: small?.copyWith(color: theme.colorScheme.error),
+          );
+
+    final name = Padding(
+      padding: EdgeInsets.only(left: indent ? 20 : 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            module.label,
+            key: ValueKey('module-name:${module.key}'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: muted,
+            ),
+          ),
+          ?subtitle,
+        ],
+      ),
+    );
+
+    final Widget row;
+    if (widget.narrow) {
+      row = Row(
+        children: [
+          open,
+          Expanded(child: name),
+          if (compare != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _triBox(
+                theme,
+                _canDoState(module, compare.permissions),
+                key: ValueKey('compare:${module.key}'),
+              ),
+            ),
+          Text(
+            '${_phoneSummary(module)} ›',
+            key: ValueKey('module-summary:${module.key}'),
+            style: small?.copyWith(color: muted),
+          ),
+        ],
+      );
+    } else {
+      row = Row(
+        children: [
+          Expanded(flex: 3, child: name),
+          SizedBox(width: _openWidth, child: Center(child: open)),
+          SizedBox(
+            width: _tabsWidth,
+            child: Text(
+              _tabsSummary(module),
+              key: ValueKey('tabs:${module.key}'),
+              style: small?.copyWith(color: muted),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Row(
+              children: [
+                _triBox(
+                  theme,
+                  _canDoState(module, _held),
+                  key: ValueKey('can-do:${module.key}'),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _canDoSummary(module),
+                    key: ValueKey('can-do-text:${module.key}'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: small?.copyWith(color: muted),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              _inviteSummary(module),
+              key: ValueKey('invite:${module.key}'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: small?.copyWith(color: muted),
+            ),
+          ),
+          if (compare != null)
+            SizedBox(
+              width: _compareWidth,
+              child: Center(
+                child: _triBox(
+                  theme,
+                  _canDoState(module, compare.permissions),
+                  key: ValueKey('compare:${module.key}'),
+                ),
+              ),
+            ),
+          SizedBox(
+            width: _chevronWidth,
+            child: Icon(
+              expanded ? Icons.expand_less : Icons.expand_more,
+              size: 20,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      key: ValueKey('module:${module.key}'),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() {
+              if (!_expanded.remove(module.key)) _expanded.add(module.key);
+            }),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: row,
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: EdgeInsets.only(
+                left: widget.narrow ? 8 : 40 + (indent ? 20 : 0),
+                right: 8,
+                bottom: 8,
+              ),
+              child: _detail(module, theme, live: live, muted: muted),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A module opened in place: the same checkbox lists the side panel had.
+  Widget _detail(
+    PermissionModule module,
+    ThemeData theme, {
+    required bool live,
+    required Color? muted,
+  }) {
+    // Searching for "export" inside Customers shows the Export row, not the
+    // other eleven; searching for "Customers" shows all of them.
+    final everything = _labelMatches(module);
+    bool shown(PermissionAction action) =>
+        everything || _actionMatches(action);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // One width decision for every row, taken from the space the rows
+        // actually have rather than from the window: layout 2 rides the
+        // requirement on the label, layout 6 puts it underneath, and the two
+        // must not both appear because two slots measured separately.
+        //
+        // 400, not the 600 used elsewhere, and it is MEASURED rather than
+        // conventional: on a phone a row is about 330pt, in the grid on a
+        // desktop it is several hundred more.
+        LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              // TABS FIRST, UNDER THEIR OWN HEADING, and then what may be done.
+              //
+              // Added 2026-09-17 with per-tab grants. Human Resources went from
+              // four checkboxes to eleven, and a flat list mixing "Work Hours"
+              // with "Edit" asks the reader to work out which of two questions
+              // each row is answering. The headings answer it once.
+              //
+              // Both headings are conditional on tabs EXISTING: a module with
+              // none draws exactly what it drew yesterday, with no lone "What
+              // they can do" caption over the same four rows it always had.
+              if (module.actions.any((a) => a.tab)) ...[
+                _grantHeading(
+                  theme,
+                  'Tabs',
+                  'Which tabs inside ${module.label} this role may open.',
+                ),
+                for (final action in module.actions.where(
+                  (a) => a.tab && shown(a),
+                ))
+                  _actionRow(context, module, action, muted, live, constraints),
+                _grantHeading(
+                  theme,
+                  'What they can do',
+                  'Applies wherever ${module.label} allows it, in the tabs '
+                      'above.',
+                ),
+              ],
+              for (final action in module.actions.where(
+                (a) => !a.tab && shown(a),
+              ))
+                _actionRow(context, module, action, muted, live, constraints),
+            ],
+          ),
+        ),
+
+        ..._inboxRows(module, theme, live: live, muted: muted),
+      ],
+    );
+  }
+
+  /// "Who has it": a few faces and names, and "+N" for the rest.
+  Widget _whoHasIt(ThemeData theme) {
+    final role = widget.role;
+    final people = role.people;
+    final shown = (people ?? const <({String id, String name})>[])
+        .take(6)
+        .toList();
+    final rest = role.userCount - shown.length;
+    final scheme = theme.colorScheme;
+
+    return Column(
+      key: const ValueKey('role-people'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Who has it', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (role.userCount == 0 && shown.isEmpty)
+          Text('Nobody holds this role yet.', style: theme.textTheme.bodySmall)
+        // An older server sends no names; the count is still true.
+        else if (people == null)
+          Text(
+            role.userCount == 1
+                ? '1 person holds this role.'
+                : '${role.userCount} people hold this role.',
+            style: theme.textTheme.bodySmall,
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final person in shown)
+                Row(
+                  key: ValueKey('role-person:${person.id}'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 12,
+                      backgroundColor: scheme.primaryContainer,
+                      child: Text(
+                        _initials(person.name),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(person.name, style: theme.textTheme.bodySmall),
+                  ],
+                ),
+              if (rest > 0)
+                Text(
+                  '+$rest',
+                  key: const ValueKey('role-people-more'),
+                  style: theme.textTheme.bodySmall,
+                ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -1280,112 +2053,6 @@ class _RoleEditorState extends State<_RoleEditor> {
             modules: members,
           ),
     ];
-  }
-
-  Widget _moduleTile(PermissionModule module) {
-    final theme = Theme.of(context);
-    final held = module.actions.where((a) => _held.contains(a.key)).length;
-
-    // Two separate reasons a row can be dead, and they are not the same
-    // sentence. One is about this person and this role; the other is about the
-    // whole organization and is nothing an administrator here can undo.
-    final live = _writable && module.available;
-
-    // A module the platform has switched off is SHOWN, greyed, with the reason
-    // (§13). Removing it from the list would leave somebody hunting for a tab
-    // that used to be there and concluding the editor is broken — and the kill
-    // switch exists to be used mid-incident, when that guess costs the most.
-    final muted = module.available
-        ? null
-        : theme.colorScheme.onSurface.withValues(alpha: 0.45);
-
-    return ExpansionTile(
-      // Keyed by the module, so the tile keeps its own open/closed state across
-      // the rebuild every tick causes. Without a stable key, ticking a box in an
-      // expanded module would collapse it under the finger.
-      key: ValueKey('module:${module.key}'),
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: const EdgeInsets.only(left: 40, bottom: 8),
-      leading: Checkbox(
-        tristate: true,
-        value: _tabState(module),
-        // The offered value is ignored on purpose. Flutter's tristate cycle runs
-        // false → true → null, and "half granted" is not something a tap should
-        // ever produce: the tab goes on, or it goes off.
-        onChanged:
-            live &&
-                module.viewKey != null &&
-                widget.catalogue.mayGrant(module.viewKey!)
-            ? (_) => _toggleModule(module)
-            : null,
-      ),
-      title: Text(module.label, style: TextStyle(color: muted)),
-      subtitle: module.available
-          ? _inboxTally(module, theme)
-          : Text(
-              module.unavailableReason ??
-                  'Switched off for your organization by EzBizi.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
-              ),
-            ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$held of ${module.actions.length}',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-          ),
-          const SizedBox(width: 4),
-          const Icon(Icons.expand_more),
-        ],
-      ),
-      children: [
-        // One width decision for every row, taken from the space the rows
-        // actually have rather than from the window: layout 2 rides the
-        // requirement on the label, layout 6 puts it underneath, and the two
-        // must not both appear because two slots measured separately.
-        //
-        // 400, not the 600 used elsewhere, and it is MEASURED rather than
-        // conventional. This editor is a panel, not a page: a row is 472pt on
-        // a 1400pt window and 312pt on a 400pt one. A 600 threshold puts every
-        // row on the phone side forever and layout 2 would never once appear.
-        LayoutBuilder(
-          builder: (context, constraints) => Column(
-            children: [
-        // TABS FIRST, UNDER THEIR OWN HEADING, and then what may be done.
-        //
-        // Added 2026-09-17 with per-tab grants. Human Resources went from four
-        // checkboxes to eleven, and a flat list mixing "Work Hours" with "Edit"
-        // asks the reader to work out which of two questions each row is
-        // answering. The headings answer it once.
-        //
-        // Both headings are conditional on tabs EXISTING: a module with none
-        // draws exactly what it drew yesterday, with no lone "What they can do"
-        // caption over the same four rows it always had.
-        if (module.actions.any((a) => a.tab)) ...[
-          _grantHeading(
-            theme,
-            'Tabs',
-            'Which tabs inside ${module.label} this role may open.',
-          ),
-          for (final action in module.actions.where((a) => a.tab))
-            _actionRow(context, module, action, muted, live, constraints),
-          _grantHeading(
-            theme,
-            'What they can do',
-            'Applies wherever ${module.label} allows it, in the tabs above.',
-          ),
-        ],
-        for (final action in module.actions.where((a) => !a.tab))
-          _actionRow(context, module, action, muted, live, constraints),
-            ],
-          ),
-        ),
-
-        ..._inboxRows(module, theme, live: live, muted: muted),
-      ],
-    );
   }
 
   /// One grant, drawn the same whether it opens a tab or permits an act.
