@@ -52,9 +52,6 @@ final class RingCentralLeadCalls
 {
     public const MATCH_SECONDS = 180;
 
-    /** Days a caller's earlier lead still collects their calls. */
-    private const SAME_PERSON_DAYS = 30;
-
     /*
      * An unanswered call, by what happened (Jose, 2026-10-16: "Menu Hang ups
      * should be excluded and also tagged appropiately as Possible Spam / 2
@@ -162,6 +159,9 @@ final class RingCentralLeadCalls
                     'received_at' => $times[$i],
                     'source_status' => $outcome,
                 ]);
+                if (! $out && $outcome !== self::POSSIBLE_SPAM) {
+                    CallerLead::reopen($lead);
+                }
                 // A caller who got through (or left word) is no longer a menu
                 // hang-up; a later hang-up never relabels a real call.
                 if (! $out && $lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome && $outcome !== self::POSSIBLE_SPAM) {
@@ -408,12 +408,6 @@ final class RingCentralLeadCalls
     /** The caller's inbox lead from the last 30 days, newest first. */
     private function leadFor(string $digits, CarbonImmutable $at): ?Lead
     {
-        return Lead::query()
-            ->where('phone_digits', 'like', '%'.$digits)
-            ->whereIn('source', Lead::INBOX_SOURCES)
-            ->where('status', '!=', Lead::STATUS_JOB_APPLICANT)
-            ->where('received_at', '>=', $at->subDays(self::SAME_PERSON_DAYS))
-            ->orderByDesc('received_at')
-            ->first();
+        return CallerLead::find($digits, $at);
     }
 }

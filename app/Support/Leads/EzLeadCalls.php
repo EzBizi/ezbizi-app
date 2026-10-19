@@ -38,8 +38,6 @@ final class EzLeadCalls
 
     public const TEXT = 'ez_text_';
 
-    private const SAME_PERSON_DAYS = 30;
-
     private const ANNOUNCE_WITHIN_MINUTES = 60;
 
     private const WORDS = [
@@ -133,6 +131,9 @@ final class EzLeadCalls
 
         DB::transaction(function () use ($call, $line, $at, $outcome, $answeredBy) {
             $lead = $this->leadFor((string) $call->from_e164, $at, $line, Lead::SOURCE_EZ_CALLS, self::CALL.$call->id, $outcome);
+            if ($outcome !== RingCentralLeadCalls::POSSIBLE_SPAM) {
+                CallerLead::reopen($lead);
+            }
             // A caller who got through is no longer a menu hang-up; a later
             // hang-up never relabels a real call (as RC Calls).
             if ($lead->source === Lead::SOURCE_EZ_CALLS && $lead->source_status !== $outcome && $outcome !== RingCentralLeadCalls::POSSIBLE_SPAM) {
@@ -220,13 +221,7 @@ final class EzLeadCalls
     /** The caller's inbox lead from the last 30 days, or a new one on this line's company and branch. */
     private function existingLead(string $from, CarbonImmutable $at): ?Lead
     {
-        return Lead::query()
-            ->where('phone_digits', 'like', '%'.self::ten($from))
-            ->whereIn('source', Lead::INBOX_SOURCES)
-            ->where('status', '!=', Lead::STATUS_JOB_APPLICANT)
-            ->where('received_at', '>=', $at->subDays(self::SAME_PERSON_DAYS))
-            ->orderByDesc('received_at')
-            ->first();
+        return CallerLead::find(self::ten($from), $at);
     }
 
     private function leadFor(string $from, CarbonImmutable $at, PhoneNumber $line, string $source, string $remoteId, ?string $outcome): Lead
