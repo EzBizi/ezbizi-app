@@ -368,6 +368,30 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-10-19: "Fetching" - answered, RingCentral has not sent the recording yet. */
+    public function test_an_answered_call_is_fetching_until_its_recording_comes(): void
+    {
+        $t = $this->setUpTenant();
+        $at = now()->subMinutes(10)->toIso8601String();
+        $this->inTenant($t['org'], function () use ($t, $at) {
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([
+                self::rc('60', '+15550000060', $at, extra: ['recording_id' => null]),
+                self::rc('61', '+15550000061', now()->subHours(3)->toIso8601String(), extra: ['recording_id' => null]),   // long past: just no recording
+            ], self::LINES, $t['company']->id);
+            $lead = Lead::query()->where('phone', '+15550000060')->sole();
+            $this->assertSame(RingCentralLeadCalls::FETCHING, $lead->source_status);
+            $this->assertSame('Fetching recording', LeadConversation::query()->where('remote_id', 'rc_60')->value('text'));
+            $this->assertNull(Lead::query()->where('phone', '+15550000061')->value('source_status'));
+
+            // The recording arrives: the tag goes and the player can load it.
+            $calls->file([self::rc('60', '+15550000060', $at)], self::LINES, $t['company']->id);
+            $row = LeadConversation::query()->where('remote_id', 'rc_60')->sole();
+            $this->assertSame(['ringcentral:R60', null], [$row->recording_url, $row->text]);
+            $this->assertNull($lead->refresh()->source_status);
+        });
+    }
+
     /** A missed call on a person's direct line alerts like any missed call. */
     public function test_a_missed_call_on_a_direct_line_alerts(): void
     {
