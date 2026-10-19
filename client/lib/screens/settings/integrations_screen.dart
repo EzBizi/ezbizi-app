@@ -447,6 +447,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           ),
           const SizedBox(height: 12),
         ],
+        // The business's own WhatsApp number (Embedded Signup), beside the
+        // phone numbers (UI queue 110). Connected HERE: no other screen owns
+        // it, so no `_whereFor` sends them away.
+        _family(
+          context,
+          title: 'Messaging',
+          icon: Icons.chat_outlined,
+          family: 'messaging',
+          providers: providers,
+          byProvider: byProvider,
+          empty: 'No WhatsApp number connected in $_viewName.',
+        ),
+        const SizedBox(height: 12),
         _family(
           context,
           title: 'Mailing',
@@ -480,18 +493,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           providers: providers,
           byProvider: byProvider,
           empty: 'No social account connected in $_viewName.',
-        ),
-        // The business's own WhatsApp number (Embedded Signup). Connected
-        // HERE: no other screen owns it, so no `_whereFor` sends them away.
-        const SizedBox(height: 12),
-        _family(
-          context,
-          title: 'Messaging',
-          icon: Icons.chat_outlined,
-          family: 'messaging',
-          providers: providers,
-          byProvider: byProvider,
-          empty: 'No WhatsApp number connected in $_viewName.',
         ),
         const SizedBox(height: 12),
         _family(
