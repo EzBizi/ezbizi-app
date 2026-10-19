@@ -16,11 +16,11 @@ class WhatsAppReportBatch extends Model implements StatesRetention
 
     protected $table = 'whatsapp_report_batches';
 
-    protected $fillable = ['organization_id', 'period', 'starts_on', 'ends_on', 'approved_at', 'approved_by'];
+    protected $fillable = ['organization_id', 'period', 'starts_on', 'ends_on', 'approved_at', 'approved_by', 'held_at', 'held_by'];
 
     protected function casts(): array
     {
-        return ['starts_on' => 'date', 'ends_on' => 'date', 'approved_at' => 'datetime'];
+        return ['starts_on' => 'date', 'ends_on' => 'date', 'approved_at' => 'datetime', 'held_at' => 'datetime'];
     }
 
     public static function retention(): RetentionPolicy
