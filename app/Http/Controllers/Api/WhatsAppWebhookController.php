@@ -182,7 +182,7 @@ class WhatsAppWebhookController extends Controller
                     // arrives as a row with a null body and its real `kind`,
                     // which is honest - better than an empty string that reads
                     // as an empty message somebody sent.
-                    'body' => $message['text']['body'] ?? ($picked['title'] ?? null),
+                    'body' => $message['text']['body'] ?? ($picked['title'] ?? ($message['image']['caption'] ?? $message['document']['caption'] ?? null)),
                     // An image or document's caption is its words; its id is how it is fetched.
                     'media_id' => $message['image']['id'] ?? $message['document']['id'] ?? null,
                 ],

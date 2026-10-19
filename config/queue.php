@@ -46,6 +46,19 @@ return [
             'after_commit' => false,
         ],
 
+        // Jobs that wait on an AI read for up to two minutes (a bill photo).
+        // Same table, own queue `long`, with retry_after above their timeout
+        // so a slow job is never handed to a second worker mid-run. Needs
+        // its own worker: queue:work database-long --queue=long --timeout=160
+        'database-long' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'queue_jobs'),
+            'queue' => 'long',
+            'retry_after' => 200,
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
