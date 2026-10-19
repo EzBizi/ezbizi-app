@@ -12,6 +12,7 @@ use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Weekly and monthly PDFs, approved on WhatsApp first (docs/REPLACING-RODRIGO-BOT.md,
@@ -98,22 +99,29 @@ final class WhatsAppPeriodReports
      */
     public function sendPrivately(WhatsAppReportBatch $batch, PeriodReport $report, User $to): int
     {
+        // A second SEPARATELY while the first is going sends nothing more.
+        if (! Cache::add('separately:'.$batch->getKey().':'.$to->getKey(), 1, now()->addMinutes(10))) {
+            return 0;
+        }
+
         [$from, $until] = [$batch->starts_on->toDateString(), $batch->ends_on->toDateString()];
         $label = $this->label($batch);
-        $sent = 0;
+        $documents = [];
 
         foreach (WhatsAppGroup::query()->where('purpose', 'like', 'daily:%')->get() as $group) {
             $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
 
             if ($branch !== null) {
-                $sent += $this->groups->deliverDocumentToMember(self::APPROVAL, $to, BranchName::of($branch).' '.$label,
-                    $report->forFranchise($branch, $from, $until), $this->filename($batch, BranchName::of($branch))) ? 1 : 0;
+                $documents[] = ['title' => BranchName::of($branch).' '.$label,
+                    'pdf' => $report->forFranchise($branch, $from, $until), 'filename' => $this->filename($batch, BranchName::of($branch))];
             }
         }
 
-        return $sent + ($this->groups->deliverDocumentToMember(self::APPROVAL, $to, 'All companies '.$label,
-            $report->consolidated(Organization::findOrFail($batch->organization_id), $from, $until),
-            $this->filename($batch, 'All companies')) ? 1 : 0);
+        $documents[] = ['title' => 'All companies '.$label,
+            'pdf' => $report->consolidated(Organization::findOrFail($batch->organization_id), $from, $until),
+            'filename' => $this->filename($batch, 'All companies')];
+
+        return $this->groups->deliverDocumentsToMember(self::APPROVAL, $to, ucfirst($label), $documents);
     }
 
     /**
