@@ -284,6 +284,25 @@ table.a td,table.a th{padding:6px 9px;border-bottom:1px solid var(--line);text-a
 
 <h2><span class="n">2</span> Integrations as a list, with the open service beside it</h2>
 <p class="cap">Everything in 1, except that Integrations shows the services as a list on the left, each with its status, and the open service's page on the right, the way Preferences works. Moving between services is quicker, but each service's page gets less room.</p>
+<div class="win" style="height:400px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span></div>
+<div class="page" style="flex-direction:row;gap:12px">
+ <div style="width:220px;display:flex;flex-direction:column;gap:5px">
+  <span class="fld">🔍 Find a service</span>
+  <div class="sec">Field service &amp; phone</div>
+  <div class="rw" style="border-color:var(--pri);background:var(--pric)"><div class="g"><b>Workiz</b></div><span class="st ok">3</span></div>
+  <div class="rw"><div class="g"><b>Twilio</b></div><span class="st ok">On</span></div>
+  <div class="rw"><div class="g"><b>WhatsApp</b></div><span class="st bad">!</span></div>
+  <div class="sec">Email</div>
+  <div class="rw"><div class="g"><b>Google Workspace</b></div><span class="st ok">On</span></div>
+  <div class="rw"><div class="g"><b>Sending server</b></div><span class="st ok">On</span></div>
+ </div>
+ <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+  <div class="hd"><div class="t"><b>Workiz</b><span>Jobs, customers and invoices from Workiz, per branch.</span></div><span class="btn p">+ Connect a branch</span></div>
+  <div class="rw"><div class="g"><b>Springfield</b><span>v2 token · synced 4 min ago</span></div><span class="st ok">Connected</span><span class="btn">Edit</span><span class="btn d">Disconnect</span></div>
+  <div class="rw"><div class="g"><b>Riverton</b><span>v1 key · last sync failed 2 h ago: the key was refused</span></div><span class="st bad">Needs attention</span><span class="btn">Edit</span><span class="btn d">Disconnect</span></div>
+  <div class="rw"><div class="g"><b>Oakdale</b><span>v1 key · synced 10 min ago</span></div><span class="st ok">Connected</span><span class="btn">Edit</span><span class="btn d">Disconnect</span></div>
+ </div>
+</div></div>
 
 <h2><span class="n">3</span> Fix only what's broken</h2>
 <p class="cap">Keep today's layouts and fix these:</p>
@@ -294,18 +313,22 @@ table.a td,table.a th{padding:6px 9px;border-bottom:1px solid var(--line);text-a
  <li>Try again on Integrations and Activity;</li>
  <li>Activity's action codes turned into sentences.</li>
 </ul>
-<p class="cap">Twilio, WhatsApp and the sending server stay where they are today, and the tabs don't get the shared header.</p>
+<p class="cap">Twilio, WhatsApp and the sending server stay where they are today, and the tabs don't get the shared header. Below: today's grid with only those fixes.</p>
+<div class="win" style="height:360px"><div class="top"><span class="logo">EzBizi</span></div>
+<div class="page" style="gap:10px">
+ <div class="tb"><span>Organization</span><span>Settings</span><span class="on">Integrations</span><span>Roles &amp; permissions</span><span>Activity</span><span>API activity</span></div>
+ <div class="sec">Social · 2 of 9 connected</div>
+ <div class="grid"><div class="tile"><b>Facebook Pages</b><span class="st ok">Connected</span></div><div class="tile"><b>Pinterest</b><span class="st ok">Connected</span></div><div class="tile"><b>Instagram</b><span class="st neu">Not connected</span><span class="m">Connect it in Marketing</span></div></div>
+ <div class="sec">Advertising and listings · 2 of 4 connected</div>
+ <div class="grid"><div class="tile"><b>Google Ads</b><span class="st ok">Connected</span></div><div class="tile"><b>Facebook Ads</b><span class="st ok">Connected</span></div><div class="tile"><b>Thumbtack</b><span class="st neu">Not connected</span><span class="m">Connect it in Leads</span></div></div>
+ <div class="rw"><div class="g"><b>Pinterest · Brightside</b><span>connected by Dana Reyes</span></div><span class="btn d">Disconnect</span></div>
+</div></div>
 
 <h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
-<ul class="cap">
- <li><b>4</b> (recommended, goes with 1):
-  <ul>
-   <li>the tab row scrolls sideways;</li>
-   <li>services are rows grouped by section;</li>
-   <li>a service opens full width: its connections first, each with ⋯ for Edit and Disconnect, then Connect.</li>
-  </ul>
- </li>
- <li><b>5</b> goes with 2: the list of services, then the service's page.</li>
- <li><b>6</b> goes with 3.</li>
-</ul>
+<div class="phones">
+<div class="pcol"><span class="pl">4 · the list (recommended, goes with 1)</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Settings</span></div><div class="pb"><div class="tb" style="flex-wrap:nowrap;overflow:hidden"><span>Organization</span><span>Preferences</span><span class="on">Integrations</span><span>Roles</span></div><div class="sec">Field service &amp; phone</div><div class="rw"><div class="g"><b>Workiz</b><span>Jobs, customers, invoices</span></div><span class="st ok">3 branches</span></div><div class="rw"><div class="g"><b>Twilio</b><span>Calls and texts</span></div><span class="st ok">Connected</span></div><div class="rw"><div class="g"><b>WhatsApp</b><span>Customer messages</span></div><span class="st bad">Needs attention</span></div><div class="sec">Email</div><div class="rw"><div class="g"><b>Google Workspace</b><span>Mailboxes</span></div><span class="st ok">Connected</span></div><div class="rw"><div class="g"><b>Sending server</b><span>Mail sent from EzBizi</span></div><span class="st ok">Connected</span></div><div class="sec">Marketing, ads &amp; listings</div><div class="rw"><div class="g"><b>Facebook</b><span>One sign-in for both</span></div><span class="st ok">Page + ads</span></div></div></div></div>
+<div class="pcol"><span class="pl">4 · a service opened</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Settings</span></div><div class="pb"><b style="font-size:14px">← Workiz</b><span class="help">Jobs, customers and invoices from Workiz, per branch.</span><div class="sec">Connected</div><div class="rw"><div class="g"><b>Springfield</b><span>v2 token · 4 min ago</span></div><span class="st ok">Connected</span><span>⋯</span></div><div class="rw"><div class="g"><b>Riverton</b><span>failed 2 h ago: key refused</span></div><span class="st bad">Needs attention</span><span>⋯</span></div><div class="sec">Connect</div><div class="box"><div class="fld">Branch: Oakdale ▾</div><span class="tb"><span>v1</span><span class="on">v2</span><span style="opacity:.45">Session · soon</span></span><div class="fld">Token</div><span class="help">Workiz › Settings › Developer › API.</span><span class="btn p" style="align-self:flex-end">Connect</span></div></div></div></div>
+<div class="pcol"><span class="pl">5 · goes with 2</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Settings</span></div><div class="pb"><div class="tb" style="flex-wrap:nowrap;overflow:hidden"><span>Organization</span><span>Preferences</span><span class="on">Integrations</span><span>Roles</span></div><span class="fld">🔍 Find a service</span><div class="rw"><div class="g"><b>Workiz</b><span></span></div><span class="st ok">3</span></div><div class="rw"><div class="g"><b>Twilio</b><span></span></div><span class="st ok">On</span></div><div class="rw"><div class="g"><b>WhatsApp</b><span></span></div><span class="st bad">!</span></div><div class="rw"><div class="g"><b>Google Workspace</b><span></span></div><span class="st ok">On</span></div><div class="rw"><div class="g"><b>Sending server</b><span></span></div><span class="st ok">On</span></div><div class="rw"><div class="g"><b>Facebook</b><span></span></div><span class="st ok">On</span></div><span class="help">Tap one and its page replaces the list, with ← to go back.</span></div></div></div>
+<div class="pcol"><span class="pl">6 · goes with 3 (today, fixed)</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Settings</span></div><div class="pb"><div class="tb" style="flex-wrap:nowrap;overflow:hidden"><span>Organization</span><span>Settings</span><span class="on">Integrations</span></div><div class="sec">Social · 2 of 9</div><div class="rw"><div class="g"><b>Facebook Pages</b><span></span></div><span class="st ok">Connected</span></div><div class="rw"><div class="g"><b>Pinterest</b><span></span></div><span class="st ok">Connected</span></div><div class="rw"><div class="g"><b>Instagram</b><span>Connect it in Marketing</span></div><span class="st neu">Not connected</span></div><div class="sec">Advertising · 2 of 4</div><div class="rw"><div class="g"><b>Google Ads</b><span></span></div><span class="st ok">Connected</span></div><div class="rw"><div class="g"><b>Thumbtack</b><span>Connect it in Leads</span></div><span class="st neu">Not connected</span></div></div></div></div>
+</div>
 </div>
