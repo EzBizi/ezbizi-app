@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/settings/activity_screen.dart';
 import 'package:ezbizi_client/screens/settings_shell.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -59,13 +60,73 @@ void main() {
     final asked = <Uri>[];
     await _pump(tester, ['audit.view'], asked, shell: false);
 
-    expect(find.text('Dana created lead · Ann Smith'), findsOneWidget);
+    // Wide: who in its own column, then what (UI queue 111).
+    expect(find.text('Dana'), findsOneWidget);
+    expect(find.text('created lead · Ann Smith'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('source:system')));
+    // A Who picker since UI queue 111.
+    _pick(tester, 'activity-who', 'system');
     await tester.pumpAndSettle();
 
     expect(asked.last.queryParameters['source'], 'system');
     expect(asked.last.queryParameters['window'], '7d');
+
+    // One person rather than a source.
+    _pick(tester, 'activity-who', 'actor:u-9');
+    await tester.pumpAndSettle();
+    expect(asked.last.queryParameters['actor_id'], 'u-9');
+    expect(asked.last.queryParameters.containsKey('source'), isFalse);
+  });
+
+  // UI queue 111: module and search narrow the list on the server.
+  testWidgets('module and search ask the server', (tester) async {
+    final asked = <Uri>[];
+    await _pump(tester, ['audit.view'], asked, shell: false);
+
+    _pick(tester, 'activity-module', 'lead');
+    await tester.pumpAndSettle();
+    expect(asked.last.queryParameters['module'], 'lead');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('activity-search')),
+      'Ann',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(asked.last.queryParameters['q'], 'Ann');
+  });
+
+  // UI queue 111: narrow, one sentence per row, opened in a side panel.
+  testWidgets('narrow, a row is a sentence and opens in a panel', (
+    tester,
+  ) async {
+    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+    tester.view.physicalSize = const Size(600, 1000);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dana created lead · Ann Smith'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('activity-row:e-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('What changed'), findsOneWidget);
+    expect(find.byKey(const ValueKey('activity-close')), findsNothing);
+  });
+
+  // UI queue 111: wide, a table by day, and a row opens beside it.
+  testWidgets('wide, the row opens beside the table', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+
+    expect(find.text('WHERE'), findsOneWidget);
+    expect(find.text('MODULE'), findsOneWidget);
+    expect(find.text('Springfield'), findsOneWidget);
+    expect(find.text('created lead · Ann Smith'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('activity-row:e-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('new  →  follow_up'), findsOneWidget);
+    expect(find.byKey(const ValueKey('activity-close')), findsOneWidget);
   });
 
   testWidgets('the tab is drawn only for audit.view', (tester) async {
@@ -146,9 +207,15 @@ Future<void> _pump(
               'actor': 'Dana',
               'action': 'lead.created',
               'target': 'Ann Smith',
+              'where': 'Springfield',
             },
           ],
-          'meta': {'more': false},
+          'meta': {
+            'more': false,
+            'actors': [
+              {'id': 'u-9', 'label': 'Dana'},
+            ],
+          },
         });
       }
       return _json({'data': const <dynamic>[]});
@@ -176,3 +243,9 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   status,
   headers: const {'content-type': 'application/json'},
 );
+
+void _pick(WidgetTester tester, String key, String? value) {
+  tester
+      .widget<SearchPickerField<String?>>(find.byKey(ValueKey(key)))
+      .onChanged!(value);
+}
