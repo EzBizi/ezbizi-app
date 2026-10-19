@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
-import '../widgets/brand_colour_card.dart';
-import '../widgets/logo_badge.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/structure_canvas.dart';
 import '../widgets/structure_menu.dart';
 import 'company_form_panel.dart';
+import 'organization/organization_list_view.dart';
 import 'organization/structure_tab.dart';
 
 /// The shape of the business (plan §3).
@@ -81,10 +80,21 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   /// arrangement, a viewport and a pending save are being held.
   final Set<int> _shown = {_list};
 
+  /// The header's "Find a company or branch" field, which filters the List
+  /// view's tree (UI queue 111).
+  final TextEditingController _search = TextEditingController();
+
   @override
   void initState() {
     super.initState();
+    _search.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   void _select(int tab) => setState(() {
@@ -232,6 +242,22 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                     selected: {_tab},
                     onSelectionChanged: (picked) => _select(picked.first),
                   ),
+                  // The List view's tree is what it filters, so it is not
+                  // offered over the canvas.
+                  if (_tab == _list)
+                    SizedBox(
+                      width: 240,
+                      child: TextField(
+                        key: const ValueKey('org-search'),
+                        controller: _search,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          prefixIcon: Icon(Icons.search, size: 18),
+                          hintText: 'Find a company or branch',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
                   Refused(
                     reason: tree['organization']['may_add_company'] == true
                         ? null
@@ -304,29 +330,23 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     );
   }
 
+  /// The tree on the left and the picked node on the right (UI queue 111,
+  /// layout 1). It draws and selects; every act below is still written once,
+  /// here, and handed to it.
   Widget _listView(Map<String, dynamic> tree) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-      children: [
-        _OrganizationRow(
-          api: widget.api,
-          organization: tree['organization'] as Map<String, dynamic>,
-          onChanged: _load,
-        ),
-
-        // Beside the logo, because they are one idea: how this business looks
-        // wherever we render it for them. UI/UX brand colour layouts 1 + 6,
-        // chosen by Jose 2026-09-09.
-        BrandColourCard(
-          api: widget.api,
-          mayEdit:
-              (tree['organization'] as Map<String, dynamic>)['may_edit'] == true,
-        ),
-
-        for (final company
-            in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
-          _companyBlock(company, isSub: false),
-      ],
+    return OrganizationListView(
+      api: widget.api,
+      session: widget.session,
+      tree: tree,
+      query: _search.text,
+      onChanged: _load,
+      onEditCompany: _editCompany,
+      onToggleCompany: _toggleCompany,
+      onAddFranchise: _createFranchise,
+      onAddSubCompany: (company) => _createCompany(parent: company),
+      onMoveCompany: _moveCompany,
+      onRenameFranchise: _renameFranchise,
+      onToggleFranchise: _toggleFranchise,
     );
   }
 
@@ -372,40 +392,6 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     }
 
     return null;
-  }
-
-  Widget _companyBlock(Map<String, dynamic> company, {required bool isSub}) {
-    final subs = (company['sub_companies'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
-
-    return Padding(
-      // Sub companies step in once. The indent IS the relationship — it is what
-      // says these settings resolve through the company above before reaching
-      // the organization.
-      padding: EdgeInsets.only(left: isSub ? 36 : 0, top: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _CompanyCard(
-            api: widget.api,
-            onChanged: _load,
-            company: company,
-            isSub: isSub,
-            onEdit: () => _editCompany(company),
-            onToggleActive: () => _toggleCompany(company),
-            onAddFranchise: () => _createFranchise(company),
-            // §3: depth is fixed. Only a top-level company may hold one.
-            onAddSubCompany: isSub
-                ? null
-                : () => _createCompany(parent: company),
-            onMove: () => _moveCompany(company),
-            onRenameFranchise: _renameFranchise,
-            onToggleFranchise: _toggleFranchise,
-          ),
-          for (final sub in subs) _companyBlock(sub, isSub: true),
-        ],
-      ),
-    );
   }
 
   // ── the acts, each written once ──────────────────────────────
@@ -661,275 +647,5 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     controller.dispose();
 
     return (value == null || value.isEmpty) ? null : value;
-  }
-}
-
-// ── rows ───────────────────────────────────────────────────────
-
-class _OrganizationRow extends StatelessWidget {
-  const _OrganizationRow({
-    required this.api,
-    required this.organization,
-    required this.onChanged,
-  });
-
-  final ApiClient api;
-  final Map<String, dynamic> organization;
-  final VoidCallback onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        LogoBadge(
-          api: api,
-          path: '/branding/organization',
-          version: organization['logo_version'] as String? ?? '',
-          hasOwn: organization['has_logo'] == true,
-          aspect: organization['logo_aspect'] as String?,
-          mayEdit: organization['may_edit'] == true,
-          onChanged: onChanged,
-          size: 52,
-          fallbackIcon: Icons.hub_outlined,
-        ),
-        const SizedBox(width: 14),
-        // Bounded, for the reason the company card's own row is (R7). A Column
-        // of Texts in a Row keeps the intrinsic width of its widest line, so
-        // this sentence laid itself out at full length beside a 52pt badge and
-        // ran off the right of a 375-point window — measured on this fixture,
-        // and silently clipped rather than reported in a release build.
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                organization['name'] as String,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              // Deliberately uncapped. It is one sentence and it is the only
-              // thing on the screen that says what the organization row IS, so
-              // truncating it would remove the explanation rather than shorten
-              // it — it wraps to as many lines as the width needs.
-              Text(
-                'the whole business — every company inherits this mark',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CompanyCard extends StatelessWidget {
-  const _CompanyCard({
-    required this.api,
-    required this.onChanged,
-    required this.company,
-    required this.isSub,
-    required this.onEdit,
-    required this.onToggleActive,
-    required this.onAddFranchise,
-    required this.onAddSubCompany,
-    required this.onMove,
-    required this.onRenameFranchise,
-    required this.onToggleFranchise,
-  });
-
-  final ApiClient api;
-  final VoidCallback onChanged;
-  final Map<String, dynamic> company;
-  final bool isSub;
-  final VoidCallback onEdit;
-  final VoidCallback onToggleActive;
-  final VoidCallback onAddFranchise;
-  final VoidCallback? onAddSubCompany;
-  final VoidCallback onMove;
-  final void Function(Map<String, dynamic>) onRenameFranchise;
-  final void Function(Map<String, dynamic>) onToggleFranchise;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final active = company['is_active'] as bool;
-    final mayEdit = company['may_edit'] as bool? ?? false;
-
-    // The answer for the "Add a place" chip below, which is the same answer the
-    // menu asks the same map for — §4 has one home and it is the server. This
-    // one used to be drawn from `may_edit` — `companies.edit`, which is not the
-    // permission it needs: `franchises.create`, asked against this company. So
-    // it was taken away from people who held it and offered to people who did
-    // not, and either way it said nothing.
-    final mayAddFranchise = company['may_add_franchise'] as bool? ?? false;
-    final noAddFranchise = mayAddFranchise
-        ? null
-        : company['may_add_franchise_reason'] as String? ??
-              'Adding a place to ${company['name']} is not yours to do.';
-
-    final franchises = (company['franchises'] as List<dynamic>)
-        .cast<Map<String, dynamic>>();
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                LogoBadge(
-                  api: api,
-                  path: '/branding/companies/${company['id']}',
-                  version: company['logo_version'] as String? ?? '',
-                  hasOwn: company['has_logo'] == true,
-                  aspect: company['logo_aspect'] as String?,
-                  mayEdit: mayEdit,
-                  onChanged: onChanged,
-                  size: 36,
-                ),
-                const SizedBox(width: 12),
-                // ── Bounded and wrapping, because R7 is not a wide desktop ──
-                //
-                // These were four unbounded children and a Spacer, which is a
-                // Row that only fits by luck: a Text takes its intrinsic width
-                // in a Row, so a company called anything longer than a word
-                // overflowed the card the moment the window narrowed. Measured
-                // on this fixture at 375: over by 129 points on a top-level
-                // company and by more on a sub company, which pays the indent
-                // as well. Nothing on screen said so — an overflow is a stripe
-                // in debug and silently clipped content in release.
-                //
-                // Expanded gives the run the space the menu does not need, and
-                // takes the Spacer's job with it. A Wrap inside it so the two
-                // badges drop to a second line rather than squeezing the name
-                // they are about, and the name ellipsizes rather than growing
-                // the card without limit — the whole name is on the row's own
-                // semantics either way.
-                Expanded(
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 2,
-                    children: [
-                      Text(
-                        company['name'] as String,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: active ? null : scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (isSub)
-                        Text(
-                          'sub company',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      if (!active)
-                        Text(
-                          'switched off',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(color: scheme.error),
-                        ),
-                    ],
-                  ),
-                ),
-                // The same menu the canvas box and the outline row draw, so the
-                // three views cannot come to offer different acts under
-                // different answers. It decides for itself whether there is
-                // anything in it worth drawing.
-                CompanyActionsMenu(
-                  company: company,
-                  onEdit: onEdit,
-                  onToggleActive: onToggleActive,
-                  onAddFranchise: onAddFranchise,
-                  onAddSubCompany: onAddSubCompany,
-                  onMove: onMove,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final f in franchises)
-                  _FranchiseChip(
-                    franchise: f,
-                    onRename: () => onRenameFranchise(f),
-                    onToggle: () => onToggleFranchise(f),
-                  ),
-                Refused(
-                  reason: noAddFranchise,
-                  child: ActionChip(
-                    avatar: const Icon(Icons.add, size: 15),
-                    label: const Text('Add a place'),
-                    onPressed: mayAddFranchise ? onAddFranchise : null,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FranchiseChip extends StatelessWidget {
-  const _FranchiseChip({
-    required this.franchise,
-    required this.onRename,
-    required this.onToggle,
-  });
-
-  final Map<String, dynamic> franchise;
-  final VoidCallback onRename;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = franchise['is_active'] as bool;
-    final scheme = Theme.of(context).colorScheme;
-    final name = franchise['name'] as String;
-
-    // The chip itself is the menu's anchor, so the place and the way to act on
-    // it are one target. The canvas box and the outline row hand it no child
-    // and get the plain handle instead — same menu, same answers, different
-    // thing to hang off.
-    return FranchiseActionsMenu(
-      franchise: franchise,
-      onRename: onRename,
-      onToggle: onToggle,
-      child: Semantics(
-        // Being switched off was carried by grey text and a line through it.
-        // The line is not colour, so it survives a reader who cannot see the
-        // grey — but neither reaches a screen reader, which got the name and
-        // nothing else.
-        label: active ? name : '$name — switched off',
-        child: Chip(
-          avatar: Icon(
-            Icons.storefront_outlined,
-            size: 15,
-            color: active ? null : scheme.onSurfaceVariant,
-          ),
-          label: Text(
-            name,
-            style: TextStyle(
-              color: active ? null : scheme.onSurfaceVariant,
-              decoration: active ? null : TextDecoration.lineThrough,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

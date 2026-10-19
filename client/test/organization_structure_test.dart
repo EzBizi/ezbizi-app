@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/organization/structure_tab.dart';
 import 'package:ezbizi_client/screens/organization_screen.dart';
+import 'package:ezbizi_client/widgets/async_body.dart' show PanelHeader;
 import 'package:ezbizi_client/widgets/structure_canvas.dart';
 import 'package:ezbizi_client/widgets/structure_outline.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -37,8 +38,14 @@ void main() {
 
       expect(find.text('List'), findsOneWidget);
       expect(find.text('Structure'), findsOneWidget);
+      // Scoped to the header: the List view's right pane now carries an
+      // "Organization" pill on the picked node, which is a label on that node
+      // and not a heading for the page (UI queue 111).
       expect(
-        find.text('Organization'),
+        find.descendant(
+          of: find.byType(PanelHeader),
+          matching: find.text('Organization'),
+        ),
         findsNothing,
         reason:
             'No heading of its own: the Settings chip above names it (UI '
@@ -235,12 +242,11 @@ void main() {
       // destination offered is the other top-level company. Its own place is
       // deliberately not in the list: choosing where it already is would be the
       // one option that does nothing.
+      // Picked in the tree, then its menu on its own page (UI queue 111).
+      await _pickInTree(tester, 'company', _sun);
       await tester.tap(
         find.descendant(
-          of: find.ancestor(
-            of: find.text('Sunward Overhead Doors'),
-            matching: find.byType(Card),
-          ),
+          of: find.byKey(const ValueKey('org-detail')),
           matching: find.byIcon(Icons.more_horiz),
         ),
       );
@@ -284,12 +290,11 @@ void main() {
 
       await _pump(tester, _server(moves: moves));
 
+      // Picked in the tree, then its menu on its own page (UI queue 111).
+      await _pickInTree(tester, 'company', _commercial);
       await tester.tap(
         find.descendant(
-          of: find.ancestor(
-            of: find.text('Sunward Commercial'),
-            matching: find.byType(Card),
-          ),
+          of: find.byKey(const ValueKey('org-detail')),
           matching: find.byIcon(Icons.more_horiz),
         ),
       );
@@ -2019,6 +2024,12 @@ Future<Session> _pump(
   await tester.pumpAndSettle();
 
   return session;
+}
+
+/// Picks a node in the List view's tree, which opens its page beside it.
+Future<void> _pickInTree(WidgetTester tester, String kind, String id) async {
+  await tester.tap(find.byKey(ValueKey('org-tree-$kind-$id')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _openStructure(WidgetTester tester) async {

@@ -65,27 +65,16 @@ class CompanyActionsMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = company['name'] as String? ?? '';
     final active = company['is_active'] as bool? ?? true;
-    final mayEdit = company['may_edit'] as bool? ?? false;
-
-    final mayAddFranchise = company['may_add_franchise'] as bool? ?? false;
-    final noAddFranchise = mayAddFranchise
-        ? null
-        : company['may_add_franchise_reason'] as String? ??
-              'Adding a place to $name is not yours to do.';
-
-    final mayMove = company['may_reparent'] as bool? ?? false;
-    final noMove = mayMove
-        ? null
-        : company['may_reparent_reason'] as String? ??
-              'Moving $name is not yours to do.';
-
-    final mayAddSub = company['may_add_sub_company'] as bool? ?? false;
-    final noAddSub = mayAddSub
-        ? null
-        : company['may_add_sub_company_reason'] as String? ??
-              'Adding a sub company to $name is not yours to do.';
+    final no = companyRefusals(company);
+    final mayEdit = no.edit == null;
+    final mayAddFranchise = no.addFranchise == null;
+    final noAddFranchise = no.addFranchise;
+    final mayMove = no.move == null;
+    final noMove = no.move;
+    final mayAddSub = no.addSub == null;
+    final noAddSub = no.addSub;
+    final name = company['name'] as String? ?? '';
 
     // Drawn whenever ANY entry in it is reachable, and drawn as nothing at all
     // when none is. Hiding the whole menu from somebody who may add a place but
@@ -104,9 +93,7 @@ class CompanyActionsMenu extends StatelessWidget {
           context,
           value: 'edit',
           label: 'Edit details',
-          reason: mayEdit
-              ? null
-              : 'Your role does not include changing a company.',
+          reason: no.edit,
         ),
         refusedMenuItem(
           context,
@@ -152,10 +139,7 @@ class CompanyActionsMenu extends StatelessWidget {
           context,
           value: 'active',
           label: active ? 'Switch off' : 'Switch back on',
-          reason: mayEdit
-              ? null
-              : 'Your role does not include switching a company off or back '
-                    'on.',
+          reason: no.toggle,
         ),
       ],
       onSelected: (v) => switch (v) {
@@ -167,6 +151,42 @@ class CompanyActionsMenu extends StatelessWidget {
       },
     );
   }
+}
+
+/// Why each act on [company] is refused, or null where it is not — read off
+/// the server's own map, with the sentence it sent where it sent one.
+///
+/// One function, because the menu above and the List view's button row offer
+/// the same acts and must give the same answers (UI queue 111).
+({
+  String? edit,
+  String? addFranchise,
+  String? addSub,
+  String? move,
+  String? toggle,
+})
+companyRefusals(Map<String, dynamic> company) {
+  final name = company['name'] as String? ?? '';
+  final mayEdit = company['may_edit'] as bool? ?? false;
+
+  return (
+    edit: mayEdit ? null : 'Your role does not include changing a company.',
+    addFranchise: company['may_add_franchise'] as bool? ?? false
+        ? null
+        : company['may_add_franchise_reason'] as String? ??
+              'Adding a place to $name is not yours to do.',
+    addSub: company['may_add_sub_company'] as bool? ?? false
+        ? null
+        : company['may_add_sub_company_reason'] as String? ??
+              'Adding a sub company to $name is not yours to do.',
+    move: company['may_reparent'] as bool? ?? false
+        ? null
+        : company['may_reparent_reason'] as String? ??
+              'Moving $name is not yours to do.',
+    toggle: mayEdit
+        ? null
+        : 'Your role does not include switching a company off or back on.',
+  );
 }
 
 /// What can be done to a place, wherever it is drawn.
