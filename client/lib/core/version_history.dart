@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0450',
+      date: '19 Oct 2026',
+      items: [
+        'Jobs and Customers: when you are looking at the whole organization, the lists show which company each job or customer belongs to, and the exports include it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0449',
       date: '19 Oct 2026',
       items: [
