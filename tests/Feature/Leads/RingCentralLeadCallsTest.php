@@ -392,6 +392,28 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
+    /** Desk, 2026-10-19: 23 leads stuck In progress once our call landed after theirs. */
+    public function test_our_later_call_does_not_freeze_their_in_progress_tag(): void
+    {
+        $t = $this->setUpTenant();
+        $at = now()->subMinutes(20)->toIso8601String();
+        $unanswered = ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null];
+        $this->inTenant($t['org'], function () use ($t, $at, $unanswered) {
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([self::rc('70', '+15550000070', $at, extra: $unanswered + ['result' => 'Accepted', 'live' => true])], self::LINES, $t['company']->id);
+            // We call them back while theirs still reads live.
+            $calls->file([[
+                'id' => '71', 'direction' => 'Outbound', 'started_at' => now()->subMinutes(5)->toIso8601String(), 'from' => '+17320000001',
+                'to_number' => '+15550000070', 'caller_label' => 'Sheryl Del Rosario', 'queue' => null, 'result' => 'Call connected',
+                'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 30, 'recording_id' => null,
+            ]], self::LINES, $t['company']->id);
+            // Theirs ends unanswered.
+            $calls->file([self::rc('70', '+15550000070', $at, extra: $unanswered + ['result' => 'Missed'])], self::LINES, $t['company']->id);
+
+            $this->assertSame(RingCentralLeadCalls::MISSED, Lead::query()->where('phone', '+15550000070')->value('source_status'));
+        });
+    }
+
     /** A missed call on a person's direct line alerts like any missed call. */
     public function test_a_missed_call_on_a_direct_line_alerts(): void
     {
