@@ -170,6 +170,54 @@ class SettingsApiTest extends TestCase
         ], $earned['options']);
     }
 
+    public function test_a_read_permission_hides_the_row_and_refuses_the_write(): void
+    {
+        $registry = new SettingRegistry();
+        $registry->register(new SettingDefinition(
+            key: 'test.secret_routing', label: 'Routing', type: SettingDefinition::TYPE_STRING,
+            default: '', allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+            readPermission: 'leads.manage',
+        ));
+        $registry->register(new SettingDefinition(
+            key: 'test.open', label: 'Open', type: SettingDefinition::TYPE_STRING,
+            default: '', allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+        ));
+        $this->app->instance(SettingRegistry::class, $registry);
+        $this->app->forgetInstance(SettingsResolver::class);
+
+        ['organization' => $org] = $this->org('Alpha', 'a@a.test');
+
+        $person = fn (string $name, array $keys) => app(TenantContext::class)->run($org, function () use ($org, $name, $keys) {
+            $role = Role::create(['organization_id' => $org->id, 'name' => $name]);
+            $role->syncPermissionKeys($keys);
+
+            return User::create([
+                'organization_id' => $org->id, 'role_id' => $role->id,
+                'name' => $name, 'email' => strtolower($name).'@a.test', 'password' => 'pw-here-please',
+            ])->fresh();
+        });
+
+        $keys = function (User $user) use ($org) {
+            $this->app['auth']->forgetGuards();
+            Sanctum::actingAs($user);
+
+            return collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")
+                ->assertOk()->json('data'))->pluck('key');
+        };
+
+        $plain   = $person('Plain', ['organizations.edit']);
+        $manager = $person('Manager', ['organizations.edit', 'leads.manage']);
+
+        $this->assertTrue($keys($plain)->contains('test.open'), 'control: an ungated row is still listed');
+        $this->assertFalse($keys($plain)->contains('test.secret_routing'));
+        $this->assertTrue($keys($manager)->contains('test.secret_routing'));
+
+        $this->app['auth']->forgetGuards();
+        Sanctum::actingAs($plain);
+        $this->patchJson("/api/v1/settings/test.secret_routing?scope_type=organization&scope_id={$org->id}", ['value' => 'x'])
+            ->assertForbidden();
+    }
+
     public function test_a_place_map_offers_this_organizations_places_and_takes_codes_only(): void
     {
         $registry = new SettingRegistry();

@@ -192,6 +192,14 @@ final class SettingDefinition
 
         /** TYPE_SUBSET only: the TYPE_LIST setting whose values are the choices. */
         public readonly ?string $choicesFrom = null,
+
+        /**
+         * Who may SEE this row on the Settings screen, when not everybody who
+         * opens Settings should (2026-10-19, Leads' call routing). Null means
+         * the usual rule. A write is refused the same way, on top of
+         * $editPermission.
+         */
+        public readonly ?string $readPermission = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");

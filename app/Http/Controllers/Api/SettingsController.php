@@ -625,6 +625,12 @@ class SettingsController extends Controller
      */
     private function mayOpenGroupOf(User $user, string $key): bool
     {
+        $read = $this->registry->get($key)?->readPermission;
+
+        if ($read !== null && ! $user->hasPermission($read)) {
+            return false;
+        }
+
         $group = $this->registry->groupOf($key)['key'];
 
         foreach ($this->modules->get($group)?->tabs ?? [] as $tab) {
