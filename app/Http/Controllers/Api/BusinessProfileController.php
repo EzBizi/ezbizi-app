@@ -219,6 +219,7 @@ class BusinessProfileController extends Controller
         $row = [
             'id'                 => $location->id,
             'title'              => $location->title,
+            'label'              => $location->label(),
             'address'            => $location->addressLine(),
             'phone'              => $location->phone,
             'website'            => $location->website,

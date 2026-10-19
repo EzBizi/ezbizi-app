@@ -815,7 +815,8 @@ class SocialPostsApiTest extends TestCase
             'organization_id' => $t['org']->id, 'connection_id' => $gbp->id,
             'remote_name' => 'locations/'.strtolower(str_replace(' ', '', $title)),
             'account_name' => 'accounts/1', 'title' => $title,
-            'verification_state' => $state, 'is_published' => true,
+            'verification_state' => $state, 'is_published' => true, 'city' => 'Stamford', 'state' => 'CT',
+            'franchise_id' => $t['franchise']->id,
         ]));
     }
 
@@ -839,6 +840,8 @@ class SocialPostsApiTest extends TestCase
         $this->signedInAs($t['admin'])->getJson('/api/v1/social/places')
             ->assertOk()
             ->assertJsonPath('data.0.title', 'Miami Shop')->assertJsonPath('data.0.postable', true)
+            ->assertJsonPath('data.0.label', 'Miami Shop · Stamford, CT')
+            ->assertJsonPath('data.0.branch', $t['franchise']->name)
             ->assertJsonPath('data.1.postable', false);
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
