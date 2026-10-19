@@ -158,11 +158,11 @@ void main() {
       );
 
       // Shown, not hidden, and explained. It used to be drawn from `may_edit` —
-      // the wrong permission entirely — and disabled with nothing said.
-      final chip = tester.widget<ActionChip>(
-        find.widgetWithText(ActionChip, 'Add a place'),
-      );
-      expect(chip.onPressed, isNull);
+      // the wrong permission entirely — and disabled with nothing said. Now a
+      // button on the company's own page, in the organization's word for a
+      // place (UI queue 111).
+      await _pickCompany(tester);
+      expect(_button(tester, 'Add a franchise').onPressed, isNull);
       expect(
         find.byTooltip(
           'You hold the permission to add a place to Everdoors, but Everdoors '
@@ -178,11 +178,14 @@ void main() {
       // The other direction of the same defect: `may_edit` false, so the whole
       // menu and the chip went away from somebody holding `franchises.create`.
       await _pumpOrganization(tester, mayEdit: false, mayAddFranchise: true);
+      await _pickCompany(tester);
 
-      final chip = tester.widget<ActionChip>(
-        find.widgetWithText(ActionChip, 'Add a place'),
+      expect(_button(tester, 'Add a franchise').onPressed, isNotNull);
+      expect(
+        _button(tester, 'Edit').onPressed,
+        isNull,
+        reason: 'And only that: may_edit is false.',
       );
-      expect(chip.onPressed, isNotNull);
       expect(find.byType(PopupMenuButton<String>), findsWidgets);
     });
   });
@@ -215,6 +218,12 @@ Future<void> _pumpCustomers(
   path: '/customers',
   build: (api, session) => CustomersScreen(api: api, session: session),
 );
+
+/// The company in [_pumpOrganization]'s tree, picked so its page is open.
+Future<void> _pickCompany(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('org-tree-company-co-1')));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _pumpOrganization(
   WidgetTester tester, {
