@@ -507,6 +507,44 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.say', 'Technician is about 18 minutes away and should arrive around 2:18 PM.');
     }
 
+    public function test_a_zip_ranks_the_offices_by_drive_time_or_by_distance_without_maps(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        Http::fake([
+            'maps.googleapis.com/*' => Http::sequence()
+                // The ZIP, then Alpha Co (Cleveland), then Beta Co (Akron).
+                ->push(['status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => 41.4, 'lng' => -81.6]]]]])
+                ->push(['status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => 41.5, 'lng' => -81.7]]]]])
+                ->push(['status' => 'OK', 'results' => [['geometry' => ['location' => ['lat' => 41.1, 'lng' => -81.5]]]]]),
+            // Akron (origin 1) is the shorter drive though Cleveland is closer as the crow flies.
+            'routes.googleapis.com/*' => Http::response([
+                ['originIndex' => 0, 'condition' => 'ROUTE_EXISTS', 'duration' => '2400s', 'distanceMeters' => 16000],
+                ['originIndex' => 1, 'condition' => 'ROUTE_EXISTS', 'duration' => '1500s', 'distanceMeters' => 40000],
+            ]),
+        ]);
+        $this->inTenant($this->t['org'], function () {
+            $this->t['company']->forceFill(['address_line1' => '100 Main St', 'city' => 'Cleveland', 'state' => 'OH', 'postal_code' => '44114'])->save();
+            Company::query()->create(['name' => 'Beta Co', 'address_line1' => '1 Elm St', 'city' => 'Akron', 'state' => 'OH']);
+        });
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/closest-office?zip=44120')
+            ->assertOk()
+            ->assertJsonPath('data.offices.0.office.name', 'Beta Co')
+            ->assertJsonPath('data.offices.0.minutes', 25)
+            ->assertJsonPath('data.offices.0.by', 'drive')
+            ->assertJsonPath('data.offices.1.office.name', 'Alpha Co');
+
+        // No key: the cached pins stay, and straight-line distance orders them.
+        config(['services.google_maps.server_key' => null]);
+        $this->getJson('/api/v1/field/closest-office?zip=44120')
+            ->assertOk()
+            ->assertJsonPath('data.offices.0.office.name', 'Alpha Co')
+            ->assertJsonPath('data.offices.0.minutes', null)
+            ->assertJsonPath('data.offices.0.by', 'straight_line');
+
+        $this->getJson('/api/v1/field/closest-office?zip=abc')->assertStatus(422);
+    }
+
     public function test_headquarters_with_an_address_are_on_the_map_for_their_view_only(): void
     {
         config(['services.google_maps.server_key' => 'k']);

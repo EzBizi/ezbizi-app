@@ -418,23 +418,67 @@ class FieldController extends Controller
      */
     public function places(Request $request): JsonResponse
     {
+        return response()->json(['data' => $this->offices($request->user())]);
+    }
+
+    /**
+     * GET /field/closest-office?zip= (or ?lat=&lng=): the offices you can see,
+     * nearest by drive time first (A1 Tools' ZIP to closest office, 2026-10-19).
+     * Without a Maps key, or when Google cannot route, straight-line distance
+     * orders them and minutes is null.
+     */
+    public function closestOffice(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'zip' => ['required_without:lat', 'nullable', 'regex:/^\d{5}(-\d{4})?$/'],
+            'lat' => ['required_without:zip', 'nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
+        ]);
+        $to = isset($data['lat'])
+            ? ['lat' => (float) $data['lat'], 'lng' => (float) $data['lng']]
+            : $this->jobs->pointAt(substr($data['zip'], 0, 5).', USA', ask: true);
+        if ($to === null) {
+            return response()->json(['message' => 'That ZIP code could not be found on the map.'], 422);
+        }
+
+        $offices = $this->offices($request->user());
+        $drives = $this->maps->matrix(array_map(fn ($o) => ['lat' => $o['lat'], 'lng' => $o['lng']], $offices), $to) ?? [];
+
+        $ranked = collect($offices)->map(function (array $office, int $i) use ($drives, $to) {
+            $straight = FieldMaps::metres($office['lat'], $office['lng'], $to['lat'], $to['lng']);
+
+            return [
+                'office' => $office,
+                'minutes' => isset($drives[$i]) ? (int) round($drives[$i]['seconds'] / 60) : null,
+                'miles' => round(($drives[$i]['meters'] ?? $straight) / 1609.344, 1),
+                'by' => isset($drives[$i]) ? 'drive' : 'straight_line',
+            ];
+        })->sortBy(fn ($r) => [$r['minutes'] === null ? 1 : 0, $r['minutes'] ?? $r['miles'], $r['miles']])->values();
+
+        return response()->json(['data' => ['to' => $to, 'offices' => $ranked]]);
+    }
+
+    /**
+     * The companies you can see that have an address, with their pin.
+     *
+     * @return list<array{company_id: string, name: string, address: string, lat: float, lng: float, has_logo: bool}>
+     */
+    private function offices(User $user): array
+    {
         // Reach, narrowed to the top-bar view (the Web Management glance's
         // pattern): companyIds() alone is empty in the organization view.
         // Somebody placed at a franchise reaches the franchise, not its
         // company, yet works out of that company's headquarters: so the
         // companies of reachable franchises count too.
-        $user = $request->user();
         $view = ViewScope::forUser($user);
         $ids = $user->reachableCompanies()->modelKeys();
         $ids = array_merge($ids, $user->reachableFranchises()->pluck('company_id')->filter()->all());
-        $companies = Company::query()
+
+        return Company::query()
             ->whereIn('id', array_unique($ids))
             ->orderBy('name')
             ->get()
             ->filter(fn (Company $c) => $view->coversCompany($c->getKey()))
-            ->values();
-
-        return response()->json(['data' => $companies
             ->map(function (Company $c) {
                 $address = FieldGeocode::addressOf($c);
                 $point = $this->jobs->pointAt($address, ask: true);
@@ -449,7 +493,8 @@ class FieldController extends Controller
                 ];
             })
             ->filter()
-            ->values()]);
+            ->values()
+            ->all();
     }
 
     /** GET /field/map/tiles */
