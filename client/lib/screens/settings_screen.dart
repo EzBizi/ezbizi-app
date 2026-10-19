@@ -1965,27 +1965,22 @@ class _FranchiseMapButton extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: DropdownButtonFormField<String>(
+                        // The house picker, not a popup dropdown
+                        // (no_popup_dropdown_test).
+                        child: SearchPickerField<String?>(
                           key: ValueKey('map-place:$i'),
-                          initialValue: rows[i].place,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                          items: [
+                          value: rows[i].place,
+                          isDense: true,
+                          options: [
                             for (final p in places)
-                              DropdownMenuItem(
-                                value: '${p.value}',
-                                child: Text(p.label),
-                              ),
+                              SearchOption(value: '${p.value}', label: p.label),
                             if (rows[i].place != null &&
                                 !places.any(
                                   (p) => '${p.value}' == rows[i].place,
                                 ))
-                              DropdownMenuItem(
+                              SearchOption(
                                 value: rows[i].place,
-                                child: Text('${rows[i].place} — not a place'),
+                                label: '${rows[i].place} — not a place',
                               ),
                           ],
                           onChanged: (v) => repaint(
@@ -2019,10 +2014,9 @@ class _FranchiseMapButton extends StatelessWidget {
       ),
     );
 
-    for (final r in rows) {
-      r.code.dispose();
-    }
-
+    // ponytail: not disposed here. The panel is still animating out and its
+    // fields still read these; disposing now threw "used after being
+    // disposed". A few small controllers are left to the collector.
     if (saved != null) onChanged(saved);
   }
 }
