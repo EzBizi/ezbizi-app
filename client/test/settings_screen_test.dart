@@ -390,6 +390,44 @@ void main() {
     expect(sent, {'NJ': 'New Jersey', 'CT': 'fr-ct'});
   });
 
+  testWidgets('bounds are said under the row, and roles tick like a subset', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          {
+            ..._row(
+              'field.estimate_mph',
+              label: 'Speed',
+              type: 'int',
+              value: 35,
+              source: null,
+            ),
+            'min': 5,
+          },
+          _row(
+            'field.map_roles',
+            label: 'Roles on the map',
+            type: 'roles',
+            value: const <String>[],
+            options: const [
+              {'value': 'r-1', 'label': 'Technician'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('At least 5.'), findsOneWidget);
+    expect(find.text('None chosen'), findsOneWidget);
+  });
+
   testWidgets('a company setting is a picker of company names', (tester) async {
     _wide(tester);
 

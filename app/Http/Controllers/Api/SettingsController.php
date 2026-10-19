@@ -282,6 +282,8 @@ class SettingsController extends Controller
             'is_sensitive'   => $definition->isSensitive,
             'options'        => $this->optionsOf($definition, $scope),
             'help'           => $definition->help,
+            'min'            => $definition->min,
+            'max'            => $definition->max,
 
             // Does this setting do anything yet, and if not, what is it waiting
             // for? Null means it is in effect. A string is a sentence written
@@ -390,6 +392,11 @@ class SettingsController extends Controller
                     : ['value' => $entry, 'label' => $entry],
                 is_array($source) ? $source : [],
             ));
+        }
+
+        if ($definition->type === SettingDefinition::TYPE_ROLES) {
+            return Role::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Role $r) => ['value' => $r->id, 'label' => $r->name])->all();
         }
 
         if ($definition->type === SettingDefinition::TYPE_FRANCHISE_MAP) {

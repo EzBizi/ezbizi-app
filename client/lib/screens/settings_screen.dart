@@ -1336,6 +1336,10 @@ class _SettingRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(setting['help'] as String, style: theme.textTheme.bodySmall),
         ],
+        if (_limits(setting) case final limits?) ...[
+          const SizedBox(height: 4),
+          Text(limits, style: theme.textTheme.bodySmall),
+        ],
 
         // A value the server accepts and this bundle cannot draw.
         //
@@ -1534,7 +1538,7 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
-    if (type == 'subset') {
+    if (type == 'subset' || type == 'roles') {
       return _SubsetButton(
         label: setting['label'] as String,
         value: value,
@@ -2018,6 +2022,20 @@ class _FranchiseMapButton extends StatelessWidget {
     // controllers per open is left to the GC.
     if (saved != null) onChanged(saved);
   }
+}
+
+/// "At least 5", "Between 1 and 10", or null when the server sent no bounds.
+String? _limits(Map<String, dynamic> setting) {
+  String n(Object v) =>
+      v is num && v == v.roundToDouble() ? '${v.toInt()}' : '$v';
+  final min = setting['min'];
+  final max = setting['max'];
+
+  if (min != null && max != null) return 'Between ${n(min)} and ${n(max)}.';
+  if (min != null) return 'At least ${n(min)}.';
+  if (max != null) return 'At most ${n(max)}.';
+
+  return null;
 }
 
 /// One permitted value, with the words the selector prints.

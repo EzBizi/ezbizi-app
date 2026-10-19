@@ -170,6 +170,44 @@ class SettingsApiTest extends TestCase
         ], $earned['options']);
     }
 
+    public function test_a_number_outside_its_bounds_is_refused_and_the_bounds_are_sent(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+        $url = "/api/v1/settings/field.estimate_mph?scope_type=organization&scope_id={$org->id}";
+
+        $this->patchJson($url, ['value' => 0])->assertStatus(422);
+        $this->patchJson($url, ['value' => 4])->assertStatus(422);
+        $this->patchJson($url, ['value' => 5])->assertOk()->assertJsonPath('data.min', 5);
+        $this->patchJson("/api/v1/settings/field.estimate_road_factor?scope_type=organization&scope_id={$org->id}", ['value' => 0.9])
+            ->assertStatus(422);
+    }
+
+    public function test_a_roles_setting_offers_this_organizations_roles(): void
+    {
+        $registry = new SettingRegistry();
+        $registry->register(new SettingDefinition(
+            key: 'test.roles', label: 'Test roles', type: SettingDefinition::TYPE_ROLES,
+            default: [], allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+        ));
+        $this->app->instance(SettingRegistry::class, $registry);
+        $this->app->forgetInstance(SettingsResolver::class);
+
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        $this->org('Beta', 'b@b.test');
+        Sanctum::actingAs($admin);
+
+        $row = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'))
+            ->firstWhere('key', 'test.roles');
+        $ours = app(TenantContext::class)->run($org, fn () => Role::query()->orderBy('name')->pluck('id')->all());
+
+        $this->assertSame('roles', $row['type']);
+        $this->assertSame($ours, array_column($row['options'], 'value'), "Only Alpha's roles.");
+
+        $this->patchJson("/api/v1/settings/test.roles?scope_type=organization&scope_id={$org->id}", ['value' => [$ours[0], $ours[0]]])
+            ->assertOk()->assertJsonPath('data.value', [$ours[0]]);
+    }
+
     public function test_a_read_permission_hides_the_row_and_refuses_the_write(): void
     {
         $registry = new SettingRegistry();

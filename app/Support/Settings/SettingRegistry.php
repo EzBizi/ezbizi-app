@@ -1324,6 +1324,7 @@ class SettingRegistry
             // cannot route, the straight line is stretched and timed with these.
             new SettingDefinition(
                 key: 'field.estimate_mph',
+                min: 5,
                 label: 'Average driving speed for estimates, mph',
                 type: SettingDefinition::TYPE_INT,
                 default: 35,
@@ -1332,6 +1333,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'field.estimate_road_factor',
+                min: 1.0,
                 label: 'Roads are longer than a straight line by',
                 type: SettingDefinition::TYPE_DECIMAL,
                 default: 1.3,
@@ -1340,6 +1342,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'field.similar_within_miles',
+                min: 0,
                 label: 'Offices this close to the nearest count as just as close, miles',
                 type: SettingDefinition::TYPE_INT,
                 default: 5,

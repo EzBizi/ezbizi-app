@@ -87,6 +87,13 @@ final class SettingDefinition
     public const TYPE_FRANCHISE_MAP = 'franchise_map';
 
     /**
+     * Some of this organization's roles, by id; may be empty. What "none
+     * chosen" means is the reader's to say (Field's map: everyone). An id no
+     * longer a role is ignored by the reader, as with TYPE_COMPANY.
+     */
+    public const TYPE_ROLES = 'roles';
+
+    /**
      * A place, stored as "lat, lng" exactly as TYPE_STRING was, so nothing
      * that reads one changes. Its own type so the settings screen can draw an
      * address search and a map for it (UI queue 104, design 7) — the editor
@@ -206,6 +213,10 @@ final class SettingDefinition
          * $editPermission.
          */
         public readonly ?string $readPermission = null,
+
+        /** Bounds for a number (int, decimal, duration). Refused with a 422 outside them. */
+        public readonly int|float|null $min = null,
+        public readonly int|float|null $max = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");
@@ -304,7 +315,7 @@ final class SettingDefinition
             self::TYPE_HOURS   => $this->castHours($value),
             self::TYPE_TIME_RANGE => $this->castTimeRange($value),
             self::TYPE_LIST    => $this->castList($value),
-            self::TYPE_SUBSET  => $this->castSubset($value),
+            self::TYPE_SUBSET, self::TYPE_ROLES => $this->castSubset($value),
             self::TYPE_FRANCHISE_MAP => $this->castFranchiseMap($value),
             self::TYPE_COMPANY => ($value === null || trim((string) $value) === '') ? null : trim((string) $value),
             default            => $value,
@@ -480,7 +491,20 @@ final class SettingDefinition
             throw new InvalidArgumentException("Setting '{$this->key}' expects a number.");
         }
 
-        return (int) $value;
+        return $this->bounded((int) $value);
+    }
+
+    private function bounded(int|float $value): int|float
+    {
+        if (($this->min !== null && $value < $this->min) || ($this->max !== null && $value > $this->max)) {
+            throw new InvalidArgumentException(match (true) {
+                $this->min !== null && $this->max !== null => "'{$this->label}' must be between {$this->min} and {$this->max}.",
+                $this->min !== null => "'{$this->label}' must be at least {$this->min}.",
+                default => "'{$this->label}' must be at most {$this->max}.",
+            });
+        }
+
+        return $value;
     }
 
     /**
@@ -496,7 +520,7 @@ final class SettingDefinition
             throw new InvalidArgumentException("Setting '{$this->key}' expects a number.");
         }
 
-        return (float) $value;
+        return (float) $this->bounded((float) $value);
     }
 
     /**
