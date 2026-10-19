@@ -93,4 +93,71 @@ void main() {
     expect(find.text('The map needs access to Field’s map.'), findsOneWidget);
     expect(asked, contains(endsWith('/leads/stats')));
   });
+
+  testWidgets('an office is sized and coloured from its own leads', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    http.Response json(Object b, [int s = 200]) => http.Response(
+      jsonEncode(b),
+      s,
+      headers: const {'content-type': 'application/json'},
+    );
+    final api = ApiClient(
+      client: MockClient((r) async {
+        final p = r.url.path;
+        if (p.endsWith('/leads/stats')) {
+          return json({
+            'data': {
+              'total': 10,
+              'booked': 5,
+              'booking_rate': 0.5,
+              'offices': [
+                {'company_id': 'co-1', 'total': 10, 'booked': 9},
+              ],
+            },
+          });
+        }
+        if (p.endsWith('/field/coverage')) {
+          return json({
+            'data': {
+              'offices': [
+                {
+                  'company_id': 'co-1',
+                  'name': 'Brightside Home',
+                  'lat': 39.8,
+                  'lng': -89.6,
+                },
+              ],
+              'jobs': [],
+            },
+          });
+        }
+        if (p.endsWith('/field/map/tiles')) {
+          return json({
+            'data': {'url': 'https://tiles.example/{z}/{x}/{y}.png'},
+          });
+        }
+        return json({'data': []});
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: LeadsStats(api: api, session: Session(api)),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(
+      find.byKey(const ValueKey('leads-stats-office-co-1')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('map-attribution')), findsOneWidget);
+  });
 }

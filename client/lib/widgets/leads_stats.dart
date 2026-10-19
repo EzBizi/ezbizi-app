@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import 'map_attribution.dart';
 import 'search_picker.dart';
 
@@ -134,22 +135,25 @@ class _LeadsStatsState extends State<LeadsStats> {
       for (final r in _zipRows)
         if (!_zipPoints.containsKey('${r['zip']}')) '${r['zip']}',
     ];
-    if (missing.isEmpty) return;
-    final response = await widget.api.get('/field/geocode-zips', {
-      'zips': missing.join(','),
-    });
-    if (!mounted || !response.ok || response.data is! Map) return;
-    final found = <String, LatLng>{..._zipPoints};
-    for (final e in (response.data as Map).entries) {
-      final p = e.value;
-      if (p is Map && p['lat'] is num && p['lng'] is num) {
-        found['${e.key}'] = LatLng(
-          (p['lat'] as num).toDouble(),
-          (p['lng'] as num).toDouble(),
-        );
+    // Field asks Google for at most 25 new ZIPs a call, so ask in 25s.
+    for (var i = 0; i < missing.length; i += 25) {
+      final batch = missing.sublist(i, math.min(i + 25, missing.length));
+      final response = await widget.api.get('/field/geocode-zips', {
+        'zips': batch.join(','),
+      });
+      if (!mounted || !response.ok || response.data is! Map) return;
+      final found = <String, LatLng>{..._zipPoints};
+      for (final e in (response.data as Map).entries) {
+        final p = e.value;
+        if (p is Map && p['lat'] is num && p['lng'] is num) {
+          found['${e.key}'] = LatLng(
+            (p['lat'] as num).toDouble(),
+            (p['lng'] as num).toDouble(),
+          );
+        }
       }
+      setState(() => _zipPoints = found);
     }
-    setState(() => _zipPoints = found);
   }
 
   int _int(Object? v) => (v as num?)?.toInt() ?? 0;
@@ -519,22 +523,57 @@ class _LeadsStatsState extends State<LeadsStats> {
                 ),
               ),
     ];
+    // Each office's leads and booking rate, from /leads/stats `offices`
+    // matched on company_id: sized by leads, red to green by booking rate.
+    final byOffice = {
+      for (final o in (_stats['offices'] as List? ?? const []).whereType<Map>())
+        '${o['company_id']}': o,
+    };
+    final mostLeads = byOffice.values.fold<int>(
+      1,
+      (a, o) => math.max(a, _int(o['total'])),
+    );
     final officeMarkers = <Marker>[
       if (_offices)
         for (final o in _officePoints)
           if (o['lat'] is num && o['lng'] is num)
-            Marker(
-              point: LatLng(
-                (o['lat'] as num).toDouble(),
-                (o['lng'] as num).toDouble(),
-              ),
-              width: 28,
-              height: 28,
-              child: Tooltip(
-                message: '${o['name'] ?? ''}',
-                child: Icon(Icons.store, color: theme.colorScheme.tertiary),
-              ),
-            ),
+            () {
+              final mine = byOffice['${o['company_id']}'];
+              final total = _int(mine?['total']);
+              final rate = total == 0 ? 0.0 : _int(mine?['booked']) / total;
+              final size = 18.0 + 22 * total / mostLeads;
+              return Marker(
+                point: LatLng(
+                  (o['lat'] as num).toDouble(),
+                  (o['lng'] as num).toDouble(),
+                ),
+                width: size,
+                height: size,
+                child: Tooltip(
+                  message: mine == null
+                      ? '${o['name'] ?? ''}'
+                      : '${o['name'] ?? ''}: $total leads, '
+                            '${(rate * 100).round()}% booked',
+                  child: Container(
+                    key: ValueKey('leads-stats-office-${o['company_id']}'),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: mine == null
+                          ? theme.colorScheme.tertiary
+                          : Color.lerp(
+                              theme.colorScheme.error,
+                              StateColour.of(context).on,
+                              rate,
+                            ),
+                      border: Border.all(
+                        color: theme.colorScheme.surface,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }(),
     ];
     final jobMarkers = <Marker>[
       if (_jobs)
