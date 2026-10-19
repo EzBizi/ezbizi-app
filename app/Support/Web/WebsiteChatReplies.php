@@ -97,6 +97,7 @@ final class WebsiteChatReplies implements LeadReplyChannel
 
     private function chatFor(Lead $lead): ?WebChat
     {
-        return WebChat::query()->where('lead_id', $lead->getKey())->first();
+        // The newest: a person's second chat joins their first lead (2026-10-19).
+        return WebChat::query()->where('lead_id', $lead->getKey())->latest()->first();
     }
 }

@@ -97,6 +97,27 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Lead::query()->count()));
     }
 
+    /** Same email when there is no phone; a chat joins only an earlier chat (its replies go through the chat). */
+    public function test_a_repeat_by_email_joins_and_a_chat_never_lands_on_a_form(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $form = fn (string $email) => $this->postJson('/api/v1/web/form', [
+            'key' => $site->public_key, 'name' => 'Kim', 'email' => $email, 'fields' => ['Notes' => 'Quote please'],
+        ])->assertCreated();
+
+        $form('kim@example.com');
+        $form('KIM@example.com');
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Lead::query()->count()), 'one lead by email');
+
+        $this->startChat($site->public_key, 'Hi again', ['email' => 'kim@example.com'])->assertCreated();
+        $this->startChat($site->public_key, 'And one more thing', ['email' => 'kim@example.com'])->assertCreated();
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(2, Lead::query()->count(), 'the chat is its own lead, not the form\'s');
+            $chat = Lead::query()->where('source', Lead::SOURCE_WEBSITE_CHAT)->sole();
+            $this->assertSame(2, \App\Models\WebChat::query()->where('lead_id', $chat->id)->count(), 'the second chat joined the first chat\'s lead');
+        });
+    }
+
     public function test_a_form_submission_becomes_one_lead_with_one_message(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
@@ -647,9 +668,9 @@ class WebsiteEnquiriesTest extends TestCase
         return ['site' => $site, 'tenant' => $tenant];
     }
 
-    private function startChat(string $key, string $message): TestResponse
+    private function startChat(string $key, string $message, array $visitor = []): TestResponse
     {
-        return $this->postJson('/api/v1/web/chat', [
+        return $this->postJson('/api/v1/web/chat', $visitor + [
             'key' => $key,
             'message' => $message,
         ]);
