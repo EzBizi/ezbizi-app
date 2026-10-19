@@ -130,6 +130,14 @@ final class FieldTracking
         ];
     }
 
+    /** Field › Map shows this person: their role is ticked, or nothing is ticked. */
+    public function shownOnMap(User $user): bool
+    {
+        $roles = (array) $this->setting('field.map_roles', $user);
+
+        return $roles === [] || in_array($user->role_id, $roles, true);
+    }
+
     /** @return list<string> two-letter codes, upper case */
     public function recordingNoticeStates(User $user): array
     {

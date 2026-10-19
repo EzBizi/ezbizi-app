@@ -185,7 +185,9 @@ class FieldController extends Controller
         // the Dashboard and the phone chip must count the same people (UI
         // review, 2026-10-08: "8 Tracked" beside "People 0"). Somebody who
         // has never reported has no position and no pin, and says so.
-        $people = $this->tracking->trackedPeople($request->user());
+        // Only the roles Settings › Field shows on the map (Jose, 2026-10-19).
+        $people = $this->tracking->trackedPeople($request->user())
+            ->filter(fn (User $u) => $this->tracking->shownOnMap($u))->values();
         $presences = FieldPresence::query()->with('atJob:id,number,title')
             ->whereIn('user_id', $people->modelKeys())->get()->keyBy('user_id');
 

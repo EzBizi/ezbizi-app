@@ -420,6 +420,31 @@ class FieldTest extends TestCase
         $this->assertFalse($row['fresh']);
     }
 
+    public function test_the_map_shows_only_the_roles_settings_tick(): void
+    {
+        $office = $this->userWithRole($this->t, 'Office', ['field.view', 'field.tracked']);
+        $this->assertNotNull($this->mapRow($office), 'Nothing ticked: every tracked role.');
+
+        $this->inTenant($this->t['org'], fn () => app(SettingsResolver::class)
+            ->set('field.map_roles', $this->t['org'], [$this->tech->role_id]));
+
+        $this->assertNotNull($this->mapRow($this->tech));
+        $this->assertNull($this->mapRow($office));
+        // Still tracked: the setting is what is shown, not who reports.
+        $this->signedInAs($office)->getJson('/api/v1/field/me')->assertJsonPath('data.tracked', true);
+    }
+
+    public function test_the_role_picker_offers_the_organizations_roles(): void
+    {
+        $admin = $this->t['admin'];
+        $setting = collect($this->signedInAs($admin)
+            ->getJson("/api/v1/settings?scope_type=organization&scope_id={$this->t['org']->id}")->assertOk()->json('data'))
+            ->firstWhere('key', 'field.map_roles');
+
+        $this->assertNotNull($setting);
+        $this->assertContains($this->tech->role_id, array_column($setting['options'], 'value'));
+    }
+
     public function test_the_map_list_says_since_when_how_far_and_how_fast(): void
     {
         $this->mode('always');

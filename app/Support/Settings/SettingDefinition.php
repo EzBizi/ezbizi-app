@@ -62,6 +62,12 @@ final class SettingDefinition
     public const TYPE_SUBSET     = 'subset';
 
     /**
+     * A {@see $choicesFrom} that names no setting: the organization's roles,
+     * offered by name and stored by id (Field's "Roles shown on the map").
+     */
+    public const CHOICES_ROLES = '@roles';
+
+    /**
      * One of this organization's companies, by id; null when none is chosen.
      *
      * The choices are the organization's companies, sent as `options` and
