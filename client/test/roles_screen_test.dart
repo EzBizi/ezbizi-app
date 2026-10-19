@@ -1037,7 +1037,8 @@ void main() {
       await _pumpSettingsShell(tester, rolesReachable: true);
 
       expect(find.text('Organization'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
+      // Preferences since UI queue 110 (not Settings under Settings).
+      expect(find.text('Preferences'), findsOneWidget);
       // Named by the server, not by this end.
       expect(find.text('Roles & permissions'), findsOneWidget);
     });
@@ -1048,9 +1049,10 @@ void main() {
       await _pumpSettingsShell(tester, rolesReachable: false);
 
       expect(find.text('Roles & permissions'), findsNothing);
-      // Organization and Settings are always both there, so the chip row stays.
+      // Organization and Preferences are always both there, so the chip row stays.
       expect(find.text('Organization'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
+      // Preferences since UI queue 110 (not Settings under Settings).
+      expect(find.text('Preferences'), findsOneWidget);
     });
   });
 

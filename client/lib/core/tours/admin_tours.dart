@@ -12,8 +12,8 @@ const Map<String, Tour> adminTours = {
         anchor: 'tour-settings-tabs',
         title: 'Settings',
         body:
-            'Organization, Settings, Integrations, Roles & permissions and '
-            'API activity, as your role allows.',
+            'Organization, Preferences, Integrations, Roles & permissions, '
+            'Activity and API activity, as your role allows.',
       ),
     ],
   ),
@@ -39,8 +39,8 @@ const Map<String, Tour> adminTours = {
       ),
     ],
   ),
-  'settings/Settings': Tour(
-    version: 1,
+  'settings/Preferences': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'settings-hub-index',

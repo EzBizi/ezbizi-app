@@ -12,13 +12,40 @@ import 'package:http/testing.dart';
 
 /// Settings › Activity (2026-10-16).
 void main() {
+  // UI queue 110: a sentence, never the server's code.
+  test('an action code reads as words, verb first', () {
+    expect(activityAction('customer.created'), 'created customer');
+    expect(
+      activityAction('contract.version_published'),
+      'published contract version',
+    );
+    expect(activityAction('report.run'), 'ran report');
+    expect(activityAction('web.hours.'), 'web hours');
+    expect(
+      activitySentence({
+        'actor': 'Dana Reyes <dana@brightside.example>',
+        'action': 'lead.created',
+        'target': 'Pat Lin',
+      }, 'People'),
+      'Dana Reyes created lead · Pat Lin',
+    );
+    expect(
+      activitySentence({
+        'actor': 'system',
+        'source': 'system',
+        'action': 'job.created',
+      }, 'Automations'),
+      'An automation created job',
+    );
+  });
+
   testWidgets('lists who did what, and a source chip asks the server', (
     tester,
   ) async {
     final asked = <Uri>[];
     await _pump(tester, ['audit.view'], asked, shell: false);
 
-    expect(find.text('Dana · lead.created · Ann Smith'), findsOneWidget);
+    expect(find.text('Dana created lead · Ann Smith'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('source:system')));
     await tester.pumpAndSettle();

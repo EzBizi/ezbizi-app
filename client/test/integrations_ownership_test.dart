@@ -27,7 +27,26 @@ import 'package:http/testing.dart';
 /// names the scope, so the load-bearing case is two connections of the SAME
 /// provider at two DIFFERENT companies: the flat list drew those as two
 /// identical rows, and anything that still does will fail here.
+final _deleted = <String>[];
+
 void main() {
+  // UI queue 110: every provider disconnects here, and asks once more first.
+  testWidgets('Disconnect asks once, then deletes that one connection', (
+    tester,
+  ) async {
+    _deleted.clear();
+    await _pump(tester);
+    await _open(tester, 'google_ads');
+
+    await tester.tap(find.byKey(const ValueKey('disconnect:ga-1')));
+    await tester.pumpAndSettle();
+    expect(_deleted, isEmpty, reason: 'nothing goes before the confirmation');
+
+    await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
+    await tester.pumpAndSettle();
+    expect(_deleted, ['/api/v1/social/connections/ga-1']);
+  });
+
   testWidgets('a card counts what is connected and where', (tester) async {
     await _pump(tester);
 
@@ -171,7 +190,7 @@ void main() {
 
     await _open(tester, 'thumbtack');
 
-    expect(find.text('Elsewhere in this view'), findsOneWidget);
+    expect(find.text('Other places in this view'), findsOneWidget);
     expect(find.text('Orphan account'), findsOneWidget);
   });
 }
@@ -202,6 +221,13 @@ Future<void> _pump(
       final path = request.url.path;
 
       if (path.endsWith('/me')) return _json({'data': _me});
+
+      if (request.method == 'DELETE') {
+        _deleted.add(path);
+        return _json({
+          'data': {'id': path.split('/').last, 'problems': const []},
+        });
+      }
 
       if (path.endsWith('/social/connections')) {
         return _json({'data': _connections});

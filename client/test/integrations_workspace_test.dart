@@ -49,6 +49,9 @@ void main() {
       find.byKey(const ValueKey('disconnect:google_workspace:company:co-a1')),
     );
     await tester.pumpAndSettle();
+    // Asked once more since UI queue 110.
+    await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
+    await tester.pumpAndSettle();
 
     expect(
       calls,

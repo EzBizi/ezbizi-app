@@ -73,6 +73,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.startPath,
     this.mayConnect = false,
     this.onDisconnect,
+    this.purpose,
     required this.onBack,
   });
 
@@ -122,9 +123,13 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// instead, which is the remedy they can act on.
   final bool mayConnect;
 
-  /// Disconnect one row, for a provider whose module lets this screen do it
-  /// (Google Workspace). Answers the refusal to show, or null on success.
+  /// Disconnect one row. Every provider since UI queue 110, for somebody who
+  /// may connect it (the server's disconnect gate is the connect permission).
+  /// Asked once more before it runs. Answers the refusal to show, or null.
   final Future<String?> Function(IntegrationConnection row)? onDisconnect;
+
+  /// What this service is for, in one line under its name (UI queue 110).
+  final String? purpose;
 
   /// Close this pane and put the grid back.
   ///
@@ -191,7 +196,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     final rest = rows.where((c) => !named.contains(c.id)).toList();
 
     if (rest.isNotEmpty) {
-      groups.add(('Elsewhere in this view', rest));
+      groups.add(('Other places in this view', rest));
     }
 
     return groups;
@@ -256,6 +261,34 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     await widget.onChanged?.call();
   }
 
+  /// Asks once more, in a side panel, then disconnects (UI queue 110).
+  Future<void> _disconnect(IntegrationConnection row) async {
+    final sure = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Disconnect ${row.title}?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('disconnect-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+        child: Text(
+          'EzBizi stops using this ${widget.providerLabel} connection. To use '
+          'it again, it has to be connected again.',
+        ),
+      ),
+    );
+    if (sure != true || !mounted) return;
+    final refused = await widget.onDisconnect!(row);
+    if (mounted) setState(() => _error = refused);
+  }
+
   /// "Open Marketing" beside a sentence naming it, or null when there is
   /// nowhere to open (outside the shell, or a provider that connects here).
   Widget? _openModule(BuildContext context) {
@@ -306,6 +339,17 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             ),
           ],
         ),
+        if ((widget.purpose ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 52, top: 2),
+            child: Text(
+              widget.purpose!,
+              key: const ValueKey('integration-purpose'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         if (_error != null) ...[
           DashboardNote(_error!),
@@ -316,18 +360,8 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
           DashboardCard(
             title: widget.providerLabel,
             icon: Icons.link_off_outlined,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DashboardNote(
-                  widget.connectWhere == null
-                      ? 'Nothing connected here yet.'
-                      : 'Nothing connected here yet. Connect it in '
-                            '${widget.connectWhere}.',
-                ),
-                ?_openModule(context),
-              ],
-            ),
+            // Only that: the Connect card below says how, once (UI queue 110).
+            child: const DashboardNote('Nothing connected here yet.'),
           ),
 
         for (final (heading, rows) in groups) ...[
@@ -366,20 +400,29 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                             : theme.colorScheme.error,
                       ),
                     ),
-                    trailing: widget.canName
-                        ? IconButton(
-                            tooltip: 'Name this connection',
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            onPressed: () => _rename(row),
-                          )
-                        : widget.onDisconnect != null
-                        ? TextButton(
-                            key: ValueKey('disconnect:${row.id}'),
-                            onPressed: () async {
-                              final refused = await widget.onDisconnect!(row);
-                              if (mounted) setState(() => _error = refused);
-                            },
-                            child: const Text('Disconnect'),
+                    trailing: widget.canName || widget.onDisconnect != null
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.canName)
+                                IconButton(
+                                  tooltip: 'Name this connection',
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: () => _rename(row),
+                                ),
+                              if (widget.onDisconnect != null)
+                                TextButton(
+                                  key: ValueKey('disconnect:${row.id}'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: theme.colorScheme.error,
+                                  ),
+                                  onPressed: () => _disconnect(row),
+                                  child: const Text('Disconnect'),
+                                ),
+                            ],
                           )
                         : null,
                   ),
@@ -403,7 +446,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
            * and somebody who wants the explanation should be able to find it.
            */
         DashboardCard(
-          title: 'Connect another',
+          title: groups.isEmpty ? 'Connect' : 'Connect another',
           icon: Icons.add_link,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -457,15 +500,6 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                   widget.connectsBy != 'sign_in' ||
                   widget.startPath == null)
                 ?_openModule(context),
-
-              if (widget.mayConnect && widget.connectWhere != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  '${widget.connectWhere} is where connecting one is '
-                  'explained, and where it can also be done.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
             ],
           ),
         ),

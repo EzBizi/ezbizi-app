@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
-import '../core/ui_strings.dart';
 import '../widgets/api_activity.dart';
+import '../widgets/async_body.dart';
 import '../widgets/tab_bar_like.dart';
 import 'organization_screen.dart';
 import 'roles_screen.dart';
@@ -75,7 +75,8 @@ class _SettingsShellState extends State<SettingsShell> {
       if (me.can('organizations.settings.view'))
         (
           'settings',
-          UiStrings.t('shell.settings'),
+          // Not "Settings" again under Settings (UI queue 110).
+          'Preferences',
           Icons.tune_outlined,
           // The hub of every module's settings too (UI queue 99).
           () => SettingsHub(api: widget.api, session: widget.session),
@@ -118,11 +119,25 @@ class _SettingsShellState extends State<SettingsShell> {
           'API activity',
           Icons.manage_search_outlined,
           () => SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ApiActivity(
-              api: widget.api,
-              formats: me.display,
-              everyone: true,
+            padding: const EdgeInsets.only(bottom: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The same header as every Settings tab (UI queue 110).
+                const PanelHeader(
+                  note:
+                      'Everything anybody did with an API key, newest first. '
+                      'Open a row to see what was sent.',
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: ApiActivity(
+                    api: widget.api,
+                    formats: me.display,
+                    everyone: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
