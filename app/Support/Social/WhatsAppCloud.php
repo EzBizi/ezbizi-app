@@ -62,6 +62,16 @@ final class WhatsAppCloud
             if (is_string($token) && $token !== '') {
                 return $token;
             }
+
+            // A tenant's own number whose connection is gone must never go out
+            // as EzBizi: the global token is for numbers that NEVER had one.
+            if ($connection !== null || WhatsAppNumber::query()->withoutGlobalScopes()
+                ->where('phone_number_id', $phoneNumberId)->whereNotNull('social_connection_id')->exists()) {
+                throw new RuntimeException(
+                    'This WhatsApp number is no longer connected, so nothing was sent. Connect it again '
+                    .'from Settings › Integrations.'
+                );
+            }
         }
 
         return (string) config('services.meta.whatsapp_token');

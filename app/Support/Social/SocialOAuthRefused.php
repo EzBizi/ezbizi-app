@@ -90,4 +90,13 @@ final class SocialOAuthRefused extends RuntimeException
             Response::HTTP_CONFLICT,
         );
     }
+
+    /** A WhatsApp number another organization already routes - never re-pointed by a connect. */
+    public static function numberTaken(): self
+    {
+        return new self(
+            'This WhatsApp number is already connected to another EzBizi account.',
+            Response::HTTP_CONFLICT,
+        );
+    }
 }
