@@ -22,6 +22,7 @@ class VersionHistory {
         'Reports: Performance, Scoring, Marketing, Thumbtack and Meta show only the company or branch you are looking at. RingCentral calls belong to the company that owns the phone account.',
         'Reports: a call recording can be downloaded from Performance and Scoring.',
         'Workiz: a newly connected account brings in its full job history in the background, and its card shows which API (v1 or v2) it uses and how far the import has got.',
+        'Leads: a RingCentral call that is still going is now recognised from RingCentral\'s list of live calls, so it shows In progress rather than Missed call while it rings or is being answered.',
       ],
     ),
     VersionRelease(
