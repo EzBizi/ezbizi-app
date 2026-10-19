@@ -65,12 +65,12 @@ class _MapAttributionLineState extends State<MapAttributionLine> {
         key: const ValueKey('map-attribution'),
         margin: const EdgeInsets.all(4),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        color: Colors.white.withValues(alpha: 0.8),
+        color: theme.colorScheme.surface.withValues(alpha: 0.85),
         child: Text(
           _copyright.isEmpty ? 'Google Maps' : 'Google Maps · $_copyright',
           style: theme.textTheme.labelSmall?.copyWith(
             fontSize: 10,
-            color: Colors.black87,
+            color: theme.colorScheme.onSurface,
           ),
         ),
       ),
