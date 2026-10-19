@@ -4222,6 +4222,12 @@ class ModuleServiceProvider extends ServiceProvider
                             .'Google change history has one; nobody, when neither does.',
                     ),
                     new TriggerDefinition(
+                        key: 'ads.campaign_resumed',
+                        label: 'Ads showing again',
+                        description: 'A Local Services campaign that had stopped showing is showing '
+                            .'again, checked every hour - the other half of "Ads stopped showing".',
+                    ),
+                    new TriggerDefinition(
                         key: 'ads.certification_resolved',
                         label: 'Certification problem resolved',
                         description: 'A Local Services account that had a licence, insurance or '
