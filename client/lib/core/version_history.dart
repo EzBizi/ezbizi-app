@@ -18,6 +18,7 @@ class VersionHistory {
       date: '19 Oct 2026',
       items: [
         'Jobs and Customers: when you are looking at the whole organization, the lists show which company each job or customer belongs to, and the exports include it.',
+        'Leads: copy a lead\'s name or number from its header. Website chats, forms and bookings show which site they came from again.',
       ],
     ),
     VersionRelease(
