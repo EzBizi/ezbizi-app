@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\PhoneNumber;
+use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -55,8 +60,9 @@ class CompaniesController extends Controller
 
         $companies = Company::query()->with('franchises')->orderBy('name')->get();
         $user = $request->user();
+        $counts = $this->counts($companies);
 
-        $present = function (Company $company) use ($user) {
+        $present = function (Company $company) use ($user, $counts) {
             // Three different acts, three different answers — and until now the
             // client had one flag for all of them.
             //
@@ -126,10 +132,11 @@ class CompaniesController extends Controller
                 'state'         => $company->state,
                 'postal_code'   => $company->postal_code,
                 'phone'         => $company->phone,
+                'counts'        => $counts('company', $company->id),
                 'franchises' => $company->franchises
                     ->sortBy('name')
                     ->values()
-                    ->map(function (Franchise $f) {
+                    ->map(function (Franchise $f) use ($counts) {
                         $edit = Gate::inspect('update', $f);
 
                         return [
@@ -142,6 +149,7 @@ class CompaniesController extends Controller
                             // A chip whose menu simply does not open is
                             // indistinguishable from one that is broken.
                             'may_edit_reason' => $edit->allowed() ? null : $edit->message(),
+                            'counts'    => $counts('franchise', $f->id),
                         ];
                     })->all(),
             ];
@@ -192,6 +200,7 @@ class CompaniesController extends Controller
                 // exists for exactly that reason.
                 'may_arrange'        => $arrangeRefusal === null,
                 'may_arrange_reason' => $arrangeRefusal,
+                'counts'             => $counts('organization', null),
             ],
 
             // Nested rather than flat, so the client cannot render a Sub Company
@@ -523,6 +532,62 @@ class CompaniesController extends Controller
             'parent_company_id' => $company->parent_company_id,
             'is_sub_company'    => $company->isSubCompany(),
         ];
+    }
+
+    /**
+     * People, phone numbers and connections at each place, for the redesigned
+     * Organization cards (UI queue 111).
+     *
+     * One grouped query per kind, never one per company: the tree is drawn
+     * whole, and a card that costs three queries is a screen that gets slower
+     * with every branch an organization opens. People are asked about only the
+     * places already in the payload; numbers and connections are grouped
+     * across the organization, because the organization's figure is their sum
+     * and that way it costs no further query.
+     *
+     * People are ACTIVE users with an assignment AT that place. Assignment does
+     * not cascade (§4), so somebody standing at the company is not counted again
+     * at each of its franchises: the card says who stands here, not who can
+     * reach it. The organization's figure is every active user, wherever they
+     * stand. Numbers and connections count every row with that scope, whatever
+     * its status.
+     *
+     * @return callable(string, ?string): array{people: int, numbers: int, connections: int}
+     */
+    private function counts(Collection $companies): callable
+    {
+        $companyIds   = $companies->pluck('id')->all();
+        $franchiseIds = $companies->flatMap(fn (Company $c) => $c->franchises->pluck('id'))->all();
+
+        $people = Assignment::query()
+            ->join('users', 'users.id', '=', 'assignments.user_id')
+            ->where('users.is_active', true)
+            ->where(fn ($q) => $q->whereIn('assignments.assigned_company_id', $companyIds)
+                ->orWhereIn('assignments.assigned_franchise_id', $franchiseIds))
+            ->selectRaw("CASE WHEN assignments.assigned_company_id IS NULL THEN 'franchise' ELSE 'company' END AS kind")
+            ->selectRaw('COALESCE(assignments.assigned_company_id, assignments.assigned_franchise_id) AS place')
+            ->selectRaw('COUNT(DISTINCT assignments.user_id) AS n')
+            ->groupBy('kind', 'place')
+            ->get()
+            ->mapWithKeys(fn ($r) => ["{$r->kind}:{$r->place}" => (int) $r->n]);
+
+        $byScope = fn (string $model) => $model::query()
+            ->selectRaw('scope_type, scope_id, COUNT(*) AS n')
+            ->groupBy('scope_type', 'scope_id')
+            ->get()
+            ->mapWithKeys(fn ($r) => ["{$r->scope_type}:{$r->scope_id}" => (int) $r->n]);
+        $numbers     = $byScope(PhoneNumber::class);
+        $connections = $byScope(SocialConnection::class);
+
+        $everyone = User::query()->where('is_active', true)->count();
+
+        return fn (string $kind, ?string $id) => $kind === 'organization'
+            ? ['people' => $everyone, 'numbers' => (int) $numbers->sum(), 'connections' => (int) $connections->sum()]
+            : [
+                'people'      => $people["{$kind}:{$id}"] ?? 0,
+                'numbers'     => $numbers["{$kind}:{$id}"] ?? 0,
+                'connections' => $connections["{$kind}:{$id}"] ?? 0,
+            ];
     }
 
     /**
