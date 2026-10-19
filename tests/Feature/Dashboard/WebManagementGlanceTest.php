@@ -88,7 +88,7 @@ class WebManagementGlanceTest extends TestCase
 
             $user = User::create([
                 'organization_id' => $this->alpha['org']->id,
-                'role_id' => $this->alpha['admin']->role_id,
+                'role_id' => \Tests\Concerns\BranchManagerRole::idFor($this->alpha['admin']),
                 'name' => 'Branch', 'email' => 'branch@alpha.test',
                 'password' => 'a-real-password', 'is_active' => true,
             ]);

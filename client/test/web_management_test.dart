@@ -384,7 +384,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Hours on several websites'), findsOneWidget);
-    expect(find.text('Which websites'), findsOneWidget);
+    expect(find.text('Which places'), findsOneWidget);
 
     // In the tab, beside the app's sidebar: a pushed full-screen page broke
     // containment the day it shipped.
@@ -466,7 +466,7 @@ void main() {
 
     // That page is gone, so the editor is what is on screen.
     expect(find.byType(AppBar), findsNothing);
-    expect(find.text('Which websites'), findsOneWidget);
+    expect(find.text('Which places'), findsOneWidget);
   });
 
   // Design 29: the SEO Helper is a section of the SEO strip, and opens in the

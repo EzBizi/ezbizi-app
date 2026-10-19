@@ -25,6 +25,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../email/consent_window.dart';
+import 'media_library_panel.dart';
 
 /// Marketing › Social Media Management — pages, compose, calendar.
 ///
@@ -1675,6 +1676,25 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   String? _cta;
   final TextEditingController _ctaUrl = TextEditingController();
 
+  /// A picture or video from the library (UI queue 105), sent as its id
+  /// instead of an upload. Either this or [_media], never both.
+  Map<String, dynamic>? _libraryItem;
+
+  Future<void> _fromLibrary() async {
+    final item = await showMediaLibraryPanel(
+      context,
+      api: widget.api,
+      pickMedia: widget.pickMedia,
+      canEdit: widget.session.me?.can('marketing.edit') ?? false,
+    );
+    if (item == null || !mounted) return;
+    setState(() {
+      _releaseMedia();
+      _media = null;
+      _libraryItem = item;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1796,7 +1816,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
         !_ctaUrl.text.trim().startsWith('https://')) {
       return "The listing's button needs a web address starting https://.";
     }
-    if (_body.text.trim().isEmpty && _media == null) {
+    if (_body.text.trim().isEmpty && _media == null && _libraryItem == null) {
       return 'Write something, or attach a picture or a video.';
     }
     final over = _overLimit;
@@ -1979,6 +1999,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
             'body': fields['body'],
             'connections': _picked.toList(),
             'places': _pickedPlaces.toList(),
+            if (_libraryItem != null) 'library_item': _libraryItem!['id'],
             if (_pickedPlaces.isNotEmpty && _cta != null) 'cta_type': _cta,
             if (_pickedPlaces.isNotEmpty && _cta != null && _cta != 'CALL')
               'cta_url': _ctaUrl.text.trim(),
@@ -2026,6 +2047,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _media = null;
       _picked.clear();
       _pickedPlaces.clear();
+      _libraryItem = null;
       _cta = null;
       _ctaUrl.clear();
       _tiktok.clear();
@@ -2461,14 +2483,49 @@ class _ComposeColumnState extends State<_ComposeColumn> {
     final media = _media;
     final theme = Theme.of(context);
 
+    final fromLibrary = _libraryItem;
+    if (media == null && fromLibrary != null) {
+      return Row(
+        key: const ValueKey('social-library-picked'),
+        children: [
+          Icon(
+            fromLibrary['kind'] == 'video'
+                ? Icons.movie_outlined
+                : Icons.photo_outlined,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text('From the library: ${fromLibrary['name'] ?? ''}')),
+          TextButton(
+            onPressed: _sending
+                ? null
+                : () => setState(() => _libraryItem = null),
+            child: const Text('Remove'),
+          ),
+        ],
+      );
+    }
+
     if (media == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OutlinedButton.icon(
-            onPressed: _sending ? null : _attach,
-            icon: const Icon(Icons.image_outlined, size: 18),
-            label: const Text('Attach a picture or video'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _sending ? null : _attach,
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: const Text('Attach a picture or video'),
+              ),
+              OutlinedButton.icon(
+                key: const ValueKey('social-from-library'),
+                onPressed: _sending ? null : _fromLibrary,
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: const Text('From library'),
+              ),
+            ],
           ),
           // Not on a phone, where nothing is dragged.
           if (MediaQuery.sizeOf(context).width >= 600) ...[

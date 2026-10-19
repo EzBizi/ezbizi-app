@@ -8,7 +8,12 @@ import 'package:flutter/widgets.dart';
 /// It lands on the destination, not on a tab inside it: the address holds
 /// destinations only.
 class OpenDestination extends InheritedWidget {
-  const OpenDestination({super.key, required this.open, required super.child});
+  const OpenDestination({
+    super.key,
+    required this.open,
+    this.openLead,
+    required super.child,
+  });
 
   /// A module key, or `settings`, `suggestions` or `account`.
   final void Function(String id) open;
@@ -16,6 +21,12 @@ class OpenDestination extends InheritedWidget {
   /// Null outside the signed-in shell, so a caller can leave its button out.
   static void Function(String id)? of(BuildContext context) =>
       context.getInheritedWidgetOfExactType<OpenDestination>()?.open;
+
+  /// Leads with one lead open (Customers' search, 2026-10-16).
+  final void Function(String leadId)? openLead;
+
+  static void Function(String leadId)? leadOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<OpenDestination>()?.openLead;
 
   @override
   bool updateShouldNotify(OpenDestination old) => false;

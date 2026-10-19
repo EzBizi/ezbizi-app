@@ -82,6 +82,9 @@ void main() {
       292, // pinned at cbad3ccd and never started: its social reach fix
       // turned MarketingGlanceTest red. No artefact exists; its note shipped
       // in 0.0.0293.
+      445, // pinned three times (a4a51667, 05a42380) and stopped in its
+      // backend gate each time: the downwards-only view fix turned 14, then 20,
+      // reach tests red. No artefact exists; its notes shipped in 0.0.0446.
     };
     final holes = [
       for (var n = numbers.first; n <= numbers.last; n++)

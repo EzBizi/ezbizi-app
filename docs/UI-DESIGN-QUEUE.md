@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 105 · Marketing › Social media library — **sent 2026-10-16** (`docs/previews/media-library-layouts.html`)
+### 105 · Marketing › Social media library — **sent 2026-10-16 — no answer in 10 min, went with 1 and 4** (`docs/previews/media-library-layouts.html` @ `3aff94fc`)
 
 Marketing b36699e5. **1** (recommended) From library opens a side panel that also manages (add, rename, remove with second tap); **2** its own Library tab; **3** recent strip under Attach.
 Phone **4** (recommended, in place) / **5** / **6**.

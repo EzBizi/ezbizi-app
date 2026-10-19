@@ -111,13 +111,13 @@ class FieldTest extends TestCase
         return $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->where('event_key', $key)->get());
     }
 
-    public function test_the_module_declares_its_grants_and_four_tabs(): void
+    public function test_the_module_declares_its_grants_and_five_tabs(): void
     {
         $module = app(ModuleRegistry::class)->get('field');
 
         $this->assertSame(
             ['field.view', 'field.tracked', 'field.manage', 'field.record', 'field.listen',
-                'field.dashboard.view', 'field.map.view', 'field.route.view', 'field.settings.view'],
+                'field.dashboard.view', 'field.map.view', 'field.route.view', 'field.recordings.view', 'field.settings.view'],
             $module->permissionKeys(),
         );
     }
