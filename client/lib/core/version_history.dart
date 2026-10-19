@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0452',
+      date: '19 Oct 2026',
+      items: [
+        'WhatsApp: in Settings › Integrations › Messaging, each business can connect its own WhatsApp number and send and receive under its own name. A number already connected to another EzBizi account is refused.',
+        'Settings: every tab follows one layout, with Try again when something fails and Disconnect on every integration. The Settings sub-tab is now called Preferences, and Activity reads as sentences.',
+        'Leads: an unanswered RingCentral call shows how long it lasted, for example Missed call · 1:15.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0451',
       date: '19 Oct 2026',
       items: [
