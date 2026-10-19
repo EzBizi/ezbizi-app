@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
@@ -265,20 +266,70 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         startPath: _catalogue[open]?['start_path'] as String?,
         mayConnect: _mayConnectProvider(open),
         canName: _familyOf(open) == 'reporting',
-        onDisconnect: open == 'google_workspace' && _mayManageWorkspace
-            ? _disconnectWorkspace
-            : null,
+        // Every provider since UI queue 110: the server's disconnect gate is
+        // the provider's connect permission, which is what this asks.
+        onDisconnect: open == 'google_workspace'
+            ? (_mayManageWorkspace ? _disconnectWorkspace : null)
+            : (_mayConnectProvider(open) ? _disconnectConnection : null),
+        purpose: _purpose[open],
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
     }
 
+    // The phone layout follows the room this tab has, not the window's
+    // (UI queue 110).
+    return LayoutBuilder(
+      builder: (context, box) {
+        _phone = box.maxWidth < 600;
+        return _grid(context, providers, byProvider);
+      },
+    );
+  }
+
+  bool _phone = false;
+
+  Widget _grid(
+    BuildContext context,
+    Set<String> providers,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // The same header as every Settings tab (UI queue 110).
+        const PanelHeader(
+          note:
+              'The outside services EzBizi works with. Open one to connect, '
+              'edit or disconnect it.',
+        ),
+        Expanded(child: _list(context, providers, byProvider)),
+      ],
+    );
+  }
+
+  Widget _list(
+    BuildContext context,
+    Set<String> providers,
+    Map<String, List<IntegrationConnection>> byProvider,
+  ) {
     return ListView(
       key: const ValueKey('tour-integrations-list'),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       children: [
         if (_error != null) ...[
           DashboardNote(_error!),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const ValueKey('integrations-retry'),
+              onPressed: () {
+                setState(() => _loading = true);
+                _load();
+              },
+              child: const Text('Try again'),
+            ),
+          ),
           const SizedBox(height: 12),
         ],
         _family(
@@ -415,6 +466,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     return null;
   }
 
+  /// Disconnect one account through Marketing's own endpoint, the one every
+  /// module's Disconnect uses. Answers the refusal, or what is left to remove
+  /// on the provider's side, or null.
+  Future<String?> _disconnectConnection(IntegrationConnection row) async {
+    final response = await widget.api.delete('/social/connections/${row.id}');
+    if (!response.ok) return response.reason;
+    await _load();
+    final problems =
+        ((response.body['data'] as Map?)?['problems'] as List<dynamic>?) ??
+        const [];
+    return problems.isEmpty ? null : problems.join(' ');
+  }
+
   bool get _maySeeExperimental =>
       _mayConnect('reports.build') && _mayConnect('reports.experimental.view');
 
@@ -455,8 +519,16 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       path: '/social/airtable',
       submitLabel: 'Connect base',
       fields: const [
-        ('api_token', 'Personal access token', 'pat…'),
-        ('base_id', 'Base id', 'app… — from the base\'s URL'),
+        (
+          'api_token',
+          'Access token',
+          'Airtable › Builder hub › Personal access tokens',
+        ),
+        (
+          'base_id',
+          'Base',
+          'The part of the base\'s link that starts with "app"',
+        ),
       ],
       onConnected: _load,
     ),
@@ -501,8 +573,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     Text('RingCentral', style: Theme.of(context).textTheme.titleSmall),
     const SizedBox(height: 4),
     Text(
-      'Create a private server app in the RingCentral Developer Console with '
-      'the Read Call Log permission, then paste its credentials and a JWT.',
+      'In the RingCentral Developer Console, create an app that can read the '
+      'call log, then paste its three keys here.',
       style: Theme.of(context).textTheme.bodySmall,
     ),
     const SizedBox(height: 8),
@@ -511,9 +583,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       path: '/social/ringcentral',
       submitLabel: 'Connect account',
       fields: const [
-        ('client_id', 'Client ID', 'From the app\'s Credentials'),
-        ('client_secret', 'Client secret', 'Beside the client ID'),
-        ('jwt', 'JWT', 'From Credentials › JWT, for this app'),
+        ('client_id', 'App ID', 'Your app › Credentials (Client ID)'),
+        ('client_secret', 'App secret', 'Beside the App ID (Client secret)'),
+        ('jwt', 'Sign-in key', 'Credentials › JWT, made for this app'),
       ],
       onConnected: _load,
     ),
@@ -550,7 +622,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
       });
     final connected = mine.where((p) => (byProvider[p] ?? const []).isNotEmpty);
-    final phone = MediaQuery.sizeOf(context).width < 600;
+    final phone = _phone;
 
     return DashboardCard(
       title: mine.isEmpty
@@ -702,7 +774,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         // Sets state; the body swaps. NOT a push — see [_open]. Everything
         // the pane needs is read there from the same maps this card read,
         // so the two cannot show different connections for one provider.
-        onTap: () => setState(() => _open = provider),
+        onTap: none && _catalogue[provider]?['usable'] == false
+            ? null
+            : () => setState(() => _open = provider),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -774,7 +848,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
     return InkWell(
       key: ValueKey('provider:$provider'),
-      onTap: () => setState(() => _open = provider),
+      onTap: none && _catalogue[provider]?['usable'] == false
+          ? null
+          : () => setState(() => _open = provider),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
@@ -792,7 +868,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     style: theme.textTheme.titleSmall,
                   ),
                   Text(
-                    none ? 'Not connected' : _beneath(rows),
+                    // What it is for, as the card says (UI queue 110).
+                    none
+                        ? (_purpose[provider] ?? 'Not connected')
+                        : _beneath(rows),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -826,7 +905,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           'organization' => 'the organization',
           'company' => 'a company',
           'franchise' => 'a branch',
-          _ => row.scopeType,
+          _ => 'another place',
         },
     };
 

@@ -101,9 +101,9 @@ void main() {
 
     await _open(tester, 'ringcentral');
     expect(find.text('Connect account'), findsOneWidget);
-    expect(find.text('Client ID'), findsOneWidget);
-    expect(find.text('Client secret'), findsOneWidget);
-    expect(find.text('JWT'), findsOneWidget);
+    expect(find.text('App ID'), findsOneWidget);
+    expect(find.text('App secret'), findsOneWidget);
+    expect(find.text('Sign-in key'), findsOneWidget);
   });
 
   testWidgets('the RingCentral form is not offered without the report', (
