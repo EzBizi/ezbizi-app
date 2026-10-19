@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 111 · Settings › Organization, Roles & permissions, Activity, API activity redesigned — **sent 2026-10-19** (`docs/previews/settings-tabs-redesign-layouts.html`)
+### 111 · Settings › Organization, Roles & permissions, Activity, API activity redesigned — **sent 2026-10-19 — Jose: "go ahead" (1 and 4)** (`docs/previews/settings-tabs-redesign-layouts.html`)
 
 Jose 2026-10-19: "u didnt finish revamping the whole settings tab, i see no changes on organization, activity - api activity / roles and permission". **1** (recommended) list on the left, the picked one on the right:
 Organization tree + company page (numbers, details, settings set here, actions); Roles list + module grid (Open/Tabs/What they can do/Invite, partial boxes, Compare with, who has it); Activity table by day with Who/Module/search filters and a before→after pane; API activity the same plus a 24 h strip. **2** keep layouts, deeper. **3** full-width tables, roles as columns. Phone **4** (recommended) / **5** / **6**.
