@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/sending_server_panel.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
@@ -85,6 +87,14 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// same endpoints Email › Settings uses — no second flow.
   List<IntegrationConnection> _workspace = const [];
 
+  /// This view's phone numbers, as connections (UI queue 110), or null when
+  /// this person cannot read them.
+  List<IntegrationConnection>? _numbers;
+
+  /// The sending server in effect here, or null when this person cannot
+  /// read it. An empty map is "none set up".
+  Map<String, dynamic>? _sending;
+
   /// The server's `can_connect`: false once this view has a domain.
   bool _workspaceCanConnect = false;
 
@@ -129,10 +139,40 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         ? await widget.api.get('/email/workspace')
         : null;
 
+    // EzBizi's own services, each only when this person can read it.
+    final numbers = widget.session.me?.module('phone')?.reachable == true
+        ? await widget.api.get('/phone/numbers')
+        : null;
+    final sending = await widget.api.get('/mail/sending-server');
+
     if (!mounted) return;
 
     setState(() {
       _loading = false;
+
+      _numbers = numbers != null && numbers.ok
+          ? [
+              for (final n
+                  in ((numbers.body['data'] as List<dynamic>?) ?? const [])
+                      .whereType<Map<String, dynamic>>())
+                IntegrationConnection(
+                  id: 'phone:${n['id']}',
+                  provider: 'phone_numbers',
+                  providerLabel: 'Phone numbers',
+                  displayName: formatPhoneNumber(n['e164'] as String?),
+                  label: n['label'] as String?,
+                  scopeType: n['scope_type'] as String? ?? '',
+                  scopeId: n['scope_id'] as String? ?? '',
+                  connected: true,
+                ),
+            ]
+          : null;
+      final server = sending.ok
+          ? sending.body['data'] as Map<String, dynamic>?
+          : null;
+      _sending = server == null
+          ? null
+          : (server['in_effect'] as Map<String, dynamic>?) ?? const {};
 
       final data = workspace != null && workspace.ok
           ? workspace.body['data'] as Map<String, dynamic>?
@@ -205,6 +245,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'social' => 'Marketing › Social Media Management › Accounts',
     'leads' => 'Leads',
     'email' => 'Email › Settings',
+    'phone' => 'Communication › Phone › Settings',
     // Reporting connects HERE — its pane carries the form instead.
     _ => null,
   };
@@ -230,8 +271,23 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     final byProvider = <String, List<IntegrationConnection>>{};
-    for (final c in [..._connections, ..._workspace]) {
+    for (final c in [..._connections, ..._workspace, ...?_numbers]) {
       byProvider.putIfAbsent(c.provider, () => []).add(c);
+    }
+    final host = _sending?['host'] as String?;
+    if (host != null && host.isNotEmpty) {
+      byProvider['sending_server'] = [
+        IntegrationConnection(
+          id: 'sending_server',
+          provider: 'sending_server',
+          providerLabel: 'Sending server',
+          displayName: host,
+          label: _sending?['from_address'] as String?,
+          scopeType: '',
+          scopeId: '',
+          connected: true,
+        ),
+      ];
     }
 
     // Everything connected, plus everything offered. A provider with rows but
@@ -241,10 +297,49 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ...byProvider.keys,
       ..._catalogue.keys,
       if (_mayManageWorkspace) 'google_workspace',
+      if (_numbers != null) 'phone_numbers',
+      if (_sending != null) 'sending_server',
     };
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
     final open = _open;
+
+    // The sending server is set up by its own panel, drawn here in place.
+    if (open == 'sending_server') {
+      return ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('integration-back'),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to integrations',
+                onPressed: () {
+                  setState(() => _open = null);
+                  _load();
+                },
+              ),
+              const SizedBox(width: 4),
+              const SocialNetworkMark(network: 'sending_server', size: 22),
+              const SizedBox(width: 10),
+              Text(
+                'Sending server',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 52, top: 2, bottom: 12),
+            child: Text(
+              _purpose['sending_server']!,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          SendingServerPanel(api: widget.api, session: widget.session),
+        ],
+      );
+    }
 
     if (open != null) {
       return IntegrationProviderScreen(
@@ -259,9 +354,17 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           'social' => 'marketing',
           'leads' => 'leads',
           'email' => 'email',
+          'phone' => 'phone',
           _ => null,
         },
-        connectForms: _formsFor(open),
+        connectForms: open == 'phone_numbers'
+            ? () => [
+                const DashboardNote(
+                  'Numbers are bought, set up and released in Communication '
+                  '› Phone › Settings.',
+                ),
+              ]
+            : _formsFor(open),
         connectsBy: _catalogue[open]?['connects_by'] as String?,
         startPath: _catalogue[open]?['start_path'] as String?,
         mayConnect: _mayConnectProvider(open),
@@ -332,6 +435,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           ),
           const SizedBox(height: 12),
         ],
+        if (_numbers != null) ...[
+          _family(
+            context,
+            title: 'Phone',
+            icon: Icons.call_outlined,
+            family: 'phone',
+            providers: providers,
+            byProvider: byProvider,
+            empty: 'No phone numbers in $_viewName.',
+          ),
+          const SizedBox(height: 12),
+        ],
         _family(
           context,
           title: 'Mailing',
@@ -344,7 +459,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'sent through the company\'s own account, so one has to be '
               'connected before anything can go out.',
         ),
-        if (_mayManageWorkspace) ...[
+        if (_mayManageWorkspace || _sending != null) ...[
           const SizedBox(height: 12),
           _family(
             context,
@@ -353,7 +468,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             family: 'email',
             providers: providers,
             byProvider: byProvider,
-            empty: 'No Google Workspace connected in $_viewName.',
+            empty: 'Nothing for email connected in $_viewName.',
           ),
         ],
         const SizedBox(height: 12),
@@ -676,7 +791,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   String _label(String provider) =>
-      (provider == 'google_workspace' ? 'Google Workspace' : null) ??
+      (switch (provider) {
+        'google_workspace' => 'Google Workspace',
+        'phone_numbers' => 'Phone numbers',
+        'sending_server' => 'Sending server',
+        _ => null,
+      }) ??
       (_catalogue[provider]?['label'] as String?) ??
       // A provider with rows but no catalogue entry — the connection's own
       // label is better than the raw key, which is what this fell back to
@@ -718,6 +838,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
+    'phone_numbers': 'Calls and texts on your EzBizi numbers.',
+    'sending_server':
+        'Mail EzBizi sends for you goes out through your own mail server.',
   };
 
   /// What a card with nothing connected offers: Connect where connecting can
@@ -747,6 +870,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     // catalogue's permission.
     // Reporting and Email are gated by their own forms (see [_formsFor]).
     final may = switch (_familyOf(provider)) {
+      // Each opens a page that says how, whoever looks.
+      'phone' => true,
+      _ when provider == 'sending_server' => true,
       'reporting' || 'email' => _formsFor(provider) != null,
       _ => _mayConnectProvider(provider),
     };
@@ -913,7 +1039,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     final broken = rows.where((r) => !r.connected).length;
 
     final scopes = <String>{
-      for (final row in rows)
+      for (final row in rows.where((r) => r.scopeType.isNotEmpty))
         switch (row.scopeType) {
           'organization' => 'the organization',
           'company' => 'a company',

@@ -52,6 +52,19 @@ class SocialNetworkMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final asset = _assets[network];
+    // EzBizi's own services on Integrations (UI queue 110) have no logo.
+    final icon = switch (network) {
+      'phone_numbers' => Icons.call_outlined,
+      'sending_server' => Icons.outgoing_mail,
+      _ => null,
+    };
+    if (asset == null && icon != null) {
+      return Icon(
+        icon,
+        size: size,
+        color: Theme.of(context).colorScheme.primary,
+      );
+    }
     if (asset == null) {
       return SizedBox(
         width: size,

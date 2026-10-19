@@ -8,7 +8,6 @@ import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/structure_canvas.dart';
 import '../widgets/structure_menu.dart';
-import '../widgets/tab_bar_like.dart';
 import 'company_form_panel.dart';
 import 'organization/structure_tab.dart';
 
@@ -175,7 +174,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 // into a column a few characters wide and took the page with
                 // it.
                 PanelHeader(
-                  title: 'Organization',
+                  // No title: the Organization chip above already says it
+                  // (UI queue 110, the shared Settings header).
                   // ── Two sentences, and the second is the rule ──
                   //
                   // Said for a business owner rather than for a developer. It
@@ -207,7 +207,32 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                   // guessed, because it is about POSITION rather than
                   // permission (§4): somebody holding `companies.create` at a
                   // branch has earned the button and still cannot press it.
-                  action: Refused(
+                  // List or Structure beside the action, in the header
+                  // (UI queue 110), rather than a second row of chips.
+                  action: Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                  SegmentedButton<int>(
+                    key: const ValueKey('tour-org-views'),
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: 0,
+                        icon: Icon(Icons.list_alt_outlined, size: 18),
+                        label: Text('List'),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        icon: Icon(Icons.account_tree_outlined, size: 18),
+                        label: Text('Structure'),
+                      ),
+                    ],
+                    selected: {_tab},
+                    onSelectionChanged: (picked) => _select(picked.first),
+                  ),
+                  Refused(
                     reason: tree['organization']['may_add_company'] == true
                         ? null
                         : tree['organization']['may_add_company_reason']
@@ -222,17 +247,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                       label: const Text('Add company'),
                     ),
                   ),
-                ),
-                Material(
-                  key: const ValueKey('tour-org-views'),
-                  color: Theme.of(context).colorScheme.surface,
-                  child: TabBarLike(
-                    labels: const [
-                      ('List', Icons.list_alt_outlined),
-                      ('Structure', Icons.account_tree_outlined),
                     ],
-                    selected: _tab,
-                    onSelected: _select,
                   ),
                 ),
                 const Divider(height: 1),
