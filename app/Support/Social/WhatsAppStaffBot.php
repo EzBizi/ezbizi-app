@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
 use App\Jobs\PlanWhatsAppCommand;
+use App\Jobs\ReadWhatsAppBill;
 use App\Jobs\SendCallRecordings;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
@@ -110,10 +111,28 @@ final class WhatsAppStaffBot
 
         $text = trim((string) $inbound->body);
 
+        $yesOrNo = preg_match('/^(yes|y|si|sí|ok|confirm|no|n|cancel)$/iu', $text) === 1;
+        $yes = preg_match('/^(no|n|cancel)$/i', $text) !== 1;
+
+        // YES / NO to a bill photo held for this person (WhatsAppBills).
+        if ($viewer !== null && $yesOrNo && WhatsAppBills::pending($viewer)) {
+            $this->text($number, $to, app(WhatsAppBills::class)->answer($viewer, $yes), preview: false);
+
+            return;
+        }
+
         // YES / NO to a command held for this person (AppAct).
-        if ($viewer !== null && ($held = AppAct::pending($viewer)) !== null
-            && preg_match('/^(yes|y|si|sí|ok|confirm|no|n|cancel)$/iu', $text) === 1) {
-            $this->commandAnswer($number, $to, $viewer, $held, preg_match('/^(no|n|cancel)$/i', $text) !== 1);
+        if ($viewer !== null && $yesOrNo && ($held = AppAct::pending($viewer)) !== null) {
+            $this->commandAnswer($number, $to, $viewer, $held, $yes);
+
+            return;
+        }
+
+        // A photo from somebody who may file bills: read as a period's bills.
+        if ($viewer?->hasPermission(WhatsAppBills::PERMISSION) && $inbound->kind === 'image'
+            && $inbound->media_id !== null && GrokCli::configured()) {
+            ReadWhatsAppBill::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
+            $this->text($number, $to, "\u{1F440} Reading the bills in that photo\u{2026}", preview: false);
 
             return;
         }
@@ -625,6 +644,12 @@ final class WhatsAppStaffBot
     public static function isCommand(string $query): bool
     {
         return preg_match('/^\s*(please\s+)?(pause|resume|publish|post|reply|approve|schedule|reschedule|book|assign|mark|create|add|send|update|set|move|rebuild|sync|start|stop|enable|disable)\b/i', $query) === 1;
+    }
+
+    /** ReadWhatsAppBill's half: the lines read back, held for a YES. */
+    public function billRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
+    {
+        $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption), preview: false);
     }
 
     /** PlanWhatsAppCommand's half: repeat the command back, run nothing. */
