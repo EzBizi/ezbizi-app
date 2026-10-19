@@ -1305,6 +1305,21 @@ class SettingRegistry
                 editPermission: 'field.manage',
                 help: 'A phone that should be reporting and has been silent this long raises an alert.',
             ),
+            // Jose, 2026-10-19: "On Field settings i should be able to select
+            // which roles show up on the map, this is separate from what roles
+            // are being tracked which belongs on roles y permissions."
+            new SettingDefinition(
+                key: 'field.map_roles',
+                label: 'Roles shown on the map',
+                type: SettingDefinition::TYPE_SUBSET,
+                choicesFrom: SettingDefinition::CHOICES_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY,
+                    SettingDefinition::SCOPE_FRANCHISE],
+                editPermission: 'field.manage',
+                help: 'Who appears on Field › Map. None ticked shows every tracked role. This changes what is '
+                    .'shown, not who is tracked: that is Roles & permissions.',
+            ),
             // Closest office (A1's Stats routing panel, 2026-10-19): when Google
             // cannot route, the straight line is stretched and timed with these.
             new SettingDefinition(

@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Organization;
+use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
@@ -375,6 +376,11 @@ class SettingsController extends Controller
     {
         // A subset offers whatever its source list says HERE, so a status the
         // organization added is a choice without anybody editing the registry.
+        if ($definition->choicesFrom === SettingDefinition::CHOICES_ROLES) {
+            return Role::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Role $r) => ['value' => $r->id, 'label' => $r->name])->all();
+        }
+
         if ($definition->choicesFrom !== null) {
             $source = $this->resolver->get($definition->choicesFrom, $scope);
 
