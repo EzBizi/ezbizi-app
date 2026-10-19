@@ -93,6 +93,7 @@
             "parent": null,
             "tabs": [
                 "Bases",
+                "Bills",
                 "Settings"
             ]
         },
@@ -395,6 +396,7 @@
         "field.tracked",
         "field.view",
         "financials.bases.view",
+        "financials.bills.view",
         "financials.create",
         "financials.delete",
         "financials.edit",

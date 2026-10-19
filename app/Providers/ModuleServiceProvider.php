@@ -2244,6 +2244,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // part of the books (organization configuration).
                 tabs: [
                     new TabDefinition('bases', 'Bases'),
+                    new TabDefinition('bills', 'Bills'),
                     new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['financials'],

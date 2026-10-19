@@ -178,6 +178,7 @@ use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
+use App\Http\Controllers\Api\FinancialBillsController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -1021,6 +1022,13 @@ Route::prefix('v1')
             Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
             Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
             Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
+        });
+        Route::middleware('permission:financials.bills.view')->group(function (): void {
+            Route::get('financials/bills', [FinancialBillsController::class, 'index']);
+            Route::post('financials/bills/read', [FinancialBillsController::class, 'read']);
+            Route::post('financials/bills', [FinancialBillsController::class, 'store']);
+            Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
+            Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
         });
         Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
             Route::get('bases', 'bases');

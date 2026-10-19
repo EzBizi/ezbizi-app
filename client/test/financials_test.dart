@@ -190,6 +190,7 @@ Future<List<http.Request>> _pump(
             'permissions': [
               'financials.view',
               'financials.bases.view',
+              'financials.bills.view',
               'financials.settings.view',
               'financials.create',
               'financials.edit',
@@ -216,6 +217,25 @@ Future<List<http.Request>> _pump(
         return json({
           'data': {'id': 'b1'},
         }, 201);
+      }
+      if (path.endsWith('/financials/bills')) {
+        return json({
+          'data': [
+            {
+              'id': 'bl1',
+              'place': 'New Jersey',
+              'period_from': '2026-09-01',
+              'period_to': '2026-09-30',
+              'lines': [
+                {'name': 'Office rent', 'cents': 100000},
+                {'name': 'Internet', 'cents': 25010},
+              ],
+              'total_cents': 125010,
+              'has_image': false,
+              'source': 'whatsapp',
+            },
+          ],
+        });
       }
       if (path.endsWith('/financials/sources')) {
         return json({
@@ -262,6 +282,24 @@ Future<List<http.Request>> _pump(
 }
 
 void screenTests() {
+  testWidgets(
+    'bills list each period with its total, and open to their lines',
+    (tester) async {
+      await _pump(tester);
+      await tester.tap(find.text('Bills').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('New Jersey · 2026-09-01 to 2026-09-30'),
+        findsOneWidget,
+      );
+      expect(find.text(r'$1,250.10'), findsOneWidget);
+      expect(find.text('2 lines · from WhatsApp'), findsOneWidget);
+      await tester.tap(find.text('New Jersey · 2026-09-01 to 2026-09-30'));
+      await tester.pumpAndSettle();
+      expect(find.text('Office rent'), findsOneWidget);
+    },
+  );
+
   testWidgets('settings list which Airtable table is which part of the books', (
     tester,
   ) async {
