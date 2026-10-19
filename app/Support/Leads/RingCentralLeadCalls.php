@@ -265,8 +265,13 @@ final class RingCentralLeadCalls
         if ($lead === null) {
             return;
         }
-        // The lead's tag is its latest call's: only that call may change it.
-        $latest = $lead->conversations()->orderByDesc('occurred_at')->value('remote_id') === $row->remote_id;
+        // The lead's tag is its latest INBOUND RingCentral call's: only that call
+        // may change it. Not the latest conversation - a later answered call,
+        // our outbound call or a message would freeze an In progress tag the
+        // call that set it could then never clear (desk, 2026-10-19: 23 leads).
+        $latest = $lead->conversations()->where('remote_id', 'like', 'rc\_%')
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->orderByDesc('occurred_at')->value('remote_id') === $row->remote_id;
         if (! $out && $latest && $lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome) {
             $lead->forceFill(['source_status' => $outcome])->save();
         }
