@@ -207,6 +207,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
+    // The review link's sad faces, out of Forms (Jose, 2026-10-19).
+    ('bad_rating', 'Bad Ratings'),
     ('website_booking', 'Online Booking'),
     ('facebook', 'Facebook'),
     ('instagram', 'Instagram'),
@@ -232,6 +234,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
+    Icons.sentiment_dissatisfied_outlined, // Bad Ratings
     Icons.event_available, // the website's booking widget (2026-10-08)
     // Messenger and Instagram have no Material glyph of their own, and a
     // wrong-brand icon reads worse than a generic one. These say "a message"
@@ -738,6 +741,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
       'ringcentral': 'RC Calls',
       'ez_calls': 'EZ Calls',
       'ez_texts': 'EZ Texts',
+      'bad_rating': 'Bad Ratings',
     }[_source];
     return tab == null ? body : OpenTabMark(tab, child: body);
   }

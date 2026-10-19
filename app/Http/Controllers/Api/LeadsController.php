@@ -223,7 +223,8 @@ class LeadsController extends Controller
         $unreadBySource = (clone $query)
             ->whereRaw(self::UNREAD_SQL)
             ->reorder()
-            ->select(DB::raw("CASE WHEN leads.status = 'job_applicant' THEN 'job_applicant' WHEN leads.source = 'local_services' THEN "
+            ->select(DB::raw("CASE WHEN leads.status = 'job_applicant' THEN 'job_applicant' "
+                ."WHEN leads.source = 'website_form' AND leads.lead_type = 'BAD_RATING' THEN 'bad_rating' WHEN leads.source = 'local_services' THEN "
                 ."(CASE WHEN leads.lead_type = 'PHONE_CALL' THEN 'ls_call' WHEN leads.lead_type = 'BOOKING' THEN 'ls_booking' ELSE 'ls_text' END) "
                 .'ELSE leads.source END AS kind'))
             ->selectRaw('COUNT(*) AS n')
@@ -294,6 +295,7 @@ class LeadsController extends Controller
         // a Google lead must be a text, and a connected source must still be.
         if ($request->boolean('overdue')) {
             $query->where('leads.status', Lead::STATUS_NEW)
+                ->whereNotIn('leads.source', Lead::SOURCES_NO_REPLY_OWED)
                 ->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
                 ->where('leads.last_contact_at', '<=', now()->subMinutes(Lead::REPLY_OVERDUE_AFTER_MINUTES))
                 ->where(fn ($q) => $q->where('leads.source', '!=', Lead::SOURCE_LOCAL_SERVICES)
@@ -640,6 +642,11 @@ class LeadsController extends Controller
             Lead::KIND_LS_BOOKING => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)
                 ->where('leads.lead_type', 'BOOKING'),
             Lead::STATUS_JOB_APPLICANT => $query->where('leads.status', Lead::STATUS_JOB_APPLICANT),
+            Lead::KIND_BAD_RATING => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
+                ->where('leads.lead_type', 'BAD_RATING'),
+            // Forms, without the Bad Ratings that have their own tab now.
+            Lead::SOURCE_WEBSITE_FORM => $query->where('leads.source', Lead::SOURCE_WEBSITE_FORM)
+                ->where(fn ($q) => $q->whereNull('leads.lead_type')->orWhere('leads.lead_type', '!=', 'BAD_RATING')),
             default => $query->where('leads.source', $key),
         };
     }
