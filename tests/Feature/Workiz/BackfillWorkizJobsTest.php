@@ -124,6 +124,7 @@ class BackfillWorkizJobsTest extends TestCase
 
         $this->artisan('ezbizi:backfill-workiz', ['--pending' => true, '--since' => '2000-01-01'])->assertSuccessful();
         $this->assertSame([0, 1], $this->asked, 'done, so off the queue');
+        $this->assertSame([], \Illuminate\Support\Facades\Cache::get(BackfillWorkizJobs::PENDING));
     }
 
     public function test_it_reads_back_to_the_since_date_and_lands_only_jobs_the_mirror_lacks(): void
