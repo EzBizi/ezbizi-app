@@ -65,6 +65,7 @@ class BusinessProfileLocations
         $created = 0;
         $updated = 0;
         $pageToken = null;
+        $seen = [];
 
         do {
             $page = $this->page($connection, $token, $pageToken);
@@ -73,6 +74,7 @@ class BusinessProfileLocations
                 $fetched++;
 
                 $result = $this->store($connection, $raw);
+                $seen[] = $result['location']->getKey();
 
                 $result['created'] ? $created++ : $updated++;
 
@@ -92,9 +94,39 @@ class BusinessProfileLocations
             $pageToken = $page['next'];
         } while ($pageToken !== null);
 
+        $this->markListing($connection, $seen);
+
         $connection->forceFill(['last_reached_at' => now()])->save();
 
         return ['fetched' => $fetched, 'created' => $created, 'updated' => $updated];
+    }
+
+    /**
+     * The complete list said which of this connection's locations Google still
+     * returns. One it stopped returning is "not listed" from now, and one that
+     * comes back is listed again; either is raised as a change on Google with
+     * `listed` in the fields that moved. Never "removed": a profile leaves an
+     * account's list when access moves as well as when it is gone.
+     *
+     * @param  list<string>  $seen
+     */
+    private function markListing(SocialConnection $connection, array $seen): void
+    {
+        $mine = BusinessLocation::query()->where('connection_id', $connection->getKey());
+
+        (clone $mine)->whereNotIn('id', $seen)->whereNull('not_listed_since')->get()
+            ->each(function (BusinessLocation $location) {
+                $location->forceFill(['not_listed_since' => now()])->save();
+                $this->events->emitAfterCommit('business_location.changed_on_google', $location,
+                    ['before' => ['listed' => true], 'after' => ['listed' => false]]);
+            });
+
+        (clone $mine)->whereIn('id', $seen)->whereNotNull('not_listed_since')->get()
+            ->each(function (BusinessLocation $location) {
+                $location->forceFill(['not_listed_since' => null])->save();
+                $this->events->emitAfterCommit('business_location.changed_on_google', $location,
+                    ['before' => ['listed' => false], 'after' => ['listed' => true]]);
+            });
     }
 
     /**
@@ -203,7 +235,7 @@ class BusinessProfileLocations
             // What a person would notice changing on their own listing without
             // anybody here touching it. A re-read that returns identical values
             // must not raise an event, or the rule fires nightly forever.
-            $watched = ['title', 'phone', 'address_line1', 'city', 'postal_code',
+            $watched = ['title', 'phone', 'website', 'address_line1', 'city', 'postal_code',
                 'primary_category', 'verification_state', 'is_published'];
 
             $before = [];

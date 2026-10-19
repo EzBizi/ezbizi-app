@@ -392,6 +392,8 @@ Schedule::command('ezbizi:leads-call-owner')->everyFifteenMinutes()->withoutOver
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
+// The day on Google, for each organization's rules (A1 Leads takeover, 2026-10-19).
+Schedule::command('ezbizi:gbp-daily-digest')->dailyAt('07:00')->timezone('America/New_York')->withoutOverlapping(30);
 // One batch of 4 side by side per run: the scheduler runs a minute's
 // commands in sequence, so a long run would hold the others behind it.
 Schedule::command('ezbizi:label-call-transcripts --limit=4')->everyTwoMinutes()->withoutOverlapping(15);
