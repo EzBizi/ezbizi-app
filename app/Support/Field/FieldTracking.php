@@ -116,6 +116,20 @@ final class FieldTracking
         return ['allowed' => true, 'announce' => $allParty, 'notice' => $notice, 'reason' => null];
     }
 
+    /**
+     * How closest-office estimates a drive Google could not route.
+     *
+     * @return array{mph: int, road_factor: float, similar_miles: float}
+     */
+    public function estimateTuning(User $user): array
+    {
+        return [
+            'mph' => max(1, (int) $this->setting('field.estimate_mph', $user)),
+            'road_factor' => max(1.0, (float) $this->setting('field.estimate_road_factor', $user)),
+            'similar_miles' => (float) $this->setting('field.similar_within_miles', $user),
+        ];
+    }
+
     /** @return list<string> two-letter codes, upper case */
     public function recordingNoticeStates(User $user): array
     {

@@ -507,7 +507,7 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.say', 'Technician is about 18 minutes away and should arrive around 2:18 PM.');
     }
 
-    public function test_a_zip_ranks_the_offices_by_drive_time_or_by_distance_without_maps(): void
+    public function test_a_zip_ranks_the_offices_by_drive_time_or_by_an_estimate_without_maps(): void
     {
         config(['services.google_maps.server_key' => 'k']);
         Http::fake([
@@ -539,10 +539,29 @@ class FieldTest extends TestCase
         $this->getJson('/api/v1/field/closest-office?zip=44120')
             ->assertOk()
             ->assertJsonPath('data.offices.0.office.name', 'Alpha Co')
-            ->assertJsonPath('data.offices.0.minutes', null)
-            ->assertJsonPath('data.offices.0.by', 'straight_line');
+            ->assertJsonPath('data.offices.0.by', 'estimate')
+            ->assertJsonPath('data.offices.0.similar', true);
 
         $this->getJson('/api/v1/field/closest-office?zip=abc')->assertStatus(422);
+    }
+
+    public function test_leads_users_get_zip_centres_and_the_coverage_points(): void
+    {
+        $job = $this->jobAt(41.4, -81.6);
+        $leads = $this->userWithRole($this->t, 'Leads', ['leads.view']);
+        $this->inTenant($this->t['org'], fn () => FieldGeocode::query()->create([
+            'address_hash' => FieldGeocode::hash('44120, USA'), 'address' => '44120, USA',
+            'latitude' => 41.47, 'longitude' => -81.58, 'status' => FieldGeocode::OK,
+        ]));
+
+        $this->signedInAs($leads)->getJson('/api/v1/field/geocode-zips?zips=44120,99999')
+            ->assertOk()->assertJsonPath('data.44120.lat', 41.47)->assertJsonMissingPath('data.99999');
+        $this->getJson('/api/v1/field/coverage?from=2026-09-25&to=2026-09-25')
+            ->assertOk()->assertJsonPath('data.jobs.0.job_id', $job->id)->assertJsonPath('data.jobs.0.lat', 41.4);
+        $this->getJson('/api/v1/field/coverage?from=2026-09-26&to=2026-09-27')->assertJsonCount(0, 'data.jobs');
+
+        $nobody = $this->userWithRole($this->t, 'Nobody', ['field.view']);
+        $this->signedInAs($nobody)->getJson('/api/v1/field/geocode-zips?zips=44120')->assertForbidden();
     }
 
     public function test_headquarters_with_an_address_are_on_the_map_for_their_view_only(): void

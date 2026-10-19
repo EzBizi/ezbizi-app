@@ -424,8 +424,9 @@ class FieldController extends Controller
     /**
      * GET /field/closest-office?zip= (or ?lat=&lng=): the offices you can see,
      * nearest by drive time first (A1 Tools' ZIP to closest office, 2026-10-19).
-     * Without a Maps key, or when Google cannot route, straight-line distance
-     * orders them and minutes is null.
+     * Without a Maps key, or when Google cannot route, the straight-line
+     * distance times the road factor at the average speed estimates it (by:
+     * estimate). Both are Field settings.
      */
     public function closestOffice(Request $request): JsonResponse
     {
@@ -444,18 +445,92 @@ class FieldController extends Controller
         $offices = $this->offices($request->user());
         $drives = $this->maps->matrix(array_map(fn ($o) => ['lat' => $o['lat'], 'lng' => $o['lng']], $offices), $to) ?? [];
 
-        $ranked = collect($offices)->map(function (array $office, int $i) use ($drives, $to) {
-            $straight = FieldMaps::metres($office['lat'], $office['lng'], $to['lat'], $to['lng']);
+        $user = $request->user();
+        ['mph' => $mph, 'road_factor' => $winding, 'similar_miles' => $similar] = $this->tracking->estimateTuning($user);
 
-            return [
-                'office' => $office,
-                'minutes' => isset($drives[$i]) ? (int) round($drives[$i]['seconds'] / 60) : null,
-                'miles' => round(($drives[$i]['meters'] ?? $straight) / 1609.344, 1),
-                'by' => isset($drives[$i]) ? 'drive' : 'straight_line',
-            ];
-        })->sortBy(fn ($r) => [$r['minutes'] === null ? 1 : 0, $r['minutes'] ?? $r['miles'], $r['miles']])->values();
+        $ranked = collect($offices)->map(function (array $office, int $i) use ($drives, $to, $mph, $winding) {
+            if (isset($drives[$i])) {
+                return ['office' => $office, 'minutes' => (int) round($drives[$i]['seconds'] / 60),
+                    'miles' => round($drives[$i]['meters'] / 1609.344, 1), 'by' => 'drive'];
+            }
+            // No route: the crow-flies distance, stretched by the road factor,
+            // at the organization's average speed.
+            $miles = FieldMaps::metres($office['lat'], $office['lng'], $to['lat'], $to['lng']) / 1609.344 * $winding;
+
+            return ['office' => $office, 'minutes' => (int) round($miles / $mph * 60),
+                'miles' => round($miles, 1), 'by' => 'estimate'];
+        })->sortBy(fn ($r) => [$r['minutes'], $r['miles']])->values();
+
+        // Offices within N miles of the nearest are as good a choice (A1's "similar").
+        $best = $ranked->first()['miles'] ?? null;
+        $ranked = $ranked->map(fn ($r) => $r + ['similar' => $best !== null && $similar >= $r['miles'] - $best]);
 
         return response()->json(['data' => ['to' => $to, 'offices' => $ranked]]);
+    }
+
+    /**
+     * GET /field/geocode-zips?zips=44120,44114: each ZIP's centre, from Field's
+     * cache; up to 25 not seen before are asked of Google per call, so a long
+     * list fills over a few calls. Unknown ones are left out.
+     */
+    public function geocodeZips(Request $request): JsonResponse
+    {
+        $data = $request->validate(['zips' => ['required', 'string', 'max:6000']]);
+        preg_match_all('/\b\d{5}\b/', $data['zips'], $m);
+        $zips = array_slice(array_values(array_unique($m[0])), 0, 500);
+
+        $budget = 25;
+        $out = [];
+        foreach ($zips as $zip) {
+            $point = $this->jobs->pointAt("{$zip}, USA");
+            if ($point === null && $budget > 0) {
+                $budget--;
+                $point = $this->jobs->pointAt("{$zip}, USA", ask: true);
+            }
+            if ($point !== null) {
+                $out[$zip] = $point;
+            }
+        }
+
+        return response()->json(['data' => (object) $out]);
+    }
+
+    /**
+     * GET /field/coverage?from=&to= (dates): the offices and the jobs in the
+     * window, with their pins from Field's cache (no Google calls), for the
+     * Stats map. Leads adds its own layer.
+     */
+    public function coverage(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $user = $request->user();
+
+        $jobs = Job::query()
+            ->with('customer:id,address_line1,address_line2,city,state,postal_code')
+            ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
+            ->whereBetween('scheduled_for', [$data['from'].' 00:00:00', $data['to'].' 23:59:59'])
+            ->limit(5000)
+            ->get(['id', 'number', 'status', 'customer_id', 'franchise_id', 'scheduled_for']);
+
+        $hashes = $jobs->mapWithKeys(fn (Job $j) => [$j->getKey() => ($a = $j->customer ? FieldGeocode::addressOf($j->customer) : null) ? FieldGeocode::hash($a) : null]);
+        $points = FieldGeocode::query()->whereIn('address_hash', $hashes->filter()->values())
+            ->where('status', FieldGeocode::OK)->get(['address_hash', 'latitude', 'longitude'])->keyBy('address_hash');
+
+        return response()->json(['data' => [
+            'offices' => $this->offices($user),
+            'jobs' => $jobs->map(function (Job $j) use ($hashes, $points) {
+                $p = $points[$hashes[$j->getKey()]] ?? null;
+
+                return $p === null ? null : [
+                    'job_id' => $j->getKey(), 'number' => $j->number, 'status' => $j->status,
+                    'customer_id' => $j->customer_id, 'franchise_id' => $j->franchise_id,
+                    'lat' => (float) $p->latitude, 'lng' => (float) $p->longitude,
+                ];
+            })->filter()->values(),
+        ]]);
     }
 
     /**

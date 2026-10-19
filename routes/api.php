@@ -1520,10 +1520,16 @@ Route::prefix('v1')
             Route::get('field/map/tiles', [FieldController::class, 'tiles']);
             Route::get('field/map/attribution', [FieldController::class, 'attribution']);
             Route::get('field/places', [FieldController::class, 'places']);
-            Route::get('field/closest-office', [FieldController::class, 'closestOffice'])->middleware('throttle:60,1');
             // Jobs on the map and a dispatcher's ETA also need jobs.view (checked inside).
             Route::get('field/jobs', [FieldController::class, 'jobs']);
             Route::get('field/eta', [FieldController::class, 'eta']);
+        });
+        // A1's Stats map (with Leads, 2026-10-19): Leads users hold leads.view,
+        // not field.map.view, and draw these on their Stats tab.
+        Route::middleware('permission:field.map.view,leads.view')->group(function () {
+            Route::get('field/closest-office', [FieldController::class, 'closestOffice'])->middleware('throttle:60,1');
+            Route::get('field/geocode-zips', [FieldController::class, 'geocodeZips'])->middleware('throttle:30,1');
+            Route::get('field/coverage', [FieldController::class, 'coverage']);
         });
         Route::middleware('permission:field.route.view')->group(function () {
             Route::get('field/people', [FieldController::class, 'people']);

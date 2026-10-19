@@ -1305,6 +1305,31 @@ class SettingRegistry
                 editPermission: 'field.manage',
                 help: 'A phone that should be reporting and has been silent this long raises an alert.',
             ),
+            // Closest office (A1's Stats routing panel, 2026-10-19): when Google
+            // cannot route, the straight line is stretched and timed with these.
+            new SettingDefinition(
+                key: 'field.estimate_mph',
+                label: 'Average driving speed for estimates, mph',
+                type: SettingDefinition::TYPE_INT,
+                default: 35,
+                editPermission: 'field.manage',
+                help: 'Used only when a drive time cannot be fetched.',
+            ),
+            new SettingDefinition(
+                key: 'field.estimate_road_factor',
+                label: 'Roads are longer than a straight line by',
+                type: SettingDefinition::TYPE_DECIMAL,
+                default: 1.3,
+                editPermission: 'field.manage',
+                help: 'A straight-line distance is multiplied by this to estimate the drive.',
+            ),
+            new SettingDefinition(
+                key: 'field.similar_within_miles',
+                label: 'Offices this close to the nearest count as just as close, miles',
+                type: SettingDefinition::TYPE_INT,
+                default: 5,
+                editPermission: 'field.manage',
+            ),
             // Safety recordings capture the customer's voice, so they are off
             // until a company turns them on, and states where every party must
             // consent either block them or require announcing them (desk,
