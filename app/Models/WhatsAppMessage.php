@@ -55,7 +55,7 @@ class WhatsAppMessage extends Model implements HoldsPersonalData, StatesRetentio
     protected $fillable = [
         'organization_id', 'phone_number_id', 'direction', 'counterparty',
         'wamid', 'idempotency_key', 'status', 'status_reason', 'kind', 'template_name', 'body',
-        'sent_at', 'delivered_at', 'read_at',
+        'media_id', 'sent_at', 'delivered_at', 'read_at',
     ];
 
     protected function casts(): array

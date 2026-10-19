@@ -456,6 +456,45 @@ final class WhatsAppCloud
      * differ, and the time it takes is a measurement of how much of the
      * signature the caller got right.
      */
+    /** Largest inbound file read: Meta's own document cap is 100 MB, a bill photo is a few. */
+    public const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+
+    /**
+     * An inbound image or document's bytes. Two calls, as Meta designs it: the
+     * id gives a short-lived URL, the URL (same token) gives the file.
+     *
+     * @return array{bytes: string, mime: string}
+     *
+     * @throws RuntimeException when it cannot be fetched or is too large
+     */
+    public function downloadMedia(string $mediaId): array
+    {
+        $token = (string) config('services.meta.whatsapp_token');
+
+        if ($token === '' || $mediaId === '') {
+            throw new RuntimeException('That file could not be fetched from WhatsApp.');
+        }
+
+        $meta = Http::withToken($token)->timeout(self::TIMEOUT)->get(self::endpoint().'/'.$mediaId);
+        $url = (string) $meta->json('url');
+
+        if (! $meta->successful() || $url === '') {
+            throw new RuntimeException('That file could not be fetched from WhatsApp.');
+        }
+
+        if ((int) $meta->json('file_size') > self::MAX_MEDIA_BYTES) {
+            throw new RuntimeException('That file is too large to read here.');
+        }
+
+        $file = Http::withToken($token)->timeout(self::TIMEOUT)->get($url);
+
+        if (! $file->successful() || strlen($file->body()) > self::MAX_MEDIA_BYTES) {
+            throw new RuntimeException('That file could not be fetched from WhatsApp.');
+        }
+
+        return ['bytes' => $file->body(), 'mime' => (string) ($meta->json('mime_type') ?: $file->header('Content-Type'))];
+    }
+
     public static function signed(string $rawBody, ?string $header, ?string $secret = null): bool
     {
         $secret ??= (string) config('services.meta.client_secret');
