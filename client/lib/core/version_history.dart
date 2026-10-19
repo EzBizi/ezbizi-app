@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
+        'Settings: Leads has its own entry in the Settings hub, for people who can manage Leads: the company that RingCentral calls file to, the code-to-branch map for phone lines, the new- and existing-client queues, and pausing Google.',
         'Leads: a second form, bad rating, chat or online booking from the same phone (or email) within a day joins the first lead instead of making a new one, so no second automatic text goes out.',
         'Leads: RC Calls and EZ Calls no longer show as Overdue, and Bad Ratings from the review page get their own tab (granted to everyone who could see Forms).',
         'Leads: a call from someone whose lead was archived brings that lead back to New.',
