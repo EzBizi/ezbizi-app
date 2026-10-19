@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\Role;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
@@ -133,7 +134,8 @@ final class FieldTracking
     /** Field › Map shows this person: their role is ticked, or nothing is ticked. */
     public function shownOnMap(User $user): bool
     {
-        $roles = (array) $this->setting('field.map_roles', $user);
+        // An id that is no longer a role is ignored; empty means everybody.
+        $roles = Role::query()->whereKey((array) $this->setting('field.map_roles', $user))->pluck('id')->all();
 
         return $roles === [] || in_array($user->role_id, $roles, true);
     }

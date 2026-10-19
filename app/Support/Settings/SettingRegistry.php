@@ -1311,13 +1311,12 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'field.map_roles',
                 label: 'Roles shown on the map',
-                type: SettingDefinition::TYPE_SUBSET,
-                choicesFrom: SettingDefinition::CHOICES_ROLES,
+                type: SettingDefinition::TYPE_ROLES,
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY,
                     SettingDefinition::SCOPE_FRANCHISE],
                 editPermission: 'field.manage',
-                help: 'Who appears on Field › Map. None ticked shows every tracked role. This changes what is '
+                help: 'Who appears on Field › Map. Leave empty to show everybody tracked. This changes what is '
                     .'shown, not who is tracked: that is Roles & permissions.',
             ),
             // Closest office (A1's Stats routing panel, 2026-10-19): when Google
