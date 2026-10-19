@@ -1017,20 +1017,57 @@ class _LeadsScreenState extends State<LeadsScreen> {
     children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: Row(
-          children: [
-            Expanded(child: _searchField()),
-            const SizedBox(width: 8),
-            SizedBox(width: 140, child: _statusPicker()),
-          ],
+        child: LayoutBuilder(
+          builder: (context, box) => Row(
+            children: [
+              Expanded(child: _searchField()),
+              const SizedBox(width: 8),
+              SizedBox(width: 140, child: _statusPicker()),
+              const SizedBox(width: 8),
+              // Charge, IVR, dispatcher, dates and the sources in All, behind
+              // one button with a count (UI queue 108, design 1); the icon
+              // alone in a narrow list.
+              _filtersButton(compact: box.maxWidth < 420),
+            ],
+          ),
         ),
       ),
       _filterRow(theme, withStatus: false),
-      _takeoverFilters(),
-      if (_source == null && _visibleSources.length > 1) _inAll(theme),
+      if (_moreFilters) ...[
+        _takeoverFilters(),
+        if (_source == null && _visibleSources.length > 1) _inAll(theme),
+      ],
       ..._alerts(theme),
     ],
   );
+
+  /// The number of the folded filters that are set.
+  int get _foldedSet =>
+      [_charge, _ivr, _dispatcher, _dates].where((v) => v != null).length;
+
+  Widget _filtersButton({bool compact = false}) {
+    final label = _foldedSet > 0 ? 'Filters · $_foldedSet' : 'Filters';
+    final icon = Icon(_moreFilters ? Icons.expand_less : Icons.tune, size: 18);
+    void toggle() => setState(() => _moreFilters = !_moreFilters);
+    if (compact) {
+      return IconButton(
+        key: const ValueKey('leads-more-filters'),
+        tooltip: label,
+        onPressed: toggle,
+        icon: Badge(
+          isLabelVisible: _foldedSet > 0,
+          label: Text('$_foldedSet'),
+          child: icon,
+        ),
+      );
+    }
+    return OutlinedButton.icon(
+      key: const ValueKey('leads-more-filters'),
+      onPressed: toggle,
+      icon: icon,
+      label: Text(label),
+    );
+  }
 
   /// Approved triage layout (18012c74): the three narrow together. Mark all
   /// read follows them in the same run, beside what it reads (design 28:

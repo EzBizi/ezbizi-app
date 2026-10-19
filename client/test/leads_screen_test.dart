@@ -30,6 +30,9 @@ void main() {
       connections: _connected,
     );
 
+    // Folded behind Filters since UI queue 108.
+    await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('leads-charge')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Charged').last);
@@ -459,6 +462,9 @@ void main() {
     expect(_lastListQuery['sources'], isNot(contains('ls_booking')));
     expect(_lastListQuery['sources'], contains('ls_text'));
 
+    // Folded behind Filters since UI queue 108.
+    await tester.tap(find.byKey(const ValueKey('leads-more-filters')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('all-source-ls_call')));
     await tester.pumpAndSettle();
     expect(_lastListQuery['sources'], contains('ls_call'));
@@ -1098,9 +1104,10 @@ void main() {
     expect(find.text('Call'), findsOneWidget);
     expect(
       find.text('Chat'),
-      findsNWidgets(3),
+      findsNWidgets(2),
       reason:
-          'the rail\'s tab, the In All toggle and one badge, not a second badge',
+          'the rail\'s tab and one badge, not a second badge (In All is '
+          'behind Filters since UI queue 108)',
     );
   });
 
