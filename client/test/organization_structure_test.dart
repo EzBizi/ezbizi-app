@@ -39,9 +39,10 @@ void main() {
       expect(find.text('Structure'), findsOneWidget);
       expect(
         find.text('Organization'),
-        findsOneWidget,
+        findsNothing,
         reason:
-            'One heading above both views. Two would read as two screens '
+            'No heading of its own: the Settings chip above names it (UI '
+            'queue 110). Never one per view, which would read as two screens '
             'rather than as two pictures of one page.',
       );
     });

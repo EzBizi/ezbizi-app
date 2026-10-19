@@ -47,6 +47,64 @@ String _refusedToChange(String label) =>
     'roles can add it to yours.';
 
 void main() {
+  // UI queue 110: the business address saves itself once typing stops, like
+  // every row here, rather than behind a Save button of its own.
+  testWidgets('the business address saves as you type, after a pause', (
+    tester,
+  ) async {
+    final patches = <Map>[];
+    tester.view.physicalSize = const Size(1280, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await _pumpSettings(tester, (request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        return _json({
+          'data': {
+            ..._me,
+            'permissions': ['organizations.edit'],
+            'scope': {
+              'type': 'organization',
+              'id': 'org-1',
+              'label': 'Everdoors',
+              'path': ['Everdoors'],
+            },
+          },
+        });
+      }
+      if (request.method == 'PATCH' && path.endsWith('/organization')) {
+        patches.add(jsonDecode(request.body) as Map);
+        return _json({'data': <String, dynamic>{}});
+      }
+      return _json({
+        'data': [
+          _row(
+            'general.timezone',
+            label: 'Time zone',
+            type: 'string',
+            value: 'America/New_York',
+            source: _source('organization', 'org-1', 'Everdoors', false),
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('Save address'), findsNothing);
+    expect(patches, isEmpty, reason: 'loading the address is not a change');
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'City'),
+      'Springfield',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(patches, isEmpty, reason: 'still typing');
+
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+    expect(patches, hasLength(1));
+    expect(patches.single['city'], 'Springfield');
+  });
+
   // UI queue 104, design 7: a place setting is found by address, not typed
   // as coordinates.
   testWidgets('a location setting is set by finding an address', (tester) async {

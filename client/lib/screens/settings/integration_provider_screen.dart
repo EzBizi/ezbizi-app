@@ -308,6 +308,19 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     final theme = Theme.of(context);
     final groups = _groups;
 
+    // Narrow, Disconnect is an icon so the row keeps its name (UI queue 110).
+    return LayoutBuilder(
+      builder: (context, box) =>
+          _body(context, theme, groups, box.maxWidth < 480),
+    );
+  }
+
+  Widget _body(
+    BuildContext context,
+    ThemeData theme,
+    List<(String, List<IntegrationConnection>)> groups,
+    bool narrow,
+  ) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -413,7 +426,15 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                                   ),
                                   onPressed: () => _rename(row),
                                 ),
-                              if (widget.onDisconnect != null)
+                              if (widget.onDisconnect != null && narrow)
+                                IconButton(
+                                  key: ValueKey('disconnect:${row.id}'),
+                                  tooltip: 'Disconnect',
+                                  color: theme.colorScheme.error,
+                                  icon: const Icon(Icons.link_off, size: 20),
+                                  onPressed: () => _disconnect(row),
+                                )
+                              else if (widget.onDisconnect != null)
                                 TextButton(
                                   key: ValueKey('disconnect:${row.id}'),
                                   style: TextButton.styleFrom(
@@ -561,7 +582,8 @@ class IntegrationConnection {
     'thumbtack' ||
     'facebook_ads' => 'leads',
     'airtable' || 'workiz' || 'ringcentral' => 'reporting',
-    'google_workspace' => 'email',
+    'google_workspace' || 'sending_server' => 'email',
+    'phone_numbers' => 'phone',
     'whatsapp' => 'messaging',
     _ => 'social',
   };

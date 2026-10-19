@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
@@ -179,6 +180,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _addressPostal = TextEditingController();
   bool _savingAddress = false;
 
+  /// The address as last saved or loaded, and the pause before saving a
+  /// change: it saves as you type, like every row here (UI queue 110), once
+  /// the typing stops, rather than behind a Save button of its own.
+  String _savedAddress = '';
+  Timer? _addressPause;
+
+  String get _addressNow => [
+    _addressLine1,
+    _addressLine2,
+    _addressCity,
+    _addressState,
+    _addressPostal,
+  ].map((c) => c.text.trim()).join('|');
+
+  void _addressChanged() {
+    if (_addressNow == _savedAddress) return;
+    _addressPause?.cancel();
+    _addressPause = Timer(
+      const Duration(milliseconds: 1200),
+      _saveBusinessAddress,
+    );
+  }
+
   final TextEditingController _search = TextEditingController();
   _Filter _filter = _Filter.all;
 
@@ -211,6 +235,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // wiring — no submit button, no debounce. Thirty rows do not need one.
     _search.addListener(() => setState(() {}));
     _fillBusinessAddress(widget.session.me?.organization);
+    for (final field in [
+      _addressLine1,
+      _addressLine2,
+      _addressCity,
+      _addressState,
+      _addressPostal,
+    ]) {
+      field.addListener(_addressChanged);
+    }
     _load();
     _loadDataAnswers();
   }
@@ -236,6 +269,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _addressPause?.cancel();
     _addressLine1.dispose();
     _addressLine2.dispose();
     _addressCity.dispose();
@@ -752,12 +786,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 postal: _addressPostal,
               ),
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton(
-                  onPressed: _savingAddress ? null : _saveBusinessAddress,
-                  child: Text(_savingAddress ? 'Saving…' : 'Save address'),
-                ),
+              Text(
+                _savingAddress ? 'Saving…' : 'Saved as you type.',
+                key: const ValueKey('address-saved'),
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),
@@ -792,9 +824,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _addressCity.text = organization.city ?? '';
     _addressState.text = organization.state ?? '';
     _addressPostal.text = organization.postalCode ?? '';
+    _savedAddress = _addressNow;
   }
 
   Future<void> _saveBusinessAddress() async {
+    if (!mounted || _savingAddress) return;
+    final sending = _addressNow;
     setState(() => _savingAddress = true);
     final response = await widget.api.patch('/organization', {
       'address_line1': _emptyToNull(_addressLine1.text),
@@ -806,13 +841,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _savingAddress = false);
     if (response.ok) {
+      _savedAddress = sending;
       await widget.session.refresh();
-      if (mounted) {
+      if (!mounted) return;
+      // Only when nothing was typed meanwhile; a later change saves itself.
+      if (_addressNow == sending) {
         _fillBusinessAddress(widget.session.me?.organization);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Business address saved.')),
-        );
+      } else {
+        _addressChanged();
       }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Business address saved.')));
     } else if (mounted) {
       ScaffoldMessenger.of(
         context,
