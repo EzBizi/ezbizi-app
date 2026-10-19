@@ -70,6 +70,12 @@ class _ApiActivityState extends State<ApiActivity> {
   String? _person;
   String? _key;
 
+  /// Only what the server refused (UI queue 111, from the summary strip).
+  bool _refusedOnly = false;
+
+  /// The last 24 hours, from the server; null when it does not say.
+  Map<String, dynamic>? _summary;
+
   /// The row opened, by its place in [_rows].
   int? _open;
 
@@ -107,6 +113,7 @@ class _ApiActivityState extends State<ApiActivity> {
       ];
       _rows = older ? [..._rows, ...page] : page;
       _more = page.length >= _page;
+      if (!older) _summary = response.body['summary'] as Map<String, dynamic>?;
     });
   }
 
@@ -123,7 +130,9 @@ class _ApiActivityState extends State<ApiActivity> {
 
     final shown = [
       for (final (i, row) in _rows.indexed)
-        if (!_changesOnly || verbOf(row) != 'Read') (i, row),
+        if ((!_changesOnly || verbOf(row) != 'Read') &&
+            (!_refusedOnly || (int.tryParse('${row['status']}') ?? 0) >= 400))
+          (i, row),
     ];
 
     if (widget.limit case final limit?) return _compact(context, shown, limit);
@@ -136,6 +145,10 @@ class _ApiActivityState extends State<ApiActivity> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (widget.everyone && _summary != null) ...[
+              _strip(context, _summary!),
+              const SizedBox(height: 12),
+            ],
             _filters(context),
             const SizedBox(height: 10),
             if (shown.isEmpty)
@@ -240,6 +253,81 @@ class _ApiActivityState extends State<ApiActivity> {
   String? _personName;
   String? _keyName;
 
+  /// The last 24 hours in four numbers; Calls, Changes and Refused filter
+  /// the table to themselves (UI queue 111).
+  Widget _strip(BuildContext context, Map<String, dynamic> summary) {
+    final theme = Theme.of(context);
+    Widget tile(
+      String key,
+      String label,
+      Object? value, {
+      VoidCallback? onTap,
+      bool on = false,
+      bool warn = false,
+    }) {
+      final colour = warn && (value is num && value > 0)
+          ? theme.colorScheme.error
+          : theme.colorScheme.onSurface;
+      return Expanded(
+        child: Card(
+          margin: const EdgeInsets.only(right: 8),
+          color: on ? theme.colorScheme.primaryContainer : null,
+          child: InkWell(
+            key: ValueKey('api-summary-$key'),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${value ?? 0}',
+                    style: theme.textTheme.titleLarge?.copyWith(color: colour),
+                  ),
+                  Text(label, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    void show({required bool changes, required bool refused}) => setState(() {
+      _changesOnly = changes;
+      _refusedOnly = refused;
+      _open = null;
+    });
+
+    return Row(
+      children: [
+        tile('keys', 'keys used · 24 h', summary['keys']),
+        tile(
+          'calls',
+          'calls',
+          summary['calls'],
+          on: !_changesOnly && !_refusedOnly,
+          onTap: () => show(changes: false, refused: false),
+        ),
+        tile(
+          'changes',
+          'changes',
+          summary['changes'],
+          on: _changesOnly && !_refusedOnly,
+          onTap: () => show(changes: true, refused: false),
+        ),
+        tile(
+          'refused',
+          'refused',
+          summary['refused'],
+          warn: true,
+          on: _refusedOnly,
+          onTap: () => show(changes: false, refused: true),
+        ),
+      ],
+    );
+  }
+
   /// Under a key in Your account: the last few changes, then Show all.
   Widget _compact(
     BuildContext context,
@@ -318,7 +406,18 @@ class _ApiActivityState extends State<ApiActivity> {
               Text('VIA', style: head),
               Text('RESULT', style: head),
             ]),
-            for (final (i, row) in shown) ...[
+            for (final (n, (i, row)) in shown.indexed) ...[
+              if (n == 0 || _dayOf(shown[n - 1].$2) != _dayOf(row)) ...[
+                const Divider(height: 1),
+                Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  child: Text(_dayOf(row).toUpperCase(), style: head),
+                ),
+              ],
               const Divider(height: 1),
               InkWell(
                 key: ValueKey('api-activity-row-$i'),
@@ -362,6 +461,11 @@ class _ApiActivityState extends State<ApiActivity> {
         ),
       ),
     );
+  }
+
+  String _dayOf(Map<String, dynamic> row) {
+    final at = DateTime.tryParse('${row['at']}')?.toLocal();
+    return at == null ? '' : widget.formats.formatDate(at);
   }
 
   /// Narrow: grouped by day, a row opens in the list's place.

@@ -19,6 +19,30 @@ import 'package:http/testing.dart';
 /// server, not just the page; and a key's own few changes sit under it in Your
 /// account with the rest a click away.
 void main() {
+  // UI queue 111: the last 24 hours on top; Refused filters to itself.
+  testWidgets('the summary strip counts the day and filters the table', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server, const Size(1300, 900), everyone: true);
+
+    expect(find.byKey(const ValueKey('api-summary-calls')), findsOneWidget);
+    expect(find.text('9'), findsOneWidget);
+
+    List<String> verbs() => [
+      for (final pill in tester.widgetList<StatusPill>(find.byType(StatusPill)))
+        pill.label,
+    ];
+    await tester.tap(find.byKey(const ValueKey('api-summary-refused')));
+    await tester.pumpAndSettle();
+    expect(verbs(), contains('Refused'));
+    expect(verbs(), isNot(contains('OK')));
+
+    await tester.tap(find.byKey(const ValueKey('api-summary-calls')));
+    await tester.pumpAndSettle();
+    expect(verbs(), contains('Read'));
+  });
+
   testWidgets('changes only, in words, until reads are asked for', (
     tester,
   ) async {
@@ -427,6 +451,7 @@ class _Server {
             row,
       ];
       return _json({
+        'summary': {'keys': 2, 'calls': 9, 'changes': 4, 'refused': 1},
         'activity': full
             ? [for (var i = 0; i < 200; i++) rows[i % rows.length]]
             : rows,
