@@ -12,6 +12,7 @@ use App\Support\Social\WhatsAppOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -164,6 +165,53 @@ class WhatsAppConnectTest extends TestCase
             ->assertOk();
 
         $this->assertSame(0, WhatsAppNumber::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_number_another_tenant_routes_is_refused_before_anything_is_saved(): void
+    {
+        $a = $this->provisionTenant('Owner');
+        $this->inTenant($a['org'], fn () => WhatsAppNumber::query()->forceCreate([
+            'organization_id' => $a['org']->id, 'phone_number_id' => self::PHONE_ID, 'waba_id' => 'theirs',
+        ]));
+        $b = $this->provisionTenant('Intruder');
+
+        $url = $this->signedInAs($b['admin'])
+            ->postJson('/api/v1/social/whatsapp/start')
+            ->assertOk()->json('data.authorization_url');
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        Queue::fake();
+        $this->metaAnswers();
+        $this->get('/api/v1/social/whatsapp/callback?code=a-code&state='.$query['state'])
+            ->assertSee('This WhatsApp number is already connected to another EzBizi account.', false);
+
+        $this->assertSame(0, SocialConnection::query()->withoutGlobalScopes()->where('provider', 'whatsapp')->count());
+        Queue::assertNotPushed(OnboardWhatsAppNumber::class);
+        $this->assertSame($a['org']->id, WhatsAppNumber::query()->withoutGlobalScopes()->sole()->organization_id);
+    }
+
+    public function test_a_disconnected_tenant_number_never_falls_back_to_the_global_token(): void
+    {
+        [$t, $connection] = $this->connected();
+
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/connections/'.$connection->id)->assertOk();
+
+        Http::fake(fn () => Http::response(['messages' => [['id' => 'wamid.x']]]));
+
+        try {
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->send('hello', '(305) 724-2199', from: '+13055550100'));
+            $this->fail('A send on a disconnected number went out.');
+        } catch (\RuntimeException) {
+        }
+        Http::assertNothingSent();
+
+        // And if the number row were somehow still there, tokenFor refuses.
+        $this->inTenant($t['org'], fn () => WhatsAppNumber::query()->forceCreate([
+            'organization_id' => $t['org']->id, 'phone_number_id' => self::PHONE_ID,
+            'waba_id' => self::WABA, 'social_connection_id' => $connection->id,
+        ]));
+        $this->expectException(\RuntimeException::class);
+        WhatsAppCloud::tokenFor(self::PHONE_ID);
     }
 
     public function test_it_is_a_sending_account_gated_on_communication(): void

@@ -9,6 +9,7 @@ use App\Jobs\SubscribeMetaMessages;
 use App\Models\SocialConnection;
 use App\Models\SocialSignIn;
 use App\Models\User;
+use App\Models\WhatsAppNumber;
 use App\Services\Leads\ThumbtackLeads;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
@@ -225,6 +226,17 @@ class SocialAuthController extends Controller
         SocialOAuthGrant $grant,
         array $accounts,
     ): array {
+        // Refused HERE, before any row is written: a number another tenant
+        // routes must not gain a connection (and a token) in this one. The
+        // onboarding job checks again as a backstop.
+        if ($provider === SocialProvider::WhatsApp
+            && WhatsAppNumber::query()->withoutGlobalScopes()
+                ->whereIn('phone_number_id', array_map(fn (SocialAccount $a) => $a->remoteId, $accounts))
+                ->where('organization_id', '!=', $signIn->organization_id)
+                ->exists()) {
+            throw SocialOAuthRefused::numberTaken();
+        }
+
         try {
             return DB::transaction(function () use ($user, $signIn, $provider, $grant, $accounts) {
                 $saved = [];
