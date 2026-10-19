@@ -1965,12 +1965,11 @@ class _FranchiseMapButton extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        // The house picker, not a popup dropdown
-                        // (no_popup_dropdown_test).
-                        child: SearchPickerField<String?>(
+                        child: SearchPickerField<String>(
                           key: ValueKey('map-place:$i'),
                           value: rows[i].place,
                           isDense: true,
+                          border: const OutlineInputBorder(),
                           options: [
                             for (final p in places)
                               SearchOption(value: '${p.value}', label: p.label),
@@ -1979,7 +1978,7 @@ class _FranchiseMapButton extends StatelessWidget {
                                   (p) => '${p.value}' == rows[i].place,
                                 ))
                               SearchOption(
-                                value: rows[i].place,
+                                value: rows[i].place!,
                                 label: '${rows[i].place} — not a place',
                               ),
                           ],
@@ -2014,9 +2013,9 @@ class _FranchiseMapButton extends StatelessWidget {
       ),
     );
 
-    // ponytail: not disposed here. The panel is still animating out and its
-    // fields still read these; disposing now threw "used after being
-    // disposed". A few small controllers are left to the collector.
+    // ponytail: the code fields are not disposed — the panel is still
+    // animating out when this resumes, and disposing then throws. A handful of
+    // controllers per open is left to the GC.
     if (saved != null) onChanged(saved);
   }
 }
