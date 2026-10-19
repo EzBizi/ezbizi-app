@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0454',
+      date: '19 Oct 2026',
+      items: [
+        'Settings › Organization: companies and branches as a tree, with counts, and a page for the one you pick.',
+        'Settings › Roles & permissions: roles on the left and a grid of modules on the right, with Compare with another role and Who has it.',
+        'Settings › Activity: a table grouped by day, filtered by person, module or words, with the details beside it. API activity shows a summary of the last 24 hours.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0453',
       date: '19 Oct 2026',
       items: [
