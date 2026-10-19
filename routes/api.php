@@ -1525,8 +1525,6 @@ Route::prefix('v1')
         });
         Route::middleware('permission:field.map.view')->group(function () {
             Route::get('field/map', [FieldController::class, 'map']);
-            Route::get('field/map/tiles', [FieldController::class, 'tiles']);
-            Route::get('field/map/attribution', [FieldController::class, 'attribution']);
             Route::get('field/places', [FieldController::class, 'places']);
             // Jobs on the map and a dispatcher's ETA also need jobs.view (checked inside).
             Route::get('field/jobs', [FieldController::class, 'jobs']);
@@ -1538,6 +1536,9 @@ Route::prefix('v1')
             Route::get('field/closest-office', [FieldController::class, 'closestOffice'])->middleware('throttle:60,1');
             Route::get('field/geocode-zips', [FieldController::class, 'geocodeZips'])->middleware('throttle:30,1');
             Route::get('field/coverage', [FieldController::class, 'coverage']);
+            // The map itself, so Leads' Stats map has tiles (no data in them).
+            Route::get('field/map/tiles', [FieldController::class, 'tiles']);
+            Route::get('field/map/attribution', [FieldController::class, 'attribution']);
         });
         Route::middleware('permission:field.route.view')->group(function () {
             Route::get('field/people', [FieldController::class, 'people']);
