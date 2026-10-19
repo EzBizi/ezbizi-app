@@ -164,6 +164,12 @@ class _SourcePanelState extends State<_SourcePanel> {
         text: (widget.source?['field_map'] as Map?)?[k] as String?,
       ),
   };
+  late final _validFrom = TextEditingController(
+    text: widget.source?['valid_from'] as String?,
+  );
+  late final _validUntil = TextEditingController(
+    text: widget.source?['valid_until'] as String?,
+  );
   late final _filterField = TextEditingController(
     text: widget.source?['filter_field'] as String?,
   );
@@ -223,6 +229,12 @@ class _SourcePanelState extends State<_SourcePanel> {
       'role': _role,
       'franchise_id': franchise?.id,
       'company_id': franchise?.companyId ?? (franchise == null ? _place : null),
+      'valid_from': _validFrom.text.trim().isEmpty
+          ? null
+          : _validFrom.text.trim(),
+      'valid_until': _validUntil.text.trim().isEmpty
+          ? null
+          : _validUntil.text.trim(),
       'filter_field': _filterField.text.trim().isEmpty
           ? null
           : _filterField.text.trim(),
@@ -315,6 +327,34 @@ class _SourcePanelState extends State<_SourcePanel> {
                 SearchOption(value: f.id, label: f.name),
             ],
             onChanged: (v) => setState(() => _place = v),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'When it applies',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const Text(
+            'Leave blank unless this table holds the books only for a stretch of time.',
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: TextField(
+              controller: _validFrom,
+              decoration: const InputDecoration(
+                labelText: 'From (YYYY-MM-DD)',
+                isDense: true,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: TextField(
+              controller: _validUntil,
+              decoration: const InputDecoration(
+                labelText: 'Until (YYYY-MM-DD)',
+                isDense: true,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           Text('Shared table', style: Theme.of(context).textTheme.titleSmall),

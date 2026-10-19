@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * One Airtable table's part in an organization's books, and which of its
  * columns mean what. Null company and place = the organization itself (HQ).
  */
-#[Fillable(['base_id', 'table_id', 'role', 'company_id', 'franchise_id', 'filter_field', 'filter_value', 'field_map', 'markers'])]
+#[Fillable(['base_id', 'table_id', 'role', 'company_id', 'franchise_id', 'filter_field', 'filter_value', 'field_map', 'markers', 'valid_from', 'valid_until'])]
 class FinancialSource extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -50,7 +50,7 @@ class FinancialSource extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['field_map' => 'array', 'markers' => 'array'];
+        return ['field_map' => 'array', 'markers' => 'array', 'valid_from' => 'date:Y-m-d', 'valid_until' => 'date:Y-m-d'];
     }
 
     public static function retention(): RetentionPolicy
@@ -75,6 +75,19 @@ class FinancialSource extends Model implements StatesRetention
     public function marker(string $key): ?string
     {
         return $this->markers[$key] ?? null;
+    }
+
+    /** Whether this source holds the books for any day of [$from, $to] (Y-m-d). */
+    public function overlaps(string $from, string $to): bool
+    {
+        return ($this->valid_from === null || $this->valid_from->toDateString() <= $to)
+            && ($this->valid_until === null || $this->valid_until->toDateString() >= $from);
+    }
+
+    /** Whether one day (Y-m-d) falls inside this source's validity. */
+    public function covers(string $date): bool
+    {
+        return $this->overlaps($date, $date);
     }
 
     /** Whether a copied Airtable row belongs to this source's place. */
