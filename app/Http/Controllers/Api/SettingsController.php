@@ -378,11 +378,6 @@ class SettingsController extends Controller
     {
         // A subset offers whatever its source list says HERE, so a status the
         // organization added is a choice without anybody editing the registry.
-        if ($definition->choicesFrom === SettingDefinition::CHOICES_ROLES) {
-            return Role::query()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Role $r) => ['value' => $r->id, 'label' => $r->name])->all();
-        }
-
         if ($definition->choicesFrom !== null) {
             $source = $this->resolver->get($definition->choicesFrom, $scope);
 
