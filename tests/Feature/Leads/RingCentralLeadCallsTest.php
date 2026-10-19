@@ -351,6 +351,23 @@ class RingCentralLeadCallsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-10-19: "think we can also get the lenght of the call" (B Imperato, 0:00:01). */
+    public function test_an_unanswered_call_says_how_long_it_lasted(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('98', '+16313106166', now()->subMinutes(30)->toIso8601String(), queue: null,
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted', 'duration' => 1]),
+                self::rc('99', '+16313106199', now()->subMinutes(30)->toIso8601String(),
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'result' => 'Missed', 'duration' => 75]),
+            ], self::LINES, $t['company']->id);
+
+            $this->assertSame('Possible spam · 0:01', LeadConversation::query()->where('remote_id', 'rc_98')->value('text'));
+            $this->assertSame('Missed call · 1:15', LeadConversation::query()->where('remote_id', 'rc_99')->value('text'));
+        });
+    }
+
     /** A missed call on a person's direct line alerts like any missed call. */
     public function test_a_missed_call_on_a_direct_line_alerts(): void
     {

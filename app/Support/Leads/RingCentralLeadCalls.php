@@ -197,7 +197,7 @@ final class RingCentralLeadCalls
                     'duration_ms' => $call['talk_seconds'] === null ? null : (int) $call['talk_seconds'] * 1000,
                     'recording_url' => $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null,
                     // What happened, said on the card instead of "0:00".
-                    'text' => self::WORDS[$outcome] ?? null,
+                    'text' => self::words($outcome, $call),
                 ]);
                 $this->thread->refresh($lead);
                 if ($call['answered_by'] !== null) {
@@ -241,7 +241,7 @@ final class RingCentralLeadCalls
         } else {
             $outcome = self::outcome($call, $existingQueue, KnownCustomer::is(self::customerNumber($call)));
             $fields['duration_ms'] = $call['talk_seconds'] === null ? null : (int) $call['talk_seconds'] * 1000;
-            $fields['text'] = self::WORDS[$outcome] ?? null;
+            $fields['text'] = self::words($outcome, $call);
         }
         $was = $row->text;
         $row->fill($fields);
@@ -357,6 +357,26 @@ final class RingCentralLeadCalls
             ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
             default => self::MISSED,
         };
+    }
+
+    /**
+     * The card's words for an unanswered call, with RingCentral's length of
+     * the whole call when it has one (Jose, 2026-10-19: "think we can also get
+     * the lenght of the call") - "Possible spam · 0:01". Talk time is the
+     * answered leg's and stays in duration_ms; this is the record's, menu and
+     * wait included. None while it is live.
+     *
+     * @param  array<string, mixed>  $call
+     */
+    private static function words(?string $outcome, array $call): ?string
+    {
+        $word = self::WORDS[$outcome] ?? null;
+        $seconds = (int) ($call['duration'] ?? 0);
+        if ($word === null || $outcome === self::IN_PROGRESS || $seconds <= 0) {
+            return $word;
+        }
+
+        return $word.' · '.intdiv($seconds, 60).':'.str_pad((string) ($seconds % 60), 2, '0', STR_PAD_LEFT);
     }
 
     /** @param  array<string, mixed>  $staff  names whose phones rang, as keys */
