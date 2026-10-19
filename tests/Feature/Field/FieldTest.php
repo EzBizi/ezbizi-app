@@ -572,7 +572,7 @@ class FieldTest extends TestCase
 
     public function test_leads_users_get_zip_centres_and_the_coverage_points(): void
     {
-        $job = $this->jobAt(41.4, -81.6);
+        $job = $this->jobAt(41.4123, -81.6);
         $leads = $this->userWithRole($this->t, 'Leads', ['leads.view']);
         $this->inTenant($this->t['org'], fn () => FieldGeocode::query()->create([
             'address_hash' => FieldGeocode::hash('44120, USA'), 'address' => '44120, USA',
@@ -581,8 +581,15 @@ class FieldTest extends TestCase
 
         $this->signedInAs($leads)->getJson('/api/v1/field/geocode-zips?zips=44120,99999')
             ->assertOk()->assertJsonPath('data.44120.lat', 41.47)->assertJsonMissingPath('data.99999');
-        $this->getJson('/api/v1/field/coverage?from=2026-09-25&to=2026-09-25')
-            ->assertOk()->assertJsonPath('data.jobs.0.job_id', $job->id)->assertJsonPath('data.jobs.0.lat', 41.4);
+        $leadsPin = $this->getJson('/api/v1/field/coverage?from=2026-09-25&to=2026-09-25')->assertOk()->json('data.jobs.0');
+        $this->assertSame(41.41, $leadsPin['lat']);
+        $this->assertArrayNotHasKey('customer_id', $leadsPin);
+        $this->assertArrayNotHasKey('number', $leadsPin);
+        $this->assertArrayNotHasKey('job_id', $leadsPin);
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/coverage?from=2026-09-25&to=2026-09-25')
+            ->assertJsonPath('data.jobs.0.job_id', $job->id)->assertJsonPath('data.jobs.0.lat', 41.4123);
+        $this->signedInAs($leads);
         $this->getJson('/api/v1/field/coverage?from=2026-09-26&to=2026-09-27')->assertJsonCount(0, 'data.jobs');
 
         $nobody = $this->userWithRole($this->t, 'Nobody', ['field.view']);

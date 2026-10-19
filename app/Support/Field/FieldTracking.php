@@ -124,7 +124,7 @@ final class FieldTracking
     public function estimateTuning(User $user): array
     {
         return [
-            'mph' => max(1, (int) $this->setting('field.estimate_mph', $user)),
+            'mph' => max(5, (int) $this->setting('field.estimate_mph', $user)),
             'road_factor' => max(1.0, (float) $this->setting('field.estimate_road_factor', $user)),
             'similar_miles' => (float) $this->setting('field.similar_within_miles', $user),
         ];
