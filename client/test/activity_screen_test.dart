@@ -12,6 +12,20 @@ import 'package:http/testing.dart';
 
 /// Settings › Activity (2026-10-16).
 void main() {
+  // UI queue 110: a row opens to what changed, before and after; a shape
+  // that is not before/after still shows, as name and value.
+  testWidgets('a row opens what changed', (tester) async {
+    await _pump(tester, ['audit.view'], <Uri>[], shell: false);
+
+    await tester.tap(find.byKey(const ValueKey('activity-row:e-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('What changed'), findsOneWidget);
+    expect(find.text('new  →  follow_up'), findsOneWidget);
+    expect(find.byKey(const ValueKey('value:tags')), findsOneWidget);
+    expect(find.text('phone'), findsOneWidget);
+  });
+
   // UI queue 110: a sentence, never the server's code.
   test('an action code reads as words, verb first', () {
     expect(activityAction('customer.created'), 'created customer');
@@ -101,6 +115,23 @@ Future<void> _pump(
               'label': 'Everdoors',
               'path': ['Everdoors'],
             },
+          },
+        });
+      }
+      if (request.url.path.endsWith('/audit-events/e-1')) {
+        return _json({
+          'data': {
+            'id': 'e-1',
+            'occurred_at': '2026-10-16T14:00:00Z',
+            'source': 'user',
+            'actor': 'Dana',
+            'action': 'lead.created',
+            'target': 'Ann Smith',
+            'changes': {
+              'status': {'before': 'new', 'after': 'follow_up'},
+              'tags': ['vip'],
+            },
+            'metadata': {'via': 'phone'},
           },
         });
       }
