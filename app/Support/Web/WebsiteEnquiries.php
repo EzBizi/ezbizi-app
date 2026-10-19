@@ -357,7 +357,11 @@ final class WebsiteEnquiries
             $visitor['comment'] = $fields['What happened?'] ?? null;
         }
 
-        $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
+        // The same phone sending a form again within a day joins its earlier
+        // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
+        // twice, 6 minutes apart, and showed as two leads - "yes, it should").
+        $lead = self::recentForm($visitor['phone'] ?? null)
+            ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
 
         $lines = self::condensed($fields, $visitor);
 
@@ -442,6 +446,20 @@ final class WebsiteEnquiries
      *
      * @param  array{name?: ?string, email?: ?string, phone?: ?string, page_url?: ?string}  $visitor
      */
+    /** This phone's form lead from the last 24 hours, in this tenant, or null. */
+    private static function recentForm(?string $phone): ?Lead
+    {
+        $digits = Lead::digits((string) Lead::e164($phone));
+        if ($digits === null || strlen($digits) < 10) {
+            return null;
+        }
+
+        return Lead::query()->where('source', Lead::SOURCE_WEBSITE_FORM)
+            ->where('phone_digits', 'like', '%'.substr($digits, -10))
+            ->where('received_at', '>=', now()->subDay())
+            ->latest('received_at')->first();
+    }
+
     private function lead(WebSite $site, string $source, string $remoteId, array $visitor, bool $looksLikeSpam = false): Lead
     {
         $phone = Lead::e164($visitor['phone'] ?? null);
