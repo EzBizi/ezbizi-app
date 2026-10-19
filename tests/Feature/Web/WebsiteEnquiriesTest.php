@@ -71,6 +71,32 @@ class WebsiteEnquiriesTest extends TestCase
         $this->assertNotNull($lead->last_contact_at);
     }
 
+    /** Jose, 2026-10-19: the same phone sending a form again within a day is one lead. */
+    public function test_a_second_form_from_the_same_phone_within_a_day_joins_the_first(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $send = fn (string $phone, string $what) => $this->postJson('/api/v1/web/form', [
+            'key' => $site->public_key, 'name' => 'Elizabeth Bell', 'phone' => $phone,
+            'fields' => ['Rating' => 'Not happy', 'What happened?' => $what],
+        ])->assertCreated();
+
+        $send('(216) 392-9942', 'Late');
+        $send('216.392.9942', 'Still late');
+        $send('(216) 392-0000', 'Someone else');
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(2, Lead::query()->count());
+            $first = Lead::query()->where('phone_digits', 'like', '%2163929942')->sole();
+            $this->assertSame(2, $first->conversations()->count());
+            $this->assertSame('BAD_RATING', $first->lead_type);
+        });
+
+        // A day later, a new lead.
+        $this->travel(25)->hours();
+        $send('(216) 392-9942', 'Again');
+        $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Lead::query()->count()));
+    }
+
     public function test_a_form_submission_becomes_one_lead_with_one_message(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
