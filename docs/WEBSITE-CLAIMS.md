@@ -2913,3 +2913,34 @@ still exactly `c1dfbf1a` (Last-Modified 10-16 18:45 UTC) — the same stale depl
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split)
 ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play
 `200`; Apple `resultCount` 1, now 0.0.0443 (the download card names no version).
+
+## 2026-10-19: 0.0.0445-0.0.0455 live, and `/privacy/` did not say expense photos go to xAI
+
+Production `/download/windows.json` 0.0.0455 at `cc889e73` (= main). Live = repo for
+every `www/` file before this edit: yesterday's stale `/privacy/` published 10-19
+21:08 UTC. Desk still silent on `0131`; nothing below needed its counts.
+
+**The finding.** `f33c1fc4` (Financials › Bills) and `ab5f50cb` (the same photo sent
+to the WhatsApp staff line) send a **photo** of a branch's expense list to xAI
+(`BillReader::read` → `GrokCli::ask` with the image bytes). `/privacy/` listed every
+other xAI use and not this one, so the sub-processor list was exhaustive and short
+again. Added a "Reading a photo of expenses" paragraph under Calls and messages and a
+clause to the Anthropic-and-xAI sub-processor line. Retention stated is the model's
+own (`FinancialBill::retention()` 84 months, "as tax records are").
+
+- **Worded without the word "bill"** on purpose: `bill` is a publish-gate term that
+  guards against claiming billing. These are a business's own expenses, not billing a
+  customer; do not add the forbidden term to describe them.
+- **Not claimed: what happens to an unsaved photo.** `FinancialBillsController::keep`
+  writes it to disk and only the 10-minute cache *token* expires; nothing deletes the
+  file. Do not write "discarded after ten minutes" — it is not true in the code.
+- The AI-tab paragraph's "never audio, images or files" stays: it is scoped to staff
+  questions (`AppAsk`), and the photo reader is a separate path.
+
+Checked, no edit: WhatsApp Embedded Signup (`4d0a0a84`) — the business's own number,
+still carried by Meta; Leads Stats Google map tiles (`35696199`) — tiles only, no new
+data class; `BusinessProfileReviews` still documents 0 QPM, so "waiting on Google"
+stays; recordings download, Settings redesign, RC Calls tagging — no sentence touched.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0443.
