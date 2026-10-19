@@ -38,13 +38,23 @@ final class GoogleToken
     /** The business's own switch, read at the connection's scope (branch, company or organization). */
     public static function paused(SocialConnection $connection): bool
     {
-        $scope = match ($connection->scope_type) {
-            SocialConnection::SCOPE_FRANCHISE => \App\Models\Franchise::withoutGlobalScopes()->find($connection->scope_id),
-            SocialConnection::SCOPE_COMPANY => \App\Models\Company::withoutGlobalScopes()->find($connection->scope_id),
-            default => null,
-        } ?? \App\Models\Organization::withoutGlobalScopes()->find($connection->organization_id);
+        $org = \App\Models\Organization::withoutGlobalScopes()->find($connection->organization_id);
+        if ($org === null) {
+            return false;
+        }
 
-        return $scope !== null && (bool) app(\App\Support\Settings\SettingsResolver::class)->get('leads.google_paused', $scope);
+        // Read inside the connection's own organization: a scheduled command or
+        // a report asks for a token with no tenant set, and Settings are a
+        // tenant's (0.0.0446 gate: AdsCost was refused every token).
+        return (bool) app(\App\Support\Tenancy\TenantContext::class)->run($org, function () use ($connection, $org) {
+            $scope = match ($connection->scope_type) {
+                SocialConnection::SCOPE_FRANCHISE => \App\Models\Franchise::query()->find($connection->scope_id),
+                SocialConnection::SCOPE_COMPANY => \App\Models\Company::query()->find($connection->scope_id),
+                default => null,
+            } ?? $org;
+
+            return (bool) app(\App\Support\Settings\SettingsResolver::class)->get('leads.google_paused', $scope);
+        });
     }
 
     /**

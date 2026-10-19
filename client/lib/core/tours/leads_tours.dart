@@ -326,6 +326,25 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/Bad Ratings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'source-rail',
+        title: 'Bad Ratings',
+        body:
+            'Customers who chose a sad face on your review link, with what '
+            'they wrote. Each one is somebody to call back.',
+      ),
+      TourStep(
+        anchor: 'source-button',
+        title: 'Bad Ratings',
+        body:
+            'Customers who chose a sad face on your review link, with what '
+            'they wrote. Each one is somebody to call back.',
+      ),
+    ],
+  ),
   'leads/EZ Calls': Tour(
     version: 1,
     steps: [

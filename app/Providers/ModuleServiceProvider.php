@@ -2625,6 +2625,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
+                    // The review link's sad faces (Jose, 2026-10-19).
+                    new TabDefinition('bad_rating', 'Bad Ratings'),
                     // Appointments asked for on a website's booking widget (Jose, 2026-10-08).
                     new TabDefinition('website_booking', 'Online Booking'),
                     new TabDefinition('facebook', 'Messenger'),

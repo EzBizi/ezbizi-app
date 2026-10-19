@@ -116,6 +116,36 @@ class LeadsTakeoverTest extends TestCase
         $this->signedInAs($both)->postJson("/api/v1/leads/{$lead->id}/reclassify")->assertStatus(202);
     }
 
+    /** Jose, 2026-10-19: "RC Calls should not be affected by overdue as they are non actionable". */
+    public function test_calls_are_never_overdue_and_bad_ratings_have_their_own_tab_and_tick(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $ids = $this->inTenant($t['org'], function () use ($t) {
+            $waiting = ['status' => Lead::STATUS_NEW, 'last_contact_from' => 'CONSUMER', 'last_contact_at' => now()->subHour(), 'received_at' => now()->subHour()];
+
+            return [
+                'rc' => $this->lead($t, $waiting + ['source' => Lead::SOURCE_RINGCENTRAL, 'lead_type' => 'PHONE_CALL'])->id,
+                'ez' => $this->lead($t, $waiting + ['source' => Lead::SOURCE_EZ_CALLS, 'lead_type' => 'PHONE_CALL'])->id,
+                'form' => $this->lead($t, $waiting + ['source' => Lead::SOURCE_WEBSITE_FORM, 'lead_type' => null])->id,
+                'bad' => $this->lead($t, $waiting + ['source' => Lead::SOURCE_WEBSITE_FORM, 'lead_type' => 'BAD_RATING'])->id,
+            ];
+        });
+        $ids = array_map('strval', $ids);
+        $get = fn ($user, string $q) => array_column($this->signedInAs($user)->getJson('/api/v1/leads?'.$q)->json('data'), 'id');
+
+        $overdue = $get($t['admin'], 'overdue=1');
+        $this->assertNotContains($ids['rc'], $overdue);
+        $this->assertNotContains($ids['ez'], $overdue);
+        $this->assertContains($ids['form'], $overdue);
+        $this->inTenant($t['org'], fn () => $this->assertFalse(Lead::query()->find($ids['rc'])->replyOverdue(true)));
+
+        $this->assertSame([$ids['bad']], $get($t['admin'], 'source=bad_rating'));
+        $this->assertSame([$ids['form']], $get($t['admin'], 'source=website_form'), 'Forms without the Bad Ratings');
+
+        $formsOnly = $this->userWithRole($t, 'Forms only', ['leads.view', 'leads.website_form.view']);
+        $this->assertSame([$ids['form']], $get($formsOnly, ''), 'no Bad Ratings without their tick');
+    }
+
     public function test_the_timeline_is_every_lead_with_the_callers_number(): void
     {
         $t = $this->provisionTenant('A1-Group');

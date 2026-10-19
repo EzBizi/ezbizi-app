@@ -296,6 +296,35 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(RingCentralLeadCalls::MISSED, $this->inTenant($t['org'], fn () => Lead::query()->value('source_status')));
     }
 
+    /** Jose, 2026-10-19: a call from someone on an archived lead reopens it - "yes of course". */
+    public function test_a_call_reopens_the_callers_archived_lead_at_any_age_but_a_hang_up_or_our_call_does_not(): void
+    {
+        $t = $this->setUpTenant();
+        $old = fn (string $phone) => Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_LOCAL_SERVICES, 'remote_id' => uniqid(), 'lead_type' => 'MESSAGE', 'phone' => $phone,
+            'phone_digits' => ltrim($phone, '+'), 'status' => Lead::STATUS_ARCHIVED, 'received_at' => now()->subMonths(5)]);
+
+        $this->inTenant($t['org'], function () use ($t, $old) {
+            $called = $old('+15550000090');
+            $hungUp = $old('+15550000091');
+            $weCalled = $old('+15550000092');
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('90', '+15550000090', now()->subMinutes(30)->toIso8601String()),
+                self::rc('91', '+15550000091', now()->subMinutes(30)->toIso8601String(), queue: null,
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'Accepted']),
+                ['id' => '92', 'direction' => 'Outbound', 'started_at' => now()->subMinutes(30)->toIso8601String(), 'from' => '+17320000001',
+                    'to_number' => '+15550000092', 'caller_label' => 'Ana Diaz', 'queue' => null, 'result' => 'Call connected',
+                    'rang' => [], 'answered_by' => null, 'talk_seconds' => null, 'duration' => 30, 'recording_id' => null],
+            ], self::LINES, $t['company']->id);
+
+            $this->assertSame(Lead::STATUS_NEW, $called->refresh()->status, 'their own five-month-old lead, reopened');
+            $this->assertSame(1, $called->conversations()->count());
+            $this->assertSame(Lead::STATUS_ARCHIVED, $hungUp->refresh()->status, 'a menu hang-up does not reopen');
+            $this->assertSame(Lead::STATUS_ARCHIVED, $weCalled->refresh()->status, 'our call does not reopen');
+            $this->assertSame(3, Lead::query()->count(), 'no new leads: every call found its person');
+        });
+    }
+
     public function test_line_names_place_the_company_and_market(): void
     {
         $companies = ['a' => 'A-1 Chimney', 'b' => 'Crestline Home', 'c' => 'Ace Fireplace Services', 'd' => 'Roofirst'];

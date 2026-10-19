@@ -322,7 +322,17 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function scopeSourceVisibleTo(Builder $query, User $user): Builder
     {
-        return $query->whereIn($this->getTable().'.source', self::sourcesVisibleTo($user));
+        $t = $this->getTable();
+        $query->whereIn($t.'.source', self::sourcesVisibleTo($user));
+
+        // Bad Ratings are website forms with a tab and a tick of their own
+        // (Jose, 2026-10-19: "we are missing a tab for the Bad Ratings").
+        if (! $user->hasPermission('leads.'.self::KIND_BAD_RATING.'.view')) {
+            $query->where(fn ($q) => $q->where($t.'.source', '!=', self::SOURCE_WEBSITE_FORM)
+                ->orWhereNull($t.'.lead_type')->orWhere($t.'.lead_type', '!=', 'BAD_RATING'));
+        }
+
+        return $query;
     }
 
     /**
@@ -572,6 +582,10 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function replyOverdue(bool $canReply): bool
     {
+        if (in_array($this->source, self::SOURCES_NO_REPLY_OWED, true)) {
+            return false;
+        }
+
         return ($canReply || $this->awaitsCallback())
             && $this->status === self::STATUS_NEW
             && $this->last_contact_from === LeadConversation::FROM_CONSUMER
@@ -598,6 +612,16 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
 
     /** Booked through Google directly - its own tab, left out of All (Jose, 2026-10-01). */
     public const KIND_LS_BOOKING = 'ls_booking';
+
+    /** The review link's sad-face form: a website form with its own tab (Jose, 2026-10-19). */
+    public const KIND_BAD_RATING = 'bad_rating';
+
+    /**
+     * Owe nobody a reply, so never overdue, never Unreplied, left out of All
+     * (Jose, 2026-10-19: "RC Calls should not be affected by overdue as they
+     * are non actionable"). LS Calls and LS Bookings are by lead type.
+     */
+    public const SOURCES_NO_REPLY_OWED = [self::SOURCE_RINGCENTRAL, self::SOURCE_EZ_CALLS];
 
     /**
      * What kind of lead this is, as a rule narrows it: `ls_call`, `ls_text`

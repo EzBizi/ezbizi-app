@@ -45,5 +45,10 @@ class GooglePausedTest extends TestCase
         });
 
         Http::assertSentCount(1);
+
+        // No tenant set (a scheduled command, a report): still read, still refused.
+        $row = $this->inTenant($t['org'], fn () => SocialConnection::query()->firstOrFail());
+        $this->expectExceptionMessage(GoogleToken::PAUSED);
+        GoogleToken::forConnection($row, 'google_ads');
     }
 }
