@@ -168,6 +168,8 @@ void main() {
       find.byKey(const ValueKey('thread-company')),
     );
     expect(tag.name, 'Harbor Garage Doors');
+    // Jose, 2026-10-19: "Leads - copy name".
+    expect(find.byKey(const ValueKey('copy-name')), findsOneWidget);
   });
 
   /// The call row carries the same play bar Voicemail and Records use:
@@ -1378,7 +1380,7 @@ void _wordTests() {
   test('a website enquiry names the website, not the company', () {
     final line = leadHeaderLine({
       'source': 'website_chat',
-      'summary': 'ny.a-1chimney.com',
+      'site': 'ny.a-1chimney.com',
       'company': {'id': 'c1', 'name': 'A-1 Chimney'},
     });
 
@@ -1391,7 +1393,7 @@ void _wordTests() {
   test('the host wins over a franchise name as well', () {
     final line = leadHeaderLine({
       'source': 'website_chat',
-      'summary': 'chi.a-1chimney.com',
+      'site': 'chi.a-1chimney.com',
       'franchise': {'id': 'f1', 'name': 'Chicago'},
       'company': {'id': 'c1', 'name': 'A-1 Chimney'},
     });
@@ -1422,6 +1424,18 @@ void _wordTests() {
     };
 
     expect(leadHeaderLine(lead, company: false), 'Google Ads');
+  });
+
+  /// Jose, 2026-10-19: forms showed no website. `summary` is Grok's one-line
+  /// read now, so the host comes from `site` and never from `summary`.
+  test('a form names its website from site, never from the AI summary', () {
+    final line = leadHeaderLine({
+      'source': 'website_form',
+      'site': 'nj.a-1chimney.com',
+      'summary': 'Wants a chimney sweep and a gas firebox repaired.',
+    });
+
+    expect(line, 'Website form · nj.a-1chimney.com');
   });
 
   test('a website lead with no host still names the company', () {

@@ -666,6 +666,12 @@ class _LeadThreadState extends State<LeadThread> {
                                     style: theme.textTheme.titleMedium,
                                   ),
                                 ),
+                                // Jose, 2026-10-19: "Leads - copy name".
+                                _copyButton(
+                                  leadTitle(lead),
+                                  key: const ValueKey('copy-name'),
+                                  what: 'Name',
+                                ),
                                 if (leadNameIsAi(lead)) ...[
                                   const SizedBox(width: 6),
                                   const AiMark(
@@ -733,9 +739,19 @@ class _LeadThreadState extends State<LeadThread> {
                       // name; when the title IS the number, saying it twice
                       // adds nothing.
                       if (showsNumberLine(lead) && !narrow)
-                        Text(
-                          formatPhoneNumber(lead['phone'] as String?),
-                          style: theme.textTheme.bodySmall,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              formatPhoneNumber(lead['phone'] as String?),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                            _copyButton(
+                              lead['phone'] as String,
+                              key: const ValueKey('copy-phone'),
+                              what: 'Number',
+                            ),
+                          ],
                         ),
                       Row(
                         children: [
@@ -2278,6 +2294,31 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// One press puts [text] on the clipboard and says so, as a message's copy does.
+  Widget _copyButton(String text, {required Key key, required String what}) {
+    final quiet = Theme.of(context).colorScheme.onSurfaceVariant;
+    return InkWell(
+      key: key,
+      borderRadius: BorderRadius.circular(8),
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: text));
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('$what copied')),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Icon(
+          Icons.copy_outlined,
+          size: 14,
+          semanticLabel: 'Copy ${what.toLowerCase()}',
+          color: quiet,
+        ),
+      ),
+    );
+  }
+
   /// A call: its length and who placed it, and the same play bar Voicemail
   /// and Records use, with pause, scrub and how far through you are. Jose,
   /// 2026-09-09: "like the one in communications for the voicemail, right
@@ -2520,8 +2561,12 @@ String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
    * and Thumbtack, and a host is the only thing worth swapping the company
    * name for.
    */
-  final host = (source == 'website_chat' || source == 'website_form')
-      ? (lead['summary'] as String?)
+  // `site` since 2026-10-19: `summary` held the host until Grok's one-line
+  // read replaced it, and forms then showed no website (Jose).
+  final host = (source == 'website_chat' ||
+          source == 'website_form' ||
+          source == 'website_booking')
+      ? (lead['site'] as String?)
       : null;
 
   final place =
