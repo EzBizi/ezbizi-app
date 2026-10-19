@@ -2178,12 +2178,24 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           ],
           if (_places.isNotEmpty) ...[
             label('Business Profile listings'),
+            // Which listing each is, grouped by branch (Jose, 2026-10-19:
+            // "They should have their appropiate names like they do in Leads
+            // Manage Connections").
+            for (final (i, branch) in {
+              for (final p in _places) '${p['branch'] ?? ''}',
+            }.indexed) ...[
+              if (branch.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: i == 0 ? 0 : 8, bottom: 4),
+                  child: Text(branch, style: theme.textTheme.labelMedium),
+                ),
             Wrap(
-              key: const ValueKey('social-places'),
+              key: i == 0 ? const ValueKey('social-places') : null,
               spacing: 8,
               runSpacing: 8,
               children: [
                 for (final place in _places)
+                  if ('${place['branch'] ?? ''}' == branch)
                   FilterChip(
                     key: ValueKey('social-place-${place['id']}'),
                     showCheckmark: false,
@@ -2193,8 +2205,8 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                     ),
                     label: Text(
                       place['postable'] == false
-                          ? '${place['title']} · ${place['state'] ?? 'cannot post'}'
-                          : '${place['title']}',
+                          ? '${place['label'] ?? place['title']} · ${place['state'] ?? 'cannot post'}'
+                          : '${place['label'] ?? place['title']}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -2210,6 +2222,7 @@ class _ComposeColumnState extends State<_ComposeColumn> {
                   ),
               ],
             ),
+            ],
             if (_pickedPlaces.isNotEmpty) ...[
               const SizedBox(height: 10),
               Wrap(

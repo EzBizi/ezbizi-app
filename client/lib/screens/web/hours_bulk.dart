@@ -504,7 +504,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     final needle = _find.trim().toLowerCase();
     final shown = [
       for (final l in _locations)
-        if ('${l['title'] ?? ''} ${l['address'] ?? ''}'.toLowerCase().contains(
+        if ('${l['label'] ?? l['title'] ?? ''} ${l['address'] ?? ''}'.toLowerCase().contains(
           needle,
         ))
           l,
@@ -557,7 +557,8 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
               for (final l in entry.value)
                 FilterChip(
                   key: ValueKey('hours-bulk-listing-${l['id']}'),
-                  label: Text('${l['title'] ?? ''}'),
+                  // Which listing it is (Jose, 2026-10-19).
+                  label: Text('${l['label'] ?? l['title'] ?? ''}'),
                   tooltip: l['address'] as String?,
                   selected: _pickedLocations.contains('${l['id']}'),
                   onSelected: (on) => setState(
