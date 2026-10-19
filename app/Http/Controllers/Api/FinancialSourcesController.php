@@ -96,6 +96,8 @@ class FinancialSourcesController extends Controller
             'field_map.*' => ['nullable', 'string', 'max:255'],
             'filter_field' => ['sometimes', 'nullable', 'string', 'max:255', 'required_with:filter_value'],
             'filter_value' => ['sometimes', 'nullable', 'string', 'max:255', 'required_with:filter_field'],
+            'valid_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'valid_until' => ['sometimes', 'nullable', 'date_format:Y-m-d', 'after_or_equal:valid_from'],
             'markers' => ['sometimes', 'nullable', 'array'],
             'markers.*' => ['nullable', 'string', 'max:255'],
         ]);
@@ -131,6 +133,8 @@ class FinancialSourcesController extends Controller
             'filter_value' => $s->filter_value,
             'field_map' => (object) ($s->field_map ?? []),
             'markers' => (object) ($s->markers ?? []),
+            'valid_from' => $s->valid_from?->toDateString(),
+            'valid_until' => $s->valid_until?->toDateString(),
         ];
     }
 }

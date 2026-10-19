@@ -32,6 +32,18 @@ class FinancialSourcesTest extends TestCase
         $as->postJson('/api/v1/financials/sources', ['base_id' => 'appF', 'table_id' => 'tblRefunds', 'role' => 'refunds'])->assertCreated();
         $as->postJson('/api/v1/financials/sources', ['base_id' => 'appF', 'table_id' => 'tblX', 'role' => 'refunds', 'markers' => ['colour' => 'x']])->assertStatus(422);
         $this->assertSame('Total', $shared['markers']['skip']);
+
+        // A place's books can move tables on a date.
+        $old = $as->postJson('/api/v1/financials/sources', ['base_id' => 'appP', 'table_id' => 'tblWA', 'role' => 'pnl', 'franchise_id' => $alpha['franchise']->id, 'valid_until' => '2026-09-20'])
+            ->assertCreated()->assertJsonPath('data.valid_until', '2026-09-20')->json('data');
+        $as->postJson('/api/v1/financials/sources', ['base_id' => 'appP', 'table_id' => 'tblBad', 'role' => 'pnl', 'valid_from' => '2026-09-21', 'valid_until' => '2026-09-01'])->assertStatus(422);
+        $this->inTenant($alpha['org'], function () use ($old) {
+            $s = FinancialSource::query()->find($old['id']);
+            $this->assertTrue($s->overlaps('2026-09-14', '2026-09-20'));
+            $this->assertTrue($s->overlaps('2026-09-14', '2026-09-27'));
+            $this->assertFalse($s->overlaps('2026-09-21', '2026-09-27'));
+            $this->assertFalse($s->covers('2026-09-21'));
+        });
         $this->inTenant($alpha['org'], function () use ($shared) {
             $s = FinancialSource::query()->find($shared['id']);
             $this->assertTrue($s->owns(['Company Name' => 'A1 CHIMNEY NJ']));
