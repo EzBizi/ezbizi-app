@@ -18,7 +18,7 @@ class VersionHistory {
       date: '19 Oct 2026',
       items: [
         'WhatsApp: in Settings › Integrations › Messaging, each business can connect its own WhatsApp number and send and receive under its own name. A number already connected to another EzBizi account is refused.',
-        'Settings: every tab follows one layout, with Try again when something fails and Disconnect on every integration. The Settings sub-tab is now called Preferences, and Activity reads as sentences.',
+        'Settings: every tab follows one layout, with Try again when something fails and Disconnect on every integration. The Settings sub-tab is now called Preferences, and Activity reads as sentences. An Activity row opens to show what changed.',
         'Settings: Integrations also lists your phone numbers and the email sending server. Organization\'s List / Structure switch is in its header, and the business address saves as you type.',
         'Leads: an unanswered RingCentral call shows how long it lasted, for example Missed call · 1:15.',
         'Leads: an answered RingCentral call shows Fetching until its recording arrives, for up to two hours.',
