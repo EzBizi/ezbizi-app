@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import 'map_attribution.dart';
 import 'search_picker.dart';
 
 /// Leads › Manage › Stats (A1 takeover, UI queue 107, design 1 and 4): one
@@ -616,6 +617,8 @@ class _LeadsStatsState extends State<LeadsStats> {
                       children: [
                         TileLayer(urlTemplate: _tiles!),
                         MarkerLayer(markers: all),
+                        // Google's copyright, which its tiles require.
+                        MapAttributionLine(api: widget.api),
                       ],
                     ),
                   ),
