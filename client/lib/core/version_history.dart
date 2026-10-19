@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0449',
+      date: '19 Oct 2026',
+      items: [
+        'Leads: a RingCentral call that is still going shows In progress instead of Missed call. Each call is re-read until it ends, so an answered call loses the Missed tag and gets its talk time and recording. The missed-call alert waits until a call actually ends unanswered.',
+        'Leads: a Stats tab under Manage shows the booking rate, leads by source and market, why leads did not book, services booked, a day-and-time heatmap, dispatchers, and a map of offices, leads by ZIP and jobs.',
+        'Business Profile: a listing Google stops returning is marked Not listed. A daily summary of new reviews, low ratings, removed reviews and listing changes can go out at 7am Eastern (template; nothing is switched on).',
+        'WhatsApp: bill photos are read on their own queue, so a slow read no longer fails.',
+        'Settings: number settings refuse values outside their limits, and a setting can list some of your roles (Field: Roles shown on the map).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0448',
       date: '19 Oct 2026',
       items: [
