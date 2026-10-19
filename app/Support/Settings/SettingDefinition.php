@@ -72,6 +72,15 @@ final class SettingDefinition
     public const TYPE_COMPANY    = 'company';
 
     /**
+     * Codes the business chooses, each pointing at one of its places — e.g. a
+     * phone line's market code to the branch that takes it. Stored as
+     * `{code: franchise_id}`; the places are sent as `options`. Like
+     * TYPE_COMPANY, an id is not checked here: the reader treats one it
+     * cannot find as unset.
+     */
+    public const TYPE_FRANCHISE_MAP = 'franchise_map';
+
+    /**
      * A place, stored as "lat, lng" exactly as TYPE_STRING was, so nothing
      * that reads one changes. Its own type so the settings screen can draw an
      * address search and a map for it (UI queue 104, design 7) — the editor
@@ -282,6 +291,7 @@ final class SettingDefinition
             self::TYPE_TIME_RANGE => $this->castTimeRange($value),
             self::TYPE_LIST    => $this->castList($value),
             self::TYPE_SUBSET  => $this->castSubset($value),
+            self::TYPE_FRANCHISE_MAP => $this->castFranchiseMap($value),
             self::TYPE_COMPANY => ($value === null || trim((string) $value) === '') ? null : trim((string) $value),
             default            => $value,
         };
@@ -497,6 +507,31 @@ final class SettingDefinition
         }
 
         return array_values(array_unique($out));
+    }
+
+    /** @return array<string, string> */
+    private function castFranchiseMap(mixed $value): array
+    {
+        $map = $this->castJson($value);
+
+        // A non-empty list has positions, not codes.
+        if ($map !== [] && array_is_list($map)) {
+            throw new InvalidArgumentException("Setting '{$this->key}' expects codes, not a list.");
+        }
+
+        $out = [];
+
+        foreach ($map as $code => $place) {
+            $code = trim((string) $code);
+
+            if ($code === '' || ! is_string($place) || trim($place) === '') {
+                throw new InvalidArgumentException("Setting '{$this->key}' expects each code to name a place.");
+            }
+
+            $out[$code] = trim($place);
+        }
+
+        return $out;
     }
 
     private function castJson(mixed $value): array

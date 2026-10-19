@@ -170,6 +170,30 @@ class SettingsApiTest extends TestCase
         ], $earned['options']);
     }
 
+    public function test_a_place_map_offers_this_organizations_places_and_takes_codes_only(): void
+    {
+        $registry = new SettingRegistry();
+        $registry->register(new SettingDefinition(
+            key: 'test.places', label: 'Test places', type: SettingDefinition::TYPE_FRANCHISE_MAP,
+            default: [], allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+        ));
+        $this->app->instance(SettingRegistry::class, $registry);
+        $this->app->forgetInstance(SettingsResolver::class);
+
+        ['organization' => $org, 'administrator' => $admin, 'franchise' => $f] = $this->org('Alpha', 'a@a.test');
+        $this->org('Beta', 'b@b.test');
+        Sanctum::actingAs($admin);
+
+        $row = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'))
+            ->firstWhere('key', 'test.places');
+        $this->assertSame([['value' => $f->id, 'label' => $f->name]], $row['options']);
+
+        $url = "/api/v1/settings/test.places?scope_type=organization&scope_id={$org->id}";
+        $this->patchJson($url, ['value' => [' NJ ' => $f->id]])->assertOk()->assertJsonPath('data.value', ['NJ' => $f->id]);
+        $this->patchJson($url, ['value' => [$f->id]])->assertStatus(422);
+        $this->patchJson($url, ['value' => ['NJ' => '']])->assertStatus(422);
+    }
+
     public function test_a_company_setting_offers_this_organizations_companies(): void
     {
         $registry = new SettingRegistry();

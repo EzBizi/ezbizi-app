@@ -341,6 +341,55 @@ void main() {
     });
   }
 
+  testWidgets('a code-to-place map keeps a migrated name and adds a line', (
+    tester,
+  ) async {
+    _wide(tester);
+    Object? sent;
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+      if (request.method == 'PATCH') {
+        sent = (jsonDecode(request.body) as Map)['value'];
+        return _json({'data': null}, 422);
+      }
+
+      return _json({
+        'data': [
+          _row(
+            'leads.line_markets',
+            label: 'Line markets',
+            type: 'franchise_map',
+            // A name from before the type: not an id, and must survive.
+            value: const {'NJ': 'New Jersey'},
+            options: const [
+              {'value': 'fr-ct', 'label': 'Connecticut'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    expect(find.text('1 set'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('franchise-map-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('New Jersey — not a place'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('map-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('map-code:1')), 'CT');
+    await tester.tap(find.byKey(const ValueKey('map-place:1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connecticut').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(sent, {'NJ': 'New Jersey', 'CT': 'fr-ct'});
+  });
+
   testWidgets('a company setting is a picker of company names', (tester) async {
     _wide(tester);
 

@@ -55,6 +55,15 @@ class SettingRegistryTest extends TestCase
         foreach ($this->registry->all() as $key => $definition) {
             // A default that fails validation would blow up on first read for
             // any tenant that never overrode it — i.e. almost all of them.
+            //
+            // A company setting's default IS null — "none chosen" — so for it
+            // surviving means cast() does not throw (it would above).
+            if ($definition->type === SettingDefinition::TYPE_COMPANY) {
+                $this->assertNull($definition->cast($definition->default), "Default for '{$key}' must be no company.");
+
+                continue;
+            }
+
             $this->assertNotNull(
                 $definition->cast($definition->default),
                 "Default for '{$key}' does not survive cast()."
