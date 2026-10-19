@@ -103,6 +103,30 @@ class BackfillWorkizJobsTest extends TestCase
         return $this->inTenant($this->t['org'], fn () => WorkizJob::query()->count());
     }
 
+    /**
+     * A newly connected account brings its whole history (Jose, 2026-10-19:
+     * Everdoors showed 38 of 300+ jobs). `--pending` imports only the queued
+     * connections, each with progress of its own, and the card says how far.
+     */
+    public function test_a_queued_connection_imports_its_history_and_leaves_the_queue(): void
+    {
+        $other = $this->connect($this->extraFranchise($this->t, 'Bravo'));
+        BackfillWorkizJobs::queue($this->connection);
+        $this->assertSame(['done' => false, 'jobs' => 0], BackfillWorkizJobs::state($this->connection));
+        $this->assertNull(BackfillWorkizJobs::state($other), 'not queued');
+        $this->pages = [0 => $this->jobs('A', WorkizJobs::PAGE), 1 => $this->jobs('B', 3)];
+
+        $this->artisan('ezbizi:backfill-workiz', ['--pending' => true, '--since' => '2000-01-01'])->assertSuccessful();
+
+        $this->assertSame(WorkizJobs::PAGE + 3, $this->mirrored());
+        $this->assertSame([0, 1], $this->asked, 'only the queued account is read');
+        $this->assertSame(['done' => true, 'jobs' => WorkizJobs::PAGE + 3], BackfillWorkizJobs::state($this->connection));
+
+        $this->artisan('ezbizi:backfill-workiz', ['--pending' => true, '--since' => '2000-01-01'])->assertSuccessful();
+        $this->assertSame([0, 1], $this->asked, 'done, so off the queue');
+        $this->assertSame([], \Illuminate\Support\Facades\Cache::get(BackfillWorkizJobs::PENDING));
+    }
+
     public function test_it_reads_back_to_the_since_date_and_lands_only_jobs_the_mirror_lacks(): void
     {
         $this->pages = [0 => $this->jobs('A', WorkizJobs::PAGE), 1 => $this->jobs('B', 3)];

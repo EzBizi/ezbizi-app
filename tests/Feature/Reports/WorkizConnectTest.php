@@ -147,6 +147,26 @@ class WorkizConnectTest extends TestCase
         $this->assertStringNotContainsString('api_good', json_encode($body));
     }
 
+    /** A new account is queued for its whole history; a reconnect is not queued again. The card names the API. */
+    public function test_a_new_account_is_queued_for_its_history_and_the_card_names_the_api(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $branch = $this->branch($tenant, 'New Jersey');
+        $this->workizAccepts();
+        $viewer = $this->viewing($tenant, $branch);
+
+        $this->signedInAs($viewer)->postJson('/api/v1/reports/experimental/workiz', ['api_token' => 'api_good'])->assertCreated();
+        $row = $this->inTenant($tenant['org'], fn () => SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->sole());
+        $this->assertSame([$row->id], \Illuminate\Support\Facades\Cache::get(\App\Console\Commands\BackfillWorkizJobs::PENDING));
+
+        \Illuminate\Support\Facades\Cache::forget(\App\Console\Commands\BackfillWorkizJobs::PENDING);
+        $this->signedInAs($viewer)->postJson('/api/v1/reports/experimental/workiz', ['api_token' => 'api_good'])->assertCreated();
+        $this->assertNull(\Illuminate\Support\Facades\Cache::get(\App\Console\Commands\BackfillWorkizJobs::PENDING), 'a reconnect is not new');
+
+        $this->assertSame('API v1', collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/social/connections?include=data_sources')->assertOk()->json('data'))
+            ->firstWhere('provider', 'workiz')['detail']);
+    }
+
     /** Connecting the same branch twice replaces the token rather than duplicating. */
     public function test_reconnecting_a_branch_does_not_make_a_second_row(): void
     {

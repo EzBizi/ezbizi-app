@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Workiz\WorkizV2;
+use App\Console\Commands\BackfillWorkizJobs;
 use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\SocialConnection;
@@ -94,6 +96,9 @@ class SocialConnectionsController extends Controller
                 'scope_id' => $c->scope_id,
                 'status' => $c->status,
                 'status_reason' => $c->status_reason,
+                // Which Workiz API the key speaks, and how far its history import
+                // has got (Jose, 2026-10-19: the card said neither).
+                'detail' => $c->provider === SocialProvider::Workiz->value ? self::workizDetail($c) : null,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
 
                 /*
@@ -543,5 +548,15 @@ class SocialConnectionsController extends Controller
         $row->delete();
 
         return $problems;
+    }
+    private static function workizDetail(SocialConnection $c): string
+    {
+        $history = BackfillWorkizJobs::state($c);
+
+        return (WorkizV2::uses($c) ? 'API v2' : 'API v1').match (true) {
+            $history === null => '',
+            $history['done'] => ' · history imported',
+            default => ' · importing history ('.number_format($history['jobs']).' jobs read)',
+        };
     }
 }

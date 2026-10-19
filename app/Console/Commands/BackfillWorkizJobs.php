@@ -49,12 +49,32 @@ class BackfillWorkizJobs extends Command
         {--pause=10 : Seconds between pages, leaving the minute sync its quota}
         {--restart : Forget the saved progress and start every branch from its first page}
         {--refresh : Land every job read, not only the ones the mirror lacks}
-        {--dry-run : Read and count, landing nothing; its own progress, so the real run is not moved}';
+        {--dry-run : Read and count, landing nothing; its own progress, so the real run is not moved}
+        {--connection= : Only this Workiz connection, with progress of its own}
+        {--pending : Only the connections waiting for their history (queue()), each with progress of its own}';
 
     protected $description = 'Mirror Workiz jobs from before the mirror began, paced and resumable';
 
     /** The saved progress: the since date, and per franchise the next page, whether it is done, and the counts. */
     public const PROGRESS = 'ezbizi:backfill-workiz';
+
+    /** Connections waiting for their whole history: every newly connected Workiz account (Jose, 2026-10-19). */
+    public const PENDING = 'ezbizi:backfill-workiz:pending';
+
+    /** Import this connection's whole history, paced, on the scheduled `--pending` run. */
+    public static function queue(SocialConnection $connection): void
+    {
+        Cache::forever(self::PENDING, array_values(array_unique([...Cache::get(self::PENDING, []), $connection->getKey()])));
+    }
+
+    /** How far this connection's history import has got, or null when none was asked for. */
+    public static function state(SocialConnection $connection): ?array
+    {
+        $at = Cache::get(self::PROGRESS.':'.$connection->getKey())['branches'][$connection->scope_id] ?? null;
+
+        return $at === null && ! in_array($connection->getKey(), Cache::get(self::PENDING, []), true)
+            ? null : ['done' => (bool) ($at['done'] ?? false), 'jobs' => (int) ($at['jobs'] ?? 0)];
+    }
 
     private const FRESH = ['page' => 0, 'done' => false, 'jobs' => 0, 'new' => 0, 'attach' => 0, 'clients' => []];
 
@@ -77,19 +97,26 @@ class BackfillWorkizJobs extends Command
         }
 
         $dry = (bool) $this->option('dry-run');
-        $key = self::PROGRESS.($dry ? ':dry-run' : '');
-        $progress = $this->option('restart') ? [] : Cache::get($key, []);
+        $own = $this->option('connection') !== null || $this->option('pending');
+        $keyFor = fn (?SocialConnection $c) => self::PROGRESS.($own && $c !== null ? ':'.$c->getKey() : '').($dry ? ':dry-run' : '');
+        $load = function (string $key) use ($since) {
+            $progress = $this->option('restart') ? [] : Cache::get($key, []);
 
-        // A different window is a different walk: its page numbers mean other jobs.
-        if (($progress['since'] ?? $since) !== $since) {
-            $progress = [];
-        }
+            // A different window is a different walk: its page numbers mean other jobs.
+            if (($progress['since'] ?? $since) !== $since) {
+                $progress = [];
+            }
 
-        $progress['since'] = $since;
+            return ['since' => $since] + $progress;
+        };
+        $key = $keyFor(null);
+        $progress = $load($key);
 
         $connections = SocialConnection::query()
             ->withoutGlobalScopes()
             ->where('provider', SocialProvider::Workiz->value)
+            ->when($this->option('connection'), fn ($q, $id) => $q->whereKey($id))
+            ->when($this->option('pending'), fn ($q) => $q->whereIn('id', Cache::get(self::PENDING, [])))
             ->orderBy('display_name')
             ->get();
 
@@ -102,6 +129,12 @@ class BackfillWorkizJobs extends Command
 
         foreach ($connections as $connection) {
             $organization = $organizations[$connection->organization_id] ?? null;
+
+            if ($own) {
+                $key = $keyFor($connection);
+                $progress = $load($key);
+            }
+
             $at = $progress['branches'][$connection->scope_id] ?? self::FRESH;
 
             if ($organization === null || $read >= $budget) {
@@ -137,12 +170,16 @@ class BackfillWorkizJobs extends Command
                 $progress['branches'][$connection->scope_id] = $at;
                 Cache::forever($key, $progress);
             }
+
+            if ($own && $at['done'] && ! $dry) {
+                Cache::forever(self::PENDING, array_values(array_diff(Cache::get(self::PENDING, []), [$connection->getKey()])));
+            }
         }
 
         $done = 0;
 
         foreach ($connections as $connection) {
-            $at = $progress['branches'][$connection->scope_id] ?? self::FRESH;
+            $at = ($own ? $load($keyFor($connection)) : $progress)['branches'][$connection->scope_id] ?? self::FRESH;
             $done += (int) $at['done'];
             $this->line(($dry ? '[dry run] ' : '')."{$connection->display_name}: {$at['jobs']} jobs read, {$at['new']} new: "
                 ."{$at['attach']} attach to a customer, ".count($at['clients']).' new customers. '
