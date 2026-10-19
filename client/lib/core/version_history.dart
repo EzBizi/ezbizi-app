@@ -21,6 +21,7 @@ class VersionHistory {
         'Settings: every tab follows one layout, with Try again when something fails and Disconnect on every integration. The Settings sub-tab is now called Preferences, and Activity reads as sentences.',
         'Settings: Integrations also lists your phone numbers and the email sending server. Organization\'s List / Structure switch is in its header, and the business address saves as you type.',
         'Leads: an unanswered RingCentral call shows how long it lasted, for example Missed call · 1:15.',
+        'Leads: an answered RingCentral call shows Fetching until its recording arrives, for up to two hours.',
       ],
     ),
     VersionRelease(
