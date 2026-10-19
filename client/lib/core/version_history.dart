@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0448',
+      date: '19 Oct 2026',
+      items: [
+        'Reports: the weekly/monthly approver can reply HOLD to stop the report going out, or SEPARATELY to get each company\'s PDF privately.',
+        'Financials: a new Bills tab reads a monthly bill from a photo and saves it only when its lines add up to the total, to the cent.',
+        'WhatsApp: staff can ask the EzBizi bot for the repair-team split and refunds for a period.',
+        'Marketing and Web: Google Business Profile listings are named by city and grouped by branch (for example “A1 Chimney · Stamford, CT”) when posting and setting hours.',
+        'On the web, the sign-in page offers the Windows, Mac, Android and iPhone apps.',
+        'Field: choose which roles appear on the map in Settings › Field. Who is tracked is still set in Roles & permissions.',
+        'Leads: each Local Services account is linked to its Google Business Profile listing, and a lead shows its office address.',
+        'Automations: new templates offer an open time when a customer replies, and send the daily ads account review and “ads showing again” alerts to a WhatsApp group. Nothing is switched on.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0447',
       date: '19 Oct 2026',
       items: [
