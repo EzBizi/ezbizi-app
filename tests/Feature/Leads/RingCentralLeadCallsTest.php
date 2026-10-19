@@ -37,7 +37,7 @@ class RingCentralLeadCallsTest extends TestCase
             Company::create(['organization_id' => $t['org']->id, 'name' => 'AngiSweep']);
             // The business's own map and queue, from Settings (no A-1 in the code).
             $settings = app(\App\Support\Settings\SettingsResolver::class);
-            $settings->set('leads.line_markets', $t['org'], ['NJ' => 'New Jersey', 'CLE' => 'Ohio']);
+            $settings->set('leads.line_markets', $t['org'], ['NJ' => (string) $t['franchise']->id, 'CLE' => 'Ohio']);   // a picked branch, and a migrated name
             $settings->set('leads.existing_client_queue', $t['org'], 'A1 - Existing Client');
         });
 
