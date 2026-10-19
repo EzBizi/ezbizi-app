@@ -1029,6 +1029,8 @@ Route::prefix('v1')
             Route::delete('bases/{base}', 'destroyBase');
             Route::post('bases/{base}/tables', 'storeTable');
             Route::get('airtable-tables', 'airtableTables');
+            Route::get('repair-split', 'repairSplit');
+            Route::get('refunds', 'refunds');
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::get('tables/{table}', 'showTable');

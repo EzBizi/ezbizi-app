@@ -14,6 +14,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Financials\AirtableMirror;
 use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
+use App\Support\Financials\SourceFigures;
 use App\Support\Financials\Templates;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\PlaceInView;
@@ -320,6 +321,49 @@ class FinancialsController extends Controller
         }
 
         return response()->json(['data' => CostSplit::run($view->table, (array) ($view->config ?? []), $range['from'] ?? null, $range['to'] ?? null)]);
+    }
+
+    /** Repair-team cost split per place, from the organization's mapped Airtable sources. */
+    public function repairSplit(Request $request): JsonResponse
+    {
+        // Validated here, not in the helper, so the staff bot's catalogue can read the names.
+        $input = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid'],
+        ]);
+
+        return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::repairSplit($from, $to, $place));
+    }
+
+    /** Refunds, disputes and returned checks per place and technician, from the mapped sources. */
+    public function refunds(Request $request): JsonResponse
+    {
+        // Validated here, not in the helper, so the staff bot's catalogue can read the names.
+        $input = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid'],
+        ]);
+
+        return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::refunds($from, $to, $place));
+    }
+
+    private function sourceFigures(Request $request, array $input, callable $figures): JsonResponse
+    {
+        $this->authorize('viewAny', FinancialBase::class);
+        if (now()->parse($input['from'])->diffInDays(now()->parse($input['to'])) > 62) {
+            throw ValidationException::withMessages(['to' => 'Ask for at most two months at a time.']);
+        }
+        $scope = ViewScope::forUser($request->user());
+
+        // Only the places the current view reaches.
+        $rows = array_values(array_filter(
+            $figures($input['from'], $input['to'], $input['franchise_id'] ?? null),
+            fn (array $row) => $scope->coversFranchise($row['franchise_id']),
+        ));
+
+        return response()->json(['data' => $rows, 'from' => $input['from'], 'to' => $input['to']]);
     }
 
     // ── CSV ─────────────────────────────────────────────────
