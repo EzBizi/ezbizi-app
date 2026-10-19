@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppReportBatch;
@@ -32,6 +33,56 @@ class WhatsAppPeriodReportsTest extends TestCase
 
     public function test_the_approver_approves_and_every_group_gets_its_pdf_once(): void
     {
+        $merav = $this->approvalSetUp();
+
+        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
+        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful(); // asked once
+
+        $this->assertSame(['document', 'text'], array_column($this->sent, 'type'));
+        $this->assertSame(self::APPROVER, $this->sent[0]['to']);
+        $this->assertStringContainsString('APPROVE', $this->sent[1]['text']['body']);
+
+        $this->sent = [];
+        $this->inbound('Approved');
+        $this->inbound('approve'); // a second yes sends nothing more
+
+        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
+        $this->assertNotNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at);
+        $this->assertSame($merav->id, WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_by);
+    }
+
+    /** 2026-10-19: HOLD keeps it back; SEPARATELY sends each PDF privately, nothing to the groups. */
+    public function test_hold_keeps_it_back_and_separately_sends_each_pdf_only_to_the_approver(): void
+    {
+        $this->approvalSetUp();
+
+        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
+        $this->assertStringContainsString('SEPARATELY', $this->sent[1]['text']['body']);
+        $this->assertStringContainsString('HOLD', $this->sent[1]['text']['body']);
+
+        $this->sent = [];
+        $this->inbound('Hold');
+        $this->assertNotNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->held_at);
+        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')));
+        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
+        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')), 'a held batch is not previewed again');
+
+        $this->sent = [];
+        $this->inbound('send separately');
+        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $this->assertCount(2, $documents, 'the branch PDF and the consolidated one');
+        $this->assertSame([self::APPROVER, self::APPROVER], array_column($documents, 'to'));
+        $this->assertNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at, 'still not approved');
+
+        $this->sent = [];
+        $this->inbound('APPROVE');
+        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
+        $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
+    }
+
+    private function approvalSetUp(): User
+    {
         config([
             'services.meta.client_secret' => self::SECRET,
             'services.meta.whatsapp_token' => 'a-token',
@@ -44,7 +95,7 @@ class WhatsAppPeriodReportsTest extends TestCase
             if (str_ends_with($request->url(), '/messages')) {
                 $this->sent[] = $request->data();
 
-                return Http::response(['messages' => [['id' => 'wamid.OUT'.count($this->sent)]]]);
+                return Http::response(['messages' => [['id' => 'wamid.OUT'.Str::random(10)]]]);
             }
 
             return Http::response([], 404); // Airtable and anything else: nothing there
@@ -67,21 +118,7 @@ class WhatsAppPeriodReportsTest extends TestCase
                 'status' => 'received', 'kind' => 'text', 'body' => 'hi']);
         });
 
-        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
-        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful(); // asked once
-
-        $this->assertSame(['document', 'text'], array_column($this->sent, 'type'));
-        $this->assertSame(self::APPROVER, $this->sent[0]['to']);
-        $this->assertStringContainsString('APPROVE', $this->sent[1]['text']['body']);
-
-        $this->sent = [];
-        $this->inbound('Approved');
-        $this->inbound('approve'); // a second yes sends nothing more
-
-        $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
-        $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
-        $this->assertNotNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at);
-        $this->assertSame($merav->id, WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_by);
+        return $merav;
     }
 
     private function inbound(string $text): void

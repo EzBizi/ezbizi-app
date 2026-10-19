@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Organization;
+use App\Models\User;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Social\WhatsAppPeriodReports;
@@ -23,7 +24,8 @@ final class SendWhatsAppPeriodReports implements ShouldQueue
 
     public int $timeout = 600;
 
-    public function __construct(public readonly string $batchId, public readonly ?string $approvedBy) {}
+    /** $privateFor: a user to send each PDF to privately instead (SEPARATELY). */
+    public function __construct(public readonly string $batchId, public readonly ?string $approvedBy, public readonly ?string $privateFor = null) {}
 
     public function handle(TenantContext $tenant, WhatsAppPeriodReports $reports): void
     {
@@ -37,8 +39,14 @@ final class SendWhatsAppPeriodReports implements ShouldQueue
         // One PeriodReport per run: it caches the Airtable reads (Reports).
         $report = app(PeriodReport::class);
 
-        $tenant->run($organization, fn () => $this->approvedBy !== null
-            ? $reports->send($batch, $report)
-            : $reports->preview($batch, $report));
+        $tenant->run($organization, function () use ($reports, $batch, $report) {
+            if ($this->privateFor !== null) {
+                $to = User::query()->find($this->privateFor);
+
+                return $to === null ? 0 : $reports->sendPrivately($batch, $report, $to);
+            }
+
+            return $this->approvedBy !== null ? $reports->send($batch, $report) : $reports->preview($batch, $report);
+        });
     }
 }

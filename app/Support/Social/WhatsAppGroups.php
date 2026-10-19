@@ -65,6 +65,26 @@ final class WhatsAppGroups
     }
 
     /**
+     * A PDF to one member of the group with this purpose, from that group's
+     * number: a private copy (Reports, 2026-10-19). False when it could not go.
+     */
+    public function deliverDocumentToMember(string $purpose, User $user, string $title, string $pdf, string $filename): bool
+    {
+        $number = $this->numberFor($purpose);
+
+        if ($number === null) {
+            return false;
+        }
+
+        $mediaId = $this->upload($number, $pdf, $filename);
+
+        return $this->toPerson($number, $user, $title, [
+            'type' => 'document',
+            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4C4} *".$title.'*'],
+        ], $title, $mediaId, $filename);
+    }
+
+    /**
      * @param  array<string, mixed>  $message  the Cloud API message, minus who it is to
      */
     private function fanOut(string $purpose, string $title, array $message, string $body, ?string $mediaId = null, ?string $filename = null): int
