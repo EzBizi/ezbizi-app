@@ -79,6 +79,31 @@ class CallTypeCorrectionsTest extends TestCase
         Process::assertRanTimes(fn () => true, 1);
     }
 
+    /** Desk, 2026-10-19: a catch-up and the scheduled run decided the same call - 1062, run dead. */
+    public function test_two_runs_deciding_one_call_keep_the_first_and_carry_on(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            $c = Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'name' => 'Pat', 'phone' => '(314) 409-1888']);
+            Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $c->id, 'scheduled_for' => now()->subMonth()]);
+
+            // The other run writes its row in the instant before this one does.
+            $once = false;
+            CallTypeCorrection::creating(function () use (&$once) {
+                if (! $once) {
+                    $once = true;
+                    \Illuminate\Support\Facades\DB::table('call_type_corrections')->insert([
+                        'id' => (string) \Illuminate\Support\Str::uuid(), 'organization_id' => $this->t['org']->id, 'call_id' => 'R1',
+                        'corrected_type' => 'existing', 'reason' => 'the other run', 'evidence' => 'job_match', 'confidence' => 95,
+                        'decided_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+            });
+
+            app(CallTypeCorrections::class)->decide([self::rc('R1', '+13144091888', self::NEW_Q)]);
+            $this->assertSame(['the other run'], CallTypeCorrection::query()->where('call_id', 'R1')->pluck('reason')->all());
+        });
+    }
+
     public function test_a_person_overrides_on_the_thread_and_it_is_final(): void
     {
         $lead = $this->inTenant($this->t['org'], function () {

@@ -130,11 +130,18 @@ final class CallTypeCorrections
         }
 
         foreach ($decided as $id => [$pressed, $type, $reason, $evidence, $confidence]) {
-            CallTypeCorrection::query()->create([
-                'organization_id' => $org->getKey(), 'call_id' => $id, 'pressed_queue' => $pressed,
-                'corrected_type' => $type, 'reason' => $reason, 'evidence' => $evidence,
-                'confidence' => $confidence, 'decided_at' => now(),
-            ]);
+            // Two runs can decide the same call at once (a catch-up beside the
+            // scheduled run, 2026-10-19: 1062 on the unique key). The first
+            // row stands; the second run leaves it alone.
+            try {
+                CallTypeCorrection::query()->create([
+                    'organization_id' => $org->getKey(), 'call_id' => $id, 'pressed_queue' => $pressed,
+                    'corrected_type' => $type, 'reason' => $reason, 'evidence' => $evidence,
+                    'confidence' => $confidence, 'decided_at' => now(),
+                ]);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+                continue;
+            }
             $this->retag($id, $type);
         }
 
