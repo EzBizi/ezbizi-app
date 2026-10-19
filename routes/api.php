@@ -996,6 +996,8 @@ Route::prefix('v1')
         Route::post('leads/sync', [LeadsController::class, 'sync']);
         Route::post('leads/read-all', [LeadsController::class, 'readAll']);
         Route::get('leads/dashboard', [LeadDashboardController::class, 'show']);
+        Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
+        Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
         Route::get('leads', [LeadsController::class, 'index']);
