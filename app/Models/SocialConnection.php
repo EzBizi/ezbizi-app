@@ -59,6 +59,12 @@ class SocialConnection extends Model implements HoldsSensitiveValues, StatesRete
         ];
     }
 
+    /** The Business Profile listing a Local Services account serves from (AccountProfileLink). */
+    public function businessLocation(): BelongsTo
+    {
+        return $this->belongsTo(BusinessLocation::class);
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);

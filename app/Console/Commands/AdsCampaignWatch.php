@@ -90,7 +90,23 @@ class AdsCampaignWatch extends Command
 
                     foreach ($now as $id => $campaign) {
                         $was = $before->get($id);
-                        if ($was === null || ! self::showing($was) || self::showing($campaign)) {
+                        if ($was === null) {
+                            continue;
+                        }
+                        // Showing again: the other half of an account change
+                        // alert (A1 Leads takeover, 2026-10-19).
+                        if (! self::showing($was) && self::showing($campaign)) {
+                            $events->emit('ads.campaign_resumed', $state, [
+                                'account' => $connection->label ?: $connection->display_name,
+                                'customer_id' => $connection->remote_id,
+                                'campaign' => $campaign['name'],
+                                'campaign_id' => $id,
+                            ]);
+                            $raised++;
+
+                            continue;
+                        }
+                        if (! self::showing($was) || self::showing($campaign)) {
                             continue;
                         }
 

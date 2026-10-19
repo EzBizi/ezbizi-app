@@ -59,7 +59,10 @@ class LeadsCallOwner extends Command
                     if ($a instanceof RuntimeException) {
                         continue;
                     }
-                    Cache::put('call-owner:'.$call->id, $a['same'], now()->addDays(60));
+                    // A dry run remembers nothing, or the real run after it would skip every call.
+                    if (! $this->option('dry')) {
+                        Cache::put('call-owner:'.$call->id, $a['same'], now()->addDays(60));
+                    }
                     $this->line("{$call->lead_id} {$call->id}: {$a['same']} - {$a['reason']}");
                     if ($a['same'] !== 'different' || $this->option('dry')) {
                         continue;

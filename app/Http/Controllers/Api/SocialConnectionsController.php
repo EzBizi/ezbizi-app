@@ -239,6 +239,41 @@ class SocialConnectionsController extends Controller
      * on 2026-08-21. The migration carries the full correction; this was the
      * third copy of the same wrong sentence.
      */
+    /**
+     * PATCH /api/v1/social/connections/{connection}/business-location
+     *
+     * Which Business Profile listing a Local Services account serves from - the
+     * office address (A1 Leads takeover, 2026-10-19). A person's choice is
+     * final; null hands it back to the automatic link. Same gate as placing
+     * the account's leads.
+     */
+    public function linkBusinessLocation(Request $request, string $connection): JsonResponse
+    {
+        $user = $request->user();
+        $row = SocialConnection::query()->find($connection);
+        abort_if($row === null || ! $this->access->inView($user, $row), Status::HTTP_NOT_FOUND);
+        abort_unless(
+            $user->hasPermission(SocialProvider::tryFrom($row->provider)?->connectPermission() ?? 'marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('link an account to a Business Profile')->message(),
+        );
+        $input = $request->validate(['business_location_id' => ['present', 'nullable', 'uuid']]);
+
+        $location = null;
+        if ($input['business_location_id'] !== null) {
+            // Whose: a valid id from another organization must not link (as placeLeads).
+            $location = \App\Models\BusinessLocation::query()->whereKey($input['business_location_id'])
+                ->where('organization_id', $row->organization_id)->first();
+            abort_if($location === null, Status::HTTP_NOT_FOUND);
+        }
+        app(\App\Support\Leads\AccountProfileLink::class)->link($row, $location, $user);
+
+        return response()->json(['data' => [
+            'business_location_id' => $row->business_location_id,
+            'office' => $location === null ? null : trim(implode(', ', array_filter([$location->address_line1, $location->city, $location->state]))),
+        ]]);
+    }
+
     public function placeLeads(Request $request, string $connection): JsonResponse
     {
         $user = $request->user();

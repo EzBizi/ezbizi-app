@@ -97,6 +97,22 @@ class CampaignWatchTest extends TestCase
         $this->assertCount(1, $this->raised(), 'still paused is not news');
     }
 
+    /** Account change alerts (A1 Leads takeover, 2026-10-19): back on is news too. */
+    public function test_a_campaign_showing_again_is_raised_once(): void
+    {
+        $this->status = $this->primary = 'PAUSED';
+        $this->artisan('ezbizi:ads-campaign-watch')->assertSuccessful();
+        $this->status = 'ENABLED';
+        $this->primary = 'ELIGIBLE';
+        $this->artisan('ezbizi:ads-campaign-watch')->assertSuccessful();
+        $this->artisan('ezbizi:ads-campaign-watch')->assertSuccessful();
+
+        $back = AutomationEvent::withoutGlobalScopes()->where('event_key', 'ads.campaign_resumed')->get();
+        $this->assertCount(1, $back, 'once, not every hour it stays on');
+        $this->assertSame('LSA Cleveland', $back[0]->payload['campaign']);
+        $this->assertSame([], $this->raised());
+    }
+
     public function test_a_pause_pressed_in_ezbizi_names_the_person(): void
     {
         $this->artisan('ezbizi:ads-campaign-watch')->assertSuccessful();

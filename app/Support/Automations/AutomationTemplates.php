@@ -156,6 +156,52 @@ final class AutomationTemplates
                     ['type' => 'notify', 'message' => '{{reply_headline}}', 'details' => '{{reply_preview}}'],
                 ],
             ],
+            // Google Ads (A1 Leads takeover, 2026-10-19): the daily account
+            // review and the account change alerts, to a WhatsApp group.
+            [
+                'key' => 'ads-daily-review-whatsapp',
+                'name' => 'Send the daily account review to WhatsApp',
+                'description' => 'Every morning: Monday the whole picture, other days only what '
+                    .'changed. Pick the WhatsApp group.',
+                'trigger_key' => 'ads.daily_review',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'whatsapp.group_send', 'group' => '', 'message' => '{{summary}}'],
+                ],
+            ],
+            [
+                'key' => 'ads-stopped-whatsapp',
+                'name' => 'Tell WhatsApp when Local Services ads stop',
+                'description' => 'The hour a Local Services campaign stops showing, with who paused '
+                    .'it when Google says. Pick the WhatsApp group.',
+                'trigger_key' => 'ads.campaign_stopped',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'whatsapp.group_send', 'group' => '',
+                        'message' => 'Ads stopped: {{account}} - {{campaign}} ({{reason}}). Paused by: {{paused_by}}'],
+                ],
+            ],
+            [
+                'key' => 'ads-resumed-whatsapp',
+                'name' => 'Tell WhatsApp when Local Services ads are back',
+                'description' => 'The hour a stopped Local Services campaign shows again. Pick the WhatsApp group.',
+                'trigger_key' => 'ads.campaign_resumed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'whatsapp.group_send', 'group' => '', 'message' => 'Ads showing again: {{account}} - {{campaign}}'],
+                ],
+            ],
+            [
+                'key' => 'ads-certification-whatsapp',
+                'name' => 'Tell WhatsApp about a licence or insurance problem',
+                'description' => 'When a Local Services account has a licence, insurance or background '
+                    .'check problem that may stop its ads. Pick the WhatsApp group.',
+                'trigger_key' => 'ads.certification_problem',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'whatsapp.group_send', 'group' => '', 'message' => '{{account}}: {{problems}}'],
+                ],
+            ],
             [
                 // A1 Leads takeover (2026-10-19): the second auto-reply proposes
                 // a real opening, from the Availability tab's own numbers.

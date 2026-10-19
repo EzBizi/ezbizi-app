@@ -510,6 +510,9 @@ class LeadsController extends Controller
                 ->where('channel', '!=', LeadConversation::CHANNEL_PHONE_CALL)
                 ->pluck('text')->filter()->values()->all()),
             'account' => $lead->connection === null ? null : ($lead->connection->label ?: $lead->connection->display_name),
+            // The office the account serves from: its Business Profile listing (AccountProfileLink).
+            'office' => ($loc = $lead->connection?->businessLocation) === null ? null
+                : trim(implode(', ', array_filter([$loc->address_line1, $loc->city, $loc->state]))),
             'google_status' => $lead->source_status === null ? null : ucfirst(strtolower(str_replace('_', ' ', $lead->source_status))),
         ];
 
