@@ -315,6 +315,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           byProvider: byProvider,
           empty: 'No social account connected in $_viewName.',
         ),
+        // The business's own WhatsApp number (Embedded Signup). Connected
+        // HERE: no other screen owns it, so no `_whereFor` sends them away.
+        const SizedBox(height: 12),
+        _family(
+          context,
+          title: 'Messaging',
+          icon: Icons.chat_outlined,
+          family: 'messaging',
+          providers: providers,
+          byProvider: byProvider,
+          empty: 'No WhatsApp number connected in $_viewName.',
+        ),
         const SizedBox(height: 12),
         _family(
           context,
@@ -632,6 +644,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'workiz': 'Jobs and calls from Workiz, for reports.',
     'airtable': 'A base read by Profit & Loss.',
     'ringcentral': 'Calls from RingCentral, for reports.',
+    'whatsapp': 'Your own WhatsApp number, to message customers.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
   };
 

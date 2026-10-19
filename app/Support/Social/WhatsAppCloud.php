@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Models\SocialConnection;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
 use Illuminate\Http\Client\ConnectionException;
@@ -37,6 +38,35 @@ final class WhatsAppCloud
      * retired one answers errors to everything; the day it has to move is an
      * env change on the box rather than a release.
      */
+    /**
+     * The token to act as a number with.
+     *
+     * A business that connected its OWN number (Embedded Signup) granted us
+     * its own system user token, and only that token may send on its number -
+     * EzBizi's global one belongs to EzBizi's WABA and Meta refuses it there.
+     * Every other number is EzBizi's own and keeps the global token, which is
+     * what keeps the 954 line working with no connection row at all.
+     *
+     * Without the tenant scope: phone_number_id is Meta's and globally unique,
+     * and the webhook-driven callers (the staff bot) run before a tenant is set.
+     */
+    public static function tokenFor(string $phoneNumberId): string
+    {
+        if ($phoneNumberId !== '') {
+            $connection = SocialConnection::query()->withoutGlobalScopes()
+                ->where('provider', SocialProvider::WhatsApp->value)
+                ->where('remote_id', $phoneNumberId)
+                ->first();
+            $token = $connection?->credentials['access_token'] ?? null;
+
+            if (is_string($token) && $token !== '') {
+                return $token;
+            }
+        }
+
+        return (string) config('services.meta.whatsapp_token');
+    }
+
     public static function endpoint(): string
     {
         return 'https://graph.facebook.com/'
@@ -230,7 +260,10 @@ final class WhatsAppCloud
      */
     public function templates(string $wabaId): array
     {
-        $token = (string) config('services.meta.whatsapp_token');
+        // Templates live on the WABA, so any of its numbers names the token.
+        $number = WhatsAppNumber::query()->withoutGlobalScopes()
+            ->where('waba_id', $wabaId)->whereNotNull('social_connection_id')->value('phone_number_id');
+        $token = self::tokenFor((string) $number);
 
         if ($token === '') {
             throw new RuntimeException(
@@ -399,7 +432,7 @@ final class WhatsAppCloud
      */
     private function deliver(WhatsAppMessage $row, array $payload): WhatsAppMessage
     {
-        $token = (string) config('services.meta.whatsapp_token');
+        $token = self::tokenFor((string) $row->phone_number_id);
 
         if ($token === '') {
             // Not marked failed. A token EzBizi has not configured says nothing
@@ -467,9 +500,10 @@ final class WhatsAppCloud
      *
      * @throws RuntimeException when it cannot be fetched or is too large
      */
-    public function downloadMedia(string $mediaId): array
+    public function downloadMedia(string $mediaId, ?string $phoneNumberId = null): array
     {
-        $token = (string) config('services.meta.whatsapp_token');
+        // Media is readable only by the token of the number it arrived on.
+        $token = self::tokenFor((string) $phoneNumberId);
 
         if ($token === '' || $mediaId === '') {
             throw new RuntimeException('That file could not be fetched from WhatsApp.');

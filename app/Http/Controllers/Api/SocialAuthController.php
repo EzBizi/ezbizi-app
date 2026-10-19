@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
+use App\Jobs\OnboardWhatsAppNumber;
 use App\Jobs\RegisterThumbtackWebhook;
 use App\Jobs\SubscribeMetaMessages;
 use App\Models\SocialConnection;
@@ -275,6 +276,19 @@ class SocialAuthController extends Controller
                         $tokens['expires_at'] = now()->addSeconds($grant->expiresIn)->toIso8601String();
                     }
 
+                    // WhatsApp: which WABA the number is in, and the two-step
+                    // PIN it was registered with, kept so a reconnect can
+                    // register it again with the same one (connect() replaces
+                    // the credentials whole).
+                    if ($account->wabaId !== null) {
+                        $tokens['waba_id'] = $account->wabaId;
+                        $pin = $connection->credentials['pin'] ?? null;
+
+                        if (is_string($pin) && $pin !== '') {
+                            $tokens['pin'] = $pin;
+                        }
+                    }
+
                     $connection->connect($tokens);
                     $connection->save();
 
@@ -304,6 +318,13 @@ class SocialAuthController extends Controller
                     // messages only once it has subscribed the app.
                     if (in_array($provider, [SocialProvider::FacebookPage, SocialProvider::InstagramProfessional], true)) {
                         SubscribeMetaMessages::dispatch((string) $connection->getKey());
+                    }
+
+                    // A WhatsApp number sends and receives nothing until its
+                    // WABA subscribes the app, the number is registered and
+                    // the whatsapp_numbers row routes it to this tenant.
+                    if ($provider === SocialProvider::WhatsApp && $account->wabaId !== null) {
+                        OnboardWhatsAppNumber::dispatch((string) $connection->getKey(), $account->wabaId);
                     }
 
                     $this->audit->log('social.connected', $connection, [

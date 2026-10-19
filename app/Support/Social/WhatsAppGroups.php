@@ -117,7 +117,7 @@ final class WhatsAppGroups
         }
 
         if ($group->remote_id !== null) {
-            $this->graph('post', $number->phone_number_id.'/messages', [
+            $this->graph('post', $number->phone_number_id.'/messages', phoneNumberId: $number->phone_number_id, body: [
                 'messaging_product' => 'whatsapp',
                 'recipient_type' => 'group',
                 'to' => $group->remote_id,
@@ -150,7 +150,7 @@ final class WhatsAppGroups
 
     private function upload(WhatsAppNumber $number, string $bytes, string $filename): string
     {
-        $response = Http::withToken((string) config('services.meta.whatsapp_token'))
+        $response = Http::withToken(WhatsAppCloud::tokenFor((string) $number->phone_number_id))
             ->timeout(60)
             ->attach('file', $bytes, $filename, ['Content-Type' => 'application/pdf'])
             ->post(WhatsAppCloud::endpoint().'/'.$number->phone_number_id.'/media', [
@@ -197,7 +197,7 @@ final class WhatsAppGroups
      */
     public function create(WhatsAppGroup $group): void
     {
-        $made = $this->graph('post', $group->phone_number_id.'/groups', [
+        $made = $this->graph('post', $group->phone_number_id.'/groups', phoneNumberId: $group->phone_number_id, body: [
             'messaging_product' => 'whatsapp',
             'subject' => mb_substr($group->subject, 0, 128),
             // Only the people we invite: a forwarded link must not let a
@@ -211,7 +211,7 @@ final class WhatsAppGroups
             throw new RuntimeException('Meta made no group for "'.$group->subject.'".');
         }
 
-        $link = $this->graph('get', $id.'/invite_link');
+        $link = $this->graph('get', $id.'/invite_link', [], $group->phone_number_id);
 
         $group->forceFill(['remote_id' => $id, 'invite_link' => $link['invite_link'] ?? null])->save();
     }
@@ -258,9 +258,9 @@ final class WhatsAppGroups
     }
 
     /** @return array<string, mixed> */
-    private function graph(string $method, string $path, array $body = []): array
+    private function graph(string $method, string $path, array $body = [], ?string $phoneNumberId = null): array
     {
-        $response = Http::withToken((string) config('services.meta.whatsapp_token'))
+        $response = Http::withToken(WhatsAppCloud::tokenFor((string) $phoneNumberId))
             ->timeout(self::TIMEOUT)
             ->{$method}(WhatsAppCloud::endpoint().'/'.$path, $body);
 

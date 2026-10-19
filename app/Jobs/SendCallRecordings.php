@@ -115,7 +115,7 @@ class SendCallRecordings implements ShouldQueue
             throw new RuntimeException("WhatsApp cannot play {$type}.");
         }
 
-        $response = Http::withToken((string) config('services.meta.whatsapp_token'))
+        $response = Http::withToken(WhatsAppCloud::tokenFor((string) $number->phone_number_id))
             ->timeout(30)
             ->attach('file', $bytes, 'call.'.($type === 'audio/mpeg' ? 'mp3' : 'm4a'), ['Content-Type' => $type])
             ->post(WhatsAppCloud::endpoint().'/'.$number->phone_number_id.'/media', ['messaging_product' => 'whatsapp', 'type' => $type]);

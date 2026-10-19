@@ -97,6 +97,11 @@ enum SocialProvider: string
     // (Jose, 2026-10-15). Its own app's client id, secret and JWT.
     case RingCentral = 'ringcentral';
 
+    // The business's OWN WhatsApp number, connected by Embedded Signup and
+    // sent through under its own name (Jose, 2026-10-19). A sending account
+    // like Mailchimp, not a network anybody posts to.
+    case WhatsApp = 'whatsapp';
+
     public function label(): string
     {
         return match ($this) {
@@ -117,6 +122,7 @@ enum SocialProvider: string
             self::Airtable => 'Airtable',
             self::FacebookAds => 'Facebook Ads',
             self::RingCentral => 'RingCentral',
+            self::WhatsApp => 'WhatsApp',
         };
     }
 
@@ -146,6 +152,7 @@ enum SocialProvider: string
             self::Airtable => 'airtable',
             self::FacebookAds => 'facebook-ads',
             self::RingCentral => 'ringcentral',
+            self::WhatsApp => 'whatsapp',
         };
     }
 
@@ -206,7 +213,7 @@ enum SocialProvider: string
      */
     public static function sendingProviders(): array
     {
-        return [self::Mailchimp];
+        return [self::Mailchimp, self::WhatsApp];
     }
 
     /**
@@ -372,6 +379,11 @@ enum SocialProvider: string
             // Its calls are read by Reports, like Workiz's jobs.
             self::RingCentral => 'reports.build',
 
+            // The number carries the customer conversations Communication
+            // runs, and `phone.edit` is that module's write grant. There is no
+            // WhatsApp module of its own to ask instead.
+            self::WhatsApp => 'phone.edit',
+
             default => 'marketing.edit',
         };
     }
@@ -415,6 +427,7 @@ enum SocialProvider: string
             self::Airtable => 'connect an Airtable base',
             self::FacebookAds => 'connect a Facebook Ads account',
             self::RingCentral => 'connect a RingCentral account',
+            self::WhatsApp => 'connect a WhatsApp number',
             default => 'connect a social account',
         };
     }
@@ -535,6 +548,18 @@ enum SocialProvider: string
                 '%s is connected to EzBizi. You can close this window — its calls appear under Reports.',
                 $name,
             ),
+
+            self::WhatsApp => $many
+                ? sprintf(
+                    '%d WhatsApp numbers are connected to EzBizi. You can close this window — '
+                    .'EzBizi now sends and receives on them under your business name.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — EzBizi now sends and '
+                    .'receives on it under your business name.',
+                    $name,
+                ),
 
             // The nine publishing networks. "Page" is their word and Social
             // Media Management is genuinely where they are used.
