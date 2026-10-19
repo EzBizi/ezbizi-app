@@ -2965,12 +2965,17 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 109 · Settings › Integrations › Workiz: method picker and editable branch rows — **sent 2026-10-19** (`docs/previews/workiz-connect-layouts.html`)
+### 110 · Settings › the whole tab reviewed (Organization, Preferences, Integrations + every service page, Roles, Activity, API activity) — **sent 2026-10-19** (`docs/previews/settings-review-layouts.html`)
+
+Jose 2026-10-19: "review the Entire Settings tab". **1** (recommended) one header/states/breakpoint/disabled-with-reason pattern for every tab; Settings sub tab renamed Preferences; Integrations lists every service (Twilio, WhatsApp, sending server, one Facebook);
+each service page = what it's for, Connected rows (sync, error, Edit, Disconnect with confirm), Connect with plain-word fields; Activity rows as sentences that open. **2** Integrations as list + detail. **3** fix only what's broken. Phone **4** (recommended) / **5** / **6**.
+
+### 109 · Settings › Integrations › Workiz: method picker and editable branch rows — **sent 2026-10-19 — Jose: "Sounds good" (1 and 4); waits on Workiz's server** (`docs/previews/workiz-connect-layouts.html`)
 
 Jose 2026-10-19: "u don't get the choice, right now it only shows v1" / "you also can't edit existing ones either". **1** (recommended) Connect with a v1 / v2 / Session (soon) switch and per-method fields;
 one compact row per branch (method, last sync, last error, Edit, Disconnect). **2** method cards first. **3** a table. Phone **4** (recommended) / **5** / **6**. Server: Workiz.
 
-### 108 · Leads › compact list header and lead header — **sent 2026-10-19** (`docs/previews/leads-compact-layouts.html`)
+### 108 · Leads › compact list header and lead header — **sent 2026-10-19 — Jose: "Sounds good" (1, 2 and 4); built 6b6f476e4** (`docs/previews/leads-compact-layouts.html`)
 
 Jose 2026-10-19: "how can we make this a bit more compressed, feel like we are using too much space inproperly." **1** (recommended) list: search + status + Filters (n) on one row, quick toggles as small chips;
 Filters panel holds charge/IVR/dispatcher/dates and the In All sources. **2** (recommended) lead: three lines (name+phone+tags+source; AI line; address + Check availability + Add a note), slim customer bar.
