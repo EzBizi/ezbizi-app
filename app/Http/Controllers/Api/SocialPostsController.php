@@ -774,9 +774,15 @@ class SocialPostsController extends Controller
     {
         $rows = $this->placesInView($request->user());
 
+        $rows = $rows->sortBy(fn (BusinessLocation $l) => [$l->branchName() ?? '', $l->label()])->values();
+
         return response()->json(['data' => $rows->map(fn (BusinessLocation $l) => [
             'id' => $l->getKey(),
             'title' => $l->title,
+            // "A1 Chimney · Stamford, CT": the name to draw, and the branch
+            // to group under (Jose, 2026-10-19).
+            'label' => $l->label(),
+            'branch' => $l->branchName(),
             'address' => $l->addressLine(),
             'connection_id' => $l->connection_id,
             'state' => $l->verification_state,
@@ -787,7 +793,7 @@ class SocialPostsController extends Controller
     /** @return Collection<int, BusinessLocation> */
     private function placesInView(User $user): Collection
     {
-        return BusinessLocation::query()->with('connection')->orderBy('title')->get()
+        return BusinessLocation::query()->with(['connection', 'franchise', 'company'])->orderBy('title')->get()
             ->filter(fn (BusinessLocation $l) => $l->connection !== null
                 && $l->connection->providerEnum() === SocialProvider::GoogleBusinessProfile
                 && $this->access->inView($user, $l->connection))

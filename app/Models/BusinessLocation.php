@@ -151,6 +151,27 @@ class BusinessLocation extends Model implements HoldsPersonalData, StatesRetenti
      * looks perfectly healthy in a database and is invisible on Maps, and the
      * gap between those two is exactly what somebody opens this tab to find.
      */
+    /**
+     * Which listing this is, in words a picker can show (Jose, 2026-10-19:
+     * forty chips all read "A1 Chimney"). Google's title is the brand, the
+     * same on every listing; the city and state are what tell them apart.
+     * One helper so Compose, the hours editor and Reviews name them alike.
+     */
+    public function label(): string
+    {
+        $where = collect([$this->city, $this->state])
+            ->filter(fn ($part) => is_string($part) && trim($part) !== '')
+            ->implode(', ');
+
+        return $where === '' ? (string) $this->title : $this->title.' · '.$where;
+    }
+
+    /** The branch a listing is filed on, for grouping pickers; null when only the company. */
+    public function branchName(): ?string
+    {
+        return $this->franchise?->name ?? $this->company?->name;
+    }
+
     public function isLive(): bool
     {
         return $this->verification_state === self::VERIFIED

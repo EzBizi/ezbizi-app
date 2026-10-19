@@ -249,8 +249,8 @@ class ReviewsController extends Controller
     {
         $tail = fn ($n) => preg_match('~(locations/[^/]+)$~', (string) $n, $m) ? $m[1] : null;
         $keys = $query->reorder()->distinct()->pluck('location_name')->map($tail)->filter()->unique()->values();
-        $titles = BusinessLocation::query()->get(['remote_name', 'title'])
-            ->mapWithKeys(fn ($l) => [(string) $tail($l->remote_name) => $l->title]);
+        $titles = BusinessLocation::query()->get(['remote_name', 'title', 'city', 'state'])
+            ->mapWithKeys(fn ($l) => [(string) $tail($l->remote_name) => $l->label()]);
 
         return $keys->map(fn ($k) => ['id' => $k, 'name' => $titles[$k] ?? $k])->sortBy('name')->values()->all();
     }
