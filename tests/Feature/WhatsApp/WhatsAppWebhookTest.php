@@ -6,6 +6,7 @@ use App\Models\WhatsAppMessage;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -441,5 +442,43 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertTrue(
             WhatsAppCloud::signed('body', 'sha256='.hash_hmac('sha256', 'body', 'secret'), 'secret'),
         );
+    }
+
+    public function test_an_image_keeps_its_media_id_so_it_can_be_fetched(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+        Http::fake();
+
+        $this->deliverSigned(json_encode(['entry' => [['changes' => [['value' => [
+            'metadata' => ['phone_number_id' => self::PHONE_ID],
+            'messages' => [[
+                'id' => 'wamid.IMAGE1',
+                'from' => '13057242199',
+                'type' => 'image',
+                'image' => ['id' => '1234567890', 'mime_type' => 'image/jpeg'],
+            ]],
+        ]]]]]]))->assertOk();
+
+        $row = WhatsAppMessage::query()->withoutGlobalScopes()->firstOrFail();
+        $this->assertSame('image', $row->kind);
+        $this->assertSame('1234567890', $row->media_id);
+    }
+
+    public function test_media_is_fetched_by_id_then_by_its_url_and_too_large_is_refused(): void
+    {
+        config(['services.meta.whatsapp_token' => 'tok']);
+        Http::fake([
+            'graph.facebook.com/*/111' => Http::response(['url' => 'https://lookaside.fbsbx.com/m/111', 'mime_type' => 'image/jpeg', 'file_size' => 3]),
+            'graph.facebook.com/*/222' => Http::response(['url' => 'https://lookaside.fbsbx.com/m/222', 'file_size' => 26 * 1024 * 1024]),
+            'lookaside.fbsbx.com/*' => Http::response('JPG'),
+        ]);
+
+        $file = app(WhatsAppCloud::class)->downloadMedia('111');
+        $this->assertSame(['bytes' => 'JPG', 'mime' => 'image/jpeg'], $file);
+
+        $this->expectException(\RuntimeException::class);
+        app(WhatsAppCloud::class)->downloadMedia('222');
     }
 }
