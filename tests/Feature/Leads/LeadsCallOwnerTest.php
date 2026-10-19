@@ -34,6 +34,8 @@ class LeadsCallOwnerTest extends TestCase
             return [$lead, $call];
         });
 
+        $this->artisan('ezbizi:leads-call-owner', ['--dry' => true])->assertSuccessful();   // says, moves nothing, remembers nothing
+        $this->inTenant($t['org'], fn () => $this->assertSame($lead->id, $call->refresh()->lead_id));
         $this->artisan('ezbizi:leads-call-owner')->assertSuccessful();
         $this->artisan('ezbizi:leads-call-owner')->assertSuccessful();   // asked once
 
@@ -45,6 +47,6 @@ class LeadsCallOwnerTest extends TestCase
             $this->assertSame(1, $lead->conversations()->count(), 'the messages stay with John');
             $this->assertSame(2, Lead::query()->count());
         });
-        Process::assertRanTimes(fn () => true, 1);
+        Process::assertRanTimes(fn () => true, 2);
     }
 }
