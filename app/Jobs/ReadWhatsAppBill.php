@@ -19,12 +19,14 @@ class ReadWhatsAppBill implements ShouldQueue
 
     public int $tries = 1;   // a retry would read twice
 
-    // BillReader gives Grok up to 120 s. ponytail: above the database queue's
-    // 90 s retry_after, so a read slower than 90 s also leaves a failed_jobs
-    // row (tries = 1, never a second read); a long-running queue if that shows up.
+    // BillReader gives Grok up to 120 s, so this runs on `database-long`
+    // (retry_after 200), never on the default queue's 90 s.
     public int $timeout = 150;
 
-    public function __construct(public string $numberId, public string $to, public string $viewerId, public string $mediaId, public ?string $caption) {}
+    public function __construct(public string $numberId, public string $to, public string $viewerId, public string $mediaId, public ?string $caption)
+    {
+        $this->onConnection('database-long')->onQueue('long');
+    }
 
     public function handle(WhatsAppStaffBot $bot, TenantContext $tenant): void
     {

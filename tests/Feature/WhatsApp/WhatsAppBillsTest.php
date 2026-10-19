@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Jobs\ReadWhatsAppBill;
 use App\Models\FinancialBill;
 use App\Support\Social\WhatsAppBills;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,5 +83,13 @@ class WhatsAppBillsTest extends TestCase
         $this->assertStringContainsString('cannot change bills', $this->inTenant($t['org'], fn () => $bills->answer($clerk, true)));
 
         $this->assertSame(0, FinancialBill::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_the_read_runs_on_a_queue_that_outlasts_it(): void
+    {
+        $job = new ReadWhatsAppBill('n', 't', 'u', 'm', null);
+
+        $this->assertSame('database-long', $job->connection);
+        $this->assertGreaterThan($job->timeout, config('queue.connections.database-long.retry_after'));
     }
 }
