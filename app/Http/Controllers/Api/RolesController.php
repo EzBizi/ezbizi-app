@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Invitation;
 use App\Models\Role;
+use App\Models\User;
 use App\Support\Access\InboxAccess;
 use App\Support\Audit\AuditLogger;
 use App\Support\Inspection\InspectionGrantAccess;
@@ -88,12 +89,25 @@ class RolesController extends Controller
         $inspections = $this->inspections->heldByRoles($roles);
         $phoneNumbers = $this->phoneNumbers->heldByRoles($roles);
 
+        // Who holds each role, for the faces on the redesigned role cards (UI
+        // queue 111). One query for every role, grouped here, for the reason
+        // above. Every holder rather than only active ones, so the names are
+        // drawn from the same set `user_count` counts; capped at eight because
+        // the card draws a row of faces, and the count says how many more.
+        $holders = User::query()
+            ->whereIn('role_id', $roles->modelKeys())
+            ->orderBy('name')
+            ->get(['id', 'name', 'role_id'])
+            ->groupBy('role_id')
+            ->map(fn ($users) => $users->take(8)->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name])->values()->all());
+
         return response()->json([
             'data' => $roles->map(fn (Role $role) => [
                 'id'               => $role->id,
                 'name'             => $role->name,
                 'is_administrator' => $role->isAdministrator(),
                 'user_count'       => $role->users_count,
+                'people'           => $holders[$role->id] ?? [],
 
                 // Which roles its holders may offer when they invite, or null
                 // for "any role reaching no further than theirs".

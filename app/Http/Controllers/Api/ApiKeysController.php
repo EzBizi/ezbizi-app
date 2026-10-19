@@ -135,6 +135,40 @@ class ApiKeysController
                 'revertable' => ! isset($reverted[$e->getKey()]) && $this->revertible($e) !== null,
                 'reverted_at' => $reverted[$e->getKey()] ?? null,
             ])->all(),
+            'summary' => $this->summary($user),
+        ];
+    }
+
+    /**
+     * The last day of keyed calls in four numbers, for the tiles above the
+     * redesigned API activity list (UI queue 111).
+     *
+     * Through `visible()`, so a tile can never count a call its owner could
+     * not open in the list beneath it; but over the whole day rather than the
+     * page, and without the list's narrowing, because a tile that changed as
+     * you scrolled would be describing the scroll. Calls only: creating or
+     * revoking a key is not a call made with one. A change is anything but a
+     * GET; refused is what answered 400 or worse. One query.
+     *
+     * @return array{keys: int, calls: int, changes: int, refused: int}
+     */
+    private function summary(User $user): array
+    {
+        $row = $this->visible($user)
+            ->where('action', 'api_key.request')
+            ->where('occurred_at', '>=', now()->subDay())
+            ->toBase()
+            ->selectRaw('COUNT(DISTINCT target_id) AS key_count')
+            ->selectRaw('COUNT(*) AS calls')
+            ->selectRaw("SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.method')) <> 'GET' THEN 1 ELSE 0 END) AS changes")
+            ->selectRaw("SUM(CASE WHEN CAST(JSON_EXTRACT(metadata, '$.status') AS UNSIGNED) >= 400 THEN 1 ELSE 0 END) AS refused")
+            ->first();
+
+        return [
+            'keys' => (int) $row->key_count,
+            'calls' => (int) $row->calls,
+            'changes' => (int) $row->changes,
+            'refused' => (int) $row->refused,
         ];
     }
 

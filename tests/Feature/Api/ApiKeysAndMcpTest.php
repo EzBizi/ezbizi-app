@@ -265,6 +265,40 @@ class ApiKeysAndMcpTest extends TestCase
         $this->assertSame([$staff->getKey()], array_values(array_unique(array_column($one, 'user_id'))));
     }
 
+    /** UI queue 111: the tiles above the list. */
+    public function test_the_summary_counts_the_last_day_of_calls_the_viewer_may_see(): void
+    {
+        $t = $this->provisionTenant();
+        $staff = $this->userWithRole($t, 'Staff', ['api_keys.view']);
+        $adminKey = $this->keyFor($t['admin'], 'write');
+        $staffKey = $this->keyFor($staff);
+
+        $this->withToken($adminKey)->getJson('/api/v1/me')->assertOk();
+        $this->withToken($adminKey)->patchJson('/api/v1/me/preferences', ['preferences' => ['appearance.theme' => 'dark']])->assertOk();
+        $this->withToken($adminKey)->postJson('/api/v1/me/password', [])->assertForbidden();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($staffKey)->getJson('/api/v1/me')->assertOk();
+        $this->app['auth']->forgetGuards();
+
+        // Two days old, so outside the day the tiles describe.
+        AuditEvent::query()->where('action', 'api_key.request')->where('metadata->method', 'PATCH')->sole()
+            ->replicate()->forceFill(['occurred_at' => now()->subDays(2)])->save();
+
+        $this->assertSame(
+            ['keys' => 2, 'calls' => 4, 'changes' => 2, 'refused' => 1],
+            $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity')->assertOk()->json('summary'),
+        );
+        // Paging back does not move the tiles.
+        $this->assertSame(
+            ['keys' => 2, 'calls' => 4, 'changes' => 2, 'refused' => 1],
+            $this->getJson('/api/v1/api-keys/activity?before='.urlencode(now()->subYear()->toIso8601String()))->json('summary'),
+        );
+        $this->assertSame(
+            ['keys' => 1, 'calls' => 1, 'changes' => 0, 'refused' => 0],
+            $this->signedInAs($staff)->getJson('/api/v1/api-keys/activity')->assertOk()->json('summary'),
+        );
+    }
+
     public function test_secrets_a_key_sends_are_never_logged(): void
     {
         $t = $this->provisionTenant();

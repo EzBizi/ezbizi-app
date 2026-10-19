@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\PlatformModuleFlag;
 use App\Models\Role;
+use App\Models\User;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
@@ -342,6 +343,39 @@ class RolesApiTest extends TestCase
         $administrator = collect($listed)->firstWhere('is_administrator', true);
         $this->assertSame(1, $administrator['user_count']);
         $this->assertSame(app(ModuleRegistry::class)->allPermissionKeys(), $administrator['permissions']);
+    }
+
+    /** UI queue 111: the role cards draw who holds each role. */
+    public function test_each_role_names_up_to_eight_of_its_holders_alphabetically(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $crew  = $this->userWithRole($alpha, 'Crew 05');
+        $this->userWithRole($alpha, 'Zed');
+
+        // Nine holders written out of order, so neither the cap nor the order
+        // can come out right by accident.
+        $this->inTenant($alpha['org'], function () use ($alpha, $crew) {
+            foreach ([9, 3, 1, 7, 2, 8, 4, 6] as $n) {
+                User::create([
+                    'organization_id' => $alpha['org']->id, 'role_id' => $crew->role_id,
+                    'name' => sprintf('Crew %02d', $n), 'email' => "crew{$n}@alpha.test",
+                    'password' => 'a-real-password', 'is_active' => true,
+                ]);
+            }
+        });
+
+        $listed = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/roles')->assertOk()->json('data'));
+
+        $crewRole = $listed->firstWhere('name', 'Crew 05');
+        $this->assertSame(9, $crewRole['user_count']);
+        $this->assertSame(
+            ['Crew 01', 'Crew 02', 'Crew 03', 'Crew 04', 'Crew 05', 'Crew 06', 'Crew 07', 'Crew 08'],
+            array_column($crewRole['people'], 'name'),
+        );
+        $this->assertSame($crew->id, $crewRole['people'][4]['id']);
+
+        $this->assertSame([['id' => $alpha['admin']->id, 'name' => 'Alpha Admin']], $listed->firstWhere('is_administrator', true)['people']);
+        $this->assertSame(['Zed'], array_column($listed->firstWhere('name', 'Zed')['people'], 'name'));
     }
 
     public function test_role_names_are_unique_within_an_organization_only(): void
