@@ -2965,6 +2965,11 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 107 · Leads › Stats (A1 takeover) — **sent 2026-10-19** (`docs/previews/leads-stats-layouts.html`)
+
+Leads 2f83e1218 + Field's map. **1** (recommended) one page: period/branch, four numbers with a booking gauge, map (offices sized by leads, coloured by booking rate; leads by ZIP; jobs; outcome chips)
+beside top markets and dispatchers, then source / why lost / heatmap cards; **2** map first with a stats panel; **3** sub-tabs. Phone **4** (recommended) / **5** / **6**. Leads layer waits on Field's batch ZIP lookup.
+
 ### 106 · Web app › Get the app (sign-in page and Your account) — **sent 2026-10-19 — no answer in 10 min, went with 1 and 4** (`docs/previews/get-the-app-layouts.html` @ `7da98b75c`)
 
 Jose 2026-10-19: "on web on the https://app.ezbizi.com/ we should also have the offer to download the app, desktop - android - ios." Live links from www.ezbizi.com/download.
