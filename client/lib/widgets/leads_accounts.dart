@@ -36,6 +36,7 @@ import 'connect_account.dart';
 import 'error_note.dart';
 import 'grouped_rows.dart';
 import 'leads_dashboard.dart';
+import 'leads_stats.dart';
 import 'reply_templates_manager.dart';
 import 'search_picker.dart';
 import 'side_panel.dart';
@@ -187,6 +188,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
 
   /// The dashboard, like Templates, is built on first open and kept after.
   bool _dashboardOpened = false;
+  bool _statsOpened = false;
 
   /// A phone's template steps past the first take the page, header and tabs
   /// included, the way the connections' steps do.
@@ -311,6 +313,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               ),
               Offstage(offstage: _tab != 'templates', child: _templates()),
               Offstage(offstage: _tab != 'dashboard', child: _dashboard()),
+              Offstage(offstage: _tab != 'stats', child: _stats()),
             ],
           ),
         ),
@@ -364,6 +367,23 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               _tabStrip(context),
               const Divider(height: 1),
               Expanded(child: _dashboard()),
+            ],
+          ),
+        ),
+        Offstage(
+          offstage: _tab != 'stats',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                context,
+                title: 'Manage',
+                backTooltip: 'Back to the leads',
+                onBack: widget.onBack,
+              ),
+              _tabStrip(context),
+              const Divider(height: 1),
+              Expanded(child: _stats()),
             ],
           ),
         ),
@@ -461,6 +481,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     ('connections', 'Connections', Icons.link),
     ('templates', 'Templates', Icons.bolt_outlined),
     ('dashboard', 'Dashboard', Icons.insights_outlined),
+    // A1 takeover's Stats (UI queue 107).
+    ('stats', 'Stats', Icons.bar_chart),
   ];
 
   Widget _tabStrip(BuildContext context) => Material(
@@ -473,6 +495,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         _tab = _manageTabs[i].$1;
         if (_tab == 'templates') _templatesOpened = true;
         if (_tab == 'dashboard') _dashboardOpened = true;
+        if (_tab == 'stats') _statsOpened = true;
       }),
     ),
   );
@@ -488,6 +511,10 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
 
   /// Replies, response times and leads, per person and per day (UI queue
   /// 38's 7 and 10).
+  Widget _stats() => _statsOpened
+      ? LeadsStats(api: widget.api, session: widget.session)
+      : const SizedBox.shrink();
+
   Widget _dashboard() => _dashboardOpened
       ? LeadsDashboard(api: widget.api, session: widget.session)
       : const SizedBox.shrink();

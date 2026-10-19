@@ -521,6 +521,40 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'leads/Stats': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'leads-stats-period',
+        title: 'Period and branch',
+        body:
+            'Every number below is for this period, and this branch if one is picked.',
+      ),
+      TourStep(
+        anchor: 'leads-stats-rate',
+        title: 'Booking rate',
+        body: 'How many of the leads were booked.',
+      ),
+      TourStep(
+        anchor: 'leads-stats-map',
+        title: 'Map',
+        body:
+            'Offices, leads by ZIP and jobs, each switched on or off, and the '
+            'leads by how they turned out.',
+      ),
+      TourStep(
+        anchor: 'leads-stats-markets',
+        title: 'Markets and dispatchers',
+        body:
+            'Where the leads came from, and who answered them, with how many were booked.',
+      ),
+      TourStep(
+        anchor: 'leads-stats-heatmap',
+        title: 'When they call',
+        body: 'Leads by day and time of day: the darker, the more.',
+      ),
+    ],
+  ),
   'leads/Dashboard': Tour(
     version: 1,
     steps: [
