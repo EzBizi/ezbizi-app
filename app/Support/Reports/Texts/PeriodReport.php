@@ -247,7 +247,7 @@ final class PeriodReport
             return $none('no profit & loss table is mapped for this branch (Financials → Settings)');
         }
 
-        $rows = ReportSources::allRows((string) $branch->organization_id, 'pnl', (string) $branch->getKey());
+        $rows = ReportSources::allRows((string) $branch->organization_id, 'pnl', (string) $branch->getKey(), $from, $to);
 
         if ($this->pnl->weeks($rows) === []) {
             return $none('the mapped profit & loss table has no weeks in it yet');

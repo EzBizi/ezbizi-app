@@ -73,6 +73,24 @@ class PeriodReportTest extends TestCase
         $this->assertStringStartsWith('%PDF', app(PeriodReport::class)->forFranchise($f, '2026-09-21', '2026-09-27'));
     }
 
+    /** 2026-10-16: one table stood for the branch until a date, another from it. */
+    public function test_a_branch_reads_each_pnl_table_only_for_its_own_dates(): void
+    {
+        [$t, $f] = $this->connecticut();
+        $week = fn (int $income, string $date) => [
+            ['Date' => $date, 'Week' => '28 Sep - 4 Oct', 'Income' => 'Cash', 'Income Amount' => $income],
+        ];
+        // The old table still has rows after it stopped standing for the branch.
+        $this->airtableTable($t, (string) $f->id, 'pnl', $week(999, '2026-10-04'), ['table_id' => 'tblOld00000000001', 'valid_until' => '2026-09-20']);
+        $this->airtableTable($t, (string) $f->id, 'pnl', $week(1000, '2026-10-04'), ['table_id' => 'tblNew00000000001', 'valid_from' => '2026-09-21']);
+
+        $html = app(PeriodReport::class)->html($f, '2026-09-28', '2026-10-04');
+
+        // An income-only week is incomplete, so it carries no percentage.
+        $this->assertStringContainsString($this->row('Income', '$1,000.00', '—'), $html);
+        $this->assertStringNotContainsString('999', $html);
+    }
+
     public function test_a_month_with_a_week_not_entered_has_no_totals(): void
     {
         [$t, $f] = $this->connecticut();

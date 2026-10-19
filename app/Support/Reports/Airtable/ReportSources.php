@@ -51,7 +51,9 @@ final class ReportSources
                     continue;
                 }
                 $date = (string) ($f[$names['date'] ?? 'Date'] ?? '');
-                if ($date === '' || $date < $from || $date > $to) {
+                // A table that stands for the branch only for some dates (2026-10-16:
+                // Washington's P&L was New York's until 9-20) gives only its own days.
+                if ($date === '' || $date < $from || $date > $to || ! $source->covers($date)) {
                     continue;
                 }
                 $row = [];
@@ -65,13 +67,24 @@ final class ReportSources
         return $out;
     }
 
-    /** @return list<array<string, mixed>> every live row's fields of $role for the branch, undated (the P&L reads weeks itself) */
-    public static function allRows(string $org, string $role, ?string $franchiseId): array
+    /**
+     * Every live row's fields of $role for the branch, for sources valid in
+     * the dates; a dated row only inside its source's validity (the P&L reads
+     * its weeks itself).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function allRows(string $org, string $role, ?string $franchiseId, string $from = '0000-01-01', string $to = '9999-12-31'): array
     {
         $out = [];
         foreach (self::sources($org, $role, $franchiseId) as $source) {
+            if (! $source->overlaps($from, $to)) {
+                continue;
+            }
+            $dateField = (array) $source->field_map + ['date' => 'Date'];
             foreach (self::records($org, $source) as $f) {
-                if ($source->owns($f)) {
+                $date = (string) ($f[$dateField['date']] ?? '');
+                if ($source->owns($f) && ($date === '' || $source->covers($date))) {
                     $out[] = $f;
                 }
             }
