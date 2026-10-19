@@ -8,6 +8,8 @@ use App\Models\CallReportPersonReview;
 use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Reports\ReportView;
 use App\Support\Reports\Scoring\ScoringWeights;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -39,6 +41,10 @@ class ScoringReportController extends Controller
      */
     public function calls(Request $request): JsonResponse
     {
+        if (ReportView::franchiseIds() !== null && ! app(RingCentralCallLog::class)->configured()) {
+            return response()->json(['data' => []]);
+        }
+
         $q = $request->validate([
             'person' => ['required', 'string', 'max:191'],
             'from' => ['required', 'date_format:Y-m-d'],
@@ -131,6 +137,13 @@ class ScoringReportController extends Controller
 
     public function show(Request $request, PerformancePeople $performance): JsonResponse
     {
+        // The calls are the RingCentral account's company's: a view outside it
+        // has none (2026-10-19).
+        if (ReportView::franchiseIds() !== null && ! app(RingCentralCallLog::class)->configured()) {
+            return response()->json(['data' => ['from' => $request->query('from'), 'to' => $request->query('to'),
+                'min_calls_to_rank' => self::MIN_CALLS, 'weights' => ScoringWeights::current(), 'people' => []]]);
+        }
+
         $q = $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],

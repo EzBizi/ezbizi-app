@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
 use App\Support\Reports\MarketingReport;
+use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,8 +33,10 @@ class MarketingReportController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from', 'before:'.now()->addDay()->toDateString()],
         ]);
 
+        $inView = ReportView::franchiseIds();
         $branches = Franchise::query()
             ->where('is_active', true)
+            ->when($inView !== null, fn ($q) => $q->whereIn('id', $inView))
             ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
             ->orderBy('name')
             ->get();
@@ -42,7 +45,7 @@ class MarketingReportController extends Controller
         // Google Ads and Airtable live (about 15 s for a fresh week, measured
         // 2026-10-13); a P&L line or ad cost edited since shows within 10 min.
         $rows = Cache::remember(
-            'reports.marketing:'.app(TenantContext::class)->idOrFail().':'.$dates['from'].':'.$dates['to'],
+            'reports.marketing:'.app(TenantContext::class)->idOrFail().':'.$dates['from'].':'.$dates['to'].':'.md5(implode(',', $inView ?? ['all'])),
             600,
             function () use ($branches, $report, $dates) {
                 $rows = [];

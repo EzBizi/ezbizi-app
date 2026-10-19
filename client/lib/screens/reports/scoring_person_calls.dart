@@ -221,6 +221,10 @@ class _ScoringPersonCallsState extends State<ScoringPersonCalls> {
                     player: _player,
                     dense: true,
                     load: () => _recording(recording),
+                    downloadName: RecordingPlaybackBar.nameFor(
+                      c['started_at'],
+                      c['caller_number'],
+                    ),
                   ),
                 ],
                 if (c['transcript'] != null) ...[

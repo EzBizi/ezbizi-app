@@ -4,6 +4,7 @@ namespace App\Support\Reports\Experimental;
 
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Reports\ReportView;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -134,6 +135,13 @@ final class RingCentralCallLog
                 'jwt' => (string) ($creds['jwt'] ?? ''),
                 'account' => (string) $c->remote_id,
             ];
+        }
+
+        // The env account belongs to one company (REPORT_RINGCENTRAL_COMPANY,
+        // 2026-10-19): a signed-in reader whose view is another company or a
+        // branch outside it reads no calls, not that company's.
+        if ($user !== null && ! ReportView::coversCompany(config('experimental_reports.ringcentral.company_id'))) {
+            return null;
         }
 
         return $tenant->slug === self::ENV_ORGANIZATION_SLUG ? $this->fromEnv() : null;

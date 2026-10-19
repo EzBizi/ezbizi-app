@@ -5,6 +5,7 @@ namespace App\Support\Reports\Experimental;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WorkizJob;
+use App\Support\Reports\ReportView;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizV2;
@@ -155,14 +156,29 @@ final class WorkizJobs
      */
     public function allAccounts(): array
     {
-        return SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->get()
+        return $this->inView()
             ->map(fn (SocialConnection $c) => ['id' => (string) $c->getKey(), 'name' => (string) $c->display_name])
             ->values()->all();
     }
 
     public function storedAll(string $since): array
     {
-        return $this->storedFrom(SocialConnection::query()->where('provider', SocialProvider::Workiz->value)->get(), $since);
+        return $this->storedFrom($this->inView(), $since);
+    }
+
+    /**
+     * Every Workiz account of the organization, or only those of the branches
+     * in the signed-in reader's view (ReportView, 2026-10-19).
+     *
+     * @return Collection<int, SocialConnection>
+     */
+    private function inView(): Collection
+    {
+        $branches = ReportView::franchiseIds();
+
+        return SocialConnection::query()->where('provider', SocialProvider::Workiz->value)
+            ->when($branches !== null, fn ($q) => $q->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->whereIn('scope_id', $branches))
+            ->get();
     }
 
     /** @param  Collection<int, SocialConnection>  $connections */
