@@ -70,6 +70,13 @@ class LeadStatsController extends Controller
             }
         }
 
+        // Per office for Field's map markers (size = leads, colour = booking rate),
+        // keyed as Field keys its offices: by company.
+        $offices = (clone $base)->whereNotNull('leads.company_id')
+            ->selectRaw("leads.company_id c, COUNT(*) total, SUM(leads.job_id IS NOT NULL OR leads.status = 'booked') booked")
+            ->groupBy('c')->get()
+            ->map(fn ($r) => ['company_id' => $r->c, 'total' => (int) $r->total, 'booked' => (int) $r->booked]);
+
         $dispatchers = (clone $base)->whereNotNull('leads.dispatcher')
             ->selectRaw("leads.dispatcher d, COUNT(*) total, SUM(leads.job_id IS NOT NULL OR leads.status = 'booked') booked")
             ->groupBy('d')->orderByDesc('total')->limit(25)->get()
@@ -85,6 +92,7 @@ class LeadStatsController extends Controller
             'services_booked' => $services->map(fn ($n, $type) => ['service' => $type, 'count' => $n])->values(),
             'time_slots' => ['days' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], 'slots' => array_keys(self::SLOTS), 'counts' => (object) $heat],
             'dispatchers' => $dispatchers,
+            'offices' => $offices,
         ]]);
     }
 

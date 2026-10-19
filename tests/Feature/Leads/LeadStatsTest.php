@@ -40,6 +40,7 @@ class LeadStatsTest extends TestCase
         $this->assertSame([['service' => 'Chimney sweep', 'count' => 1]], $data['services_booked']);
         $this->assertSame(['Fri' => ['8-11' => 1]], $data['time_slots']['counts']);
         $this->assertSame([['dispatcher' => 'Ana Diaz', 'total' => 2, 'booked' => 1]], $data['dispatchers']);
+        $this->assertSame([['company_id' => $t['company']->id, 'total' => 3, 'booked' => 1]], $data['offices']);
 
         $points = $this->signedInAs($t['admin'])->getJson('/api/v1/leads/stats/points?from=2026-10-01&to=2026-10-31')->json('data');
         $this->assertSame([['zip' => '08540', 'total' => 2, 'book' => 1, 'support' => 0, 'archive' => 0, 'unclassified' => 1]], $points);
