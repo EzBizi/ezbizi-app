@@ -65,23 +65,43 @@ final class WhatsAppGroups
     }
 
     /**
-     * A PDF to one member of the group with this purpose, from that group's
-     * number: a private copy (Reports, 2026-10-19). False when it could not go.
+     * PDFs to one member of the group with this purpose, from that group's
+     * number: private copies (Reports, 2026-10-19). Only to a member of that
+     * group. Inside the 24-hour window each goes now; outside it, ONE "report
+     * ready" template asks them to write in and every PDF waits behind it.
+     *
+     * @param  list<array{title: string, pdf: string, filename: string}>  $documents
+     * @return int how many were sent or queued; 0 when they are not a member
      */
-    public function deliverDocumentToMember(string $purpose, User $user, string $title, string $pdf, string $filename): bool
+    public function deliverDocumentsToMember(string $purpose, User $user, string $title, array $documents): int
     {
+        $group = WhatsAppGroup::query()->where('purpose', $purpose)->first();
         $number = $this->numberFor($purpose);
+        $e164 = ThumbtackAssociatePhoneNumbers::e164((string) $user->phone);
 
-        if ($number === null) {
-            return false;
+        if ($group === null || $number === null || $e164 === null || $documents === []
+            || ! $group->members()->where('users.id', $user->getKey())->where('is_active', true)->exists()) {
+            return 0;
         }
 
-        $mediaId = $this->upload($number, $pdf, $filename);
+        $to = ltrim($e164, '+');
+        $open = $this->windowOpen($number, $to);
 
-        return $this->toPerson($number, $user, $title, [
-            'type' => 'document',
-            'document' => ['id' => $mediaId, 'filename' => $filename, 'caption' => "\u{1F4C4} *".$title.'*'],
-        ], $title, $mediaId, $filename);
+        foreach ($documents as $d) {
+            $mediaId = $this->upload($number, $d['pdf'], $d['filename']);
+            $message = ['type' => 'document', 'document' => ['id' => $mediaId, 'filename' => $d['filename'], 'caption' => "\u{1F4C4} *".$d['title'].'*']];
+
+            $open
+                ? $this->cloud->replyFreeForm($number, $to, $message, $d['title'])
+                : WhatsAppPendingReport::create(['organization_id' => $number->organization_id, 'phone_number_id' => $number->phone_number_id,
+                    'counterparty' => $to, 'body' => $d['title'], 'media_id' => $mediaId, 'filename' => $d['filename']]);
+        }
+
+        if (! $open) {
+            $this->cloud->send(self::READY_TEMPLATE, $e164, [$title], from: (string) $number->display_number);
+        }
+
+        return count($documents);
     }
 
     /**

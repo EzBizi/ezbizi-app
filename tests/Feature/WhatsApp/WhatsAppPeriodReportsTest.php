@@ -5,7 +5,9 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppPendingReport;
 use App\Models\WhatsAppReportBatch;
+use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -30,6 +32,8 @@ class WhatsAppPeriodReportsTest extends TestCase
 
     /** @var list<array<string, mixed>> */
     private array $sent = [];
+
+    private array $t = [];
 
     public function test_the_approver_approves_and_every_group_gets_its_pdf_once(): void
     {
@@ -75,10 +79,33 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->assertSame([self::APPROVER, self::APPROVER], array_column($documents, 'to'));
         $this->assertNull(WhatsAppReportBatch::query()->withoutGlobalScopes()->sole()->approved_at, 'still not approved');
 
+        // Asked twice: sent once.
+        $this->sent = [];
+        $this->inbound('separately');
+        $this->assertSame([], array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document')));
+
         $this->sent = [];
         $this->inbound('APPROVE');
         $documents = array_values(array_filter($this->sent, fn ($m) => $m['type'] === 'document'));
         $this->assertSame(['GROUP-DAILY', 'GROUP-FIN'], array_column($documents, 'to'));
+    }
+
+    /** Meta's review, 2026-10-19: only to a member, and one template for the lot outside the window. */
+    public function test_private_copies_go_only_to_a_member_with_one_template_outside_the_window(): void
+    {
+        $merav = $this->approvalSetUp();
+        $this->inTenant($this->t['org'], fn () => WhatsAppMessage::query()->delete()); // no window open
+        $stranger = $this->userWithRole($this->t, 'Other', []);
+        $groups = app(WhatsAppGroups::class);
+        $docs = [['title' => 'A', 'pdf' => '%PDF-a', 'filename' => 'a.pdf'], ['title' => 'B', 'pdf' => '%PDF-b', 'filename' => 'b.pdf']];
+
+        $this->inTenant($this->t['org'], function () use ($groups, $merav, $stranger, $docs) {
+            $this->assertSame(0, $groups->deliverDocumentsToMember('approval', $stranger, 'Weekly', $docs), 'not a member');
+            $this->sent = [];
+            $this->assertSame(2, $groups->deliverDocumentsToMember('approval', $merav, 'Weekly', $docs));
+            $this->assertSame(['template'], array_column($this->sent, 'type'), 'one template, the PDFs queued behind it');
+            $this->assertSame(2, WhatsAppPendingReport::query()->count());
+        });
     }
 
     private function approvalSetUp(): User
@@ -101,7 +128,7 @@ class WhatsAppPeriodReportsTest extends TestCase
             return Http::response([], 404); // Airtable and anything else: nothing there
         });
 
-        $t = $this->provisionTenant('A1-Group');
+        $t = $this->t = $this->provisionTenant('A1-Group');
         DB::table('whatsapp_numbers')->insert([
             'id' => (string) Str::uuid(), 'organization_id' => $t['org']->id, 'phone_number_id' => self::NUMBER,
             'waba_id' => '1090541950244647', 'display_number' => '+19545162455', 'created_at' => now(), 'updated_at' => now(),
