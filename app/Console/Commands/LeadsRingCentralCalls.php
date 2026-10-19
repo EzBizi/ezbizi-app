@@ -42,7 +42,10 @@ class LeadsRingCentralCalls extends Command
 
         $zone = (string) config('app.timezone');
         $now = CarbonImmutable::now($zone);
-        $start = $now->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay();
+        // At least the last three hours, across midnight too: a call filed In
+        // progress or Fetching at 23:30 is re-read until it settles (desk,
+        // 2026-10-19).
+        $start = $now->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay()->min($now->subHours(3));
         // Two minutes, not ten: measured 2026-10-16, calls landed 10-19 minutes
         // late and Jose saw Bar's call "after a while". The log lists a call
         // once it has ended; a Google copy that arrives later is withdrawn.
@@ -61,7 +64,12 @@ class LeadsRingCentralCalls extends Command
                 }
 
                 // Inbound and outbound (Jose, 2026-10-16: "all calls should show up").
-                $rows = array_values(array_filter($log->forPeriod($start, $now, outbound: true),
+                // The routine run reads its window fresh: forPeriod keeps past
+                // days cached, and yesterday's last calls are still settling.
+                $read = (int) $this->option('days') <= 1
+                    ? $log->forDate($start->toIso8601String(), $now->toIso8601String())
+                    : $log->forPeriod($start, $now, outbound: true);
+                $rows = array_values(array_filter($read,
                     fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
                 // Live calls, which the call log shows as "Accepted": In progress,
                 // re-read when they end. No list, no filing this run - guessing
