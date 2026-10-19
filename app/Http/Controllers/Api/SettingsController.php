@@ -386,6 +386,11 @@ class SettingsController extends Controller
             ));
         }
 
+        if ($definition->type === SettingDefinition::TYPE_FRANCHISE_MAP) {
+            return Franchise::query()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Franchise $f) => ['value' => $f->id, 'label' => $f->name])->all();
+        }
+
         if ($definition->type === SettingDefinition::TYPE_COMPANY) {
             return Company::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Company $c) => ['value' => $c->id, 'label' => $c->name])->all();

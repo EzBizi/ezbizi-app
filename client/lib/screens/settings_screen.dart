@@ -1524,6 +1524,16 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
+    if (type == 'franchise_map') {
+      return _FranchiseMapButton(
+        label: setting['label'] as String,
+        value: value,
+        places: _settingChoices(setting['options']),
+        editable: editable,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
     if (type == 'subset') {
       return _SubsetButton(
         label: setting['label'] as String,
@@ -1863,6 +1873,155 @@ class _SubsetButton extends StatelessWidget {
         ),
       ),
     );
+
+    if (saved != null) onChanged(saved);
+  }
+}
+
+/// Codes the business names, each pointing at one of its places — a phone
+/// line's market code to the branch that takes it.
+///
+/// A value that is not one of the places (a branch NAME migrated from before
+/// the type existed, or a place since deleted) is kept and shown as such, so
+/// opening and saving does not silently drop a line.
+class _FranchiseMapButton extends StatelessWidget {
+  const _FranchiseMapButton({
+    required this.label,
+    required this.value,
+    required this.places,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final String label;
+  final dynamic value;
+  final List<_SettingChoice> places;
+  final bool editable;
+  final ValueChanged<Map<String, String>> onChanged;
+
+  // An empty PHP array arrives as `[]`, not `{}`.
+  Map<String, String> get _map => value is Map
+      ? {for (final e in (value as Map).entries) '${e.key}': '${e.value}'}
+      : const {};
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _map.length;
+
+    return OutlinedButton.icon(
+      key: const ValueKey('franchise-map-button'),
+      onPressed: editable ? () => _open(context) : null,
+      icon: const Icon(Icons.alt_route, size: 16),
+      label: Text(n == 0 ? 'None set' : '$n set'),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final rows = [
+      for (final e in _map.entries)
+        (code: TextEditingController(text: e.key), place: e.value as String?),
+    ];
+
+    final saved = await showSidePanel<Map<String, String>>(
+      context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => SidePanel(
+          title: label,
+          width: 520,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop({
+                for (final r in rows)
+                  if (r.code.text.trim().isNotEmpty && r.place != null)
+                    r.code.text.trim(): r.place!,
+              }),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < rows.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 110,
+                        child: TextField(
+                          key: ValueKey('map-code:$i'),
+                          controller: rows[i].code,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            labelText: 'Code',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey('map-place:$i'),
+                          initialValue: rows[i].place,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          items: [
+                            for (final p in places)
+                              DropdownMenuItem(
+                                value: '${p.value}',
+                                child: Text(p.label),
+                              ),
+                            if (rows[i].place != null &&
+                                !places.any(
+                                  (p) => '${p.value}' == rows[i].place,
+                                ))
+                              DropdownMenuItem(
+                                value: rows[i].place,
+                                child: Text('${rows[i].place} — not a place'),
+                              ),
+                          ],
+                          onChanged: (v) => repaint(
+                            () => rows[i] = (code: rows[i].code, place: v),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Remove',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => repaint(() => rows.removeAt(i)),
+                      ),
+                    ],
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('map-add'),
+                  onPressed: () => repaint(
+                    () =>
+                        rows.add((code: TextEditingController(), place: null)),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    for (final r in rows) {
+      r.code.dispose();
+    }
 
     if (saved != null) onChanged(saved);
   }
