@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import 'map_attribution.dart';
 import 'side_panel.dart';
 
 /// A setting that is a place, stored as "lat, lng" (UI queue 104, design 7).
@@ -214,6 +215,8 @@ class _LocationPanelState extends State<_LocationPanel> {
                           ),
                         ],
                       ),
+                      // Google's copyright, which its tiles require.
+                      MapAttributionLine(api: widget.api),
                     ],
                   ),
                 ),
