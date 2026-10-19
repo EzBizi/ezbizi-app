@@ -697,7 +697,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         return [
             'booking_link', 'company_name', 'lead_details', 'lead_headline', 'office_note', 'office_opens',
-            'office_phone', 'photos_email', 'reply_headline', 'reply_preview', 'source_name', 'thank_you',
+            'office_phone', 'offered_slot', 'photos_email', 'reply_headline', 'reply_preview', 'source_name', 'thank_you',
         ];
     }
 
@@ -711,6 +711,28 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         $url = trim((string) app(SettingsResolver::class)->get('leads.booking_url', $this->franchise ?? $this->company ?? $this->organization));
 
         return $url === '' ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
+    }
+
+    /**
+     * `{{offered_slot}}`: one open window to propose, e.g. "Thu Oct 16, 8-11 AM"
+     * (A1 Leads takeover: the second auto-reply offers a concrete slot). From
+     * Scheduling's SlotOffer, for the lead's ZIP, inside the dates the customer
+     * asked for in their latest message (RequestedWindow). Empty with no ZIP
+     * or no open window, and a line holding it is then dropped. Proposes only.
+     */
+    public function getOfferedSlotAttribute(): string
+    {
+        if (blank($this->postal_code)) {
+            return '';
+        }
+        $zone = (string) app(SettingsResolver::class)->get('timezone', $this->organization);
+        $today = \Carbon\CarbonImmutable::now($zone)->startOfDay();
+        $said = (string) $this->conversations()->reorder()->where('participant', LeadConversation::FROM_CONSUMER)
+            ->orderByDesc('occurred_at')->value('text');
+        $offer = app(\App\Support\Scheduling\SlotOffer::class)
+            ->for((string) $this->postal_code, $today, \App\Support\Leads\RequestedWindow::from($said, $today));
+
+        return $offer['label'] ?? '';
     }
 
     /** `{{office_phone}}`: the number a customer calls the branch on. */

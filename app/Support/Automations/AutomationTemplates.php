@@ -157,6 +157,22 @@ final class AutomationTemplates
                 ],
             ],
             [
+                // A1 Leads takeover (2026-10-19): the second auto-reply proposes
+                // a real opening, from the Availability tab's own numbers.
+                'key' => 'offer-an-open-slot',
+                'name' => 'Offer an open time when a customer replies',
+                'description' => 'When a customer answers, offers one open window near their ZIP, '
+                    .'inside the days they asked for if they named any. A customer with no ZIP or '
+                    .'no open window gets the rest of the message without the time.',
+                'trigger_key' => 'lead.customer_replied',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'reply', 'message' => "Thanks {{contact_name}}, we can get you scheduled.\n"
+                        ."Our next opening near you: {{offered_slot}}. Reply to confirm and we will book it.\n"
+                        .'Or book online: {{booking_link}}'],
+                ],
+            ],
+            [
                 'key' => 'customer-waiting',
                 'name' => 'Warn dispatchers when a customer is left waiting',
                 'description' => 'When a customer has written and nobody has answered for 10 '
