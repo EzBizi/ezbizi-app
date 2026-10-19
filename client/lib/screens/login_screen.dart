@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -7,6 +8,7 @@ import '../widgets/auth_preview.dart';
 import '../widgets/auth_shell.dart';
 import '../widgets/error_note.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/get_the_apps.dart';
 
 /// Sign in (plan §4).
 ///
@@ -387,6 +389,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
             ),
+          ],
+          // On the web only: the apps for this device (UI queue 106).
+          if (kIsWeb) ...[
+            const SizedBox(height: 20),
+            const GetTheAppRow(),
           ],
         ],
       ),
