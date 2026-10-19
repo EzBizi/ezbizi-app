@@ -355,6 +355,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                     subtitle: Text(
                       [
                         if (row.beneath != null) row.beneath!,
+                        if ((row.detail ?? '').isNotEmpty) row.detail!,
                         if (!row.connected) row.statusReason ?? 'Not working',
                       ].join(' · '),
                       maxLines: 2,
@@ -489,6 +490,7 @@ class IntegrationConnection {
     required this.connected,
     this.label,
     this.statusReason,
+    this.detail,
   });
 
   final String id;
@@ -512,6 +514,9 @@ class IntegrationConnection {
 
   final bool connected;
   final String? statusReason;
+
+  /// One provider-specific line, such as which Workiz API the key speaks.
+  final String? detail;
 
   /// Which screen owns this account. The grid draws a heading per family,
   /// because "where do I go to fix this" is the question underneath.
@@ -575,5 +580,6 @@ class IntegrationConnection {
         scopeId: json['scope_id'] as String? ?? '',
         connected: (json['status'] as String? ?? '') == 'connected',
         statusReason: json['status_reason'] as String?,
+        detail: json['detail'] as String?,
       );
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\BackfillWorkizJobs;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
@@ -107,7 +108,9 @@ class WorkizConnectController extends Controller
             ->where('remote_id', $scopeId)
             ->first() ?? new SocialConnection;
 
-        if (! $connection->exists) {
+        $isNew = ! $connection->exists;
+
+        if ($isNew) {
             $connection->forceFill([
                 'organization_id' => $user->organization_id,
                 'scope_type' => SocialConnection::SCOPE_FRANCHISE,
@@ -154,6 +157,12 @@ class WorkizConnectController extends Controller
             'v1' => $v1,
         ]));
         $connection->save();
+
+        // A new account brings its whole history, paced on the schedule. No
+        // automation fires for it: the projection raises none for an old job.
+        if ($isNew) {
+            BackfillWorkizJobs::queue($connection);
+        }
 
         $this->audit->log('social.connected', $connection, [
             'provider' => SocialProvider::Workiz->value,

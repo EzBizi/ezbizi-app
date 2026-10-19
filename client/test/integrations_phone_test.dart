@@ -102,6 +102,51 @@ void main() {
     );
   });
 
+  /// Jose, 2026-10-19: the Workiz card said neither which API a key speaks
+  /// nor whether its history came in. The server's `detail` line says both.
+  testWidgets('a Workiz row says which API and how far its history got', (
+    tester,
+  ) async {
+    final api = ApiClient(
+      client: MockClient((r) async => _json({'data': _me})),
+    );
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: IntegrationProviderScreen(
+            api: api,
+            session: session,
+            provider: 'workiz',
+            providerLabel: 'Workiz',
+            connections: [
+              IntegrationConnection.fromJson({
+                'id': 'w1',
+                'provider': 'workiz',
+                'provider_label': 'Workiz',
+                'display_name': 'Connecticut',
+                'scope_type': 'franchise',
+                'scope_id': 'f1',
+                'status': 'connected',
+                'detail': 'API v1 · importing history (300 jobs read)',
+              }),
+            ],
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('API v1 · importing history (300 jobs read)'),
+      findsOneWidget,
+    );
+  });
+
   /// The whole point of the redesign, asserted at the width it is least likely
   /// to survive: the company is NAMED rather than called "this company".
   testWidgets('a phone still names the company, not "this company"', (
