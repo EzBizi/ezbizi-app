@@ -58,6 +58,10 @@ final class AllowWidgetOrigins
         // The review page's faces and its one-tap Join (Memberships): a signed
         // customer token proves who, like the site key above.
         'api/v1/web/review',
+        // What the customer did with their review link (Customer Experience):
+        // a JSON POST, so it preflights. Without it every open, face and
+        // Google tap from the sites was refused, and the report stayed at 0.
+        'api/v1/web/review-link',
         'api/v1/web/membership/join',
         // The chat's "typing" signal (Bearer token) and the booking widget's
         // request (JSON): both preflight, and were refused without this.

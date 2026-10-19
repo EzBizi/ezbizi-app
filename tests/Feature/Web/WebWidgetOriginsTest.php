@@ -52,6 +52,9 @@ class WebWidgetOriginsTest extends TestCase
             ['/api/v1/web/chat/01931234-5678-7abc-8def-000000000000/messages', 'POST'],
             ['/api/v1/web/form', 'POST'],
             ['/api/v1/web/review', 'POST'],
+            // The review page's open/face/Google tracking: refused until
+            // 2026-10-19, so Review links counted sends and nothing else.
+            ['/api/v1/web/review-link', 'POST'],
             ['/api/v1/web/membership/join', 'POST'],
             ['/api/v1/web/chat/01931234-5678-7abc-8def-000000000000/typing', 'POST'],
             ['/api/v1/web/booking', 'POST'],
