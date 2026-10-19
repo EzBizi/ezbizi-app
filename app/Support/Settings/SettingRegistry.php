@@ -1196,6 +1196,7 @@ class SettingRegistry
                 default: null,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
                 help: 'The company a call to one of your phone lines is filed under when the line '
                     .'is not named after a company. Empty: your only company, or the one the phone '
                     .'connection belongs to.',
@@ -1207,6 +1208,7 @@ class SettingRegistry
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
                 help: 'The code your line names start with, and the branch its calls go to: NJ for a '
                     .'line called "NJ - GMB". A line whose code is not here stays at company level.',
             ),
@@ -1217,6 +1219,7 @@ class SettingRegistry
                 default: '',
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
                 help: 'The queue a caller reaches by choosing "new customer" in your phone menu. A '
                     .'caller who pressed it but has had a job with you before is counted as existing.',
             ),
@@ -1227,6 +1230,7 @@ class SettingRegistry
                 default: '',
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
                 editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
                 help: 'The queue a caller reaches by choosing "existing customer" in your phone menu. '
                     .'Their calls are tagged Existing client. Empty: none are.',
             ),
@@ -1238,6 +1242,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
                 editPermission: 'leads.manage',
+                readPermission: 'leads.manage',
                 help: 'On: EzBizi stops talking to Google for this business - Local Services leads, '
                     .'Ads, Business Profile and reviews - until it is switched off. Nothing is '
                     .'disconnected; syncs say they are paused.',
