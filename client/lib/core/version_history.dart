@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0447',
+      date: '19 Oct 2026',
+      items: [
+        'Financials: a mapped Airtable table can be limited to the dates it covers, so a branch that changed books reads the old table up to the change and the new one after, and reports never count a week twice.',
+        'Leads: the call settings (which company RingCentral calls file to, the phone-line map, the new- and existing-client queues, pausing Google) can only be read by people who can manage Leads.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0446',
       date: '16 Oct 2026',
       items: [
