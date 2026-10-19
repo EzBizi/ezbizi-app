@@ -509,6 +509,7 @@ class FieldController extends Controller
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
         $user = $request->user();
+        $exact = $user->hasPermission('field.map.view');
 
         $jobs = Job::query()
             ->with('customer:id,address_line1,address_line2,city,state,postal_code')
@@ -523,13 +524,22 @@ class FieldController extends Controller
 
         return response()->json(['data' => [
             'offices' => $this->offices($user),
-            'jobs' => $jobs->map(function (Job $j) use ($hashes, $points) {
+            // Without field.map.view (a Leads-only role) a pin is about a
+            // kilometre wide and names no job or customer: an exact pin with
+            // a customer id is somebody's home and job (Roles review, 2026-10-19).
+            'jobs' => $jobs->map(function (Job $j) use ($hashes, $points, $exact) {
                 $p = $points[$hashes[$j->getKey()]] ?? null;
+                if ($p === null) {
+                    return null;
+                }
 
-                return $p === null ? null : [
+                return $exact ? [
                     'job_id' => $j->getKey(), 'number' => $j->number, 'status' => $j->status,
                     'customer_id' => $j->customer_id, 'franchise_id' => $j->franchise_id,
                     'lat' => (float) $p->latitude, 'lng' => (float) $p->longitude,
+                ] : [
+                    'status' => $j->status, 'franchise_id' => $j->franchise_id,
+                    'lat' => round((float) $p->latitude, 2), 'lng' => round((float) $p->longitude, 2),
                 ];
             })->filter()->values(),
         ]]);
