@@ -75,6 +75,17 @@ final class RingCentralLeadCalls
      */
     public const IN_PROGRESS = 'IN_PROGRESS';
 
+    /**
+     * Answered, and RingCentral has not sent the recording yet (Jose,
+     * 2026-10-19: "a new tag, for when an RC Call is still waiting for Ring
+     * Central to send over a recording"). Re-read every run until it comes,
+     * for FETCH_HOURS; not every call is recorded, so after that it is just
+     * an answered call with no recording.
+     */
+    public const FETCHING = 'FETCHING';
+
+    private const FETCH_HOURS = 2;
+
     /** A lead that began with our call out to a number nobody had (Jose, 2026-10-16). */
     public const OUTBOUND = 'OUTBOUND';
 
@@ -84,7 +95,7 @@ final class RingCentralLeadCalls
     /** A call older than this files quietly: a catch-up run announces nothing. */
     private const ANNOUNCE_WITHIN_MINUTES = 60;
 
-    private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail', self::IN_PROGRESS => 'In progress'];
+    private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail', self::IN_PROGRESS => 'In progress', self::FETCHING => 'Fetching recording'];
 
     public function __construct(
         private readonly LeadThread $thread,
@@ -349,6 +360,9 @@ final class RingCentralLeadCalls
             // On RingCentral's active-calls list right now (the call log says
             // "Accepted" for a live call, never "In Progress").
             ! empty($call['live']) || ($call['result'] ?? null) === 'In Progress' => self::IN_PROGRESS,
+            // Answered, recording not here yet, and still worth waiting for.
+            $call['answered_by'] !== null && ($call['recording_id'] ?? null) === null
+                && CarbonImmutable::parse((string) $call['started_at'])->gte(CarbonImmutable::now()->subHours(self::FETCH_HOURS)) => self::FETCHING,
             // A customer's number outranks the key pressed and the hang-up rule
             // (Jose, 2026-10-16: a known customer is never Possible spam).
             $call['answered_by'] !== null => $customer || ($existingQueue !== null && ($call['queue'] ?? null) === $existingQueue) ? self::EXISTING_CLIENT : null,
@@ -372,7 +386,7 @@ final class RingCentralLeadCalls
     {
         $word = self::WORDS[$outcome] ?? null;
         $seconds = (int) ($call['duration'] ?? 0);
-        if ($word === null || $outcome === self::IN_PROGRESS || $seconds <= 0) {
+        if ($word === null || $outcome === self::IN_PROGRESS || $outcome === self::FETCHING || $seconds <= 0) {
             return $word;
         }
 

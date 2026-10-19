@@ -44,7 +44,7 @@ class CallTypeCorrectionsTest extends TestCase
     {
         return $extra + ['id' => $id, 'direction' => 'Inbound', 'started_at' => now()->subMinutes(30)->toIso8601String(),
             'from' => $from, 'to_number' => '+17320000001', 'queue' => $queue, 'result' => 'Accepted',
-            'rang' => ['Ana Diaz'], 'answered_by' => 'Ana Diaz', 'talk_seconds' => 95, 'recording_id' => null];
+            'rang' => ['Ana Diaz'], 'answered_by' => 'Ana Diaz', 'talk_seconds' => 95, 'recording_id' => 'R'.$id];   // recorded: not Fetching
     }
 
     public function test_a_prior_job_outranks_the_key_and_the_transcript_decides_when_the_database_is_silent(): void

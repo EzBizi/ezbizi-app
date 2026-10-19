@@ -2422,7 +2422,13 @@ class _LeadThreadState extends State<LeadThread> {
                       ),
                     ),
                     Text(
-                      hasRecording ? when : '$when · no recording',
+                      hasRecording
+                          ? when
+                          // RingCentral sends it a few minutes after the call
+                          // (Jose, 2026-10-19: the Fetching tag).
+                          : c['text'] == 'Fetching recording'
+                          ? '$when · fetching recording'
+                          : '$when · no recording',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
