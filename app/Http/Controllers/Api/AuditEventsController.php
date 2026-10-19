@@ -36,6 +36,10 @@ class AuditEventsController
 
         $user  = $request->user();
         $scope = ViewScope::forUser($user);
+        // Someone who reaches the whole organization also sees, in a company's
+        // view, what belongs to no company: the organization's own events, and
+        // rows written before the logger recorded a scope (2026-10-19).
+        $orgWide = ! $scope->isOrganization() && $user->canActOnOrganization($user->organization);
         $days  = self::WINDOWS[$validated['window'] ?? '7d'];
 
         $rows = AuditEvent::query()
@@ -46,7 +50,8 @@ class AuditEventsController
             ->when($validated['source'] ?? null, fn (Builder $q, $source) => $q->where('actor_type', $source))
             ->when(! $scope->isOrganization(), fn (Builder $q) => $q->where(fn (Builder $w) => $w
                 ->where(fn (Builder $c) => $c->where('scope_type', 'company')->whereIn('scope_id', $scope->companyIds()))
-                ->orWhere(fn (Builder $f) => $f->where('scope_type', 'franchise')->whereIn('scope_id', $scope->franchiseIds()))))
+                ->orWhere(fn (Builder $f) => $f->where('scope_type', 'franchise')->whereIn('scope_id', $scope->franchiseIds()))
+                ->when($orgWide, fn (Builder $o) => $o->orWhereNull('scope_type')->orWhere('scope_type', 'organization'))))
             ->orderByDesc('occurred_at')
             ->limit(self::PAGE + 1)
             ->get();

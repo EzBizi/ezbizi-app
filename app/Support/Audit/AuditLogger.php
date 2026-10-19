@@ -147,6 +147,17 @@ class AuditLogger
 
         $actor ??= auth()->user();
 
+        // Where it happened, from what it happened to: hardly any caller says,
+        // so 18,000 of 18,100 rows had no scope and a company's Activity was
+        // empty (Jose, 2026-10-19). A branch beats its company.
+        if ($scopeType === null && $target !== null) {
+            [$scopeType, $scopeId] = match (true) {
+                filled($target->getAttribute('franchise_id')) => ['franchise', (string) $target->getAttribute('franchise_id')],
+                filled($target->getAttribute('company_id')) => ['company', (string) $target->getAttribute('company_id')],
+                default => [null, $scopeId],
+            };
+        }
+
         return AuditEvent::create([
             'organization_id' => $this->tenant->has() ? $this->tenant->id() : null,
             'actor_type'      => $actor ? AuditEvent::ACTOR_USER : AuditEvent::ACTOR_SYSTEM,

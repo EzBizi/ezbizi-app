@@ -70,6 +70,24 @@ class AuditEventsApiTest extends TestCase
         $this->assertSame(['mine.done'], $this->actions());
     }
 
+    /** Jose, 2026-10-19: A-1 Chimney's Activity said "Nothing in this window" for 90 days. */
+    public function test_a_company_view_shows_its_events_and_the_unscoped_ones_to_an_organization_admin(): void
+    {
+        $tenant = $this->provisionTenant();
+        $lead = $this->inTenant($tenant['org'], fn () => \App\Models\Lead::create([
+            'organization_id' => $tenant['org']->id, 'company_id' => $tenant['company']->id, 'franchise_id' => $tenant['franchise']->id,
+            'source' => 'website_form', 'remote_id' => 'audit-1', 'status' => 'NEW', 'received_at' => now(),
+        ]));
+        $logged = $this->inTenant($tenant['org'], fn () => app(\App\Support\Audit\AuditLogger::class)->log('lead.updated', $lead));
+        $this->assertSame(['franchise', (string) $tenant['franchise']->id], [$logged->scope_type, $logged->scope_id]);
+
+        $this->event($tenant, 'old.unscoped', null, null);
+        $this->event($tenant, 'org.done', 'organization', $tenant['org']->id);
+        $this->signedInAs($tenant['admin'])->withHeader('X-EzBizi-View', 'company:'.$tenant['company']->id);
+
+        $this->assertSame(['lead.updated', 'old.unscoped', 'org.done'], $this->actions());
+    }
+
     public function test_the_window_and_source_filter(): void
     {
         $tenant = $this->provisionTenant();
