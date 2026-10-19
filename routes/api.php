@@ -2961,6 +2961,8 @@ Route::prefix('v1')
         Route::get('me/sessions', [ProfileController::class, 'sessions']);
 
         // API keys and the MCP endpoint: an AI acting as this person (EnforceApiKeyAccess).
+        Route::get('audit-events/{id}', [\App\Http\Controllers\Api\AuditEventsController::class, 'show'])
+            ->middleware('permission:audit.view')->whereUuid('id');
         Route::get('audit-events', [\App\Http\Controllers\Api\AuditEventsController::class, 'index'])
             ->middleware('permission:audit.view');
         Route::get('me/api-keys', [\App\Http\Controllers\Api\ApiKeysController::class, 'index']);

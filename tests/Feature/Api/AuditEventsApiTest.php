@@ -88,6 +88,33 @@ class AuditEventsApiTest extends TestCase
         $this->assertSame(['lead.updated', 'old.unscoped', 'org.done'], $this->actions());
     }
 
+    public function test_one_event_opens_with_its_changes_and_not_outside_the_view(): void
+    {
+        $tenant  = $this->provisionTenant();
+        $sibling = $this->extraFranchise($tenant, 'Sibling');
+        $this->event($tenant, 'mine.done', 'franchise', $tenant['franchise']->id, ['changes' => ['status' => ['before' => 'a', 'after' => 'b']]]);
+        $this->event($tenant, 'sibling.done', 'franchise', $sibling->id);
+        $mine  = AuditEvent::query()->where('action', 'mine.done')->value('id');
+        $other = AuditEvent::query()->where('action', 'sibling.done')->value('id');
+
+        $this->signedInAs($this->userWithRole($tenant, 'Branch', ['audit.view'], onlyAt: $tenant['franchise']));
+
+        $this->getJson("/api/v1/audit-events/{$mine}")->assertOk()
+            ->assertJsonPath('data.action', 'mine.done')
+            ->assertJsonPath('data.changes.status.after', 'b');
+        $this->getJson("/api/v1/audit-events/{$other}")->assertNotFound();
+    }
+
+    public function test_one_event_needs_audit_view(): void
+    {
+        $tenant = $this->provisionTenant();
+        $this->event($tenant, 'x.done', 'organization', $tenant['org']->id);
+        $id = AuditEvent::query()->value('id');
+
+        $this->signedInAs($this->userWithRole($tenant, 'Plain', ['organizations.view']))
+            ->getJson("/api/v1/audit-events/{$id}")->assertForbidden();
+    }
+
     public function test_the_window_and_source_filter(): void
     {
         $tenant = $this->provisionTenant();
