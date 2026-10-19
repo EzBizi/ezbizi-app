@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0455',
+      date: '19 Oct 2026',
+      items: [
+        'Leads: a RingCentral lead no longer stays In progress when we call back or another message arrives before the customer\'s call ends.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0454',
       date: '19 Oct 2026',
       items: [
