@@ -283,6 +283,38 @@ class RingCentralLeadCallsTest extends TestCase
         $this->assertSame(['Christian Francia', null], [$ours['sent_by'], $ours['text']], 'the card says who called');
     }
 
+    /**
+     * Jose, 2026-10-19: answered calls showed "Missed call", and live ones too.
+     * RingCentral lists a call while it is live; the next sync must correct it.
+     */
+    public function test_a_live_call_is_in_progress_and_corrected_when_it_ends(): void
+    {
+        $t = $this->setUpTenant();
+        $live = ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => [], 'result' => 'In Progress'];
+        $at = now()->subMinutes(5)->toIso8601String();
+        $this->inTenant($t['org'], function () use ($t, $live, $at) {
+            $calls = app(RingCentralLeadCalls::class);
+            $calls->file([self::rc('95', '+15550000095', $at, extra: $live), self::rc('96', '+15550000096', $at, extra: $live)], self::LINES, $t['company']->id);
+            $this->assertSame(RingCentralLeadCalls::IN_PROGRESS, Lead::query()->where('phone', '+15550000095')->value('source_status'));
+            $this->assertSame('In progress', LeadConversation::query()->where('remote_id', 'rc_95')->value('text'));
+
+            // It ends: 95 was answered and recorded, 96 rang out.
+            $calls->file([
+                self::rc('95', '+15550000095', $at, extra: ['result' => 'Accepted']),
+                self::rc('96', '+15550000096', $at, extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'result' => 'Missed']),
+            ], self::LINES, $t['company']->id);
+            $row = LeadConversation::query()->where('remote_id', 'rc_95')->first();
+            $this->assertNull(Lead::query()->where('phone', '+15550000095')->value('source_status'));
+            $this->assertNull($row->text);
+            $this->assertSame('ringcentral:R95', $row->recording_url);
+            $this->assertSame(95000, $row->duration_ms);
+            $this->assertSame(RingCentralLeadCalls::MISSED, Lead::query()->where('phone', '+15550000096')->value('source_status'));
+        });
+
+        // Not while live; once, when it ended unanswered.
+        $this->assertSame(1, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->count());
+    }
+
     /** A missed call on a person's direct line alerts like any missed call. */
     public function test_a_missed_call_on_a_direct_line_alerts(): void
     {

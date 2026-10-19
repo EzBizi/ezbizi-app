@@ -67,6 +67,14 @@ final class RingCentralLeadCalls
 
     public const VOICEMAIL = 'VOICEMAIL';
 
+    /*
+     * Still on the phone. RingCentral lists a call while it is live, result
+     * "In Progress", with nobody connected yet on the log: it was read as
+     * Missed (Jose, 2026-10-19: "calls which are in progress still also get
+     * tagged as missed calls"). Re-read on every sync until it ends.
+     */
+    public const IN_PROGRESS = 'IN_PROGRESS';
+
     /** A lead that began with our call out to a number nobody had (Jose, 2026-10-16). */
     public const OUTBOUND = 'OUTBOUND';
 
@@ -76,7 +84,7 @@ final class RingCentralLeadCalls
     /** A call older than this files quietly: a catch-up run announces nothing. */
     private const ANNOUNCE_WITHIN_MINUTES = 60;
 
-    private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail'];
+    private const WORDS = [self::POSSIBLE_SPAM => 'Possible spam', self::MISSED => 'Missed call', self::VOICEMAIL => 'Voicemail', self::IN_PROGRESS => 'In progress'];
 
     public function __construct(
         private readonly LeadThread $thread,
@@ -105,7 +113,7 @@ final class RingCentralLeadCalls
         $ls = $this->lsCalls(min($times), max($times));
         $have = LeadConversation::query()
             ->whereIn('remote_id', array_map(fn ($c) => 'rc_'.$c['id'], $calls))
-            ->pluck('remote_id')->flip();
+            ->with('lead')->get()->keyBy('remote_id');
         $companies = Company::query()->pluck('name', 'id');
         // Per business, never written into the code (Jose, 2026-10-16).
         $org = \App\Models\Organization::query()->find(app(\App\Support\Tenancy\TenantContext::class)->idOrFail());
@@ -122,6 +130,8 @@ final class RingCentralLeadCalls
             $out = self::outbound($call);
             $digits = self::ten(self::customerNumber($call));
             if (isset($have['rc_'.$call['id']])) {
+                $this->update($have['rc_'.$call['id']], $call, $out, $existingQueue, $times[$i]);
+
                 continue;
             }
             // Google's copy of this call: shown there, but RingCentral knows
@@ -215,6 +225,58 @@ final class RingCentralLeadCalls
     }
 
     /**
+     * A call filed while it was still live, or before its recording existed:
+     * what RingCentral says now. Filed once and never read again, an answered
+     * call stayed "Missed call" with no recording (Jose, 2026-10-19).
+     *
+     * @param  array<string, mixed>  $call
+     */
+    private function update(LeadConversation $row, array $call, bool $out, ?string $existingQueue, CarbonImmutable $at): void
+    {
+        $recording = $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null;
+        $fields = ['recording_url' => $recording ?? $row->recording_url];
+        $outcome = null;
+        if ($out) {
+            $fields['duration_ms'] = ($call['result'] ?? null) === 'Call connected' && ($call['duration'] ?? null) !== null ? (int) $call['duration'] * 1000 : null;
+        } else {
+            $outcome = self::outcome($call, $existingQueue, KnownCustomer::is(self::customerNumber($call)));
+            $fields['duration_ms'] = $call['talk_seconds'] === null ? null : (int) $call['talk_seconds'] * 1000;
+            $fields['text'] = self::WORDS[$outcome] ?? null;
+        }
+        $was = $row->text;
+        $row->fill($fields);
+        if (! $row->isDirty()) {
+            return;
+        }
+        $row->save();
+
+        $lead = $row->lead;
+        if ($lead === null) {
+            return;
+        }
+        // The lead's tag is its latest call's: only that call may change it.
+        $latest = $lead->conversations()->orderByDesc('occurred_at')->value('remote_id') === $row->remote_id;
+        if (! $out && $latest && $lead->source === Lead::SOURCE_RINGCENTRAL && $lead->source_status !== $outcome) {
+            $lead->forceFill(['source_status' => $outcome])->save();
+        }
+        $this->thread->refresh($lead);
+        if ($call['answered_by'] !== null) {
+            self::fillDispatcher(Lead::query()->whereKey($lead->getKey()), (string) $call['answered_by']);
+        }
+        // Held back while it was live: told now that it ended unanswered.
+        if ($was === self::WORDS[self::IN_PROGRESS] && ($outcome === self::MISSED || $outcome === self::VOICEMAIL)
+            && $at->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
+            $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
+                'phone' => $lead->phone,
+                'contact_name' => $lead->contact_name,
+                'line' => (string) $lead->category,
+                'occurred_at' => $at->toIso8601String(),
+                'source' => $lead->source,
+            ]]);
+        }
+    }
+
+    /**
      * Calls filed before Google's copy of the same call arrived: withdrawn, and
      * a lead left with no conversation goes with them.
      */
@@ -287,6 +349,7 @@ final class RingCentralLeadCalls
             // A customer's number outranks the key pressed and the hang-up rule
             // (Jose, 2026-10-16: a known customer is never Possible spam).
             $call['answered_by'] !== null => $customer || ($existingQueue !== null && ($call['queue'] ?? null) === $existingQueue) ? self::EXISTING_CLIENT : null,
+            ($call['result'] ?? null) === 'In Progress' => self::IN_PROGRESS,
             $customer && ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::EXISTING_CLIENT,
             ($call['result'] ?? null) === 'Voicemail' => self::VOICEMAIL,
             ($call['result'] ?? null) === 'Accepted' && $call['queue'] === null && ($call['rang'] ?? []) === [] => self::POSSIBLE_SPAM,
