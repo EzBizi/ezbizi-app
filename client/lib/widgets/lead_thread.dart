@@ -735,36 +735,44 @@ class _LeadThreadState extends State<LeadThread> {
                           ],
                         ],
                       ),
-                      // The number on its own line only when the title is a
-                      // name; when the title IS the number, saying it twice
-                      // adds nothing.
-                      if (showsNumberLine(lead) && !narrow)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              formatPhoneNumber(lead['phone'] as String?),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            _copyButton(
-                              lead['phone'] as String,
-                              key: const ValueKey('copy-phone'),
-                              what: 'Number',
-                            ),
-                          ],
-                        ),
-                      Row(
+                      // One wrapping line (UI queue 108): the number (only
+                      // when the title is a name; when the title IS the
+                      // number, saying it twice adds nothing), whose lead it
+                      // is, the account and Google's status, the source.
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
+                          if (showsNumberLine(lead) && !narrow)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  formatPhoneNumber(lead['phone'] as String?),
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                                _copyButton(
+                                  lead['phone'] as String,
+                                  key: const ValueKey('copy-phone'),
+                                  what: 'Number',
+                                ),
+                              ],
+                            ),
                           // Whose lead it is, first on the line: chimney prices
                           // went to a garage-door lead (Jose, 2026-09-30).
-                          if (company != null) ...[
+                          if (company != null)
                             CompanyTag(
                               company,
                               key: const ValueKey('thread-company'),
                             ),
-                            const SizedBox(width: 6),
-                          ],
-                          Flexible(
+                          if (_details != null &&
+                              (!narrow || _showDetails))
+                            ..._factPills(lead, _details!),
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: box.maxWidth,
+                            ),
                             child: Text(
                               narrow && showsNumberLine(lead)
                                   ? '${formatPhoneNumber(lead['phone'] as String?)} · $line'
@@ -1301,7 +1309,8 @@ class _LeadThreadState extends State<LeadThread> {
     }
 
     if (note == null || note.isEmpty) {
-      if (!canEdit) return const SizedBox.shrink();
+      // Drawn on the details line instead, when there is one (UI queue 108).
+      if (!canEdit || _details != null) return const SizedBox.shrink();
       return Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
@@ -1712,14 +1721,6 @@ class _LeadThreadState extends State<LeadThread> {
     final named = (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
     final zip = d['zip'] as String?;
     final address = d['address'] as String?;
-    // The source's own status, named after the source: a Workiz lead's
-    // status read "Google: ..." (UI/UX tour, 2026-10-14).
-    final source = lead['source'] as String?;
-    final statusFrom = source == null || source == 'local_services' ? 'Google' : sourceWord(source);
-    final facts = [
-      if (d['account'] is String) 'Account: ${d['account']}',
-      if (d['google_status'] is String) '$statusFrom: ${d['google_status']}',
-    ];
     final mayCheck =
         widget.session?.me?.can('scheduling.availability.view') == true;
 
@@ -1727,31 +1728,6 @@ class _LeadThreadState extends State<LeadThread> {
       key: const ValueKey('lead-details'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // In colour, as A1 Tools draws them (Jose, 2026-09-29): the account
-        // in orange, Google's own status in its meaning.
-        if (facts.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 2),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                if (d['account'] is String)
-                  _pill(
-                    '${d['account']}',
-                    PersonColours.hue(context, 5),
-                    icon: Icons.campaign_outlined,
-                    key: const ValueKey('lead-account'),
-                  ),
-                if (d['google_status'] is String)
-                  _pill(
-                    '$statusFrom: ${d['google_status']}',
-                    ToneColours.of(context, googleStatusTone(d['google_status'] as String)),
-                    key: const ValueKey('lead-google-status'),
-                  ),
-              ],
-            ),
-          ),
         if (!named && d['name'] is String)
           Text('Name, from the conversation: ${d['name']}', style: quiet),
         // Google placed the address exactly: show its version, marked.
@@ -1800,19 +1776,77 @@ class _LeadThreadState extends State<LeadThread> {
               ],
             ],
           ),
-        if (mayCheck)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const ValueKey('check-availability'),
-              // No zip yet: the address they wrote, which the pane looks up.
-              onPressed: () => _openAvailability(zip ?? address),
-              icon: const Icon(Icons.event_available_outlined, size: 18),
-              label: Text(zip == null ? 'Check availability' : 'Check availability for $zip'),
-            ),
-          ),
+        // Check availability and Add a note as small links on one line
+        // (UI queue 108), not a full-width row each.
+        Wrap(
+          spacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (mayCheck)
+              TextButton.icon(
+                key: const ValueKey('check-availability'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                // No zip yet: the address they wrote, which the pane looks up.
+                onPressed: () => _openAvailability(zip ?? address),
+                icon: const Icon(Icons.event_available_outlined, size: 16),
+                label: Text(
+                  zip == null
+                      ? 'Check availability'
+                      : 'Check availability for $zip',
+                ),
+              ),
+            if (_noteIsEmpty(lead) && widget.onNote != null && !_editingNote)
+              TextButton.icon(
+                key: const ValueKey('note-add'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onPressed: () {
+                  _note.clear();
+                  setState(() => _editingNote = true);
+                },
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: const Text('Add a note'),
+              ),
+          ],
+        ),
       ],
     );
+  }
+
+  static bool _noteIsEmpty(Map<String, dynamic> lead) =>
+      ((lead['note'] as String?) ?? '').isEmpty;
+
+  /// The account and the source's own status, in colour, as A1 Tools draws
+  /// them (Jose, 2026-09-29): the account in orange, Google's status in its
+  /// meaning. On the header's source line since UI queue 108.
+  List<Widget> _factPills(Map<String, dynamic> lead, Map<String, dynamic> d) {
+    // The source's own status, named after the source: a Workiz lead's
+    // status read "Google: ..." (UI/UX tour, 2026-10-14).
+    final source = lead['source'] as String?;
+    final statusFrom = source == null || source == 'local_services'
+        ? 'Google'
+        : sourceWord(source);
+    return [
+      if (d['account'] is String)
+        _pill(
+          '${d['account']}',
+          PersonColours.hue(context, 5),
+          icon: Icons.campaign_outlined,
+          key: const ValueKey('lead-account'),
+        ),
+      if (d['google_status'] is String)
+        _pill(
+          '$statusFrom: ${d['google_status']}',
+          ToneColours.of(
+            context,
+            googleStatusTone(d['google_status'] as String),
+          ),
+          key: const ValueKey('lead-google-status'),
+        ),
+    ];
   }
 
   Widget _pill(String text, ToneColours colours, {IconData? icon, Key? key}) => Container(
