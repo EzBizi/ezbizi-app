@@ -604,6 +604,9 @@ return [
     // 2026-09-28); until then that destination answers "not switched on".
     'google_business_profile' => [
         'hours_write' => (bool) env('GBP_HOURS_WRITE', false),
+        // Categories and services (BusinessProfileApi). Off while another system
+        // still manages A-1's profiles (2026-10-19).
+        'write' => (bool) env('GBP_WRITE', false),
     ],
 
     // The sweep retires a job Workiz deleted (SyncWorkizJobs::retire). Off
