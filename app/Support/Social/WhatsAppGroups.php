@@ -227,12 +227,6 @@ final class WhatsAppGroups
         $group->forceFill(['remote_id' => $id, 'invite_link' => $link['invite_link'] ?? null])->save();
     }
 
-    /** A text to one person: in full inside the 24-hour window, else held behind the approved "report ready" template (Automations' report.text). */
-    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body): bool
-    {
-        return $this->toPerson($number, $user, $title, ['type' => 'text', 'text' => ['body' => $body]], $body, null, null);
-    }
-
     /** @param  array<string, mixed>  $message */
     private function toPerson(WhatsAppNumber $number, User $user, string $title, array $message, string $body, ?string $mediaId, ?string $filename): bool
     {
