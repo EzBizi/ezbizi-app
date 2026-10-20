@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../../core/api_client.dart';
@@ -13,13 +14,12 @@ import 'camera_bridge_panel.dart';
 BridgePanelSource realBridgeSource(ApiClient api, String? organization) =>
     _RealBridge(api, organization);
 
-/// Switched off from the panel. Until the app restarts: Monitoring's bridge
-/// has no stored on/off, and startCameraBridge() runs at every launch.
-bool _switchedOff = false;
-
 class _RealBridge extends BridgePanelSource {
   _RealBridge(this.api, this.organization) {
     _refresh();
+    // The scan and the last check-in change without a state change, and
+    // "last 3m ago" ages on its own: read again while the panel is open.
+    _tick = Timer.periodic(const Duration(seconds: 10), (_) => _refresh());
   }
 
   final ApiClient api;
@@ -27,6 +27,7 @@ class _RealBridge extends BridgePanelSource {
   final BridgeStore _store = BridgeStore();
   CameraBridgeService? _watched;
   BridgePanelStatus _status = const BridgePanelStatus();
+  late final Timer _tick;
   bool _disposed = false;
 
   @override
@@ -46,11 +47,6 @@ class _RealBridge extends BridgePanelSource {
     ).existsSync();
   }
 
-  static bool _engineInstalled() => File(
-    '${File(Platform.resolvedExecutable).parent.path}'
-    '${Platform.pathSeparator}go2rtc.exe',
-  ).existsSync();
-
   void _watch() {
     final bridge = cameraBridge;
     if (identical(bridge, _watched)) return;
@@ -62,30 +58,44 @@ class _RealBridge extends BridgePanelSource {
   Future<void> _refresh() async {
     _watch();
     final key = await _store.siteKey();
+    final site = await _store.siteName();
+    final off = await _store.switchedOff();
     final recorder = await _store.recorder();
     final starts = _startsWithWindows();
     final bridge = cameraBridge;
+    final found = bridge?.found ?? const [];
     final paired = key != null;
+    final running = paired && !off && bridge != null;
+    final engineMissing = bridge?.engine.missing ?? false;
     final trouble = bridge?.state.value == BridgeState.trouble;
     if (_disposed) return;
     _status = BridgePanelStatus(
-      on: !_switchedOff,
+      on: !off,
       startsWithWindows: starts,
       paired: paired,
+      siteName: (site ?? '').isEmpty ? null : site,
       organization: organization,
+      recorderFoundAt: [
+        for (final f in found)
+          if (f.kind == 'recorder') f.address,
+      ].firstOrNull,
       recorderHost: recorder?.host,
       passwordSaved: (recorder?.password ?? '').isNotEmpty,
+      camerasFound: bridge == null
+          ? null
+          : found.where((f) => f.kind == 'camera').length,
+      lastOk: bridge?.lastOk,
       fixes: {
-        if (!_switchedOff && !starts)
+        if (!off && !starts)
           BridgeLine.on:
               'EzBizi does not start with Windows on this PC. Run the EzBizi '
               'installer again and tick "Start EzBizi when I sign in to '
               'Windows".',
-        if (paired && !_switchedOff && bridge == null && !_engineInstalled())
+        if (running && engineMissing)
           BridgeLine.talking:
-              'The bridge cannot start: go2rtc.exe is missing beside EzBizi. '
-              'Install EzBizi again.',
-        if (paired && !_switchedOff && trouble)
+              'The bridge cannot relay: go2rtc.exe is missing from the engine '
+              'folder beside EzBizi. Install EzBizi again.'
+        else if (running && trouble)
           BridgeLine.talking:
               'EzBizi did not answer this PC. Check its internet connection; '
               'the bridge keeps trying.',
@@ -97,10 +107,7 @@ class _RealBridge extends BridgePanelSource {
   @override
   Future<String?> pair(String code) async {
     final error = await CameraBridgeService.pair(api, _store, code);
-    if (error == null) {
-      _switchedOff = false;
-      await startCameraBridge();
-    }
+    if (error == null) await startCameraBridge(); // stays off if switched off
     await _refresh();
     return error;
   }
@@ -119,21 +126,14 @@ class _RealBridge extends BridgePanelSource {
 
   @override
   Future<void> setOn(bool on) async {
-    _switchedOff = !on;
-    final bridge = cameraBridge;
-    if (!on) {
-      bridge?.stop();
-    } else if (bridge != null) {
-      await bridge.start();
-    } else {
-      await startCameraBridge();
-    }
+    await setCameraBridgeOn(on);
     await _refresh();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _tick.cancel();
     _watched?.state.removeListener(_refresh);
     super.dispose();
   }

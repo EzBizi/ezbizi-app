@@ -24,6 +24,7 @@ class BridgePanelStatus {
     this.paired = false,
     this.siteName,
     this.organization,
+    this.recorderFoundAt,
     this.recorderHost,
     this.passwordSaved = false,
     this.camerasFound,
@@ -36,6 +37,11 @@ class BridgePanelStatus {
   final bool paired;
   final String? siteName;
   final String? organization;
+
+  /// Where the last network scan found a recorder; null when none answered.
+  final String? recorderFoundAt;
+
+  /// The address typed and saved on this PC, with its login.
   final String? recorderHost;
   final bool passwordSaved;
   final int? camerasFound;
@@ -109,6 +115,7 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
   void initState() {
     super.initState();
     _source.addListener(_changed);
+    _prefillHost();
   }
 
   @override
@@ -122,7 +129,15 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
   }
 
   void _changed() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _prefillHost();
+    setState(() {});
+  }
+
+  /// The scan's recorder address, in the empty Address box.
+  void _prefillHost() {
+    final found = _source.status.recorderFoundAt;
+    if (found != null && _host.text.isEmpty) _host.text = found;
   }
 
   Future<void> _pair() async {
@@ -281,14 +296,18 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
               children: [
                 Expanded(
                   child: Text(
-                    'Recorder found at ${s.recorderHost} · password saved on '
-                    'this PC',
+                    s.recorderFoundAt != null
+                        ? 'Recorder found at ${s.recorderFoundAt} · password '
+                              'saved on this PC'
+                        // Saved, but no scan has found it (yet): say which.
+                        : 'Recorder at ${s.recorderHost} · password saved on '
+                              'this PC',
                   ),
                 ),
                 TextButton(
                   key: const ValueKey('camera-bridge-recorder-change'),
                   onPressed: () => setState(() {
-                    _host.text = s.recorderHost ?? '';
+                    _host.text = s.recorderHost ?? s.recorderFoundAt ?? '';
                     _editingRecorder = true;
                   }),
                   child: const Text('Change'),
@@ -297,7 +316,12 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
             ),
           );
         }
-        return _row(context, n, _Mark.pending, _recorderForm(context));
+        return _row(
+          context,
+          n,
+          _Mark.pending,
+          _recorderForm(context, s.recorderFoundAt),
+        );
       case BridgeLine.cameras:
         final count = s.camerasFound ?? 0;
         if (count > 0) {
@@ -367,12 +391,16 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
     );
   }
 
-  Widget _recorderForm(BuildContext context) {
+  Widget _recorderForm(BuildContext context, String? foundAt) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text("The recorder's address and login"),
+        Text(
+          foundAt != null
+              ? 'Recorder found at $foundAt. Enter its login'
+              : "The recorder's address and login",
+        ),
         const SizedBox(height: 8),
         TextField(
           key: const ValueKey('camera-bridge-recorder-host'),

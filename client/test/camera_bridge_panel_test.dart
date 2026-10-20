@@ -89,6 +89,7 @@ void main() {
         paired: true,
         siteName: 'Harbor lot',
         organization: 'Pinecrest Services',
+        recorderFoundAt: '10.0.4.21',
         recorderHost: '10.0.4.20',
         passwordSaved: true,
         camerasFound: 6,
@@ -113,7 +114,7 @@ void main() {
       findsOne,
     );
     expect(
-      find.text('Recorder found at 10.0.4.20 · password saved on this PC'),
+      find.text('Recorder found at 10.0.4.21 · password saved on this PC'),
       findsOne,
     );
     expect(find.text('6 cameras found'), findsOne);
@@ -209,6 +210,56 @@ void main() {
           .controller!
           .text,
       '10.0.4.20',
+    );
+  });
+
+  testWidgets('the recorder line says found only when the scan found it', (
+    tester,
+  ) async {
+    // Saved login, nothing found by the scan.
+    await _pumpPanel(
+      tester,
+      _FakeBridge(
+        const BridgePanelStatus(
+          on: true,
+          paired: true,
+          recorderHost: '10.0.4.20',
+          passwordSaved: true,
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('camera-bridge-line-3-done')), findsOne);
+    expect(
+      find.text('Recorder at 10.0.4.20 · password saved on this PC'),
+      findsOne,
+    );
+    expect(find.textContaining('Recorder found'), findsNothing);
+
+    // Found by the scan, no login yet: the form, with the address filled in.
+    await _pumpPanel(
+      tester,
+      _FakeBridge(
+        const BridgePanelStatus(
+          on: true,
+          paired: true,
+          recorderFoundAt: '10.0.4.33',
+        ),
+      ),
+      key: 'found',
+    );
+    expect(
+      find.byKey(const ValueKey('camera-bridge-line-3-pending')),
+      findsOne,
+    );
+    expect(find.text('Recorder found at 10.0.4.33. Enter its login'), findsOne);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('camera-bridge-recorder-host')),
+          )
+          .controller!
+          .text,
+      '10.0.4.33',
     );
   });
 
@@ -350,7 +401,11 @@ ApiClient _api() => ApiClient(
   }),
 );
 
-Future<void> _pumpPanel(WidgetTester tester, BridgePanelSource source) async {
+Future<void> _pumpPanel(
+  WidgetTester tester,
+  BridgePanelSource source, {
+  String key = 'panel',
+}) async {
   tester.view.physicalSize = const Size(1200, 1000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -360,6 +415,7 @@ Future<void> _pumpPanel(WidgetTester tester, BridgePanelSource source) async {
       theme: EzBiziTheme.light(),
       home: Scaffold(
         body: CameraBridgePanel(
+          key: ValueKey(key),
           api: api,
           session: Session(api),
           source: source,
