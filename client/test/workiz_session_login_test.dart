@@ -79,6 +79,28 @@ void main() {
     expect(done, 1);
   });
 
+  // Workiz stamps last_reached_at on handoff (2026-10-20).
+  testWidgets('a connected session says when it last reached EzBizi', (
+    tester,
+  ) async {
+    final server = _Server()
+      ..row = {
+        'id': 'w-1',
+        'provider': 'workiz_web',
+        'status': 'connected',
+        'last_reached_at': DateTime.now()
+            .subtract(const Duration(minutes: 12))
+            .toUtc()
+            .toIso8601String(),
+      };
+    await _pumpSession(tester, server);
+
+    expect(
+      find.text('Reads payments · last reached 12 min ago'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a branch picked for an account is PUT', (tester) async {
     final server = _Server()
       ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'connected'};

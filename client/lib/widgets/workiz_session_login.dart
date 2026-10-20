@@ -257,6 +257,14 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     );
   }
 
+  static String _ago(DateTime at) {
+    final d = DateTime.now().difference(at.toLocal());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
   Widget _status(ThemeData theme, TextStyle? small) {
     final reason = _row?['status_reason'] as String?;
 
@@ -272,6 +280,19 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
                 : const StatusPill('Signed out', tone: Tone.bad),
           ],
         ),
+        // When the session last reached EzBizi, stamped on handoff by the
+        // server (Workiz, 2026-10-20). The link is anonymous on purpose, so
+        // there is no "sent by".
+        if (_connected &&
+            DateTime.tryParse('${_row?['last_reached_at'] ?? ''}') != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Reads payments · last reached '
+            '${_ago(DateTime.parse('${_row!['last_reached_at']}'))}',
+            key: const ValueKey('workiz-session-reached'),
+            style: small,
+          ),
+        ],
         if (!_connected) ...[
           if ((reason ?? '').isNotEmpty) ...[
             const SizedBox(height: 4),
