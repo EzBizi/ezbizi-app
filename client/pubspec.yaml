@@ -96,6 +96,11 @@ dependencies:
   # Download on a phone: file_selector cannot save on Android or iOS, so the
   # video goes to the gallery (Photos). Desktop and web keep Files.download.
   gal: ^2.3.3
+  # Take a photo in the phone apps (Jose, 2026-10-20: "yes add to android
+  # and iphone sure"). flutter/packages' own; the camera intent on Android
+  # needs no permission, iOS needs NSCameraUsageDescription. Desktop never
+  # calls it (Files.canTakePhoto is false there); web keeps <input capture>.
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:
