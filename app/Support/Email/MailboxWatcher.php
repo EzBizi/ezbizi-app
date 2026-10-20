@@ -488,6 +488,16 @@ final class MailboxWatcher
             // office hours wants the first one.
             'received_at'  => $message->sentAt?->toIso8601String(),
 
+            // For "reply when the office is closed" (Eve and Jose, 2026-10-20):
+            // the inbox's own place's leads.office_hours, as the lead replies use.
+            'office_open'  => app(\App\Support\Leads\LeadOfficeHours::class)->isOpenAt(
+                match ($mailbox->automationScope()[0]) {
+                    'franchise' => \App\Models\Franchise::query()->find($mailbox->scope_id),
+                    'company' => \App\Models\Company::query()->find($mailbox->scope_id),
+                    default => null,
+                } ?? \App\Models\Organization::query()->find($mailbox->organization_id),
+            ),
+
             /*
              * WHICH OF THE RULE'S OWN WORDS WERE IN THE BODY. Never the body.
              *
