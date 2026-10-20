@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/deep_links.dart';
+import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -67,6 +68,7 @@ const _kinds = {
 };
 
 const _removed = 'Removed at the source';
+const _nameless = 'No name given';
 
 class _ComplaintsTabState extends State<ComplaintsTab> {
   bool _loading = true;
@@ -251,18 +253,25 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
 
   // ------------------------------------------------------------- words
 
-  static String? _title(Map<String, dynamic> row) =>
-      (row['title'] as String?)?.trim().isNotEmpty == true
-      ? (row['title'] as String).trim()
-      : null;
+  /// The name, else the caller's number (most complaint calls give no name),
+  /// else null - and null means "Removed at the source" only when the server
+  /// says the review or lead is gone (desk, 2026-10-20).
+  static String? _title(Map<String, dynamic> row) {
+    final name = (row['title'] as String?)?.trim() ?? '';
+    if (name.isNotEmpty) return name;
+    final phone = (row['phone'] as String?)?.trim() ?? '';
+    if (phone.isNotEmpty) return formatPhoneNumber(phone);
+    return row['source_missing'] == true ? null : _nameless;
+  }
 
   static String? _summary(Map<String, dynamic> row) =>
       (row['summary'] as String?)?.trim().isNotEmpty == true
       ? (row['summary'] as String).trim()
       : null;
 
-  static bool _gone(Map<String, dynamic> row) =>
-      _title(row) == null && _summary(row) == null;
+  /// Gone only when the server says the review or lead row no longer exists;
+  /// a caller with no name and no summary is still there to open.
+  static bool _gone(Map<String, dynamic> row) => row['source_missing'] == true;
 
   static String _kindText(Map<String, dynamic> row) => switch (row['kind']) {
     'bad_review' =>

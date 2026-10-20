@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/phone_numbers.dart';
 import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -240,6 +241,19 @@ void main() {
     expect(find.byKey(const ValueKey('complaint-open-source')), findsNothing);
   });
 
+  testWidgets('a nameless caller shows the number, not "Removed"', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.text(formatPhoneNumber('+14145340603')), findsWidgets);
+    expect(
+      find.text('Removed at the source'),
+      findsOneWidget,
+      reason: 'only the erased one',
+    );
+  });
+
   testWidgets('Open the lead goes to Leads with that lead', (tester) async {
     final opened = <String>[];
     await _pump(tester, openLead: opened.add);
@@ -422,8 +436,11 @@ final _rows = <Map<String, dynamic>>[
     'id': 'c-2',
     'kind': 'call_complaint',
     'status': 'in_progress',
-    'title': 'Bram Tolliver',
-    'summary': 'The quote doubled on the day.',
+    // A caller who gave no name and left no summary: still there (desk, 2026-10-20).
+    'title': null,
+    'summary': null,
+    'phone': '+14145340603',
+    'source_missing': false,
     'rating': null,
     'branch': null,
     'owner': {'id': 'u-7', 'name': 'Wren Ashby'},
@@ -446,6 +463,7 @@ final _rows = <Map<String, dynamic>>[
     'updated_at': '2026-10-17T10:00:00Z',
     'solved_at': null,
     'note_count': 0,
+    'source_missing': true,
     'source': {'type': 'review', 'id': 'rv-gone'},
   },
 ];
