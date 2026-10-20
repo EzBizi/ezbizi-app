@@ -53,7 +53,7 @@ final class WorkizWebSession
 
         $connection->connect(['cookies' => $cookies, 'user_id' => $user, 'account_id' => $account]
             + array_intersect_key((array) ($connection->credentials ?? []), ['accounts' => 1]));
-        $connection->forceFill(['status' => 'connected', 'status_reason' => null])->save();
+        $connection->forceFill(['status' => 'connected', 'status_reason' => null, 'last_reached_at' => now()])->save();
 
         return null;
     }

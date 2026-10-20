@@ -50,6 +50,7 @@ class WorkizWebSessionTest extends TestCase
 
         $row = $this->inTenant($this->t['org'], fn () => SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->sole());
         $this->assertSame(['connected', '406487', '98765'], [$row->status, $row->credentials['user_id'], $row->credentials['account_id']]);
+        $this->assertNotNull($row->last_reached_at, 'the card says when it was sent');
         $this->assertSame($this->cookies(), $row->credentials['cookies'], 'only the three cookies Workiz needs');
         Http::assertSent(fn (Request $r) => str_contains($r->header('Cookie')[0] ?? '', 'sendajob_sessid=sess-abc'));
     }
