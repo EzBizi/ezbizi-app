@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0457',
+      date: '20 Oct 2026',
+      items: [
+        'Reports: an approved weekly or monthly report is sent exactly as previewed, marked with its version.',
+        'Reports: before approving, someone with Correct a report can leave jobs out, order the companies or set this report\'s goal. The numbers still come only from the sources, and a corrected report needs a new approval.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0456',
       date: '20 Oct 2026',
       items: [
