@@ -161,6 +161,12 @@ class ActionRunner
             // column directly, so calling it "Price" here would invite exactly
             // that mistake through the other door.
             'amount_minor' => 'Amount in cents',
+            // Jose's Project Management rules (Jobs, cff7eceae, 2026-10-20).
+            'job_type' => 'Job type',
+            'sub_status' => 'Sub-status',
+            // One tag in or out, never replace-all, so two rules cannot erase each other's.
+            'tag_add' => 'Add a tag',
+            'tag_remove' => 'Remove a tag',
         ],
         Customer::class => [
             'name' => 'Name',
@@ -2279,6 +2285,14 @@ class ActionRunner
                 'detail' => "'{$field}' is not a field an automation may set on "
                     .class_basename($subject).'. Allowed: '.implode(', ', array_keys($writable)).'.',
             ];
+        }
+
+        if ($subject instanceof Job && in_array($field, ['tag_add', 'tag_remove'], true)) {
+            $tags = (array) ($subject->tags ?? []);
+            $value = $field === 'tag_add'
+                ? (collect($tags)->contains(fn ($t) => strcasecmp((string) $t, trim((string) $value)) === 0) ? $tags : [...$tags, trim((string) $value)])
+                : array_values(array_filter($tags, fn ($t) => strcasecmp((string) $t, trim((string) $value)) !== 0));
+            $field = 'tags';
         }
 
         $before = $subject->getAttribute($field);
