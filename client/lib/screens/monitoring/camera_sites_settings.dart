@@ -98,7 +98,9 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
     });
   }
 
-  Future<void> _openSite(String id) async {
+  /// [pairNow] right after Add a site; opening a site only reads it, and its
+  /// Get a code button asks for one.
+  Future<void> _openSite(String id, {bool pairNow = false}) async {
     _tick?.cancel();
     setState(() {
       _openId = id;
@@ -124,7 +126,9 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
       ];
       _site = site;
     });
-    if (_site != null && _site!['device'] == null && _manage) _newCode();
+    if (pairNow && _site != null && _site!['device'] == null && _manage) {
+      _newCode();
+    }
   }
 
   void _back() {
@@ -154,7 +158,7 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
     }
     final id = '${_map(res.data)['id']}';
     unawaited(_load());
-    await _openSite(id);
+    await _openSite(id, pairNow: true);
   }
 
   Future<void> _newCode() async {

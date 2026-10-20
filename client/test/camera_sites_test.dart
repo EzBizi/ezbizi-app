@@ -167,13 +167,11 @@ void main() {
       find.byKey(const ValueKey('camera-site-disconnect-confirm')),
     );
     await tester.pumpAndSettle();
-    // Revoked once; the site has no PC now, so it offers a code for the next.
-    expect(server.writes, [
-      'POST /monitoring/camera-sites/s-yard/revoke {}',
-      'POST /monitoring/camera-sites/s-yard/pairing-code {}',
-    ]);
+    // Revoked once; the site has no PC now, so it offers Get a code for the
+    // next one rather than making one unasked.
+    expect(server.writes, ['POST /monitoring/camera-sites/s-yard/revoke {}']);
     expect(find.byKey(const ValueKey('camera-site-bridge')), findsNothing);
-    expect(find.byKey(const ValueKey('camera-site-pairing-code')), findsOne);
+    expect(find.byKey(const ValueKey('camera-site-new-code')), findsOne);
   });
 
   testWidgets('a camera switch PATCHes the camera; a name saves in place', (
@@ -245,14 +243,19 @@ void main() {
     expect(find.textContaining('YARD-OFFICE · EzBizi 0.0.0460'), findsOne);
   });
 
-  testWidgets('a site with no PC shows its pairing code straight away', (
+  // Opening a site only reads it: a code is made on Add a site or on Get a
+  // code, never by looking.
+  testWidgets('a site with no PC offers a code, made on asking', (
     tester,
   ) async {
     final server = _Server();
     await _pump(tester, server, _manage);
     await tester.tap(find.byKey(const ValueKey('camera-site-s-shop')));
     await tester.pumpAndSettle();
+    expect(server.writes, isEmpty);
 
+    await tester.tap(find.byKey(const ValueKey('camera-site-new-code')));
+    await tester.pumpAndSettle();
     expect(server.writes, [
       'POST /monitoring/camera-sites/s-shop/pairing-code {}',
     ]);
