@@ -110,6 +110,48 @@ final class AirtableBase
     }
 
     /**
+     * Every base a token reaches, as Airtable lists them (Jose, 2026-10-20:
+     * "shouldn't i just need to provide the access token?"). Paged; a refused
+     * token is a sentence, as in verify().
+     *
+     * @return list<array{id: string, name: string, permission: string}>
+     */
+    public function bases(string $token): array
+    {
+        $bases = [];
+        $offset = null;
+
+        do {
+            try {
+                $response = Http::withToken($token)->acceptJson()->timeout(20)
+                    ->get(self::API.'/meta/bases', array_filter(['offset' => $offset]));
+            } catch (ConnectionException) {
+                throw AirtableRefused::token('Airtable could not be reached.');
+            }
+            if ($response->status() === 401) {
+                throw AirtableRefused::token('Airtable did not accept that token.');
+            }
+            if ($response->failed()) {
+                throw AirtableRefused::token('Airtable refused the request ('.$response->status().').');
+            }
+            foreach ((array) $response->json('bases') as $base) {
+                $bases[] = [
+                    'id' => (string) ($base['id'] ?? ''),
+                    'name' => (string) ($base['name'] ?? $base['id'] ?? ''),
+                    'permission' => (string) ($base['permissionLevel'] ?? ''),
+                ];
+            }
+            $offset = $response->json('offset');
+        } while (is_string($offset) && $offset !== '');
+
+        if ($bases === []) {
+            throw AirtableRefused::token('That token reaches no bases. In Airtable, add the bases to the token\'s access list.');
+        }
+
+        return $bases;
+    }
+
+    /**
      * What Airtable calls this base, or null if it will not say.
      *
      * A SEPARATE endpoint from the tables one, which is the whole reason this

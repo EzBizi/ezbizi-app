@@ -7,6 +7,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
 import '../../widgets/workiz_connect_form.dart';
+import '../../widgets/airtable_token_connect.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
@@ -643,28 +644,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
     const SizedBox(height: 4),
     Text(
-      'One connection is one base. Connect as many bases as this business '
-      'keeps its figures in.',
+      'Paste one access token, then tick the bases EzBizi should use. A new '
+      'token can replace the old one for every base at once.',
       style: Theme.of(context).textTheme.bodySmall,
     ),
     const SizedBox(height: 8),
-    ApiKeyConnectForm(
+    AirtableTokenConnect(
       api: widget.api,
-      path: '/social/airtable',
-      submitLabel: 'Connect base',
-      fields: const [
-        (
-          'api_token',
-          'Access token',
-          'Airtable › Builder hub › Personal access tokens',
-        ),
-        (
-          'base_id',
-          'Base',
-          'The part of the base\'s link that starts with "app"',
-        ),
-      ],
-      onConnected: _load,
+      hasConnections: _connections.any((c) => c.provider == 'airtable'),
+      onChanged: _load,
     ),
   ];
 
