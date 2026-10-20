@@ -38,7 +38,7 @@ class CamerasController extends Controller
     {
         $this->authorize('viewAny', MonitoringCamera::class);
 
-        $cameras = MonitoringCamera::query()->orderByDesc('created_at')->get();
+        $cameras = MonitoringCamera::query()->visibleTo(request()->user())->orderByDesc('created_at')->get();
 
         return response()->json([
             'data' => $cameras->map(fn (MonitoringCamera $c) => $this->present($c))->all(),
@@ -81,7 +81,7 @@ class CamerasController extends Controller
     /** PATCH /api/v1/monitoring/cameras/{id} */
     public function update(Request $request, string $id): JsonResponse
     {
-        $camera = MonitoringCamera::query()->find($id);
+        $camera = MonitoringCamera::query()->visibleTo(request()->user())->find($id);
 
         if ($camera === null) {
             abort(404);
@@ -112,7 +112,7 @@ class CamerasController extends Controller
     /** DELETE /api/v1/monitoring/cameras/{id} */
     public function destroy(string $id): Response
     {
-        $camera = MonitoringCamera::query()->find($id);
+        $camera = MonitoringCamera::query()->visibleTo(request()->user())->find($id);
 
         if ($camera === null) {
             abort(404);

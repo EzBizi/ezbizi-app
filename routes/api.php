@@ -71,6 +71,7 @@ use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
+use App\Http\Controllers\Api\Monitoring\CameraRelayController;
 use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
@@ -549,6 +550,10 @@ Route::prefix('v1/monitoring/bridge')
         Route::get('work', [CameraBridgeController::class, 'work']);
         Route::post('still', [CameraBridgeController::class, 'still']);
     });
+
+// The box's MediaMTX asking about a token, or reporting viewers. X-Relay-Secret, no user.
+Route::post('v1/camera-relay/auth', [CameraRelayController::class, 'auth'])->middleware('throttle:600,1');
+Route::post('v1/camera-relay/viewers', [CameraRelayController::class, 'viewers'])->middleware('throttle:600,1');
 
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
@@ -2896,6 +2901,7 @@ Route::prefix('v1')
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
+        Route::post('monitoring/cameras/{id}/watch', [CameraRelayController::class, 'watch']);
 
         // ── Monitoring: camera sites + pairing a bridge PC (2026-10-20 camera bridge, phase 1) ──
         Route::get('monitoring/camera-sites', [CameraSitesController::class, 'index']);

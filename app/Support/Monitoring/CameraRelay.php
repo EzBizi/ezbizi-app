@@ -4,6 +4,7 @@ namespace App\Support\Monitoring;
 
 use App\Models\CameraSite;
 use App\Models\MonitoringCamera;
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -32,7 +33,7 @@ class CameraRelay
         $out = [];
         foreach ($this->state($site->id)['items'] as $cameraId => $qualities) {
             foreach ($qualities as $quality => $until) {
-                if ($until > time()) {
+                if ($until > now()->getTimestamp()) {
                     $out[] = ['camera_id' => (string) $cameraId, 'quality' => $quality];
                 }
             }
@@ -45,8 +46,8 @@ class CameraRelay
     public function want(MonitoringCamera $camera, string $quality): void
     {
         $this->change($camera->site_id, function (array &$items) use ($camera, $quality): bool {
-            $new = ($items[$camera->id][$quality] ?? 0) <= time();
-            $items[$camera->id][$quality] = time() + (int) config('camera_bridge.want_ttl_seconds', 60);
+            $new = ($items[$camera->id][$quality] ?? 0) <= now()->getTimestamp();
+            $items[$camera->id][$quality] = now()->getTimestamp() + (int) config('camera_bridge.want_ttl_seconds', 60);
 
             return $new; // a renewal alone does not wake the bridge
         });
@@ -76,7 +77,7 @@ class CameraRelay
     public function mintPublish(MonitoringCamera $camera, string $quality): array
     {
         $path = self::path($camera->id, $quality);
-        $expires = time() + (int) config('camera_bridge.publish_ttl_seconds', 600);
+        $expires = now()->getTimestamp() + (int) config('camera_bridge.publish_ttl_seconds', 600);
         $token = $this->sign('publish', $path, $expires);
         $base = rtrim((string) config('camera_bridge.publish_url'), '/');
 
@@ -87,11 +88,27 @@ class CameraRelay
         ];
     }
 
+    /** @return array{url:string, token:string, expires_at:string} */
+    public function mintPlay(MonitoringCamera $camera, User $viewer, string $quality): array
+    {
+        // ponytail: the viewer is not in the token; the watch audit names them.
+        $path = self::path($camera->id, $quality);
+        $expires = now()->getTimestamp() + (int) config('camera_bridge.play_ttl_seconds', 300);
+        $token = $this->sign('read', $path, $expires);
+        $base = rtrim((string) config('camera_bridge.play_url'), '/');
+
+        return [
+            'url' => "{$base}/api/stream.mjpeg?src={$path}&token={$token}",
+            'token' => $token,
+            'expires_at' => date(DATE_ATOM, $expires),
+        ];
+    }
+
     /** The relay's auth hook asks this: is $token good for $action on $path now? */
     public function verify(string $token, string $action, string $path): bool
     {
         $parts = explode('.', $token, 2);
-        if (count($parts) !== 2 || ! ctype_digit($parts[0]) || (int) $parts[0] < time()) {
+        if (count($parts) !== 2 || ! ctype_digit($parts[0]) || (int) $parts[0] < now()->getTimestamp()) {
             return false;
         }
 
@@ -101,7 +118,7 @@ class CameraRelay
     private function sign(string $action, string $path, int $expires): string
     {
         // URL-safe: it rides in an RTMP query string.
-        return $expires.'.'.hash_hmac('sha256', "{$action}|{$path}|{$expires}", (string) config('app.key'));
+        return $expires.'.'.hash_hmac('sha256', "{$action}|{$path}|{$expires}", (string) (config('camera_bridge.relay_secret') ?: config('app.key')));
     }
 
     /** @return array{version:int, items:array<string, array<string, int>>} */

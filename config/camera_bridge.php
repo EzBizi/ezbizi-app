@@ -12,6 +12,13 @@ return [
     'publish_url' => env('CAMERA_RELAY_PUBLISH_URL', 'rtmps://cams.ezbizi.com:1936'),
     'publish_ttl_seconds' => 600,
 
+    // Where a viewer's MJPEG comes from (the box's go2rtc) and how long it lives.
+    'play_url' => env('CAMERA_RELAY_PLAY_URL', 'https://cams.ezbizi.com'),
+    'play_ttl_seconds' => 300,
+
+    // Signs relay tokens and authenticates the relay's own hooks to Laravel.
+    'relay_secret' => env('CAMERA_RELAY_SECRET'),
+
     // A viewer's want lapses unless renewed (the watch endpoint renews it).
     'want_ttl_seconds' => 60,
 ];
