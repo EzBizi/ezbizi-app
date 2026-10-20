@@ -29,6 +29,8 @@ final class ReportSources
             'employee' => 'Employee Cost', 'helper' => 'Helper Cost', 'gas' => 'Gas Cost', 'operation' => 'Ave Operation Cost', 'hours' => 'Total Hours '],
         'hq_expenses' => ['date' => 'Date', 'category' => 'Category Name', 'amount' => 'Cost'],
         'pnl' => [],
+        // Other marketing (an agency's or a directory's own sheet), per area and day.
+        'marketing' => ['date' => 'DATE', 'area' => 'Service Area', 'amount' => 'COST', 'calls' => 'CALLS', 'jobs' => 'JOBS', 'sales' => 'TOTAL SALES', 'profit' => 'PROFIT'],
     ];
 
     /**
