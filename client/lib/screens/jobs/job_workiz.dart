@@ -395,9 +395,12 @@ Tone estimateTone(String status) => switch (status.toLowerCase()) {
 /// The job's photos as a grid, and its other files (inspection reports) as
 /// rows that open in a new tab. A photo opens large in place.
 class WorkizFiles extends StatefulWidget {
-  const WorkizFiles({super.key, required this.files});
+  const WorkizFiles({super.key, required this.files, this.across});
 
   final List<({String name, String url})> files;
+
+  /// Pictures per row; null picks by width.
+  final int? across;
 
   @override
   State<WorkizFiles> createState() => _WorkizFilesState();
@@ -483,13 +486,31 @@ class _WorkizFilesState extends State<WorkizFiles> {
       key: const Key('job-workiz-files'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _Heading('Photos and files'),
+        // Under the job's own (queue 119): what is still only in Workiz.
+        Wrap(
+          spacing: 10,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              'From Workiz · read-only · ${widget.files.length}'.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Text(
+              "They'll move here once they're copied in.",
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         if (pictures.isNotEmpty)
           LayoutBuilder(
             builder: (context, box) {
               const gap = 6.0;
-              final across = box.maxWidth >= 420 ? 4 : 3;
+              final across = widget.across ?? (box.maxWidth >= 420 ? 4 : 3);
               final side = (box.maxWidth - gap * (across - 1)) / across;
               // ponytail: every tile is built, so every photo is fetched when
               // the tab opens: about eight full-size pictures on the jobs that

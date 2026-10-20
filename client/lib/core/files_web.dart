@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:web/web.dart' as web;
 
 import 'files.dart';
@@ -102,13 +104,25 @@ void clearQuery() {
 Future<PickedBytes?> pickImage() =>
     pickBytes(accept: 'image/jpeg,image/png,image/webp');
 
+/// A phone's browser opens the camera for `<input capture>`; a desktop one
+/// ignores the attribute and shows its file picker, which is not "take a
+/// photo", so it is not offered there.
+bool get canTakePhoto =>
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
+
+/// The rear camera, through the browser's own file input.
+Future<PickedBytes?> takePhoto() =>
+    pickBytes(accept: 'image/*', capture: 'environment');
+
 /// Any file, as bytes. [accept] is the input's accept list, or empty for all.
-Future<PickedBytes?> pickBytes({String accept = ''}) {
+Future<PickedBytes?> pickBytes({String accept = '', String capture = ''}) {
   final completer = Completer<PickedBytes?>();
 
   final input = web.document.createElement('input') as web.HTMLInputElement
     ..type = 'file';
   if (accept.isNotEmpty) input.accept = accept;
+  if (capture.isNotEmpty) input.capture = capture;
 
   input.onchange = (web.Event _) {
     final file = input.files?.item(0);
