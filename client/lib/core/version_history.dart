@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0456',
+      date: '20 Oct 2026',
+      items: [
+        'Settings › Organization: edit a company right on its page, with empty fields marked. A Details | Settings switch shows that company\'s or branch\'s own settings, ready to set there.',
+        'Reports › Goals: one branch picker that names each branch with its company.',
+        'Roles & permissions: an open module\'s headings line up on the left.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0455',
       date: '19 Oct 2026',
       items: [
