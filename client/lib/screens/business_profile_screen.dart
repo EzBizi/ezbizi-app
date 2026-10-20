@@ -21,10 +21,16 @@ class BusinessProfileScreen extends StatefulWidget {
     super.key,
     required this.api,
     required this.session,
+    this.performance = false,
   });
 
   final ApiClient api;
   final Session session;
+
+  /// Which of the two top-level chips this is (Jose, 2026-10-20: "Reviews -
+  /// GBP Listings - GBP Performance - Review Links"): the listings, or how
+  /// they perform on Google.
+  final bool performance;
 
   @override
   State<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
@@ -43,10 +49,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _onlyNotLive = false;
   int _request = 0;
 
-  /// Listings, or how they perform on Google (UI queue 114). A view inside
-  /// this screen rather than a tab: Business Profile declares no tabs of its
-  /// own, and this is the same switch the Not showing chip already makes.
-  bool _performance = false;
+  bool get _performance => widget.performance;
 
   @override
   void initState() {
@@ -126,46 +129,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final views = SegmentedButton<bool>(
-      key: const ValueKey('business-profile-view'),
-      showSelectedIcon: false,
-      style: const ButtonStyle(visualDensity: VisualDensity.compact),
-      segments: const [
-        ButtonSegment(value: false, label: Text('Listings')),
-        ButtonSegment(value: true, label: Text('Performance')),
-      ],
-      selected: {_performance},
-      onSelectionChanged: (v) => setState(() => _performance = v.first),
-    );
-
-    // On a line of its own: beside the chip and Check Google it would not fit
-    // a phone.
-    final viewsLine = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Align(alignment: Alignment.centerLeft, child: views),
-    );
-
+    // Its own chip above, so no switch here.
     if (_performance) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          viewsLine,
-          const SizedBox(height: 8),
-          const Divider(height: 1),
-          Expanded(
-            child: BusinessProfilePerformance(
-              api: widget.api,
-              session: widget.session,
-            ),
-          ),
-        ],
+      return BusinessProfilePerformance(
+        api: widget.api,
+        session: widget.session,
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        viewsLine,
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(

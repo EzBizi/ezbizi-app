@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:ezbizi_client/screens/customer_experience_screen.dart';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -45,8 +46,13 @@ void main() {
       // A parent screen draws its child modules (Jobs › Estimates) in the same
       // strip. Those are granted as modules, not tabs, so they are set aside.
       final children = {
-        for (final other in registry.values.cast<Map>())
-          if (other['parent'] == entry.key) other['label'] as String,
+        for (final MapEntry(key: key, value: other)
+            in registry.entries.cast<MapEntry<String, dynamic>>())
+          if ((other as Map)['parent'] == entry.key) ...[
+            other['label'] as String,
+            // A child drawn as more than one chip, on its own grant.
+            ...?customerExperienceChildChips[key],
+          ],
       };
 
       tester.view.physicalSize = const Size(1400, 1600);
