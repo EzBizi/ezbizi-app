@@ -14,6 +14,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import 'job_labels.dart';
 import 'job_lines_tab.dart';
 import 'job_where.dart';
 import 'job_workiz.dart';
@@ -34,11 +35,17 @@ class JobDetailPanel extends StatefulWidget {
     required this.id,
     this.onDone,
     this.dirty,
+    this.labels,
   });
 
   final ApiClient api;
   final Session session;
   final String id;
+
+  /// The words the organization's jobs carry, for the type, sub-status and
+  /// tag pickers. Null from a screen without the list's first page: the
+  /// pickers then offer the job's own words, and a new one can be typed.
+  final JobLabels? labels;
 
   /// Set when the panel is DOCKED beside the jobs list rather than opened over
   /// it: called where the panel would otherwise pop its route — true after a
@@ -73,6 +80,16 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// Null is "not placed" — a real answer somebody can choose, not a blank.
   String? _areaId;
   List<({String id, String name})> _areaChoices = const [];
+
+  /// Type, sub-status and tags (queue 118). Saved as they change, each on its
+  /// own: they are not part of the form Save sends.
+  String? _jobType;
+  String? _subStatus;
+  List<String> _tags = const [];
+
+  /// One of them was saved, so the list behind has something new to show
+  /// whichever way the panel closes.
+  bool _patched = false;
 
   bool _loading = true;
   bool _busy = false;
@@ -112,6 +129,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// Where the panel goes when it is finished: its route, or the list it is
   /// docked beside.
   void _done(bool? changed) {
+    if (_patched) changed ??= true;
     final onDone = widget.onDone;
     if (onDone != null) {
       onDone(changed ?? false);
@@ -182,6 +200,8 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _statuses = _statusChoices.map((s) => s.value).toList();
     _status = row['status'] as String? ?? _statuses.first;
 
+    _fillLabels(row);
+
     _areaId = (row['service_area'] as Map<String, dynamic>?)?['id'] as String?;
     final areas = row['allowed_service_areas'];
     _areaChoices = [
@@ -200,6 +220,187 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       ];
       _statuses = _statusChoices.map((s) => s.value).toList();
     }
+  }
+
+  void _fillLabels(Map<String, dynamic> row) {
+    _jobType = jobType(row);
+    final sub = row['sub_status'];
+    _subStatus = sub is String && sub.trim().isNotEmpty ? sub : null;
+    _tags = jobTags(row);
+  }
+
+  /// One field, on its own: tags go as the whole list.
+  Future<void> _patchLabel(String field, Object? value) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final response = await widget.api.patch('/jobs/${widget.id}', {
+      field: value,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      if (!response.ok) {
+        _error = response.reason;
+        return;
+      }
+      _patched = true;
+      final fresh = response.data;
+      // The server tidies the words (trims, drops repeats): show what it kept.
+      if (fresh is Map) {
+        _fillLabels(Map<String, dynamic>.from(fresh));
+      } else if (field == 'tags') {
+        _tags = List<String>.from(value as List);
+      } else if (field == 'job_type') {
+        _jobType = value as String?;
+      } else {
+        _subStatus = value as String?;
+      }
+    });
+  }
+
+  Future<void> _addTag() async {
+    final offered = [
+      for (final t in {...?widget.labels?.tags})
+        if (!_tags.contains(t)) SearchOption(value: t, label: t),
+    ];
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Add a tag',
+      options: offered,
+      create: (typed) => typed,
+    );
+    if (picked == null || picked.trim().isEmpty || _tags.contains(picked)) {
+      return;
+    }
+
+    await _patchLabel('tags', [..._tags, picked]);
+  }
+
+  /// Words offered for a type or sub-status: the organization's, then the
+  /// job's own when it is not among them.
+  List<SearchOption<String>> _words(List<String>? known, String? current) => [
+    for (final w in {...?known, ?current}) SearchOption(value: w, label: w),
+  ];
+
+  /// The tags as removable chips, then "+ Tag" (queue 118, Jose's 1).
+  Widget _tagsLine(bool editable) => Refused(
+    reason: _editRefusal,
+    child: Wrap(
+      key: const Key('job-tags'),
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final t in _tags)
+          InputChip(
+            key: ValueKey('job-tag-$t'),
+            label: Text(t),
+            visualDensity: VisualDensity.compact,
+            onDeleted: editable
+                ? () => _patchLabel('tags', [
+                    for (final x in _tags)
+                      if (x != t) x,
+                  ])
+                : null,
+            deleteButtonTooltipMessage: 'Remove $t',
+          ),
+        TextButton.icon(
+          key: const Key('job-tag-add'),
+          onPressed: editable ? _addTag : null,
+          icon: const Icon(Icons.add, size: 16),
+          label: const Text('Tag'),
+        ),
+      ],
+    ),
+  );
+
+  /// Status, Sub-status, Type. Sub-status only once one is set, or when the
+  /// job is cancelled or on hold, which is what it explains.
+  Widget _statusLine(bool editable) {
+    final status = SearchPickerField<String>(
+      value: _statuses.contains(_status) ? _status : null,
+      label: 'Status',
+      options: _statusChoices
+          .map((s) => SearchOption(value: s.value, label: s.label))
+          .toList(),
+      onChanged: editable
+          ? (v) {
+              setState(() => _status = v ?? _status);
+              _markDirty();
+            }
+          : null,
+    );
+    final showSub = _subStatus != null || statusTakesSubStatus(_status);
+    final sub = SearchPickerField<String>(
+      key: const Key('job-sub-status'),
+      value: _subStatus,
+      label: 'Sub-status',
+      hint: 'None',
+      allowClear: true,
+      options: _words(widget.labels?.subStatuses, _subStatus),
+      create: (typed) => typed,
+      onChanged: editable
+          ? (v) {
+              if (v != _subStatus) _patchLabel('sub_status', v);
+            }
+          : null,
+    );
+    final type = SearchPickerField<String>(
+      key: const Key('job-type'),
+      value: _jobType,
+      label: 'Type',
+      hint: 'None',
+      allowClear: true,
+      options: _words(widget.labels?.jobTypes, _jobType),
+      create: (typed) => typed,
+      onChanged: editable
+          ? (v) {
+              if (v != _jobType) _patchLabel('job_type', v);
+            }
+          : null,
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final pickers = [status, if (showSub) sub, type];
+        // About 140 each to sit abreast; on a phone the status keeps its own
+        // line and the other two share the next.
+        if (constraints.maxWidth >= 140.0 * pickers.length + 16) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (i, p) in pickers.indexed) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: p),
+              ],
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            status,
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showSub) ...[
+                  Expanded(child: sub),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(child: type),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _save() async {
@@ -416,20 +617,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   ),
                   enabled: editable,
                 ),
+                if (row != null) ...[
+                  const SizedBox(height: 10),
+                  _tagsLine(editable),
+                ],
                 const SizedBox(height: 12),
-                SearchPickerField<String>(
-                  value: _statuses.contains(_status) ? _status : null,
-                  label: 'Status',
-                  options: _statusChoices
-                      .map((s) => SearchOption(value: s.value, label: s.label))
-                      .toList(),
-                  onChanged: editable
-                      ? (v) {
-                          setState(() => _status = v ?? _status);
-                          _markDirty();
-                        }
-                      : null,
-                ),
+                _statusLine(editable),
                 // Only when the franchise has areas to offer: a franchise with
                 // none has no question to ask.
                 if (_areaChoices.isNotEmpty) ...[

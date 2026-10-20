@@ -22,6 +22,7 @@ import '../widgets/tag.dart';
 import 'jobs/estimates_tab.dart';
 import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
+import 'jobs/job_labels.dart';
 import 'jobs/job_where.dart';
 
 /// Jobs (plan §5.2).
@@ -88,6 +89,14 @@ class _JobsScreenState extends State<JobsScreen> {
   // offered them.
   final Map<String, String> _roles = {};
   String? _roleId;
+
+  /// The organization's types, sub-statuses and tags (`meta.labels`), for the
+  /// filters here and the pickers in a job's panel.
+  JobLabels _labels = const JobLabels();
+
+  /// Type and tag filters: a job matches any type picked AND any tag picked.
+  Set<String> _types = {};
+  Set<String> _tags = {};
 
   /// The Where picker's choice (queue 25): null is anywhere, `none` the jobs no
   /// area has claimed, `f:<id>` a whole franchise, `a:<id>` one of its areas.
@@ -227,6 +236,8 @@ class _JobsScreenState extends State<JobsScreen> {
       'assigned_role_id': ?_roleId,
       'franchise_id': ?_whereFranchise,
       'service_area_id': ?_whereArea,
+      ..._listFilter('job_type', _types),
+      ..._listFilter('tag', _tags),
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -284,6 +295,8 @@ class _JobsScreenState extends State<JobsScreen> {
                 ),
           ];
         }
+        _labels = JobLabels.of(meta?['labels']) ?? _labels;
+
         final unplaced = meta?['unplaced_count'];
         _unplaced = unplaced is int ? unplaced : null;
       }
@@ -814,6 +827,42 @@ class _JobsScreenState extends State<JobsScreen> {
                 },
               ),
             ),
+          if (_labels.jobTypes.isNotEmpty || _types.isNotEmpty)
+            SizedBox(
+              width: wide ? 220 : 160,
+              child: SearchMultiPickerField<String>(
+                key: const Key('jobs-type-filter'),
+                values: _types,
+                label: 'Type',
+                hint: 'Any type',
+                options: [
+                  for (final t in {..._labels.jobTypes, ..._types})
+                    SearchOption(value: t, label: t),
+                ],
+                onChanged: (picked) {
+                  setState(() => _types = picked);
+                  _load();
+                },
+              ),
+            ),
+          if (_labels.tags.isNotEmpty || _tags.isNotEmpty)
+            SizedBox(
+              width: wide ? 220 : 160,
+              child: SearchMultiPickerField<String>(
+                key: const Key('jobs-tag-filter'),
+                values: _tags,
+                label: 'Tags',
+                hint: 'Any tag',
+                options: [
+                  for (final t in {..._labels.tags, ..._tags})
+                    SearchOption(value: t, label: t),
+                ],
+                onChanged: (picked) {
+                  setState(() => _tags = picked);
+                  _load();
+                },
+              ),
+            ),
           _window(wide: wide),
         ],
       ),
@@ -920,6 +969,7 @@ class _JobsScreenState extends State<JobsScreen> {
               api: widget.api,
               session: widget.session,
               id: _openId!,
+              labels: _labels,
               onDone: _undock,
               dirty: _openDirty,
             ),
@@ -958,11 +1008,22 @@ class _JobsScreenState extends State<JobsScreen> {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
 
     return [
+      // The type after the number (queue 118, Jose's 1), and room for it only
+      // when a loaded job has one.
       TableColumn(
         'Job',
-        width: 104,
-        cell: (_, job) =>
-            Text('${job['number']}', style: TextStyle(color: muted)),
+        width: _jobs.any((job) => jobType(job) != null) ? 220 : 104,
+        cell: (_, job) => Row(
+          children: [
+            Flexible(
+              child: Text('${job['number']}', style: TextStyle(color: muted)),
+            ),
+            if (jobType(job) != null) ...[
+              const SizedBox(width: 6),
+              Flexible(child: JobTypeLabel(jobType(job)!)),
+            ],
+          ],
+        ),
       ),
       // Workiz's own "Job #" beside EzBizi's (Jose, 2026-09-29). Only when a
       // loaded job has one: other organizations have no Workiz, and a column
@@ -1014,6 +1075,16 @@ class _JobsScreenState extends State<JobsScreen> {
           tone: toneForJobStatus('${job['status'] ?? ''}'),
         ),
       ),
+      // Two tags then "+N", all on hover. Only when a loaded job has any.
+      if (_jobs.any((job) => jobTags(job).isNotEmpty))
+        TableColumn(
+          'Tags',
+          flex: 3,
+          cell: (_, job) => Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: JobTagsSummary(jobTags(job)),
+          ),
+        ),
       // Only with the Financials toggle (Jose, 2026-09-29). Without it the
       // server sends no amount, and a column of dashes would read as "free".
       // Workiz's money where the job has it (queue 31): its state and what is
@@ -1085,6 +1156,17 @@ class _JobsScreenState extends State<JobsScreen> {
         _statusLabel(job),
         tone: toneForJobStatus('${job['status'] ?? ''}'),
       ),
+      // Phone 4: the type, then the first tag and "+N".
+      footer: jobType(job) == null && jobTags(job).isEmpty
+          ? null
+          : Row(
+              children: [
+                if (jobType(job) != null)
+                  Flexible(child: JobTypeLabel(jobType(job)!)),
+                if (jobTags(job).isNotEmpty)
+                  Flexible(child: JobTagsSummary(jobTags(job), shown: 1)),
+              ],
+            ),
     );
   }
 
@@ -1148,6 +1230,7 @@ class _JobsScreenState extends State<JobsScreen> {
         api: widget.api,
         session: widget.session,
         id: _id(job),
+        labels: _labels,
       ),
     );
 
@@ -1169,7 +1252,9 @@ class _JobsScreenState extends State<JobsScreen> {
     if (term.isEmpty &&
         _status == null &&
         _roleId == null &&
-        _where == null) {
+        _where == null &&
+        _types.isEmpty &&
+        _tags.isEmpty) {
       return switch (_when) {
         // Not "No jobs yet" — there may be thousands, all of them behind Past.
         'upcoming' when (_whenCounts['past'] ?? 0) > 0 =>
@@ -1186,6 +1271,14 @@ class _JobsScreenState extends State<JobsScreen> {
     return 'Nothing matches "$term".';
   }
 }
+
+/// A several-value filter as the list reads it: `key[]` once per value, and
+/// the single `key` too when there is exactly one, which is the form the
+/// server took before it read lists.
+Map<String, Object> _listFilter(String key, Set<String> values) => {
+  if (values.isNotEmpty) '$key[]': values.toList(),
+  if (values.length == 1) key: values.first,
+};
 
 /// A count map from the server, or nothing. Tolerates the `[]` an empty PHP
 /// array encodes as — a map read as a list would throw.

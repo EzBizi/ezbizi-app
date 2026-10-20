@@ -85,10 +85,16 @@ class SearchPickerField<T> extends StatelessWidget {
     this.isDense = false,
     this.allowClear = false,
     this.searchFrom = 8,
+    this.create,
   });
 
   final T? value;
   final List<SearchOption<T>> options;
+
+  /// Free entry: a word typed that no option carries is offered as
+  /// "Add 'typed'", and this turns it into the value chosen. With it the
+  /// search field is always shown, since typing is how a new word arrives.
+  final T Function(String typed)? create;
 
   /// Null disables the field, the same way it disables a dropdown.
   final ValueChanged<T?>? onChanged;
@@ -199,6 +205,7 @@ class SearchPickerField<T> extends StatelessWidget {
         value: value,
         allowClear: allowClear,
         searchFrom: searchFrom,
+        create: create,
       ),
     );
 
@@ -217,6 +224,7 @@ Future<T?> showSearchPicker<T>(
   required List<SearchOption<T>> options,
   T? value,
   int searchFrom = 8,
+  T Function(String typed)? create,
 }) async {
   final picked = await showDialog<_Picked<T>>(
     context: context,
@@ -226,6 +234,7 @@ Future<T?> showSearchPicker<T>(
       value: value,
       allowClear: false,
       searchFrom: searchFrom,
+      create: create,
     ),
   );
 
@@ -338,6 +347,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
     required this.value,
     required this.allowClear,
     required this.searchFrom,
+    this.create,
   });
 
   final String? title;
@@ -345,6 +355,7 @@ class _SearchPickerDialog<T> extends StatefulWidget {
   final T? value;
   final bool allowClear;
   final int searchFrom;
+  final T Function(String typed)? create;
 
   @override
   State<_SearchPickerDialog<T>> createState() => _SearchPickerDialogState<T>();
@@ -353,7 +364,19 @@ class _SearchPickerDialog<T> extends StatefulWidget {
 class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
   String _term = '';
 
-  bool get _searchable => widget.options.length >= widget.searchFrom;
+  bool get _searchable =>
+      widget.create != null || widget.options.length >= widget.searchFrom;
+
+  /// The typed word, when it is new: no option is called exactly that.
+  String? get _new {
+    final typed = _term.trim();
+    if (widget.create == null || typed.isEmpty) return null;
+    final lower = typed.toLowerCase();
+
+    return widget.options.any((o) => o.label.toLowerCase() == lower)
+        ? null
+        : typed;
+  }
 
   List<SearchOption<T>> get _hits {
     final needle = _term.trim().toLowerCase();
@@ -372,6 +395,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final hits = _hits;
+    final fresh = _new;
 
     return AlertDialog(
       contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
@@ -396,10 +420,15 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                         : '${hits.length} of ${widget.options.length}',
                   ),
                   onChanged: (value) => setState(() => _term = value),
+                  onSubmitted: fresh == null
+                      ? null
+                      : (_) => Navigator.of(
+                          context,
+                        ).pop(_Picked<T>(widget.create!(fresh))),
                 ),
               ),
             Flexible(
-              child: hits.isEmpty
+              child: hits.isEmpty && fresh == null
                   ? Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
@@ -431,12 +460,221 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                             onTap: () =>
                                 Navigator.of(context).pop(_Picked<T>(o.value)),
                           ),
+                        if (fresh != null)
+                          ListTile(
+                            key: const Key('search-picker-add'),
+                            dense: true,
+                            leading: Icon(
+                              Icons.add,
+                              size: 18,
+                              color: scheme.primary,
+                            ),
+                            title: Text(
+                              'Add "$fresh"',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: scheme.primary,
+                              ),
+                            ),
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pop(_Picked<T>(widget.create!(fresh))),
+                          ),
                       ],
                     ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Choosing several things from one list: a filter that matches any of them.
+///
+/// The field names what is chosen ("Chimney Sweep +1"), or [hint] when
+/// nothing is, and opens the same searchable list with a tick per row.
+/// Nothing changes until Done; Clear empties the choice in one go.
+class SearchMultiPickerField<T> extends StatelessWidget {
+  const SearchMultiPickerField({
+    super.key,
+    required this.values,
+    required this.options,
+    required this.onChanged,
+    this.label,
+    this.hint,
+    this.searchFrom = 8,
+  });
+
+  final Set<T> values;
+  final List<SearchOption<T>> options;
+  final ValueChanged<Set<T>>? onChanged;
+  final String? label;
+  final String? hint;
+  final int searchFrom;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final enabled = onChanged != null;
+    final chosen = [
+      for (final o in options)
+        if (values.contains(o.value)) o.label,
+    ];
+    final text = chosen.isEmpty
+        ? (hint ?? '')
+        : chosen.length == 1
+        ? chosen.first
+        : '${chosen.first} +${chosen.length - 1}';
+
+    return InkWell(
+      onTap: enabled ? () => _open(context) : null,
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          enabled: enabled,
+          suffixIcon: Icon(
+            Icons.arrow_drop_down,
+            color: enabled ? scheme.onSurfaceVariant : theme.disabledColor,
+          ),
+        ),
+        isEmpty: chosen.isEmpty && (hint ?? '').isEmpty,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: chosen.isEmpty ? scheme.onSurfaceVariant : null,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showDialog<Set<T>>(
+      context: context,
+      builder: (context) => _SearchMultiDialog<T>(
+        title: label,
+        options: options,
+        values: values,
+        searchFrom: searchFrom,
+      ),
+    );
+
+    if (picked != null) onChanged?.call(picked);
+  }
+}
+
+class _SearchMultiDialog<T> extends StatefulWidget {
+  const _SearchMultiDialog({
+    required this.title,
+    required this.options,
+    required this.values,
+    required this.searchFrom,
+  });
+
+  final String? title;
+  final List<SearchOption<T>> options;
+  final Set<T> values;
+  final int searchFrom;
+
+  @override
+  State<_SearchMultiDialog<T>> createState() => _SearchMultiDialogState<T>();
+}
+
+class _SearchMultiDialogState<T> extends State<_SearchMultiDialog<T>> {
+  String _term = '';
+  late final Set<T> _chosen = {...widget.values};
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final needle = _term.trim().toLowerCase();
+    final hits = [
+      for (final o in widget.options)
+        if (needle.isEmpty ||
+            o.label.toLowerCase().contains(needle) ||
+            (o.detail ?? '').toLowerCase().contains(needle))
+          o,
+    ];
+
+    return AlertDialog(
+      contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+      title: widget.title == null ? null : Text(widget.title!),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.options.length >= widget.searchFrom)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: TextField(
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Search',
+                  ),
+                  onChanged: (value) => setState(() => _term = value),
+                ),
+              ),
+            Flexible(
+              child: hits.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Nothing matches that.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final o in hits)
+                          CheckboxListTile(
+                            key: ValueKey('search-multi-${o.label}'),
+                            dense: true,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            value: _chosen.contains(o.value),
+                            title: Text(
+                              o.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onChanged: o.enabled
+                                ? (on) => setState(() {
+                                    final v = o.value as T;
+                                    if (on == true) {
+                                      _chosen.add(v);
+                                    } else {
+                                      _chosen.remove(v);
+                                    }
+                                  })
+                                : null,
+                          ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(<T>{}),
+          child: const Text('Clear'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_chosen),
+          child: const Text('Done'),
+        ),
+      ],
     );
   }
 }

@@ -259,6 +259,7 @@ class TwoLineTile extends StatelessWidget {
     this.leading,
     this.badge,
     this.subtitleBadge,
+    this.footer,
   });
 
   final String title;
@@ -274,6 +275,10 @@ class TwoLineTile extends StatelessWidget {
   /// The same, after the subtitle — "Not placed" beside the franchise it is
   /// missing an area of. The subtitle shortens; the mark does not.
   final Widget? subtitleBadge;
+
+  /// A third line under the subtitle -- a job's type and first tag. Absent,
+  /// the tile is the two lines it is named for.
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -353,6 +358,7 @@ class TwoLineTile extends StatelessWidget {
                   ],
                 ],
               ),
+              if (footer != null) ...[const SizedBox(height: 4), footer!],
             ],
           ),
         ),
