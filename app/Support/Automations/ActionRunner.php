@@ -458,6 +458,7 @@ class ActionRunner
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
             'task.move_group' => $this->moveTaskToGroup($action, $subject, $automation),
             'alert.send' => $this->sendAlert($action, $event, $subject, $automation),
+            'report.text' => $this->reportText($action, $automation),
             'lead.text' => $this->textLead($action, $event, $subject, $automation),
 
             default => throw new InvalidArgumentException(
@@ -3382,6 +3383,54 @@ class ActionRunner
 
             return 'Moved the task to another group.';
         });
+    }
+
+    /**
+     * Reports' daily and weekly texts as a scheduled rule (A1 Leads takeover,
+     * 2026-10-20), WhatsApped 1:1 through WhatsAppGroups::deliverTextToUser.
+     * The texts carry money, so the rule's creator must hold reports.view.
+     */
+    private function reportText(array $action, ?Automation $automation): array
+    {
+        $type = 'report.text';
+        [$creator] = $this->taskContext($automation);
+        if (! $creator->hasPermission('reports.view')) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'The person who made this rule cannot see reports, so it sends none.'];
+        }
+        $kind = (string) ($action['kind'] ?? '');
+        if (! array_key_exists($kind, \App\Support\Reports\Texts\DailyTexts::KINDS)) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Choose which report to send.'];
+        }
+        $from = (string) ($action['from'] ?? '');
+        $number = \App\Models\WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        if ($number === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This organization has no WhatsApp number to send from.'];
+        }
+
+        $org = \App\Models\Organization::query()->findOrFail($automation->organization_id);
+        $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $org) ?: config('app.timezone'));
+        $day = \Carbon\CarbonImmutable::now($zone);
+        $branches = match ($automation->scope_type) {
+            'franchise' => [$automation->scope_id],
+            'company' => \App\Models\Franchise::query()->where('company_id', $automation->scope_id)->pluck('id')->all(),
+            default => null,
+        };
+        $text = app(\App\Support\Reports\Texts\DailyTexts::class)->render($kind, $org, $day, $branches);
+        $title = \App\Support\Reports\Texts\DailyTexts::KINDS[$kind].' · '.$day->format('M j');
+
+        // ponytail: no per-day idempotency; a schedule fires once a day. Add a key if rules start retrying sends.
+        $sent = 0;
+        foreach (User::query()->where('is_active', true)->whereIn('id', self::idList($action['user_ids'] ?? []))->get() as $user) {
+            try {
+                $sent += app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
+            } catch (RuntimeException $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+        }
+
+        return $sent === 0
+            ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
+            : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
     }
 
     /** `user:<id>` as the pickers store it, an active person, or null. */

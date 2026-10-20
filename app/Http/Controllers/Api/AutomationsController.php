@@ -124,6 +124,7 @@ class AutomationsController extends Controller
         'task.create',
         'task.assign',
         'task.move_group',
+        'report.text',
         'alert.send',
         'lead.text',
         'unassign',
@@ -2082,6 +2083,12 @@ class AutomationsController extends Controller
              * must not switch the rule off after five weeks while four people
              * are reading it fine.
              */
+            // Reports' daily texts, WhatsApped 1:1 (A1 Leads takeover, 2026-10-20).
+            // ponytail: free-text kind until the builder has a choice picker.
+            $type('report.text', 'WhatsApp a report text', false, [
+                $parameter('kind', 'Report (ppc, marketing_ppc, dispatchers, technician_sales, weekly_losses, weekly_reviews)', 'text'),
+                $parameter('user_ids', 'Send to', 'people'),
+            ]),
             $type('report.send', 'Send a saved report', true, [
                 $parameter('report_id', 'Which report', 'report'),
                 $parameter('to', 'Send to', 'recipient_list'),
