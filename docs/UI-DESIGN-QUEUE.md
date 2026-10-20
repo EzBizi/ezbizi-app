@@ -2969,11 +2969,11 @@ up could only be answered — Phone's sentence: *a rule would have been argued w
 
 Customer Experience asked (server ac72803c1: totals/daily/by_location + search terms). **1** (recommended) a Performance tab: dates + listing, freshness line from last_date, five tiles with change vs the period before (click puts it on the daily chart), a table per listing, its searches beside it. **2** on each listing's page. **3** in Reports. Phone **4** (recommended) / **5** / **6**.
 
-### 113 · Automations › Build as steps with a timeline — **sent 2026-10-20** (`docs/previews/automations-steps-layouts.html`)
+### 113 · Automations › Build as steps with a timeline — **sent 2026-10-20 — Jose: "Looks good, go ahead" (1 and 4)** (`docs/previews/automations-steps-layouts.html`)
 
 Jose 2026-10-20: "each of the screens has more to offer related to that space and more space to do it". **1** (recommended) a top timeline Name › When › Only if › Then › Review, one screen each: trigger catalogue by module with 30-day counts and carried details; conditions with a live 30-day would-have-run check; actions list + full-width editor + details + filled preview; Review as one clickable sentence, Try it, where, on/off, last runs. Editing opens on Review. **2** the steps as a left column. **3** one page, one part open at a time. Phone **4** (recommended) / **5** / **6**.
 
-### 112 · Scheduling › Helpers (A1 takeover) — **sent 2026-10-20** (`docs/previews/scheduling-helpers-layouts.html`)
+### 112 · Scheduling › Helpers (A1 takeover) — **sent 2026-10-20 — Jose: "Looks good, go ahead" (1 and 4)** (`docs/previews/scheduling-helpers-layouts.html`)
 
 Scheduling asked (server 7d031767: roster + full/am/pm bookings per branch and month). **1** (recommended) A1's month calendar, coloured helper→technician tags per day, a day panel to book/change, a roster button. **2** helpers × days grid. **3** list by day. Phone **4** (recommended) / **5** / **6**.
 
