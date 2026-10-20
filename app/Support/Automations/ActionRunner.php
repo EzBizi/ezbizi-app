@@ -3384,9 +3384,11 @@ class ActionRunner
         // "Book online now: {{booking_link}}" is a line, not a message: with no
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
-        foreach (['booking_link', 'offered_slot'] as $field) {
+        // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
+        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
-                && blank($subject?->getAttribute($field))) {
+                && blank($subject?->getAttribute($field))
+                && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {
                 $template = implode("\n", array_filter(
                     explode("\n", $template),
                     fn (string $line) => ! preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $line),

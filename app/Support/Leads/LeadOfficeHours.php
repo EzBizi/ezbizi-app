@@ -39,12 +39,18 @@ class LeadOfficeHours
      */
     public function nextOpening(Lead $lead, ?\DateTimeInterface $now = null): ?string
     {
-        $local = $this->local($this->scope($lead), $now);
-        $format = $this->settings->get('time_format', $this->scope($lead)) === '24h' ? 'H:i' : 'g:i A';
+        return $this->nextOpeningAt($this->scope($lead), $now);
+    }
+
+    /** nextOpening() for any place: franchise, company or organization. */
+    public function nextOpeningAt(Model $place, ?\DateTimeInterface $now = null): ?string
+    {
+        $local = $this->local($place, $now);
+        $format = $this->settings->get('time_format', $place) === '24h' ? 'H:i' : 'g:i A';
 
         for ($d = 0; $d <= 7; $d++) {
             $day = $local->addDays($d);
-            $hours = $this->hoursOn($this->scope($lead), $day);
+            $hours = $this->hoursOn($place, $day);
 
             if ($hours === null || ($d === 0 && $local->format('H:i') >= $hours['open'])) {
                 continue;
