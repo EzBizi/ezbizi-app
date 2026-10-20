@@ -97,8 +97,11 @@ class JobsController extends Controller
             // at 10pm tonight would file as Past while it is still ahead.
             'today' => ['nullable', 'required_if:when,upcoming,past', 'required_if:money,overdue', 'date_format:Y-m-d'],
             'money' => ['nullable', Rule::in(array_keys(self::MONEY_STATES))],
-            'tag' => ['nullable', 'string', 'max:100'],
-            'job_type' => ['nullable', 'string', 'max:100'],
+            // One word, or `tag[]=` / `job_type[]=` lists: any of them (queue 118).
+            'tag' => ['nullable', 'max:30'],
+            'tag.*' => ['string', 'max:100'],
+            'job_type' => ['nullable', 'max:30'],
+            'job_type.*' => ['string', 'max:100'],
         ]);
 
         abort_if($request->filled('money') && ! $money, Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
@@ -166,8 +169,12 @@ class JobsController extends Controller
                 ->when($where ? $request->query('franchise_id') : null, fn ($q, $id) => $q->where('franchise_id', $id))
                 ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
                 ->when($status, fn ($q, $s) => $q->where('status', $s))
-                ->when($request->query('tag'), fn ($q, $t) => $q->whereJsonContains('tags', $t))
-                ->when($request->query('job_type'), fn ($q, $t) => $q->where('job_type', $t))
+                ->when((array) $request->query('tag', []), fn ($q, $tags) => $q->where(function ($any) use ($tags) {
+                    foreach ($tags as $t) {
+                        $any->orWhereJsonContains('tags', (string) $t);
+                    }
+                }))
+                ->when((array) $request->query('job_type', []), fn ($q, $types) => $q->whereIn('job_type', $types))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
                 // `none`: the jobs no area holds, the picker's "Not placed".
                 ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'

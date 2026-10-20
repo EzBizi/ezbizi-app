@@ -50,6 +50,11 @@ class JobLabelsTest extends TestCase
         $titles = fn (string $q) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs?{$q}")->assertOk()->json('data.*.title');
         $this->assertEqualsCanonicalizing(['Sweep', 'Look'], $titles('tag='.urlencode('RESCHEDULE')));
         $this->assertSame(['Look'], $titles('job_type='.urlencode('Chimney Inspection')));
+        // Lists (queue 118): any of the tags, any of the types, and the two together.
+        $this->assertEqualsCanonicalizing(['Sweep', 'Look'], $titles('tag[]=On+Monday&tag[]=RESCHEDULE'));
+        $this->assertSame(['Look'], $titles('tag[]=On+Monday&tag[]=nothing'));
+        $this->assertEqualsCanonicalizing(['Sweep', 'Look'], $titles('job_type[]=Chimney+Sweep&job_type[]=Chimney+Inspection'));
+        $this->assertSame(['Sweep'], $titles('job_type[]=Chimney+Sweep&tag[]=RESCHEDULE'));
 
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs')->assertOk()
             ->assertJsonPath('meta.labels.job_types', ['Chimney Inspection', 'Chimney Sweep'])
