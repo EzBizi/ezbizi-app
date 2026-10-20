@@ -675,6 +675,65 @@ class AutomationsController extends Controller
      * A trigger that has never fired here returns nothing, and says so rather
      * than pretending the trigger carries no fields.
      */
+    /** GET /automations/trigger-stats?triggers=a,b - how often each happened in the last 30 days, in this view. */
+    public function triggerStats(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Automation::class);
+        $reach = $this->modulesInReach($request);
+        $data = [];
+        foreach (array_filter(array_map('trim', explode(',', (string) $request->query('triggers', '')))) as $key) {
+            if ($this->registry->findTrigger($key) !== null && in_array($this->registry->moduleKeyOfTrigger($key), $reach, true)) {
+                $data[$key] = ['last_30_days' => $this->recentInView($request, $key, ['scope_snapshot'])->count()];
+            }
+        }
+
+        return response()->json(['data' => (object) $data]);
+    }
+
+    /**
+     * POST /automations/would-have-run {trigger, conditions} - Build's live check
+     * on "Only if": the same evaluator a real run uses, over the last 30 days of
+     * stored events in this view.
+     */
+    public function wouldHaveRun(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Automation::class);
+        $input = $request->validate(['trigger' => ['required', 'string'], 'conditions' => ['nullable', 'array']]);
+        $key = $input['trigger'];
+        abort_if($this->registry->findTrigger($key) === null, 422, "No module raises '{$key}'.");
+        abort_unless(in_array($this->registry->moduleKeyOfTrigger($key), $this->modulesInReach($request), true), 403,
+            Refusal::permission('see what this event carries')->message());
+        $conditions = $input['conditions'] ?? null;
+        if ($conditions) {
+            $this->assertConditionsUsable($conditions);
+        }
+
+        // ponytail: the newest 500 events are read in full; a trigger busier than that is sampled, not counted.
+        $events = $this->recentInView($request, $key)->take(500);
+        $engine = app(\App\Support\Automations\AutomationEngine::class);
+        $verdicts = $events->map(fn (AutomationEvent $e) => ['occurred_at' => $e->occurred_at?->toIso8601String(), 'matched' => $engine->wouldMatch($conditions, $e)]);
+
+        return response()->json(['data' => [
+            'total' => $verdicts->count(),
+            'matched' => $verdicts->where('matched', true)->count(),
+            'examples' => $verdicts->take(5)->values(),
+        ]]);
+    }
+
+    /** Events of one trigger from the last 30 days that a rule written in this view would have seen, newest first. */
+    private function recentInView(Request $request, string $key, array $columns = ['*'])
+    {
+        $view = ViewScope::forUser($request->user());
+        $probe = new Automation(['scope_type' => $view->type === ViewScope::ORGANIZATION ? null : $view->type,
+            'scope_id' => $view->type === ViewScope::ORGANIZATION ? null : $view->id]);
+
+        return AutomationEvent::query()->where('event_key', $key)->where('occurred_at', '>=', now()->subDays(30))
+            ->latest('occurred_at')->get($columns === ['*'] ? ['*'] : [...$columns, 'id'])
+            ->filter(fn (AutomationEvent $e) => $probe->coversScope($e->scope_snapshot['type'] ?? null, $e->scope_snapshot['id'] ?? null,
+                companyChain: $e->scope_snapshot['company_chain'] ?? []))
+            ->values();
+    }
+
     public function triggerFields(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Automation::class);

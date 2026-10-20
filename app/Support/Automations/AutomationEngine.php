@@ -409,6 +409,12 @@ class AutomationEngine
         ]);
     }
 
+    /** The evaluator's verdict on one stored event, its subject loaded as a real run would (Build's "would have run"). */
+    public function wouldMatch(?array $conditions, AutomationEvent $event): bool
+    {
+        return $this->conditions->evaluate($conditions, $event, $this->subjectOf($event))['matched'];
+    }
+
     private function subjectOf(AutomationEvent $event)
     {
         if ($event->subject_type === null || ! class_exists($event->subject_type)) {
