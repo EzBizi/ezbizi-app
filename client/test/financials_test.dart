@@ -281,6 +281,11 @@ Future<List<http.Request>> _pump(
         linked = true;
         return json({'data': _table}, 201);
       }
+      if (path.contains('/financials/adjustments/')) {
+        return request.method == 'DELETE'
+            ? http.Response('', 204)
+            : json({'data': _adjustments.first});
+      }
       if (path.endsWith('/financials/adjustments')) {
         if (failures-- > 0) {
           return json({
@@ -456,7 +461,10 @@ const _adjustments = [
   },
 ];
 
-Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
+Map<String, dynamic> _quarrels({
+  String? unmirroredId,
+  bool nativeOpen = true,
+}) => _area(
   'quarrels',
   'Quarrels & Returns',
   source: 'both',
@@ -467,6 +475,8 @@ Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
       'count': 3,
       'table_id': 't1',
       'route': '/financials/tables/t1',
+      'may_open': true,
+      'refused': null,
     },
     {
       'key': 'appQ/tblU/fr-9',
@@ -474,6 +484,8 @@ Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
       'count': 5,
       'table_id': unmirroredId,
       'route': unmirroredId == null ? null : '/financials/tables/$unmirroredId',
+      'may_open': unmirroredId != null,
+      'refused': unmirroredId == null ? 'Not mirrored into a base yet.' : null,
     },
     {
       'key': 'adjustments',
@@ -481,6 +493,8 @@ Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
       'count': 1,
       'table_id': null,
       'route': '/financials/adjustments',
+      'may_open': nativeOpen,
+      'refused': nativeOpen ? null : 'Your role does not have this tab.',
     },
     {
       'key': 'repair_moves',
@@ -488,6 +502,8 @@ Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
       'count': 1,
       'table_id': null,
       'route': '/financials/adjustments?kind=repair_move',
+      'may_open': nativeOpen,
+      'refused': nativeOpen ? null : 'Your role does not have this tab.',
     },
     {
       'key': 'bills',
@@ -495,6 +511,8 @@ Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
       'count': 1,
       'table_id': null,
       'route': '/financials/bills',
+      'may_open': nativeOpen,
+      'refused': nativeOpen ? null : 'Your role does not have this tab.',
     },
   ],
 );
@@ -503,10 +521,14 @@ Map<String, dynamic> _homeWith({
   List<Map<String, dynamic>>? areas,
   List<Map<String, dynamic>>? bases,
   bool mayCreate = true,
+  bool nativeOpen = true,
 }) => {
   'areas':
       areas ??
-      [_quarrels(), _area('pebbles', 'Pebble Deposits', source: 'airtable')],
+      [
+        _quarrels(nativeOpen: nativeOpen),
+        _area('pebbles', 'Pebble Deposits', source: 'airtable'),
+      ],
   'bases':
       bases ??
       [
@@ -653,19 +675,24 @@ void homeTests() {
   ) async {
     await _pump(
       tester,
-      home: _homeWith(),
+      home: _homeWith(nativeOpen: false),
       permissions: const ['financials.view', 'financials.bases.view'],
     );
     await openQuarrels(tester);
     expect(
-      find.text(
-        'Unlinked returns · 5 · Your role cannot mirror Airtable tables',
-      ),
+      find.text('Unlinked returns · 5 · Not mirrored into a base yet.'),
       findsOneWidget,
     );
     expect(chip(tester, 'appQ/tblU/fr-9').onSelected, isNull);
-    expect(find.text('Bills · 1 · Your role cannot see Bills'), findsOneWidget);
+    // The server's own sentence, word for word.
+    expect(
+      find.text('Bills · 1 · Your role does not have this tab.'),
+      findsOneWidget,
+    );
     expect(chip(tester, 'bills').onSelected, isNull);
+    expect(chip(tester, 'adjustments').onSelected, isNull);
+    // The mirrored source still opens.
+    expect(find.text('Diesel'), findsOneWidget);
     expect(find.text('Mirror it into Books'), findsNothing);
   });
 
@@ -684,7 +711,7 @@ void homeTests() {
     expect(get.url.queryParameters['from'], '$month-01');
     expect(get.url.queryParameters['to'], startsWith(month));
     expect(get.url.queryParameters.containsKey('kind'), isFalse);
-    expect(find.text('Refund · 2026-10-03 · Lakeside'), findsOneWidget);
+    expect(find.text('2026-10-03 · Refund · Lakeside'), findsOneWidget);
     expect(
       find.text('Ollie Brook · Job J-77 · Gate jammed again'),
       findsOneWidget,
@@ -719,11 +746,8 @@ void homeTests() {
           .queryParameters['kind'],
       'repair_move',
     );
-    expect(find.text('Split change · 2026-10-04 · Lakeside'), findsOneWidget);
-    expect(
-      find.text('Ollie Brook → Mina Vale · Team North · Job J-78'),
-      findsOneWidget,
-    );
+    expect(find.text('2026-10-04 · Split change · Lakeside'), findsOneWidget);
+    expect(find.text('Ollie Brook → Team North · Job J-78'), findsOneWidget);
   });
 
   testWidgets('an adjustments list that fails offers Try again', (
@@ -739,7 +763,57 @@ void homeTests() {
     );
     await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
-    expect(find.text('Refund · 2026-10-03 · Lakeside'), findsOneWidget);
+    expect(find.text('2026-10-03 · Refund · Lakeside'), findsOneWidget);
+  });
+
+  testWidgets(
+    'a recorded row corrects its amount, and deletes on a second press',
+    (tester) async {
+      final seen = await _pump(tester, home: _homeWith());
+      await openQuarrels(tester);
+      await tester.tap(find.text('Recorded in EzBizi · 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026-10-03 · Refund · Lakeside'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Amount'), '99.50');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      final patch = seen.lastWhere((r) => r.method == 'PATCH');
+      expect(patch.url.path, endsWith('/financials/adjustments/ad1'));
+      expect(jsonDecode(patch.body), {
+        'amount': '99.50',
+        'job_number': 'J-77',
+        'reason': 'Gate jammed again',
+      });
+
+      await tester.tap(find.text('2026-10-03 · Refund · Lakeside'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(seen.where((r) => r.method == 'DELETE'), isEmpty);
+      await tester.tap(find.text('Press again to delete'));
+      await tester.pumpAndSettle();
+      expect(
+        seen.lastWhere((r) => r.method == 'DELETE').url.path,
+        endsWith('/financials/adjustments/ad1'),
+      );
+    },
+  );
+
+  testWidgets('a role without edit sees recorded rows read-only', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      home: _homeWith(),
+      permissions: const ['financials.view', 'financials.bases.view'],
+    );
+    await openQuarrels(tester);
+    await tester.tap(find.text('Recorded in EzBizi · 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2026-10-03 · Refund · Lakeside'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save'), findsNothing);
   });
 
   testWidgets('bills in an area open the Bills list in place', (tester) async {

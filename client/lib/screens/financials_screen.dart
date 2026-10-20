@@ -804,23 +804,31 @@ class _FinancialsScreenState extends State<FinancialBases> {
     ];
   }
 
-  /// Why an area's table cannot be opened here, or null when it can.
+  /// Why an area's table cannot be opened here, or null when it can. The
+  /// server's own refusal wins, except "not mirrored yet", which a person
+  /// who may link Airtable resolves here with Mirror it.
   String? _closedBecause(AreaTable t) {
-    if (t.tableId != null) return null;
+    if (t.tableId != null && t.mayOpen != false) return null;
+    if (t.mayOpen == false && t.refused != AreaTable.notMirrored) {
+      return t.refused ?? 'Your role cannot open this';
+    }
     return switch (t.key) {
-      'bills' =>
-        (widget.session.me?.permissions.contains('financials.bills.view') ??
-                false)
-            ? null
-            : 'Your role cannot see Bills',
-      'adjustments' || 'repair_moves' => null,
+      // A server that does not say: the Bills tab's own grant.
+      'bills'
+          when t.mayOpen == null &&
+              !(widget.session.me?.permissions.contains(
+                    'financials.bills.view',
+                  ) ??
+                  false) =>
+        'Your role cannot see Bills',
+      'bills' || 'adjustments' || 'repair_moves' => null,
       // Linking needs a base to link into (POST bases/{base}/airtable-links)
       // and that base's update policy, financials.edit, besides
       // may_create_base.
       _ when !_mayCreateBase || !_can('edit') =>
-        'Your role cannot mirror Airtable tables',
+        t.refused ?? 'Your role cannot mirror Airtable tables',
       _ when _bases.isEmpty => 'Make a base first to mirror it into',
-      _ when t.airtable == null => 'Opens soon',
+      _ when t.airtable == null => t.refused ?? 'Cannot be mirrored from here',
       _ => null,
     };
   }
@@ -942,11 +950,15 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 key: const ValueKey('financials-adjustments'),
                 api: widget.api,
                 exclude: const {'repair_move'},
+                canEdit: _can('edit'),
+                canDelete: _can('delete'),
               ),
               'repair_moves' => FinancialAdjustmentsList(
                 key: const ValueKey('financials-repair-moves'),
                 api: widget.api,
                 kind: 'repair_move',
+                canEdit: _can('edit'),
+                canDelete: _can('delete'),
               ),
               _ => Center(
                 child: Padding(

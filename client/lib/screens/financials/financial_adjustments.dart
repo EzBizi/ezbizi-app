@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'financial_cells.dart';
 
@@ -28,8 +29,16 @@ class FinancialAdjustmentsList extends StatefulWidget {
     required this.api,
     this.kind,
     this.exclude = const {},
+    this.canEdit = false,
+    this.canDelete = false,
     this.now,
   });
+
+  /// financials.edit: correct a row's amount, job number or reason.
+  final bool canEdit;
+
+  /// financials.delete: remove a row.
+  final bool canDelete;
 
   final ApiClient api;
   final String? kind;
@@ -147,26 +156,38 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     );
   }
 
+  Future<void> _edit(Map a) async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => _AdjustmentPanel(
+        api: widget.api,
+        adjustment: a,
+        canDelete: widget.canDelete,
+      ),
+    );
+    if (changed == true) await _load();
+  }
+
   Widget _row(Map a) {
+    // A repair move takes jobs from one technician to a team.
     final who = a['kind'] == 'repair_move'
         ? [
             if (a['from_technician'] != null) '${a['from_technician']}',
-            if (a['technician'] != null) '${a['technician']}',
+            if (a['team'] != null) 'Team ${a['team']}',
           ].join(' → ')
         : '${a['technician'] ?? ''}';
 
     return ListTile(
       title: Text(
         [
-          _kinds[a['kind']] ?? '${a['kind']}',
           if (a['date'] != null) '${a['date']}',
+          _kinds[a['kind']] ?? '${a['kind']}',
           if (a['place'] != null) '${a['place']}',
         ].join(' · '),
       ),
       subtitle: Text(
         [
           if (who.isNotEmpty) who,
-          if (a['team'] != null) 'Team ${a['team']}',
           if (a['job_number'] != null) 'Job ${a['job_number']}',
           if (a['reason'] != null) '${a['reason']}',
         ].join(' · '),
@@ -174,6 +195,112 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
       trailing: a['cents'] == null
           ? null
           : Text(_money((a['cents'] as num).toInt())),
+      onTap: widget.canEdit || widget.canDelete ? () => _edit(a) : null,
+    );
+  }
+}
+
+/// Correct one recorded row: what PATCH /financials/adjustments/{id} takes
+/// (amount, job number, reason), and Delete for a role that may.
+class _AdjustmentPanel extends StatefulWidget {
+  const _AdjustmentPanel({
+    required this.api,
+    required this.adjustment,
+    required this.canDelete,
+  });
+
+  final ApiClient api;
+  final Map adjustment;
+  final bool canDelete;
+
+  @override
+  State<_AdjustmentPanel> createState() => _AdjustmentPanelState();
+}
+
+class _AdjustmentPanelState extends State<_AdjustmentPanel> {
+  late final _amount = TextEditingController(
+    text: widget.adjustment['cents'] == null
+        ? ''
+        : ((widget.adjustment['cents'] as num) / 100).toStringAsFixed(2),
+  );
+  late final _job = TextEditingController(
+    text: '${widget.adjustment['job_number'] ?? ''}',
+  );
+  late final _reason = TextEditingController(
+    text: '${widget.adjustment['reason'] ?? ''}',
+  );
+  bool _busy = false;
+  bool _confirming = false;
+  String? _error;
+
+  String get _path => '/financials/adjustments/${widget.adjustment['id']}';
+
+  Future<void> _done(Future<ApiResponse> call) async {
+    setState(() => _busy = true);
+    final r = await call;
+    if (!mounted) return;
+    setState(() => _busy = false);
+    r.ok ? Navigator.of(context).pop(true) : setState(() => _error = r.message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SidePanel(
+      title:
+          'Edit ${(_kinds[widget.adjustment['kind']] ?? 'record').toLowerCase()}',
+      actions: [
+        if (widget.canDelete)
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _confirming
+                      ? _done(widget.api.delete(_path))
+                      : setState(() => _confirming = true),
+            child: Text(_confirming ? 'Press again to delete' : 'Delete'),
+          ),
+        FilledButton(
+          onPressed: _busy
+              ? null
+              : () => _done(
+                  widget.api.patch(_path, {
+                    if (_amount.text.trim().isNotEmpty)
+                      'amount': _amount.text.trim(),
+                    'job_number': _job.text.trim().isEmpty
+                        ? null
+                        : _job.text.trim(),
+                    'reason': _reason.text.trim().isEmpty
+                        ? null
+                        : _reason.text.trim(),
+                  }),
+                ),
+          child: const Text('Save'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          TextField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Amount'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _job,
+            decoration: const InputDecoration(labelText: 'Job number'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _reason,
+            decoration: const InputDecoration(labelText: 'Reason'),
+          ),
+        ],
+      ),
     );
   }
 }

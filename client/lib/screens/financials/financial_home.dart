@@ -75,6 +75,8 @@ class AreaTable {
     this.count,
     this.tableId,
     this.route,
+    this.mayOpen,
+    this.refused,
   });
 
   factory AreaTable.from(Map t) => AreaTable(
@@ -83,6 +85,8 @@ class AreaTable {
     count: (t['count'] as num?)?.toInt(),
     tableId: t['table_id'] as String?,
     route: t['route'] as String?,
+    mayOpen: t['may_open'] as bool?,
+    refused: t['refused'] as String?,
   );
 
   final String key;
@@ -91,10 +95,16 @@ class AreaTable {
   final String? tableId;
   final String? route;
 
-  static const native = {'adjustments', 'repair_moves', 'bills'};
+  /// Whether the server says this person may open it, and its sentence when
+  /// not. Null from a server that does not say.
+  final bool? mayOpen;
+  final String? refused;
 
-  /// An Airtable source not yet mirrored into a Financials table.
-  bool get unmirrored => tableId == null && !native.contains(key);
+  /// The server's refusal for an Airtable source no base mirrors yet: the
+  /// one refusal a person can resolve here, with Mirror it.
+  static const notMirrored = 'Not mirrored into a base yet.';
+
+  static const native = {'adjustments', 'repair_moves', 'bills'};
 
   /// The Airtable base and table ids an unmirrored key names.
   (String, String)? get airtable {
