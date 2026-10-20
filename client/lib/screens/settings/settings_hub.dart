@@ -7,6 +7,7 @@ import '../customers/memberships_settings.dart';
 import '../email/settings_tab.dart';
 import '../guidelines_screen.dart';
 import '../marketing/newsletter_settings.dart';
+import '../monitoring/camera_sites_settings.dart';
 import '../phone/settings_tab.dart';
 import '../reports/report_goals_settings.dart';
 import '../scheduling_screen.dart';
@@ -153,6 +154,15 @@ class _SettingsHubState extends State<SettingsHub> {
           label('reports', 'Reports'),
           Icons.flag_outlined,
           () => ReportGoalsSettings(api: api, session: session),
+        ),
+      // Camera sites: the PC at each site that relays its recorder (UI queue
+      // 117). No Monitoring Settings tab of its own yet; this is its page.
+      if (reach('monitoring') && me.can('monitoring.cameras.view'))
+        (
+          'monitoring',
+          label('monitoring', 'Monitoring'),
+          Icons.videocam_outlined,
+          () => CameraSitesSettings(api: api, session: session),
         ),
       if (reach('ai_assistance') && me.can('ai_assistance.settings.view'))
         (
