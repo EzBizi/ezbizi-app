@@ -687,6 +687,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       key: _workizFormKey,
       api: widget.api,
       branches: widget.session.me?.franchisesInView ?? const [],
+      organizationView: widget.session.me?.scope.type == 'organization',
       onDone: _load,
     ),
   ];
