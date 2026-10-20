@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 115 · Customer Experience › Complaints — **sent 2026-10-20** (`docs/previews/cx-complaints-layouts.html`)
+### 115 · Customer Experience › Complaints — **sent 2026-10-20 — Jose: "go ahead" (1 and 4)** (`docs/previews/cx-complaints-layouts.html`)
 
 Jose 2026-10-20 via the desk: "a table view like taskboard, that shows the progress of each bad rating". **1** (recommended) Table default with status tabs carrying counts (Open/New/In progress/Solved/Can't be solved/All), kind/owner/branch/date filters, row panel with status+owner pickers, notes, link to source; Board one click away. **2** Board first. **3** list grouped by status. Phone **4** (recommended) / **5** / **6**.
 
