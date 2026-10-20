@@ -26,6 +26,7 @@ class WorkizConnectForm extends StatefulWidget {
     this.method,
     this.label,
     this.branches = const [],
+    this.organizationView = true,
   });
 
   final ApiClient api;
@@ -40,6 +41,9 @@ class WorkizConnectForm extends StatefulWidget {
 
   /// The branches a signed-in session's accounts can be filed on.
   final List<FranchiseSummary> branches;
+
+  /// See [WorkizSessionLogin.organizationView].
+  final bool organizationView;
 
   @override
   State<WorkizConnectForm> createState() => _WorkizConnectFormState();
@@ -151,6 +155,7 @@ class _WorkizConnectFormState extends State<WorkizConnectForm> {
             api: widget.api,
             branches: widget.branches,
             onConnected: widget.onDone,
+            organizationView: widget.organizationView,
           )
         else
           ..._apiFields(theme, box, replace),

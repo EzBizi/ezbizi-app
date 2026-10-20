@@ -152,6 +152,55 @@ void main() {
     expect(find.byKey(const ValueKey('workiz-session-get')), findsNothing);
   });
 
+  // Workiz, 2026-10-20: the link and the accounts answer only in the
+  // organization view; elsewhere a 403 with this sentence.
+  testWidgets('a company view shows the hint and asks for no link', (
+    tester,
+  ) async {
+    final server = _Server()
+      ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'connected'};
+    await _pumpSession(tester, server, organizationView: false);
+
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text(WorkizSessionLogin.organizationOnly), findsOneWidget);
+    expect(find.byKey(const ValueKey('workiz-session-get')), findsNothing);
+    expect(find.text('Lakeview Plumbing'), findsNothing);
+    expect(server.sent.map((r) => r.url.path), ['/api/v1/social/connections']);
+  });
+
+  testWidgets('a 403 from the link shows the same hint', (tester) async {
+    final server = _Server()..forbidden = true;
+    await _pumpSession(tester, server);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-session-get')));
+    await tester.pumpAndSettle();
+
+    expect(server.sent.last.url.path, '/api/v1/social/workiz-web/link');
+    expect(find.text(WorkizSessionLogin.organizationOnly), findsOneWidget);
+    expect(find.byKey(const ValueKey('workiz-session-get')), findsNothing);
+    expect(find.text('Waiting for it…'), findsNothing);
+  });
+
+  // A link works once; Get a new one replaces it, so only the newest shows.
+  testWidgets('Get a new one shows only the newest link', (tester) async {
+    final server = _Server();
+    await _pumpSession(tester, server);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-session-get')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('https://app.example.test/s/workiz/ab12'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-session-new')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('https://app.example.test/s/workiz/ab12'), findsNothing);
+    expect(
+      find.text('https://app.example.test/s/workiz/ab12-2'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a phone shows the status and table, not the handoff', (
     tester,
   ) async {
@@ -181,6 +230,8 @@ class _Server {
   final sent = <http.Request>[];
   Map<String, dynamic>? row;
   bool routes = true;
+  bool forbidden = false;
+  int links = 0;
 
   late final client = MockClient((request) async {
     sent.add(request);
@@ -200,9 +251,17 @@ class _Server {
       });
     }
     if (!routes) return json({'message': 'Not found.'}, 404);
+    if (forbidden && path.startsWith('/api/v1/social/workiz-web')) {
+      return json({'message': WorkizSessionLogin.organizationOnly}, 403);
+    }
     if (path == '/api/v1/social/workiz-web/link') {
+      links++;
       return json({
-        'data': {'id': 'w-1', 'link': 'https://app.example.test/s/workiz/ab12'},
+        'data': {
+          'id': 'w-1',
+          'link':
+              'https://app.example.test/s/workiz/ab12${links > 1 ? '-$links' : ''}',
+        },
       });
     }
     if (path.endsWith('/accounts') && request.method == 'GET') {
@@ -225,6 +284,7 @@ Future<void> _pumpSession(
   _Server server, {
   VoidCallback? onDone,
   bool fresh = false,
+  bool organizationView = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -238,6 +298,7 @@ Future<void> _pumpSession(
               FranchiseSummary(id: 'f-1', name: 'Maple Branch'),
               FranchiseSummary(id: 'f-2', name: 'Cedar Branch'),
             ],
+            organizationView: organizationView,
             onDone: onDone ?? () {},
           ),
         ),

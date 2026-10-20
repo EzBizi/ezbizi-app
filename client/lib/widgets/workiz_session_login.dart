@@ -26,9 +26,22 @@ class WorkizSessionLogin extends StatefulWidget {
     required this.api,
     this.branches = const [],
     this.onConnected,
+    this.organizationView = true,
   });
 
   final ApiClient api;
+
+  /// Whether the page is in the organization view. The link and the accounts
+  /// belong to the whole organization, so the server answers them only there
+  /// (403 elsewhere); from a company or branch view the card shows the status
+  /// read-only and [organizationOnly] in place of the steps and the table.
+  final bool organizationView;
+
+  /// The server's 403 sentence for the link and accounts outside the
+  /// organization view (Workiz, 2026-10-20).
+  static const organizationOnly =
+      'The Workiz web login belongs to the whole organization. Switch to the '
+      'organization view to change it.';
 
   /// The branches an account can be filed on: the current view's.
   final List<FranchiseSummary> branches;
@@ -53,6 +66,12 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   bool _unavailable = false;
   String? _failure;
 
+  /// Why the steps and the table are not shown: outside the organization
+  /// view, decided up front or by a 403 from the server.
+  late String? _orgOnly = widget.organizationView
+      ? null
+      : WorkizSessionLogin.organizationOnly;
+
   String? _link;
   int _left = 0;
   bool _copied = false;
@@ -73,9 +92,42 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   }
 
   @override
+  void didUpdateWidget(WorkizSessionLogin old) {
+    super.didUpdateWidget(old);
+    // The form keeps its state across reloads (a global key), so a change of
+    // view arrives here rather than as a fresh state.
+    if (old.organizationView == widget.organizationView) return;
+    _ticker?.cancel();
+    _link = null;
+    _again = false;
+    _accounts = null;
+    _orgOnly = widget.organizationView
+        ? null
+        : WorkizSessionLogin.organizationOnly;
+    _refresh();
+  }
+
+  @override
   void dispose() {
     _ticker?.cancel();
     super.dispose();
+  }
+
+  /// A 403 on the link or the accounts: the organization view is needed.
+  /// Shows the server's own sentence as a hint and stops the polling.
+  bool _forbidden(ApiResponse response) {
+    if (response.statusCode != 403) return false;
+    _ticker?.cancel();
+    final said = response.body['message'];
+    setState(() {
+      _fetching = false;
+      _link = null;
+      _again = false;
+      _orgOnly = said is String && said.isNotEmpty
+          ? said
+          : WorkizSessionLogin.organizationOnly;
+    });
+    return true;
   }
 
   static List<dynamic> _list(Object? body) => body is List
@@ -94,7 +146,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
         .firstOrNull;
     final was = _connected;
     setState(() => _row = row);
-    if (row != null) await _loadAccounts();
+    if (row != null && _orgOnly == null) await _loadAccounts();
     if (_connected && !was) {
       _ticker?.cancel();
       if (mounted) {
@@ -112,7 +164,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     final id = _row?['id'];
     if (id == null) return;
     final response = await widget.api.get('/social/workiz-web/$id/accounts');
-    if (!mounted) return;
+    if (!mounted || _forbidden(response)) return;
     if (response.statusCode == 404) {
       setState(() => _unavailable = true);
       return;
@@ -126,13 +178,14 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   }
 
   Future<void> _getLink() async {
+    if (_orgOnly != null) return;
     setState(() {
       _fetching = true;
       _failure = null;
       _copied = false;
     });
     final response = await widget.api.post('/social/workiz-web/link', {});
-    if (!mounted) return;
+    if (!mounted || _forbidden(response)) return;
     if (response.statusCode == 404) {
       setState(() {
         _fetching = false;
@@ -184,7 +237,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
       '/social/workiz-web/${_row!['id']}/accounts',
       {'account': account['account'], 'franchise_id': branch},
     );
-    if (!mounted) return;
+    if (!mounted || _forbidden(response)) return;
     if (response.statusCode == 404) {
       setState(() => _unavailable = true);
       return;
@@ -221,7 +274,19 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
                 key: const ValueKey('workiz-session-unavailable'),
                 style: small,
               )
-            else ...[
+            else if (_orgOnly != null) ...[
+              // Read-only status, and the sentence in place of the steps and
+              // the table: a hint, not an error.
+              if (_row != null) _status(theme, small),
+              Padding(
+                padding: EdgeInsets.only(top: _row == null ? 0 : 8),
+                child: Text(
+                  _orgOnly!,
+                  key: const ValueKey('workiz-session-org-only'),
+                  style: small,
+                ),
+              ),
+            ] else ...[
               if (_row != null) _status(theme, small),
               if (steps && phone)
                 Padding(
@@ -302,7 +367,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
               style: small?.copyWith(color: theme.colorScheme.error),
             ),
           ],
-          if (!_again && _link == null) ...[
+          if (!_again && _link == null && _orgOnly == null) ...[
             const SizedBox(height: 8),
             FilledButton(
               key: const ValueKey('workiz-session-again'),
