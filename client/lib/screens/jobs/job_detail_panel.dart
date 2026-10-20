@@ -14,6 +14,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import 'job_files.dart';
 import 'job_lines_tab.dart';
 import 'job_where.dart';
 import 'job_workiz.dart';
@@ -74,6 +75,13 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   String? _areaId;
   List<({String id, String name})> _areaChoices = const [];
 
+  /// The job's own photos and files (queue 119), loaded beside the job so
+  /// the tab can count them before it is opened.
+  late final JobAttachments _files = JobAttachments(
+    api: widget.api,
+    jobId: widget.id,
+  );
+
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -106,6 +114,8 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     for (final c in [_title, _description, _scheduled, _duration]) {
       c.addListener(_markDirty);
     }
+    _files.addListener(_filesChanged);
+    _files.load();
     _load();
   }
 
@@ -121,8 +131,14 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     Navigator.of(context).pop(changed);
   }
 
+  void _filesChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _files.removeListener(_filesChanged);
+    _files.dispose();
     _title.dispose();
     _description.dispose();
     _scheduled.dispose();
@@ -323,13 +339,14 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     );
   }
 
-  /// The tabs, when there is more than the job to show: Money for a reader
-  /// with Financials on a job Workiz has, Photos & files when Workiz holds
-  /// some. A job with neither keeps today's single page and no tab strip.
+  /// The tabs: Money for a reader with Financials on a job Workiz has, and
+  /// Photos & files on every job, since any job can be given its own (queue
+  /// 119), counting the job's own and Workiz's together.
   Widget _tabbed(BuildContext context, Map<String, dynamic>? row, bool editable) {
     final money = JobMoney.of(row?['money']);
     final extras = WorkizExtras.of(row?['workiz']);
     final files = extras?.files ?? const [];
+    final fileCount = _files.items.length + files.length;
     final tabs = <(String, String, IconData)>[
       ('job', 'Job', Icons.work_outline),
       if (money != null || (extras?.hasMoney ?? false))
@@ -340,8 +357,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               : 'Money · ${formatMoney(money.total, currency: money.currency)}',
           Icons.payments_outlined,
         ),
-      if (files.isNotEmpty)
-        ('files', 'Photos & files · ${files.length}', Icons.photo_library_outlined),
+      (
+        'files',
+        fileCount == 0 ? 'Photos & files' : 'Photos & files · $fileCount',
+        Icons.photo_library_outlined,
+      ),
     ];
     final current = tabs.any((t) => t.$1 == _tab) ? _tab : 'job';
 
@@ -363,7 +383,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
           if (extras != null && extras.hasMoney)
             WorkizMoneyDetail(extras: extras, formats: _me.display),
         ] else if (current == 'files')
-          WorkizFiles(files: files)
+          JobFiles(
+            files: _files,
+            workiz: files,
+            formats: _me.display,
+            addRefusal: _editRefusal,
+          )
         else
           _jobPage(context, row, editable, extras),
       ],

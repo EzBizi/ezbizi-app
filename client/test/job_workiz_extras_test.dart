@@ -18,7 +18,7 @@ import 'package:http/testing.dart';
 /// tab; the invoice, payments, Workiz's own estimates and time on site sit
 /// under the money card; photos are a grid the browser draws itself. The
 /// money exists only for a reader with Financials — the server leaves it out
-/// otherwise — and a job Workiz does not have keeps its single page.
+/// otherwise. Every job has Photos & files, for its own (queue 119).
 void main() {
   testWidgets("Workiz's fields are facts on the Job tab, in its own names", (
     tester,
@@ -218,19 +218,22 @@ void main() {
     expect(find.textContaining('Money'), findsNothing);
   });
 
-  testWidgets('a job Workiz does not have keeps one page and no tabs', (
-    tester,
-  ) async {
-    await _pump(tester, workiz: null, money: null);
+  testWidgets(
+    'a job Workiz does not have shows no Workiz facts, and still gets '
+    'Photos & files for its own',
+    (tester) async {
+      await _pump(tester, workiz: null, money: null);
 
-    expect(find.byKey(const Key('job-tabs')), findsNothing);
-    expect(find.byKey(const Key('job-workiz-facts')), findsNothing);
-    expect(
-      find.widgetWithText(TextField, 'What is the job'),
-      findsOneWidget,
-      reason: 'the control',
-    );
-  });
+      final tabs = tester.widget<TabBarLike>(find.byKey(const Key('job-tabs')));
+      expect([for (final l in tabs.labels) l.$1], ['Job', 'Photos & files']);
+      expect(find.byKey(const Key('job-workiz-facts')), findsNothing);
+      expect(
+        find.widgetWithText(TextField, 'What is the job'),
+        findsOneWidget,
+        reason: 'the control',
+      );
+    },
+  );
 }
 
 const _workiz = <String, dynamic>{

@@ -24,6 +24,15 @@ class Files {
   /// Ask for an image and return its bytes.
   static Future<PickedBytes?> pickImage() => impl.pickImage();
 
+  /// Whether [takePhoto] opens a camera here: the browser on a phone, where
+  /// `<input capture>` hands the pick to the camera. Desktop browsers ignore
+  /// `capture`, and the native builds have no camera package, so both are
+  /// false and offer the file picker alone.
+  static bool get canTakePhoto => impl.canTakePhoto;
+
+  /// A photo straight from the phone's camera, or null if they cancelled.
+  static Future<PickedBytes?> takePhoto() => impl.takePhoto();
+
   /// Ask for any file the OS picker will give us, as bytes.
   ///
   /// Papers on a period, visit or payment are PDFs as often as pictures, and
