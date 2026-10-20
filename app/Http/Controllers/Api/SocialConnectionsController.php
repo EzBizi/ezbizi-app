@@ -100,6 +100,12 @@ class SocialConnectionsController extends Controller
                 // Which Workiz API the key speaks, and how far its history import
                 // has got (Jose, 2026-10-19: the card said neither).
                 'detail' => $c->provider === SocialProvider::Workiz->value ? self::workizDetail($c) : null,
+                // The same, as fields for the Workiz card's own controls.
+                'workiz' => $c->provider === SocialProvider::Workiz->value ? [
+                    'method' => WorkizV2::uses($c) ? 'v2' : 'v1',
+                    'last_synced_at' => \App\Models\WorkizJob::query()->where('franchise_id', $c->scope_id)->max('synced_at'),
+                    'history' => BackfillWorkizJobs::state($c),
+                ] : null,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
 
                 /*

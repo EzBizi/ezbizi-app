@@ -708,7 +708,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      */
     public function getBookingLinkAttribute(): string
     {
-        $url = trim((string) app(SettingsResolver::class)->get('leads.booking_url', $this->franchise ?? $this->company ?? $this->organization));
+        $url = $this->brandSetting('leads.booking_url');
 
         return $url === '' ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
     }
@@ -738,7 +738,31 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     /** `{{office_phone}}`: the number a customer calls the branch on. */
     public function getOfficePhoneAttribute(): string
     {
-        return trim((string) app(SettingsResolver::class)->get('leads.office_phone', $this->franchise ?? $this->company ?? $this->organization));
+        return $this->brandSetting('leads.office_phone');
+    }
+
+    /**
+     * A setting the CUSTOMER sees under the business's name - its booking page,
+     * phone, photos email. Read like any setting, except that a Sub Company
+     * never borrows its parent's or the organization's: that is another
+     * brand's (Jose, 2026-10-20: "even tho angisweep is a sub company of
+     * a-1chimney, it should not send an a-1chimney booking link"). With none
+     * of its own it is '' and the line holding it is dropped.
+     */
+    private function brandSetting(string $key): string
+    {
+        $resolver = app(SettingsResolver::class);
+        $scope = $this->franchise ?? $this->company ?? $this->organization;
+        $company = $this->company;
+        if ($company?->parent_company_id !== null) {
+            $from = $resolver->sourceOf($key, $scope);
+            $own = $from !== null && ($from->is($company) || ($from instanceof Franchise && $from->company_id === $company->getKey()));
+            if (! $own) {
+                return '';
+            }
+        }
+
+        return trim((string) $resolver->get($key, $scope));
     }
 
     /*
@@ -820,9 +844,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
 
     public function getPhotosEmailAttribute(): string
     {
-        $scope = $this->franchise ?? $this->company ?? $this->organization;
-
-        return trim((string) app(SettingsResolver::class)->get('leads.photos_email', $scope));
+        return $this->brandSetting('leads.photos_email');
     }
 
     /**

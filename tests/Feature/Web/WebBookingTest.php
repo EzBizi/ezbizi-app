@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Models\Company;
 use App\Models\Lead;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
@@ -80,9 +81,10 @@ class WebBookingTest extends TestCase
             'contact_name' => 'Dana Smith', 'phone' => '+12035550100', 'postal_code' => '06810',
             'status' => Lead::STATUS_NEW, 'received_at' => now(),
         ]));
-        $url = BookingLink::forLead($lead, 'https://www.a-1chimney.com/booking/');
-        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
-        $token = $query['l'];
+        $token = basename($this->inTenant($tenant['org'], fn () => BookingLink::forLead($lead, 'https://www.a-1chimney.com/booking/')));
+        // A link sent before the short codes (a signed token) still reads.
+        $old = $this->inTenant($tenant['org'], fn () => BookingLink::signed($lead));
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($old))->assertOk();
 
         $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))->assertOk()
             ->assertExactJson(['first_name' => 'Dana', 'zip' => '06810', 'has_name' => true, 'has_phone' => true]);
@@ -135,6 +137,30 @@ class WebBookingTest extends TestCase
         $this->assertSame(['date' => $first, 'start_time' => '08:00'], $body->json('preferred'));
         $this->assertStringNotContainsString('Pat Customer', $body->getContent());
         $this->assertStringNotContainsString('Elm', $body->getContent());
+    }
+
+    /**
+     * Jose, 2026-10-20: "the sub companies use the same availability as the
+     * parent company". A sub-company's site books into the parent's area; the
+     * lead is the sub-company's, never filed under the parent's branch.
+     */
+    public function test_a_sub_company_books_against_its_parents_availability(): void
+    {
+        [, $tenant] = $this->siteWithArea();
+        $sub = $this->inTenant($tenant['org'], fn () => Company::create([
+            'organization_id' => $tenant['org']->id, 'parent_company_id' => $tenant['company']->id, 'name' => 'AngiSweep',
+        ]));
+        $id = $this->signedInAs($tenant['admin'])->postJson('/api/v1/web/sites', ['company_id' => $sub->id, 'host' => 'angisweep.com'])
+            ->assertCreated()->json('data.id');
+        auth()->forgetGuards();
+        $site = $this->inTenant($tenant['org'], fn () => WebSite::findOrFail($id));
+
+        $first = $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->assertOk()->json('days.0.date');
+        $this->postJson('/api/v1/web/booking', $this->booking($site, $first) + ['captcha' => $this->solved()])->assertCreated();
+
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->sole());
+        $this->assertSame($sub->id, $lead->company_id);
+        $this->assertNull($lead->franchise_id, 'not filed under the parent company\'s branch');
     }
 
     /** @return array{0: WebSite, 1: array} */

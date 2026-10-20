@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Jobs\SendWhatsAppPeriodReports;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\ReportBatchFile;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppNumber;
@@ -12,7 +13,9 @@ use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Weekly and monthly PDFs, approved on WhatsApp first (docs/REPLACING-RODRIGO-BOT.md,
@@ -46,7 +49,57 @@ final class WhatsAppPeriodReports
         );
     }
 
-    /** Send the approver the consolidated PDF and the question. Inside the tenant. */
+    /**
+     * Build every PDF of the batch once, as a new revision, and keep them
+     * (report_batch_files): what the approver sees is what APPROVE sends
+     * (the proof layer, 2026-10-20). Inside the tenant.
+     *
+     * @return list<ReportBatchFile> the branches' PDFs, then the consolidated one
+     */
+    public function freeze(WhatsAppReportBatch $batch, PeriodReport $report): array
+    {
+        [$from, $to] = [$batch->starts_on->toDateString(), $batch->ends_on->toDateString()];
+        $label = $this->label($batch);
+        $revision = $batch->revision + 1;
+        // The draft's corrections (ReportChanges), if any.
+        $report = $report->withOptions((array) ($batch->settings ?? []));
+        $files = [];
+
+        $keep = function (?string $branchId, string $title, string $pdf, string $filename) use ($batch, $revision, &$files) {
+            $path = 'reports/'.$batch->getKey().'/'.$revision.'/'.$filename;
+            Storage::disk('local')->put($path, $pdf);
+            $files[] = ReportBatchFile::query()->create([
+                'organization_id' => $batch->organization_id, 'batch_id' => $batch->getKey(), 'revision' => $revision,
+                'franchise_id' => $branchId, 'title' => $title, 'filename' => $filename, 'path' => $path, 'sha256' => hash('sha256', $pdf),
+            ]);
+        };
+
+        foreach (WhatsAppGroup::query()->where('purpose', 'like', 'daily:%')->get() as $group) {
+            $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
+
+            if ($branch !== null) {
+                $keep($branch->getKey(), BranchName::of($branch).' '.$label,
+                    $report->forFranchise($branch, $from, $to), $this->filename($batch, BranchName::of($branch)));
+            }
+        }
+
+        $keep(null, 'All companies '.$label,
+            $report->consolidated(Organization::findOrFail($batch->organization_id), $from, $to),
+            $this->filename($batch, 'All companies'));
+
+        $batch->forceFill(['revision' => $revision])->save();
+
+        return $files;
+    }
+
+    /** The frozen PDFs of a revision, the consolidated one last. */
+    public function files(WhatsAppReportBatch $batch, ?int $revision = null): Collection
+    {
+        return ReportBatchFile::query()->where('batch_id', $batch->getKey())->where('revision', $revision ?? $batch->revision)
+            ->get()->sortBy(fn ($f) => $f->franchise_id === null)->values();
+    }
+
+    /** Freeze a new revision and send the approver its consolidated PDF and the question. Inside the tenant. */
     public function preview(WhatsAppReportBatch $batch, PeriodReport $report): int
     {
         // Approved, or held by the approver until they say otherwise.
@@ -55,13 +108,13 @@ final class WhatsAppPeriodReports
         }
 
         $label = $this->label($batch);
+        $consolidated = collect($this->freeze($batch, $report))->last();
 
-        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)',
-            $report->consolidated(Organization::findOrFail($batch->organization_id), $batch->starts_on->toDateString(), $batch->ends_on->toDateString()),
-            $this->filename($batch, 'All companies'));
+        $reached = $this->groups->deliverDocument(self::APPROVAL, $label.' (for approval)', $consolidated->bytes(), $consolidated->filename);
 
         $this->groups->deliver(self::APPROVAL, $label,
-            "\u{1F4CA} *".ucfirst($label)." - ready for approval*\n\n"
+            "\u{1F4CA} *".ucfirst($label)." - ready for approval*\n"
+            .'Version '.$batch->revision.' · '.substr($consolidated->sha256, 0, 8)."\n\n"
             ."\u{2705} Reply *APPROVE* to send them to every group\n"
             ."\u{1F4E5} Reply *SEPARATELY* to get each company's PDF here, privately\n"
             ."\u{23F8} Reply *HOLD* to keep them back for now\n"
@@ -70,25 +123,25 @@ final class WhatsAppPeriodReports
         return $reached;
     }
 
-    /** Approved: each branch its PDF, and the consolidated one to `financial`. Inside the tenant. */
+    /**
+     * Approved: the approved revision's own PDFs, each branch its PDF and the
+     * consolidated one to `financial` - never a rebuild. Inside the tenant.
+     */
     public function send(WhatsAppReportBatch $batch, PeriodReport $report): int
     {
-        [$from, $to] = [$batch->starts_on->toDateString(), $batch->ends_on->toDateString()];
-        $label = $this->label($batch);
         $sent = 0;
+        $files = $this->files($batch, $batch->approved_revision ?? $batch->revision);
 
-        foreach (WhatsAppGroup::query()->where('purpose', 'like', 'daily:%')->get() as $group) {
-            $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
-
-            if ($branch !== null) {
-                $sent += $this->groups->deliverDocument($group->purpose, BranchName::of($branch).' '.$label,
-                    $report->forFranchise($branch, $from, $to), $this->filename($batch, BranchName::of($branch)));
-            }
+        // Approved with no preview built (nothing to compare): build it now.
+        if ($files->isEmpty()) {
+            $this->freeze($batch, $report);
+            $files = $this->files($batch->refresh());
         }
 
-        $sent += $this->groups->deliverDocument('financial', 'All companies '.$label,
-            $report->consolidated(Organization::findOrFail($batch->organization_id), $from, $to),
-            $this->filename($batch, 'All companies'));
+        foreach ($files as $file) {
+            $sent += $this->groups->deliverDocument($file->franchise_id === null ? 'financial' : 'daily:'.$file->franchise_id,
+                $file->title, $file->bytes(), $file->filename);
+        }
 
         return $sent;
     }
@@ -104,22 +157,14 @@ final class WhatsAppPeriodReports
             return 0;
         }
 
-        [$from, $until] = [$batch->starts_on->toDateString(), $batch->ends_on->toDateString()];
-        $label = $this->label($batch);
-        $documents = [];
-
-        foreach (WhatsAppGroup::query()->where('purpose', 'like', 'daily:%')->get() as $group) {
-            $branch = Franchise::query()->find(substr($group->purpose, strlen('daily:')));
-
-            if ($branch !== null) {
-                $documents[] = ['title' => BranchName::of($branch).' '.$label,
-                    'pdf' => $report->forFranchise($branch, $from, $until), 'filename' => $this->filename($batch, BranchName::of($branch))];
-            }
+        $files = $this->files($batch);
+        if ($files->isEmpty()) {
+            $this->freeze($batch, $report);
+            $files = $this->files($batch->refresh());
         }
 
-        $documents[] = ['title' => 'All companies '.$label,
-            'pdf' => $report->consolidated(Organization::findOrFail($batch->organization_id), $from, $until),
-            'filename' => $this->filename($batch, 'All companies')];
+        $documents = $files->map(fn (ReportBatchFile $f) => ['title' => $f->title, 'pdf' => $f->bytes(), 'filename' => $f->filename])->all();
+        $label = $this->label($batch);
 
         return $this->groups->deliverDocumentsToMember(self::APPROVAL, $to, ucfirst($label), $documents);
     }
@@ -157,7 +202,9 @@ final class WhatsAppPeriodReports
         } elseif ($word === 'SEPARATELY') {
             SendWhatsAppPeriodReports::dispatch($batch->getKey(), null, $approver->getKey());
         } else {
-            $batch->forceFill(['approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null])->save();
+            $consolidated = $this->files($batch)->last();
+            $batch->forceFill(['approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null,
+                'approved_revision' => $batch->revision, 'approved_sha256' => $consolidated?->sha256])->save();
             SendWhatsAppPeriodReports::dispatch($batch->getKey(), $approver->getKey());
         }
 

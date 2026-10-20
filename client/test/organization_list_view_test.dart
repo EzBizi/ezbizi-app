@@ -76,8 +76,10 @@ void main() {
 
     expect(
       find.descendant(of: page, matching: find.text('Springfield')),
-      findsOneWidget,
+      findsNWidgets(2),
+      reason: 'Its name on the page, and in the field that renames it there.',
     );
+    expect(find.byKey(const ValueKey('org-franchise-name')), findsOneWidget);
     expect(
       find.descendant(of: page, matching: find.text('Franchise')),
       findsOneWidget,
@@ -133,12 +135,41 @@ void main() {
       find.byTooltip('Only somebody assigned at Brightside Group can do that.'),
       findsOneWidget,
     );
+    // Edited where it is read since 2026-10-20 (Jose: "most of the
+    // editable stuff just in the main screen").
+    expect(find.widgetWithText(TextField, '12 Main St'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '(555) 010-0142'), findsOneWidget);
+    expect(find.byKey(const ValueKey('org-company-save')), findsOneWidget);
+  });
+
+  // Jose, 2026-10-20: edit on the page itself, with what is empty marked.
+  testWidgets('a company is edited on its page and saved from there', (
+    tester,
+  ) async {
+    final patches = <String>[];
+    await _pump(tester, _server(patches: patches));
+    await _pick(tester, 'company', _home);
+
+    final save = find.byKey(const ValueKey('org-company-save'));
     expect(
-      find.text('12 Main St, Springfield, IL 62701'),
-      findsOneWidget,
-      reason: 'The address the edit form holds, moved onto the page.',
+      tester.widget<FilledButton>(save).onPressed,
+      isNull,
+      reason: 'Nothing changed yet.',
     );
-    expect(find.text('(555) 010-0142'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('org-company-phone')),
+      '(555) 010-0199',
+    );
+    await tester.pump();
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+
+    expect(
+      patches.where((p) => p.startsWith('PATCH /api/v1/companies/$_home ')),
+      hasLength(1),
+    );
+    expect(patches.last, contains('"phone":"(555) 010-0199"'));
   });
 
   testWidgets('the settings set at exactly that node are listed', (
@@ -149,18 +180,19 @@ void main() {
     await _pump(tester, _server(settingsAsked: asked));
     await _pick(tester, 'company', _home);
 
+    // The real editors for that place, on its Settings tab, opened on
+    // "Set here" (Jose, 2026-10-20: they "aren't there to set").
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('org-page-tabs')),
+        matching: find.text('Settings'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
     expect(asked, contains('company:$_home'));
-
-    final list = find.byKey(const ValueKey('org-set-here'));
-
-    expect(
-      find.descendant(of: list, matching: find.text('Start of day')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: list, matching: find.text('Reply within')),
-      findsOneWidget,
-    );
+    expect(find.text('Start of day'), findsOneWidget);
+    expect(find.text('Reply within'), findsOneWidget);
     expect(
       find.text('Currency'),
       findsNothing,
@@ -478,7 +510,24 @@ Map<String, dynamic> _setting(
   String key,
   String label,
   Map<String, dynamic>? source,
-) => {'key': key, 'label': label, 'group': 'General', 'source': source};
+) => {
+  // The whole row the Settings tab draws, now that the page edits it.
+  'key': key,
+  'label': label,
+  'type': 'string',
+  'group': 'general',
+  'group_label': 'General',
+  'value': '',
+  'is_sensitive': false,
+  'options': null,
+  'help': null,
+  'not_yet_in_effect': null,
+  'editable_here': true,
+  'may_edit': true,
+  'may_edit_reason': null,
+  'allowed_scopes': ['organization', 'company', 'franchise'],
+  'source': source == null ? null : {'type': 'company', 'id': '', ...source},
+};
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
   jsonEncode(body),

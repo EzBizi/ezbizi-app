@@ -276,6 +276,7 @@
                 "Overbooking",
                 "Re-Scheduling",
                 "Routing",
+                "Helpers",
                 "Locations",
                 "Settings"
             ]
@@ -516,6 +517,7 @@
         "profit_loss.view",
         "reports.build",
         "reports.builder.view",
+        "reports.correct",
         "reports.experimental.view",
         "reports.export",
         "reports.library.view",
@@ -542,6 +544,7 @@
         "scheduling.create",
         "scheduling.delete",
         "scheduling.edit",
+        "scheduling.helpers.view",
         "scheduling.locations.view",
         "scheduling.overbooking.view",
         "scheduling.rescheduling.view",

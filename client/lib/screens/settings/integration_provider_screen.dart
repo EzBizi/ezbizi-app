@@ -74,6 +74,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.mayConnect = false,
     this.onDisconnect,
     this.purpose,
+    this.onEdit,
     required this.onBack,
   });
 
@@ -130,6 +131,10 @@ class IntegrationProviderScreen extends StatefulWidget {
 
   /// What this service is for, in one line under its name (UI queue 110).
   final String? purpose;
+
+  /// Replace a connection's credentials or how it connects (Workiz, UI queue
+  /// 109). Null where a provider has nothing to edit here.
+  final Future<void> Function(IntegrationConnection row)? onEdit;
 
   /// Close this pane and put the grid back.
   ///
@@ -289,6 +294,14 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     if (mounted) setState(() => _error = refused);
   }
 
+  static String _ago(DateTime at) {
+    final d = DateTime.now().difference(at.toLocal());
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
   /// "Open Marketing" beside a sentence naming it, or null when there is
   /// nowhere to open (outside the shell, or a provider that connects here).
   Widget? _openModule(BuildContext context) {
@@ -403,6 +416,9 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                       [
                         if (row.beneath != null) row.beneath!,
                         if ((row.detail ?? '').isNotEmpty) row.detail!,
+                        // When it last synced (UI queue 109).
+                        if (row.lastSyncedAt != null)
+                          'synced ${_ago(row.lastSyncedAt!)}',
                         if (!row.connected) row.statusReason ?? 'Not working',
                       ].join(' · '),
                       maxLines: 2,
@@ -413,10 +429,19 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                             : theme.colorScheme.error,
                       ),
                     ),
-                    trailing: widget.canName || widget.onDisconnect != null
+                    trailing:
+                        widget.canName ||
+                            widget.onDisconnect != null ||
+                            widget.onEdit != null
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              if (widget.onEdit != null)
+                                TextButton(
+                                  key: ValueKey('edit:${row.id}'),
+                                  onPressed: () => widget.onEdit!(row),
+                                  child: const Text('Edit'),
+                                ),
                               if (widget.canName)
                                 IconButton(
                                   tooltip: 'Name this connection',
@@ -546,6 +571,8 @@ class IntegrationConnection {
     this.label,
     this.statusReason,
     this.detail,
+    this.method,
+    this.lastSyncedAt,
   });
 
   final String id;
@@ -572,6 +599,10 @@ class IntegrationConnection {
 
   /// One provider-specific line, such as which Workiz API the key speaks.
   final String? detail;
+
+  /// Workiz: which API it speaks and when it last synced (UI queue 109).
+  final String? method;
+  final DateTime? lastSyncedAt;
 
   /// Which screen owns this account. The grid draws a heading per family,
   /// because "where do I go to fix this" is the question underneath.
@@ -638,5 +669,9 @@ class IntegrationConnection {
         connected: (json['status'] as String? ?? '') == 'connected',
         statusReason: json['status_reason'] as String?,
         detail: json['detail'] as String?,
+        method: (json['workiz'] as Map?)?['method'] as String?,
+        lastSyncedAt: DateTime.tryParse(
+          '${(json['workiz'] as Map?)?['last_synced_at'] ?? ''}',
+        ),
       );
 }

@@ -9,6 +9,7 @@ class PickerItem {
     this.description,
     this.enabled = true,
     this.badge,
+    this.note,
   });
 
   final String key;
@@ -23,6 +24,10 @@ class PickerItem {
 
   /// The word that says WHY a row looks different — "Not built yet".
   final String? badge;
+
+  /// One measured line under the description, such as "23 times in the last
+  /// 30 days". Null draws nothing: a missing number is not a zero.
+  final String? note;
 }
 
 /// A named set of items — a module, or the group of actions that work anywhere.
@@ -69,6 +74,7 @@ class CataloguePicker extends StatefulWidget {
     required this.onSelected,
     required this.searchHint,
     this.height = 300,
+    this.cards = false,
   });
 
   final List<PickerGroup> groups;
@@ -83,6 +89,12 @@ class CataloguePicker extends StatefulWidget {
   /// form off the page. A chooser that makes you scroll the whole screen to see
   /// its options is the dropdown problem again in a taller costume.
   final double height;
+
+  /// Draws the chosen category's items as cards across the width, rather than
+  /// as rows. For a picker that has a screen to itself — the When step of the
+  /// automation builder — where a row of text a thousand pixels wide is
+  /// harder to scan than cards side by side.
+  final bool cards;
 
   @override
   State<CataloguePicker> createState() => _CataloguePickerState();
@@ -292,11 +304,120 @@ class _CataloguePickerState extends State<CataloguePicker> {
 
     final items = _matching(showing);
 
+    if (widget.cards) return _cardGrid(context, items);
+
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemCount: items.length,
       separatorBuilder: (_, _) => const Divider(height: 1, indent: 12),
       itemBuilder: (context, i) => _row(context, items[i]),
+    );
+  }
+
+  /// Cards in rows of equal width, and every card in a row the same height:
+  /// a Wrap would size each to its own text, and two choices side by side that
+  /// are different sizes read as two different kinds of thing.
+  Widget _cardGrid(BuildContext context, List<PickerItem> items) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = (constraints.maxWidth / 250).floor().clamp(1, 4);
+        final rows = <List<PickerItem>>[
+          for (var i = 0; i < items.length; i += columns)
+            items.sublist(i, (i + columns).clamp(0, items.length)),
+        ];
+
+        return ListView(
+          padding: const EdgeInsets.all(10),
+          children: [
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var c = 0; c < columns; c++) ...[
+                        if (c > 0) const SizedBox(width: 10),
+                        Expanded(
+                          child: c < row.length
+                              ? _card(context, row[c])
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _card(BuildContext context, PickerItem item) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final chosen = item.key == widget.selected;
+
+    return Material(
+      color: chosen ? scheme.primaryContainer : scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: chosen ? scheme.primary : scheme.outlineVariant,
+          width: chosen ? 2 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: item.enabled ? () => widget.onSelected(item.key) : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: item.enabled
+                            ? (chosen ? scheme.onPrimaryContainer : null)
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (chosen)
+                    Icon(Icons.check_circle, size: 18, color: scheme.primary),
+                ],
+              ),
+              if (item.badge != null) ...[
+                const SizedBox(height: 4),
+                Tag(item.badge!, warn: !item.enabled),
+              ],
+              if (item.description != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  item.description!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (item.note != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  item.note!,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.primary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 

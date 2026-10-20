@@ -4,6 +4,7 @@ namespace App\Support\Web;
 
 use App\Jobs\DeliverAutomationEvent;
 use App\Models\AutomationEvent;
+use App\Models\Franchise;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
@@ -407,8 +408,10 @@ final class WebsiteEnquiries
         $visitor['name'] = ($visitor['name'] ?? '') !== '' ? $visitor['name'] : $lead->contact_name;
         $visitor['phone'] = ($visitor['phone'] ?? '') !== '' ? $visitor['phone'] : $lead->phone;
 
-        // The area knows the branch better than the site does.
-        if ($lead->franchise_id === null && $area->franchise_id !== null) {
+        // The area knows the branch better than the site does, when it is this
+        // company's own; a parent's area (a sub-company's booking) is not.
+        if ($lead->franchise_id === null && $area->franchise_id !== null
+            && Franchise::query()->whereKey($area->franchise_id)->value('company_id') === $site->company_id) {
             $lead->forceFill(['franchise_id' => $area->franchise_id])->save();
         }
 

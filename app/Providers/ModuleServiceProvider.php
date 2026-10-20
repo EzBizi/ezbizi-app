@@ -1336,6 +1336,9 @@ class ModuleServiceProvider extends ServiceProvider
                     // Jose, 2026-10-14: a route per technician (capacity / 6),
                     // opened in Google Maps (App\Support\Scheduling\Routes).
                     new TabDefinition('routing', 'Routing'),
+                    // A1 Leads takeover (Jose, 2026-10-20): helpers booked to
+                    // technicians by day or half (SchedulingHelpersController).
+                    new TabDefinition('helpers', 'Helpers'),
                     // Jovanni, 2026-10-01: company branches and the closest
                     // one to an address, for new dispatchers (queue 49).
                     new TabDefinition('locations', 'Locations'),
@@ -1364,10 +1367,6 @@ class ModuleServiceProvider extends ServiceProvider
                         composedFields: ['summary'],
                     ),
                 ],
-                auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
-                    .'audit_events row, so there is no record of who changed what or when. '
-                    .'This states a defect, not a decision, and it is not permission to stay '
-                    .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
             ),
 
@@ -3934,7 +3933,7 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'reports',
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
-                actions: ['view', 'build', 'export', 'scoring_weights', 'settings'],
+                actions: ['view', 'build', 'export', 'scoring_weights', 'settings', 'correct'],
 
                 /*
                  * ── THE TABS, and what a tab grant MEANS here ───────
@@ -4036,8 +4035,10 @@ class ModuleServiceProvider extends ServiceProvider
                     'scoring_weights' => ['reports.scoring.view'],
                     // The weekly/monthly report's goals (2026-10-16).
                     'settings' => ['reports.view'],
+                    // Correcting a report draft before it is approved (2026-10-20).
+                    'correct' => ['reports.view'],
                 ],
-                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals"],
+                actionLabels: ['scoring_weights' => "Set Scoring's weights", 'settings' => "Set the reports' goals", 'correct' => 'Correct a report before it is approved'],
                 automationActions: [
                     new ActionDefinition(
                         key: 'report.send',

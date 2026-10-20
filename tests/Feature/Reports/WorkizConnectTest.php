@@ -167,6 +167,43 @@ class WorkizConnectTest extends TestCase
             ->firstWhere('provider', 'workiz')['detail']);
     }
 
+    /** Jose, 2026-10-19: the form offers v1 or v2. A key of the other API says so and saves nothing. */
+    public function test_a_key_of_the_other_api_than_the_one_chosen_is_refused(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $branch = $this->branch($tenant, 'New Jersey');
+        $this->workizAccepts();
+
+        $this->signedInAs($this->viewing($tenant, $branch))
+            ->postJson('/api/v1/reports/experimental/workiz', ['api_token' => 'api_good', 'method' => 'v2'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['api_token' => 'That is a Workiz v1 key, not v2.']);
+
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => SocialConnection::query()->count()));
+    }
+
+    /** An existing account's key is replaced in place, never shown back; someone who cannot connect cannot edit. */
+    public function test_an_existing_account_is_edited_in_place(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $branch = $this->branch($tenant, 'New Jersey');
+        $this->workizAccepts();
+        $this->signedInAs($this->viewing($tenant, $branch))->postJson('/api/v1/reports/experimental/workiz', ['api_token' => 'api_first'])->assertCreated();
+        $row = $this->inTenant($tenant['org'], fn () => SocialConnection::query()->sole());
+
+        $runner = $this->userWithRole($tenant, 'Runner', ['reports.view'], onlyAt: $branch);
+        $this->signedInAs($runner)->putJson('/api/v1/social/workiz/'.$row->id, ['api_token' => 'api_sneaky'])->assertForbidden();
+
+        $body = $this->signedInAs($tenant['admin'])->putJson('/api/v1/social/workiz/'.$row->id, ['api_token' => 'api_second', 'method' => 'v1'])
+            ->assertOk()->assertJsonPath('data.method', 'v1')->json();
+
+        $this->assertStringNotContainsString('api_second', json_encode($body));
+        $this->assertSame('api_second', $this->inTenant($tenant['org'], fn () => $row->fresh()->credentials['api_token']));
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => SocialConnection::query()->count()));
+        $this->assertSame('v1', collect($this->signedInAs($tenant['admin'])->getJson('/api/v1/social/connections?include=data_sources')->json('data'))
+            ->firstWhere('provider', 'workiz')['workiz']['method']);
+    }
+
     /** Connecting the same branch twice replaces the token rather than duplicating. */
     public function test_reconnecting_a_branch_does_not_make_a_second_row(): void
     {

@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 115 · Customer Experience › Complaints — **sent 2026-10-20** (`docs/previews/cx-complaints-layouts.html`)
+
+Jose 2026-10-20 via the desk: "a table view like taskboard, that shows the progress of each bad rating". **1** (recommended) Table default with status tabs carrying counts (Open/New/In progress/Solved/Can't be solved/All), kind/owner/branch/date filters, row panel with status+owner pickers, notes, link to source; Board one click away. **2** Board first. **3** list grouped by status. Phone **4** (recommended) / **5** / **6**.
+
+### 114 · Business Profile › Performance (A1 takeover) — **sent 2026-10-20 — Jose: "as u recommend" (1 and 4)** (`docs/previews/gbp-performance-layouts.html`)
+
+Customer Experience asked (server ac72803c1: totals/daily/by_location + search terms). **1** (recommended) a Performance tab: dates + listing, freshness line from last_date, five tiles with change vs the period before (click puts it on the daily chart), a table per listing, its searches beside it. **2** on each listing's page. **3** in Reports. Phone **4** (recommended) / **5** / **6**.
+
+### 113 · Automations › Build as steps with a timeline — **sent 2026-10-20 — Jose: "Looks good, go ahead" (1 and 4)** (`docs/previews/automations-steps-layouts.html`)
+
+Jose 2026-10-20: "each of the screens has more to offer related to that space and more space to do it". **1** (recommended) a top timeline Name › When › Only if › Then › Review, one screen each: trigger catalogue by module with 30-day counts and carried details; conditions with a live 30-day would-have-run check; actions list + full-width editor + details + filled preview; Review as one clickable sentence, Try it, where, on/off, last runs. Editing opens on Review. **2** the steps as a left column. **3** one page, one part open at a time. Phone **4** (recommended) / **5** / **6**.
+
+### 112 · Scheduling › Helpers (A1 takeover) — **sent 2026-10-20 — Jose: "Looks good, go ahead" (1 and 4)** (`docs/previews/scheduling-helpers-layouts.html`)
+
+Scheduling asked (server 7d031767: roster + full/am/pm bookings per branch and month). **1** (recommended) A1's month calendar, coloured helper→technician tags per day, a day panel to book/change, a roster button. **2** helpers × days grid. **3** list by day. Phone **4** (recommended) / **5** / **6**.
+
 ### 111 · Settings › Organization, Roles & permissions, Activity, API activity redesigned — **sent 2026-10-19 — Jose: "go ahead" (1 and 4)** (`docs/previews/settings-tabs-redesign-layouts.html`)
 
 Jose 2026-10-19: "u didnt finish revamping the whole settings tab, i see no changes on organization, activity - api activity / roles and permission". **1** (recommended) list on the left, the picked one on the right:

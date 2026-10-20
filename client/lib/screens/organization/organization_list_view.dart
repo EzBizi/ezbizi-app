@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/address_fields.dart';
 import '../../widgets/brand_colour_card.dart';
 import '../../widgets/logo_badge.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/structure_levels.dart';
 import '../../widgets/structure_menu.dart';
-import '../settings_screen.dart' show sourceIsOwn;
+import '../../widgets/tab_bar_like.dart';
+import '../settings_screen.dart' show SettingsScreen;
 
 /// Below this width of the tab itself, the tree is drawn alone and a node's
 /// page replaces it (UI queue 111, phone 4).
@@ -306,10 +309,9 @@ class _OrganizationListViewState extends State<OrganizationListView> {
 
     final stats = _stats(node);
 
-    return ListView(
-      key: const ValueKey('org-detail'),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      children: [
+    return _NodePage(
+      key: ValueKey('org-detail-${node.key}'),
+      header: [
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -350,20 +352,21 @@ class _OrganizationListViewState extends State<OrganizationListView> {
             children: stats,
           ),
         ],
-        const SizedBox(height: 20),
-        Text('Details', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 6),
-        ..._details(node),
-        const SizedBox(height: 20),
-        Text('Settings set here', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 6),
-        _SetHere(
-          key: ValueKey('org-set-here-${node.key}'),
-          api: widget.api,
-          scopeType: node.kind,
-          scopeId: node.raw['id'] as String,
-        ),
       ],
+      details: ListView(
+        key: const ValueKey('org-details'),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        children: _details(node),
+      ),
+      settings: SettingsScreen(
+        key: ValueKey('org-settings-${node.key}'),
+        api: widget.api,
+        session: widget.session,
+        scopeType: node.kind,
+        scopeId: node.raw['id'] as String,
+        scopeLabel: node.name,
+        startSetHere: true,
+      ),
     );
   }
 
@@ -544,6 +547,24 @@ class _OrganizationListViewState extends State<OrganizationListView> {
       ];
     }
 
+    if (node.kind == structureCompany && raw['may_edit'] == true) {
+      return [
+        if (node.parent != null) ...[
+          Text(
+            'Sub company of ${node.parent!['name']}',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+        ],
+        _CompanyForm(
+          key: ValueKey('org-form-${raw['id']}'),
+          api: widget.api,
+          company: raw,
+          onSaved: widget.onChanged,
+        ),
+      ];
+    }
+
     if (node.kind == structureCompany) {
       String part(String key) => (raw[key] as String? ?? '').trim();
 
@@ -586,6 +607,15 @@ class _OrganizationListViewState extends State<OrganizationListView> {
       if (parent != null)
         Text('Part of ${parent['name']}', style: theme.textTheme.bodyMedium),
       if (facts.isNotEmpty) Text(facts, style: theme.textTheme.bodyMedium),
+      if (raw['may_edit'] == true) ...[
+        const SizedBox(height: 12),
+        _FranchiseForm(
+          key: ValueKey('org-form-${raw['id']}'),
+          api: widget.api,
+          franchise: raw,
+          onSaved: widget.onChanged,
+        ),
+      ],
     ];
   }
 
@@ -734,84 +764,307 @@ class _Stat extends StatelessWidget {
 
 /// The settings chosen at exactly this node, by the rule the Preferences tab
 /// counts "Set here" with ([sourceIsOwn]).
-class _SetHere extends StatefulWidget {
-  const _SetHere({
+/// A place's page: its header and numbers, then Details and Settings as two
+/// tabs sharing the rest of the height (Jose, 2026-10-20: "most of the
+/// editable stuff just in the main screen").
+class _NodePage extends StatefulWidget {
+  const _NodePage({
+    super.key,
+    required this.header,
+    required this.details,
+    required this.settings,
+  });
+
+  final List<Widget> header;
+  final Widget details;
+  final Widget settings;
+
+  @override
+  State<_NodePage> createState() => _NodePageState();
+}
+
+class _NodePageState extends State<_NodePage> {
+  int _tab = 0;
+  bool _settingsShown = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // A short window scrolls the whole page, giving the tabs a height of
+    // their own, rather than squeezing them to nothing.
+    return KeyedSubtree(
+      key: const ValueKey('org-detail'),
+      child: LayoutBuilder(
+        builder: (context, box) => box.maxHeight < 560
+            ? SingleChildScrollView(
+                child: SizedBox(height: 560, child: _page(context)),
+              )
+            : _page(context),
+      ),
+    );
+  }
+
+  Widget _page(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: widget.header,
+          ),
+        ),
+        TabBarLike(
+          key: const ValueKey('org-page-tabs'),
+          labels: const [
+            ('Details', Icons.edit_note_outlined),
+            ('Settings', Icons.tune_outlined),
+          ],
+          selected: _tab,
+          onSelected: (i) => setState(() {
+            _tab = i;
+            if (i == 1) _settingsShown = true;
+          }),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Offstage(offstage: _tab != 0, child: widget.details),
+              // Built the first time it is opened, then kept.
+              Offstage(
+                offstage: _tab != 1,
+                child: _settingsShown
+                    ? widget.settings
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A company's name, address and phone, edited where they are read; an empty
+/// box is amber, as everywhere else that marks what is not filled in.
+class _CompanyForm extends StatefulWidget {
+  const _CompanyForm({
     super.key,
     required this.api,
-    required this.scopeType,
-    required this.scopeId,
+    required this.company,
+    required this.onSaved,
   });
 
   final ApiClient api;
-  final String scopeType;
-  final String scopeId;
+  final Map<String, dynamic> company;
+  final VoidCallback onSaved;
 
   @override
-  State<_SetHere> createState() => _SetHereState();
+  State<_CompanyForm> createState() => _CompanyFormState();
 }
 
-class _SetHereState extends State<_SetHere> {
-  /// At most this many labels; the rest are counted.
-  static const int _shown = 5;
-
-  bool _loading = true;
+class _CompanyFormState extends State<_CompanyForm> {
+  late final _name = _field('name');
+  late final _line1 = _field('address_line1');
+  late final _line2 = _field('address_line2');
+  late final _city = _field('city');
+  late final _state = _field('state');
+  late final _postal = _field('postal_code');
+  late final _phone = _field('phone');
+  late String _baseline = _now;
+  bool _saving = false;
   String? _error;
-  List<String> _labels = const [];
+
+  TextEditingController _field(String key) =>
+      TextEditingController(text: widget.company[key] as String? ?? '')
+        ..addListener(() => setState(() {}));
+
+  List<TextEditingController> get _all => [
+    _name,
+    _line1,
+    _line2,
+    _city,
+    _state,
+    _postal,
+    _phone,
+  ];
+
+  String get _now => _all.map((c) => c.text.trim()).join('|');
 
   @override
-  void initState() {
-    super.initState();
-    _load();
+  void dispose() {
+    for (final c in _all) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
-  Future<void> _load() async {
-    final response = await widget.api.get('/settings', {
-      'scope_type': widget.scopeType,
-      'scope_id': widget.scopeId,
-    });
+  String? _orNull(TextEditingController c) =>
+      c.text.trim().isEmpty ? null : c.text.trim();
 
-    if (!mounted) return;
-
+  Future<void> _save() async {
     setState(() {
-      _loading = false;
-
-      if (!response.ok) {
-        _error = response.reason;
-        return;
-      }
-
-      final data = response.data;
-
-      _labels = [
-        if (data is List)
-          for (final row in data.whereType<Map<String, dynamic>>())
-            if (sourceIsOwn(row['source'] as Map<String, dynamic>?))
-              row['label'] as String? ?? row['key'] as String? ?? '',
-      ];
+      _saving = true;
+      _error = null;
     });
+    final response = await widget.api.patch(
+      '/companies/${widget.company['id']}',
+      {
+        'name': _name.text.trim(),
+        'address_line1': _orNull(_line1),
+        'address_line2': _orNull(_line2),
+        'city': _orNull(_city),
+        'state': _orNull(_state)?.toUpperCase(),
+        'postal_code': _orNull(_postal),
+        'phone': _orNull(_phone),
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (response.ok) {
+        _baseline = _now;
+      } else {
+        _error = response.message;
+      }
+    });
+    if (response.ok) widget.onSaved();
   }
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodyMedium;
-    final muted = Theme.of(context).textTheme.bodySmall;
-
-    if (_loading) return const SizedBox.shrink();
-
-    if (_error != null) return Text(_error!, style: muted);
-
-    if (_labels.isEmpty) {
-      return Text('Nothing is set at exactly this level.', style: muted);
-    }
-
-    final extra = _labels.length - _shown;
+    final dirty = _now != _baseline;
 
     return Column(
-      key: const ValueKey('org-set-here'),
+      key: const ValueKey('org-company-form'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: const ValueKey('org-company-name'),
+          controller: _name,
+          decoration: notFilledIn(
+            context,
+            const InputDecoration(labelText: 'Name'),
+            empty: _name.text.trim().isEmpty,
+          ),
+        ),
+        const SizedBox(height: 16),
+        AddressFields(
+          api: widget.api,
+          line1: _line1,
+          line2: _line2,
+          city: _city,
+          state: _state,
+          postal: _postal,
+          flagEmpty: true,
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: const ValueKey('org-company-phone'),
+          controller: _phone,
+          keyboardType: TextInputType.phone,
+          decoration: notFilledIn(
+            context,
+            const InputDecoration(labelText: 'Phone'),
+            empty: _phone.text.trim().isEmpty,
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _error!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton(
+            key: const ValueKey('org-company-save'),
+            onPressed: dirty && !_saving && _name.text.trim().isNotEmpty
+                ? _save
+                : null,
+            child: Text(_saving ? 'Saving…' : 'Save changes'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A branch's name, edited in place.
+class _FranchiseForm extends StatefulWidget {
+  const _FranchiseForm({
+    super.key,
+    required this.api,
+    required this.franchise,
+    required this.onSaved,
+  });
+
+  final ApiClient api;
+  final Map<String, dynamic> franchise;
+  final VoidCallback onSaved;
+
+  @override
+  State<_FranchiseForm> createState() => _FranchiseFormState();
+}
+
+class _FranchiseFormState extends State<_FranchiseForm> {
+  late final _name = TextEditingController(
+    text: widget.franchise['name'] as String? ?? '',
+  )..addListener(() => setState(() {}));
+  late String _baseline = _name.text.trim();
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final response = await widget.api.patch(
+      '/franchises/${widget.franchise['id']}',
+      {'name': _name.text.trim()},
+    );
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = response.ok ? null : response.message;
+      if (response.ok) _baseline = _name.text.trim();
+    });
+    if (response.ok) widget.onSaved();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _name.text.trim();
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final label in _labels.take(_shown)) Text(label, style: style),
-        if (extra > 0) Text('and $extra more', style: muted),
+        Expanded(
+          child: TextField(
+            key: const ValueKey('org-franchise-name'),
+            controller: _name,
+            decoration: notFilledIn(
+              context,
+              InputDecoration(labelText: 'Name', errorText: _error),
+              empty: name.isEmpty,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        FilledButton(
+          key: const ValueKey('org-franchise-save'),
+          onPressed: name != _baseline && name.isNotEmpty && !_saving
+              ? _save
+              : null,
+          child: Text(_saving ? 'Saving…' : 'Save'),
+        ),
       ],
     );
   }

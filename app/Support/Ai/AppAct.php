@@ -148,6 +148,10 @@ final class AppAct
         // Status only: the star and note on a lead are not changed from chat.
         'PATCH leads/{lead}' => ['status'],
         'PUT scheduling/locations/notes/{company}' => null,
+        // Financials (desk, 2026-10-20): record a refund, dispute, returned
+        // check or repair-split move; correct one's amount, reason or job.
+        'POST financials/adjustments' => ['place', 'kind', 'date', 'technician', 'from_technician', 'team', 'amount', 'job_number', 'reason'],
+        'PATCH financials/adjustments/{adjustment}' => ['amount', 'job_number', 'reason'],
     ];
 
     /**
@@ -160,8 +164,12 @@ final class AppAct
     /** The allowed routes, one per line, for Grok. */
     public static function catalogue(): string
     {
+        // The body keys go with each route, so the plan names fields the route accepts.
         return implode('
-', array_filter(array_keys(self::COMMANDS), fn ($c) => ! self::forbidden(explode(' ', $c, 2)[1])));
+', array_map(
+            fn ($c) => $c.(self::COMMANDS[$c] === null ? '' : ' {'.implode(', ', self::COMMANDS[$c]).'}'),
+            array_filter(array_keys(self::COMMANDS), fn ($c) => ! self::forbidden(explode(' ', $c, 2)[1])),
+        ));
     }
 
     /** A real tenant route, on the allowlist, and not forbidden. */

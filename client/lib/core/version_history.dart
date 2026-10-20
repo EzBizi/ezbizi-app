@@ -14,6 +14,34 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0459',
+      date: '20 Oct 2026',
+      items: [
+        'Workiz: when connecting, choose API v1 or v2 (a signed-in session is coming). Each connected account can be edited to replace its key or switch API, and shows when it last synced.',
+        'Automations: a rule can WhatsApp a daily or weekly report text (PPC, dispatchers, technician sales, weekly losses, weekly reviews) to chosen people, once a day each.',
+        'WhatsApp: corrections to a draft report can be typed in plain words. The bot shows exactly what will change and waits for YES. Switch it off in AI settings.',
+        'Business Profile: a new Performance view shows calls, website clicks, directions and search terms per location, read daily.',
+        'Reports: an approved weekly or monthly report is sent exactly as previewed, marked with its version.',
+        'Reports: before approving, someone with Correct a report can leave jobs out, order the companies or set this report\'s goal. The numbers still come only from the sources, and a corrected report needs a new approval.',
+        'WhatsApp: staff can record a refund or move a repair-team split from chat, after replying YES, with the same permission as in the app.',
+        'Security: the WhatsApp assistant always answers each person as themselves. Before, a busy server could answer someone with the previous person\'s access.',
+        'Scheduling: a new Helpers tab books a helper to a technician for a full or half day, with no double-booking.',
+        'Automations: rules are built in five steps with a timeline showing what would have run.',
+        'Websites: every service brand has its own booking page. A sub-company books against its parent company\'s availability, and its leads stay its own.',
+        'Leads: a sub-company never sends its parent\'s booking link, office phone or photos email. Booking links are now short, like review links.',
+        'Reviews: replies drafted or posted by rules are written by AI for each review, so no two read alike. Automatic replies can be switched on per Business Profile listing; they are off everywhere.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0456',
+      date: '20 Oct 2026',
+      items: [
+        'Settings › Organization: edit a company right on its page, with empty fields marked. A Details | Settings switch shows that company\'s or branch\'s own settings, ready to set there.',
+        'Reports › Goals: one branch picker that names each branch with its company.',
+        'Roles & permissions: an open module\'s headings line up on the left.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0455',
       date: '19 Oct 2026',
       items: [

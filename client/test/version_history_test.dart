@@ -68,6 +68,9 @@ void main() {
       for (final v in versions) int.parse(v.split('.').last),
     ]..sort();
     const neverBuilt = <int>{
+      457, // pinned at 7e4d9aee and stopped in its backend gate: two merges each
+      // counted RetentionPolicy's tables as 38. Its notes shipped in 0.0.0459.
+      458, // pinned at 51854ac7 behind 457 and stopped with it; notes in 0.0.0459.
       72, // no commit ever set VERSION to it and no artefact exists
       111, // BUILT -- Distribution/Apple/EzBizi-0.0.0111-4bbbea5.ipa -- and its
       // notes were never written. Left named rather than invented: reconstructing

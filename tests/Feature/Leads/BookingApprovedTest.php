@@ -74,8 +74,9 @@ class BookingApprovedTest extends TestCase
         $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('leads.booking_url', $t['org'], 'https://www.a-1chimney.com/booking/'));
         $link = $this->inTenant($t['org'], fn () => $lead->fresh()->booking_link);
 
-        $this->assertStringStartsWith('https://www.a-1chimney.com/booking/?l=', $link);
-        parse_str((string) parse_url($link, PHP_URL_QUERY), $q);
-        $this->assertSame($lead->id, BookingLink::leadId($q['l']));
+        // Short, on the booking page's site (Jose, 2026-10-20): /b/<7 chars>.
+        $this->assertMatchesRegularExpression('~^https://www\.a-1chimney\.com/b/[A-Za-z0-9]{7}$~', $link);
+        $this->assertSame($lead->id, $this->inTenant($t['org'], fn () => BookingLink::leadId(basename($link))));
+        $this->assertSame($link, $this->inTenant($t['org'], fn () => $lead->fresh()->booking_link), 'the same code is sent again');
     }
 }
