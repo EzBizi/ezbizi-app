@@ -1900,7 +1900,7 @@ check('with the personal link when the page has one', str_contains($faces, "get(
 // Jose, 2026-10-13: the green face goes straight to Google, with no step between.
 check('the green face goes straight to Google', str_contains($faces, "if(go==='happy'&&google){if(c)tell({rating:'happy'});track('google');location.href=google;return;}"), true);
 check('to the review link', str_contains($faces, 'google="https:\/\/g.page\/r\/a1chimney\/review"'), true);
-check('and says so, without naming Google', str_contains($faces, 'Tap to share it<') && ! str_contains($faces, 'Tap to share it on Google'), true);
+check('and says so, without naming Google', str_contains($faces, 'Share your experience with us<') && ! str_contains($faces, 'Tap to share it on Google'), true);
 check('the review is told even as the page leaves', str_contains($faces, 'keepalive:true'), true);
 // Jose, 2026-10-15: the link's activity, for the Customer Experience report.
 check('the link reports what was done with it', str_contains($faces, "api+'/api/v1/web/review-link'"), true);
