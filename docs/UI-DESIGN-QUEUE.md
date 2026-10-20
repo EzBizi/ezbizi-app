@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 121 · Financials › Home as cards (Airtable-style) — **sent 2026-10-20** (`docs/previews/financials-home-layouts.html`)
+
+Financials asked (data-driven cards: role groups + native tables). **1** (recommended) equal-size cards, 4 across: icon/colour, name, one live figure, source badge (Native / Airtable mirror / both), refreshed-at; Your areas then Your bases + New base; search from 8 cards; no Airtable → Native badges only; card opens the area with table chips and view switch. **2** a list. **3** big-number tiles over small cards. Phone **4** (recommended, 2-up) / **5** / **6**.
+
 ### 120 · Integrations › Workiz web login (signed-in session handoff) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/workiz-web-login-layouts.html`)
 
 Workiz asked (workiz_web: link, extension, accounts→branch). **1** (recommended) Signed-in session becomes Workiz's third method: Get a link (30 min, Copy) → extension paste + Send → the page turns green by itself; account→branch table; red Signed out with Send it again; Jose's terms sentence on the card; extension popup restyled to the same steps. **2** a separate tile. **3** set up from Reports. Phone **4** (recommended: status + table, handoff needs a computer) / **5** / **6**.
