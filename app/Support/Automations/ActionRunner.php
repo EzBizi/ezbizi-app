@@ -3406,7 +3406,10 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'The task needs a title.'];
         }
 
-        $assignee = $this->userFromStored($action['assignee'] ?? null);
+        // One task with every owner (Jose, 2026-10-20: not one copy per person), the first the primary.
+        $owners = collect(self::idList($action['assignees'] ?? []))->map(fn ($id) => $this->userFromStored(str_starts_with((string) $id, 'user:') ? $id : 'user:'.$id))
+            ->prepend($this->userFromStored($action['assignee'] ?? null))->filter()->unique(fn (User $u) => $u->getKey())->values();
+        $assignee = $owners->first();
         $scope = $event->scope_snapshot ?? [];
         // The PLACE's board, with the person as assignee: a personal board
         // only its owner may write, so a rule giving a task to somebody else
@@ -3423,10 +3426,16 @@ class ActionRunner
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
         $board = app(TaskBoards::class)->ensureFor($owner);
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $assignee, $about, $subject, $automation) {
+        // The board's own columns by name, and its group by name (Task Board, 60f643812).
+        $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
+        $group = trim((string) ($action['group'] ?? ''));
+
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
-                'assignee_user_id' => $assignee?->getKey(),
+                'assignee_user_ids' => $owners->map->getKey()->all(),
+                ...($values === [] ? [] : ['values' => $values]),
+                ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
                 'about_id' => $about === false ? null : $subject->getKey(),
             ], $actor, $automation?->getKey());
