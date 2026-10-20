@@ -176,6 +176,11 @@ class Job extends Model implements StatesRetention
         return $value === null || $value === '' ? null : $value;
     }
 
+    public function notes(): HasMany
+    {
+        return $this->hasMany(JobNote::class);
+    }
+
     public function workizJob(): HasOne
     {
         return $this->hasOne(WorkizJob::class);

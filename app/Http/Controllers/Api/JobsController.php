@@ -823,6 +823,9 @@ class JobsController extends Controller
             // The rest of what Workiz v2 has on the job (WorkizExtras): fields and
             // files for anybody here, its invoices and payments with Financials.
             'workiz' => WorkizExtras::for($job, $money),
+            // Newest first, with who wrote each (step c, 2026-10-20).
+            'notes' => $job->notes()->with('user:id,name')->latest('created_at')->latest('id')->get()
+                ->map(fn (\App\Models\JobNote $n) => JobNotesController::present($n))->all(),
             // The lines ARE the money breakdown: Financials only.
             ...($money ? ['lines' => $job->lines->map(fn (JobLine $line) => [
                 'id'               => $line->id,
