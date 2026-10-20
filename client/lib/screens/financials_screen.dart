@@ -7,6 +7,7 @@ import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
+import 'financials/financial_adjustments.dart';
 import 'financials/financial_bills.dart';
 import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
@@ -227,23 +228,19 @@ class _FinancialsScreenState extends State<FinancialBases> {
     _openTable(_tables.firstOrNull?.$1);
   }
 
-  void _openArea(FinancialCard card) => setState(() {
+  void _openArea(FinancialCard card) {
+    _openAreaState(card);
+    final first = card.tables.where((t) => _closedBecause(t) == null);
+    if (first.isNotEmpty) _selectAreaTable(first.first);
+  }
+
+  void _openAreaState(FinancialCard card) => setState(() {
     _baseId = null;
     _area = card;
-    _areaTable = card.tables.map((t) => t.$1).where(_opensHere).firstOrNull;
+    _areaTable = null;
     _tableId = null;
     _table = null;
   });
-
-  /// Which of an area's tables this client can open with what already
-  /// exists. Its keys are not Financials table ids: an Airtable source is
-  /// "base/table[/franchise]" and a native one names its own list
-  /// (adjustments, repair_moves, bills). Only bills has a screen today, the
-  /// Bills tab's list, and only for a role that may see that tab.
-  bool _opensHere(String key) =>
-      key == 'bills' &&
-      (widget.session.me?.permissions.contains('financials.bills.view') ??
-          false);
 
   void _backHome() {
     setState(() {
@@ -560,16 +557,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
     final badge = sourceLabel(card?.source);
     final refreshed = refreshedLabel(card?.refreshedAt);
     final selectedTable = tables.indexWhere((t) => t.$1 == _tableId);
-    final view = _view;
-    final config = (view?['config'] as Map?) ?? const {};
-    final hidden = {
-      ...(config['hidden'] as List? ?? const []).map((e) => '$e'),
-    };
-    final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
-    final rows = applyView(_records, _fields, config, _search);
     final canEdit = _can('edit');
-    // A mirrored table takes views and settings, never cells.
-    final canWrite = canEdit && _table?['mirror'] == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -653,157 +641,235 @@ class _FinancialsScreenState extends State<FinancialBases> {
             ],
           ),
         ),
-        if (_table?['mirror'] case final Map mirror)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Row(
-              children: [
-                const Icon(Icons.sync, size: 16),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Mirrors Airtable, read-only here. Refreshed '
-                    '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
-                  ),
-                ),
-                if (canEdit)
-                  TextButton(
-                    onPressed: _refreshMirror,
-                    child: const Text('Refresh now'),
-                  ),
-              ],
-            ),
-          ),
-        if (_table != null) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Wrap(
-              key: const ValueKey('tour-financials-views'),
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final v in _views)
-                  ChoiceChip(
-                    avatar: Icon(_viewTypes[v['type']]?.$2, size: 16),
-                    showCheckmark: false,
-                    label: Text('${v['name']}'),
-                    selected: v['id'] == view?['id'],
-                    onSelected: (_) => setState(() => _viewId = '${v['id']}'),
-                  ),
-                if (canEdit)
-                  IconButton(
-                    tooltip: 'New view',
-                    icon: const Icon(Icons.add),
-                    onPressed: _newView,
-                  ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 200,
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search',
-                    ),
-                    onChanged: (t) => setState(() => _search = t.trim()),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.tune),
-                  label: Text(_settingsLabel(config)),
-                  onPressed: canEdit ? _viewSettings : null,
-                ),
-                if (canEdit && _views.length > 1)
-                  IconButton(
-                    tooltip: 'Delete this view',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: _deleteView,
-                  ),
-                if (canWrite)
-                  IconButton(
-                    tooltip: 'Import CSV',
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: _import,
-                  ),
-                IconButton(
-                  tooltip: 'Export CSV',
-                  icon: const Icon(Icons.download_outlined),
-                  onPressed: _export,
-                ),
-                if (canWrite)
-                  FilledButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add record'),
-                    onPressed: () => _openRecord(null),
-                  ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: switch (view?['type']) {
-              'kanban' => KanbanView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
-                onPatch: _patch,
-                canEdit: canWrite,
-              ),
-              'calendar' => CalendarView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
-              ),
-              'split' => SplitView(api: widget.api, view: view!),
-              'gallery' => GalleryView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                onOpen: _openRecord,
-              ),
-              'form' => FormView(
-                fields: shown,
-                allFields: _fields,
-                canEdit: canWrite,
-                onSubmit: (values) async {
-                  final r = await widget.api.post(
-                    '/financials/tables/$_tableId/records',
-                    {'values': values},
-                  );
-                  if (r.ok) await _reload();
-                  return r.ok ? null : r.message;
-                },
-              ),
-              _ => GridView2(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
-                onPatch: _patch,
-                onField: _editField,
-                canEdit: canWrite,
-              ),
-            },
-          ),
-        ] else
-          const Expanded(child: Center(child: Text('No tables here yet.'))),
+        ..._tableSection(),
       ],
     );
   }
 
+  /// The open table: its mirror line, views, and the view itself. Shared by
+  /// a base and by an area whose table mirrors into Financials.
+  List<Widget> _tableSection() {
+    final view = _view;
+    final config = (view?['config'] as Map?) ?? const {};
+    final hidden = {
+      ...(config['hidden'] as List? ?? const []).map((e) => '$e'),
+    };
+    final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
+    final rows = applyView(_records, _fields, config, _search);
+    final canEdit = _can('edit');
+    // A mirrored table takes views and settings, never cells.
+    final canWrite = canEdit && _table?['mirror'] == null;
+
+    return [
+      if (_table?['mirror'] case final Map mirror)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              const Icon(Icons.sync, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Mirrors Airtable, read-only here. Refreshed '
+                  '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
+                ),
+              ),
+              if (canEdit)
+                TextButton(
+                  onPressed: _refreshMirror,
+                  child: const Text('Refresh now'),
+                ),
+            ],
+          ),
+        ),
+      if (_table != null) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Wrap(
+            key: const ValueKey('tour-financials-views'),
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final v in _views)
+                ChoiceChip(
+                  avatar: Icon(_viewTypes[v['type']]?.$2, size: 16),
+                  showCheckmark: false,
+                  label: Text('${v['name']}'),
+                  selected: v['id'] == view?['id'],
+                  onSelected: (_) => setState(() => _viewId = '${v['id']}'),
+                ),
+              if (canEdit)
+                IconButton(
+                  tooltip: 'New view',
+                  icon: const Icon(Icons.add),
+                  onPressed: _newView,
+                ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search',
+                  ),
+                  onChanged: (t) => setState(() => _search = t.trim()),
+                ),
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.tune),
+                label: Text(_settingsLabel(config)),
+                onPressed: canEdit ? _viewSettings : null,
+              ),
+              if (canEdit && _views.length > 1)
+                IconButton(
+                  tooltip: 'Delete this view',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _deleteView,
+                ),
+              if (canWrite)
+                IconButton(
+                  tooltip: 'Import CSV',
+                  icon: const Icon(Icons.upload_file_outlined),
+                  onPressed: _import,
+                ),
+              IconButton(
+                tooltip: 'Export CSV',
+                icon: const Icon(Icons.download_outlined),
+                onPressed: _export,
+              ),
+              if (canWrite)
+                FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add record'),
+                  onPressed: () => _openRecord(null),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: switch (view?['type']) {
+            'kanban' => KanbanView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+              onPatch: _patch,
+              canEdit: canWrite,
+            ),
+            'calendar' => CalendarView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+            ),
+            'split' => SplitView(api: widget.api, view: view!),
+            'gallery' => GalleryView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              onOpen: _openRecord,
+            ),
+            'form' => FormView(
+              fields: shown,
+              allFields: _fields,
+              canEdit: canWrite,
+              onSubmit: (values) async {
+                final r = await widget.api.post(
+                  '/financials/tables/$_tableId/records',
+                  {'values': values},
+                );
+                if (r.ok) await _reload();
+                return r.ok ? null : r.message;
+              },
+            ),
+            _ => GridView2(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+              onPatch: _patch,
+              onField: _editField,
+              canEdit: canWrite,
+            ),
+          },
+        ),
+      ] else
+        const Expanded(child: Center(child: Text('No tables here yet.'))),
+    ];
+  }
+
+  /// Why an area's table cannot be opened here, or null when it can.
+  String? _closedBecause(AreaTable t) {
+    if (t.tableId != null) return null;
+    return switch (t.key) {
+      'bills' =>
+        (widget.session.me?.permissions.contains('financials.bills.view') ??
+                false)
+            ? null
+            : 'Your role cannot see Bills',
+      'adjustments' || 'repair_moves' => null,
+      // Linking needs a base to link into (POST bases/{base}/airtable-links)
+      // and that base's update policy, financials.edit, besides
+      // may_create_base.
+      _ when !_mayCreateBase || !_can('edit') =>
+        'Your role cannot mirror Airtable tables',
+      _ when _bases.isEmpty => 'Make a base first to mirror it into',
+      _ when t.airtable == null => 'Opens soon',
+      _ => null,
+    };
+  }
+
+  void _selectAreaTable(AreaTable t) {
+    setState(() {
+      _areaTable = t.key;
+      if (t.tableId == null) {
+        _tableId = null;
+        _table = null;
+      }
+    });
+    if (t.tableId != null) _openTable(t.tableId);
+  }
+
+  bool _mirroring = false;
+
+  /// Mirrors an area's Airtable source into the first base (the bases come
+  /// sorted by name), then reloads the home so the chip opens the new table.
+  Future<void> _mirror(AreaTable t) async {
+    final (baseId, tableId) = t.airtable!;
+    final into = _bases.first['id'];
+    setState(() => _mirroring = true);
+    final r = await widget.api.post('/financials/bases/$into/airtable-links', {
+      'base_id': baseId,
+      'table_id': tableId,
+    });
+    if (!mounted) return;
+    setState(() => _mirroring = false);
+    if (!r.ok) return _say(r.message);
+    await _loadHome();
+    await _loadBases();
+    if (!mounted) return;
+    final key = _area?.id;
+    final fresh = _areaCards.where((a) => a.id == key).firstOrNull;
+    if (fresh == null) return;
+    setState(() => _area = fresh);
+    final again = fresh.tables.where((x) => x.key == t.key).firstOrNull;
+    if (again != null) _selectAreaTable(again);
+  }
+
   /// An area of the books, in place of the home: its tables as chips, and
-  /// the one on show below. A table nothing here can open yet is a disabled
-  /// chip that says so.
+  /// the one on show below. A table that cannot open here is a disabled chip
+  /// that says why.
   Widget _areaPage(FinancialCard area) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final badge = sourceLabel(area.source);
     final refreshed = refreshedLabel(area.refreshedAt);
+    final shown = area.tables.where((t) => t.key == _areaTable).firstOrNull;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -835,43 +901,77 @@ class _FinancialsScreenState extends State<FinancialBases> {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final (key, name, count) in area.tables)
+              for (final t in area.tables)
                 ChoiceChip(
-                  key: ValueKey('financials-area-table-$key'),
+                  key: ValueKey('financials-area-table-${t.key}'),
                   label: Text(
                     [
-                      name,
-                      if (count != null) '$count',
-                      if (!_opensHere(key)) 'Opens soon',
+                      t.name,
+                      if (t.count != null) '${t.count}',
+                      ?_closedBecause(t),
                     ].join(' · '),
                   ),
-                  selected: key == _areaTable,
-                  onSelected: _opensHere(key)
-                      ? (_) => setState(() => _areaTable = key)
+                  selected: t.key == _areaTable,
+                  onSelected: _closedBecause(t) == null
+                      ? (_) => _selectAreaTable(t)
                       : null,
                 ),
             ],
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: switch (_areaTable) {
-            'bills' => FinancialBillsTab(
-              api: widget.api,
-              me: widget.session.me!,
-            ),
-            _ => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'These tables open here soon. Their figures are on the card.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: muted),
-                ),
+        if (shown == null)
+          Expanded(
+            child: Center(
+              child: Text(
+                'Nothing here opens for your role yet.',
+                style: TextStyle(color: muted),
               ),
             ),
-          },
-        ),
+          )
+        else if (shown.tableId != null)
+          ..._tableSection()
+        else
+          Expanded(
+            child: switch (shown.key) {
+              'bills' => FinancialBillsTab(
+                api: widget.api,
+                me: widget.session.me!,
+              ),
+              'adjustments' => FinancialAdjustmentsList(
+                key: const ValueKey('financials-adjustments'),
+                api: widget.api,
+                exclude: const {'repair_move'},
+              ),
+              'repair_moves' => FinancialAdjustmentsList(
+                key: const ValueKey('financials-repair-moves'),
+                api: widget.api,
+                kind: 'repair_move',
+              ),
+              _ => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${shown.name} is in the Airtable copy but not '
+                        'mirrored into a base yet.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        key: const ValueKey('financials-mirror-it'),
+                        icon: const Icon(Icons.sync_alt),
+                        label: Text('Mirror it into ${_bases.first['name']}'),
+                        onPressed: _mirroring ? null : () => _mirror(shown),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            },
+          ),
       ],
     );
   }

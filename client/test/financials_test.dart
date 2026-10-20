@@ -146,6 +146,8 @@ Future<List<http.Request>> _pump(
     'path': ['Everdoors'],
   },
   Map<String, dynamic>? home,
+  Map<String, dynamic>? homeAfterLink,
+  int adjustmentFailures = 0,
   List<String> permissions = const [
     'financials.view',
     'financials.bases.view',
@@ -161,6 +163,8 @@ Future<List<http.Request>> _pump(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   final seen = <http.Request>[];
+  var linked = false;
+  var failures = adjustmentFailures;
   http.Response json(Object body, [int status = 200]) => http.Response(
     jsonEncode(body),
     status,
@@ -268,9 +272,28 @@ Future<List<http.Request>> _pump(
         });
       }
       if (path.endsWith('/financials/home')) {
-        return home == null
+        final served = linked ? homeAfterLink ?? home : home;
+        return served == null
             ? json({'message': 'Not found.'}, 404)
-            : json({'data': home});
+            : json({'data': served});
+      }
+      if (path.endsWith('/airtable-links') && request.method == 'POST') {
+        linked = true;
+        return json({'data': _table}, 201);
+      }
+      if (path.endsWith('/financials/adjustments')) {
+        if (failures-- > 0) {
+          return json({
+            'message': 'The books are busy. Nothing was changed.',
+          }, 503);
+        }
+        final kind = request.url.queryParameters['kind'];
+        return json({
+          'data': [
+            for (final a in _adjustments)
+              if (kind == null || a['kind'] == kind) a,
+          ],
+        });
       }
       if (path.contains('/financials/tables/')) return json({'data': table});
       return json({'message': 'Nothing stubbed for $path.'}, 500);
@@ -404,6 +427,78 @@ Map<String, dynamic> _area(
   'tables': tables,
 };
 
+const _adjustments = [
+  {
+    'id': 'ad1',
+    'franchise_id': null,
+    'place': 'Lakeside',
+    'kind': 'refund',
+    'date': '2026-10-03',
+    'technician': 'Ollie Brook',
+    'from_technician': null,
+    'team': null,
+    'cents': 12500,
+    'job_number': 'J-77',
+    'reason': 'Gate jammed again',
+  },
+  {
+    'id': 'ad2',
+    'franchise_id': null,
+    'place': 'Lakeside',
+    'kind': 'repair_move',
+    'date': '2026-10-04',
+    'technician': 'Mina Vale',
+    'from_technician': 'Ollie Brook',
+    'team': 'North',
+    'cents': null,
+    'job_number': 'J-78',
+    'reason': null,
+  },
+];
+
+Map<String, dynamic> _quarrels({String? unmirroredId}) => _area(
+  'quarrels',
+  'Quarrels & Returns',
+  source: 'both',
+  tables: [
+    {
+      'key': 'appQ/tblQ',
+      'name': 'Quarrels',
+      'count': 3,
+      'table_id': 't1',
+      'route': '/financials/tables/t1',
+    },
+    {
+      'key': 'appQ/tblU/fr-9',
+      'name': 'Unlinked returns',
+      'count': 5,
+      'table_id': unmirroredId,
+      'route': unmirroredId == null ? null : '/financials/tables/$unmirroredId',
+    },
+    {
+      'key': 'adjustments',
+      'name': 'Recorded in EzBizi',
+      'count': 1,
+      'table_id': null,
+      'route': '/financials/adjustments',
+    },
+    {
+      'key': 'repair_moves',
+      'name': 'Split changes',
+      'count': 1,
+      'table_id': null,
+      'route': '/financials/adjustments?kind=repair_move',
+    },
+    {
+      'key': 'bills',
+      'name': 'Bills',
+      'count': 1,
+      'table_id': null,
+      'route': '/financials/bills',
+    },
+  ],
+);
+
 Map<String, dynamic> _homeWith({
   List<Map<String, dynamic>>? areas,
   List<Map<String, dynamic>>? bases,
@@ -411,19 +506,7 @@ Map<String, dynamic> _homeWith({
 }) => {
   'areas':
       areas ??
-      [
-        _area(
-          'quarrels',
-          'Quarrels & Returns',
-          source: 'both',
-          tables: [
-            {'key': 'appQ/tblQ', 'name': 'Quarrels', 'count': 3},
-            {'key': 'adjustments', 'name': 'Recorded in EzBizi', 'count': 2},
-            {'key': 'bills', 'name': 'Bills', 'count': 1},
-          ],
-        ),
-        _area('pebbles', 'Pebble Deposits', source: 'airtable'),
-      ],
+      [_quarrels(), _area('pebbles', 'Pebble Deposits', source: 'airtable')],
   'bases':
       bases ??
       [
@@ -505,28 +588,35 @@ void homeTests() {
     expect(find.text('Books'), findsNothing);
   });
 
-  testWidgets('an area opens in place: bills open, the rest open soon', (
+  ChoiceChip chip(WidgetTester tester, String key) => tester.widget<ChoiceChip>(
+    find.byKey(ValueKey('financials-area-table-$key')),
+  );
+
+  Future<void> openQuarrels(WidgetTester tester) async {
+    await tester.tap(find.text('Quarrels & Returns'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('an area opens in place on its mirrored table, and goes back', (
     tester,
   ) async {
     final seen = await _pump(tester, home: _homeWith());
-    await tester.tap(find.text('Quarrels & Returns'));
-    await tester.pumpAndSettle();
-    expect(find.text('Quarrels · 3 · Opens soon'), findsOneWidget);
-    expect(find.text('Recorded in EzBizi · 2 · Opens soon'), findsOneWidget);
+    await openQuarrels(tester);
+    expect(chip(tester, 'appQ/tblQ').selected, isTrue);
+    expect(find.text('Quarrels · 3'), findsOneWidget);
+    expect(find.text('Unlinked returns · 5'), findsOneWidget);
+    expect(find.text('Recorded in EzBizi · 1'), findsOneWidget);
+    expect(find.text('Split changes · 1'), findsOneWidget);
     expect(find.text('Bills · 1'), findsOneWidget);
-    ChoiceChip chip(String key) => tester.widget<ChoiceChip>(
-      find.byKey(ValueKey('financials-area-table-$key')),
-    );
-    expect(chip('appQ/tblQ').onSelected, isNull);
-    expect(chip('adjustments').onSelected, isNull);
-    expect(chip('bills').selected, isTrue);
-    // The Bills tab's own list, in place.
-    expect(seen.last.url.path, endsWith('/financials/bills'));
-    expect(find.text('New Jersey · 2026-09-01 to 2026-09-30'), findsOneWidget);
-    // An area's keys are never Financials table ids.
+    // The existing table screen, opened by the table_id the home sent.
+    expect(find.text('Diesel'), findsOneWidget);
+    expect(find.text('Grid view'), findsOneWidget);
+    // Only ever a Financials table id after /financials/tables/.
     expect(
-      seen.where((r) => r.url.path.contains('/financials/tables/')),
-      isEmpty,
+      seen
+          .where((r) => r.url.path.contains('/financials/tables/'))
+          .map((r) => r.url.path.split('/').last),
+      everyElement('t1'),
     );
 
     await tester.tap(find.byKey(const ValueKey('financials-back')));
@@ -534,19 +624,130 @@ void homeTests() {
     expect(find.text('Your areas'), findsOneWidget);
   });
 
-  testWidgets('without the Bills tab, an area bills chip opens soon too', (
+  testWidgets('an unmirrored source mirrors into the first base, then opens', (
     tester,
   ) async {
     final seen = await _pump(
       tester,
       home: _homeWith(),
+      homeAfterLink: _homeWith(areas: [_quarrels(unmirroredId: 't1')]),
+    );
+    await openQuarrels(tester);
+    await tester.tap(find.text('Unlinked returns · 5'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('not mirrored into a base yet'), findsOneWidget);
+    await tester.tap(find.text('Mirror it into Books'));
+    await tester.pumpAndSettle();
+
+    final post = seen.singleWhere((r) => r.method == 'POST');
+    expect(post.url.path, endsWith('/financials/bases/b1/airtable-links'));
+    expect(jsonDecode(post.body), {'base_id': 'appQ', 'table_id': 'tblU'});
+    final after = seen.sublist(seen.indexOf(post));
+    expect(after.any((r) => r.url.path.endsWith('/financials/home')), isTrue);
+    expect(chip(tester, 'appQ/tblU/fr-9').selected, isTrue);
+    expect(find.text('Diesel'), findsOneWidget);
+  });
+
+  testWidgets('without the rights to mirror, the chip says why', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      home: _homeWith(),
       permissions: const ['financials.view', 'financials.bases.view'],
     );
-    await tester.tap(find.text('Quarrels & Returns'));
+    await openQuarrels(tester);
+    expect(
+      find.text(
+        'Unlinked returns · 5 · Your role cannot mirror Airtable tables',
+      ),
+      findsOneWidget,
+    );
+    expect(chip(tester, 'appQ/tblU/fr-9').onSelected, isNull);
+    expect(find.text('Bills · 1 · Your role cannot see Bills'), findsOneWidget);
+    expect(chip(tester, 'bills').onSelected, isNull);
+    expect(find.text('Mirror it into Books'), findsNothing);
+  });
+
+  testWidgets('refunds recorded in EzBizi list this month in place', (
+    tester,
+  ) async {
+    final seen = await _pump(tester, home: _homeWith());
+    await openQuarrels(tester);
+    await tester.tap(find.text('Recorded in EzBizi · 1'));
     await tester.pumpAndSettle();
-    expect(find.text('Bills · 1 · Opens soon'), findsOneWidget);
-    expect(find.textContaining('These tables open here soon'), findsOneWidget);
-    expect(seen.where((r) => r.url.path.endsWith('/bills')), isEmpty);
+    final get = seen.lastWhere(
+      (r) => r.url.path.endsWith('/financials/adjustments'),
+    );
+    final now = DateTime.now();
+    final month = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    expect(get.url.queryParameters['from'], '$month-01');
+    expect(get.url.queryParameters['to'], startsWith(month));
+    expect(get.url.queryParameters.containsKey('kind'), isFalse);
+    expect(find.text('Refund · 2026-10-03 · Lakeside'), findsOneWidget);
+    expect(
+      find.text('Ollie Brook · Job J-77 · Gate jammed again'),
+      findsOneWidget,
+    );
+    expect(find.text(r'$125.00'), findsOneWidget);
+    // Split changes belong to Repair Teams, not here.
+    expect(find.textContaining('Split change ·'), findsNothing);
+
+    await tester.tap(find.text('Last month'));
+    await tester.pumpAndSettle();
+    final last = DateTime(now.year, now.month - 1);
+    expect(
+      seen
+          .lastWhere((r) => r.url.path.endsWith('/financials/adjustments'))
+          .url
+          .queryParameters['from'],
+      '${last.year}-${last.month.toString().padLeft(2, '0')}-01',
+    );
+  });
+
+  testWidgets('split changes ask for repair moves and show who moved', (
+    tester,
+  ) async {
+    final seen = await _pump(tester, home: _homeWith());
+    await openQuarrels(tester);
+    await tester.tap(find.text('Split changes · 1'));
+    await tester.pumpAndSettle();
+    expect(
+      seen
+          .lastWhere((r) => r.url.path.endsWith('/financials/adjustments'))
+          .url
+          .queryParameters['kind'],
+      'repair_move',
+    );
+    expect(find.text('Split change · 2026-10-04 · Lakeside'), findsOneWidget);
+    expect(
+      find.text('Ollie Brook → Mina Vale · Team North · Job J-78'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an adjustments list that fails offers Try again', (
+    tester,
+  ) async {
+    await _pump(tester, home: _homeWith(), adjustmentFailures: 1);
+    await openQuarrels(tester);
+    await tester.tap(find.text('Recorded in EzBizi · 1'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('The books are busy. Nothing was changed.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Refund · 2026-10-03 · Lakeside'), findsOneWidget);
+  });
+
+  testWidgets('bills in an area open the Bills list in place', (tester) async {
+    await _pump(tester, home: _homeWith());
+    await openQuarrels(tester);
+    await tester.tap(find.text('Bills · 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('New Jersey · 2026-09-01 to 2026-09-30'), findsOneWidget);
   });
 
   testWidgets('no + New base without the create permission', (tester) async {

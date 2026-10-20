@@ -34,8 +34,8 @@ class FinancialCard {
   final String? source;
   final String? refreshedAt;
 
-  /// An area's tables: (id, name, record count or null).
-  final List<(String, String, int?)> tables;
+  /// An area's tables, as /financials/home lists them.
+  final List<AreaTable> tables;
 
   static FinancialCard area(Map a) => FinancialCard(
     id: '${a['key']}',
@@ -47,7 +47,7 @@ class FinancialCard {
     refreshedAt: a['refreshed_at'] as String?,
     tables: [
       for (final t in (a['tables'] as List? ?? const []).cast<Map>())
-        ('${t['key']}', '${t['name'] ?? ''}', (t['count'] as num?)?.toInt()),
+        AreaTable.from(t),
     ],
   );
 
@@ -62,6 +62,45 @@ class FinancialCard {
 
   static String? _text(Object? v) =>
       v == null || '$v'.trim().isEmpty ? null : '$v';
+}
+
+/// One table of an area. Its [key] is never a Financials table id: an
+/// Airtable source is "base/table[/franchise]", a native list is
+/// adjustments, repair_moves or bills. [tableId] is the Financials table that
+/// mirrors the source, when one does.
+class AreaTable {
+  const AreaTable({
+    required this.key,
+    required this.name,
+    this.count,
+    this.tableId,
+    this.route,
+  });
+
+  factory AreaTable.from(Map t) => AreaTable(
+    key: '${t['key']}',
+    name: '${t['name'] ?? ''}',
+    count: (t['count'] as num?)?.toInt(),
+    tableId: t['table_id'] as String?,
+    route: t['route'] as String?,
+  );
+
+  final String key;
+  final String name;
+  final int? count;
+  final String? tableId;
+  final String? route;
+
+  static const native = {'adjustments', 'repair_moves', 'bills'};
+
+  /// An Airtable source not yet mirrored into a Financials table.
+  bool get unmirrored => tableId == null && !native.contains(key);
+
+  /// The Airtable base and table ids an unmirrored key names.
+  (String, String)? get airtable {
+    final parts = key.split('/');
+    return parts.length >= 2 ? (parts[0], parts[1]) : null;
+  }
 }
 
 /// The badge's words. Only a source that is Airtable mentions Airtable, so a
