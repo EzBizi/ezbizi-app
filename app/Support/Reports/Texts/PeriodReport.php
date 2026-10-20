@@ -24,7 +24,24 @@ use Illuminate\Support\Facades\DB;
  */
 final class PeriodReport
 {
+    /**
+     * A draft's corrections (ReportChanges): exclude_jobs (job numbers),
+     * company_order (branch ids), goals (branch id or '' => key => value).
+     *
+     * @var array<string, mixed>
+     */
+    private array $options = [];
+
     public function __construct(private readonly AirtablePnl $pnl) {}
+
+    /** The same report with a draft's corrections applied. */
+    public function withOptions(array $options): self
+    {
+        $copy = clone $this;
+        $copy->options = $options;
+
+        return $copy;
+    }
 
     /** One branch's report, as PDF bytes. $from and $to are Y-m-d, inclusive. */
     public function forFranchise(Franchise $branch, string $from, string $to): string
@@ -47,6 +64,11 @@ final class PeriodReport
             ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
             ->orderBy('name')
             ->get();
+
+        // A draft's company order; any branch it does not name keeps its place after.
+        if (($order = $this->options['company_order'] ?? []) !== []) {
+            $branches = $branches->sortBy(fn ($b) => [array_search($b->getKey(), $order, true) === false ? PHP_INT_MAX : array_search($b->getKey(), $order, true), $b->name])->values();
+        }
 
         $summary = [];
         $body = '';
@@ -86,7 +108,7 @@ final class PeriodReport
     private function sections(array $f, array $pnl, ?string $branchId = null, string $from = '', string $to = '', string $org = ''): string
     {
         // Red when worse than the company's goal (ReportGoals).
-        $goals = ReportGoals::for($org, $branchId);
+        $goals = ReportGoals::for($org, $branchId, $this->options['goals'] ?? []);
         $cancel = fn ($canceled, $of) => ReportGoals::mark(e(self::share($canceled, $of)), $of > 0 && $goals->bad('cancel_rate', $canceled / $of));
         $avg = fn ($gross, $done) => $done ? ReportGoals::mark(e(self::money($gross / $done)), $goals->bad('avg_sale', $gross / $done)) : '—';
         $sourceRows = fn (array $rows, bool $all) => array_map(fn ($name, $r) => array_merge(
@@ -108,7 +130,7 @@ final class PeriodReport
                 $cancel($t['canceled'], $t['done'] + $t['canceled']),
                 e(self::money($t['gross'])), $avg($t['gross'], $t['done']), e(self::money($t['deposits'])),
             ], $f['techs']), raw: true)
-            .($branchId === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $branchId, $from, $to)
+            .($branchId === null ? '' : '<h2>Repair teams</h2>'.$airtable->repairTeams($org, $branchId, $from, $to, $this->options['goals'] ?? [])
                 .'<h2>Refunds, disputes and returned checks</h2>'.$airtable->refunds($org, $branchId, $from, $to))
             .'<h2>Profit &amp; loss</h2>'.$this->pnlSection($pnl);
     }
@@ -180,7 +202,12 @@ final class PeriodReport
 
         // Created: everything booked in the period, as it stands now.
         $created = [];
-        foreach ($jobs()->whereBetween('booked_at', $range)->get(['job_source', 'status', 'payload']) as $job) {
+        // Jobs a draft leaves out, by Workiz's job number or id.
+        $excluded = array_flip(array_map('strval', $this->options['exclude_jobs'] ?? []));
+        $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->remote_id])
+            || isset($excluded[(string) (json_decode($job->payload, true)['SerialId'] ?? '')]));
+
+        foreach ($jobs()->whereBetween('booked_at', $range)->get(['remote_id', 'job_source', 'status', 'payload'])->filter($kept) as $job) {
             $s = $source($job->job_source);
             $created[$s] ??= $row();
             $created[$s]['all']++;
@@ -196,7 +223,7 @@ final class PeriodReport
         // "completed at".
         $closed = [];
         $techs = [];
-        foreach ($jobs()->whereBetween('last_status_update', $range)->whereIn('status', ['Done', 'Canceled'])->get(['job_source', 'status', 'payload']) as $job) {
+        foreach ($jobs()->whereBetween('last_status_update', $range)->whereIn('status', ['Done', 'Canceled'])->get(['remote_id', 'job_source', 'status', 'payload'])->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
             $price = $kind === 'done' ? self::price($job->payload) : 0.0;
