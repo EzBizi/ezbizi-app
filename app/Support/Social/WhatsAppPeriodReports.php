@@ -61,6 +61,8 @@ final class WhatsAppPeriodReports
         [$from, $to] = [$batch->starts_on->toDateString(), $batch->ends_on->toDateString()];
         $label = $this->label($batch);
         $revision = $batch->revision + 1;
+        // The draft's corrections (ReportChanges), if any.
+        $report = $report->withOptions((array) ($batch->settings ?? []));
         $files = [];
 
         $keep = function (?string $branchId, string $title, string $pdf, string $filename) use ($batch, $revision, &$files) {

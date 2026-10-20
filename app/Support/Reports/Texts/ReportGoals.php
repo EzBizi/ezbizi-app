@@ -35,14 +35,26 @@ final class ReportGoals
      * One branch's goals: its own, over the organization-wide ones (branch
      * null). Read outside a tenant, so the organization is named.
      */
-    public static function for(string $organizationId, ?string $franchiseId): self
+    /** @param array<string, array<string, ?float>> $overrides a draft's own (branch id or '' => key => value; null clears) */
+    public static function for(string $organizationId, ?string $franchiseId, array $overrides = []): self
     {
         $rows = ReportGoal::withoutGlobalScopes()->where('organization_id', $organizationId)
             ->where(fn ($q) => $q->whereNull('franchise_id')->when($franchiseId !== null, fn ($q) => $q->orWhere('franchise_id', $franchiseId)))
             ->get(['franchise_id', 'key', 'value'])
             ->sortBy(fn ($r) => $r->franchise_id !== null); // the branch's own last, so it wins
 
-        return new self($rows->mapWithKeys(fn ($r) => [$r->key => (float) $r->value])->all());
+        $goals = $rows->mapWithKeys(fn ($r) => [$r->key => (float) $r->value])->all();
+        foreach ([$overrides[''] ?? [], $franchiseId === null ? [] : ($overrides[$franchiseId] ?? [])] as $layer) {
+            foreach ($layer as $key => $value) {
+                if ($value === null) {
+                    unset($goals[$key]);
+                } else {
+                    $goals[$key] = (float) $value;
+                }
+            }
+        }
+
+        return new self($goals);
     }
 
     /** Is $value worse than the goal for $key? False when no goal is set. */

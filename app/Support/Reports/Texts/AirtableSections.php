@@ -63,7 +63,7 @@ final class AirtableSections
      * row (or its job rows, where a team files them there), the shares from
      * its job rows, and the company's share of the cost.
      */
-    public function repairTeams(string $org, string $branch, string $from, string $to): string
+    public function repairTeams(string $org, string $branch, string $from, string $to, array $goalOverrides = []): string
     {
         if (! ReportSources::mapped($org, 'repair', $branch)) {
             return '<p class="na">No repair team table is mapped for this branch (Financials → Settings).</p>';
@@ -78,7 +78,7 @@ final class AirtableSections
         // The value of the kind column on a team's weekly summary row; with
         // none set every row is a job row and carries the week's costs.
         $summaryType = ReportSources::marker($org, 'repair', $branch, 'summary');
-        $goals = ReportGoals::for($org, $branch);
+        $goals = ReportGoals::for($org, $branch, $goalOverrides);
         $out = '';
 
         foreach ($rows->groupBy(fn ($r) => (string) ($r['team'] ?? 'No team'))->sortKeys() as $team => $teamRows) {
