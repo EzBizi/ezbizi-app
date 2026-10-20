@@ -184,10 +184,16 @@ class AirtableConnectController extends Controller
         }
         $connected = $this->connections($scopeType, $scopeId)->pluck('remote_id')->all();
 
-        return response()->json(['data' => array_map(
-            fn (array $b) => $b + ['connected' => in_array($b['id'], $connected, true)],
-            $bases,
-        )]);
+        // "N tables" beside each base; a base whose tables cannot be read shows none.
+        return response()->json(['data' => array_map(function (array $b) use ($token, $connected) {
+            try {
+                $tables = count($this->airtable->verify($token, $b['id'])['tables']);
+            } catch (AirtableRefused) {
+                $tables = null;
+            }
+
+            return $b + ['tables' => $tables, 'connected' => in_array($b['id'], $connected, true)];
+        }, $bases)]);
     }
 
     /**
