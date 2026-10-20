@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 
 void main() {
   screenTests();
+  homeTests();
   final fields = <Map>[
     {'id': 'n', 'name': 'Name', 'type': 'text', 'is_primary': true},
     {
@@ -144,6 +145,17 @@ Future<List<http.Request>> _pump(
     'label': 'Everdoors',
     'path': ['Everdoors'],
   },
+  Map<String, dynamic>? home,
+  List<String> permissions = const [
+    'financials.view',
+    'financials.bases.view',
+    'financials.bills.view',
+    'financials.settings.view',
+    'financials.create',
+    'financials.edit',
+    'financials.delete',
+  ],
+  bool openBooks = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -187,15 +199,7 @@ Future<List<http.Request>> _pump(
                 'reachable': true,
               },
             ],
-            'permissions': [
-              'financials.view',
-              'financials.bases.view',
-              'financials.bills.view',
-              'financials.settings.view',
-              'financials.create',
-              'financials.edit',
-              'financials.delete',
-            ],
+            'permissions': permissions,
           },
         });
       }
@@ -263,7 +267,12 @@ Future<List<http.Request>> _pump(
           ],
         });
       }
-      if (path.endsWith('/financials/tables/t1')) return json({'data': table});
+      if (path.endsWith('/financials/home')) {
+        return home == null
+            ? json({'message': 'Not found.'}, 404)
+            : json({'data': home});
+      }
+      if (path.contains('/financials/tables/')) return json({'data': table});
       return json({'message': 'Nothing stubbed for $path.'}, 500);
     }),
   );
@@ -278,6 +287,10 @@ Future<List<http.Request>> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  if (openBooks) {
+    await tester.tap(find.text('Books'));
+    await tester.pumpAndSettle();
+  }
   return seen;
 }
 
@@ -324,6 +337,7 @@ void screenTests() {
           'synced_at': DateTime.now().toUtc().toIso8601String(),
         },
       },
+      openBooks: true,
     );
     expect(
       find.textContaining('Mirrors Airtable, read-only here'),
@@ -337,7 +351,7 @@ void screenTests() {
   testWidgets('the grid shows records with a total, and kanban stacks them', (
     tester,
   ) async {
-    await _pump(tester);
+    await _pump(tester, openBooks: true);
     expect(find.text('Diesel'), findsOneWidget);
     expect(find.text(r'Sum $1,242.50'), findsOneWidget);
 
@@ -366,5 +380,212 @@ void screenTests() {
     final post = seen.lastWhere((r) => r.method == 'POST');
     expect(jsonDecode(post.body)['company_id'], 'co-1');
     expect(jsonDecode(post.body)['template'], 'bookkeeping');
+  });
+}
+
+// ── The home (UI queue 121) ────────────────────────────────────────
+
+Map<String, dynamic> _area(
+  String key,
+  String name, {
+  String source = 'native',
+  List<Map<String, dynamic>> tables = const [],
+}) => {
+  'key': key,
+  'name': name,
+  'icon': 'refund',
+  'colour_hint': 'teal',
+  'figure': 'This week: \$120 · 2 open',
+  'source': source,
+  'refreshed_at': DateTime.now()
+      .subtract(const Duration(minutes: 4))
+      .toUtc()
+      .toIso8601String(),
+  'tables': tables,
+};
+
+Map<String, dynamic> _homeWith({
+  List<Map<String, dynamic>>? areas,
+  List<Map<String, dynamic>>? bases,
+  bool mayCreate = true,
+}) => {
+  'areas':
+      areas ??
+      [
+        _area(
+          'quarrels',
+          'Quarrels & Returns',
+          source: 'airtable',
+          tables: [
+            {'key': 'tq1', 'name': 'Quarrels', 'count': 3},
+            {'key': 'tq2', 'name': 'Returns', 'count': 41},
+          ],
+        ),
+        _area('pebbles', 'Pebble Deposits', source: 'both'),
+      ],
+  'bases':
+      bases ??
+      [
+        {
+          'id': 'b1',
+          'name': 'Books',
+          'figure': '1 table · 2 records',
+          'source': 'native',
+          'refreshed_at': null,
+        },
+      ],
+  'may_create_base': mayCreate,
+};
+
+void homeTests() {
+  testWidgets('the home draws areas then bases, every card one size', (
+    tester,
+  ) async {
+    await _pump(tester, home: _homeWith());
+    expect(find.text('Your areas'), findsOneWidget);
+    expect(find.text('Your bases'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Your areas')).dy,
+      lessThan(tester.getTopLeft(find.text('Your bases')).dy),
+    );
+    final sizes = {
+      for (final key in [
+        'financials-area-quarrels',
+        'financials-area-pebbles',
+        'financials-base-b1',
+        'financials-new-base-card',
+      ])
+        tester.getSize(find.byKey(ValueKey(key))),
+    };
+    expect(sizes, hasLength(1));
+    expect(find.text('Airtable mirror'), findsOneWidget);
+    expect(find.text('Native + Airtable'), findsOneWidget);
+    expect(find.text('Native'), findsOneWidget);
+    expect(find.text('refreshed 4 min ago'), findsNWidgets(2));
+    expect(find.text('1 table · 2 records'), findsOneWidget);
+  });
+
+  testWidgets('a business without Airtable reads no Airtable on its home', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      home: _homeWith(
+        areas: [
+          _area('pebbles', 'Pebble Deposits'),
+          _area('ledgers', 'Ledgers'),
+        ],
+      ),
+    );
+    expect(find.text('Pebble Deposits'), findsOneWidget);
+    expect(find.textContaining('Airtable'), findsNothing);
+  });
+
+  List<Map<String, dynamic>> areas(int n) => [
+    for (var i = 0; i < n; i++) _area('a$i', 'Area $i'),
+  ];
+
+  testWidgets('seven cards have no search box', (tester) async {
+    await _pump(tester, home: _homeWith(areas: areas(6)));
+    expect(find.text('Area 5'), findsOneWidget);
+    expect(find.byKey(const ValueKey('financials-home-search')), findsNothing);
+  });
+
+  testWidgets('a search box appears from eight cards and narrows them', (
+    tester,
+  ) async {
+    await _pump(tester, home: _homeWith(areas: areas(7)));
+    final search = find.byKey(const ValueKey('financials-home-search'));
+    expect(search, findsOneWidget);
+    await tester.enterText(search, 'area 3');
+    await tester.pumpAndSettle();
+    expect(find.text('Area 3'), findsOneWidget);
+    expect(find.text('Area 4'), findsNothing);
+    expect(find.text('Books'), findsNothing);
+  });
+
+  testWidgets('an area opens in place with its tables, and goes back', (
+    tester,
+  ) async {
+    final seen = await _pump(tester, home: _homeWith());
+    await tester.tap(find.text('Quarrels & Returns'));
+    await tester.pumpAndSettle();
+    expect(find.text('Quarrels · 3'), findsOneWidget);
+    expect(find.text('Returns · 41'), findsOneWidget);
+    expect(find.text('Diesel'), findsOneWidget);
+    expect(seen.last.url.path, endsWith('/financials/tables/tq1'));
+    expect(find.text('Bills'), findsOneWidget);
+
+    await tester.tap(find.text('Returns · 41'));
+    await tester.pumpAndSettle();
+    expect(seen.last.url.path, endsWith('/financials/tables/tq2'));
+
+    await tester.tap(find.byKey(const ValueKey('financials-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('Your areas'), findsOneWidget);
+  });
+
+  testWidgets('no + New base without the create permission', (tester) async {
+    await _pump(
+      tester,
+      permissions: const ['financials.view', 'financials.bases.view'],
+    );
+    expect(find.text('Books'), findsOneWidget);
+    expect(find.text('New base'), findsNothing);
+  });
+
+  testWidgets('no + New base when the home says it may not', (tester) async {
+    await _pump(tester, home: _homeWith(mayCreate: false));
+    expect(find.text('Books'), findsOneWidget);
+    expect(find.text('New base'), findsNothing);
+  });
+
+  testWidgets('+ New base ends the bases when the home allows it', (
+    tester,
+  ) async {
+    await _pump(tester, home: _homeWith());
+    expect(find.text('New base'), findsOneWidget);
+  });
+
+  testWidgets('with no home endpoint the bases draw it alone', (tester) async {
+    final seen = await _pump(tester);
+    expect(seen.any((r) => r.url.path.endsWith('/financials/home')), isTrue);
+    expect(find.text('Your areas'), findsNothing);
+    expect(find.text('Your bases'), findsOneWidget);
+    expect(find.text('Books'), findsOneWidget);
+    expect(find.text('1 table'), findsOneWidget);
+    expect(find.text('—'), findsNothing);
+    expect(find.textContaining('Airtable'), findsNothing);
+    expect(find.textContaining('refreshed'), findsNothing);
+    expect(find.text('Diesel'), findsNothing);
+
+    await tester.tap(find.text('Books'));
+    await tester.pumpAndSettle();
+    expect(find.text('Diesel'), findsOneWidget);
+    expect(find.text('Transactions'), findsOneWidget);
+  });
+
+  testWidgets('a home with nothing in it says so', (tester) async {
+    await _pump(
+      tester,
+      home: _homeWith(areas: const [], bases: const []),
+    );
+    expect(find.textContaining('No bases yet'), findsOneWidget);
+    expect(find.byKey(const ValueKey('financials-new-base')), findsOneWidget);
+  });
+
+  testWidgets('a phone lays the cards two across', (tester) async {
+    await _pump(tester, home: _homeWith());
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    final a = tester.getTopLeft(
+      find.byKey(const ValueKey('financials-area-quarrels')),
+    );
+    final b = tester.getTopLeft(
+      find.byKey(const ValueKey('financials-area-pebbles')),
+    );
+    expect(a.dy, b.dy);
+    expect(b.dx, greaterThan(a.dx));
+    expect(tester.takeException(), isNull);
   });
 }

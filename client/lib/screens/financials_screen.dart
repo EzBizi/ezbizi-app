@@ -5,8 +5,10 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'financials/financial_bills.dart';
+import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
@@ -111,7 +113,16 @@ const _viewTypes = <String, (String, IconData)>{
 
 class _FinancialsScreenState extends State<FinancialBases> {
   List<Map> _bases = [];
+
+  /// What GET /financials/home answered; null while it answers 404, and the
+  /// home is then built from /financials/bases alone.
+  Map? _home;
+
+  /// The base open in place of the home, or null.
   String? _baseId;
+
+  /// The area open in place of the home, or null.
+  FinancialCard? _area;
   String? _tableId;
   Map? _table;
   String? _viewId;
@@ -129,10 +140,56 @@ class _FinancialsScreenState extends State<FinancialBases> {
   Map? get _view =>
       _views.where((v) => v['id'] == _viewId).firstOrNull ?? _views.firstOrNull;
 
+  bool get _onHome => _baseId == null && _area == null;
+
+  List<FinancialCard> get _areaCards => [
+    for (final a in (_home?['areas'] as List? ?? const []).cast<Map>())
+      FinancialCard.area(a),
+  ];
+
+  /// The home's own base cards when it answered; otherwise one per base the
+  /// Bases tab already reads, whose only real number is how many tables it has.
+  List<FinancialCard> get _baseCards {
+    if (_home?['bases'] case final List bases) {
+      return [for (final b in bases.cast<Map>()) FinancialCard.base(b)];
+    }
+    return [
+      for (final b in _bases)
+        FinancialCard(
+          id: '${b['id']}',
+          name: '${b['name']}',
+          colourHint: b['colour'] as String?,
+          figure: switch ((b['tables'] as List?)?.length ?? 0) {
+            1 => '1 table',
+            final n => '$n tables',
+          },
+        ),
+    ];
+  }
+
+  bool get _mayCreateBase =>
+      _home == null ? _can('create') : _home!['may_create_base'] == true;
+
+  /// The open area's or base's tables: (id, name, record count or null).
+  List<(String, String, int?)> get _tables =>
+      _area?.tables ??
+      [
+        for (final t in (_base?['tables'] as List? ?? const []).cast<Map>())
+          ('${t['id']}', '${t['name']}', null),
+      ];
+
   @override
   void initState() {
     super.initState();
+    _loadHome();
     _loadBases();
+  }
+
+  Future<void> _loadHome() async {
+    final r = await widget.api.get('/financials/home');
+    if (!mounted) return;
+    // 404: this server has no home yet; the bases alone draw it.
+    if (r.ok) setState(() => _home = r.body['data'] as Map?);
   }
 
   Future<void> _loadBases({String? select}) async {
@@ -149,15 +206,48 @@ class _FinancialsScreenState extends State<FinancialBases> {
     setState(() {
       _bases = bases;
       _loading = false;
-      _baseId =
-          select ??
-          (bases.any((b) => b['id'] == _baseId)
-              ? _baseId
-              : bases.firstOrNull?['id'] as String?);
+      if (select != null) {
+        _area = null;
+        _baseId = select;
+      } else if (!bases.any((b) => b['id'] == _baseId)) {
+        _baseId = null;
+      }
     });
-    final tables = (_base?['tables'] as List?)?.cast<Map>() ?? const [];
-    final keep = tables.any((t) => t['id'] == _tableId);
-    await _openTable(keep ? _tableId : tables.firstOrNull?['id'] as String?);
+    if (_baseId == null) return;
+    final keep = _tables.any((t) => t.$1 == _tableId);
+    await _openTable(keep ? _tableId : _tables.firstOrNull?.$1);
+  }
+
+  void _openBase(FinancialCard card) {
+    setState(() {
+      _area = null;
+      _baseId = card.id;
+      _tableId = null;
+      _search = '';
+    });
+    _openTable(_tables.firstOrNull?.$1);
+  }
+
+  void _openArea(FinancialCard card) {
+    setState(() {
+      _baseId = null;
+      _area = card;
+      _tableId = null;
+      _search = '';
+    });
+    _openTable(card.tables.firstOrNull?.$1);
+  }
+
+  void _backHome() {
+    setState(() {
+      _baseId = null;
+      _area = null;
+      _tableId = null;
+      _table = null;
+      _viewId = null;
+      _search = '';
+    });
+    _loadHome();
   }
 
   Future<void> _openTable(String? id) async {
@@ -415,7 +505,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_bases.isEmpty) {
+    final areaCards = _areaCards;
+    final baseCards = _baseCards;
+    if (areaCards.isEmpty && baseCards.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -430,7 +522,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              if (_can('create'))
+              if (_mayCreateBase)
                 FilledButton.icon(
                   key: const ValueKey('financials-new-base'),
                   icon: const Icon(Icons.add),
@@ -443,7 +535,21 @@ class _FinancialsScreenState extends State<FinancialBases> {
       );
     }
 
-    final tables = (_base?['tables'] as List?)?.cast<Map>() ?? const [];
+    if (_onHome) {
+      return FinancialHome(
+        areas: areaCards,
+        bases: baseCards,
+        onArea: _openArea,
+        onBase: _openBase,
+        onNewBase: _mayCreateBase ? _newBase : null,
+      );
+    }
+
+    final tables = _tables;
+    final card = _area ?? baseCards.where((b) => b.id == _baseId).firstOrNull;
+    final badge = sourceLabel(card?.source);
+    final refreshed = refreshedLabel(card?.refreshedAt);
+    final selectedTable = tables.indexWhere((t) => t.$1 == _tableId);
     final view = _view;
     final config = (view?['config'] as Map?) ?? const {};
     final hidden = {
@@ -465,66 +571,71 @@ class _FinancialsScreenState extends State<FinancialBases> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: 240,
-                child: SearchPickerField<String>(
-                  label: 'Base',
-                  isDense: true,
-                  value: _baseId,
-                  options: [
-                    for (final b in _bases)
-                      SearchOption(
-                        value: '${b['id']}',
-                        label: b['place'] == null
-                            ? '${b['name']}'
-                            : '${b['name']} · ${b['place']}',
-                      ),
-                  ],
-                  onChanged: (id) {
-                    if (id == null) return;
-                    _tableId = null;
-                    _loadBases(select: id);
-                  },
-                ),
+              IconButton(
+                key: const ValueKey('financials-back'),
+                tooltip: 'Back to Financials home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backHome,
               ),
-              if (canEdit)
+              Text(
+                _area?.name ??
+                    (_base?['place'] == null
+                        ? '${_base?['name'] ?? ''}'
+                        : '${_base?['name']} · ${_base?['place']}'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (badge != null) StatusPill(badge),
+              if (refreshed != null)
+                Text(
+                  refreshed,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              if (canEdit && _area == null)
                 IconButton(
                   tooltip: 'Rename base',
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: _renameBase,
                 ),
-              if (_can('create'))
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('New base'),
-                  onPressed: _newBase,
-                ),
             ],
           ),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              for (final t in tables)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text('${t['name']}'),
-                    selected: t['id'] == _tableId,
-                    onSelected: (_) => t['id'] == _tableId && canEdit
-                        ? _renameTable()
-                        : _openTable('${t['id']}'),
-                  ),
+              if (tables.isNotEmpty)
+                TabBarLike(
+                  key: const ValueKey('financials-table-chips'),
+                  level: TabLevel.secondary,
+                  labels: [
+                    for (final t in tables)
+                      (
+                        t.$3 == null ? t.$2 : '${t.$2} · ${t.$3}',
+                        Icons.table_rows_outlined,
+                      ),
+                  ],
+                  selected: selectedTable < 0 ? 0 : selectedTable,
+                  onSelected: (i) => _openTable(tables[i].$1),
                 ),
-              if (canEdit)
+              if (canEdit && _area == null && _table != null)
+                IconButton(
+                  tooltip: 'Rename table',
+                  icon: const Icon(Icons.drive_file_rename_outline),
+                  onPressed: _renameTable,
+                ),
+              if (canEdit && _area == null)
                 TextButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('Add table'),
                   onPressed: _newTable,
                 ),
-              if (canEdit)
+              if (canEdit && _area == null)
                 TextButton.icon(
                   icon: const Icon(Icons.sync_alt),
                   label: const Text('Mirror Airtable'),
@@ -672,9 +783,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
             },
           ),
         ] else
-          const Expanded(
-            child: Center(child: Text('This base has no tables yet.')),
-          ),
+          const Expanded(child: Center(child: Text('No tables here yet.'))),
       ],
     );
   }
