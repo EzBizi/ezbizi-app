@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/business_profile_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -352,6 +353,144 @@ void main() {
     }
   });
 
+  testWidgets('auto-reply is a switch that PUTs the new value', (tester) async {
+    await _pump(
+      tester,
+      locations: [showing, suspended],
+      notLive: 1,
+      connections: connected,
+      permissions: const ['business_profile.edit', 'reviews.publish'],
+    );
+
+    final rowSwitch = find.byKey(const ValueKey('gbp-row-auto-reply-loc-2'));
+    expect(tester.widget<Switch>(rowSwitch).value, isFalse);
+
+    await tester.tap(rowSwitch);
+    await tester.pumpAndSettle();
+
+    final put = _sent.singleWhere((r) => r.method == 'PUT');
+    expect(
+      put.url.path,
+      endsWith('/business-profile/locations/loc-2/auto-reply'),
+    );
+    expect(jsonDecode(put.body), {'on': true});
+    expect(tester.widget<Switch>(rowSwitch).value, isTrue);
+    // The switch is not a row tap: no pane opened.
+    expect(find.byKey(const ValueKey('gbp-pane')), findsNothing);
+
+    // The same switch in the pane.
+    await tester.tap(find.byKey(const ValueKey('gbp-row-loc-1')));
+    await tester.pumpAndSettle();
+    final paneSwitch = find.byKey(const ValueKey('gbp-pane-auto-reply-loc-1'));
+    expect(tester.widget<Switch>(paneSwitch).value, isTrue);
+    await tester.tap(paneSwitch);
+    await tester.pumpAndSettle();
+    expect(jsonDecode(_sent.where((r) => r.method == 'PUT').last.body), {
+      'on': false,
+    });
+    expect(tester.widget<Switch>(paneSwitch).value, isFalse);
+  });
+
+  testWidgets('the pane files a listing under another branch with a PATCH', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing, suspended],
+      notLive: 1,
+      connections: connected,
+      permissions: const ['business_profile.edit'],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('gbp-row-loc-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gbp-pane-branch-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.text('Brightside · Northgate'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final patch = _sent.singleWhere((r) => r.method == 'PATCH');
+    expect(patch.url.path, endsWith('/business-profile/locations/loc-1'));
+    expect(jsonDecode(patch.body), {'franchise_id': 'fr-2'});
+    // The row now leads with the branch the server answered with.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('gbp-row-loc-1')),
+        matching: find.text('Brightside · Northgate'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without the grants both stay read-only and say why', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing, suspended],
+      notLive: 1,
+      connections: connected,
+      permissions: const ['business_profile.view'],
+    );
+
+    expect(find.byType(Switch), findsNothing);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('gbp-row-auto-reply-text-loc-1')),
+          )
+          .data,
+      'On',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('gbp-row-loc-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Switch), findsNothing);
+    final picker = find.byKey(const ValueKey('gbp-pane-branch-picker'));
+    expect(tester.widget<SearchPickerField<String>>(picker).onChanged, isNull);
+    expect(
+      find.text(
+        'Your role cannot change which branch a listing is filed under.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(picker);
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    expect(_sent.where((r) => r.method != 'GET'), isEmpty);
+  });
+
+  testWidgets('editing without reviews.publish leaves auto-reply as text', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing],
+      notLive: 0,
+      connections: connected,
+      permissions: const ['business_profile.edit'],
+    );
+
+    expect(find.byType(Switch), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('gbp-row-loc-1')));
+    await tester.pumpAndSettle();
+    expect(find.byType(Switch), findsNothing);
+    expect(
+      tester
+          .widget<SearchPickerField<String>>(
+            find.byKey(const ValueKey('gbp-pane-branch-picker')),
+          )
+          .onChanged,
+      isNotNull,
+    );
+  });
+
   testWidgets('with nothing connected the empty state offers to connect', (
     tester,
   ) async {
@@ -391,47 +530,120 @@ void main() {
   });
 }
 
+/// The requests the screen sent, for the tests that change a listing.
+final _sent = <http.Request>[];
+
+/// [permissions] null: nobody signed in, as the read-only tests have always
+/// run. Otherwise `/me` answers with those grants and two branches.
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> locations,
   required int notLive,
   required List<Map<String, dynamic>> connections,
   Size size = const Size(1200, 900),
+  List<String>? permissions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+  _sent.clear();
+
+  http.Response json(Object body) => http.Response(
+    jsonEncode(body),
+    200,
+    headers: {'content-type': 'application/json'},
+  );
 
   final api = ApiClient(
     client: MockClient((request) async {
-      if (request.url.path.contains('/business-profile/locations')) {
-        return http.Response(
-          jsonEncode({
-            'data': locations,
-            'meta': {
-              'total': locations.length,
-              'not_live': notLive,
-              'connections': connections,
+      _sent.add(request);
+      final path = request.url.path;
+      final segments = request.url.pathSegments;
+
+      if (path.endsWith('/me') && permissions != null) {
+        return json({
+          'data': {
+            'id': 'u-1',
+            'name': 'Robin Vale',
+            'email': 'robin@brightside.example',
+            'has_avatar': false,
+            'role': {'id': 'role-1', 'name': 'Manager'},
+            'permissions': permissions,
+            'modules': <dynamic>[],
+            'preferences': <String, dynamic>{},
+            'organization': {
+              'id': 'org-1',
+              'name': 'Brightside Group',
+              'franchise_label': 'Branch',
+              'is_read_only': false,
             },
-          }),
-          200,
-          headers: {'content-type': 'application/json'},
-        );
+            'scope': {
+              'type': 'organization',
+              'id': 'org-1',
+              'label': 'Brightside Group',
+              'path': ['Brightside Group'],
+            },
+            'companies': [
+              {'id': 'co-1', 'name': 'Brightside'},
+            ],
+            'franchises': [
+              {'id': 'fr-1', 'name': 'Springfield', 'company_id': 'co-1'},
+              {'id': 'fr-2', 'name': 'Northgate', 'company_id': 'co-1'},
+            ],
+          },
+        });
       }
 
-      return http.Response(
-        '{}',
-        200,
-        headers: {'content-type': 'application/json'},
-      );
+      // The server answers with the whole row, re-presented.
+      if (request.method == 'PATCH') {
+        final franchiseId =
+            (jsonDecode(request.body) as Map)['franchise_id'] as String?;
+        final row = locations.firstWhere((l) => l['id'] == segments.last);
+        return json({
+          'data': {
+            ...row,
+            'franchise': franchiseId == null
+                ? null
+                : {
+                    'id': franchiseId,
+                    'name': franchiseId == 'fr-2' ? 'Northgate' : 'Springfield',
+                  },
+          },
+        });
+      }
+
+      if (request.method == 'PUT' && segments.last == 'auto-reply') {
+        return json({
+          'data': {
+            'id': segments[segments.length - 2],
+            'auto_reply': (jsonDecode(request.body) as Map)['on'],
+          },
+        });
+      }
+
+      if (path.contains('/business-profile/locations')) {
+        return json({
+          'data': locations,
+          'meta': {
+            'total': locations.length,
+            'not_live': notLive,
+            'connections': connections,
+          },
+        });
+      }
+
+      return json(<String, dynamic>{});
     }),
   );
+
+  final session = Session(api);
+  if (permissions != null) await session.refresh();
 
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: BusinessProfileScreen(api: api, session: Session(api)),
+        body: BusinessProfileScreen(api: api, session: session),
       ),
     ),
   );

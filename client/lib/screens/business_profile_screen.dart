@@ -200,6 +200,131 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     return [...kept.where((l) => !_live(l)), ...kept.where(_live)];
   }
 
+  // ── Changing a listing ───────────────────────────────────────
+
+  /// BusinessLocationPolicy::update: `business_profile.edit`, then reach.
+  bool get _canEdit => widget.session.me?.can('business_profile.edit') ?? false;
+
+  /// The auto-reply switch takes both halves of the act
+  /// (BusinessProfileAutoReplyController): the listing's update policy and
+  /// Reviews' publish grant.
+  bool get _canAutoReply =>
+      _canEdit && (widget.session.me?.can('reviews.publish') ?? false);
+
+  /// Listings with a write in flight, so a second tap cannot race the first.
+  final Set<String> _saving = {};
+
+  void _replace(
+    String id,
+    Map<String, dynamic> Function(Map<String, dynamic>) change,
+  ) {
+    final i = _locations.indexWhere((l) => l['id'] == id);
+    if (i >= 0) _locations[i] = change(_locations[i]);
+  }
+
+  /// PATCH /business-profile/locations/{id} {franchise_id} — null unfiles it.
+  Future<void> _setBranch(Map<String, dynamic> l, String? franchiseId) async {
+    final id = l['id'] as String;
+    if (_franchiseId(l) == franchiseId) return;
+
+    setState(() => _saving.add(id));
+    final response = await widget.api.patch('/business-profile/locations/$id', {
+      'franchise_id': franchiseId,
+    });
+    if (!mounted) return;
+
+    setState(() {
+      _saving.remove(id);
+      if (!response.ok) {
+        _notice = response.message;
+        return;
+      }
+      final data = response.data;
+      if (data is Map<String, dynamic>) _replace(id, (_) => data);
+    });
+  }
+
+  /// PUT /business-profile/locations/{id}/auto-reply {on}.
+  Future<void> _setAutoReply(Map<String, dynamic> l, bool on) async {
+    final id = l['id'] as String;
+
+    setState(() => _saving.add(id));
+    final response = await widget.api.put(
+      '/business-profile/locations/$id/auto-reply',
+      {'on': on},
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _saving.remove(id);
+      if (!response.ok) {
+        _notice = response.message;
+        return;
+      }
+      final data = response.data as Map<String, dynamic>? ?? const {};
+      _replace(id, (row) => {...row, 'auto_reply': data['auto_reply'] == true});
+    });
+  }
+
+  /// A switch for somebody who may change it; On/Off text for anybody else.
+  Widget _autoReply(
+    ThemeData theme,
+    Map<String, dynamic> l, {
+    required String where,
+  }) {
+    final on = l['auto_reply'] == true;
+    if (!_canAutoReply) {
+      return Text(
+        on ? 'On' : 'Off',
+        key: ValueKey('gbp-$where-auto-reply-text-${l['id']}'),
+        style: theme.textTheme.bodySmall,
+      );
+    }
+
+    return Switch(
+      key: ValueKey('gbp-$where-auto-reply-${l['id']}'),
+      value: on,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onChanged: _saving.contains(l['id']) ? null : (v) => _setAutoReply(l, v),
+    );
+  }
+
+  /// The branch picker in the pane, greyed with the reason without the grant.
+  Widget _branchPicker(Map<String, dynamic> l) {
+    final me = widget.session.me;
+    final current = _franchiseId(l);
+    final companies = {for (final c in me?.companies ?? const []) c.id: c.name};
+    final options = <SearchOption<String>>[
+      const SearchOption(value: null, label: 'Not filed under a branch'),
+      for (final f in me?.franchisesInView ?? const [])
+        SearchOption(
+          value: f.id,
+          label: companies[f.companyId] == null
+              ? f.name
+              : '${companies[f.companyId]} · ${f.name}',
+        ),
+    ];
+    // The branch it is on now, even when it is outside this view.
+    if (current != null && !options.any((o) => o.value == current)) {
+      options.add(SearchOption(value: current, label: _branchName(l)!));
+    }
+
+    return SearchPickerField<String>(
+      key: const ValueKey('gbp-pane-branch-picker'),
+      value: current,
+      label: 'Filed under',
+      isDense: true,
+      options: options,
+      helperText: _canEdit
+          ? null
+          : 'Your role cannot change which branch a listing is filed under.',
+      helperMaxLines: 2,
+      onChanged: !_canEdit || _saving.contains(l['id'])
+          ? null
+          : (v) => _setBranch(l, v),
+    );
+  }
+
   Map<String, dynamic>? get _open {
     for (final l in _locations) {
       if (l['id'] == _openId) return l;
@@ -659,7 +784,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                   text(formatPhoneNumber(l['phone'] as String?)),
                   text(l['primary_category'] as String? ?? ''),
                   _pill(l),
-                  text(l['auto_reply'] == true ? 'On' : 'Off'),
+                  _autoReply(theme, l, where: 'row'),
                   text(_checked(l), style: muted),
                 ]),
               ),
@@ -759,10 +884,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   // ── One listing ──────────────────────────────────────────────
 
-  /// Read-only: this screen has never changed a listing's branch or its
-  /// auto-reply, so the pane says both rather than offering either. No "Open
-  /// in Google" either — the list sends no Maps or listing URL, and a guessed
-  /// one would be a claim about Google this screen cannot back.
+  /// The branch and the auto-reply are the two fields here that are EzBizi's
+  /// rather than Google's, so they are the two that can change. No "Open in
+  /// Google" — the list sends no Maps or listing URL, and a guessed one would
+  /// be a claim about Google this screen cannot back.
   Widget _details(
     ThemeData theme,
     Map<String, dynamic> l, {
@@ -774,7 +899,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     );
     final verification = (l['verification_state'] as String?) ?? '';
     final category = l['primary_category'] as String? ?? '';
-    final branch = _branchName(l);
 
     Widget fact(String label, String value, {Key? key}) => Padding(
       key: key,
@@ -840,15 +964,25 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             if (verification.isNotEmpty) _humanise(verification).toLowerCase(),
           ].where((p) => p.isNotEmpty).join(' · '),
         ),
-        fact(
-          'Filed under',
-          branch ?? 'Not filed under a branch',
+        Padding(
           key: const ValueKey('gbp-pane-branch'),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _branchPicker(l),
         ),
-        fact(
-          'Auto-reply to reviews',
-          l['auto_reply'] == true ? 'On' : 'Off',
+        Padding(
           key: const ValueKey('gbp-pane-auto-reply'),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Auto-reply to reviews',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              _autoReply(theme, l, where: 'pane'),
+            ],
+          ),
         ),
         Text('Checked ${_checked(l).toLowerCase()}', style: muted),
       ],
