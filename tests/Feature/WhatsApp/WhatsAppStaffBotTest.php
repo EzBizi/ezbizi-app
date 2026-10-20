@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Jobs\PlanReportCorrection;
 use App\Jobs\SendCallRecordings;
+use App\Jobs\SendWhatsAppPeriodReports;
 use App\Models\AssistantEntry;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -14,13 +16,16 @@ use App\Models\TrainingMedia;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppReportBatch;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\ReportAsk;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppStaffBot;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -1032,7 +1037,58 @@ class WhatsAppStaffBotTest extends TestCase
         $bot = WhatsAppStaffBot::class;
         $this->assertSame("🔍 *How often to inspect*\n🔹 Once a year\n🧱 Check the crown", $bot::look("*How often to inspect*\n• once a year\n- check the crown"));
         $this->assertSame('6 topics', $bot::cap('6 topics'));
-        $this->assertSame("🆕 *Newest customer*", $bot::look("🆕 *Newest customer*"), 'an emoji outside the old range is not doubled (prod 10-14)');
+        $this->assertSame('🆕 *Newest customer*', $bot::look('🆕 *Newest customer*'), 'an emoji outside the old range is not doubled (prod 10-14)');
         $this->assertSame('📍 Find a location', $bot::emojiFor('Find a location').' Find a location');
+    }
+
+    /** A1 Leads takeover 2026-10-20: a free-text correction to the open draft, repeated back, applied on YES. */
+    public function test_a_report_correction_is_repeated_back_and_applied_only_on_yes(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);   // the admin: holds reports.correct
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Bus::fake([SendWhatsAppPeriodReports::class]);
+        $batch = $this->inTenant($t['org'], fn () => WhatsAppReportBatch::query()->create(['period' => 'week', 'starts_on' => '2026-10-12', 'ends_on' => '2026-10-18']));
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => [
+            'is_correction' => true,
+            'changes' => [
+                ['key' => 'report.exclude_jobs', 'params' => '{"jobs":["4512"]}'],
+                ['key' => 'report.set_figure', 'params' => '{"income":1}'],               // invented: dropped
+                ['key' => 'report.company_order', 'params' => '{"branches":["no-such-branch"]}'], // made up: dropped
+            ],
+            'question' => '',
+        ]]))]);
+
+        $this->inbound(self::BOT, $this->text('please leave out job 4512 from the report'))->assertOk();
+
+        $plan = collect($this->sent)->pluck('text.body')->filter()->last();
+        $this->assertStringContainsString('Leave out job *4512*', $plan);
+        $this->assertStringNotContainsString('income', $plan);
+        $this->assertStringContainsString('YES', $plan);
+        $this->assertNull($this->inTenant($t['org'], fn () => $batch->fresh()->settings), 'nothing applied before YES');
+
+        $this->inbound(self::BOT, $this->text('yes'), 'wamid.IN2')->assertOk();
+
+        $this->assertSame(['4512'], $this->inTenant($t['org'], fn () => $batch->fresh()->settings['exclude_jobs']));
+        $this->assertCount(1, $this->inTenant($t['org'], fn () => $batch->fresh()->settings['changes']), 'only the valid change ran');
+        Bus::assertDispatched(SendWhatsAppPeriodReports::class);
+    }
+
+    public function test_a_correction_needs_the_tick_and_the_setting(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Queue::fake();
+        $this->inTenant($t['org'], fn () => WhatsAppReportBatch::query()->create(['period' => 'week', 'starts_on' => '2026-10-12', 'ends_on' => '2026-10-18']));
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('ai_assistance.report_corrections', $t['org'], false));
+
+        $this->inbound(self::BOT, $this->text('leave out job 4512 from the report'))->assertOk();
+
+        Queue::assertNotPushed(PlanReportCorrection::class);
     }
 }

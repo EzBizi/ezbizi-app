@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
+use App\Jobs\PlanReportCorrection;
 use App\Jobs\PlanWhatsAppCommand;
 use App\Jobs\ReadWhatsAppBill;
 use App\Jobs\SendCallRecordings;
@@ -19,7 +20,9 @@ use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\ReportAsk;
+use App\Support\Ai\ReportCorrection;
 use App\Support\Assistant\AssistantBrain;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Collection;
 
 /**
@@ -117,6 +120,13 @@ final class WhatsAppStaffBot
         // YES / NO to a bill photo held for this person (WhatsAppBills).
         if ($viewer !== null && $yesOrNo && WhatsAppBills::pending($viewer)) {
             $this->text($number, $to, app(WhatsAppBills::class)->answer($viewer, $yes), preview: false);
+
+            return;
+        }
+
+        // YES / NO to a report correction held for this person (ReportCorrection).
+        if ($viewer !== null && $yesOrNo && ($held = ReportCorrection::pending($viewer)) !== null) {
+            $this->correctionAnswer($number, $to, $viewer, $held, $yes);
 
             return;
         }
@@ -497,6 +507,16 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // "Leave out job 4512 and put CT first": a correction to the open report
+        // draft, from somebody with reports.correct, held for a YES.
+        if ($viewer?->hasPermission(ReportCorrection::PERMISSION) && GrokCli::configured()
+            && ReportCorrection::looksLikeOne($query) && ReportCorrection::openBatch() !== null
+            && app(SettingsResolver::class)->get('ai_assistance.report_corrections', Organization::findOrFail($number->organization_id))) {
+            PlanReportCorrection::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         // "Publish the reply to the Smith review": a command, held for a YES.
         // ponytail: a verb list decides command vs question; add verbs as staff use them.
         if ($viewer?->hasPermission(AppAct::PERMISSION) && GrokCli::configured() && self::isCommand($query)) {
@@ -650,6 +670,51 @@ final class WhatsAppStaffBot
     public function billRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
     {
         $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption), preview: false);
+    }
+
+    /** PlanReportCorrection's half: repeat the changes back in our words, run nothing. */
+    public function correctionPlan(WhatsAppNumber $number, string $to, User $viewer, string $query): void
+    {
+        try {
+            $plan = ReportCorrection::plan($query);
+        } catch (\RuntimeException) {
+            $this->text($number, $to, "\u{26A0}\u{FE0F} I couldn't read that just now. Try again in a minute.", preview: false);
+
+            return;
+        }
+
+        // Not a correction after all: answered like any other question.
+        if ($plan === null) {
+            $this->aiReply($number, $to, $viewer, $query);
+
+            return;
+        }
+
+        if ($plan['changes'] === []) {
+            $this->text($number, $to, "\u{1F914} ".$plan['question'], preview: false);
+
+            return;
+        }
+
+        ReportCorrection::hold($viewer, $plan);
+        $this->text($number, $to, "\u{270F}\u{FE0F} *Change the report draft:*\n\n".implode("\n", $plan['lines'])
+            .($plan['question'] !== null ? "\n\n\u{1F914} Not included: ".$plan['question'] : '')
+            ."\n\nReply *YES* to make the change and get a new copy, or *NO* to cancel. _Expires in 10 minutes._", preview: false);
+    }
+
+    private function correctionAnswer(WhatsAppNumber $number, string $to, User $viewer, array $held, bool $yes): void
+    {
+        if (! $yes) {
+            ReportCorrection::drop($viewer);
+            $this->text($number, $to, "\u{1F44D} Cancelled. The draft is unchanged.");
+
+            return;
+        }
+
+        $result = ReportCorrection::run($viewer, $held);
+        $this->text($number, $to, $result['ok']
+            ? "\u{2705} *Done.* A new copy of the report is on its way; it needs *APPROVE* again."
+            : "\u{274C} ".$result['message'], preview: false);
     }
 
     /** PlanWhatsAppCommand's half: repeat the command back, run nothing. */
