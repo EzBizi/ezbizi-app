@@ -3475,6 +3475,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'It changes what the team sees in EzBizi and sends nothing to '
                             .'anyone.',
                     ),
+                    new ActionDefinition(
+                        key: 'email.message.reply',
+                        label: 'Reply to the email',
+                        description: 'Answers the email that arrived, in its thread, from the same inbox '
+                            .'- for example after hours or on Sundays. The email itself stays '
+                            .'unread. Never answers this inbox itself or an automatic address, and '
+                            .'answers each sender at most once a day.',
+                    ),
                 ],
             ),
 
