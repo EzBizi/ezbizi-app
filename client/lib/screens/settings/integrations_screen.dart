@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/sending_server_panel.dart';
+import '../../widgets/workiz_connect_form.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
@@ -375,6 +376,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             ? (_mayManageWorkspace ? _disconnectWorkspace : null)
             : (_mayConnectProvider(open) ? _disconnectConnection : null),
         purpose: _purpose[open],
+        onEdit: open == 'workiz' && _maySeeExperimental ? _editWorkiz : null,
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
@@ -672,27 +674,29 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       style: Theme.of(context).textTheme.bodySmall,
     ),
     const SizedBox(height: 8),
-    ApiKeyConnectForm(
-      api: widget.api,
-      path: '/social/workiz',
-      submitLabel: 'Connect account',
-      fields: const [
-        (
-          'api_token',
-          'API key',
-          'From Workiz › Developer › v2 (or the API Token on the v1 tab)',
-        ),
-        // The second key on the same page. Without it EzBizi reads the
-        // account's jobs but cannot change them.
-        (
-          'auth_secret',
-          'API secret',
-          'Only for a v1 token: the secret beside it',
-        ),
-      ],
-      onConnected: _load,
-    ),
+    // v1, v2 or (soon) a signed-in session, each with its own boxes (UI
+    // queue 109).
+    WorkizConnectForm(api: widget.api, onDone: _load),
   ];
+
+  /// New credentials, or another method, for one Workiz account (UI queue
+  /// 109). The saved ones are never shown back.
+  Future<void> _editWorkiz(IntegrationConnection row) async {
+    await showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Edit ${row.title}',
+        child: WorkizConnectForm(
+          api: widget.api,
+          connectionId: row.id,
+          method: row.method,
+          label: row.label,
+          onDone: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+    await _load();
+  }
 
   /// Jose, 2026-10-15: "Shouldn't ring central also show here on
   /// Integrations?" The organization's own RingCentral app, JWT flow — the
