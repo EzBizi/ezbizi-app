@@ -496,6 +496,47 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
+  'scheduling/Helpers': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'helpers-branch',
+        title: 'Branch and month',
+        body:
+            'Whose helpers you see. The arrows beside it step a month, and '
+            'Today comes back to this one.',
+      ),
+      TourStep(
+        anchor: 'helpers-month-grid',
+        title: 'The month',
+        body:
+            'Each day lists its bookings as helper → technician: blue a whole '
+            'day, green the morning, amber the afternoon. Click a day to open '
+            'it.',
+      ),
+      TourStep(
+        anchor: 'helpers-day',
+        title: 'The day',
+        body:
+            "Every helper and which halves are free, the day's bookings, and "
+            'Book. Change and Remove show on the bookings you may change.',
+      ),
+      TourStep(
+        anchor: 'helpers-book',
+        title: 'Book a helper',
+        body:
+            'A whole day, the morning or the afternoon, with a job number and '
+            'a note if you like. A whole day takes both halves.',
+      ),
+      TourStep(
+        anchor: 'helpers-roster',
+        title: 'The helpers',
+        body:
+            'Add a helper, rename one or switch one off. Changing the list '
+            'takes the right to edit Scheduling.',
+      ),
+    ],
+  ),
   'scheduling/Locations': Tour(
     version: 1,
     steps: [
