@@ -33,6 +33,15 @@ class SubCompanyBrandTest extends TestCase
             $this->assertSame(['', '', ''], [$angi->booking_link, $angi->office_phone, $angi->photos_email], 'none of A-1 Chimney\'s');
             $this->assertStringStartsWith('https://www.a-1chimney.com/booking/', $lead($parent)->booking_link, 'the parent keeps its own');
 
+            // Availability is the parent's (Jose, 2026-10-20: "the sub companies use
+            // the same availability as the parent company"): A-1 closed all week
+            // reads closed for AngiSweep too, on a Wednesday mid-morning when the
+            // default hours would be open.
+            $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-21 14:00:00', 'UTC'));
+            $settings->set('leads.office_hours', $parent, ['monday' => null, 'tuesday' => null, 'wednesday' => null,
+                'thursday' => null, 'friday' => null, 'saturday' => null, 'sunday' => null]);
+            $this->assertFalse($angi->fresh()->office_open, "the parent's hours, not the default");
+
             // AngiSweep's own page and number.
             $settings->set('leads.booking_url', $sub, 'https://angisweep.com/booking/');
             $settings->set('leads.office_phone', $sub, '(800) 222-2222');
