@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/phone_numbers.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import '../widgets/search_picker.dart';
+import '../widgets/status_pill.dart';
 import 'business_profile/performance_view.dart';
+import 'monitoring/device_display.dart' show relativeAge;
 
 /// Business Profile — the listings the public sees on Maps.
 ///
@@ -14,8 +19,15 @@ import 'business_profile/performance_view.dart';
 /// A suspended or unverified listing looks perfectly healthy in a database and
 /// is invisible on Google. Nobody discovers that from a list of names — they
 /// discover it when a customer says they could not find the business. So the
-/// count of listings Google is not showing sits at the top, and those rows are
-/// marked rather than left for somebody to notice.
+/// count of listings Google is not showing sits at the top, and those rows
+/// sort first and are tinted rather than left for somebody to notice.
+///
+/// ── The branch leads the row ─────────────────────────────────
+///
+/// Every listing of one business carries the same name on Google, so a list
+/// of titles reads "A Business" twenty times and the street is the only way
+/// to tell them apart (UI queue 116, Jose picked layout 1 + phone 4). The row
+/// is led by the company and branch EzBizi files it under instead.
 class BusinessProfileScreen extends StatefulWidget {
   const BusinessProfileScreen({
     super.key,
@@ -36,6 +48,20 @@ class BusinessProfileScreen extends StatefulWidget {
   State<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
 }
 
+/// Which listings the segment shows.
+enum _Show { showing, notShowing, all }
+
+/// The branch picker's value for listings filed under no branch. Not a uuid,
+/// so it cannot collide with a franchise id.
+const _unfiled = '-';
+
+/// Below this tab width the table becomes cards (phone layout 4).
+const double _cardsBelow = 760;
+
+/// Below this the details pane takes the tab's place rather than sitting
+/// beside the table, which would squeeze seven columns into a sliver.
+const double _paneBesideFrom = 1100;
+
 class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _loading = true;
   bool _syncing = false;
@@ -46,8 +72,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   List<Map<String, dynamic>> _connections = [];
   int _total = 0;
   int _notLive = 0;
-  bool _onlyNotLive = false;
   int _request = 0;
+
+  // Filtered here rather than with `?live=no`: the segment shows a count on
+  // every choice, which needs the whole list either way.
+  _Show _show = _Show.all;
+  String? _branch;
+  String _search = '';
+  final _searchController = TextEditingController();
+
+  /// The listing whose details are open.
+  String? _openId;
 
   bool get _performance => widget.performance;
 
@@ -55,6 +90,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -65,9 +106,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       _error = null;
     });
 
-    final response = await widget.api.get('/business-profile/locations', {
-      if (_onlyNotLive) 'live': 'no',
-    });
+    final response = await widget.api.get('/business-profile/locations');
 
     if (!mounted || request != _request) return;
 
@@ -84,10 +123,16 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       );
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
       _total = (meta['total'] as num?)?.toInt() ?? _locations.length;
-      _notLive = (meta['not_live'] as num?)?.toInt() ?? 0;
+      _notLive =
+          (meta['not_live'] as num?)?.toInt() ??
+          _locations.where((l) => !_live(l)).length;
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+
+      if (_openId != null && !_locations.any((l) => l['id'] == _openId)) {
+        _openId = null;
+      }
     });
   }
 
@@ -113,8 +158,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     final data = response.data as Map<String, dynamic>? ?? const {};
     final fetched = (data['fetched'] as num?)?.toInt() ?? 0;
 
-    setState(() => _notice =
-        fetched > 0 ? 'Checked $fetched listing${fetched == 1 ? '' : 's'}.' : 'Nothing to check.');
+    setState(
+      () => _notice = fetched > 0
+          ? 'Checked $fetched listing${fetched == 1 ? '' : 's'}.'
+          : 'Nothing to check.',
+    );
 
     await _load();
   }
@@ -124,6 +172,41 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   /// The connected profile itself, so the tab can name it and remove it.
   Map<String, dynamic>? get _profile =>
       _connections.isEmpty ? null : _connections.first;
+
+  int get _showingCount => _locations.where(_live).length;
+  int get _notShowingCount => _locations.length - _showingCount;
+
+  /// Not showing first, then the server's order (by title) within each half.
+  List<Map<String, dynamic>> get _visible {
+    final query = _search.trim().toLowerCase();
+
+    bool keep(Map<String, dynamic> l) {
+      if (_show == _Show.showing && !_live(l)) return false;
+      if (_show == _Show.notShowing && _live(l)) return false;
+      if (_branch != null && (_franchiseId(l) ?? _unfiled) != _branch) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+
+      return [
+        _city(l),
+        l['address'],
+        l['title'],
+      ].any((v) => v is String && v.toLowerCase().contains(query));
+    }
+
+    final kept = _locations.where(keep).toList();
+
+    return [...kept.where((l) => !_live(l)), ...kept.where(_live)];
+  }
+
+  Map<String, dynamic>? get _open {
+    for (final l in _locations) {
+      if (l['id'] == _openId) return l;
+    }
+
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,68 +220,272 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Row(
-            children: [
-              FilterChip(
-                key: const ValueKey('tour-business-profile-not-showing'),
-                label: Text(
-                  _notLive > 0 ? 'Not showing ($_notLive)' : 'Not showing',
+    return LayoutBuilder(
+      builder: (context, box) {
+        final cards = box.maxWidth < _cardsBelow;
+        final open = _open;
+        final paneBeside = box.maxWidth >= _paneBesideFrom;
+
+        // Narrow, or too narrow for a pane beside the table: the details
+        // take the tab's place, with a way back.
+        if (open != null && !paneBeside) {
+          return _details(theme, open, inPlace: true);
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _header(theme, cards),
+            if (_notice != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(_notice!, style: theme.textTheme.bodySmall),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 16),
+                      onPressed: () => setState(() => _notice = null),
+                    ),
+                  ],
                 ),
-                selected: _onlyNotLive,
-                onSelected: (v) {
-                  setState(() => _onlyNotLive = v);
-                  _load();
-                },
               ),
-              const Spacer(),
-              FilledButton.tonalIcon(
-                key: const ValueKey('tour-customer_experience-check-google'),
-                onPressed: _syncing ? null : _sync,
-                icon: _syncing
-                    ? const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.sync, size: 18),
-                label: Text(_syncing ? 'Checking…' : 'Check Google'),
+            if (_locations.isNotEmpty) _filters(theme, cards),
+            const Divider(height: 1),
+            Expanded(
+              child: AsyncBody(
+                loading: _loading,
+                error: _error,
+                onRetry: _load,
+                child: _locations.isEmpty
+                    ? _empty(theme)
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: cards ? _cards(theme) : _table(theme),
+                          ),
+                          if (open != null) ...[
+                            VerticalDivider(
+                              width: 1,
+                              color: EzBiziTheme.edge(context),
+                            ),
+                            SizedBox(
+                              width: 380,
+                              child: _details(theme, open, inPlace: false),
+                            ),
+                          ],
+                        ],
+                      ),
               ),
-            ],
-          ),
-        ),
-        if (_profile != null)
-          ConnectedAccount(
-            key: const ValueKey('tour-business-profile-account'),
-            connection: _profile!,
-          ),
-        if (_notice != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                Expanded(child: Text(_notice!, style: theme.textTheme.bodySmall)),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 16),
-                  onPressed: () => setState(() => _notice = null),
-                ),
-              ],
             ),
-          ),
-        const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: _locations.isEmpty ? _empty(theme) : _list(theme),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
+
+  // ── The top: counts, profile, Check Google ───────────────────
+
+  Widget _header(ThemeData theme, bool narrow) {
+    final showing = _total - _notLive;
+    final counts = Text.rich(
+      key: const ValueKey('gbp-counts'),
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$_total listing${_total == 1 ? '' : 's'}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: ' · $showing showing · '),
+          TextSpan(
+            text: '$_notLive not showing',
+            style: _notLive > 0
+                ? TextStyle(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  )
+                : null,
+          ),
+        ],
+      ),
+      style: theme.textTheme.bodyMedium,
+      maxLines: narrow ? 2 : 1,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    final check = FilledButton.tonalIcon(
+      key: const ValueKey('tour-customer_experience-check-google'),
+      onPressed: _syncing ? null : _sync,
+      icon: _syncing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.sync, size: 18),
+      label: Text(_syncing ? 'Checking…' : 'Check Google'),
+    );
+
+    final profile = _profile == null
+        ? null
+        : ConnectedAccount(
+            key: const ValueKey('tour-business-profile-account'),
+            connection: _profile!,
+          );
+
+    if (narrow) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(child: counts),
+                  const SizedBox(width: 8),
+                  check,
+                ],
+              ),
+            ),
+            ?profile,
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        children: [
+          Expanded(child: counts),
+          if (profile != null)
+            // ConnectedAccount carries its own 16 px sides and 8 px bottom.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: profile,
+              ),
+            ),
+          check,
+        ],
+      ),
+    );
+  }
+
+  // ── The filters: segment, branch, search ─────────────────────
+
+  Widget _filters(ThemeData theme, bool narrow) {
+    final segment = SegmentedButton<_Show>(
+      key: const ValueKey('tour-business-profile-not-showing'),
+      segments: [
+        ButtonSegment(
+          value: _Show.showing,
+          label: Text(
+            'Showing · $_showingCount',
+            key: const ValueKey('gbp-show-showing'),
+          ),
+        ),
+        ButtonSegment(
+          value: _Show.notShowing,
+          label: Text(
+            'Not showing · $_notShowingCount',
+            key: const ValueKey('gbp-show-not-showing'),
+          ),
+        ),
+        const ButtonSegment(
+          value: _Show.all,
+          label: Text('All', key: ValueKey('gbp-show-all')),
+        ),
+      ],
+      selected: {_show},
+      showSelectedIcon: false,
+      onSelectionChanged: (v) => setState(() {
+        _show = v.first;
+        _openId = null;
+      }),
+    );
+
+    final branch = SizedBox(
+      width: narrow ? double.infinity : 240,
+      child: SearchPickerField<String>(
+        key: const ValueKey('gbp-branch'),
+        value: _branch,
+        hint: 'All branches',
+        isDense: true,
+        options: _branchOptions(),
+        onChanged: (v) => setState(() {
+          _branch = v;
+          _openId = null;
+        }),
+      ),
+    );
+
+    final search = SizedBox(
+      width: narrow ? double.infinity : 240,
+      child: TextField(
+        key: const ValueKey('gbp-search'),
+        controller: _searchController,
+        decoration: const InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'City or address',
+        ),
+        onChanged: (v) => setState(() => _search = v),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                segment,
+                const SizedBox(height: 8),
+                branch,
+                const SizedBox(height: 8),
+                search,
+              ],
+            )
+          : Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [segment, branch, search],
+            ),
+    );
+  }
+
+  /// Every branch a listing is filed under, plus "none" when one is not.
+  List<SearchOption<String>> _branchOptions() {
+    final seen = <String, String>{};
+    var unfiled = false;
+
+    for (final l in _locations) {
+      final id = _franchiseId(l);
+      if (id == null) {
+        unfiled = true;
+      } else {
+        seen.putIfAbsent(id, () => _branchName(l)!);
+      }
+    }
+
+    final named = seen.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+
+    return [
+      const SearchOption(value: null, label: 'All branches'),
+      for (final e in named) SearchOption(value: e.key, label: e.value),
+      if (unfiled)
+        const SearchOption(value: _unfiled, label: 'Not filed under a branch'),
+    ];
+  }
+
+  // ── Nothing at all ───────────────────────────────────────────
 
   Widget _empty(ThemeData theme) {
     return Center(
@@ -215,24 +502,22 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              _connected
-                  ? (_onlyNotLive ? 'Every listing is showing' : 'No listings yet')
-                  : 'No Business Profile connected',
+              _connected ? 'No listings yet' : 'No Business Profile connected',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
               _connected
-                  ? (_onlyNotLive
-                      ? 'Google is showing all of them. Nothing needs attention here.'
-                      : 'The profile is connected but no listings have come back yet. '
-                          'Check Google fetches them.')
-                  : 'This is where the listings the public sees on Google Maps appear — '
-                      'name, address, hours, and whether Google is showing them at all. '
-                      'Connect the profile this organization already owns.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ? 'The profile is connected but no listings have come back '
+                        'yet. Check Google fetches them.'
+                  : 'This is where the listings the public sees on Google '
+                        'Maps appear — name, address, hours, and whether '
+                        'Google is showing them at all. Connect the profile '
+                        'this organization already owns.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
             if (!_connected) ...[
@@ -250,58 +535,400 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     );
   }
 
-  Widget _list(ThemeData theme) {
-    return ListView.separated(
-      key: const ValueKey('tour-business-profile-listings'),
-      itemCount: _locations.length + 1,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        if (index == _locations.length) {
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              '$_total listing${_total == 1 ? '' : 's'}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-          );
-        }
+  /// Listings exist, but the filters leave none.
+  Widget _noneMatch(ThemeData theme) {
+    final allShowing =
+        _show == _Show.notShowing &&
+        _notShowingCount == 0 &&
+        _branch == null &&
+        _search.trim().isEmpty;
 
-        final location = _locations[index];
-        final live = location['is_live'] == true;
-
-        return ListTile(
-          leading: Icon(
-            live ? Icons.check_circle_outline : Icons.error_outline,
-            color: live ? theme.colorScheme.outline : theme.colorScheme.error,
+    return Padding(
+      key: const ValueKey('tour-business-profile-empty'),
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        children: [
+          Text(
+            allShowing ? 'Every listing is showing' : 'No listings match',
+            style: theme.textTheme.titleMedium,
+            textAlign: TextAlign.center,
           ),
-          title: Text(location['title'] as String? ?? 'Untitled listing'),
-          subtitle: Text(
-            [
-              if ((location['address'] as String?)?.isNotEmpty == true)
-                location['address'],
-              if ((location['primary_category'] as String?)?.isNotEmpty == true)
-                location['primary_category'],
-              // Google's own word, shown as-is when it is not simply live —
-              // SUSPENDED and UNVERIFIED mean different things and the fix
-              // differs, so collapsing them to "problem" would help nobody.
-              if (!live) location['verification_state'] ?? 'not showing',
-            ].join('  ·  '),
+          const SizedBox(height: 8),
+          Text(
+            allShowing
+                ? 'Google is showing all of them. Nothing needs attention '
+                      'here.'
+                : 'Nothing fits these filters.',
             style: theme.textTheme.bodySmall?.copyWith(
-              color: live ? null : theme.colorScheme.error,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
+            textAlign: TextAlign.center,
           ),
-          trailing: location['franchise'] is Map
-              ? Chip(
-                  label: Text(
-                    (location['franchise'] as Map)['name'] as String? ?? '',
-                    style: theme.textTheme.labelSmall,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                )
-              : null,
-        );
-      },
+        ],
+      ),
     );
   }
+
+  // ── Wide: the table ──────────────────────────────────────────
+
+  static const _columns = [
+    ('Branch', 4),
+    ('City', 3),
+    ('Phone', 3),
+    ('Category', 3),
+    ('Google', 2),
+    ('Auto-reply', 2),
+    ('Checked', 2),
+  ];
+
+  Widget _table(ThemeData theme) {
+    final rows = _visible;
+    final edge = EzBiziTheme.edge(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    Widget cells(List<Widget> children) => Row(
+      children: [
+        for (var i = 0; i < children.length; i++)
+          Expanded(
+            flex: _columns[i].$2,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Align(alignment: Alignment.centerLeft, child: children[i]),
+            ),
+          ),
+      ],
+    );
+
+    Widget text(String value, {TextStyle? style}) => Text(
+      value.isEmpty ? '—' : value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style ?? theme.textTheme.bodySmall,
+    );
+
+    return ListView(
+      key: const ValueKey('tour-business-profile-listings'),
+      padding: const EdgeInsets.only(bottom: 16),
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: edge)),
+          ),
+          child: cells([
+            for (final c in _columns)
+              Text(
+                c.$1.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  letterSpacing: 0.8,
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ]),
+        ),
+        if (rows.isEmpty) _noneMatch(theme),
+        for (final l in rows)
+          Material(
+            key: ValueKey('gbp-row-${l['id']}'),
+            color: _live(l)
+                ? (l['id'] == _openId
+                      ? theme.colorScheme.primaryContainer
+                      : Colors.transparent)
+                : ToneColours.of(context, Tone.bad).fill,
+            child: InkWell(
+              onTap: () => setState(
+                () => _openId = l['id'] == _openId ? null : l['id'] as String?,
+              ),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 52),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: edge)),
+                ),
+                child: cells([
+                  _branchCell(theme, l),
+                  text(_city(l)),
+                  text(formatPhoneNumber(l['phone'] as String?)),
+                  text(l['primary_category'] as String? ?? ''),
+                  _pill(l),
+                  text(l['auto_reply'] == true ? 'On' : 'Off'),
+                  text(_checked(l), style: muted),
+                ]),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _branchCell(ThemeData theme, Map<String, dynamic> l) {
+    final unfiled = _franchiseId(l) == null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _rowName(l),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (unfiled)
+          Text(
+            'Not filed under a branch',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Narrow: the cards ────────────────────────────────────────
+
+  Widget _cards(ThemeData theme) {
+    final rows = _visible;
+
+    return ListView(
+      key: const ValueKey('tour-business-profile-listings'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      children: [
+        if (rows.isEmpty) _noneMatch(theme),
+        for (final l in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              key: ValueKey('gbp-card-${l['id']}'),
+              color: _live(l)
+                  ? theme.colorScheme.surface
+                  : ToneColours.of(context, Tone.bad).fill,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+                side: BorderSide(color: EzBiziTheme.edge(context)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => setState(() => _openId = l['id'] as String?),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: _branchCell(theme, l)),
+                          const SizedBox(width: 8),
+                          _pill(l),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          _city(l),
+                          formatPhoneNumber(l['phone'] as String?),
+                        ].where((p) => p.isNotEmpty).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── One listing ──────────────────────────────────────────────
+
+  /// Read-only: this screen has never changed a listing's branch or its
+  /// auto-reply, so the pane says both rather than offering either. No "Open
+  /// in Google" either — the list sends no Maps or listing URL, and a guessed
+  /// one would be a claim about Google this screen cannot back.
+  Widget _details(
+    ThemeData theme,
+    Map<String, dynamic> l, {
+    required bool inPlace,
+  }) {
+    final live = _live(l);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final verification = (l['verification_state'] as String?) ?? '';
+    final category = l['primary_category'] as String? ?? '';
+    final branch = _branchName(l);
+
+    Widget fact(String label, String value, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label.toUpperCase(), style: theme.textTheme.labelSmall),
+          const SizedBox(height: 2),
+          SelectableText(
+            value.isEmpty ? '—' : value,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+
+    return ListView(
+      key: const ValueKey('gbp-pane'),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      children: [
+        Row(
+          children: [
+            if (inPlace)
+              IconButton(
+                key: const ValueKey('gbp-pane-back'),
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _openId = null),
+              ),
+            Expanded(
+              child: Text(
+                _rowName(l),
+                style: theme.textTheme.titleMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (!inPlace)
+              IconButton(
+                key: const ValueKey('gbp-pane-close'),
+                tooltip: 'Close',
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => setState(() => _openId = null),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: live
+              ? const StatusPill('Showing on Google', tone: Tone.ok)
+              : StatusPill(_googleWord(l), tone: Tone.bad),
+        ),
+        const SizedBox(height: 16),
+        fact('Address', l['address'] as String? ?? ''),
+        fact('Phone', formatPhoneNumber(l['phone'] as String?)),
+        fact('Website', l['website'] as String? ?? ''),
+        fact(
+          'Category',
+          [
+            category,
+            if (verification.isNotEmpty) _humanise(verification).toLowerCase(),
+          ].where((p) => p.isNotEmpty).join(' · '),
+        ),
+        fact(
+          'Filed under',
+          branch ?? 'Not filed under a branch',
+          key: const ValueKey('gbp-pane-branch'),
+        ),
+        fact(
+          'Auto-reply to reviews',
+          l['auto_reply'] == true ? 'On' : 'Off',
+          key: const ValueKey('gbp-pane-auto-reply'),
+        ),
+        Text('Checked ${_checked(l).toLowerCase()}', style: muted),
+      ],
+    );
+  }
+
+  Widget _pill(Map<String, dynamic> l) => _live(l)
+      ? const StatusPill('Showing', tone: Tone.ok)
+      : StatusPill(_googleWord(l), tone: Tone.bad);
 }
+
+// ── Reading a listing ──────────────────────────────────────────
+
+bool _live(Map<String, dynamic> l) => l['is_live'] == true;
+
+String? _franchiseId(Map<String, dynamic> l) {
+  final franchise = l['franchise'];
+  return franchise is Map ? franchise['id'] as String? : null;
+}
+
+String? _name(Object? record) {
+  if (record is! Map) return null;
+  final name = (record['name'] as String?)?.trim() ?? '';
+  return name.isEmpty ? null : name;
+}
+
+/// "Company · Branch" for a listing filed under a branch; null when it is not.
+String? _branchName(Map<String, dynamic> l) {
+  final branch = _name(l['franchise']);
+  if (branch == null) return null;
+  final company = _name(l['company']);
+  return company == null ? branch : '$company · $branch';
+}
+
+/// What the row is called: its branch, or Google's own name when it has none.
+String _rowName(Map<String, dynamic> l) {
+  final branch = _branchName(l);
+  if (branch != null) return branch;
+
+  for (final key in ['label', 'title']) {
+    final value = (l[key] as String?)?.trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+
+  return 'Untitled listing';
+}
+
+/// The list sends no city of its own: `label` is "title · city, state"
+/// (BusinessLocation::label), so the city is what follows the title.
+String _city(Map<String, dynamic> l) {
+  final title = (l['title'] as String?) ?? '';
+  final label = (l['label'] as String?) ?? '';
+  final prefix = '$title · ';
+  return label.startsWith(prefix) ? label.substring(prefix.length) : '';
+}
+
+/// Google's own word when it is not simply showing — SUSPENDED and UNVERIFIED
+/// mean different things and the fix differs, so collapsing them to "problem"
+/// would help nobody. A verified listing that is not published says so.
+String _googleWord(Map<String, dynamic> l) {
+  final state = (l['verification_state'] as String?)?.trim() ?? '';
+  if (state.isNotEmpty && state.toUpperCase() != 'VERIFIED') {
+    return _humanise(state);
+  }
+  if (l['is_published'] == false) return 'Not published';
+  return 'Not showing';
+}
+
+/// SUSPENDED → Suspended, VERIFICATION_REQUESTED → Verification requested.
+String _humanise(String word) {
+  final spaced = word.replaceAll('_', ' ').toLowerCase();
+  return spaced.isEmpty
+      ? spaced
+      : spaced[0].toUpperCase() + spaced.substring(1);
+}
+
+String _checked(Map<String, dynamic> l) {
+  final at = DateTime.tryParse(l['synced_at'] as String? ?? '');
+  return at == null ? 'Never' : _capitalise(relativeAge(at));
+}
+
+String _capitalise(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
