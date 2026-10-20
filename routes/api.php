@@ -70,6 +70,7 @@ use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
@@ -2881,6 +2882,16 @@ Route::prefix('v1')
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
+
+        // ── Monitoring: camera sites + pairing a bridge PC (2026-10-20 camera bridge, phase 1) ──
+        Route::get('monitoring/camera-sites', [CameraSitesController::class, 'index']);
+        Route::post('monitoring/camera-sites', [CameraSitesController::class, 'store']);
+        Route::get('monitoring/camera-sites/{id}', [CameraSitesController::class, 'show']);
+        Route::patch('monitoring/camera-sites/{id}', [CameraSitesController::class, 'update']);
+        Route::delete('monitoring/camera-sites/{id}', [CameraSitesController::class, 'destroy']);
+        Route::post('monitoring/camera-sites/{id}/pairing-code', [CameraSitesController::class, 'pairingCode']);
+        Route::post('monitoring/camera-sites/{id}/revoke', [CameraSitesController::class, 'revoke']);
+        Route::post('monitoring/bridge/pair', [CameraSitesController::class, 'pair']);
 
         // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──
         //
