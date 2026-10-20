@@ -993,6 +993,9 @@ Route::prefix('v1')
         Route::get('a1leads-gbp/report/status', [A1LeadsReviewOpsController::class, 'reportStatus']);
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        // How listings perform on Google (A1 Leads takeover, 2026-10-20).
+        Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
+        Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
