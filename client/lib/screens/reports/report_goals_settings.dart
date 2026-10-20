@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// The weekly and monthly report's goals, per branch (GET/PUT /reports/goals,
 /// 2026-10-16). A value the PDF shows worse than its goal is red; an empty
@@ -138,9 +139,16 @@ class _ReportGoalsSettingsState extends State<ReportGoalsSettings> {
     );
     if (_loading) return const Center(child: CircularProgressIndicator());
 
+    // Named with their company: forty branches called "Main" and
+    // "Connecticut" told nobody which one (Jose, 2026-10-20).
+    final company = {for (final c in _me.companiesInView) c.id: c.name};
+    final places = [
+      for (final f in _me.franchisesInView)
+        (f.id, [?company[f.companyId], f.name].join(' · ')),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
     final branches = [
       if (_organization) (null, 'Every branch'),
-      for (final f in _me.franchisesInView) (f.id, f.name),
+      ...places,
     ];
 
     return ListView(
@@ -155,22 +163,27 @@ class _ReportGoalsSettingsState extends State<ReportGoalsSettings> {
           style: muted,
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final (id, name) in branches)
-              ChoiceChip(
-                key: ValueKey('report-goals-branch-${id ?? 'all'}'),
-                label: Text(name),
-                selected: _branch == id,
-                onSelected: (_) => setState(() {
-                  _branch = id;
-                  _saved = null;
-                  _fill();
-                }),
-              ),
-          ],
+        // One searchable picker rather than a chip per branch.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: 360,
+            child: SearchPickerField<String?>(
+              key: const ValueKey('report-goals-branch'),
+              label: 'Goals for',
+              isDense: true,
+              value: _branch,
+              options: [
+                for (final (id, name) in branches)
+                  SearchOption(value: id, label: name),
+              ],
+              onChanged: (id) => setState(() {
+                _branch = id;
+                _saved = null;
+                _fill();
+              }),
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         for (final k in _keys)
