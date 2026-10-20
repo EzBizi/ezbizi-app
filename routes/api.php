@@ -179,6 +179,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -1022,6 +1023,12 @@ Route::prefix('v1')
             Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
             Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
             Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
+        });
+        Route::middleware('permission:financials.bases.view')->group(function (): void {
+            Route::get('financials/adjustments', [FinancialAdjustmentsController::class, 'index']);
+            Route::post('financials/adjustments', [FinancialAdjustmentsController::class, 'store']);
+            Route::patch('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'update']);
+            Route::delete('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'destroy']);
         });
         Route::middleware('permission:financials.bills.view')->group(function (): void {
             Route::get('financials/bills', [FinancialBillsController::class, 'index']);

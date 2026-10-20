@@ -3,6 +3,7 @@
 namespace App\Support\Financials;
 
 use App\Models\AirtableRecord;
+use App\Models\FinancialAdjustment;
 use App\Models\FinancialSource;
 use Illuminate\Support\Collection;
 
@@ -77,9 +78,14 @@ final class SourceFigures
                 'place' => $source->franchise?->name ?? $source->company?->name,
                 'franchise_id' => $source->franchise_id,
                 'status' => $groups === [] ? 'no_jobs' : 'calculated',
-                'groups' => array_map(function (string $team, array $g) {
+                'groups' => array_map(function (string $team, array $g) use ($source, $from, $to) {
                     $jobs = array_sum($g['jobs']);
                     $status = $g['reason'] !== null ? 'unavailable' : ($jobs === 0 ? 'no_jobs' : 'calculated');
+                    $people = $status === 'calculated' ? CostSplit::allocate($g['cost'], $g['jobs']) : [];
+                    [$people, $moved, $why] = self::applyMoves($people, $source->franchise_id, $team, $from, $to);
+                    if ($why !== null) {
+                        [$status, $g['reason'], $people] = ['unavailable', $why, []];
+                    }
 
                     return [
                         'team' => $team,
@@ -87,7 +93,8 @@ final class SourceFigures
                         'reason' => $g['reason'],
                         'jobs' => $jobs,
                         'total_cents' => $status === 'unavailable' ? 0 : $g['cost'],
-                        'people' => $status === 'calculated' ? CostSplit::allocate($g['cost'], $g['jobs']) : [],
+                        'people' => $people,
+                        'moves' => $moved,
                     ];
                 }, array_keys($groups), $groups),
             ];
@@ -99,42 +106,86 @@ final class SourceFigures
     /** @return list<array{place:?string, franchise_id:?string, kind:string, total_cents:int, technicians:list<array>, items:list<array>}> */
     public static function refunds(string $from, string $to, ?string $franchiseId = null): array
     {
-        $out = [];
+        $buckets = [];
         foreach (['refunds' => 'refund', 'disputes' => 'dispute', 'check_returns' => 'check_return'] as $role => $kind) {
             foreach (self::sources($role, $from, $to, $franchiseId) as $source) {
-                $items = [];
+                $bucket = &$buckets[$source->franchise_id.'|'.$kind];
+                $bucket ??= ['place' => $source->franchise?->name ?? $source->company?->name, 'franchise_id' => $source->franchise_id, 'kind' => $kind, 'items' => []];
                 foreach (self::rows($source, $from, $to) as $f) {
                     $amount = self::value($source, $f, 'amount');
                     if (! is_numeric($amount)) {
                         continue;
                     }
-                    $items[] = [
+                    $bucket['items'][] = [
                         'date' => (string) self::value($source, $f, 'date'),
                         'technician' => trim((string) self::value($source, $f, 'technician')) ?: 'Unknown',
                         'job_number' => self::value($source, $f, 'job_number'),
                         'reason' => self::value($source, $f, 'reason'),
                         'status' => self::value($source, $f, 'status'),
                         'cents' => (int) round($amount * 100),
+                        'source' => 'airtable',
                     ];
                 }
-                if ($items === []) {
-                    continue;
-                }
-                $byTech = collect($items)->groupBy('technician')
-                    ->map(fn (Collection $rows, string $tech) => ['technician' => $tech, 'count' => $rows->count(), 'cents' => $rows->sum('cents')])
-                    ->sortBy('technician')->values()->all();
-                $out[] = [
-                    'place' => $source->franchise?->name ?? $source->company?->name,
-                    'franchise_id' => $source->franchise_id,
-                    'kind' => $kind,
-                    'total_cents' => array_sum(array_column($items, 'cents')),
-                    'technicians' => $byTech,
-                    'items' => $items,
-                ];
+                unset($bucket);
             }
         }
 
+        // Recorded in EzBizi (typed, or a confirmed chat command).
+        $recorded = FinancialAdjustment::query()->with('franchise:id,name')
+            ->whereIn('kind', ['refund', 'dispute', 'check_return'])->whereBetween('date', [$from, $to])
+            ->when($franchiseId, fn ($q) => $q->where('franchise_id', $franchiseId))->get();
+        foreach ($recorded as $a) {
+            $bucket = &$buckets[$a->franchise_id.'|'.$a->kind];
+            $bucket ??= ['place' => $a->franchise?->name, 'franchise_id' => $a->franchise_id, 'kind' => $a->kind, 'items' => []];
+            $bucket['items'][] = [
+                'date' => $a->date->toDateString(), 'technician' => $a->technician, 'job_number' => $a->job_number,
+                'reason' => $a->reason, 'status' => null, 'cents' => $a->cents, 'source' => 'ezbizi', 'id' => $a->id,
+            ];
+            unset($bucket);
+        }
+
+        $out = [];
+        foreach ($buckets as $bucket) {
+            if ($bucket['items'] === []) {
+                continue;
+            }
+            $bucket['total_cents'] = array_sum(array_column($bucket['items'], 'cents'));
+            $bucket['technicians'] = collect($bucket['items'])->groupBy('technician')
+                ->map(fn (Collection $rows, string $tech) => ['technician' => $tech, 'count' => $rows->count(), 'cents' => $rows->sum('cents')])
+                ->sortBy('technician')->values()->all();
+            $out[] = $bucket;
+        }
+
         return $out;
+    }
+
+    /**
+     * Repair-split moves recorded for this place, team and period: cents taken
+     * from one technician and given to another. A move that takes more than
+     * the technician was given makes the team unavailable rather than negative.
+     *
+     * @return array{0: list<array>, 1: list<array>, 2: ?string}
+     */
+    private static function applyMoves(array $people, ?string $franchiseId, string $team, string $from, string $to): array
+    {
+        $moves = FinancialAdjustment::query()->where('kind', 'repair_move')->where('franchise_id', $franchiseId)
+            ->where('team', $team)->whereBetween('date', [$from, $to])->orderBy('created_at')->get();
+        if ($moves->isEmpty() || $people === []) {
+            return [$people, [], null];
+        }
+
+        $by = collect($people)->keyBy('person')->all();
+        foreach ($moves as $m) {
+            if (($by[$m->from_technician]['cents'] ?? 0) < $m->cents) {
+                return [$people, [], "A recorded move takes more from {$m->from_technician} than their share."];
+            }
+            $by[$m->from_technician]['cents'] -= $m->cents;
+            $by[$m->technician] ??= ['person' => $m->technician, 'jobs' => 0, 'cents' => 0];
+            $by[$m->technician]['cents'] += $m->cents;
+        }
+        ksort($by);
+
+        return [array_values($by), $moves->map(fn ($m) => ['id' => $m->id, 'from' => $m->from_technician, 'to' => $m->technician, 'cents' => $m->cents, 'reason' => $m->reason])->all(), null];
     }
 
     /** @return Collection<int, FinancialSource> */
