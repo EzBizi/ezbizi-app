@@ -66,12 +66,9 @@ class WorkizWebSessionController extends Controller
             'This link has been used or replaced. Get a new one in EzBizi.');
 
         $refused = $tenant->run($row->organization()->withoutGlobalScopes()->firstOrFail(), function () use ($row, $cookies) {
+            // adopt() keeps only the session and the account map, so the
+            // nonce goes with it: the link is spent.
             $refused = WorkizWebSession::adopt($row, $cookies);
-
-            if ($refused === null) {
-                $row->connect(array_diff_key((array) $row->credentials, ['handoff_nonce' => 1]));
-                $row->save();
-            }
 
             if ($refused === null) {
                 $this->audit->log('social.connected', $row, ['provider' => SocialProvider::WorkizWeb->value, 'by' => 'session handoff']);
