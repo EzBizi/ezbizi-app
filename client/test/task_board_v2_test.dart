@@ -18,6 +18,12 @@ void main() {
   late List<(String, String, Object?)> log;
   late List<Map<String, dynamic>> tasks;
 
+  /// What the board says of its built-in columns: null leaves the field
+  /// out, as a server from before it did.
+  Map<String, dynamic>? builtins;
+  var canEdit = true;
+  var refuseBoardPatch = false;
+
   ApiClient fakeServer({int columns = 3}) {
     log = [];
     tasks = [
@@ -29,6 +35,12 @@ void main() {
         'title': 'Order liner parts for the Oak Park job',
         'status_id': 's-stuck',
         'owner': {'id': 'u-1', 'name': 'Omar Feld'},
+        'owners': [
+          {'id': 'u-1', 'name': 'Omar Feld'},
+          {'id': 'u-2', 'name': 'Priya Nandakumar'},
+          {'id': 'u-3', 'name': 'Tomas Reyes'},
+        ],
+        'created_at': '2026-03-04T15:00:00+00:00',
         'due_on': null,
         'about': null,
         'updates_count': 0,
@@ -112,13 +124,43 @@ void main() {
             ],
           });
         }
+        if (path == '/task-boards/b-1' && request.method == 'PATCH') {
+          if (refuseBoardPatch) {
+            return json({
+              'message': 'The given data was invalid.',
+              'errors': {
+                'builtin_columns.about.label': [
+                  'That column name is not allowed here.',
+                ],
+              },
+            }, 422);
+          }
+          final change = ((body as Map)['builtin_columns'] as Map)
+              .cast<String, dynamic>();
+          for (final e in change.entries) {
+            builtins![e.key] = {
+              ...(builtins![e.key] as Map),
+              ...(e.value as Map),
+            };
+          }
+          return json({
+            'data': {'id': 'b-1', 'builtin_columns': builtins},
+          });
+        }
         if (path == '/task-boards/b-1') {
           return json({
             'data': {
               'id': 'b-1',
               'kind': 'franchise',
               'name': 'Lakeview',
-              'can_edit': true,
+              'can_edit': canEdit,
+              'builtin_columns': ?builtins,
+              'assignable': [
+                {'id': 'u-1', 'name': 'Omar Feld'},
+                {'id': 'u-2', 'name': 'Priya Nandakumar'},
+                {'id': 'u-3', 'name': 'Tomas Reyes'},
+                {'id': 'u-4', 'name': 'Lena Okafor'},
+              ],
               'statuses': [
                 {
                   'id': 's-new',
@@ -262,6 +304,18 @@ void main() {
               };
             }
             if (m['status_id'] != null) task['status_id'] = m['status_id'];
+            if (m['assignee_user_ids'] is List) {
+              final names = {
+                'u-1': 'Omar Feld',
+                'u-2': 'Priya Nandakumar',
+                'u-3': 'Tomas Reyes',
+                'u-4': 'Lena Okafor',
+              };
+              task['owners'] = [
+                for (final id in m['assignee_user_ids'] as List)
+                  {'id': id, 'name': names[id]},
+              ];
+            }
             return json({'data': task});
           }
           return json({
@@ -272,6 +326,12 @@ void main() {
       }),
     );
   }
+
+  setUp(() {
+    builtins = null;
+    canEdit = true;
+    refuseBoardPatch = false;
+  });
 
   Future<void> pump(
     WidgetTester tester, {
@@ -490,5 +550,164 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('group-delete-g1-to-g2')));
     await tester.pumpAndSettle();
     expect(log.last.$2, '/task-boards/b-1/groups/g1');
+  });
+
+  // -- Built-in columns (Jose, 2026-10-20) --
+
+  Map<String, dynamic> customised() => {
+    'owner': {'label': 'Owner', 'visible': true},
+    'status': {'label': 'Status', 'visible': true},
+    'due': {'label': 'Due', 'visible': true},
+    'about': {'label': 'Summary', 'visible': true},
+    'created': {'label': 'Created', 'visible': false},
+    'updates': {'label': 'Updates', 'visible': true},
+  };
+
+  testWidgets("built-in headings wear the board's labels, and a hidden one "
+      'is not drawn', (tester) async {
+    builtins = customised();
+    builtins!['updates'] = {'label': 'Updates', 'visible': false};
+    await pump(tester);
+
+    expect(find.text('SUMMARY'), findsWidgets);
+    expect(find.text('ABOUT'), findsNothing);
+    expect(find.text('UPDATES'), findsNothing);
+    expect(find.text('CREATED'), findsNothing);
+    expect(find.byKey(const ValueKey('task-created-t1')), findsNothing);
+  });
+
+  testWidgets("a board without builtin_columns shows today's headings", (
+    tester,
+  ) async {
+    await pump(tester);
+
+    for (final h in ['OWNER', 'STATUS', 'DUE', 'ABOUT', 'UPDATES']) {
+      expect(find.text(h), findsWidgets, reason: h);
+    }
+    expect(find.text('CREATED'), findsNothing);
+    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+  });
+
+  testWidgets('Created, when shown, is the day the task was made', (
+    tester,
+  ) async {
+    builtins = customised();
+    builtins!['created'] = {'label': 'Opened', 'visible': true};
+    await pump(tester);
+
+    expect(find.text('OPENED'), findsWidgets);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('task-created-t1'))).data,
+      '2026-03-04',
+    );
+  });
+
+  testWidgets("Rename sends only that column's label", (tester) async {
+    builtins = customised();
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-about')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('builtin-rename-about')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('builtin-name')), 'Notes');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    sent(log.single, 'PATCH', '/task-boards/b-1', {
+      'builtin_columns': {
+        'about': {'label': 'Notes'},
+      },
+    });
+    expect(find.text('NOTES'), findsWidgets);
+    expect(find.byKey(const Key('builtin-name')), findsNothing);
+  });
+
+  testWidgets('a refused rename says why under the box, which stays open', (
+    tester,
+  ) async {
+    builtins = customised();
+    refuseBoardPatch = true;
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-about')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('builtin-rename-about')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('builtin-name')), 'Notes');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.text('That column name is not allowed here.'), findsOneWidget);
+    expect(find.byKey(const Key('builtin-name')), findsOneWidget);
+    expect(find.text('SUMMARY'), findsWidgets);
+  });
+
+  testWidgets('Hide sends visible false, and Columns shows it again', (
+    tester,
+  ) async {
+    builtins = customised();
+    await pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('builtin-head-due')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('builtin-hide-due')));
+    await tester.pumpAndSettle();
+    sent(log.single, 'PATCH', '/task-boards/b-1', {
+      'builtin_columns': {
+        'due': {'visible': false},
+      },
+    });
+    expect(find.text('DUE'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('tasks-columns')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('builtin-show-created')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('builtin-show-due')));
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/task-boards/b-1', {
+      'builtin_columns': {
+        'due': {'visible': true},
+      },
+    });
+    expect(find.text('DUE'), findsWidgets);
+  });
+
+  testWidgets('a board you cannot edit has no column menus and no Columns', (
+    tester,
+  ) async {
+    builtins = customised();
+    canEdit = false;
+    await pump(tester);
+
+    expect(find.text('SUMMARY'), findsWidgets);
+    expect(find.byKey(const ValueKey('builtin-head-about')), findsNothing);
+    expect(find.byKey(const Key('tasks-columns')), findsNothing);
+  });
+
+  testWidgets('several owners: the primary and +N, and the panel adds one '
+      'with every owner sent', (tester) async {
+    await pump(tester);
+
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('task-owners-more-t1')))
+          .data,
+      '+2',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('task-t1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('task-panel-owner-u-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('task-panel-owner-u-3')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('task-panel-owner-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lena Okafor').last);
+    await tester.pumpAndSettle();
+    sent(log.last, 'PATCH', '/tasks/t1', {
+      'assignee_user_ids': ['u-1', 'u-2', 'u-3', 'u-4'],
+    });
+    expect(find.byKey(const ValueKey('task-panel-owner-u-4')), findsOneWidget);
   });
 }
