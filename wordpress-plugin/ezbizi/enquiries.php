@@ -1197,7 +1197,10 @@ function load(){
   var z=q('[name=zip]').value.trim();note.textContent='...';
   return fetch(api+'/api/v1/web/booking/days?key='+encodeURIComponent(key)+'&zip='+encodeURIComponent(z),{headers:{'Accept':'application/json'}})
   .then(function(r){return r.json().then(function(d){return{ok:r.ok,status:r.status,d:d};});}).then(function(x){
-    if(x.status===404){note.textContent=" . wp_json_encode(__("We don't book online in that area yet. Please call us.", 'ezbizi')) . ";return;}
+    // No online times for that ZIP (or no service areas yet): still take the request,
+    // as a lead the office calls back to schedule (Jose, 2026-10-20).
+    if(x.status===404){st.zip=z;st.req=1;q('.ezb-pill').textContent=" . wp_json_encode(__("We don't have online times there yet. Send your details and we'll call you to schedule.", 'ezbizi')) . ";show('details');return;}
+    st.req=0;
     if(!x.ok){note.textContent=x.d.message||" . wp_json_encode(__('That did not work. Please call us.', 'ezbizi')) . ";return;}
     if(!x.d.days.length){note.textContent=" . wp_json_encode(__('We have no open times online in the next few weeks. Please call us.', 'ezbizi')) . ";return;}
     st.zip=z;var g=q('.ezb-days');g.innerHTML='';
@@ -1225,10 +1228,12 @@ q('[data-step=details]').addEventListener('submit',function(e){
   e.preventDefault();var f=e.target;if(!f.checkValidity()){f.reportValidity();return;}
   var ts=ezTs(f);if(ts===''){note.textContent=" . wp_json_encode(__('Please complete the check above the button.', 'ezbizi')) . ";return;}
   var b=f.querySelector('.ezb-go');b.disabled=true;note.textContent='';
-  var v={key:key,zip:st.zip,date:st.date,start_time:st.win.start_time,name:f.elements['name'].value.trim(),phone:f.elements.phone.value.trim(),address:f.elements.address.value.trim(),page_url:location.href};
+  var v={key:key,zip:st.zip,date:st.date,start_time:st.win&&st.win.start_time,name:f.elements['name'].value.trim(),phone:f.elements.phone.value.trim(),address:f.elements.address.value.trim(),page_url:location.href};
+  var to='/api/v1/web/booking';
+  if(st.req){to='/api/v1/web/form';v={key:key,zip:st.zip,name:v.name,phone:v.phone,page_url:v.page_url,fields:{'Booking request':'Call to schedule','Name':v.name,'Phone':v.phone,'Address':v.address,'ZIP code':st.zip}};}
   if(ts)v.turnstile=ts;if(lt)v.l=lt;
   ezSolve(api).catch(function(){return null;}).then(function(sol){if(sol)v.captcha=sol;
-    return fetch(api+'/api/v1/web/booking',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
+    return fetch(api+to,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)});})
   .then(function(r){ezTsReset(f);b.disabled=false;
     if(r.ok){q('.ezb-when').textContent=q('.ezb-pill').textContent;show('done');return;}
     return r.json().catch(function(){return{};}).then(function(d){

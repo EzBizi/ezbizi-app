@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.17
+Stable tag: 1.26.18
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.18 =
+* CHANGE: The booking widget takes a request for a ZIP with no online times:
+  name, phone and address arrive as a lead the office calls back.
 
 = 1.26.17 =
 * NEW: The review faces tell EzBizi what a customer did with their review
