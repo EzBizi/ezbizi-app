@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -5,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/camera_watch.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
@@ -226,6 +229,7 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
             itemBuilder: (context, i) {
               final camera = _cameras[i];
               return _CameraTile(
+                api: widget.api,
                 camera: camera,
                 canManage: _canManage,
                 onDelete: () => _deleteCamera(
@@ -340,11 +344,13 @@ CameraBodyKind cameraBodyKind({
 
 class _CameraTile extends StatelessWidget {
   const _CameraTile({
+    required this.api,
     required this.camera,
     required this.canManage,
     required this.onDelete,
   });
 
+  final ApiClient api;
   final Map<String, dynamic> camera;
   final bool canManage;
   final VoidCallback onDelete;
@@ -367,8 +373,12 @@ class _CameraTile extends StatelessWidget {
       hlsInlineSupported: cameraHlsInlineSupported(),
     );
 
+    final bridge = camera['source'] == 'bridge';
     final body = switch (kind) {
       CameraBodyKind.disabled => const _DisabledBody(),
+      // A camera behind a site's bridge PC: ask to watch, then play what the
+      // relay serves. Only the data source differs from a URL camera.
+      _ when bridge => _BridgeCameraBody(api: api, id: id, label: label),
       CameraBodyKind.inlineImage => _InlineViewCard(
         key: ValueKey('camera-inline-$id'),
         label: label,
@@ -470,10 +480,18 @@ class _DisabledBody extends StatelessWidget {
 /// import keeps `dart:ui_web`/`package:web` out of non-web builds and `dart:io`
 /// out of the web build.
 class _InlineViewCard extends StatelessWidget {
-  const _InlineViewCard({super.key, required this.label, required this.url});
+  const _InlineViewCard({
+    super.key,
+    required this.label,
+    required this.url,
+    this.onOpen,
+  });
 
   final String label;
   final String url;
+
+  /// What a tap opens; a URL camera's `?live=1` panel by default.
+  final VoidCallback? onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -496,7 +514,7 @@ class _InlineViewCard extends StatelessWidget {
           Material(
             type: MaterialType.transparency,
             child: InkWell(
-              onTap: () => _openLivePanel(context, label, url),
+              onTap: onOpen ?? () => _openLivePanel(context, label, url),
               child: Align(
                 alignment: Alignment.topRight,
                 child: Padding(
@@ -790,6 +808,169 @@ class _AddCameraPanelState extends State<_AddCameraPanel> {
             value: _enabled,
             onChanged: (value) => setState(() => _enabled = value),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Keeps a bridge camera wanted while it is on screen: watches once, then
+/// again every 30 s (the server drops a want after 60 s without one).
+mixin _Watching<T extends StatefulWidget> on State<T> {
+  ApiClient get watchApi;
+  String get watchId;
+  String get watchQuality;
+
+  CameraPlay? play;
+  CameraWatchException? failure;
+  Timer? _renew;
+
+  @override
+  void initState() {
+    super.initState();
+    _watch();
+    _renew = Timer.periodic(const Duration(seconds: 30), (_) => _watch());
+  }
+
+  @override
+  void dispose() {
+    _renew?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _watch() async {
+    try {
+      final next = await watchCamera(watchApi, watchId, quality: watchQuality);
+      // Keep the URL already playing: a running stream outlives its token.
+      if (!mounted) return;
+      setState(() {
+        play ??= next;
+        failure = null;
+      });
+    } on CameraWatchException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        play = null;
+        failure = e;
+      });
+    }
+  }
+
+  Widget watchBody(Widget Function(String url) playing) {
+    final f = failure;
+    if (f != null) return _BridgeOfflineNote(failure: f, onRetry: _watch);
+    final p = play;
+    if (p == null) return const Center(child: CircularProgressIndicator());
+    return playing(p.url);
+  }
+}
+
+class _BridgeCameraBody extends StatefulWidget {
+  const _BridgeCameraBody({
+    required this.api,
+    required this.id,
+    required this.label,
+  });
+
+  final ApiClient api;
+  final String id;
+  final String label;
+
+  @override
+  State<_BridgeCameraBody> createState() => _BridgeCameraBodyState();
+}
+
+class _BridgeCameraBodyState extends State<_BridgeCameraBody> with _Watching {
+  @override
+  ApiClient get watchApi => widget.api;
+  @override
+  String get watchId => widget.id;
+  @override
+  String get watchQuality => 'sub';
+
+  @override
+  Widget build(BuildContext context) => watchBody(
+    (url) => _InlineViewCard(
+      key: ValueKey('camera-inline-${widget.id}'),
+      label: widget.label,
+      url: url,
+      onOpen: () => showSidePanel<void>(
+        context,
+        builder: (_) => _BridgeLivePanel(
+          api: widget.api,
+          id: widget.id,
+          label: widget.label,
+        ),
+      ),
+    ),
+  );
+}
+
+/// The tapped bridge camera on its main stream, while the panel is open.
+class _BridgeLivePanel extends StatefulWidget {
+  const _BridgeLivePanel({
+    required this.api,
+    required this.id,
+    required this.label,
+  });
+
+  final ApiClient api;
+  final String id;
+  final String label;
+
+  @override
+  State<_BridgeLivePanel> createState() => _BridgeLivePanelState();
+}
+
+class _BridgeLivePanelState extends State<_BridgeLivePanel> with _Watching {
+  @override
+  ApiClient get watchApi => widget.api;
+  @override
+  String get watchId => widget.id;
+  @override
+  String get watchQuality => 'main';
+
+  @override
+  Widget build(BuildContext context) => SidePanel(
+    title: widget.label,
+    subtitle: 'Live — full motion while this is open.',
+    width: 760,
+    scrollable: false,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: watchBody((url) => CameraImageView(url: url)),
+    ),
+  );
+}
+
+class _BridgeOfflineNote extends StatelessWidget {
+  const _BridgeOfflineNote({required this.failure, required this.onRetry});
+
+  final CameraWatchException failure;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final seen = failure.lastSeen;
+    // Same words as the Camera sites page (UI/UX, 2026-10-20).
+    final text = failure.code != 'bridge_offline'
+        ? failure.message
+        : seen == null
+        ? 'Bridge offline'
+        : 'Bridge offline · since ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(seen.toLocal()))}';
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Try again')),
         ],
       ),
     );

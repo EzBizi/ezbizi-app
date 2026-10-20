@@ -163,6 +163,7 @@ class CamerasController extends Controller
             'protocol' => $c->protocol,
             'url' => $c->url,
             'enabled' => $c->enabled,
+            'source' => $c->source, // 'bridge' → watch it; 'url' → play `url`
             'created_at' => $c->created_at?->toIso8601String(),
         ];
     }

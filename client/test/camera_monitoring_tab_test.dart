@@ -55,7 +55,8 @@ void main() {
       expect(
         fetchAttempted,
         isFalse,
-        reason: 'A caller who cannot view cameras at all should never need a '
+        reason:
+            'A caller who cannot view cameras at all should never need a '
             'round trip to learn that — the tab already knows from its own '
             'session.',
       );
@@ -81,11 +82,15 @@ void main() {
         findsOneWidget,
       );
 
-      expect(find.byKey(const Key('camera-monitoring-add-button')), findsNothing);
+      expect(
+        find.byKey(const Key('camera-monitoring-add-button')),
+        findsNothing,
+      );
       expect(
         find.byKey(ValueKey('camera-tile-delete-${_mjpegCamera['id']}')),
         findsNothing,
-        reason: 'A view-only caller must not see a delete affordance — the '
+        reason:
+            'A view-only caller must not see a delete affordance — the '
             'server would 403 the DELETE anyway.',
       );
     },
@@ -116,7 +121,10 @@ void main() {
         camerasProvider: () => camerasAfterAdd,
       );
 
-      expect(find.byKey(const Key('camera-monitoring-add-button')), findsOneWidget);
+      expect(
+        find.byKey(const Key('camera-monitoring-add-button')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(ValueKey('camera-tile-delete-${_mjpegCamera['id']}')),
         findsOneWidget,
@@ -148,7 +156,8 @@ void main() {
       expect(
         find.byKey(ValueKey('camera-tile-${_newCamera['id']}')),
         findsOneWidget,
-        reason: 'The grid should refresh with the server\'s post-add list, '
+        reason:
+            'The grid should refresh with the server\'s post-add list, '
             'not just close the panel.',
       );
     },
@@ -191,7 +200,8 @@ void main() {
       expect(
         deleted,
         isEmpty,
-        reason: 'Tapping the delete icon should ask first, not delete '
+        reason:
+            'Tapping the delete icon should ask first, not delete '
             'immediately.',
       );
 
@@ -214,7 +224,9 @@ void main() {
     (tester) async {
       await _pumpTab(tester, cameras: [_mjpegCamera, _hlsCamera]);
 
-      final mjpegTile = find.byKey(ValueKey('camera-tile-${_mjpegCamera['id']}'));
+      final mjpegTile = find.byKey(
+        ValueKey('camera-tile-${_mjpegCamera['id']}'),
+      );
       final hlsTile = find.byKey(ValueKey('camera-tile-${_hlsCamera['id']}'));
 
       expect(
@@ -258,12 +270,10 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: hlsTile,
-          matching: find.text('Open in browser'),
-        ),
+        find.descendant(of: hlsTile, matching: find.text('Open in browser')),
         findsNothing,
-        reason: 'The deep-link card must not carry the inline-view card\'s '
+        reason:
+            'The deep-link card must not carry the inline-view card\'s '
             'wording — hls has no inline playback yet.',
       );
     },
@@ -288,20 +298,25 @@ void main() {
           matching: find.text('Disabled — no view shown.'),
         ),
         findsOneWidget,
-        reason: 'A disabled camera must say so on the tile itself, never '
+        reason:
+            'A disabled camera must say so on the tile itself, never '
             'render its protocol view as though it were live.',
       );
       expect(
         find.descendant(
           of: tile,
-          matching: find.byKey(ValueKey('camera-inline-${_disabledCamera['id']}')),
+          matching: find.byKey(
+            ValueKey('camera-inline-${_disabledCamera['id']}'),
+          ),
         ),
         findsNothing,
       );
       expect(
         find.descendant(
           of: tile,
-          matching: find.byKey(ValueKey('camera-deeplink-${_disabledCamera['id']}')),
+          matching: find.byKey(
+            ValueKey('camera-deeplink-${_disabledCamera['id']}'),
+          ),
         ),
         findsNothing,
       );
@@ -339,7 +354,10 @@ void main() {
 
       expect(find.text(CameraMonitoringTab.noCamerasNote), findsOneWidget);
       expect(find.text(CameraMonitoringTab.noCamerasManageHint), findsNothing);
-      expect(find.byKey(const Key('camera-monitoring-add-button')), findsNothing);
+      expect(
+        find.byKey(const Key('camera-monitoring-add-button')),
+        findsNothing,
+      );
     },
   );
 
@@ -350,8 +368,14 @@ void main() {
       await _pumpTab(tester, cameras: const []);
 
       expect(find.text(CameraMonitoringTab.noCamerasNote), findsOneWidget);
-      expect(find.text(CameraMonitoringTab.noCamerasManageHint), findsOneWidget);
-      expect(find.byKey(const Key('camera-monitoring-add-button')), findsOneWidget);
+      expect(
+        find.text(CameraMonitoringTab.noCamerasManageHint),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('camera-monitoring-add-button')),
+        findsOneWidget,
+      );
     },
   );
 
@@ -389,7 +413,8 @@ void main() {
           hlsInlineSupported: true,
         ),
         CameraBodyKind.inlineHls,
-        reason: 'On web with hls.js or native HLS, an HLS camera must play '
+        reason:
+            'On web with hls.js or native HLS, an HLS camera must play '
             'inline — not fall back to the copy-URL deep-link card.',
       );
     });
@@ -403,7 +428,8 @@ void main() {
           hlsInlineSupported: true,
         ),
         CameraBodyKind.deepLink,
-        reason: 'No browser can play RTSP; it stays a deep link even on web, '
+        reason:
+            'No browser can play RTSP; it stays a deep link even on web, '
             'even with a player available.',
       );
     });
@@ -430,7 +456,8 @@ void main() {
           hlsInlineSupported: false,
         ),
         CameraBodyKind.deepLink,
-        reason: 'A browser with neither hls.js nor native HLS cannot play the '
+        reason:
+            'A browser with neither hls.js nor native HLS cannot play the '
             'stream, so it must show the deep-link card, not an empty <video>.',
       );
     });
@@ -444,7 +471,8 @@ void main() {
           hlsInlineSupported: true,
         ),
         CameraBodyKind.disabled,
-        reason: 'Disabled wins over every protocol path — a disabled camera is '
+        reason:
+            'Disabled wins over every protocol path — a disabled camera is '
             'never shown as though it were live.',
       );
     });
@@ -469,6 +497,96 @@ void main() {
         CameraBodyKind.inlineImage,
       );
     });
+  });
+
+  group('bridge cameras', () {
+    const bridge = {
+      'id': 'cam-b',
+      'label': 'Dock',
+      'protocol': 'mjpeg',
+      'url': '',
+      'source': 'bridge',
+      'enabled': true,
+      'created_at': '2026-10-20T12:00:00Z',
+    };
+
+    http.Response? watchReply(
+      http.Request r,
+      List<String> qualities, {
+      int status = 200,
+    }) {
+      if (!r.url.path.endsWith('/monitoring/cameras/cam-b/watch')) return null;
+      qualities.add((jsonDecode(r.body) as Map)['quality'] as String);
+      if (status == 409) {
+        return _json({
+          'code': 'bridge_offline',
+          'message': 'offline',
+          'last_checkin_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(minutes: 7))
+              .toIso8601String(),
+        }, 409);
+      }
+      return _json({
+        'play': {
+          'url': 'http://relay.test/api/stream.mjpeg?src=cam-b-x',
+          'expires_at': '2099-01-01T00:00:00Z',
+        },
+      });
+    }
+
+    testWidgets('a bridge tile asks to watch the sub stream and plays it', (
+      tester,
+    ) async {
+      final qualities = <String>[];
+      await _pumpTab(
+        tester,
+        cameras: [bridge],
+        onRequest: (r) => watchReply(r, qualities),
+      );
+
+      expect(qualities, ['sub']);
+      expect(find.byKey(const ValueKey('camera-inline-cam-b')), findsOneWidget);
+    });
+
+    testWidgets('an offline bridge says so, with no spinner', (tester) async {
+      await _pumpTab(
+        tester,
+        cameras: [bridge],
+        onRequest: (r) => watchReply(r, [], status: 409),
+      );
+
+      expect(find.textContaining('Bridge offline · since '), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('a URL camera never calls watch', (tester) async {
+      final qualities = <String>[];
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera],
+        onRequest: (r) => watchReply(r, qualities),
+      );
+      expect(qualities, isEmpty);
+    });
+
+    testWidgets(
+      'tapping a bridge tile opens the live panel on the main stream',
+      (tester) async {
+        final qualities = <String>[];
+        await _pumpTab(
+          tester,
+          cameras: [bridge],
+          onRequest: (r) => watchReply(r, qualities),
+        );
+
+        await tester.tap(find.byKey(const ValueKey('camera-inline-cam-b')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(qualities, ['sub', 'main']);
+      },
+    );
   });
 }
 
@@ -536,7 +654,9 @@ Future<void> _pumpTab(
       final path = request.url.path;
 
       if (path.endsWith('/me')) {
-        return _json({'data': {..._me, 'permissions': permissions}});
+        return _json({
+          'data': {..._me, 'permissions': permissions},
+        });
       }
 
       if (request.method == 'GET' && path.endsWith('/monitoring/cameras')) {
@@ -544,7 +664,9 @@ Future<void> _pumpTab(
         return _json({'data': camerasProvider?.call() ?? cameras});
       }
 
-      return _json({'message': 'Nothing stubbed for ${request.method} $path.'}, 500);
+      return _json({
+        'message': 'Nothing stubbed for ${request.method} $path.',
+      }, 500);
     }),
   );
 
@@ -604,7 +726,14 @@ const _me = {
 };
 
 /// A synthetic JPEG frame (FFD8…FFD9) the native reader will frame on.
-final Uint8List _fakeFrame = Uint8List.fromList([0xFF, 0xD8, 0xAA, 0xBB, 0xFF, 0xD9]);
+final Uint8List _fakeFrame = Uint8List.fromList([
+  0xFF,
+  0xD8,
+  0xAA,
+  0xBB,
+  0xFF,
+  0xD9,
+]);
 
 /// Feeds every request one frame and then holds the connection open, so the
 /// reader shows a frame and schedules no reconnect timer (a closed stream would
@@ -646,9 +775,17 @@ class _FrameResponse extends Stream<List<int>> implements HttpClientResponse {
   @override
   int get statusCode => 200;
   @override
-  StreamSubscription<List<int>> listen(void Function(List<int>)? onData,
-          {Function? onError, void Function()? onDone, bool? cancelOnError}) =>
-      _s.listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => _s.listen(
+    onData,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
