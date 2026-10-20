@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 112 · Scheduling › Helpers (A1 takeover) — **sent 2026-10-20** (`docs/previews/scheduling-helpers-layouts.html`)
+
+Scheduling asked (server 7d031767: roster + full/am/pm bookings per branch and month). **1** (recommended) A1's month calendar, coloured helper→technician tags per day, a day panel to book/change, a roster button. **2** helpers × days grid. **3** list by day. Phone **4** (recommended) / **5** / **6**.
+
 ### 111 · Settings › Organization, Roles & permissions, Activity, API activity redesigned — **sent 2026-10-19 — Jose: "go ahead" (1 and 4)** (`docs/previews/settings-tabs-redesign-layouts.html`)
 
 Jose 2026-10-19: "u didnt finish revamping the whole settings tab, i see no changes on organization, activity - api activity / roles and permission". **1** (recommended) list on the left, the picked one on the right:
