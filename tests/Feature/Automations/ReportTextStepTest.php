@@ -38,6 +38,8 @@ class ReportTextStepTest extends TestCase
             $sent = app(ActionRunner::class)->run($step, $event, null, automation: $mine);
             $this->assertTrue($sent['ok'], $sent['detail']);
             $this->assertSame(['13055550123'], WhatsAppPendingReport::query()->pluck('counterparty')->all());
+            app(ActionRunner::class)->run($step, $event, null, automation: $mine);
+            $this->assertSame(1, WhatsAppPendingReport::query()->count(), 'the same day is not sent twice');
 
             $theirs = Automation::create(['name' => 'V', 'trigger_key' => 'automation.schedule_reached', 'is_active' => false, 'created_by' => $viewer->id]);
             $refused = app(ActionRunner::class)->run($step, $event, null, automation: $theirs);

@@ -3418,9 +3418,12 @@ class ActionRunner
         $text = app(\App\Support\Reports\Texts\DailyTexts::class)->render($kind, $org, $day, $branches);
         $title = \App\Support\Reports\Texts\DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
-        // ponytail: no per-day idempotency; a schedule fires once a day. Add a key if rules start retrying sends.
         $sent = 0;
         foreach (User::query()->where('is_active', true)->whereIn('id', self::idList($action['user_ids'] ?? []))->get() as $user) {
+            // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
+            if (! \Illuminate\Support\Facades\Cache::add("report.text:{$automation->id}:{$kind}:{$day->toDateString()}:{$user->id}", true, now()->addDays(2))) {
+                continue;
+            }
             try {
                 $sent += app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
             } catch (RuntimeException $refusal) {
