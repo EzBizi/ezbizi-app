@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 114 · Business Profile › Performance (A1 takeover) — **sent 2026-10-20** (`docs/previews/gbp-performance-layouts.html`)
+
+Customer Experience asked (server ac72803c1: totals/daily/by_location + search terms). **1** (recommended) a Performance tab: dates + listing, freshness line from last_date, five tiles with change vs the period before (click puts it on the daily chart), a table per listing, its searches beside it. **2** on each listing's page. **3** in Reports. Phone **4** (recommended) / **5** / **6**.
+
 ### 113 · Automations › Build as steps with a timeline — **sent 2026-10-20** (`docs/previews/automations-steps-layouts.html`)
 
 Jose 2026-10-20: "each of the screens has more to offer related to that space and more space to do it". **1** (recommended) a top timeline Name › When › Only if › Then › Review, one screen each: trigger catalogue by module with 30-day counts and carried details; conditions with a live 30-day would-have-run check; actions list + full-width editor + details + filled preview; Review as one clickable sentence, Try it, where, on/off, last runs. Editing opens on Review. **2** the steps as a left column. **3** one page, one part open at a time. Phone **4** (recommended) / **5** / **6**.
