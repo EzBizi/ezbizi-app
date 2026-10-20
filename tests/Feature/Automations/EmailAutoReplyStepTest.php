@@ -18,6 +18,22 @@ class EmailAutoReplyStepTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_the_builder_offers_the_inboxes_and_open_or_closed_and_a_picked_closed_matches(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->inTenant($t['org'], fn () => Mailbox::create(['organization_id' => $t['org']->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+            'address' => 'office@a-1chimney.com', 'display_name' => 'Office', 'provider' => 'gmail_oauth']));
+        $data = $this->signedInAs($t['admin'])->getJson('/api/v1/automations/trigger-fields?trigger=email.received')->assertOk()->json('data');
+        $this->assertSame([['value' => 'office@a-1chimney.com', 'label' => 'Office · office@a-1chimney.com']], $data['values']['address']);
+        $this->assertSame(['true', 'false'], array_column($data['values']['office_open'], 'value'));
+
+        $closed = new AutomationEvent(['event_key' => 'email.received', 'payload' => ['office_open' => false]]);
+        $evaluate = fn ($v) => app(\App\Support\Automations\ConditionEvaluator::class)
+            ->evaluate(['all' => [['field' => 'office_open', 'op' => 'eq', 'value' => $v]]], $closed, null)['matched'];
+        $this->assertTrue($evaluate('false'));
+        $this->assertFalse($evaluate('true'));
+    }
+
     /** Jose decides (2026-10-20): the template saves as a real rule, switched off. */
     public function test_the_closed_office_template_saves_as_an_inactive_rule(): void
     {
