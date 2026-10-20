@@ -185,10 +185,8 @@ class GlanceRegistryTest extends TestCase
     /**
      * Every sidebar tab has a box.
      *
-     * A `glanceExemptBecause` field existed from 2026-09-23 to 2026-09-25 for
-     * `a1leads_gbp`, then a container with no records of its own. It gained
-     * records - one row per new Google review, for Automations - and with them
-     * a box, and the field went with its only user, as its own test asked.
+     * (A `glanceExemptBecause` field once existed for the A1Leads GBP tab,
+     * retired 2026-10-20.)
      */
     public function test_every_sidebar_tab_except_dashboard_has_a_glance(): void
     {

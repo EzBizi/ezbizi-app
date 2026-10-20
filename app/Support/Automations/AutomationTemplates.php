@@ -443,26 +443,6 @@ The {{company_name}} team",
             ],
 
             [
-                'key' => 'google-five-star-reply',
-                'name' => 'Reply to new 5-star Google reviews',
-                'description' => 'Posts a thank-you under each new 5-star Google review, through A1 Leads. '
-                    .'A review that already has a reply is left alone. A1 Leads checks the words before '
-                    .'they go out.',
-                'trigger_key' => 'a1leads_gbp.review_received',
-                'conditions' => [
-                    'all' => [
-                        ['field' => 'rating', 'op' => 'eq', 'value' => '5'],
-                    ],
-                ],
-                // No name in it: reviewer_first_name is empty when the name is
-                // not safe to greet, and "Thank you, ." is worse than none.
-                'actions' => [
-                    ['type' => 'review_reply', 'message' => 'Thank you for taking the time to leave such '
-                        .'a kind review. We are glad we could help, and we look forward to seeing you again.'],
-                ],
-            ],
-
-            [
                 'key' => 'weekly-work-hours',
                 'name' => 'Weekly work hours report',
                 'description' => 'Every Sunday at 8 PM, emails each person\'s hours for the week '

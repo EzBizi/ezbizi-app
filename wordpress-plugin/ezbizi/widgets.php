@@ -2018,9 +2018,10 @@ function ezbizi_review_faces_shortcode($atts) {
         . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . '<span>' . $t('sad_label')
         . '<small>' . esc_html__('Tell us what to fix', 'ezbizi') . '</small></span></button>'
         . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . '<span>' . $t('happy_label')
-        // With a Google link the green face IS the way to Google (Jose, 2026-10-13).
+        // With a Google link the green face IS the way to Google (Jose, 2026-10-13),
+        // without naming Google on the button (Jose, 2026-10-20).
         . '<small>' . ($link === '' ? esc_html__('Happy with the visit', 'ezbizi')
-            : esc_html__('Tap to share it on Google', 'ezbizi')) . '</small></span></button>'
+            : esc_html__('Share your experience with us', 'ezbizi')) . '</small></span></button>'
         . '</div></div>'
         /*
          * Jose, 2026-10-05: a good review can bring a thank-you and the

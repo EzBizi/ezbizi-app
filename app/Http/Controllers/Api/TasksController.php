@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
 class TasksController extends Controller
 {
     /** What present() reads. */
-    public const WITH = ['assignee:id,name', 'creator:id,name', 'statusRow', 'values.column'];
+    public const WITH = ['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'statusRow', 'values.column'];
 
     /** The counts present() reads. A subtask is done when its status is (tasks.status maps every done status to `done`). */
     public static function counts(): array
@@ -38,7 +38,7 @@ class TasksController extends Controller
     public function show(Task $task): JsonResponse
     {
         $this->authorize('view', $task);
-        $task->load(['assignee:id,name', 'creator:id,name', 'updates.user:id,name', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
+        $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
         return response()->json(['data' => self::present($task) + [
             'updates' => $task->updates->map(fn (TaskUpdate $u) => [
@@ -115,6 +115,10 @@ class TasksController extends Controller
             'subtasks_count' => (int) ($task->subtasks_count ?? 0),
             'subtasks_done' => (int) ($task->subtasks_done ?? 0),
             'owner' => $task->assignee ? ['id' => $task->assignee->id, 'name' => $task->assignee->name] : null,
+            // Every owner, the primary (`owner`) first.
+            'owners' => $task->owners->filter(fn ($o) => $o->user !== null)
+                ->map(fn ($o) => ['id' => $o->user->id, 'name' => $o->user->name])->values()->all(),
+            'created_at' => $task->created_at?->toIso8601String(),
             'due_on' => $task->due_on?->toDateString(),
             'completed_at' => $task->completed_at?->toIso8601String(),
             'about' => $about ? ['type' => $task->about_type, 'id' => $task->about_id, 'label' => self::aboutLabel($about)] : null,
@@ -160,6 +164,11 @@ class TasksController extends Controller
         return [
             'title' => [...$sometimes, 'required', 'string', 'max:255'],
             'group_id' => ['sometimes', 'nullable', 'uuid'],
+            // A group NAME, instead of group_id; TaskWriter resolves it.
+            'group' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Every owner, primary first; TaskWriter checks each can be named here.
+            'assignee_user_ids' => ['sometimes', 'nullable', 'array', 'max:50'],
+            'assignee_user_ids.*' => ['uuid', 'distinct'],
             // A built-in key or a status name on the board; TaskWriter resolves it.
             'status' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status_id' => ['sometimes', 'nullable', 'uuid'],

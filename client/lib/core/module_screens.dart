@@ -19,7 +19,6 @@ import '../screens/leads_screen.dart';
 import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
-import '../screens/a1leads_gbp_screen.dart';
 import '../screens/sales_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
@@ -116,14 +115,6 @@ final Map<String, ModuleScreen> moduleScreens = {
   // does not appear — which for a placeholder would be indistinguishable from
   // having lost the permission. The screen behind it says what Newsletter will
   // be and what it is waiting for; see marketing_screen.dart.
-  // A star and a shopfront are the two things inside it; the container takes
-  // the mark Google's own surfaces use for a business listing, because what
-  // makes these two belong together is that they both read one Business
-  // Profile. Temporary - see a1leads_gbp_screen.dart for when it is deleted.
-  'a1leads_gbp': ModuleScreen(
-    Icons.business_outlined,
-    (api, session) => A1LeadsGbpScreen(api: api, session: session),
-  ),
   // Sales pipeline: quoted jobs awaiting approval (2026-10-14).
   'sales': ModuleScreen(
     Icons.trending_up,

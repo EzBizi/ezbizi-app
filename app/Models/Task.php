@@ -100,6 +100,12 @@ class Task extends Model implements HoldsPersonalData
         return $this->belongsTo(User::class, 'assignee_user_id');
     }
 
+    /** Every owner, primary first (position 0 = assignee_user_id). */
+    public function owners(): HasMany
+    {
+        return $this->hasMany(TaskAssignee::class)->orderBy('position');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
