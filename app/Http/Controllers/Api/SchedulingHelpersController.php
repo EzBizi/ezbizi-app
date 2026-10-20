@@ -38,9 +38,17 @@ final class SchedulingHelpersController extends Controller
     {
         $franchise = $this->franchise($request, (string) $request->query('franchise_id', ''));
 
-        return response()->json(['data' => SchedulingHelper::query()
+        return response()->json([
+            'data' => SchedulingHelper::query()
             ->where('franchise_id', $franchise)->orderByDesc('is_active')->orderBy('name')
-            ->get(['id', 'franchise_id', 'name', 'notes', 'is_active'])]);
+            ->get(['id', 'franchise_id', 'name', 'notes', 'is_active']),
+            // Who "For" can name: the same people technician() accepts, and
+            // only to those who may book for others.
+            'people' => $request->user()->hasPermission('scheduling.edit')
+                ? User::query()->where('organization_id', $request->user()->organization_id)
+                    ->where('is_active', true)->orderBy('name')->get(['id', 'name'])
+                : [],
+        ]);
     }
 
     /** POST /scheduling/helpers (scheduling.edit) */

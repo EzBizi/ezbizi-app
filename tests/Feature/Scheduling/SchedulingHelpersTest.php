@@ -29,6 +29,10 @@ class SchedulingHelpersTest extends TestCase
         $helper = $this->signedInAs($t['admin'])->postJson('/api/v1/scheduling/helpers', ['franchise_id' => $fr, 'name' => 'Sam'])
             ->assertCreated()->json('data.id');
 
+        // "For" lists people only to those who may book for others.
+        $this->assertSame([], $this->signedInAs($tech)->getJson("/api/v1/scheduling/helpers?franchise_id={$fr}")->json('people'));
+        $this->assertContains($other->id, array_column($this->signedInAs($t['admin'])->getJson("/api/v1/scheduling/helpers?franchise_id={$fr}")->json('people'), 'id'));
+
         $book = fn ($who, $slot, $date = '2026-11-02') => $this->signedInAs($who)
             ->postJson('/api/v1/scheduling/helpers/bookings', ['helper_id' => $helper, 'date' => $date, 'slot' => $slot]);
 
