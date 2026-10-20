@@ -4,8 +4,6 @@ namespace App\Support\Automations;
 
 use App\Mail\InspectionReportMail;
 use App\Models\Automation;
-use App\Models\A1LeadsReviewEvent;
-use App\Services\A1Leads\A1LeadsGbpReplies;
 use App\Models\TimeClockReport;
 use App\Support\TimeClock\TimeClockReports;
 use App\Support\Modules\ModuleRegistry;
@@ -428,7 +426,6 @@ class ActionRunner
             'publish_reply' => $this->publishReviewReply($action, $event, $subject, $automation),
             'onboarding.start' => $this->startOnboarding($action, $subject),
             'add_to_audience' => $this->addToAudience($action, $subject),
-            'review_reply' => $this->replyOnGoogle($action, $event, $subject, $automation),
             'send_report' => $this->sendWorkHoursReport($action, $event, $automation),
             'whatsapp.group_send' => $this->sendToWhatsAppGroup($action, $event, $subject, $automation),
 
@@ -2546,75 +2543,6 @@ class ActionRunner
 
         return ['type' => $type, 'ok' => true,
             'detail' => 'Sent "'.$report->name.'" for '.$sent['range'].' to '.implode(', ', $sent['to']).'.'];
-    }
-
-    /**
-     * Post a public reply under a new A-1 Chimney Google review.
-     *
-     * Jose, 2026-09-25: "this will be set using EzBizi Automations that Bar
-     * himself will set up for the reply." Through A1LeadsGbpReplies::publish,
-     * the same path as the Reply button, so A1 Leads stays the only writer.
-     *
-     * THE REVIEW COMES FROM THE SUBJECT ROW, never the payload: the row is
-     * what the import wrote, and nothing a rule author types can point this
-     * at a different review.
-     *
-     * THE AUTHOR MUST BE ABLE TO DO IT BY HAND: hold `a1leads_gbp.reply` and
-     * reach the review's company. A rule never widens what its author may do.
-     *
-     * ALREADY ANSWERED IS NOT A FAILURE: it is the normal outcome when A1
-     * Leads' own worker or somebody at the desk got there first, and counting
-     * it would switch the rule off within five reviews.
-     *
-     * AN UNKNOWN OUTCOME IS SAID AS ONE. A dropped connection mid-post may
-     * have published; the engine never re-runs a non-webhook step, and the
-     * sentence tells a person to look on Google rather than run it again.
-     */
-    private function replyOnGoogle(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
-    {
-        $type = 'review_reply';
-
-        if (! $subject instanceof A1LeadsReviewEvent) {
-            return ['type' => $type, 'ok' => false,
-                'detail' => 'This step only works on a new Google review, and this rule is about something else.'];
-        }
-
-        $author = $automation?->activeVersion?->created_by !== null
-            ? User::query()->find($automation->activeVersion->created_by)
-            : null;
-
-        if ($author === null || ! $author->hasPermission('a1leads_gbp.reply')
-            || ! $author->reachableCompanies()->contains(fn ($c) => $c->getKey() === $subject->company_id)) {
-            return ['type' => $type, 'ok' => false,
-                'detail' => 'The person who built this rule may not reply to these reviews, so nothing was '
-                    .'posted. Somebody who can should open the rule and save it again.'];
-        }
-
-        $text = trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject));
-
-        if ($text === '') {
-            return ['type' => $type, 'ok' => false, 'detail' => 'The reply was empty, so nothing was posted.'];
-        }
-
-        $result = app(A1LeadsGbpReplies::class)->publish(
-            (string) $subject->google_review_name, $text, null, null, $automation,
-        );
-
-        if ($result['status'] >= 200 && $result['status'] < 300 && ($result['body']['data']['ok'] ?? false) === true) {
-            return ['type' => $type, 'ok' => true, 'detail' => 'Replied on Google.'];
-        }
-
-        $code = (string) ($result['body']['error']['code'] ?? '');
-        $said = (string) ($result['body']['error']['message'] ?? 'A1 Leads refused the reply.');
-
-        return match ($code) {
-            'already_answered' => ['type' => $type, 'ok' => true,
-                'detail' => 'The review already had a reply, so nothing was posted.'],
-            'reply_outcome_unknown' => ['type' => $type, 'ok' => false, 'unknown' => true,
-                'detail' => 'The connection dropped while posting, so the reply may or may not be on '
-                    .'Google. Check the review there. Do not run this again.'],
-            default => ['type' => $type, 'ok' => false, 'detail' => $said],
-        };
     }
 
     /**

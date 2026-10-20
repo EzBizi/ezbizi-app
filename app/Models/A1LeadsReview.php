@@ -14,10 +14,10 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * One of A-1 Chimney's Google reviews, as A1 Leads' change feed last said it.
  *
- * A COPY, kept in step by `ezbizi:a1leads-delta-sync`, never edited here:
- * every write to a review, its card, its match or its report goes to A1 Leads,
- * and comes back through the feed. The tab reads this so it is a minute old,
- * not a day.
+ * A FROZEN COPY since 2026-10-20, when the A1Leads GBP tab and its delta sync
+ * were retired (Jose: "we are now working directly on the customer experience
+ * tab"). Its statuses, notes and matches were copied into Reviews by
+ * ezbizi:reviews-import-a1leads; nothing writes here any more.
  */
 class A1LeadsReview extends Model implements HoldsPersonalData
 {
@@ -50,21 +50,16 @@ class A1LeadsReview extends Model implements HoldsPersonalData
 
     public static function personalDataPurpose(): string
     {
-        return "A live copy of the business's Google reviews from A1 Leads, so the "
-            .'A1Leads GBP tab shows them as they are now rather than as they were yesterday.';
+        return "A frozen copy of the business's Google reviews as A1 Leads last held them, "
+            .'kept to check what was copied into Reviews.';
     }
 
-    /**
-     * Exactly as long as A1 Leads holds the review: the feed's hard delete
-     * removes the row here on the next sync, a Google removal is marked on it,
-     * and nothing here outlives its source.
-     */
+    /** Six months after the last write, which was the retirement of its sync on 2026-10-20. */
     public static function retention(): RetentionPolicy
     {
-        return RetentionPolicy::elsewhere('ezbizi:a1leads-delta-sync',
-            "A copy of A1 Leads' reviews kept in step with its change feed. A review A1 "
-            .'Leads deletes is deleted here on the next sync; one Google removed is marked '
-            .'removed. Nothing is kept that the source no longer holds.'
+        return RetentionPolicy::window(6, 'updated_at',
+            "A frozen copy of A1 Leads' reviews, kept six months after its last update in case "
+            .'the copy into Reviews has to be checked. Nothing writes to it any more.'
         );
     }
 

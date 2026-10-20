@@ -17,7 +17,6 @@ use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReportsGlance;
-use App\Support\Dashboard\Glances\A1LeadsGbpGlance;
 use App\Support\Dashboard\Glances\AdsPerformanceGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
@@ -50,8 +49,6 @@ class GlanceRegistry
         'services', 'sales', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
         'customer_experience', 'reviews', 'business_profile',
-        // New Google reviews for Automations, beside Reviews (2026-09-25).
-        'a1leads_gbp',
         'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
         // Its sidebar entry arrived after the others (2026-09-24).
@@ -231,7 +228,6 @@ class GlanceRegistry
         LeadsGlance::class,
         BusinessProfileGlance::class,
         ReviewsGlance::class,
-        A1LeadsGbpGlance::class,
         // Live since 2026-09-28: certification and paused campaigns, from
         // what the watchers stored. Spend stays in the tab.
         AdsPerformanceGlance::class,
