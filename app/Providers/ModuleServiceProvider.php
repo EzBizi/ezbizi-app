@@ -3244,7 +3244,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A new message reached one of the shared inboxes. It '
                             .'carries which inbox it arrived at, who it is from, the subject, '
                             .'when it was sent and whether anything is attached — never the '
-                            .'contents, which are not stored anywhere. EzBizi checks each '
+                            .'contents, which are not stored anywhere. For replies it also '
+                            .'carries the sender domain (from_domain), whether the inbox '
+                            .'office is open (office_open), when it next opens (office_opens), '
+                            .'its office phone, company name and a greeting. EzBizi checks each '
                             .'connected inbox every few minutes rather than the instant mail '
                             .'lands, so a rule on this runs within about five minutes rather '
                             .'than immediately. Connecting an inbox for the first time raises '
@@ -3400,6 +3403,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'that anyone read it — "Seen by" stays a statement about people. '
                             .'It changes what the team sees in EzBizi and sends nothing to '
                             .'anyone.',
+                    ),
+                    new ActionDefinition(
+                        key: 'email.message.reply',
+                        label: 'Reply to the email',
+                        description: 'Answers the email that arrived, in its thread, from the same inbox '
+                            .'- for example after hours or on Sundays. The email itself stays '
+                            .'unread. Never answers this inbox itself or an automatic address, and '
+                            .'answers each sender at most once a day.',
                     ),
                 ],
             ),

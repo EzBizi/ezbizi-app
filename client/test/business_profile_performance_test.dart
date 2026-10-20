@@ -20,9 +20,7 @@ void main() {
     final fake = _Fake();
     await _pumpScreen(tester, fake);
 
-    // Listings first; Performance is the other half of the switch.
-    await tester.tap(find.text('Performance'));
-    await tester.pumpAndSettle();
+    // Its own chip since 2026-10-20: the screen opens on it directly.
 
     expect(find.byKey(const ValueKey('gbp-performance')), findsOneWidget);
     expect(find.text('412'), findsWidgets);
@@ -388,7 +386,11 @@ Future<void> _pumpScreen(WidgetTester tester, _Fake fake) async {
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: BusinessProfileScreen(api: api, session: Session(api)),
+        body: BusinessProfileScreen(
+          api: api,
+          session: Session(api),
+          performance: true,
+        ),
       ),
     ),
   );

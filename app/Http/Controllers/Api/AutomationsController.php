@@ -102,6 +102,7 @@ class AutomationsController extends Controller
         // Email's, three segments in the module so it does not arrive here as a
         // bare `mark_dealt` in the namespace every module shares.
         'message.mark_dealt',
+        'message.reply',
         'email.send',
         'whatsapp.send',
         'whatsapp.group_send',
@@ -2078,6 +2079,10 @@ class AutomationsController extends Controller
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
             $type('message.mark_dealt', 'Mark an email dealt with'),
+            // After-hours email auto replies (Eve and Jose, 2026-10-20). Their email stays unread.
+            $type('message.reply', 'Reply to the email', false, [
+                $parameter('body', 'Reply', 'text', variables: true),
+            ]),
 
             // The line, the destination and the words are all stated in the
             // rule, because this action is deliberately not bound to the

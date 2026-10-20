@@ -1018,6 +1018,9 @@ class LeadsController extends Controller
             'from' => $c->participant,
             'occurred_at' => $c->occurred_at?->toIso8601String(),
             'duration_ms' => $c->duration_ms,
+            // Our number on a call and its line (Jose, 2026-10-20).
+            'line_number' => $c->line_number,
+            'line_name' => $c->line_name,
             'text' => $c->text,
             // A call's words, machine-transcribed from the recording, divided
             // by speaker once Grok has (ezbizi:label-call-transcripts).

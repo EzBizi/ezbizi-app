@@ -433,6 +433,7 @@ class ActionRunner
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
+            'message.reply' => $this->replyToMessage($action, $event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'deactivate' => $this->deactivate($subject),
             'assign_to_user' => $this->assignToUser($action, $event, $subject),
@@ -2052,6 +2053,43 @@ class ActionRunner
         ];
     }
 
+    /**
+     * Reply to the email that arrived, in its thread, from the inbox it came to
+     * (Eve and Jose, 2026-10-20: after-hours and Sunday auto replies that leave
+     * the customer's email unread). The reply is a new message; the original's
+     * read state is never touched.
+     *
+     * Never to ourselves or to a robot, and at most once a day per sender per
+     * inbox, so two auto-responders cannot answer each other.
+     */
+    private function replyToMessage(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'message.reply';
+        $messageId = (string) ($event->payload['message_id'] ?? '');
+        $from = strtolower((string) ($event->payload['from_address'] ?? ''));
+        if (! $subject instanceof Mailbox || $messageId === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Rules using this step belong on "an email arrived".'];
+        }
+        if ($from === '' || $from === strtolower((string) $subject->address)
+            || preg_match('/(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce)/', $from) === 1) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not answered: the sender is this inbox or an automatic address.'];
+        }
+        if (! \Illuminate\Support\Facades\Cache::add("message.reply:{$subject->getKey()}:{$from}", true, now()->addDay())) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Already answered this sender today.'];
+        }
+
+        try {
+            app(\App\Support\Email\MailboxReaders::class)->for($subject)
+                ->reply($subject, $messageId, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Cache::forget("message.reply:{$subject->getKey()}:{$from}");
+
+            return ['type' => $type, 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Replied to {$from} from {$subject->address}; their email stays unread."];
+    }
+
     private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array
     {
         if (! $subject instanceof PhoneCall) {
@@ -3274,9 +3312,11 @@ class ActionRunner
         // "Book online now: {{booking_link}}" is a line, not a message: with no
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
-        foreach (['booking_link', 'offered_slot'] as $field) {
+        // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
+        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
-                && blank($subject?->getAttribute($field))) {
+                && blank($subject?->getAttribute($field))
+                && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {
                 $template = implode("\n", array_filter(
                     explode("\n", $template),
                     fn (string $line) => ! preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $line),
