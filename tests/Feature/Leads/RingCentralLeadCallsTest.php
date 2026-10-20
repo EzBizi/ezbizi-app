@@ -75,6 +75,7 @@ class RingCentralLeadCallsTest extends TestCase
             $calls = $first->conversations()->orderBy('occurred_at')->get();
             $this->assertSame(['rc_1', 'rc_2'], $calls->pluck('remote_id')->all());
             $this->assertSame('ringcentral:R1', $calls[0]->recording_url);
+            $this->assertSame(['+17320000001', 'NJ - GMB'], [$calls[0]->line_number, $calls[0]->line_name], 'the number they dialled (Jose, 2026-10-20)');
             $this->assertSame(95000, $calls[0]->duration_ms);
             $this->assertNull($calls[1]->duration_ms, 'missed: rang out');
 
