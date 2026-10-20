@@ -6,6 +6,7 @@ use App\Models\ReportBatchFile;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppNumber;
 use App\Models\WhatsAppPendingReport;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Social\WhatsAppGroups;
@@ -135,6 +136,29 @@ class WhatsAppPeriodReportsTest extends TestCase
         $this->assertSame(1, $batch->approved_revision);
         $this->assertSame($consolidated->sha256, $batch->approved_sha256);
         $this->assertTrue(collect($this->uploads)->contains(fn ($b) => str_contains($b, '%PDF-THE-APPROVED-ONE')), 'sent the frozen file, not a rebuild');
+    }
+
+    /** 2026-10-20: a report text to one person, now in the window and held behind one template outside it. */
+    public function test_a_text_to_one_person_waits_behind_the_template_outside_the_window(): void
+    {
+        $merav = $this->approvalSetUp();
+        $groups = app(WhatsAppGroups::class);
+
+        $this->inTenant($this->t['org'], function () use ($groups, $merav) {
+            $number = WhatsAppNumber::query()->sole();
+            $this->sent = [];
+            $this->assertTrue($groups->deliverTextToUser($number, $merav, 'Technician sales', 'line 1
+line 2'));
+            $this->assertSame(['text'], array_column($this->sent, 'type'), 'inside the window: the text itself');
+
+            WhatsAppMessage::query()->delete();
+            $this->sent = [];
+            $this->assertTrue($groups->deliverTextToUser($number, $merav, 'Technician sales', 'line 1
+line 2'));
+            $this->assertSame(['template'], array_column($this->sent, 'type'));
+            $this->assertSame('line 1
+line 2', WhatsAppPendingReport::query()->sole()->body);
+        });
     }
 
     private function approvalSetUp(): User
