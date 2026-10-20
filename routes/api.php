@@ -70,6 +70,7 @@ use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
 use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
@@ -536,6 +537,19 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 | hosts, so one IP is a hosting company serving hundreds of unrelated
 | businesses. AppServiceProvider carries the numbers and the reasoning.
 */
+/*
+ * A camera bridge PC (camera bridge, phase 1). No Sanctum and no `tenant`: the
+ * caller is a PC with nobody signed in, and its site key names the organization,
+ * so AuthenticateCameraBridge looks it up and enters it.
+ */
+Route::prefix('v1/monitoring/bridge')
+    ->middleware(['throttle:120,1', App\Http\Middleware\AuthenticateCameraBridge::class])
+    ->group(function () {
+        Route::post('checkin', [CameraBridgeController::class, 'checkin']);
+        Route::get('work', [CameraBridgeController::class, 'work']);
+        Route::post('still', [CameraBridgeController::class, 'still']);
+    });
+
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
@@ -2891,6 +2905,7 @@ Route::prefix('v1')
         Route::delete('monitoring/camera-sites/{id}', [CameraSitesController::class, 'destroy']);
         Route::post('monitoring/camera-sites/{id}/pairing-code', [CameraSitesController::class, 'pairingCode']);
         Route::post('monitoring/camera-sites/{id}/revoke', [CameraSitesController::class, 'revoke']);
+        Route::post('monitoring/camera-sites/{id}/cameras', [CameraSitesController::class, 'addCamera']);
         Route::post('monitoring/bridge/pair', [CameraSitesController::class, 'pair']);
 
         // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──

@@ -57,9 +57,12 @@ class CameraSitesController extends Controller
         $site->loadCount('cameras')->load('device');
 
         return ['data' => $this->present($site) + [
+            // What the bridge found on its network, to add as cameras.
+            'found' => $site->status['found'] ?? [],
             'cameras' => $site->cameras()->orderBy('label')->get()->map(fn (MonitoringCamera $c) => [
                 'id' => $c->id,
                 'label' => $c->label,
+                'channel' => $c->channel,
                 'enabled' => $c->enabled,
                 'supports' => $c->capabilities ?? ['live'],
                 'bridge_status' => $c->bridge_status,
@@ -191,6 +194,30 @@ class CameraSitesController extends Controller
         $this->audit->log('monitoring.camera_site.revoked', $site);
 
         return response()->noContent();
+    }
+
+    /** Add a channel the bridge found as a camera on this site. */
+    public function addCamera(Request $request, string $id): JsonResponse
+    {
+        $this->authorize('create', MonitoringCamera::class);
+
+        $site = $this->visible($request, $id);
+        $data = $request->validate([
+            'channel' => ['required', 'string', 'max:64'],
+            'label' => ['required', 'string', 'max:120'],
+        ]);
+
+        $camera = MonitoringCamera::create($data + [
+            'organization_id' => $site->organization_id,
+            'protocol' => 'mjpeg',
+            'url' => '',
+            'source' => 'bridge',
+            'site_id' => $site->id,
+            'capabilities' => ['live'],
+        ]);
+        $this->audit->log('monitoring.camera.created', $camera, [], ['label' => $camera->label, 'site' => $site->name]);
+
+        return response()->json(['data' => ['id' => $camera->id]], 201);
     }
 
     private function visible(Request $request, string $id): CameraSite
