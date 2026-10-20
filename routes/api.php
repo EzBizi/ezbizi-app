@@ -1047,6 +1047,7 @@ Route::prefix('v1')
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
         });
         Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
+            Route::get('home', 'home');
             Route::get('bases', 'bases');
             Route::post('bases', 'storeBase');
             Route::patch('bases/{base}', 'updateBase');

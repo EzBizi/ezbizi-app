@@ -5,8 +5,11 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
+import 'financials/financial_adjustments.dart';
 import 'financials/financial_bills.dart';
+import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
@@ -50,7 +53,7 @@ class _FinancialsHostState extends State<FinancialsScreen> {
     final tabs = [
       if (_may('bases'))
         (
-          'Bases',
+          'Home',
           Icons.table_chart_outlined,
           FinancialBases(api: widget.api, session: widget.session),
         ),
@@ -111,7 +114,17 @@ const _viewTypes = <String, (String, IconData)>{
 
 class _FinancialsScreenState extends State<FinancialBases> {
   List<Map> _bases = [];
+
+  /// What GET /financials/home answered; null while it answers 404, and the
+  /// home is then built from /financials/bases alone.
+  Map? _home;
+
+  /// The base open in place of the home, or null.
   String? _baseId;
+
+  /// The area open in place of the home, or null, and its table on show.
+  FinancialCard? _area;
+  String? _areaTable;
   String? _tableId;
   Map? _table;
   String? _viewId;
@@ -129,10 +142,54 @@ class _FinancialsScreenState extends State<FinancialBases> {
   Map? get _view =>
       _views.where((v) => v['id'] == _viewId).firstOrNull ?? _views.firstOrNull;
 
+  bool get _onHome => _baseId == null && _area == null;
+
+  List<FinancialCard> get _areaCards => [
+    for (final a in (_home?['areas'] as List? ?? const []).cast<Map>())
+      FinancialCard.area(a),
+  ];
+
+  /// The home's own base cards when it answered; otherwise one per base the
+  /// Bases tab already reads, whose only real number is how many tables it has.
+  List<FinancialCard> get _baseCards {
+    if (_home?['bases'] case final List bases) {
+      return [for (final b in bases.cast<Map>()) FinancialCard.base(b)];
+    }
+    return [
+      for (final b in _bases)
+        FinancialCard(
+          id: '${b['id']}',
+          name: '${b['name']}',
+          colourHint: b['colour'] as String?,
+          figure: switch ((b['tables'] as List?)?.length ?? 0) {
+            1 => '1 table',
+            final n => '$n tables',
+          },
+        ),
+    ];
+  }
+
+  bool get _mayCreateBase =>
+      _home == null ? _can('create') : _home!['may_create_base'] == true;
+
+  /// The open base's tables: (id, name, record count or null).
+  List<(String, String, int?)> get _tables => [
+    for (final t in (_base?['tables'] as List? ?? const []).cast<Map>())
+      ('${t['id']}', '${t['name']}', null),
+  ];
+
   @override
   void initState() {
     super.initState();
+    _loadHome();
     _loadBases();
+  }
+
+  Future<void> _loadHome() async {
+    final r = await widget.api.get('/financials/home');
+    if (!mounted) return;
+    // 404: this server has no home yet; the bases alone draw it.
+    if (r.ok) setState(() => _home = r.body['data'] as Map?);
   }
 
   Future<void> _loadBases({String? select}) async {
@@ -149,15 +206,53 @@ class _FinancialsScreenState extends State<FinancialBases> {
     setState(() {
       _bases = bases;
       _loading = false;
-      _baseId =
-          select ??
-          (bases.any((b) => b['id'] == _baseId)
-              ? _baseId
-              : bases.firstOrNull?['id'] as String?);
+      if (select != null) {
+        _area = null;
+        _baseId = select;
+      } else if (!bases.any((b) => b['id'] == _baseId)) {
+        _baseId = null;
+      }
     });
-    final tables = (_base?['tables'] as List?)?.cast<Map>() ?? const [];
-    final keep = tables.any((t) => t['id'] == _tableId);
-    await _openTable(keep ? _tableId : tables.firstOrNull?['id'] as String?);
+    if (_baseId == null) return;
+    final keep = _tables.any((t) => t.$1 == _tableId);
+    await _openTable(keep ? _tableId : _tables.firstOrNull?.$1);
+  }
+
+  void _openBase(FinancialCard card) {
+    setState(() {
+      _area = null;
+      _baseId = card.id;
+      _tableId = null;
+      _search = '';
+    });
+    _openTable(_tables.firstOrNull?.$1);
+  }
+
+  void _openArea(FinancialCard card) {
+    _openAreaState(card);
+    final first = card.tables.where((t) => _closedBecause(t) == null);
+    if (first.isNotEmpty) _selectAreaTable(first.first);
+  }
+
+  void _openAreaState(FinancialCard card) => setState(() {
+    _baseId = null;
+    _area = card;
+    _areaTable = null;
+    _tableId = null;
+    _table = null;
+  });
+
+  void _backHome() {
+    setState(() {
+      _baseId = null;
+      _area = null;
+      _areaTable = null;
+      _tableId = null;
+      _table = null;
+      _viewId = null;
+      _search = '';
+    });
+    _loadHome();
   }
 
   Future<void> _openTable(String? id) async {
@@ -415,7 +510,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_bases.isEmpty) {
+    final areaCards = _areaCards;
+    final baseCards = _baseCards;
+    if (areaCards.isEmpty && baseCards.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -430,7 +527,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              if (_can('create'))
+              if (_mayCreateBase)
                 FilledButton.icon(
                   key: const ValueKey('financials-new-base'),
                   icon: const Icon(Icons.add),
@@ -443,17 +540,24 @@ class _FinancialsScreenState extends State<FinancialBases> {
       );
     }
 
-    final tables = (_base?['tables'] as List?)?.cast<Map>() ?? const [];
-    final view = _view;
-    final config = (view?['config'] as Map?) ?? const {};
-    final hidden = {
-      ...(config['hidden'] as List? ?? const []).map((e) => '$e'),
-    };
-    final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
-    final rows = applyView(_records, _fields, config, _search);
+    if (_onHome) {
+      return FinancialHome(
+        areas: areaCards,
+        bases: baseCards,
+        onArea: _openArea,
+        onBase: _openBase,
+        onNewBase: _mayCreateBase ? _newBase : null,
+      );
+    }
+
+    if (_area case final area?) return _areaPage(area);
+
+    final tables = _tables;
+    final card = baseCards.where((b) => b.id == _baseId).firstOrNull;
+    final badge = sourceLabel(card?.source);
+    final refreshed = refreshedLabel(card?.refreshedAt);
+    final selectedTable = tables.indexWhere((t) => t.$1 == _tableId);
     final canEdit = _can('edit');
-    // A mirrored table takes views and settings, never cells.
-    final canWrite = canEdit && _table?['mirror'] == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -465,58 +569,62 @@ class _FinancialsScreenState extends State<FinancialBases> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SizedBox(
-                width: 240,
-                child: SearchPickerField<String>(
-                  label: 'Base',
-                  isDense: true,
-                  value: _baseId,
-                  options: [
-                    for (final b in _bases)
-                      SearchOption(
-                        value: '${b['id']}',
-                        label: b['place'] == null
-                            ? '${b['name']}'
-                            : '${b['name']} · ${b['place']}',
-                      ),
-                  ],
-                  onChanged: (id) {
-                    if (id == null) return;
-                    _tableId = null;
-                    _loadBases(select: id);
-                  },
-                ),
+              IconButton(
+                key: const ValueKey('financials-back'),
+                tooltip: 'Back to Financials home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backHome,
               ),
+              Text(
+                (_base?['place'] == null
+                    ? '${_base?['name'] ?? ''}'
+                    : '${_base?['name']} · ${_base?['place']}'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (badge != null) StatusPill(badge),
+              if (refreshed != null)
+                Text(
+                  refreshed,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               if (canEdit)
                 IconButton(
                   tooltip: 'Rename base',
                   icon: const Icon(Icons.edit_outlined),
                   onPressed: _renameBase,
                 ),
-              if (_can('create'))
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('New base'),
-                  onPressed: _newBase,
-                ),
             ],
           ),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              for (final t in tables)
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text('${t['name']}'),
-                    selected: t['id'] == _tableId,
-                    onSelected: (_) => t['id'] == _tableId && canEdit
-                        ? _renameTable()
-                        : _openTable('${t['id']}'),
-                  ),
+              if (tables.isNotEmpty)
+                TabBarLike(
+                  key: const ValueKey('financials-table-chips'),
+                  level: TabLevel.secondary,
+                  labels: [
+                    for (final t in tables)
+                      (
+                        t.$3 == null ? t.$2 : '${t.$2} · ${t.$3}',
+                        Icons.table_rows_outlined,
+                      ),
+                  ],
+                  selected: selectedTable < 0 ? 0 : selectedTable,
+                  onSelected: (i) => _openTable(tables[i].$1),
+                ),
+              if (canEdit && _table != null)
+                IconButton(
+                  tooltip: 'Rename table',
+                  icon: const Icon(Icons.drive_file_rename_outline),
+                  onPressed: _renameTable,
                 ),
               if (canEdit)
                 TextButton.icon(
@@ -533,147 +641,348 @@ class _FinancialsScreenState extends State<FinancialBases> {
             ],
           ),
         ),
-        if (_table?['mirror'] case final Map mirror)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Row(
-              children: [
-                const Icon(Icons.sync, size: 16),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'Mirrors Airtable, read-only here. Refreshed '
-                    '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
-                  ),
+        ..._tableSection(),
+      ],
+    );
+  }
+
+  /// The open table: its mirror line, views, and the view itself. Shared by
+  /// a base and by an area whose table mirrors into Financials.
+  List<Widget> _tableSection() {
+    final view = _view;
+    final config = (view?['config'] as Map?) ?? const {};
+    final hidden = {
+      ...(config['hidden'] as List? ?? const []).map((e) => '$e'),
+    };
+    final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
+    final rows = applyView(_records, _fields, config, _search);
+    final canEdit = _can('edit');
+    // A mirrored table takes views and settings, never cells.
+    final canWrite = canEdit && _table?['mirror'] == null;
+
+    return [
+      if (_table?['mirror'] case final Map mirror)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              const Icon(Icons.sync, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Mirrors Airtable, read-only here. Refreshed '
+                  '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
                 ),
-                if (canEdit)
-                  TextButton(
-                    onPressed: _refreshMirror,
-                    child: const Text('Refresh now'),
-                  ),
-              ],
-            ),
+              ),
+              if (canEdit)
+                TextButton(
+                  onPressed: _refreshMirror,
+                  child: const Text('Refresh now'),
+                ),
+            ],
           ),
-        if (_table != null) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Wrap(
-              key: const ValueKey('tour-financials-views'),
-              spacing: 6,
-              runSpacing: 6,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                for (final v in _views)
-                  ChoiceChip(
-                    avatar: Icon(_viewTypes[v['type']]?.$2, size: 16),
-                    showCheckmark: false,
-                    label: Text('${v['name']}'),
-                    selected: v['id'] == view?['id'],
-                    onSelected: (_) => setState(() => _viewId = '${v['id']}'),
-                  ),
-                if (canEdit)
-                  IconButton(
-                    tooltip: 'New view',
-                    icon: const Icon(Icons.add),
-                    onPressed: _newView,
-                  ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 200,
-                  child: TextField(
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search',
-                    ),
-                    onChanged: (t) => setState(() => _search = t.trim()),
-                  ),
+        ),
+      if (_table != null) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Wrap(
+            key: const ValueKey('tour-financials-views'),
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final v in _views)
+                ChoiceChip(
+                  avatar: Icon(_viewTypes[v['type']]?.$2, size: 16),
+                  showCheckmark: false,
+                  label: Text('${v['name']}'),
+                  selected: v['id'] == view?['id'],
+                  onSelected: (_) => setState(() => _viewId = '${v['id']}'),
                 ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.tune),
-                  label: Text(_settingsLabel(config)),
-                  onPressed: canEdit ? _viewSettings : null,
-                ),
-                if (canEdit && _views.length > 1)
-                  IconButton(
-                    tooltip: 'Delete this view',
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: _deleteView,
-                  ),
-                if (canWrite)
-                  IconButton(
-                    tooltip: 'Import CSV',
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: _import,
-                  ),
+              if (canEdit)
                 IconButton(
-                  tooltip: 'Export CSV',
-                  icon: const Icon(Icons.download_outlined),
-                  onPressed: _export,
+                  tooltip: 'New view',
+                  icon: const Icon(Icons.add),
+                  onPressed: _newView,
                 ),
-                if (canWrite)
-                  FilledButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add record'),
-                    onPressed: () => _openRecord(null),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search',
                   ),
-              ],
-            ),
+                  onChanged: (t) => setState(() => _search = t.trim()),
+                ),
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.tune),
+                label: Text(_settingsLabel(config)),
+                onPressed: canEdit ? _viewSettings : null,
+              ),
+              if (canEdit && _views.length > 1)
+                IconButton(
+                  tooltip: 'Delete this view',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _deleteView,
+                ),
+              if (canWrite)
+                IconButton(
+                  tooltip: 'Import CSV',
+                  icon: const Icon(Icons.upload_file_outlined),
+                  onPressed: _import,
+                ),
+              IconButton(
+                tooltip: 'Export CSV',
+                icon: const Icon(Icons.download_outlined),
+                onPressed: _export,
+              ),
+              if (canWrite)
+                FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add record'),
+                  onPressed: () => _openRecord(null),
+                ),
+            ],
           ),
-          const Divider(height: 1),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: switch (view?['type']) {
+            'kanban' => KanbanView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+              onPatch: _patch,
+              canEdit: canWrite,
+            ),
+            'calendar' => CalendarView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+            ),
+            'split' => SplitView(api: widget.api, view: view!),
+            'gallery' => GalleryView(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              onOpen: _openRecord,
+            ),
+            'form' => FormView(
+              fields: shown,
+              allFields: _fields,
+              canEdit: canWrite,
+              onSubmit: (values) async {
+                final r = await widget.api.post(
+                  '/financials/tables/$_tableId/records',
+                  {'values': values},
+                );
+                if (r.ok) await _reload();
+                return r.ok ? null : r.message;
+              },
+            ),
+            _ => GridView2(
+              fields: shown,
+              allFields: _fields,
+              records: rows,
+              config: config,
+              onOpen: _openRecord,
+              onPatch: _patch,
+              onField: _editField,
+              canEdit: canWrite,
+            ),
+          },
+        ),
+      ] else
+        const Expanded(child: Center(child: Text('No tables here yet.'))),
+    ];
+  }
+
+  /// Why an area's table cannot be opened here, or null when it can. The
+  /// server's own refusal wins, except "not mirrored yet", which a person
+  /// who may link Airtable resolves here with Mirror it.
+  String? _closedBecause(AreaTable t) {
+    if (t.tableId != null && t.mayOpen != false) return null;
+    if (t.mayOpen == false && t.refused != AreaTable.notMirrored) {
+      return t.refused ?? 'Your role cannot open this';
+    }
+    return switch (t.key) {
+      // A server that does not say: the Bills tab's own grant.
+      'bills'
+          when t.mayOpen == null &&
+              !(widget.session.me?.permissions.contains(
+                    'financials.bills.view',
+                  ) ??
+                  false) =>
+        'Your role cannot see Bills',
+      'bills' || 'adjustments' || 'repair_moves' => null,
+      // Linking needs a base to link into (POST bases/{base}/airtable-links)
+      // and that base's update policy, financials.edit, besides
+      // may_create_base.
+      _ when !_mayCreateBase || !_can('edit') =>
+        t.refused ?? 'Your role cannot mirror Airtable tables',
+      _ when _bases.isEmpty => 'Make a base first to mirror it into',
+      _ when t.airtable == null => t.refused ?? 'Cannot be mirrored from here',
+      _ => null,
+    };
+  }
+
+  void _selectAreaTable(AreaTable t) {
+    setState(() {
+      _areaTable = t.key;
+      if (t.tableId == null) {
+        _tableId = null;
+        _table = null;
+      }
+    });
+    if (t.tableId != null) _openTable(t.tableId);
+  }
+
+  bool _mirroring = false;
+
+  /// Mirrors an area's Airtable source into the first base (the bases come
+  /// sorted by name), then reloads the home so the chip opens the new table.
+  Future<void> _mirror(AreaTable t) async {
+    final (baseId, tableId) = t.airtable!;
+    final into = _bases.first['id'];
+    setState(() => _mirroring = true);
+    final r = await widget.api.post('/financials/bases/$into/airtable-links', {
+      'base_id': baseId,
+      'table_id': tableId,
+    });
+    if (!mounted) return;
+    setState(() => _mirroring = false);
+    if (!r.ok) return _say(r.message);
+    await _loadHome();
+    await _loadBases();
+    if (!mounted) return;
+    final key = _area?.id;
+    final fresh = _areaCards.where((a) => a.id == key).firstOrNull;
+    if (fresh == null) return;
+    setState(() => _area = fresh);
+    final again = fresh.tables.where((x) => x.key == t.key).firstOrNull;
+    if (again != null) _selectAreaTable(again);
+  }
+
+  /// An area of the books, in place of the home: its tables as chips, and
+  /// the one on show below. A table that cannot open here is a disabled chip
+  /// that says why.
+  Widget _areaPage(FinancialCard area) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final badge = sourceLabel(area.source);
+    final refreshed = refreshedLabel(area.refreshedAt);
+    final shown = area.tables.where((t) => t.key == _areaTable).firstOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              IconButton(
+                key: const ValueKey('financials-back'),
+                tooltip: 'Back to Financials home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backHome,
+              ),
+              Text(area.name, style: Theme.of(context).textTheme.titleMedium),
+              if (badge != null) StatusPill(badge),
+              if (refreshed != null)
+                Text(refreshed, style: TextStyle(fontSize: 12, color: muted)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Wrap(
+            key: const ValueKey('financials-area-tables'),
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final t in area.tables)
+                ChoiceChip(
+                  key: ValueKey('financials-area-table-${t.key}'),
+                  label: Text(
+                    [
+                      t.name,
+                      if (t.count != null) '${t.count}',
+                      ?_closedBecause(t),
+                    ].join(' · '),
+                  ),
+                  selected: t.key == _areaTable,
+                  onSelected: _closedBecause(t) == null
+                      ? (_) => _selectAreaTable(t)
+                      : null,
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        if (shown == null)
           Expanded(
-            child: switch (view?['type']) {
-              'kanban' => KanbanView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
-                onPatch: _patch,
-                canEdit: canWrite,
+            child: Center(
+              child: Text(
+                'Nothing here opens for your role yet.',
+                style: TextStyle(color: muted),
               ),
-              'calendar' => CalendarView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
+            ),
+          )
+        else if (shown.tableId != null)
+          ..._tableSection()
+        else
+          Expanded(
+            child: switch (shown.key) {
+              'bills' => FinancialBillsTab(
+                api: widget.api,
+                me: widget.session.me!,
               ),
-              'split' => SplitView(api: widget.api, view: view!),
-              'gallery' => GalleryView(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                onOpen: _openRecord,
+              'adjustments' => FinancialAdjustmentsList(
+                key: const ValueKey('financials-adjustments'),
+                api: widget.api,
+                exclude: const {'repair_move'},
+                canEdit: _can('edit'),
+                canDelete: _can('delete'),
               ),
-              'form' => FormView(
-                fields: shown,
-                allFields: _fields,
-                canEdit: canWrite,
-                onSubmit: (values) async {
-                  final r = await widget.api.post(
-                    '/financials/tables/$_tableId/records',
-                    {'values': values},
-                  );
-                  if (r.ok) await _reload();
-                  return r.ok ? null : r.message;
-                },
+              'repair_moves' => FinancialAdjustmentsList(
+                key: const ValueKey('financials-repair-moves'),
+                api: widget.api,
+                kind: 'repair_move',
+                canEdit: _can('edit'),
+                canDelete: _can('delete'),
               ),
-              _ => GridView2(
-                fields: shown,
-                allFields: _fields,
-                records: rows,
-                config: config,
-                onOpen: _openRecord,
-                onPatch: _patch,
-                onField: _editField,
-                canEdit: canWrite,
+              _ => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${shown.name} is in the Airtable copy but not '
+                        'mirrored into a base yet.',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        key: const ValueKey('financials-mirror-it'),
+                        icon: const Icon(Icons.sync_alt),
+                        label: Text('Mirror it into ${_bases.first['name']}'),
+                        onPressed: _mirroring ? null : () => _mirror(shown),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             },
-          ),
-        ] else
-          const Expanded(
-            child: Center(child: Text('This base has no tables yet.')),
           ),
       ],
     );
