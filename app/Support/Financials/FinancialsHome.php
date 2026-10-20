@@ -8,6 +8,7 @@ use App\Models\FinancialBase;
 use App\Models\FinancialBill;
 use App\Models\FinancialRecord;
 use App\Models\FinancialSource;
+use App\Models\FinancialTable;
 use App\Models\User;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
@@ -87,9 +88,9 @@ final class FinancialsHome
         $inView = fn ($row) => $row->franchise_id === null ? $scope->isOrganization() : $scope->coversFranchise($row->franchise_id);
 
         [$rows, $table] = match ($area) {
-            'refunds' => [FinancialAdjustment::query()->whereIn('kind', ['refund', 'dispute', 'check_return'])->get(), ['key' => 'adjustments', 'name' => 'Recorded in EzBizi']],
-            'repair' => [FinancialAdjustment::query()->where('kind', 'repair_move')->get(), ['key' => 'repair_moves', 'name' => 'Split changes']],
-            'invoices' => [FinancialBill::query()->get(), ['key' => 'bills', 'name' => 'Bills']],
+            'refunds' => [FinancialAdjustment::query()->whereIn('kind', ['refund', 'dispute', 'check_return'])->get(), ['key' => 'adjustments', 'name' => 'Recorded in EzBizi', 'table_id' => null, 'route' => '/financials/adjustments']],
+            'repair' => [FinancialAdjustment::query()->where('kind', 'repair_move')->get(), ['key' => 'repair_moves', 'name' => 'Split changes', 'table_id' => null, 'route' => '/financials/adjustments?kind=repair_move']],
+            'invoices' => [FinancialBill::query()->get(), ['key' => 'bills', 'name' => 'Bills', 'table_id' => null, 'route' => '/financials/bills']],
             default => [collect(), null],
         };
         $rows = $rows->filter($inView)->values();
@@ -148,8 +149,15 @@ final class FinancialsHome
             ->selectRaw('base_id, table_id, MAX(table_name) as name, COUNT(*) as n')->groupBy('base_id', 'table_id')->get()
             ->keyBy(fn ($r) => $r->base_id.'/'.$r->table_id);
 
+        // A Financials table that mirrors this Airtable table, when one exists,
+        // is what a chip opens; otherwise there is nothing to open yet.
+        $mirrors = FinancialTable::query()->whereNotNull('source_table_id')->get()
+            ->keyBy(fn ($t) => $t->source_base_id.'/'.$t->source_table_id);
+
         return $sources->map(fn (FinancialSource $s) => [
             'key' => $s->base_id.'/'.$s->table_id.($s->franchise_id ? '/'.$s->franchise_id : ''),
+            'table_id' => $mirrors[$s->base_id.'/'.$s->table_id]->id ?? null,
+            'route' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? '/financials/tables/'.$mirrors[$s->base_id.'/'.$s->table_id]->id : null,
             'name' => trim(($stats[$s->base_id.'/'.$s->table_id]->name ?? $s->table_id).($s->filter_value ? ' · '.$s->filter_value : '')),
             'count' => (int) ($stats[$s->base_id.'/'.$s->table_id]->n ?? 0),
         ])->values()->all();

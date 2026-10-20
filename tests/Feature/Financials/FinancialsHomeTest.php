@@ -40,6 +40,7 @@ class FinancialsHomeTest extends TestCase
         $this->assertSame('This week: $125.50 refunded · 0 disputes', $areas['refunds']['figure']);
         $this->assertSame(['Refunds · F1', 'Recorded in EzBizi'], array_column($areas['refunds']['tables'], 'name'));
         $this->assertSame('airtable', $areas['pnl']['source']);
+        $this->assertSame([null, '/financials/adjustments'], array_column($areas['refunds']['tables'], 'route'));
         $this->assertSame('Budget', $home['bases'][0]['name']);
         $this->assertSame('native', $home['bases'][0]['source']);
         $this->assertTrue($home['may_create_base']);
