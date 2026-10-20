@@ -425,6 +425,7 @@ class ActionRunner
             'reassign_owner' => $this->reassignOwner($action, $subject, $automation),
             'job.create' => $this->createFollowUpJob($action, $event, $subject),
             'draft_reply' => $this->draftReviewReply($action, $event, $subject),
+            'publish_reply' => $this->publishReviewReply($action, $event, $subject, $automation),
             'onboarding.start' => $this->startOnboarding($action, $subject),
             'add_to_audience' => $this->addToAudience($action, $subject),
             'review_reply' => $this->replyOnGoogle($action, $event, $subject, $automation),
@@ -2841,8 +2842,12 @@ class ActionRunner
                 'detail' => 'This review already has a reply or a draft, so it was left as it is.'];
         }
 
-        $body = trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject));
+        $body = $this->reviewReplyWords($action, $event, $subject);
 
+        if ($body === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true,
+                'detail' => 'AI could not write a draft just now. A person can write one.'];
+        }
         if ($body === '') {
             return ['type' => $type, 'ok' => false, 'detail' => 'This step needs the words of the reply.'];
         }
@@ -2857,6 +2862,121 @@ class ActionRunner
 
         return ['type' => $type, 'ok' => true,
             'detail' => 'Drafted a reply. It is waiting for a person to read and publish it.'];
+    }
+
+    /** The oldest review a rule may answer in public by itself. */
+    public const AUTO_REPLY_MAX_AGE_DAYS = 30;
+
+    /**
+     * The words of a review reply. With `ai` on, written for this review by
+     * ReviewReplyWriter, so no two read the same (Jose, 2026-10-20); null when
+     * AI could not answer. Otherwise the step's own message.
+     */
+    private function reviewReplyWords(array $action, AutomationEvent $event, Review $review): ?string
+    {
+        if (($action['ai'] ?? false) === true) {
+            try {
+                return \App\Support\Reviews\ReviewReplyWriter::write($review);
+            } catch (\RuntimeException) {
+                return null;
+            }
+        }
+
+        return trim($this->interpolate((string) ($action['message'] ?? ''), $event, $review));
+    }
+
+    /**
+     * Publish a reply on Google by itself (A1 Leads takeover, 2026-10-20).
+     *
+     * ONLY WHERE A PERSON SWITCHED IT ON. The review's listing must have
+     * auto_reply on. Off is the default for every listing, and off is not a
+     * failure: the rule succeeds and says nothing was posted, so a rule on
+     * "review received" across many listings runs quietly on the ones not yet
+     * moved over. Only one system may answer a listing's reviews.
+     *
+     * THE AUTHOR MUST BE ABLE TO DO IT BY HAND: Reviews' publish grant and
+     * reach to this review, the same policy the Publish button asks.
+     *
+     * NEVER OVER ANOTHER REPLY: one already published, or a draft a person is
+     * working on, is left alone and is not a failure either.
+     *
+     * Published the way a person publishes: the same Google call, the same
+     * reply_published / reply_failed events and audit lines.
+     */
+    private function publishReviewReply(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'publish_reply';
+
+        if (! $subject instanceof Review) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This step only works on a review, and this rule is about something else.'];
+        }
+
+        $tail = preg_match('~(locations/[^/]+)$~', (string) $subject->location_name, $m) ? $m[1] : null;
+        $location = $tail === null ? null : \App\Models\BusinessLocation::query()
+            ->where('remote_name', 'like', '%'.addcslashes($tail, '%_'))->first();
+
+        if ($location === null || ! $location->auto_reply) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true,
+                'detail' => 'Automatic replies are off for this listing, so nothing was posted.'];
+        }
+
+        $author = $automation?->activeVersion?->created_by !== null
+            ? User::query()->find($automation->activeVersion->created_by)
+            : null;
+
+        if ($author === null || ! \Illuminate\Support\Facades\Gate::forUser($author)->allows('publish', $subject)) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
+                    .'was posted. Somebody who can should open the rule and save it again.'];
+        }
+
+        $existing = $subject->reply()->first();
+        if ($existing !== null && ($existing->isPublished() || $existing->drafted_by !== ReviewReply::BY_AUTOMATION)) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true,
+                'detail' => 'This review already has a reply or a draft, so it was left as it is.'];
+        }
+
+        // Never a public reply to an old review: a re-read of a whole history
+        // must not answer last year's reviews today (A1 Leads' rule).
+        if ($subject->reviewed_at !== null && $subject->reviewed_at->lt(now()->subDays(self::AUTO_REPLY_MAX_AGE_DAYS))) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true,
+                'detail' => 'The review is more than '.self::AUTO_REPLY_MAX_AGE_DAYS.' days old, so nothing was posted.'];
+        }
+
+        $body = $this->reviewReplyWords($action, $event, $subject);
+        if ($body === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true,
+                'detail' => 'AI could not write a reply just now, so nothing was posted. It is left for a person.'];
+        }
+        if ($body === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs the words of the reply.'];
+        }
+
+        $reply = $existing ?? new ReviewReply(['organization_id' => $subject->organization_id, 'review_id' => $subject->getKey()]);
+        $reply->fill(['body' => $body, 'drafted_by' => ReviewReply::BY_AUTOMATION, 'status' => ReviewReply::STATUS_DRAFT])->save();
+
+        try {
+            app(\App\Services\Reviews\BusinessProfileReviews::class)->publish($reply);
+        } catch (\RuntimeException $e) {
+            DB::transaction(function () use ($reply, $subject, $e) {
+                $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
+                app(AuditLogger::class)->log('review.reply_failed', $subject, metadata: ['reason' => $e->getMessage(), 'by' => 'automation']);
+                app(EventEmitter::class)->emit('review.reply_failed', $subject, ['after' => ['reason' => $e->getMessage()]]);
+            });
+
+            return ['type' => $type, 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        DB::transaction(function () use ($reply, $subject, $author) {
+            $reply->forceFill(['status' => ReviewReply::STATUS_PUBLISHED, 'published_by_user_id' => $author->getKey(),
+                'published_at' => now(), 'failure_reason' => null])->save();
+            app(AuditLogger::class)->log('review.reply_published', $subject, metadata: ['length' => strlen($reply->body), 'by' => 'automation']);
+            app(EventEmitter::class)->emit('review.reply_published', $subject,
+                ['after' => ['published_at' => $reply->published_at?->toIso8601String()]]);
+        });
+
+        return ['type' => $type, 'ok' => true, 'detail' => 'Published the reply on Google.'];
     }
 
     /**

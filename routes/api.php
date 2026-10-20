@@ -992,6 +992,8 @@ Route::prefix('v1')
         Route::get('a1leads-gbp/report/status', [A1LeadsReviewOpsController::class, 'reportStatus']);
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
+        Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
