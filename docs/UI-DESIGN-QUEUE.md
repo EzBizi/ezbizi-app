@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 114 · Business Profile › Performance (A1 takeover) — **sent 2026-10-20** (`docs/previews/gbp-performance-layouts.html`)
+### 114 · Business Profile › Performance (A1 takeover) — **sent 2026-10-20 — Jose: "as u recommend" (1 and 4)** (`docs/previews/gbp-performance-layouts.html`)
 
 Customer Experience asked (server ac72803c1: totals/daily/by_location + search terms). **1** (recommended) a Performance tab: dates + listing, freshness line from last_date, five tiles with change vs the period before (click puts it on the daily chart), a table per listing, its searches beside it. **2** on each listing's page. **3** in Reports. Phone **4** (recommended) / **5** / **6**.
 
