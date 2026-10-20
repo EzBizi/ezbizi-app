@@ -80,14 +80,28 @@ class HrDeletePersonTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $person->id, 'email' => $person->email]);
     }
 
+    public function test_a_non_administrator_cannot_delete_an_administrator(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $deleter = $this->userWithRole($alpha, 'HR', ['hr.view', 'hr.records.view', 'hr.delete']);
+        $other = $this->userWithRole($alpha, 'Second admin', []);
+        $this->inTenant($alpha['org'], fn () => $other->forceFill(['role_id' => $alpha['admin']->role_id])->save());
+
+        $this->signedInAs($deleter)->deleteJson("/api/v1/hr/people/{$other->id}", ['confirm' => $other->name])
+            ->assertForbidden();
+        $this->assertDatabaseHas('users', ['id' => $other->id, 'email' => $other->email]);
+    }
+
     public function test_the_last_administrator_is_not_deleted(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $deleter = $this->userWithRole($alpha, 'HR', ['hr.view', 'hr.delete']);
         $admin = $alpha['admin'];
 
+        // Refused before the floor is reached: only an administrator may
+        // delete one, and an administrator deleting the last is themselves.
         $this->signedInAs($deleter)->deleteJson("/api/v1/hr/people/{$admin->id}", ['confirm' => $admin->name])
-            ->assertStatus(409)->assertJsonPath('code', 'last_administrator');
+            ->assertForbidden();
         $this->assertDatabaseHas('users', ['id' => $admin->id, 'email' => $admin->email]);
     }
 }
