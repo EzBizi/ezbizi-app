@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Access\ScopeReach;
+use App\Support\Modules\PermissionCatalogue;
 use Illuminate\Auth\Access\Response;
 
 /**
@@ -163,6 +164,13 @@ class UserPolicy
 
         if (! $this->withinReach($user, $person)) {
             return $this->outOfBounds($user);
+        }
+
+        // Nobody deletes a person whose role they could not hand out
+        // themselves - an administrator above all (R&P, 2026-10-20).
+        if ($person->role !== null
+            && ! app(PermissionCatalogue::class)->mayAssignRole($user, $person->role)) {
+            return Response::deny('Only somebody who could give them their role can delete them. An administrator can.');
         }
 
         return Response::allow();
