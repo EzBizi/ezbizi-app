@@ -823,6 +823,15 @@ class AutomationsController extends Controller
             );
         }
 
+        // Email auto replies Jose sets up himself (2026-10-20): pick the inbox
+        // and open/closed from a list rather than typing them.
+        if ($key === 'email.received') {
+            // Values only: a field is still offered only once an event carried it.
+            $values['address'] = \App\Models\Mailbox::query()->orderBy('address')->get(['address', 'display_name'])
+                ->map(fn ($m) => ['value' => $m->address, 'label' => trim(($m->display_name ? $m->display_name.' · ' : '').$m->address)])->all();
+            $values['office_open'] = [['value' => 'true', 'label' => 'Open'], ['value' => 'false', 'label' => 'Closed']];
+        }
+
         /*
          * ADDITIVE, like `values`: words a MESSAGE can drop in that no payload
          * carries - `{{company_name}}` on a lead, worked out from the record
