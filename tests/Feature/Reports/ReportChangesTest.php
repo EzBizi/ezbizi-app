@@ -75,4 +75,26 @@ class ReportChangesTest extends TestCase
         $refused(fn () => app(ReportChanges::class)->apply($batch, 'report.exclude_jobs', ['jobs' => ['A1']], $corrector));
         Queue::assertNothingPushed();
     }
+
+    /** Roles & Permissions, 2026-10-20: the whole report from the organization view only; a branch its own goal. */
+    public function test_a_branch_view_corrector_is_refused_the_whole_report_and_the_route_applies_a_change(): void
+    {
+        Queue::fake();
+        $t = $this->provisionTenant('Alpha');
+        $batch = $this->inTenant($t['org'], fn () => WhatsAppReportBatch::query()->create(['period' => 'week', 'starts_on' => '2026-09-21', 'ends_on' => '2026-09-27']));
+        $branchOnly = $this->userWithRole($t, 'Branch Bookkeeper', ['reports.view', 'reports.correct'], onlyAt: $t['franchise']);
+        $as = $this->signedInAs($branchOnly);
+
+        $as->postJson("/api/v1/reports/drafts/{$batch->id}/changes", ['key' => 'report.goal', 'params' => ['key' => 'avg_sale', 'value' => 900, 'branch' => null]])
+            ->assertUnprocessable()->assertJsonValidationErrors('change');
+        $as->postJson("/api/v1/reports/drafts/{$batch->id}/changes", ['key' => 'report.exclude_jobs', 'params' => ['jobs' => ['A1']]])
+            ->assertUnprocessable();
+        $as->postJson("/api/v1/reports/drafts/{$batch->id}/changes", ['key' => 'report.goal', 'params' => ['key' => 'avg_sale', 'value' => 900, 'branch' => $t['franchise']->id]])
+            ->assertOk()->assertJsonPath('data.changes.0.key', 'report.goal');
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/reports/drafts/{$batch->id}/changes", ['key' => 'report.exclude_jobs', 'params' => ['jobs' => ['A1']]])
+            ->assertOk();
+        $this->signedInAs($t['admin'])->getJson('/api/v1/reports/drafts')->assertOk()->assertJsonPath('data.drafts.0.id', $batch->id);
+        $this->signedInAs($this->userWithRole($t, 'Viewer', ['reports.view']))->getJson('/api/v1/reports/drafts')->assertForbidden();
+    }
 }
