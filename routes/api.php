@@ -1311,6 +1311,10 @@ Route::prefix('v1')
         | moving a shipped one and breaking the screen already using it.
         */
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
+        // One token, then tick the bases it reaches (Jose, 2026-10-20).
+        Route::post('social/airtable/bases', [AirtableConnectController::class, 'bases']);
+        Route::post('social/airtable/connect', [AirtableConnectController::class, 'connect']);
+        Route::post('social/airtable/replace-token', [AirtableConnectController::class, 'replaceToken']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
         Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);

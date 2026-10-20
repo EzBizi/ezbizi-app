@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Airtable\AirtableBase;
@@ -163,5 +164,152 @@ class AirtableConnectController extends Controller
             'tables' => $base['tables'],
             'message' => SocialProvider::Airtable->connectedSentence(1, $connection->display_name),
         ]], Status::HTTP_CREATED);
+    }
+
+    /**
+     * Step one of connecting by token alone: every base the token reaches,
+     * each marked if this view already has it. The token is not stored here.
+     */
+    public function bases(Request $request): JsonResponse
+    {
+        [$user, $scopeType, $scopeId] = $this->mayConnect($request);
+        $token = $request->validate(['api_token' => ['required', 'string', 'max:200']], [
+            'api_token.required' => 'Paste a personal access token from your Airtable account.',
+        ])['api_token'];
+
+        try {
+            $bases = $this->airtable->bases($token);
+        } catch (AirtableRefused $e) {
+            throw ValidationException::withMessages(['api_token' => $e->getMessage()]);
+        }
+        $connected = $this->connections($scopeType, $scopeId)->pluck('remote_id')->all();
+
+        return response()->json(['data' => array_map(
+            fn (array $b) => $b + ['connected' => in_array($b['id'], $connected, true)],
+            $bases,
+        )]);
+    }
+
+    /**
+     * Step two: the ticked bases are connected with the one token; bases this
+     * view had that are no longer ticked are disconnected.
+     */
+    public function connect(Request $request): JsonResponse
+    {
+        [$user, $scopeType, $scopeId] = $this->mayConnect($request);
+        $data = $request->validate([
+            'api_token' => ['required', 'string', 'max:200'],
+            'base_ids' => ['present', 'array', 'max:100'],
+            'base_ids.*' => ['string', 'regex:/^app[A-Za-z0-9]{14}$/'],
+        ]);
+
+        $done = [];
+        foreach (array_unique($data['base_ids']) as $baseId) {
+            try {
+                $base = $this->airtable->verify($data['api_token'], $baseId);
+            } catch (AirtableRefused $e) {
+                throw ValidationException::withMessages(['base_ids' => $baseId.': '.$e->getMessage()]);
+            }
+            $done[] = $this->connectBase($user, $scopeType, $scopeId, $data['api_token'], $baseId, $base);
+        }
+
+        $dropped = $this->connections($scopeType, $scopeId)->whereNotIn('remote_id', $data['base_ids']);
+        foreach ($dropped as $connection) {
+            $this->audit->log('social.disconnected', $connection, ['provider' => SocialProvider::Airtable->value, 'display_name' => $connection->display_name], actor: $user);
+            $connection->delete();
+        }
+
+        return response()->json(['data' => [
+            'connected' => array_map(fn (SocialConnection $c) => ['id' => $c->getKey(), 'base_id' => $c->remote_id, 'display_name' => $c->display_name], $done),
+            'disconnected' => $dropped->count(),
+            'message' => SocialProvider::Airtable->connectedSentence(count($done), $done[0]->display_name ?? ''),
+        ]]);
+    }
+
+    /**
+     * A new token for every base this view has connected, at once — and only
+     * if it reaches all of them, so nothing is left half on the old token.
+     */
+    public function replaceToken(Request $request): JsonResponse
+    {
+        [$user, $scopeType, $scopeId] = $this->mayConnect($request);
+        $token = $request->validate(['api_token' => ['required', 'string', 'max:200']])['api_token'];
+        $connections = $this->connections($scopeType, $scopeId);
+        if ($connections->isEmpty()) {
+            throw ValidationException::withMessages(['api_token' => 'No Airtable bases are connected here yet. Connect them instead.']);
+        }
+
+        $verified = [];
+        $unreachable = [];
+        foreach ($connections as $connection) {
+            try {
+                $verified[$connection->getKey()] = $this->airtable->verify($token, (string) $connection->remote_id);
+            } catch (AirtableRefused $e) {
+                $unreachable[] = ($connection->display_name ?: $connection->remote_id).' ('.$e->getMessage().')';
+            }
+        }
+        if ($unreachable !== []) {
+            throw ValidationException::withMessages(['api_token' => 'The new token cannot reach: '.implode('; ', $unreachable).' Nothing was changed.']);
+        }
+
+        foreach ($connections as $connection) {
+            $this->connectBase($user, $scopeType, $scopeId, $token, (string) $connection->remote_id, $verified[$connection->getKey()], replaced: true);
+        }
+
+        return response()->json(['data' => [
+            'replaced' => $connections->count(),
+            'message' => 'The new token now reads all '.$connections->count().' bases. The old token can be deleted in Airtable.',
+        ]]);
+    }
+
+    /** @return array{0: User, 1: string, 2: string} */
+    private function mayConnect(Request $request): array
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->hasPermission(SocialProvider::Airtable->connectPermission()),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission(SocialProvider::Airtable->connectAct())->message(),
+        );
+        $view = ViewScope::forUser($user);
+        $scopeType = $view->isOrganization() ? SocialConnection::SCOPE_ORGANIZATION : $view->type;
+        $scopeId = $view->isOrganization() ? (string) $user->organization_id : (string) $view->id;
+        abort_unless(
+            $this->access->reachesScope($user, $scopeType, $scopeId),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission(SocialProvider::Airtable->connectAct())->message(),
+        );
+
+        return [$user, $scopeType, $scopeId];
+    }
+
+    private function connections(string $scopeType, string $scopeId)
+    {
+        return SocialConnection::query()->where('provider', SocialProvider::Airtable->value)
+            ->where('scope_type', $scopeType)->where('scope_id', $scopeId)->get();
+    }
+
+    private function connectBase($user, string $scopeType, string $scopeId, string $token, string $baseId, array $base, bool $replaced = false): SocialConnection
+    {
+        $connection = SocialConnection::query()->where('provider', SocialProvider::Airtable->value)
+            ->where('remote_id', $baseId)->first() ?? new SocialConnection;
+        if (! $connection->exists) {
+            $connection->forceFill([
+                'organization_id' => $user->organization_id, 'scope_type' => $scopeType, 'scope_id' => $scopeId,
+                'provider' => SocialProvider::Airtable->value, 'remote_id' => $baseId,
+            ]);
+        }
+        $connection->forceFill(['display_name' => $base['name'], 'handle' => $baseId]);
+        $connection->connect(['refresh_token' => $token, 'api_token' => $token, 'base_id' => $baseId]);
+        $connection->save();
+
+        $this->audit->log($replaced ? 'social.token_replaced' : 'social.connected', $connection, [
+            'provider' => SocialProvider::Airtable->value,
+            'display_name' => $connection->display_name,
+            'scope_type' => $connection->scope_type,
+            'tables' => $base['tables'],
+        ], actor: $user);
+
+        return $connection;
     }
 }

@@ -35,7 +35,7 @@ void main() {
     expect(find.byKey(const ValueKey('provider:workiz')), findsOneWidget);
 
     await _open(tester, 'airtable');
-    expect(find.text('Connect base'), findsOneWidget);
+    expect(find.text('Find bases'), findsOneWidget);
 
     await _back(tester);
     await _open(tester, 'workiz');
@@ -67,7 +67,7 @@ void main() {
 
     await _back(tester);
     await _open(tester, 'airtable');
-    expect(find.text('Connect base'), findsNothing);
+    expect(find.text('Find bases'), findsNothing);
   });
 
   testWidgets('the Workiz form needs the tab as well as the capability', (
@@ -124,7 +124,7 @@ void main() {
     await _pump(tester, permissions: const ['marketing.edit']);
 
     await _open(tester, 'airtable');
-    expect(find.text('Connect base'), findsNothing);
+    expect(find.text('Find bases'), findsNothing);
 
     await _back(tester);
     await _open(tester, 'workiz');
