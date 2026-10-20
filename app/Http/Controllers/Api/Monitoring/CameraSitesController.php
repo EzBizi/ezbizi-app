@@ -8,6 +8,7 @@ use App\Models\Franchise;
 use App\Models\MonitoredDevice;
 use App\Models\MonitoringCamera;
 use App\Support\Audit\AuditLogger;
+use App\Support\Monitoring\CameraRelay;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -104,6 +105,7 @@ class CameraSitesController extends Controller
 
         $site = $this->visible($request, $id);
         $this->audit->log('monitoring.camera_site.deleted', $site, [], ['name' => $site->name]);
+        app(CameraRelay::class)->forget($site);
         $site->delete(); // its cameras go with it (cascade)
 
         return response()->noContent();
@@ -191,6 +193,7 @@ class CameraSitesController extends Controller
 
         $site = $this->visible($request, $id);
         $site->forceFill(['site_key_hash' => null, 'device_id' => null, 'paired_at' => null])->save();
+        app(CameraRelay::class)->forget($site);
         $this->audit->log('monitoring.camera_site.revoked', $site);
 
         return response()->noContent();

@@ -70,6 +70,17 @@ class CameraRelay
         });
     }
 
+    /** Forget everything this site was asked to stream (revoke, delete). */
+    public function forget(CameraSite $site): void
+    {
+        $this->change($site->id, function (array &$items): bool {
+            $had = $items !== [];
+            $items = [];
+
+            return $had;
+        });
+    }
+
     public static function path(string $cameraId, string $quality): string
     {
         return "cam-{$cameraId}-{$quality}";
@@ -125,7 +136,8 @@ class CameraRelay
                 Http::timeout(2)->put("{$api}/api/streams?".http_build_query(['name' => $name, 'src' => $src]))->throw();
             }
         } catch (\Throwable $e) {
-            Log::warning('camera relay: box go2rtc refused a stream', ['path' => $path, 'error' => $e->getMessage()]);
+            // Never the message: Guzzle's ends with the full URI, secret included.
+            Log::warning('camera relay: box go2rtc refused a stream', ['path' => $path, 'error' => $e::class]);
         }
     }
 

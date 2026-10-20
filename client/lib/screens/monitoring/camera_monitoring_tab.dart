@@ -841,10 +841,16 @@ mixin _Watching<T extends StatefulWidget> on State<T> {
   Future<void> _watch() async {
     try {
       final next = await watchCamera(watchApi, watchId, quality: watchQuality);
-      // Keep the URL already playing: a running stream outlives its token.
       if (!mounted) return;
       setState(() {
-        play ??= next;
+        // Keep the URL already playing (a running stream outlives its token)
+        // unless its token is about to lapse: the next reconnect would 401.
+        final current = play;
+        if (current == null ||
+            current.expiresAt.difference(DateTime.now()) <
+                const Duration(minutes: 1)) {
+          play = next;
+        }
         failure = null;
       });
     } on CameraWatchException catch (e) {

@@ -111,6 +111,7 @@ class CameraBridgeService {
     while (_running) {
       try {
         final w = await api.work(since);
+        if (!_running) return; // stopped while it was held
         since = w.version;
         await engine.apply(w.wanted, await store.recorder());
         delay = const Duration(seconds: 1);

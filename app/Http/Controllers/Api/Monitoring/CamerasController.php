@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoringCamera;
 use App\Support\Audit\AuditLogger;
+use App\Support\Monitoring\CameraRelay;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -101,6 +102,13 @@ class CamerasController extends Controller
         $camera->fill($data);
         $changed = array_keys($camera->getDirty());
         $camera->save();
+
+        // Switched off while somebody watches: tell its bridge now.
+        if (in_array('enabled', $changed, true) && ! $camera->enabled && $camera->site_id !== null) {
+            foreach (['sub', 'main'] as $quality) {
+                app(CameraRelay::class)->unwant($camera, $quality);
+            }
+        }
 
         // Records WHICH fields changed, not their values — the url can carry a
         // credential, and "who changed the url and when" is the audited fact.

@@ -46,17 +46,26 @@ String go2rtcConfig(Recorder r, List<WantedCamera> wanted) {
 
 /// Runs go2rtc (bundled beside the app) for whatever is wanted right now.
 ///
-/// ponytail: a change restarts the process (sub-second); go2rtc's live config
-/// API if restarts ever drop a stream someone else is watching.
+/// ponytail: a change of cameras restarts the process (sub-second); go2rtc's
+/// live config API if restarts ever drop a stream someone else is watching.
 class Engine {
-  Engine({required this.exe, required this.configFile});
+  Engine({
+    required this.exe,
+    required this.configFile,
+    Future<Process> Function(String exe, List<String> args)? start,
+    this.restartDelay = const Duration(seconds: 2),
+  }) : _start = start ?? Process.start;
 
   final String exe;
   final File configFile;
+  final Future<Process> Function(String, List<String>) _start;
+  final Duration restartDelay;
 
   Process? _proc;
-  String _applied = '';
+  String _key = '';
+  bool _disposed = false;
   List<WantedCamera> _wanted = const [];
+  Recorder? _recorder;
   final Set<String> _authFailed = {};
 
   String get version => '1.9.14';
@@ -65,21 +74,31 @@ class Engine {
   /// every check-in instead of trying to start it.
   bool get missing => !File(exe).existsSync();
 
-  /// Idempotent: the same set twice does nothing.
+  /// Idempotent. Keyed on the cameras, not their publish URLs: every
+  /// long-poll answer mints a fresh token, and a running publish outlives
+  /// the token it started with.
   Future<void> apply(List<WantedCamera> wanted, Recorder? recorder) async {
-    final config = recorder == null || wanted.isEmpty
+    if (_disposed || missing) return;
+    final key = recorder == null || wanted.isEmpty
         ? ''
-        : go2rtcConfig(recorder, wanted);
-    if (config == _applied || missing) return;
-    _applied = config;
+        : '${recorder.host}|${recorder.username}|${recorder.password}|'
+              '${[for (final w in wanted) '${w.path}@${w.channel}'].join(',')}';
+    if (key == _key) return;
+    _key = key;
     _wanted = wanted;
+    _recorder = recorder;
     _authFailed.clear();
-    _proc?.kill();
-    _proc = null;
-    if (config.isEmpty) return; // idle: nothing wanted
+    await _kill();
+    if (key.isNotEmpty) await _launch();
+  }
 
-    await configFile.writeAsString(config, flush: true);
-    final p = await Process.start(exe, ['-config', configFile.path]);
+  Future<void> _launch() async {
+    if (_disposed || _recorder == null || _wanted.isEmpty) return;
+    await configFile.writeAsString(
+      go2rtcConfig(_recorder!, _wanted),
+      flush: true,
+    );
+    final p = await _start(exe, ['-config', configFile.path]);
     _proc = p;
     // go2rtc logs a refused login per stream; that is how auth_failed is known.
     for (final s in [p.stdout, p.stderr]) {
@@ -90,6 +109,30 @@ class Engine {
         }
       });
     }
+    // Crashed (not killed by us): start it again with the latest config.
+    unawaited(
+      p.exitCode.then((_) async {
+        if (!identical(_proc, p) || _disposed) return;
+        _proc = null;
+        await Future<void>.delayed(restartDelay);
+        if (_proc == null && _key.isNotEmpty) await _launch();
+      }),
+    );
+  }
+
+  /// Kill and wait for it to exit, so the next one can bind 127.0.0.1:1984.
+  Future<void> _kill() async {
+    final p = _proc;
+    _proc = null;
+    if (p == null) return;
+    p.kill();
+    await p.exitCode.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        p.kill(ProcessSignal.sigkill);
+        return -1;
+      },
+    );
   }
 
   /// Per wanted camera: `ok`, `unreachable` or `auth_failed`, from go2rtc's
@@ -122,9 +165,10 @@ class Engine {
     ];
   }
 
+  /// For good: a late [apply] (a long-poll still in flight) starts nothing.
   void stop() {
-    _proc?.kill();
-    _proc = null;
-    _applied = '';
+    _disposed = true;
+    _key = '';
+    unawaited(_kill());
   }
 }

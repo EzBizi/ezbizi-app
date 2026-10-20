@@ -32,7 +32,7 @@ class CameraRelayController extends Controller
         $quality = $request->validate(['quality' => ['sometimes', 'in:sub,main']])['quality'] ?? 'sub';
 
         $camera = MonitoringCamera::query()->visibleTo($request->user())
-            ->where('source', 'bridge')->with('site')->findOrFail($id);
+            ->where('source', 'bridge')->where('enabled', true)->with('site')->findOrFail($id);
 
         if (! $camera->site->online()) {
             return response()->json([
@@ -79,7 +79,14 @@ class CameraRelayController extends Controller
     public function playCheck(Request $request): Response
     {
         $this->guard($request);
-        parse_str((string) parse_url((string) $request->header('X-Original-URI'), PHP_URL_QUERY), $q);
+        $query = (string) parse_url((string) $request->header('X-Original-URI'), PHP_URL_QUERY);
+        // Exactly one src and one token: PHP keeps the last of a repeated key,
+        // go2rtc (Go) the first — a second src would check one stream and serve another.
+        $keys = array_map(fn ($pair) => urldecode(explode('=', $pair, 2)[0]), array_filter(explode('&', $query), 'strlen'));
+        if (array_count_values($keys) != ['src' => 1, 'token' => 1]) { // == ignores key order
+            return response()->noContent(401);
+        }
+        parse_str($query, $q);
         $src = (string) ($q['src'] ?? '');
         $ok = str_ends_with($src, '_jpg')
             && $this->relay->verify((string) ($q['token'] ?? ''), 'read', substr($src, 0, -4));

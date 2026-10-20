@@ -197,4 +197,44 @@ class CameraRelayTest extends TestCase
         $check("cam-{$a->id}-sub_jpg")->assertNoContent();
         $check("cam-{$b->id}-sub_jpg")->assertUnauthorized();
     }
+
+    public function test_play_check_refuses_a_second_src_smuggled_beside_a_valid_one(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $mine = $this->camera($alpha);
+        $victim = $this->camera($alpha);
+        $token = app(CameraRelay::class)->mintPlay($mine, $alpha['admin'], 'sub')['token'];
+
+        $this->withHeader('X-Relay-Secret', self::SECRET)
+            ->withHeader('X-Original-URI', "/api/stream.mjpeg?src=cam-{$victim->id}-main_jpg&src=cam-{$mine->id}-sub_jpg&token={$token}")
+            ->get('/api/v1/camera-relay/play-check')
+            ->assertUnauthorized();
+    }
+
+    public function test_a_disabled_camera_cannot_be_watched_and_disabling_unwants_it(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        $alpha = $this->provisionTenant('Alpha');
+        $camera = $this->camera($alpha);
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/monitoring/cameras/{$camera->id}/watch", ['quality' => 'sub'])->assertOk();
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/monitoring/cameras/{$camera->id}", ['enabled' => false])->assertOk();
+        $this->assertSame([], $this->wanted($alpha, $camera), 'Disabling stops the stream now.');
+
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/monitoring/cameras/{$camera->id}/watch", ['quality' => 'sub'])->assertNotFound();
+    }
+
+    public function test_disconnecting_a_site_forgets_what_it_was_asked_to_stream(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        $alpha = $this->provisionTenant('Alpha');
+        $camera = $this->camera($alpha);
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/monitoring/cameras/{$camera->id}/watch", ['quality' => 'sub'])->assertOk();
+        $before = $this->inTenant($alpha['org'], fn () => app(CameraRelay::class)->version($camera->site));
+
+        $this->signedInAs($alpha['admin'])->postJson("/api/v1/monitoring/camera-sites/{$camera->site_id}/revoke")->assertNoContent();
+
+        $this->assertSame([], $this->wanted($alpha, $camera));
+        $this->assertGreaterThan($before, $this->inTenant($alpha['org'], fn () => app(CameraRelay::class)->version($camera->site)));
+    }
 }

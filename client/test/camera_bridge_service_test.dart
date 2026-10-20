@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -198,5 +199,23 @@ void main() {
     await pumpEventQueue(times: 100);
 
     expect(sleeps, [1, 2, 4, 8, 16, 30, 30]);
+  });
+  test('stopping while a long-poll is in flight starts nothing when it returns', () async {
+    final reply = Completer<http.Response>();
+    final engine = _Engine();
+    final s = CameraBridgeService(
+      api: BridgeApi('k', client: MockClient((r) async => r.url.path.endsWith('/work') ? reply.future : http.Response('', 204))),
+      store: _Store(),
+      engine: engine,
+      discover: () async => const [],
+      sleep: (_) async {},
+    );
+    await s.start();
+    await pumpEventQueue();
+    s.stop();
+    reply.complete(_json({'version': 1, 'wanted': [_wanted('sub')]}));
+    await pumpEventQueue(times: 20);
+
+    expect(engine.applied, isEmpty);
   });
 }

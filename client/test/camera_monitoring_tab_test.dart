@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/camera_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -568,6 +569,45 @@ void main() {
         onRequest: (r) => watchReply(r, qualities),
       );
       expect(qualities, isEmpty);
+    });
+
+    testWidgets('a play URL near expiry is swapped for the fresh one', (
+      tester,
+    ) async {
+      var n = 0;
+      await _pumpTab(
+        tester,
+        cameras: [bridge],
+        onRequest: (r) {
+          if (!r.url.path.endsWith('/monitoring/cameras/cam-b/watch')) {
+            return null;
+          }
+          n++;
+          final soon = DateTime.now()
+              .toUtc()
+              .add(const Duration(seconds: 40))
+              .toIso8601String();
+          return _json({
+            'play': {
+              'url': 'http://relay.test/s?n=$n',
+              'expires_at': n == 1 ? soon : '2099-01-01T00:00:00Z',
+            },
+          });
+        },
+      );
+      bool showing(String url) => find
+          .byWidgetPredicate((w) => w is CameraImageView && w.url == url)
+          .evaluate()
+          .isNotEmpty;
+
+      expect(showing('http://relay.test/s?n=1'), isTrue);
+      await tester.pump(const Duration(seconds: 31));
+      await tester.pump();
+      expect(
+        showing('http://relay.test/s?n=2'),
+        isTrue,
+        reason: 'The old token would 401 on the next reconnect.',
+      );
     });
 
     testWidgets(

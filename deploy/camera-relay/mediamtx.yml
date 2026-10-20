@@ -29,5 +29,5 @@ rtmpServerCert: /etc/letsencrypt/live/cams.ezbizi.com/fullchain.pem
 paths:
   "~^cam-[0-9a-f-]{36}-(sub|main)$":
     # The box's go2rtc is the one reader; it leaves when the last viewer does.
-    runOnRead: sh -c 'curl -s -X POST -H "X-Relay-Secret: $CAMERA_RELAY_SECRET" -H "Content-Type: application/json" -d "{\"path\":\"$MTX_PATH\",\"viewers\":1}" http://127.0.0.1/api/v1/camera-relay/viewers'
-    runOnUnread: sh -c 'curl -s -X POST -H "X-Relay-Secret: $CAMERA_RELAY_SECRET" -H "Content-Type: application/json" -d "{\"path\":\"$MTX_PATH\",\"viewers\":0}" http://127.0.0.1/api/v1/camera-relay/viewers'
+    runOnRead: sh -c 'curl -s -X POST -H "Host: app.ezbizi.com" -H "X-Relay-Secret: $CAMERA_RELAY_SECRET" -H "Content-Type: application/json" -d "{\"path\":\"$MTX_PATH\",\"viewers\":1}" http://127.0.0.1/api/v1/camera-relay/viewers'
+    runOnUnread: sh -c 'curl -s -X POST -H "Host: app.ezbizi.com" -H "X-Relay-Secret: $CAMERA_RELAY_SECRET" -H "Content-Type: application/json" -d "{\"path\":\"$MTX_PATH\",\"viewers\":0}" http://127.0.0.1/api/v1/camera-relay/viewers'
