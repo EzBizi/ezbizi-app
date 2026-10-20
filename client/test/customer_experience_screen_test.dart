@@ -245,6 +245,15 @@ void reviewLinkTests() {
     },
   );
 
+  testWidgets('review links open on today', (tester) async {
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+    await tester.pumpAndSettle();
+
+    final today = tester.widget<ChoiceChip>(find.byKey(const ValueKey('report-dates-Today')));
+    expect(today.selected, isTrue);
+  });
+
   testWidgets('the table switches between branch and person', (tester) async {
     await _pump(tester, _handler(reachable: const ['reviews']));
     await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
