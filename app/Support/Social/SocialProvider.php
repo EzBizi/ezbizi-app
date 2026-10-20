@@ -76,6 +76,15 @@ enum SocialProvider: string
     case Workiz = 'workiz';
 
     /**
+     * A Workiz login (email and password) for the reports Workiz's API does not
+     * carry: payments, profit and commissions, the In Progress tab. One per
+     * tenant, across every Workiz account the login reaches; read by a signed-in
+     * session kept on the server (Jose, 2026-10-16: "Yes let's try with the
+     * workiz stuff first").
+     */
+    case WorkizWeb = 'workiz_web';
+
+    /**
      * A tenant's own Airtable base, read by Reports.
      *
      * ONE CONNECTION IS ONE BASE rather than one account. A personal access
@@ -119,6 +128,7 @@ enum SocialProvider: string
             self::GoogleAds => 'Google Ads',
             self::Thumbtack => 'Thumbtack',
             self::Workiz => 'Workiz',
+            self::WorkizWeb => 'Workiz web login',
             self::Airtable => 'Airtable',
             self::FacebookAds => 'Facebook Ads',
             self::RingCentral => 'RingCentral',
@@ -149,6 +159,7 @@ enum SocialProvider: string
             // token. Present so that adding it to an OAuth list later fails
             // visibly rather than throwing an UnhandledMatchError.
             self::Workiz => 'workiz',
+            self::WorkizWeb => 'workiz-web',
             self::Airtable => 'airtable',
             self::FacebookAds => 'facebook-ads',
             self::RingCentral => 'ringcentral',
@@ -175,6 +186,7 @@ enum SocialProvider: string
             self::Bluesky => 'password',
             self::Mailchimp => 'api_key',
             self::Workiz => 'api_key',
+            self::WorkizWeb => 'password',
             self::Airtable => 'api_key',
             self::RingCentral => 'api_key',
             default => 'sign_in',
@@ -223,7 +235,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable, self::FacebookAds, self::RingCentral];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral];
     }
 
     /**
@@ -353,6 +365,7 @@ enum SocialProvider: string
              * reached from a different screen.
              */
             self::Workiz => 'reports.build',
+            self::WorkizWeb => 'reports.build',
 
             /*
              * `profit_loss.view`, CORRECTED 2026-09-17, and the correction is
@@ -424,6 +437,7 @@ enum SocialProvider: string
             self::GoogleAds => 'connect a Google Ads account',
             self::GoogleBusinessProfile => 'connect a Business Profile',
             self::Workiz => 'connect a Workiz account',
+            self::WorkizWeb => 'connect a Workiz web login',
             self::Airtable => 'connect an Airtable base',
             self::FacebookAds => 'connect a Facebook Ads account',
             self::RingCentral => 'connect a RingCentral account',
@@ -531,6 +545,8 @@ enum SocialProvider: string
                     .'the Performance report under Reports.',
                     $name,
                 ),
+
+            self::WorkizWeb => sprintf('%s is connected to EzBizi. Its Workiz reports are read on a schedule.', $name),
 
             self::FacebookAds => $many
                 ? sprintf(

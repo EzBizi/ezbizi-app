@@ -196,6 +196,7 @@ use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
+use App\Http\Controllers\Api\WorkizWebSessionController;
 use App\Http\Controllers\Api\RingCentralConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -493,6 +494,13 @@ Route::post('v1/social/workiz/webhook/{connection}', WorkizWebhookController::cl
     ->middleware('throttle:600,1')
     ->whereUuid('connection')
     ->name('social.workiz.webhook');
+
+// The Workiz web session the "Send my Workiz session" extension posts. The
+// signed, 30-minute link is the authority; see WorkizWebSessionController.
+Route::post('v1/social/workiz-web/handoff/{connection}', [WorkizWebSessionController::class, 'handoff'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('connection')
+    ->name('social.workiz-web.handoff');
 
 /*
  * Unsubscribe — PUBLIC and unauthenticated, and it has to be.
@@ -1313,6 +1321,9 @@ Route::prefix('v1')
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
         Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
+        Route::post('social/workiz-web/link', [WorkizWebSessionController::class, 'link']);
+        Route::get('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'accounts']);
+        Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*
