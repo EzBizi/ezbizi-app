@@ -109,6 +109,8 @@ class TaskBoardsController extends Controller
             'can_edit' => $this->boards->canEdit($user, $taskBoard),
             'statuses' => $taskBoard->statuses->map(fn (TaskStatus $s) => TaskBoardSettingsController::presentStatus($s))->all(),
             'columns' => $taskBoard->columns->map(fn (TaskColumn $c) => TaskBoardSettingsController::presentColumn($c))->all(),
+            // Owner, Status, Due, About, Created, Updates: {key: {label, visible}}, every key.
+            'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
             'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))->all(),
@@ -148,17 +150,60 @@ class TaskBoardsController extends Controller
         return $this->show($request, $board)->setStatusCode(201);
     }
 
-    /** PATCH task-boards/{id} {name?, visibility?}: owners and Administrators, custom boards only. */
+    /**
+     * PATCH task-boards/{id} {name?, visibility?, builtin_columns?}.
+     * Name and visibility: owners and Administrators, custom boards only.
+     * builtin_columns ({key: {label?, visible?}}, merged into what is saved):
+     * anyone who may edit the board's columns, automatic boards included,
+     * because it is column configuration like adding a column.
+     */
     public function update(Request $request, TaskBoard $taskBoard): JsonResponse
     {
-        $this->authorizeManage($request->user(), $taskBoard);
+        if ($request->hasAny(['name', 'visibility']) || ! $request->has('builtin_columns')) {
+            $this->authorizeManage($request->user(), $taskBoard);
+        } else {
+            $this->authorize('update', $taskBoard);
+        }
         $input = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'visibility' => ['sometimes', 'required', Rule::in([TaskBoard::MAIN, TaskBoard::PRIVATE])],
+            'builtin_columns' => ['sometimes', 'array:'.implode(',', array_keys(TaskBoard::BUILTIN_COLUMNS))],
+            'builtin_columns.*' => ['array:label,visible'],
+            'builtin_columns.*.label' => ['sometimes', 'string', 'min:1', 'max:60'],
+            'builtin_columns.*.visible' => ['sometimes', 'boolean:strict'],
         ]);
+        if (array_key_exists('builtin_columns', $input)) {
+            $input['builtin_columns'] = self::mergeBuiltinColumns($taskBoard, $input['builtin_columns']);
+        }
         $taskBoard->fill($input)->save();
 
         return $this->show($request, $taskBoard->fresh());
+    }
+
+    /**
+     * Saved settings with $changes laid over them, key by key and field by
+     * field. Only what was ever set is stored; the defaults stay in code.
+     *
+     * @param  array<string, array{label?: string, visible?: bool}>  $changes
+     */
+    public static function mergeBuiltinColumns(TaskBoard $board, array $changes): array
+    {
+        $saved = is_array($board->builtin_columns) ? $board->builtin_columns : [];
+        foreach ($changes as $key => $fields) {
+            if (! array_key_exists($key, TaskBoard::BUILTIN_COLUMNS)) {
+                continue;
+            }
+            $row = is_array($saved[$key] ?? null) ? $saved[$key] : [];
+            if (array_key_exists('label', $fields)) {
+                $row['label'] = trim((string) $fields['label']);
+            }
+            if (array_key_exists('visible', $fields)) {
+                $row['visible'] = (bool) $fields['visible'];
+            }
+            $saved[$key] = $row;
+        }
+
+        return $saved;
     }
 
     public function destroy(Request $request, TaskBoard $taskBoard): Response

@@ -38,7 +38,45 @@ class TaskBoard extends Model implements StatesRetention
 
     public const PRIVATE = 'private';
 
-    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key'];
+    protected $fillable = ['organization_id', 'kind', 'company_id', 'franchise_id', 'owner_user_id', 'created_by_user_id', 'name', 'visibility', 'auto_key', 'builtin_columns'];
+
+    /**
+     * The built-in columns a board can relabel or hide (Jose, 2026-10-20):
+     * key => default label. `created` starts hidden, the rest visible.
+     */
+    public const BUILTIN_COLUMNS = [
+        'owner' => 'Owner',
+        'status' => 'Status',
+        'due' => 'Due',
+        'about' => 'About',
+        'created' => 'Created',
+        'updates' => 'Updates',
+    ];
+
+    protected function casts(): array
+    {
+        return ['builtin_columns' => 'array'];
+    }
+
+    /**
+     * Every built-in column, fully resolved: {key: {label, visible}}.
+     *
+     * @return array<string, array{label: string, visible: bool}>
+     */
+    public function resolvedBuiltinColumns(): array
+    {
+        $saved = is_array($this->builtin_columns) ? $this->builtin_columns : [];
+        $out = [];
+        foreach (self::BUILTIN_COLUMNS as $key => $label) {
+            $row = is_array($saved[$key] ?? null) ? $saved[$key] : [];
+            $out[$key] = [
+                'label' => is_string($row['label'] ?? null) && trim($row['label']) !== '' ? $row['label'] : $label,
+                'visible' => is_bool($row['visible'] ?? null) ? $row['visible'] : $key !== 'created',
+            ];
+        }
+
+        return $out;
+    }
 
     public static function retention(): RetentionPolicy
     {
