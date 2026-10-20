@@ -2245,7 +2245,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // Bases is the work; Settings is which Airtable table is which
                 // part of the books (organization configuration).
                 tabs: [
-                    new TabDefinition('bases', 'Bases'),
+                    new TabDefinition('bases', 'Home'),
                     new TabDefinition('bills', 'Bills'),
                     new TabDefinition('settings', 'Settings'),
                 ],
