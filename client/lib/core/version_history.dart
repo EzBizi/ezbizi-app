@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0462',
+      date: '20 Oct 2026',
+      items: [
+        'Human Resources: Delete permanently no longer closes the app when it opens.',
+        'Monitoring: a computer at a site can act as a camera bridge, sending that site\'s cameras to EzBizi (Settings › This computer).',
+        'Jobs: a job can carry its own type, sub-status and tags, ready for the job screen and for rules.',
+        'Automations: a job rule can set a job\'s sub-status and type, and add or remove a tag.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0461',
       date: '20 Oct 2026',
       items: [
