@@ -1328,6 +1328,7 @@ Route::prefix('v1')
         */
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
+        Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*
