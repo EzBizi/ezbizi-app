@@ -436,7 +436,10 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (widget.onEdit != null)
+                              // The Workiz web login is sent again, not
+                              // edited (UI queue 120).
+                              if (widget.onEdit != null &&
+                                  row.provider != 'workiz_web')
                                 TextButton(
                                   key: ValueKey('edit:${row.id}'),
                                   onPressed: () => widget.onEdit!(row),
@@ -612,7 +615,7 @@ class IntegrationConnection {
     'google_business_profile' ||
     'thumbtack' ||
     'facebook_ads' => 'leads',
-    'airtable' || 'workiz' || 'ringcentral' => 'reporting',
+    'airtable' || 'workiz' || 'workiz_web' || 'ringcentral' => 'reporting',
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
     'whatsapp' => 'messaging',
