@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import 'business_profile/performance_view.dart';
 
 /// Business Profile — the listings the public sees on Maps.
 ///
@@ -41,6 +42,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   int _notLive = 0;
   bool _onlyNotLive = false;
   int _request = 0;
+
+  /// Listings, or how they perform on Google (UI queue 114). A view inside
+  /// this screen rather than a tab: Business Profile declares no tabs of its
+  /// own, and this is the same switch the Not showing chip already makes.
+  bool _performance = false;
 
   @override
   void initState() {
@@ -120,11 +126,48 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final views = SegmentedButton<bool>(
+      key: const ValueKey('business-profile-view'),
+      showSelectedIcon: false,
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+      segments: const [
+        ButtonSegment(value: false, label: Text('Listings')),
+        ButtonSegment(value: true, label: Text('Performance')),
+      ],
+      selected: {_performance},
+      onSelectionChanged: (v) => setState(() => _performance = v.first),
+    );
+
+    // On a line of its own: beside the chip and Check Google it would not fit
+    // a phone.
+    final viewsLine = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Align(alignment: Alignment.centerLeft, child: views),
+    );
+
+    if (_performance) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          viewsLine,
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          Expanded(
+            child: BusinessProfilePerformance(
+              api: widget.api,
+              session: widget.session,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        viewsLine,
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(
             children: [
               FilterChip(
