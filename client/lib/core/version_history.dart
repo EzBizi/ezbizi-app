@@ -19,6 +19,8 @@ class VersionHistory {
       items: [
         'Reports: an approved weekly or monthly report is sent exactly as previewed, marked with its version.',
         'Reports: before approving, someone with Correct a report can leave jobs out, order the companies or set this report\'s goal. The numbers still come only from the sources, and a corrected report needs a new approval.',
+        'WhatsApp: staff can record a refund or move a repair-team split from chat, after replying YES, with the same permission as in the app.',
+        'Security: the WhatsApp assistant always answers each person as themselves. Before, a busy server could answer someone with the previous person\'s access.',
       ],
     ),
     VersionRelease(
