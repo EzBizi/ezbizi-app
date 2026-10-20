@@ -178,7 +178,7 @@ class SocialConnectionsApiTest extends TestCase
         // visible effect anywhere.
         $this->assertSame([
             'id', 'provider', 'provider_label', 'display_name', 'label', 'handle',
-            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'last_reached_at',
+            'scope_type', 'scope_id', 'status', 'status_reason', 'detail', 'workiz', 'last_reached_at',
             'can_publish', 'cannot_publish_because', 'posting_note', 'asks_tiktok_choices',
         ], array_keys($row));
 

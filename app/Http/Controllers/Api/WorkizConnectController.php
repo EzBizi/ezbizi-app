@@ -58,6 +58,66 @@ class WorkizConnectController extends Controller
         private readonly AuditLogger $audit,
     ) {}
 
+    /**
+     * PUT /api/v1/social/workiz/{connection}: replace an account's key or
+     * secret, or move it to the other API, in place. Nothing is shown back.
+     */
+    public function update(Request $request, SocialConnection $connection): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($connection->provider === SocialProvider::Workiz->value, Status::HTTP_NOT_FOUND);
+        abort_unless(
+            $user->hasPermission(SocialProvider::Workiz->connectPermission())
+                && $this->access->reachesScope($user, $connection->scope_type, (string) $connection->scope_id),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission(SocialProvider::Workiz->connectAct())->message(),
+        );
+
+        $data = $request->validate([
+            'api_token' => ['required', 'string', 'max:120'],
+            'auth_secret' => ['nullable', 'string', 'max:120'],
+            'method' => ['nullable', 'in:v1,v2'],
+        ]);
+
+        try {
+            $version = $this->workiz->verify($data['api_token']);
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['api_token' => $e->getMessage()]);
+        }
+
+        self::matchesMethod($data, $version);
+        $previous = (array) ($connection->credentials ?? []);
+        $secret = $version === 'v2' ? null : ($data['auth_secret']
+            ?? (($previous['api_token'] ?? null) === $data['api_token'] ? ($previous['auth_secret'] ?? null) : null));
+        $connection->connect(array_filter([
+            'refresh_token' => $data['api_token'],
+            'api_token' => $data['api_token'],
+            'auth_secret' => $secret,
+            'api_version' => $version === 'v2' ? 'v2' : null,
+            'v1' => $version === 'v2' ? (($previous['api_version'] ?? 'v1') === 'v1' && ($previous['api_token'] ?? '') !== ''
+                ? array_filter(['api_token' => $previous['api_token'], 'auth_secret' => $previous['auth_secret'] ?? null])
+                : ($previous['v1'] ?? null)) : null,
+        ]));
+        $connection->save();
+
+        $this->audit->log('social.reconnected', $connection, [
+            'provider' => SocialProvider::Workiz->value,
+            'api_version' => $version,
+            'write_key' => $version === 'v2' || $secret !== null,
+        ], actor: $user);
+
+        return response()->json(['data' => ['id' => $connection->getKey(), 'method' => $version]]);
+    }
+
+    /** A key of the other API than the one chosen is said so, rather than saved under the wrong name. */
+    private static function matchesMethod(array $data, string $version): void
+    {
+        if (($data['method'] ?? null) !== null && $data['method'] !== $version) {
+            throw ValidationException::withMessages(['api_token' => 'That is a Workiz '.$version.' key, not '.$data['method'].'. '
+                .'Choose '.$version.', or paste the key from the '.$data['method'].' tab of the Workiz Developer page.']);
+        }
+    }
+
     public function store(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -74,6 +134,9 @@ class WorkizConnectController extends Controller
             // page. Without it EzBizi reads the jobs but cannot change them.
             'auth_secret' => ['nullable', 'string', 'max:120'],
             'label' => ['nullable', 'string', 'max:120'],
+            // Which of Workiz's two APIs the person chose (Jose, 2026-10-19:
+            // the form offered no choice). Optional: the key says for itself.
+            'method' => ['nullable', 'in:v1,v2'],
         ], [
             'api_token.required' => 'Paste the API key from the v2 tab of this account’s Workiz Developer page (or the v1 tab’s API Token).',
         ]);
@@ -102,6 +165,8 @@ class WorkizConnectController extends Controller
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['api_token' => $e->getMessage()]);
         }
+
+        self::matchesMethod($data, $version);
 
         $connection = SocialConnection::query()
             ->where('provider', SocialProvider::Workiz->value)
