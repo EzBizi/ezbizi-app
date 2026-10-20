@@ -22,7 +22,7 @@ class PerformancePeople
     ) {}
 
     /** @return array<string, array<string, mixed>> person => row; empty without RingCentral */
-    public function for(User $user, CarbonImmutable $start, CarbonImmutable $end): array
+    public function for(?User $user, CarbonImmutable $start, CarbonImmutable $end): array
     {
         if (! $this->calls->configured()) {
             return [];

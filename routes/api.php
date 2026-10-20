@@ -179,6 +179,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -992,6 +993,9 @@ Route::prefix('v1')
         Route::get('a1leads-gbp/report/status', [A1LeadsReviewOpsController::class, 'reportStatus']);
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        // How listings perform on Google (A1 Leads takeover, 2026-10-20).
+        Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
+        Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
@@ -1024,6 +1028,12 @@ Route::prefix('v1')
             Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
             Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
             Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
+        });
+        Route::middleware('permission:financials.bases.view')->group(function (): void {
+            Route::get('financials/adjustments', [FinancialAdjustmentsController::class, 'index']);
+            Route::post('financials/adjustments', [FinancialAdjustmentsController::class, 'store']);
+            Route::patch('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'update']);
+            Route::delete('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'destroy']);
         });
         Route::middleware('permission:financials.bills.view')->group(function (): void {
             Route::get('financials/bills', [FinancialBillsController::class, 'index']);
@@ -1351,6 +1361,9 @@ Route::prefix('v1')
         Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
         // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
         // The weekly/monthly report's goals (A1 Leads takeover, 2026-10-16).
+        // Correcting a report draft before it is approved (2026-10-20).
+        Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
+        Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');

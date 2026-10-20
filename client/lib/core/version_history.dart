@@ -14,6 +14,25 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0457',
+      date: '20 Oct 2026',
+      items: [
+        'Reports: an approved weekly or monthly report is sent exactly as previewed, marked with its version.',
+        'Reports: before approving, someone with Correct a report can leave jobs out, order the companies or set this report\'s goal. The numbers still come only from the sources, and a corrected report needs a new approval.',
+        'WhatsApp: staff can record a refund or move a repair-team split from chat, after replying YES, with the same permission as in the app.',
+        'Security: the WhatsApp assistant always answers each person as themselves. Before, a busy server could answer someone with the previous person\'s access.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0456',
+      date: '20 Oct 2026',
+      items: [
+        'Settings › Organization: edit a company right on its page, with empty fields marked. A Details | Settings switch shows that company\'s or branch\'s own settings, ready to set there.',
+        'Reports › Goals: one branch picker that names each branch with its company.',
+        'Roles & permissions: an open module\'s headings line up on the left.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0455',
       date: '19 Oct 2026',
       items: [

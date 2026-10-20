@@ -245,13 +245,18 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                   // The List view's tree is what it filters, so it is not
                   // offered over the canvas.
                   if (_tab == _list)
+                    // As tall as the buttons beside it (Jose, 2026-10-20).
                     SizedBox(
                       width: 240,
+                      height: 40,
                       child: TextField(
                         key: const ValueKey('org-search'),
                         controller: _search,
+                        textAlignVertical: TextAlignVertical.center,
                         decoration: const InputDecoration(
                           isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                          prefixIconConstraints: BoxConstraints(minWidth: 36),
                           prefixIcon: Icon(Icons.search, size: 18),
                           hintText: 'Find a company or branch',
                           border: OutlineInputBorder(),

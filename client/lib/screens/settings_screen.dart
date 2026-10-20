@@ -56,10 +56,24 @@ class SettingsScreen extends StatefulWidget {
     required this.api,
     required this.session,
     this.onlyGroup,
+    this.scopeType,
+    this.scopeId,
+    this.scopeLabel,
+    this.startSetHere = false,
   });
 
   final ApiClient api;
   final Session session;
+
+  /// Another place than the current view: Organization's page for a company
+  /// or branch draws that place's settings, editable there (Jose, 2026-10-20:
+  /// "settings set here ... aren't there to set"). Null is the current view.
+  final String? scopeType;
+  final String? scopeId;
+  final String? scopeLabel;
+
+  /// Open on "Set here" rather than on everything.
+  final bool startSetHere;
 
   /// Show one server group and nothing else. Work Hours' Settings tab reads
   /// its Clock in and paid-time-off rows this way (2026-09-24), so the rows,
@@ -212,16 +226,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// companies and their franchises — which was a second control doing the same
   /// job as the switcher. Two of them is how somebody ends up configuring one
   /// scope while looking at another's numbers.
-  String get _scopeType => widget.session.me!.scope.type;
+  String get _scopeType => widget.scopeType ?? widget.session.me!.scope.type;
   String? get _scopeId =>
-      widget.session.me!.scope.id ?? widget.session.me!.organization.id;
+      widget.scopeId ??
+      widget.session.me!.scope.id ??
+      widget.session.me!.organization.id;
 
   /// The full chain — "Everdoors › Connecticut".
   ///
   /// "Settings for Connecticut" named one of two different places, each with
   /// its own values, and there was nothing on the screen to say which was being
   /// edited.
-  String get _scopeLabel => widget.session.me!.scope.fullPath;
+  String get _scopeLabel =>
+      widget.scopeLabel ?? widget.session.me!.scope.fullPath;
 
   /// The rows, typed. Anything in the response that is not a row is skipped
   /// rather than taking the screen down around it.
@@ -231,6 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.startSetHere) _filter = _Filter.setHere;
     // Filtering is the only thing typing does, so a listener is the whole
     // wiring — no submit button, no debounce. Thirty rows do not need one.
     _search.addListener(() => setState(() {}));
