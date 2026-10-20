@@ -34,7 +34,7 @@ void main() {
       server.writes,
       contains(
         'POST /monitoring/camera-sites/s-yard/cameras '
-        '{"channel":2,"label":"Back fence"}',
+        '{"channel":"2","label":"Back fence"}',
       ),
     );
   });
@@ -389,7 +389,7 @@ class _Server {
   final cameras = [
     {
       'id': 'c-gate',
-      'channel': 1,
+      'channel': '1',
       'label': 'Gate',
       'enabled': true,
       'supports': ['live'],
@@ -450,8 +450,8 @@ class _Server {
                       'kind': 'recorder',
                       'address': '192.168.1.64',
                       'channels': [
-                        {'channel': 1, 'label': 'Cam 1'},
-                        {'channel': 2, 'label': null},
+                        {'channel': '1', 'label': 'Cam 1'},
+                        {'channel': '2', 'label': null},
                       ],
                     },
                   ]

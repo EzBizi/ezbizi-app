@@ -284,8 +284,8 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
       _actionError = null;
     });
     final res = await widget.api.post('/monitoring/camera-sites/$id/cameras', {
-      // As the bridge reported it: a number stays a number.
-      'channel': int.tryParse(channel) ?? channel,
+      // A string on both sides (Monitoring validates it as one).
+      'channel': channel,
       'label': label.trim().isEmpty ? 'Channel $channel' : label.trim(),
     });
     if (!mounted) return;
