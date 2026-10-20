@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0460',
+      date: '20 Oct 2026',
+      items: [
+        'The A1Leads GBP tab is gone: its reviews, statuses, notes and matches are in Customer Experience › Reviews.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0459',
       date: '20 Oct 2026',
       items: [
