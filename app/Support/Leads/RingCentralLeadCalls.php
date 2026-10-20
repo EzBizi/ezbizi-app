@@ -141,7 +141,7 @@ final class RingCentralLeadCalls
             $out = self::outbound($call);
             $digits = self::ten(self::customerNumber($call));
             if (isset($have['rc_'.$call['id']])) {
-                $this->update($have['rc_'.$call['id']], $call, $out, $existingQueue, $times[$i]);
+                $this->update($have['rc_'.$call['id']], $call, $out, $existingQueue, $times[$i], $lineNames);
 
                 continue;
             }
@@ -168,7 +168,7 @@ final class RingCentralLeadCalls
             if ($out && $customer && $this->leadFor($digits, $times[$i]) === null) {
                 continue;
             }
-            DB::transaction(function () use ($call, $out, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome) {
+            DB::transaction(function () use ($call, $out, $digits, $line, $companyId, $franchiseId, $times, $i, $outcome, $lineNames) {
                 $lead = $this->leadFor($digits, $times[$i]) ?? Lead::create([
                     'organization_id' => app(\App\Support\Tenancy\TenantContext::class)->idOrFail(),
                     'company_id' => $companyId,
@@ -200,7 +200,7 @@ final class RingCentralLeadCalls
                     'duration_ms' => ($call['result'] ?? null) === 'Call connected' && ($call['duration'] ?? null) !== null ? (int) $call['duration'] * 1000 : null,
                     'recording_url' => $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null,
                     'text' => $call['caller_label'] !== null ? mb_substr((string) $call['caller_label'], 0, 120) : null,
-                ] : [
+                ] + self::line($call, $lineNames) : self::line($call, $lineNames) + [
                     'channel' => LeadConversation::CHANNEL_PHONE_CALL,
                     'participant' => LeadConversation::FROM_CONSUMER,
                     'occurred_at' => $times[$i],
@@ -242,10 +242,10 @@ final class RingCentralLeadCalls
      *
      * @param  array<string, mixed>  $call
      */
-    private function update(LeadConversation $row, array $call, bool $out, ?string $existingQueue, CarbonImmutable $at): void
+    private function update(LeadConversation $row, array $call, bool $out, ?string $existingQueue, CarbonImmutable $at, array $lineNames = []): void
     {
         $recording = $call['recording_id'] !== null ? 'ringcentral:'.$call['recording_id'] : null;
-        $fields = ['recording_url' => $recording ?? $row->recording_url];
+        $fields = ['recording_url' => $recording ?? $row->recording_url] + self::line($call, $lineNames);
         $outcome = null;
         if ($out) {
             $fields['duration_ms'] = ($call['result'] ?? null) === 'Call connected' && ($call['duration'] ?? null) !== null ? (int) $call['duration'] * 1000 : null;
@@ -396,6 +396,24 @@ final class RingCentralLeadCalls
         }
 
         return $word.' · '.intdiv($seconds, 60).':'.str_pad((string) ($seconds % 60), 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Our number on the call - the one they dialled, or the one we called from -
+     * and its name (Jose, 2026-10-20: "can we show What number they called").
+     *
+     * @param  array<string, mixed>  $call
+     * @param  array<string, string>  $lineNames
+     * @return array{line_number: ?string, line_name: ?string}
+     */
+    private static function line(array $call, array $lineNames): array
+    {
+        $ours = (string) (self::outbound($call) ? ($call['from'] ?? '') : ($call['to_number'] ?? ''));
+
+        return [
+            'line_number' => $ours !== '' ? mb_substr($ours, 0, 20) : null,
+            'line_name' => isset($lineNames[$ours]) && $lineNames[$ours] !== '' ? mb_substr($lineNames[$ours], 0, 120) : null,
+        ];
     }
 
     /** @param  array<string, mixed>  $staff  names whose phones rang, as keys */

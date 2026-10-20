@@ -2435,6 +2435,20 @@ class _LeadThreadState extends State<LeadThread> {
                     ),
                   ],
                 ),
+                // Which of our numbers, and its line (Jose, 2026-10-20: "can we
+                // show What number they called as well?").
+                if ((c['line_number'] as String?)?.isNotEmpty == true)
+                  Text(
+                    [
+                      '${who == 'Customer' ? 'to' : 'from'} ${formatPhoneNumber(c['line_number'] as String?)}',
+                      if ((c['line_name'] as String?)?.isNotEmpty == true)
+                        c['line_name'] as String,
+                    ].join(' · '),
+                    key: ValueKey('call-line-$id'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 if (hasRecording)
                   RecordingPlaybackBar(
                     key: ValueKey('recording-$id'),

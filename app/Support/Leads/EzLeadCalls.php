@@ -147,6 +147,8 @@ final class EzLeadCalls
                 'occurred_at' => $at,
                 'duration_ms' => $answered && $call->duration_seconds !== null ? (int) $call->duration_seconds * 1000 : null,
                 'recording_url' => $call->recording_sid !== null ? 'twilio:'.$call->id : null,
+                'line_number' => $line->e164,
+                'line_name' => $line->label ?: null,
                 'transcript' => $call->transcript ?? $call->voicemail_transcript,
                 'text' => $answered ? null : (self::WORDS[$outcome] ?? null),
             ]);
@@ -192,6 +194,8 @@ final class EzLeadCalls
                 'occurred_at' => $at,
                 'duration_ms' => $call->status === PhoneCall::STATUS_COMPLETED && $call->duration_seconds ? (int) $call->duration_seconds * 1000 : null,
                 'recording_url' => $call->recording_sid !== null ? 'twilio:'.$call->id : null,
+                'line_number' => $line->e164,
+                'line_name' => $line->label ?: null,
                 'transcript' => $call->transcript,
                 'text' => $by !== null ? mb_substr($by, 0, 120) : null,
             ]);
