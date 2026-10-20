@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.18
+ * Version:           1.26.19
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.18';
+const EZBIZI_VERSION = '1.26.19';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -551,6 +551,23 @@ add_action('init', function () {
     $page = preg_match('~^https?://~i', $page) ? $page : home_url('/reviews/');
     nocache_headers();
     wp_redirect($page . (strpos($page, '?') === false ? '?' : '&') . 'c=' . $m[1], 302);
+    exit;
+}, 1);
+
+/*
+ * /b/Ab3xK9m: the short booking link an after-hours reply carries (Jose,
+ * 2026-10-20, "like we did with the review links"). The code is EzBizi's; this
+ * forwards it to the site's booking page, whose widget sends it back as l.
+ */
+add_action('init', function () {
+    $path = (string) wp_parse_url(isset($_SERVER['REQUEST_URI']) ? wp_unslash($_SERVER['REQUEST_URI']) : '', PHP_URL_PATH);
+
+    if (! preg_match('~^/b/([A-Za-z0-9]{7})/?$~', $path, $m)) {
+        return;
+    }
+
+    nocache_headers();
+    wp_redirect(home_url('/booking/') . '?l=' . $m[1], 302);
     exit;
 }, 1);
 

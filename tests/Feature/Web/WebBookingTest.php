@@ -81,9 +81,10 @@ class WebBookingTest extends TestCase
             'contact_name' => 'Dana Smith', 'phone' => '+12035550100', 'postal_code' => '06810',
             'status' => Lead::STATUS_NEW, 'received_at' => now(),
         ]));
-        $url = BookingLink::forLead($lead, 'https://www.a-1chimney.com/booking/');
-        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
-        $token = $query['l'];
+        $token = basename($this->inTenant($tenant['org'], fn () => BookingLink::forLead($lead, 'https://www.a-1chimney.com/booking/')));
+        // A link sent before the short codes (a signed token) still reads.
+        $old = $this->inTenant($tenant['org'], fn () => BookingLink::signed($lead));
+        $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($old))->assertOk();
 
         $this->getJson('/api/v1/web/booking/lead?key='.$site->public_key.'&l='.urlencode($token))->assertOk()
             ->assertExactJson(['first_name' => 'Dana', 'zip' => '06810', 'has_name' => true, 'has_phone' => true]);
