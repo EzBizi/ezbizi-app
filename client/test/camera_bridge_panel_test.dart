@@ -261,6 +261,16 @@ void main() {
           .text,
       '10.0.4.33',
     );
+    // Monitoring 2026-10-20: the scan lists no recorder channels yet, so a
+    // found recorder explains step 4 instead of leaving it looking stuck.
+    expect(
+      find.byKey(const ValueKey('camera-bridge-cameras-via-recorder')),
+      findsOne,
+    );
+    expect(
+      find.byKey(const ValueKey('camera-bridge-line-4-pending')),
+      findsOne,
+    );
   });
 
   testWidgets('the switch turns the bridge off and step 1 goes back to '
