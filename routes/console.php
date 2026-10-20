@@ -383,6 +383,8 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
+// Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
+Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).
 Schedule::command('ezbizi:gbp-performance-sync')->dailyAt('05:40')->timezone('America/New_York')->withoutOverlapping(60);
 // The day on Google, for each organization's rules (A1 Leads takeover, 2026-10-19).

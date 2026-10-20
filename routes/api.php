@@ -960,6 +960,11 @@ Route::prefix('v1')
         Route::put('sales/deals/{job}', [SalesController::class, 'update'])->middleware('permission:sales.manage');
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
+        Route::get('complaints', [\App\Http\Controllers\Api\ComplaintsController::class, 'index']);
+        Route::get('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'show']);
+        Route::patch('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'update']);
+        Route::post('complaints/{complaint}/notes', [\App\Http\Controllers\Api\ComplaintsController::class, 'addNote']);
         // How listings perform on Google (A1 Leads takeover, 2026-10-20).
         Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
