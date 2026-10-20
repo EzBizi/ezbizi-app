@@ -418,6 +418,7 @@
         "hr.contracts.view",
         "hr.create",
         "hr.dashboard.view",
+        "hr.delete",
         "hr.edit",
         "hr.invitations.view",
         "hr.onboarding.view",
