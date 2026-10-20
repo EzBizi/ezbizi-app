@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/camera_bridge/bridge_boot.dart';
 import '../../core/session.dart';
 import '../settings_screen.dart';
 import '../customers/memberships_settings.dart';
@@ -13,6 +14,7 @@ import '../reports/report_goals_settings.dart';
 import '../scheduling_screen.dart';
 import '../services/service_settings.dart';
 import '../training/settings_tab.dart';
+import 'camera_bridge_panel.dart';
 
 /// Settings › Settings as the hub of every module's settings (Jose,
 /// 2026-10-15: "the settings tab should be in sync with them and have the full
@@ -23,10 +25,19 @@ import '../training/settings_tab.dart';
 /// draws, behind the same grant, so there is one copy and nothing to keep in
 /// step. "All settings" is the organization-wide page it always was.
 class SettingsHub extends StatefulWidget {
-  const SettingsHub({super.key, required this.api, required this.session});
+  const SettingsHub({
+    super.key,
+    required this.api,
+    required this.session,
+    this.thisComputer,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Whether "This computer" is listed; null asks the platform (Windows runs
+  /// a camera bridge, nothing else does). Set in tests.
+  final bool? thisComputer;
 
   /// Wider than this, the index sits on the left; narrower, it is a chip row.
   static const double sideAbove = 900;
@@ -174,6 +185,15 @@ class _SettingsHubState extends State<SettingsHub> {
             session: session,
             onlyGroup: 'ai_assistance',
           ),
+        ),
+      // This PC, not the organization: the camera bridge on the site PC that
+      // stays on (UI queue 117, "The bridge on the PC that stays on").
+      if (widget.thisComputer ?? cameraBridgeSupported)
+        (
+          'this_computer',
+          'This computer',
+          Icons.computer_outlined,
+          () => CameraBridgePanel(api: api, session: session),
         ),
     ];
   }
