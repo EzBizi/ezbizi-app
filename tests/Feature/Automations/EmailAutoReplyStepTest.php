@@ -18,6 +18,41 @@ class EmailAutoReplyStepTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    public function test_the_closed_office_wording_drops_the_phone_line_where_there_is_no_phone(): void
+    {
+        $sent = [];
+        $reader = Mockery::mock(MailboxReader::class);
+        $reader->shouldReceive('reply')->andReturnUsing(function ($m, $id, $body) use (&$sent) { $sent[] = $body; });
+        $this->app->bind(MailboxReaders::class, fn () => new class($reader) extends MailboxReaders {
+            public function __construct(private readonly MailboxReader $r) {}
+
+            protected function readerFor(Mailbox $mailbox): MailboxReader
+            {
+                return $this->r;
+            }
+        });
+        $t = $this->provisionTenant('A1-Group');
+        $this->inTenant($t['org'], function () use ($t, &$sent) {
+            $mailbox = Mailbox::create(['organization_id' => $t['org']->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'address' => 'office@a-1chimney.com', 'display_name' => 'Office', 'provider' => 'gmail_oauth']);
+            $body = "{{greeting}}
+
+Thank you for contacting {{company_name}}! A member of our team will get back to you {{office_opens}}.
+
+If it's urgent, please call us at {{office_phone}}.";
+            foreach (['(855) 955-3322' => 'a@example.test', '' => 'b@example.test'] as $phone => $from) {
+                app(ActionRunner::class)->run(['type' => 'message.reply', 'body' => $body], new AutomationEvent(['event_key' => 'email.received',
+                    'payload' => ['message_id' => 'm', 'from_address' => $from, 'greeting' => 'Hi Pat,', 'company_name' => 'A-1 Chimney',
+                        'office_opens' => 'tomorrow at 8:00 AM', 'office_phone' => $phone]]), $mailbox);
+            }
+        });
+        $this->assertStringContainsString("Hi Pat,
+
+Thank you for contacting A-1 Chimney! A member of our team will get back to you tomorrow at 8:00 AM.", $sent[0]);
+        $this->assertStringContainsString('call us at (855) 955-3322.', $sent[0]);
+        $this->assertStringNotContainsString('urgent', $sent[1]);
+    }
+
     public function test_it_replies_once_in_the_thread_never_to_a_robot_and_never_marks_read(): void
     {
         $reader = Mockery::mock(MailboxReader::class);

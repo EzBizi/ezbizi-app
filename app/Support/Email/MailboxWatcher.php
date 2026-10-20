@@ -464,6 +464,33 @@ final class MailboxWatcher
      *
      * @return array<string, mixed>
      */
+    /**
+     * The words an after-hours reply needs, from the inbox's own place (Eve and
+     * Jose, 2026-10-20): the same leads.office_hours, timezone and
+     * leads.office_phone the lead replies read.
+     *
+     * @return array<string, mixed>
+     */
+    private function officeFields(Mailbox $mailbox, MessageSummary $message): array
+    {
+        $place = match ($mailbox->automationScope()[0]) {
+            'franchise' => \App\Models\Franchise::query()->find($mailbox->scope_id),
+            'company' => \App\Models\Company::query()->find($mailbox->scope_id),
+            default => null,
+        } ?? \App\Models\Organization::query()->find($mailbox->organization_id);
+        $hours = app(\App\Support\Leads\LeadOfficeHours::class);
+        $first = trim(strtok(trim($message->fromName), ' ') ?: '');
+
+        return [
+            'office_open' => $hours->isOpenAt($place),
+            'office_opens' => $hours->nextOpeningAt($place) ?? 'as soon as we can',
+            'office_phone' => trim((string) app(\App\Support\Settings\SettingsResolver::class)->get('leads.office_phone', $place)),
+            'company_name' => (string) (($place instanceof \App\Models\Franchise ? $place->company?->name : null) ?? $place->name ?? ''),
+            // "Hi Pat," - or "Hi," when the sender gave only an address.
+            'greeting' => $first !== '' && ! str_contains($first, '@') ? "Hi {$first}," : 'Hi,',
+        ];
+    }
+
     private function payload(Mailbox $mailbox, MessageSummary $message, string $matched = '', string $description = ''): array
     {
         return [
@@ -490,13 +517,7 @@ final class MailboxWatcher
 
             // For "reply when the office is closed" (Eve and Jose, 2026-10-20):
             // the inbox's own place's leads.office_hours, as the lead replies use.
-            'office_open'  => app(\App\Support\Leads\LeadOfficeHours::class)->isOpenAt(
-                match ($mailbox->automationScope()[0]) {
-                    'franchise' => \App\Models\Franchise::query()->find($mailbox->scope_id),
-                    'company' => \App\Models\Company::query()->find($mailbox->scope_id),
-                    default => null,
-                } ?? \App\Models\Organization::query()->find($mailbox->organization_id),
-            ),
+            ...$this->officeFields($mailbox, $message),
 
             /*
              * WHICH OF THE RULE'S OWN WORDS WERE IN THE BODY. Never the body.
