@@ -55,7 +55,11 @@ class BusinessProfilePerformanceTest extends TestCase
             $c->connect(['refresh_token' => 'rt']);
             $c->save();
             $make = fn (string $n, string $title, string $franchise) => BusinessLocation::create(['organization_id' => $this->t['org']->id,
-                'franchise_id' => $franchise, 'connection_id' => $c->id, 'remote_name' => "locations/{$n}", 'account_name' => 'accounts/9', 'title' => $title]);
+                'franchise_id' => $franchise, 'connection_id' => $c->id, 'remote_name' => "locations/{$n}", 'account_name' => 'accounts/9', 'title' => $title,
+                'verification_state' => BusinessLocation::VERIFIED]);
+
+            // Google serves no counts for an unverified listing: skipped, never asked.
+            $make('3', 'Unverified', $this->t['franchise']->id)->forceFill(['verification_state' => BusinessLocation::UNVERIFIED])->save();
 
             return [$make('1', 'North', $this->t['franchise']->id), $make('2', 'South', $other->id)];
         });
@@ -65,6 +69,7 @@ class BusinessProfilePerformanceTest extends TestCase
     {
         $this->artisan('ezbizi:gbp-performance-sync')->assertSuccessful();
         $this->artisan('ezbizi:gbp-performance-sync')->assertSuccessful(); // re-reading overwrites, never doubles
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'locations/3:'));
 
         $data = $this->signedInAs($this->t['admin'])->getJson('/api/v1/business-profile/performance')->assertOk()->json('data');
         $this->assertSame(5 + 1 + 9 + 1, $data['totals']['CALL_CLICKS']);
@@ -77,7 +82,9 @@ class BusinessProfilePerformanceTest extends TestCase
         $branch = $this->userWithRole($this->t, 'Branch', ['business_profile.view'], null, $this->t['franchise']);
         $mine = $this->signedInAs($branch)->getJson('/api/v1/business-profile/performance')->assertOk()->json('data');
         $this->assertSame(6, $mine['totals']['CALL_CLICKS']);
-        $this->assertSame(['North'], array_column($mine['by_location'], 'name'));
+        // The unverified listing is listed, with nothing counted.
+        $this->assertSame(['North', 'Unverified'], array_column($mine['by_location'], 'name'));
+        $this->assertSame(0, $mine['by_location'][1]['CALL_CLICKS']);
     }
 
     public function test_search_terms_are_read_live_and_ranked(): void

@@ -111,10 +111,18 @@ void main() {
       }
 
       // A one-chip strip is a screen, not a choice; the registry has no tab
-      // to grant for it either way.
-      final shown = own.length == 1 && inner.containsKey(own.single)
-          ? _asTabs(inner[own.single]!)
-          : _asTabs(own);
+      // to grant for it either way. A parent's one pane of its own is the
+      // module itself when it carries the module's strip (Marketing › Social
+      // Media) or its name (Customers); otherwise it is a tab of the parent,
+      // a choice beside the child chips (Customer Experience › Complaints).
+      final String? pane = own.length == 1 && inner.containsKey(own.single)
+          ? own.single
+          : null;
+      final shown = pane == null
+          ? _asTabs(own)
+          : inner[pane]!.length >= 2 || pane == module?['label']
+          ? _asTabs(inner[pane]!)
+          : own;
       final agrees = listEquals(shown, declared);
 
       final drift = _knownDrift[entry.key];

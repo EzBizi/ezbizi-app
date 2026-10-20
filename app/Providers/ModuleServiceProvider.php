@@ -2865,10 +2865,32 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'customer_experience',
                 label: 'Customer Experience',
-                actions: ['view'],
-                automationExemptBecause: 'A container for other modules. It holds no '
-                    .'records and raises no events; Reviews and Business Profile declare '
-                    .'their own triggers and subjects.',
+                // Complaints (Jose, 2026-10-20): every bad review, Bad Rating and
+                // complaint call, and where handling it has got to. The tab is
+                // customer_experience.complaints.view; working one is .manage.
+                actions: ['view', 'complaints.manage'],
+                actionLabels: ['complaints.manage' => 'Work complaints (status, owner, notes)'],
+                tabs: [
+                    new TabDefinition('complaints', 'Complaints'),
+                ],
+                auditActionPrefixes: ['complaint'],
+                subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),
+                emits: [\App\Models\Complaint::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'complaint.opened',
+                        label: 'Complaint opened',
+                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, or a call '
+                            .'heard as a complaint was added to Complaints. It carries the kind and, for a '
+                            .'review, the rating.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'complaint.status_changed',
+                        label: 'Complaint status changed',
+                        description: 'Somebody moved a complaint to New, In progress, Solved or Cannot be '
+                            .'solved. It carries the status before and after.',
+                    ),
+                ],
             ),
 
             /*
