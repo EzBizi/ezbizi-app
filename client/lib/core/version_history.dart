@@ -20,6 +20,7 @@ class VersionHistory {
         'Jobs: the job panel, list and filters show a job\'s type, sub-status and tags. A job has its own photos and files, with Workiz\'s shown below them.',
         'Workiz: send your signed-in Workiz session from the new Chrome extension (one click, single-use link), and EzBizi reads Workiz\'s own Payments report on the server. The card shows when it last reached Workiz.',
         'Customer Experience: complaints from callers who gave no name show their phone number. Removed at the source appears only when the review or lead itself was deleted.',
+        'Integrations › Airtable: paste one token, find every base it reaches, tick the ones to use, and later replace the token for all of them at once.',
       ],
     ),
     VersionRelease(
