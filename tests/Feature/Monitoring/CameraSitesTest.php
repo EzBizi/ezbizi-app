@@ -100,6 +100,7 @@ class CameraSitesTest extends TestCase
         $key = $this->pair($alpha['admin'], $this->codeFor($alpha['admin'], $site))
             ->assertOk()
             ->assertJsonPath('data.site_id', $site)
+            ->assertJsonPath('data.site_name', 'Hialeah warehouse')
             ->json('data.site_key');
 
         $this->assertSame(40, strlen($key));

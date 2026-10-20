@@ -42,6 +42,12 @@ class CameraBridgeService {
   List<FoundDevice> _found = const [];
   int _beats = 0;
 
+  /// What the last network scan found (the bridge-PC panel lists it).
+  List<FoundDevice> get found => _found;
+
+  /// When EzBizi last accepted a check-in from this PC.
+  DateTime? lastOk;
+
   /// Pair this PC with a site: [code] from Monitoring › Settings › Camera
   /// sites, entered here by a manager who is signed in. Stores the key.
   static Future<String?> pair(
@@ -53,9 +59,11 @@ class CameraBridgeService {
       'code': code.trim(),
       'device_key': await DeviceKey.value(),
     });
-    final key = (r.body['data'] as Map?)?['site_key'] as String?;
+    final data = r.body['data'] as Map?;
+    final key = data?['site_key'] as String?;
     if (!r.ok || key == null) return r.reason;
     await store.saveSiteKey(key);
+    await store.saveSiteName(data?['site_name'] as String? ?? '');
     return null;
   }
 
@@ -84,9 +92,11 @@ class CameraBridgeService {
       }
       await api.checkin({
         'engine_version': engine.version,
+        if (engine.missing) 'reason': 'engine_missing',
         'found': [for (final f in _found) f.toJson()],
         'cameras': await engine.health(),
       });
+      lastOk = DateTime.now();
       if (_running) state.value = BridgeState.running;
     } on BridgeUnpaired {
       await _unpair();

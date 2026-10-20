@@ -1,0 +1,12 @@
+[Unit]
+Description=EzBizi camera relay (MediaMTX)
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/ezbizi/camera-relay.env
+ExecStart=/opt/camera-relay/mediamtx /opt/camera-relay/mediamtx.yml
+Restart=always
+User=www-data
+
+[Install]
+WantedBy=multi-user.target

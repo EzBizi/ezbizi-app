@@ -181,7 +181,7 @@ class CameraSitesController extends Controller
         RateLimiter::clear($limiter);
         $this->audit->log('monitoring.camera_site.paired', $site, [], ['device' => $device->label]);
 
-        return ['data' => ['site_id' => $site->id, 'site_key' => $key]];
+        return ['data' => ['site_id' => $site->id, 'site_name' => $site->name, 'site_key' => $key]];
     }
 
     /** Disconnect the bridge PC: its key stops working at once. */

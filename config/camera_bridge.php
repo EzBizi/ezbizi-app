@@ -16,6 +16,9 @@ return [
     'play_url' => env('CAMERA_RELAY_PLAY_URL', 'https://cams.ezbizi.com'),
     'play_ttl_seconds' => 300,
 
+    // The box's own go2rtc API (loopback): turns relay paths into MJPEG.
+    'box_go2rtc' => env('CAMERA_BOX_GO2RTC', 'http://127.0.0.1:1984'),
+
     // Signs relay tokens and authenticates the relay's own hooks to Laravel.
     'relay_secret' => env('CAMERA_RELAY_SECRET'),
 
