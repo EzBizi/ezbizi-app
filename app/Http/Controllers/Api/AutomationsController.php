@@ -93,7 +93,6 @@ class AutomationsController extends Controller
         'publish_reply',
         'onboarding.start',
         'add_to_audience',
-        'review_reply',
         'send_report',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
@@ -2142,9 +2141,6 @@ class AutomationsController extends Controller
                 // Off = the week that just finished, which is right for a rule
                 // at the end of the week. On = the week still running.
                 $parameter('this_week', 'This week so far, not the last full week', 'boolean', false),
-            ]),
-            $type('review_reply', 'Reply on Google', true, [
-                $parameter('message', 'The reply', 'rich_text', variables: true),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),
