@@ -88,8 +88,8 @@ class _HelpersPaneState extends State<HelpersPane> {
   List<_Row> _helpers = [];
   List<_Row> _bookings = [];
 
-  /// Who an editor can book for: Scheduling's own list of the organization's
-  /// people (GET /scheduling/technicians, its `users`). Null until read.
+  /// Who "For" can name: `people` on GET /scheduling/helpers, filled only
+  /// for scheduling.edit (empty otherwise). Null until read.
   List<_Row>? _people;
 
   bool _started = false;
@@ -136,21 +136,7 @@ class _HelpersPaneState extends State<HelpersPane> {
     _started = true;
     final places = _places;
     _franchise = places.isEmpty ? null : places.first.id;
-    if (_canEdit) _loadPeople();
     await _load();
-  }
-
-  Future<void> _loadPeople() async {
-    final response = await widget.api.get('/scheduling/technicians', const {});
-    if (!mounted) return;
-    setState(() {
-      _people = response.ok
-          ? [
-              for (final u in (response.body['users'] as List? ?? const []))
-                if (u is Map) u.cast<String, dynamic>(),
-            ]
-          : const [];
-    });
   }
 
   Future<void> _load() async {
@@ -182,6 +168,10 @@ class _HelpersPaneState extends State<HelpersPane> {
         return;
       }
       _helpers = rows(answers[0]);
+      _people = [
+        for (final u in (answers[0].body['people'] as List? ?? const []))
+          if (u is Map) u.cast<String, dynamic>(),
+      ];
       _bookings = rows(answers[1]);
     });
   }
@@ -229,7 +219,9 @@ class _HelpersPaneState extends State<HelpersPane> {
   /// Who the form offers under For: yourself first, then everybody else.
   List<_Row>? get _forOptions {
     final me = _me;
-    if (!_canEdit || me == null) return null;
+    // Offered only when the server named somebody: it fills `people` for
+    // exactly those who may book for others.
+    if (me == null || (_people ?? const []).isEmpty) return null;
     return [
       {'id': me.id, 'name': '${me.name} (you)'},
       for (final p in _people ?? const <_Row>[])

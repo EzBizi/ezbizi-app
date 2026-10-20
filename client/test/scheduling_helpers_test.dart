@@ -316,16 +316,16 @@ Future<List<_Call>> _pump(
       if (path.endsWith('/scheduling/helpers/bookings')) {
         return _json({'data': _bookings});
       }
+      // `people` as the server sends it: filled only for scheduling.edit.
       if (path.endsWith('/scheduling/helpers')) {
-        return _json({'data': _helpers});
-      }
-      if (path.endsWith('/scheduling/technicians')) {
         return _json({
-          'data': const [],
-          'users': [
-            {'id': 'u-1', 'name': 'Dana Reyes', 'email': 'dana@example.com'},
-            {'id': 'u-2', 'name': 'Pat Lin', 'email': 'pat@example.com'},
-          ],
+          'data': _helpers,
+          'people': permissions.contains('scheduling.edit')
+              ? [
+                  {'id': 'u-1', 'name': 'Dana Reyes'},
+                  {'id': 'u-2', 'name': 'Pat Lin'},
+                ]
+              : const [],
         });
       }
       return _json({'data': const []});
