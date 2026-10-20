@@ -1,0 +1,21 @@
+{
+  "data": {
+    "blocked_because": null,
+    "preview": {
+      "subject": {"type": "User", "id": "u-1"},
+      "organization": {"id": "o-1", "name": "Alpha"},
+      "dry_run": true,
+      "tables": [
+        {"model": "ApiToken", "table": "personal_access_tokens", "applies": true, "rows": 1, "columns_erased": [], "rows_dropped": 1, "files_removed": 0, "refusals": [], "kept": []},
+        {"model": "Attachment", "table": "attachments", "applies": true, "rows": 2, "columns_erased": [], "rows_dropped": 1, "files_removed": 1, "refusals": [{"id": "a-1", "because": "That file is revision 1 of this contract, not something attached to it."}], "kept": []},
+        {"model": "AuditEvent", "table": "audit_events", "applies": true, "rows": 10, "columns_erased": {"actor_label": "Removed account", "target_label": "Removed record"}, "rows_dropped": 0, "files_removed": 0, "refusals": [], "kept": [{"field": "changes", "because": "The record of what changed."}]},
+        {"model": "Invitation", "table": "invitations", "applies": true, "rows": 1, "columns_erased": {"email": "removed-{ref}@invalid", "first_name": "null", "last_name": "null"}, "rows_dropped": 0, "files_removed": 0, "refusals": [], "kept": []},
+        {"model": "OnboardingAnswer", "table": "onboarding_answers", "applies": true, "rows": 14, "columns_erased": {"value": "(removed)"}, "rows_dropped": 0, "files_removed": 0, "refusals": [], "kept": []},
+        {"model": "EmploymentEvent", "table": "employment_events", "applies": true, "rows": 1, "columns_erased": [], "rows_dropped": 0, "files_removed": 0, "refusals": [], "kept": []},
+        {"model": "Customer", "table": "customers", "applies": false, "rows": 0, "columns_erased": [], "rows_dropped": 0, "files_removed": 0, "refusals": [], "kept": []}
+      ],
+      "caveats": ["Anything already exported to somebody's own computer has left this system."],
+      "purged_at": "2026-10-20T18:53:44+00:00"
+    }
+  }
+}
