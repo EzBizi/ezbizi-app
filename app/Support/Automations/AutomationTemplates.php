@@ -395,6 +395,31 @@ final class AutomationTemplates
                         'details' => '{{comment}}'],
                 ],
             ],
+            // Jose, 2026-10-20: "this should all be set on automations so i can
+            // decide for myself". Off until he adds the inboxes (address in ...)
+            // and senders (from_address / from_domain) and switches it on.
+            [
+                'key' => 'email-closed-office-reply',
+                'name' => 'Email: reply when the office is closed',
+                'description' => 'Answers an email that arrives after hours, in its thread from the same inbox. '
+                    .'Their email stays unread. Add which inboxes (address) and, if you like, '
+                    .'which senders (from_address or from_domain) before switching it on.',
+                'trigger_key' => 'email.received',
+                'conditions' => ['all' => [['field' => 'office_open', 'op' => 'eq', 'value' => false]]],
+                'actions' => [[
+                    'type' => 'message.reply',
+                    'body' => "{{greeting}}
+
+Thank you for contacting {{company_name}}! Our office is closed right now, "
+                        ."but we've received your email and a member of our team will get back to you {{office_opens}}.
+
+"
+                        ."If it's urgent, please call us at {{office_phone}}.
+
+Thank you,
+The {{company_name}} team",
+                ]],
+            ],
             [
                 'key' => 'review-removed',
                 'name' => 'Say when Google removes a review',
