@@ -47,7 +47,7 @@ final class FinancialsHome
         $areas = [];
         foreach (self::AREAS as $key => [$name, $icon, $colour, $roles]) {
             $mine = $sources->whereIn('role', $roles);
-            $native = self::native($key, $scope);
+            $native = self::native($key, $scope, $user);
             if ($mine->isEmpty() && $native['tables'] === []) {
                 continue;
             }
@@ -83,7 +83,7 @@ final class FinancialsHome
     }
 
     /** @return array{tables: list<array>, at: ?string, rows: Collection} */
-    private static function native(string $area, ViewScope $scope): array
+    private static function native(string $area, ViewScope $scope, User $user): array
     {
         $inView = fn ($row) => $row->franchise_id === null ? $scope->isOrganization() : $scope->coversFranchise($row->franchise_id);
 
@@ -96,7 +96,9 @@ final class FinancialsHome
         $rows = $rows->filter($inView)->values();
 
         return [
-            'tables' => $table === null || $rows->isEmpty() ? [] : [$table + ['count' => $rows->count()]],
+            'tables' => $table === null || $rows->isEmpty() ? [] : [$table + ['count' => $rows->count()] + self::opens(
+                $area === 'invoices' ? 'financials.bills.view' : 'financials.bases.view', $user,
+            )],
             'at' => $rows->max('updated_at')?->toIso8601String(),
             'rows' => $rows,
         ];
@@ -139,6 +141,14 @@ final class FinancialsHome
         };
     }
 
+    /** Whether this person may open a native chip, and the sentence when not. */
+    private static function opens(string $permission, User $user): array
+    {
+        $may = $user->hasPermission($permission);
+
+        return ['may_open' => $may, 'refused' => $may ? null : 'Your role does not have this tab.'];
+    }
+
     private static function airtableTables(Collection $sources): array
     {
         if ($sources->isEmpty()) {
@@ -158,6 +168,8 @@ final class FinancialsHome
             'key' => $s->base_id.'/'.$s->table_id.($s->franchise_id ? '/'.$s->franchise_id : ''),
             'table_id' => $mirrors[$s->base_id.'/'.$s->table_id]->id ?? null,
             'route' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? '/financials/tables/'.$mirrors[$s->base_id.'/'.$s->table_id]->id : null,
+            'may_open' => isset($mirrors[$s->base_id.'/'.$s->table_id]),
+            'refused' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? null : 'Not mirrored into a base yet.',
             'name' => trim(($stats[$s->base_id.'/'.$s->table_id]->name ?? $s->table_id).($s->filter_value ? ' · '.$s->filter_value : '')),
             'count' => (int) ($stats[$s->base_id.'/'.$s->table_id]->n ?? 0),
         ])->values()->all();

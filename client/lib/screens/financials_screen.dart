@@ -53,7 +53,7 @@ class _FinancialsHostState extends State<FinancialsScreen> {
     final tabs = [
       if (_may('bases'))
         (
-          'Bases',
+          'Home',
           Icons.table_chart_outlined,
           FinancialBases(api: widget.api, session: widget.session),
         ),
