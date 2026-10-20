@@ -1,0 +1,9 @@
+# The box's go2rtc v1.9.14: turns relay paths into MJPEG for viewers.
+# Laravel adds streams on demand (PUT /api/streams); none are listed here.
+api:
+  listen: "127.0.0.1:1984"
+rtsp:
+  # needed by the ffmpeg:<src>#video=mjpeg transcode (Task 1 spike)
+  listen: "127.0.0.1:18555"
+webrtc:
+  listen: ""

@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 121 · Financials › Home as cards (Airtable-style) — **sent 2026-10-20 — Jose: "go ahead with ur recommendations" (1 and 4)** (`docs/previews/financials-home-layouts.html`)
+
+Financials asked (data-driven cards: role groups + native tables). **1** (recommended) equal-size cards, 4 across: icon/colour, name, one live figure, source badge (Native / Airtable mirror / both), refreshed-at; Your areas then Your bases + New base; search from 8 cards; no Airtable → Native badges only; card opens the area with table chips and view switch. **2** a list. **3** big-number tiles over small cards. Phone **4** (recommended, 2-up) / **5** / **6**.
+
+### 120 · Integrations › Workiz web login (signed-in session handoff) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/workiz-web-login-layouts.html`)
+
+Workiz asked (workiz_web: link, extension, accounts→branch). **1** (recommended) Signed-in session becomes Workiz's third method: Get a link (30 min, Copy) → extension paste + Send → the page turns green by itself; account→branch table; red Signed out with Send it again; Jose's terms sentence on the card; extension popup restyled to the same steps. **2** a separate tile. **3** set up from Reports. Phone **4** (recommended: status + table, handoff needs a computer) / **5** / **6**.
+
+### 119 · Jobs › Photos & files: the job's own (off Workiz, slice b) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/jobs-files-layouts.html`)
+
+Jobs asked (attachments API, attachable_type=jobs). **1** (recommended) "Added in EzBizi" grid + Add + drop zone, per-tile progress and failure, Remove asks once; "From Workiz · read-only" below with a copied-in-later note. **2** one grid with a Workiz badge. **3** EzBizi | Workiz tabs. Phone **4** (recommended: Take a photo + Choose files) / **5** / **6**.
+
+### 118 · Jobs › type, sub-status and tags (off Workiz, step 1) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/jobs-type-tags-layouts.html`)
+
+Jobs asked (cff7eceae: job_type, sub_status, tags, meta.labels). **1** (recommended) Status · Sub-status · Type pickers on the panel's header line, tags as removable chips under the title with + Tag (search the words in use, add a new one); list: type as an outlined label after the number, two tags + "+N"; Type and Tags (any-of) filters. **2** a Details card + list columns. **3** coloured tag dots. Phone **4** (recommended) / **5** / **6**.
+
 ### 117 · Monitoring › Settings › Cameras + the bridge PC panel — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/camera-bridge-layouts.html`)
 
 Monitoring asked (design bfed9d0cb §7, Jose approved the bridge). **1** (recommended) sites as rows, offline first in red with since/why, PC and camera count, Add a site + Wiring guide; a site opens to camera tiles (still, name, on/off, Live/Recordings/Alerts) and a bridge box (PC, version, last spoke, password stays on the PC, Pair a new PC / Disconnect). Bridge panel: on/off + a ticked checklist (on, paired, recorder found + password, cameras found, talking to EzBizi), code entry, red step with the fix. **2** a card per site with stills. **3** one table of cameras. Phone **4** (recommended) / **5** / **6**. Setup guide, wiring sheet, Recordings to follow.

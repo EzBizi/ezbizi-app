@@ -14,6 +14,27 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0463',
+      date: '20 Oct 2026',
+      items: [
+        'Jobs: the job panel, list and filters show a job\'s type, sub-status and tags. A job has its own photos and files, with Workiz\'s shown below them.',
+        'Workiz: send your signed-in Workiz session from the new Chrome extension (one click, single-use link), and EzBizi reads Workiz\'s own Payments report on the server. The card shows when it last reached Workiz.',
+        'Customer Experience: complaints from callers who gave no name show their phone number. Removed at the source appears only when the review or lead itself was deleted.',
+        'Integrations › Airtable: paste one token, find every base it reaches, tick the ones to use, and later replace the token for all of them at once.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0462',
+      date: '20 Oct 2026',
+      items: [
+        'Human Resources: Delete permanently no longer closes the app when it opens.',
+        'Monitoring: a computer at a site can act as a camera bridge, sending that site\'s cameras to EzBizi (Settings › This computer).',
+        'Jobs: a job can carry its own type, sub-status and tags, ready for the job screen and for rules.',
+        'Automations: a job rule can set a job\'s sub-status and type, and add or remove a tag.',
+        'Leads: a call card says who answered, or whose phones rang when nobody did.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0461',
       date: '20 Oct 2026',
       items: [

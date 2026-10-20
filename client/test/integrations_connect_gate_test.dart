@@ -42,6 +42,37 @@ void main() {
     expect(find.text('Connect account'), findsNothing);
   });
 
+  // UI queue 120: the Workiz web login is its own provider key, drawn on
+  // Workiz's page rather than as a second Workiz tile.
+  testWidgets('the Workiz web login is listed on the one Workiz page', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      permissions: const ['reports.build', 'reports.experimental.view'],
+      connections: const [
+        {
+          'id': 'w-1',
+          'provider': 'workiz_web',
+          'provider_label': 'Workiz web login',
+          'display_name': 'Workiz web login',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'status': 'expired',
+          'status_reason': 'Workiz signed this session out.',
+        },
+      ],
+      moreProviders: const [
+        {'value': 'workiz_web', 'label': 'Workiz web login'},
+      ],
+    );
+
+    expect(find.byKey(const ValueKey('provider:workiz_web')), findsNothing);
+    await _open(tester, 'workiz');
+    expect(find.byKey(const ValueKey('connection:w-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('edit:w-1')), findsNothing);
+  });
+
   testWidgets('reports.build opens the Workiz form and not the Airtable one', (
     tester,
   ) async {
@@ -168,6 +199,8 @@ Future<void> _back(WidgetTester tester) async {
 Future<void> _pump(
   WidgetTester tester, {
   required List<String> permissions,
+  List<Map<String, dynamic>> connections = const [],
+  List<Map<String, dynamic>> moreProviders = const [],
 }) async {
   tester.view.physicalSize = const Size(1280, 2000);
   tester.view.devicePixelRatio = 1.0;
@@ -184,7 +217,7 @@ Future<void> _pump(
       }
 
       if (path.endsWith('/social/connections')) {
-        return _json({'data': const []});
+        return _json({'data': connections});
       }
 
       // The catalogue is what draws a card for a provider with NOTHING
@@ -193,10 +226,11 @@ Future<void> _pump(
       // a screen that simply has no reporting section.
       if (path.endsWith('/social/providers')) {
         return _json({
-          'data': const [
-            {'value': 'airtable', 'label': 'Airtable'},
-            {'value': 'workiz', 'label': 'Workiz'},
-            {'value': 'ringcentral', 'label': 'RingCentral'},
+          'data': [
+            const {'value': 'airtable', 'label': 'Airtable'},
+            const {'value': 'workiz', 'label': 'Workiz'},
+            const {'value': 'ringcentral', 'label': 'RingCentral'},
+            ...moreProviders,
           ],
         });
       }

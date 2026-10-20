@@ -404,15 +404,22 @@ final class RingCentralLeadCalls
      *
      * @param  array<string, mixed>  $call
      * @param  array<string, string>  $lineNames
-     * @return array{line_number: ?string, line_name: ?string}
+     * @return array{line_number: ?string, line_name: ?string, answered_by: ?string, rang: ?string}
      */
     private static function line(array $call, array $lineNames): array
     {
         $ours = (string) (self::outbound($call) ? ($call['from'] ?? '') : ($call['to_number'] ?? ''));
+        // Who picked up, or whose phones rang when nobody did (Jose,
+        // 2026-10-20: "show who picked up as well? like Sasha - Adeline").
+        $inbound = ! self::outbound($call);
+        $answered = $inbound ? trim((string) ($call['answered_by'] ?? '')) : '';
+        $rang = $inbound && $answered === '' ? implode(', ', array_filter(array_map('strval', (array) ($call['rang'] ?? [])))) : '';
 
         return [
             'line_number' => $ours !== '' ? mb_substr($ours, 0, 20) : null,
             'line_name' => isset($lineNames[$ours]) && $lineNames[$ours] !== '' ? mb_substr($lineNames[$ours], 0, 120) : null,
+            'answered_by' => $answered !== '' ? mb_substr($answered, 0, 120) : null,
+            'rang' => $rang !== '' ? mb_substr($rang, 0, 255) : null,
         ];
     }
 

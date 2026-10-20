@@ -184,7 +184,7 @@ void main() {
 
     expect(find.text('Customer called · 2:05'), findsOneWidget);
     // The number they dialled and its line (Jose, 2026-10-20).
-    expect(find.text('to +1 (732) 659-1055 · NJ - GMB'), findsOneWidget);
+    expect(find.text('to +1 (732) 659-1055 · NJ - GMB · answered by Sasha'), findsOneWidget);
     expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);
@@ -1344,6 +1344,7 @@ Future<void> _pump(
                   'duration_ms': 125000,
                   'line_number': '+17326591055',
                   'line_name': 'NJ - GMB',
+                  'answered_by': 'Sasha',
                   'text': null,
                   'transcript': callTranscript,
                       'summary': callSummary,

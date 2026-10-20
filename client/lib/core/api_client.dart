@@ -176,9 +176,11 @@ class ApiClient {
     ..._identity,
   };
 
+  /// A query value is a string, or a list of them for a key the server reads
+  /// as an array (`tag[]` repeated once per value).
   Future<ApiResponse> get(
     String path, [
-    Map<String, String>? query,
+    Map<String, Object>? query,
     Map<String, String>? headers,
   ]) async {
     final uri = Uri.parse('$_root/api/v1$path').replace(queryParameters: query);

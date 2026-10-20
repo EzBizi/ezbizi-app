@@ -149,4 +149,24 @@ class ComplaintsTest extends TestCase
         $this->signedInAs($viewer)->patchJson("/api/v1/complaints/{$mine}", ['status' => 'solved'])->assertForbidden();
         $this->assertSame([], $this->signedInAs($viewer)->getJson('/api/v1/complaints')->json('meta.people'));
     }
+
+    /** Desk, 2026-10-20: a nameless caller is not "removed"; only a gone source is. */
+    public function test_a_nameless_caller_carries_the_number_and_only_a_gone_source_is_missing(): void
+    {
+        $caller = $this->inTenant($this->t['org'], fn () => Lead::create(['organization_id' => $this->t['org']->id,
+            'company_id' => $this->t['company']->id, 'franchise_id' => $this->t['franchise']->id, 'source' => 'phone',
+            'remote_id' => 'call-1', 'status' => 'NEW', 'received_at' => now(), 'phone' => '+14145340603']));
+        $this->event('lead.call_complaint', $caller);
+        $review = $this->review(1);
+        $this->event('review.received', $review);
+        $this->intake();
+        $this->inTenant($this->t['org'], fn () => $review->delete());
+
+        $rows = collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/complaints?status=all')->assertOk()->json('data'))->keyBy('kind');
+
+        $this->assertNull($rows['call_complaint']['title']);
+        $this->assertSame('+14145340603', $rows['call_complaint']['phone']);
+        $this->assertFalse($rows['call_complaint']['source_missing']);
+        $this->assertTrue($rows['bad_review']['source_missing']);
+    }
 }

@@ -272,9 +272,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
+    // The Workiz web login (`workiz_web`, UI queue 120) is drawn on Workiz's
+    // own page and counted on its tile: one Workiz, however it connects, so
+    // the grid never offers a second Workiz tile to choose between.
     final byProvider = <String, List<IntegrationConnection>>{};
     for (final c in [..._connections, ..._workspace, ...?_numbers]) {
-      byProvider.putIfAbsent(c.provider, () => []).add(c);
+      final key = c.provider == 'workiz_web' ? 'workiz' : c.provider;
+      byProvider.putIfAbsent(key, () => []).add(c);
     }
     final host = _sending?['host'] as String?;
     if (host != null && host.isNotEmpty) {
@@ -297,7 +301,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     // evidence that it exists.
     final providers = {
       ...byProvider.keys,
-      ..._catalogue.keys,
+      ..._catalogue.keys.where((p) => p != 'workiz_web'),
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
       if (_sending != null) 'sending_server',
@@ -652,6 +656,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     ),
   ];
 
+  final _workizFormKey = GlobalKey();
+
   List<Widget> _workizForm() => [
     Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
     const SizedBox(height: 4),
@@ -662,14 +668,24 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       style: Theme.of(context).textTheme.bodySmall,
     ),
     const SizedBox(height: 8),
-    // v1, v2 or (soon) a signed-in session, each with its own boxes (UI
-    // queue 109).
-    WorkizConnectForm(api: widget.api, onDone: _load),
+    // v1, v2 or a signed-in session, each with its own boxes (UI queue 109,
+    // 120). A global key, because reloading the page can add a group above
+    // the form, and the session's link and countdown must survive that.
+    WorkizConnectForm(
+      key: _workizFormKey,
+      api: widget.api,
+      branches: widget.session.me?.franchisesInView ?? const [],
+      organizationView: widget.session.me?.scope.type == 'organization',
+      onDone: _load,
+    ),
   ];
 
   /// New credentials, or another method, for one Workiz account (UI queue
   /// 109). The saved ones are never shown back.
   Future<void> _editWorkiz(IntegrationConnection row) async {
+    // The web login has no credentials to replace; it is sent again from
+    // the form's own Signed-in session.
+    if (row.provider == 'workiz_web') return;
     await showSidePanel<void>(
       context,
       builder: (context) => SidePanel(

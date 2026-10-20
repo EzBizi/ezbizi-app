@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NOT captured from a device: written from the ONVIF WS-Discovery spec
+     (Dahua/Amcrest style scopes). Replace with a real capture from the
+     NV2108E-HS at install. -->
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action>
+  </s:Header>
+  <s:Body>
+    <d:ProbeMatches>
+      <d:ProbeMatch>
+        <a:EndpointReference><a:Address>urn:uuid:4a4b6c00-1234-5678-9abc-9c8ecd000001</a:Address></a:EndpointReference>
+        <d:Types>dn:NetworkVideoTransmitter</d:Types>
+        <d:Scopes>onvif://www.onvif.org/type/NetworkVideoRecorder onvif://www.onvif.org/name/Amcrest onvif://www.onvif.org/hardware/NV2108E-HS onvif://www.onvif.org/location/country/usa</d:Scopes>
+        <d:XAddrs>http://192.168.1.50/onvif/device_service</d:XAddrs>
+        <d:MetadataVersion>1</d:MetadataVersion>
+      </d:ProbeMatch>
+    </d:ProbeMatches>
+  </s:Body>
+</s:Envelope>

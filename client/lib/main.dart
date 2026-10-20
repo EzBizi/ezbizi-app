@@ -48,6 +48,7 @@ import 'screens/staff/staff_login_screen.dart';
 import 'screens/staff/staff_shell.dart';
 import 'screens/suggestions_screen.dart';
 import 'screens/update_required_screen.dart';
+import 'core/camera_bridge/bridge_boot.dart';
 import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
@@ -79,6 +80,9 @@ Future<void> main() async {
 
   // Crashes, freezes and failed calls reach the staff console (2026-10-15).
   IssueReporter.install();
+
+  // A paired camera-bridge PC streams on its site key, signed in or not.
+  unawaited(startCameraBridge());
 
   runApp(const EzBiziApp());
 }
@@ -977,9 +981,9 @@ class _HomeShellState extends State<HomeShell> {
           width: _phoneWidth,
           child: LayoutBuilder(
             builder: (context, constraints) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                size: Size(_phoneWidth, constraints.maxHeight),
-              ),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(size: Size(_phoneWidth, constraints.maxHeight)),
               child: Builder(builder: _shell),
             ),
           ),
@@ -1385,30 +1389,30 @@ class _HomeShellState extends State<HomeShell> {
               // path and never a capability -- which is the only reason it is
               // safe to drop rather than relocate.
               if (wide)
-              IconButton(
-                tooltip: switch (me.theme) {
-                  'light' => 'Light — switch to dark',
-                  'dark' => 'Dark — match my device',
-                  _ => 'Matching your device — switch to light',
-                },
-                icon: Icon(switch (me.theme) {
-                  'light' => Icons.wb_sunny_outlined,
-                  'dark' => Icons.dark_mode_outlined,
-                  // Not brightness_auto: that glyph is a sun with an A, and
-                  // it sits next to the two-factor shield that also carries
-                  // an A. Contrast is the half-and-half circle — light and
-                  // dark in one mark, no letter.
-                  _ => Icons.contrast,
-                }),
-                onPressed: () => widget.session.setPreference(
-                  'appearance.theme',
-                  switch (me.theme) {
-                    'system' => 'light',
-                    'light' => 'dark',
-                    _ => 'system',
+                IconButton(
+                  tooltip: switch (me.theme) {
+                    'light' => 'Light — switch to dark',
+                    'dark' => 'Dark — match my device',
+                    _ => 'Matching your device — switch to light',
                   },
+                  icon: Icon(switch (me.theme) {
+                    'light' => Icons.wb_sunny_outlined,
+                    'dark' => Icons.dark_mode_outlined,
+                    // Not brightness_auto: that glyph is a sun with an A, and
+                    // it sits next to the two-factor shield that also carries
+                    // an A. Contrast is the half-and-half circle — light and
+                    // dark in one mark, no letter.
+                    _ => Icons.contrast,
+                  }),
+                  onPressed: () => widget.session.setPreference(
+                    'appearance.theme',
+                    switch (me.theme) {
+                      'system' => 'light',
+                      'light' => 'dark',
+                      _ => 'system',
+                    },
+                  ),
                 ),
-              ),
               NotificationBell(
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
@@ -1460,9 +1464,14 @@ class _HomeShellState extends State<HomeShell> {
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: ActionChip(
-                    avatar: const Icon(Icons.mark_email_unread_outlined, size: 16),
+                    avatar: const Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 16,
+                    ),
                     label: Text(
-                      _resendingConfirmation ? 'Sending...' : 'Confirm your email',
+                      _resendingConfirmation
+                          ? 'Sending...'
+                          : 'Confirm your email',
                     ),
                     tooltip:
                         'We sent a confirmation link when you signed up. '
@@ -1471,7 +1480,9 @@ class _HomeShellState extends State<HomeShell> {
                     backgroundColor: Theme.of(
                       context,
                     ).colorScheme.errorContainer.withValues(alpha: 0.4),
-                    onPressed: _resendingConfirmation ? null : _resendConfirmation,
+                    onPressed: _resendingConfirmation
+                        ? null
+                        : _resendConfirmation,
                   ),
                 ),
               if (wide && me.organization.isReadOnly)
@@ -1605,9 +1616,7 @@ class _HomeShellState extends State<HomeShell> {
              * It draws nothing when nobody is calling and no call is up, so
              * this costs an empty box the rest of the time.
              */
-            IncomingCallBar(
-              onOpenDial: () => _show(_Rail.modules, 'phone'),
-            ),
+            IncomingCallBar(onOpenDial: () => _show(_Rail.modules, 'phone')),
 
             /*
              * "Somebody is driving this machine", said by the app itself.
@@ -2359,7 +2368,9 @@ class _ClockButtonState extends State<_ClockButton>
               // Tighter without a word: `OutlinedButton.icon` still lays out a
               // gap for the label, so 12 either side of an empty one reads as a
               // mis-centred icon.
-              padding: EdgeInsets.symmetric(horizontal: widget.compact ? 6 : 12),
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.compact ? 6 : 12,
+              ),
               minimumSize: const Size(0, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
@@ -2570,10 +2581,9 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
           ),
           const SizedBox(height: 6),
           Text(
-            UiStrings.t('shell.no_module_hint').replaceFirst(
-              '{total}',
-              '${widget.destinations.length}',
-            ),
+            UiStrings.t(
+              'shell.no_module_hint',
+            ).replaceFirst('{total}', '${widget.destinations.length}'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -2725,7 +2735,6 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                 ),
               ),
 
-
             // How many of how many.
             //
             // With a filter on, "three modules match" and "three modules exist"
@@ -2737,10 +2746,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                 child: Text(
                   UiStrings.t('shell.modules_shown')
                       .replaceFirst('{n}', '${shown.length}')
-                      .replaceFirst(
-                        '{total}',
-                        '${widget.destinations.length}',
-                      ),
+                      .replaceFirst('{total}', '${widget.destinations.length}'),
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -2915,15 +2921,18 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                       children: [
                         if (!arranging && widget.onArranged != null)
                           TextButton.icon(
-                            onPressed: () =>
-                                setState(() => _arranging = true),
+                            onPressed: () => setState(() => _arranging = true),
                             icon: const Icon(Icons.swap_vert, size: 16),
                             label: Text(UiStrings.t('shell.rearrange')),
                             style: TextButton.styleFrom(
                               visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
                               foregroundColor: scheme.onSurfaceVariant,
-                              textStyle: Theme.of(context).textTheme.labelMedium,
+                              textStyle: Theme.of(
+                                context,
+                              ).textTheme.labelMedium,
                             ),
                           ),
                         const BuildStamp(),
@@ -3031,11 +3040,7 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
   @override
   void initState() {
     super.initState();
-    _was = sidebarOrderOf(
-      widget.destinations,
-      widget.divideAfter,
-      (d) => d.id,
-    );
+    _was = sidebarOrderOf(widget.destinations, widget.divideAfter, (d) => d.id);
     _rows = [
       for (final entry in _was)
         if (entry == sidebarDivider)
@@ -3151,9 +3156,7 @@ class _SidebarArrangerState extends State<_SidebarArranger> {
             tooltip: UiStrings.t('shell.remove_divider'),
             onPressed: () => setState(() => _rows.removeAt(i)),
           ),
-          Expanded(
-            child: Divider(thickness: 1, color: scheme.outlineVariant),
-          ),
+          Expanded(child: Divider(thickness: 1, color: scheme.outlineVariant)),
           ReorderableDragStartListener(
             index: i,
             child: const Padding(

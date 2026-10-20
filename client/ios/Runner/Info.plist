@@ -38,6 +38,10 @@
 	<string>Your organization uses your location while you are working, for your safety, to see when you arrive at a job, and to suggest the fastest route between your jobs. It is also sent when you press SOS.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>EzBizi saves a how-to video to your Photos when you tap Download on it. It only adds that video; it never reads your photos.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>EzBizi uses the camera to add photos to a job.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>EzBizi does not read your photo library. The camera it uses to add photos to a job is part of a component that can also open the library, and Apple asks every app that includes it to say so.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EzBizi uses the microphone so you can speak on phone calls made and received in the app, and to record a job visit for your safety when you choose to start a recording. It is used only during a call or a recording you started.</string>
 	<key>CFBundleDevelopmentRegion</key>

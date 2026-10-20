@@ -68,6 +68,9 @@ use App\Http\Controllers\Api\MailchimpConnectController;
 use App\Http\Controllers\Api\MarketingController;
 use App\Http\Controllers\Api\MetaCallbacksController;
 use App\Http\Controllers\Api\MicrosoftMailAuthController;
+use App\Http\Controllers\Api\Monitoring\CameraBridgeController;
+use App\Http\Controllers\Api\Monitoring\CameraRelayController;
+use App\Http\Controllers\Api\Monitoring\CameraSitesController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
@@ -196,6 +199,7 @@ use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
+use App\Http\Controllers\Api\WorkizWebSessionController;
 use App\Http\Controllers\Api\RingCentralConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -494,6 +498,13 @@ Route::post('v1/social/workiz/webhook/{connection}', WorkizWebhookController::cl
     ->whereUuid('connection')
     ->name('social.workiz.webhook');
 
+// The Workiz web session the "Send my Workiz session" extension posts. The
+// signed, 30-minute link is the authority; see WorkizWebSessionController.
+Route::post('v1/social/workiz-web/handoff/{connection}', [WorkizWebSessionController::class, 'handoff'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->whereUuid('connection')
+    ->name('social.workiz-web.handoff');
+
 /*
  * Unsubscribe — PUBLIC and unauthenticated, and it has to be.
  *
@@ -533,6 +544,24 @@ Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callba
 | hosts, so one IP is a hosting company serving hundreds of unrelated
 | businesses. AppServiceProvider carries the numbers and the reasoning.
 */
+/*
+ * A camera bridge PC (camera bridge, phase 1). No Sanctum and no `tenant`: the
+ * caller is a PC with nobody signed in, and its site key names the organization,
+ * so AuthenticateCameraBridge looks it up and enters it.
+ */
+Route::prefix('v1/monitoring/bridge')
+    ->middleware(['throttle:120,1', App\Http\Middleware\AuthenticateCameraBridge::class])
+    ->group(function () {
+        Route::post('checkin', [CameraBridgeController::class, 'checkin']);
+        Route::get('work', [CameraBridgeController::class, 'work']);
+        Route::post('still', [CameraBridgeController::class, 'still']);
+    });
+
+// The box's MediaMTX asking about a token, or reporting viewers. X-Relay-Secret, no user.
+Route::post('v1/camera-relay/auth', [CameraRelayController::class, 'auth'])->middleware('throttle:6000,1,camera-relay-auth');
+Route::post('v1/camera-relay/viewers', [CameraRelayController::class, 'viewers'])->middleware('throttle:6000,1,camera-relay-viewers');
+Route::get('v1/camera-relay/play-check', [CameraRelayController::class, 'playCheck'])->middleware('throttle:6000,1,camera-relay-play');
+
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.values');
@@ -1317,6 +1346,9 @@ Route::prefix('v1')
         Route::post('social/airtable/replace-token', [AirtableConnectController::class, 'replaceToken']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
         Route::put('social/workiz/{connection}', [WorkizConnectController::class, 'update']);
+        Route::post('social/workiz-web/link', [WorkizWebSessionController::class, 'link']);
+        Route::get('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'accounts']);
+        Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*
@@ -2861,6 +2893,18 @@ Route::prefix('v1')
         Route::post('monitoring/cameras', [MonitoringCamerasController::class, 'store']);
         Route::patch('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'update']);
         Route::delete('monitoring/cameras/{id}', [MonitoringCamerasController::class, 'destroy']);
+        Route::post('monitoring/cameras/{id}/watch', [CameraRelayController::class, 'watch']);
+
+        // ── Monitoring: camera sites + pairing a bridge PC (2026-10-20 camera bridge, phase 1) ──
+        Route::get('monitoring/camera-sites', [CameraSitesController::class, 'index']);
+        Route::post('monitoring/camera-sites', [CameraSitesController::class, 'store']);
+        Route::get('monitoring/camera-sites/{id}', [CameraSitesController::class, 'show']);
+        Route::patch('monitoring/camera-sites/{id}', [CameraSitesController::class, 'update']);
+        Route::delete('monitoring/camera-sites/{id}', [CameraSitesController::class, 'destroy']);
+        Route::post('monitoring/camera-sites/{id}/pairing-code', [CameraSitesController::class, 'pairingCode']);
+        Route::post('monitoring/camera-sites/{id}/revoke', [CameraSitesController::class, 'revoke']);
+        Route::post('monitoring/camera-sites/{id}/cameras', [CameraSitesController::class, 'addCamera']);
+        Route::post('monitoring/bridge/pair', [CameraSitesController::class, 'pair']);
 
         // ── Monitoring: floor plans, the General tab's read side (2026-09-09-monitoring-general-map, Task 3) ──
         //

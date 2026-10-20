@@ -72,14 +72,17 @@ class LeadsRingCentralCalls extends Command
                 $rows = array_values(array_filter($read,
                     fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) <= $ready));
                 // Live calls, which the call log shows as "Accepted": In progress,
-                // re-read when they end. No list, no filing this run - guessing
-                // would tag live calls Missed and alert on them.
+                // re-read when they end. No list: the last three hours wait for
+                // the next run - guessing would tag live calls Missed and alert
+                // on them - and older calls, long ended, are filed (desk,
+                // 2026-10-20: a 30-day catch-up stopped on a 429).
                 try {
                     $live = $log->activeCallIds();
                 } catch (\RuntimeException $e) {
-                    $this->warn("{$organization->name}: {$e->getMessage()} Skipped this run.");
-
-                    return;
+                    $recent = $now->subHours(3);
+                    $rows = array_values(array_filter($rows, fn (array $c) => CarbonImmutable::parse((string) $c['started_at']) < $recent));
+                    $this->warn("{$organization->name}: {$e->getMessage()} Calls of the last three hours skipped this run.");
+                    $live = [];
                 }
                 $rows = array_map(fn (array $c) => $c + ['live' => isset($live[(string) $c['id']])], $rows);
 

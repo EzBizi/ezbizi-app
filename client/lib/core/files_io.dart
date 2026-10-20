@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart'
+    show CameraDevice, ImagePicker, ImageSource;
 
 import 'files.dart';
 
@@ -78,6 +80,35 @@ Future<PickedBytes?> pickImage() => _openBytes(const [
 
 Future<PickedBytes?> pickBytes({String accept = ''}) =>
     _openBytes(acceptGroups(accept));
+
+/// The phone apps open the device camera through `image_picker` (Jose,
+/// 2026-10-20: "yes add to android and iphone sure"). Desktop stays false:
+/// image_picker's Windows/macOS/Linux halves are a file dialog, which is not
+/// "take a photo", and Choose files already offers that.
+bool get canTakePhoto =>
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
+
+/// The rear camera, through the OS camera app. Android needs no permission
+/// for the capture intent; iOS asks once, with NSCameraUsageDescription.
+///
+/// 2560 px and quality 85 keep a job photo legible while cutting a 12 MP
+/// capture to a size that uploads over a field connection.
+/// `requestFullMetadata: false` keeps iOS from asking for the photo library.
+Future<PickedBytes?> takePhoto() async {
+  if (!canTakePhoto) return null;
+
+  final shot = await ImagePicker().pickImage(
+    source: ImageSource.camera,
+    preferredCameraDevice: CameraDevice.rear,
+    imageQuality: 85,
+    maxWidth: 2560,
+    requestFullMetadata: false,
+  );
+  if (shot == null) return null;
+
+  return PickedBytes(shot.name, await shot.readAsBytes());
+}
 
 Future<PickedFile?> pickText() async {
   final file = await fs.openFile(acceptedTypeGroups: acceptGroups('.csv,.txt'));

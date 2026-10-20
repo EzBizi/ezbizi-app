@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- UI queue 120 (Jose, 2026-10-20): the three steps the EzBizi card shows,
+     in EzBizi's look. Markup and CSS only; popup.js reads #link, #send, #out. -->
+<style>
+  :root { --pri: #1ea0dc; --ink: #10181d; --muted: #5b6670; --line: #d5dde0; --paper: #fff; --field: #f6f8f9; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e6edf0; --muted: #9aa8ae; --line: #2f3a40; --paper: #151c20; --field: #10171b; }
+  }
+  body { font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; width: 300px; margin: 0; padding: 14px; background: var(--paper); color: var(--ink); }
+  header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  header b { font-size: 15px; color: var(--pri); }
+  header span { color: var(--muted); font-size: 12px; }
+  ol { margin: 0 0 10px; padding-left: 18px; color: var(--muted); font-size: 12px; }
+  ol li { margin-bottom: 3px; }
+  ol b { color: var(--ink); font-weight: 600; }
+  textarea { width: 100%; box-sizing: border-box; height: 58px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: 12px ui-monospace, Consolas, monospace; resize: none; }
+  textarea:focus { outline: 2px solid var(--pri); outline-offset: -1px; }
+  button { margin-top: 8px; width: 100%; height: 34px; border: 0; border-radius: 8px; background: var(--pri); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  button:hover { filter: brightness(1.05); }
+  #out { margin-top: 8px; font-size: 12px; min-height: 16px; }
+</style>
+<header><b>EzBizi</b><span>Send my Workiz session</span></header>
+<ol>
+  <li><b>Sign in to Workiz</b> in this browser.</li>
+  <li>In EzBizi: Settings › Integrations › Workiz › <b>Signed-in session</b> › <b>Get a link</b>, then Copy.</li>
+  <li>Paste it here and press <b>Send</b>.</li>
+</ol>
+<textarea id="link" placeholder="Paste the link from EzBizi"></textarea>
+<button id="send">Send</button>
+<div id="out" role="status"></div>
+<script src="popup.js"></script>

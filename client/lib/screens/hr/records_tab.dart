@@ -2639,7 +2639,13 @@ class _DeletePanelState extends State<_DeletePanel> {
     ];
     final blanked = [
       for (final t in tables)
-        if ((t['columns_erased'] as List?)?.isNotEmpty ?? false)
+        // A map of column to stand-in when there are any, an empty list when
+        // not (PHP's empty array): read both (0.0.0461 crashed on the map).
+        if (switch (t['columns_erased']) {
+          Map m => m.isNotEmpty,
+          List l => l.isNotEmpty,
+          _ => false,
+        })
           _label(t['table']),
     ];
 

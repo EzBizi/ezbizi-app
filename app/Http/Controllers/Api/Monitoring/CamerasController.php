@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoringCamera;
 use App\Support\Audit\AuditLogger;
+use App\Support\Monitoring\CameraRelay;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,7 +39,7 @@ class CamerasController extends Controller
     {
         $this->authorize('viewAny', MonitoringCamera::class);
 
-        $cameras = MonitoringCamera::query()->orderByDesc('created_at')->get();
+        $cameras = MonitoringCamera::query()->visibleTo(request()->user())->orderByDesc('created_at')->get();
 
         return response()->json([
             'data' => $cameras->map(fn (MonitoringCamera $c) => $this->present($c))->all(),
@@ -81,7 +82,7 @@ class CamerasController extends Controller
     /** PATCH /api/v1/monitoring/cameras/{id} */
     public function update(Request $request, string $id): JsonResponse
     {
-        $camera = MonitoringCamera::query()->find($id);
+        $camera = MonitoringCamera::query()->visibleTo(request()->user())->find($id);
 
         if ($camera === null) {
             abort(404);
@@ -102,6 +103,13 @@ class CamerasController extends Controller
         $changed = array_keys($camera->getDirty());
         $camera->save();
 
+        // Switched off while somebody watches: tell its bridge now.
+        if (in_array('enabled', $changed, true) && ! $camera->enabled && $camera->site_id !== null) {
+            foreach (['sub', 'main'] as $quality) {
+                app(CameraRelay::class)->unwant($camera, $quality);
+            }
+        }
+
         // Records WHICH fields changed, not their values — the url can carry a
         // credential, and "who changed the url and when" is the audited fact.
         $this->audit->log('monitoring.camera.updated', $camera, ['fields' => $changed]);
@@ -112,7 +120,7 @@ class CamerasController extends Controller
     /** DELETE /api/v1/monitoring/cameras/{id} */
     public function destroy(string $id): Response
     {
-        $camera = MonitoringCamera::query()->find($id);
+        $camera = MonitoringCamera::query()->visibleTo(request()->user())->find($id);
 
         if ($camera === null) {
             abort(404);
@@ -163,6 +171,7 @@ class CamerasController extends Controller
             'protocol' => $c->protocol,
             'url' => $c->url,
             'enabled' => $c->enabled,
+            'source' => $c->source, // 'bridge' → watch it; 'url' → play `url`
             'created_at' => $c->created_at?->toIso8601String(),
         ];
     }

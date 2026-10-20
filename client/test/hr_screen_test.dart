@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
@@ -827,8 +828,9 @@ void main() {
     await _tap(tester, _section('Access'));
     await _tap(tester, find.byKey(const Key('delete-permanently')));
 
-    expect(find.text('• Emergency contacts: 1'), findsOneWidget);
-    expect(find.text('• Users'), findsOneWidget);
+    expect(find.text('• Personal access tokens: 1'), findsOneWidget);
+    expect(find.text('• Invitations'), findsOneWidget);
+    expect(find.text('• Onboarding answers'), findsOneWidget);
 
     final confirm = find.byKey(const Key('delete-permanently-confirm'));
     expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
@@ -1746,28 +1748,15 @@ MockClientHandler _handler({
     final path = request.url.path;
 
     // Permanent deletion (2026-10-20): the dry run, then the act.
+    // The production payload's shape (0.0.0461 crashed on it): columns_erased
+    // is a map when there are any, PHP's empty list when not.
     if (path.endsWith('/deletion')) {
-      return _json({
-        'data': {
-          'blocked_because': null,
-          'preview': {
-            'tables': [
-              {
-                'table': 'emergency_contacts',
-                'rows': 1,
-                'rows_dropped': 1,
-                'columns_erased': <String>[],
-              },
-              {
-                'table': 'users',
-                'rows': 1,
-                'rows_dropped': 0,
-                'columns_erased': ['email'],
-              },
-            ],
-          },
-        },
-      });
+      return _json(
+        jsonDecode(
+              File('test/fixtures/hr_deletion_preview.json').readAsStringSync(),
+            )
+            as Map<String, dynamic>,
+      );
     }
     if (request.method == 'DELETE' &&
         RegExp(r'/hr/people/[^/]+$').hasMatch(path)) {

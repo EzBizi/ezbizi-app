@@ -162,6 +162,32 @@ final class WorkizRecords
         return count($rows);
     }
 
+    /**
+     * Upsert rows already shaped by their reader (the web-session reports),
+     * filed under the franchise the reader chose rather than the connection's.
+     *
+     * @param  list<array{remote_id: string, payload: array}>  $rows
+     */
+    public static function landRows(SocialConnection $connection, string $franchiseId, string $type, array $rows): int
+    {
+        $now = now();
+        $shaped = array_map(fn (array $row) => [
+            'id' => (new WorkizRecord)->newUniqueId(), 'organization_id' => $connection->organization_id,
+            'franchise_id' => $franchiseId, 'connection_id' => $connection->getKey(), 'type' => $type,
+            'remote_id' => $row['remote_id'], 'job_remote_id' => $row['job_remote_id'] ?? null, 'user_remote_id' => $row['user_remote_id'] ?? null,
+            'starts_at' => $row['starts_at'] ?? null, 'ends_at' => null, 'amount' => $row['amount'] ?? null, 'amount_due' => null,
+            'status' => $row['status'] ?? null, 'remote_updated_at' => null, 'payload' => json_encode($row['payload']),
+            'synced_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+        ], $rows);
+
+        if ($shaped !== []) {
+            DB::table('workiz_records')->upsert($shaped, ['franchise_id', 'type', 'remote_id'],
+                ['connection_id', 'starts_at', 'amount', 'status', 'payload', 'synced_at', 'updated_at']);
+        }
+
+        return count($shaped);
+    }
+
     /** The cursor a type's next read starts from: the newest it holds, less two days of overlap. */
     public static function cursor(?string $newest): string
     {
