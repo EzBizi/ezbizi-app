@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
@@ -511,10 +512,17 @@ class EnquiriesController extends Controller
         });
     }
 
-    /** The area covering a ZIP among the site's company's branches, if it takes bookings. */
+    /**
+     * The area covering a ZIP among the site's company's branches, if it takes
+     * bookings. A sub-company books against its parent's availability (Jose,
+     * 2026-10-20: "the sub companies use the same availability as the parent
+     * company"), while its lead stays its own.
+     */
     private function bookingArea(WebSite $site, string $zip): ?ServiceArea
     {
-        $franchises = Franchise::query()->where('company_id', $site->company_id)->pluck('id');
+        $company = Company::query()->find($site->company_id);
+        $owner = $company?->parent_company_id ?? $site->company_id;
+        $franchises = Franchise::query()->whereIn('company_id', array_unique([$site->company_id, $owner]))->pluck('id');
         $area = ServiceAreaZip::query()->whereIn('franchise_id', $franchises)->where('zip', $zip)->first()?->serviceArea;
 
         return $area !== null && Openings::hasCapacity($area) ? $area : null;
