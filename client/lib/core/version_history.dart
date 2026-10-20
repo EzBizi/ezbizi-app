@@ -21,6 +21,7 @@ class VersionHistory {
         'Monitoring: a computer at a site can act as a camera bridge, sending that site\'s cameras to EzBizi (Settings › This computer).',
         'Jobs: a job can carry its own type, sub-status and tags, ready for the job screen and for rules.',
         'Automations: a job rule can set a job\'s sub-status and type, and add or remove a tag.',
+        'Leads: a call card says who answered, or whose phones rang when nobody did.',
       ],
     ),
     VersionRelease(
