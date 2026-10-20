@@ -815,4 +815,70 @@ const Map<String, Tour> leadsTours = {
       ),
     ],
   ),
+  'customer_experience/GBP Listings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-business-profile-not-showing',
+        title: 'Not showing',
+        body: 'Only the listings Google is not showing on Maps, with how many.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-check-google',
+        title: 'Check Google',
+        body:
+            'Reads your listings from Google again and says how many it '
+            'checked.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-account',
+        title: 'The profile',
+        body:
+            'Which Business Profile is connected. Change it in Settings › '
+            'Integrations.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-listings',
+        title: 'Your listings',
+        body:
+            "Each listing's address and category. A red mark with Google's "
+            'own word, such as suspended, means Google is not showing it.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-empty',
+        title: 'Nothing here',
+        body:
+            'Says why: no profile connected, every listing showing, or none '
+            'fetched yet.',
+      ),
+    ],
+  ),
+  // Its own chip since 2026-10-20 (Jose: "Reviews - GBP Listings - GBP
+  // Performance - Review Links").
+  'customer_experience/GBP Performance': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'gbp-performance-range',
+        title: 'Which days',
+        body: 'The last 28 days unless you pick others.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-listing',
+        title: 'Which listing',
+        body: 'Every listing together, or one.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-fresh',
+        title: 'How fresh',
+        body: 'Google fills in the latest days late; this says how far it has.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-table',
+        title: 'Each listing',
+        body: 'Its calls, clicks, directions and views. Open one for the '
+            'searches that found it.',
+      ),
+    ],
+  ),
 };
