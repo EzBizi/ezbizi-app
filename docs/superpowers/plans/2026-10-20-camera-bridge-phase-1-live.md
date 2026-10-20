@@ -78,7 +78,8 @@ Spike, not product code: decides what Tasks 5 and 8 build against. No tests beyo
 **Interfaces:**
 - Consumes: Task 2 models.
 - Produces (all `auth:sanctum` MAIN group):
-  - `GET monitoring/camera-sites` (view) → `{data:[{id,name,company_id,franchise_id,online,last_checkin_at,device:{id,label}|null,camera_count}]}`
+  - `GET monitoring/camera-sites` (view) → `{data:[{id,name,company_id,franchise_id,online,online_since|offline_since,last_reason,last_checkin_at,device:{id,label,pc_name,app_version}|null,camera_count}]}` — field names agreed with UI/UX for gallery 117
+  - `GET monitoring/camera-sites/{id}` (view) → the site plus `cameras:[{id,label,enabled,supports:["live"],bridge_status,bridge_reason,still_url|null}]`
   - `POST monitoring/camera-sites` (manage) `{name, company_id?, franchise_id?}` → site
   - `PATCH/DELETE monitoring/camera-sites/{id}` (manage)
   - `POST monitoring/camera-sites/{id}/pairing-code` (manage) → `{code: "ABCD-2345", expires_at}` — 8 chars from an unambiguous alphabet, 15 min, single use, stored hashed in cache.
@@ -104,6 +105,7 @@ Spike, not product code: decides what Tasks 5 and 8 build against. No tests beyo
 **Interfaces:**
 - `AuthenticateCameraBridge`: `Authorization: Bridge <site_key>` → resolves `CameraSite` by `sha256`, enters its tenant (TenantContext), sets `$request->attributes->get('camera_site')`. Missing/unknown → 401 `{code:'bridge_unpaired'}`.
 - Endpoints:
+  - `POST monitoring/bridge/still` (multipart `camera_id`, `image` jpeg ≤ 300 KB) → `204`; the bridge sends a low-res sub-stream still per enabled camera every 10 min (UI/UX's camera tiles; spec: no continuous video). Served to viewers via a signed URL like play; retention: overwrite in place, one per camera.
   - `POST monitoring/bridge/checkin` `{engine_version, found:[{key, label, kind:'recorder'|'camera', address, channels:[{channel, label}]}], cameras:[{camera_id, status:'ok'|'unreachable'|'auth_failed', reason?}]}` → `204`; sets `last_checkin_at`, `status`, each camera's `bridge_status/reason`.
   - `GET monitoring/bridge/work` — **long-poll**: holds up to 25 s, returns as soon as the wanted set differs from the `?since=` version: `{version:int, wanted:[{camera_id, channel, quality:'sub'|'main', publish:{url, token, expires_at}}]}`; returns the same shape on timeout.
   - (wanted-set storage: cache key per site; version increments on change.)
