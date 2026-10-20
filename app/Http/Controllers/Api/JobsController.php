@@ -97,6 +97,8 @@ class JobsController extends Controller
             // at 10pm tonight would file as Past while it is still ahead.
             'today' => ['nullable', 'required_if:when,upcoming,past', 'required_if:money,overdue', 'date_format:Y-m-d'],
             'money' => ['nullable', Rule::in(array_keys(self::MONEY_STATES))],
+            'tag' => ['nullable', 'string', 'max:100'],
+            'job_type' => ['nullable', 'string', 'max:100'],
         ]);
 
         abort_if($request->filled('money') && ! $money, Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
@@ -164,6 +166,8 @@ class JobsController extends Controller
                 ->when($where ? $request->query('franchise_id') : null, fn ($q, $id) => $q->where('franchise_id', $id))
                 ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
                 ->when($status, fn ($q, $s) => $q->where('status', $s))
+                ->when($request->query('tag'), fn ($q, $t) => $q->whereJsonContains('tags', $t))
+                ->when($request->query('job_type'), fn ($q, $t) => $q->where('job_type', $t))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
                 // `none`: the jobs no area holds, the picker's "Not placed".
                 ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'
@@ -270,6 +274,10 @@ class JobsController extends Controller
                 ->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name, 'franchise_id' => $a->franchise_id])
                 ->values()->all();
             $meta['unplaced_count'] = $filtered($status, $when, where: false)->whereNull('service_area_id')->count();
+
+            // The words this organization's jobs carry, for the pickers: its own
+            // vocabulary, as Workiz keeps one per account (2026-10-20).
+            $meta['labels'] = $this->labelsIn($reachable->all());
 
             // Workiz's money over the same jobs, per currency and never summed
             // across them, with the money filter left out of its own totals.
@@ -672,7 +680,35 @@ class JobsController extends Controller
             // Which of the franchise's service areas the work is in. Its
             // franchise is checked below, for the same reason as the performer.
             'service_area_id' => ['nullable', 'uuid'],
+
+            // The organization's own words (2026-10-20); Job tidies them.
+            'job_type'   => ['nullable', 'string', 'max:100'],
+            'sub_status' => ['nullable', 'string', 'max:100'],
+            'tags'       => ['nullable', 'array', 'max:30'],
+            'tags.*'     => ['nullable', 'string', 'max:100'],
         ];
+    }
+
+    /**
+     * Distinct types, sub-statuses and tags on the jobs in reach, sorted.
+     *
+     * @param  list<string>  $reach
+     * @return array{job_types: list<string>, sub_statuses: list<string>, tags: list<string>}
+     */
+    private function labelsIn(array $reach): array
+    {
+        $distinct = fn (string $column) => Job::query()->whereIn('franchise_id', $reach)->whereNotNull($column)
+            ->distinct()->orderBy($column)->pluck($column)->all();
+
+        // Tags live in a JSON list: JSON_TABLE spreads them into rows.
+        $tags = $reach === [] ? [] : array_column(DB::select(
+            'SELECT DISTINCT t.tag FROM jobs, JSON_TABLE(jobs.tags, \'$[*]\' COLUMNS (tag VARCHAR(100) PATH \'$\')) t
+             WHERE jobs.organization_id = ? AND jobs.deleted_at IS NULL AND jobs.franchise_id IN ('.implode(',', array_fill(0, count($reach), '?')).')
+             ORDER BY t.tag',
+            [$this->tenant->idOrFail(), ...$reach],
+        ), 'tag');
+
+        return ['job_types' => $distinct('job_type'), 'sub_statuses' => $distinct('sub_status'), 'tags' => $tags];
     }
 
     /** @return array{total: int, due: int, state: string, due_on: ?string, currency: string}|null */
@@ -747,6 +783,9 @@ class JobsController extends Controller
             'service_area' => $job->serviceArea
                 ? ['id' => $job->service_area_id, 'name' => $job->serviceArea->name]
                 : null,
+            'job_type'   => $job->job_type,
+            'sub_status' => $job->sub_status,
+            'tags'       => $job->tags ?? [],
         ];
 
         if (! $detailed) {

@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
     'assigned_role_id', 'performed_by_user_id', 'service_area_id',
+    'job_type', 'sub_status', 'tags',
 ])]
 class Job extends Model implements StatesRetention
 {
@@ -103,6 +104,7 @@ class Job extends Model implements StatesRetention
             // JobsController::update() serialises correctly on save — see
             // AutomationEvent::casts() for the same reasoning on delivered_at.
             'earned_at'        => 'datetime',
+            'tags'             => 'array',
             // Set only by a person's change; the Workiz projection leaves the
             // area alone once it is (see its migration).
             'service_area_chosen_at' => 'datetime',
@@ -141,6 +143,37 @@ class Job extends Model implements StatesRetention
     public function getCompanyAttribute(): ?string
     {
         return $this->franchise?->company?->name;
+    }
+
+    /** Trimmed, and blank is none: Workiz's own words arrive with stray spaces. */
+    public function setJobTypeAttribute(?string $value): void
+    {
+        $this->attributes['job_type'] = self::word($value);
+    }
+
+    public function setSubStatusAttribute(?string $value): void
+    {
+        $this->attributes['sub_status'] = self::word($value);
+    }
+
+    /**
+     * Each tag trimmed (invisible joiners too, which Workiz's copy-pasted
+     * tags carry), blanks dropped, repeats once. Null means never set; [] is
+     * "none", which a backfill must not overwrite.
+     */
+    public function setTagsAttribute(?array $value): void
+    {
+        $this->attributes['tags'] = $value === null ? null : json_encode(array_values(array_unique(array_filter(
+            array_map(fn ($t) => self::word(is_scalar($t) ? (string) $t : null), $value),
+            fn (?string $t) => $t !== null,
+        ))), JSON_UNESCAPED_UNICODE);
+    }
+
+    private static function word(?string $value): ?string
+    {
+        $value = $value === null ? null : trim(preg_replace('/[\x{200B}-\x{200D}\x{2060}\x{FEFF}]/u', '', $value));
+
+        return $value === null || $value === '' ? null : $value;
     }
 
     public function workizJob(): HasOne
