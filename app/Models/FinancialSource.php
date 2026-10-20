@@ -36,6 +36,7 @@ class FinancialSource extends Model implements StatesRetention
         'marketing' => 'Marketing performance',
         'office_per_job' => 'Office cost per job',
         'companies' => 'Company list',
+        'payroll' => 'Technician payroll',
     ];
 
     /** Column meanings a field map may name. */

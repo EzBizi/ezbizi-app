@@ -14,6 +14,7 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Financials\AirtableMirror;
 use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
+use App\Support\Financials\FinancialsHome;
 use App\Support\Financials\SourceFigures;
 use App\Support\Financials\Templates;
 use App\Support\Inventory\InventoryVisibility;
@@ -44,6 +45,14 @@ class FinancialsController extends Controller
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
     ) {}
+
+    /** The home's cards: areas of the books, then the organization's own bases. */
+    public function home(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', FinancialBase::class);
+
+        return response()->json(['data' => FinancialsHome::for($request->user())]);
+    }
 
     // ── Bases ───────────────────────────────────────────────
 
