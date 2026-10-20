@@ -487,6 +487,8 @@ final class MailboxWatcher
             'office_phone' => trim((string) app(\App\Support\Settings\SettingsResolver::class)->get('leads.office_phone', $place)),
             'company_name' => (string) (($place instanceof \App\Models\Franchise ? $place->company?->name : null) ?? $place->name ?? ''),
             // "Hi Pat," - or "Hi," when the sender gave only an address.
+            // "Only from these domains" without a contains-guess on the whole address.
+            'from_domain' => strtolower((string) substr(strrchr($message->fromAddress, '@') ?: '', 1)),
             'greeting' => $first !== '' && ! str_contains($first, '@') ? "Hi {$first}," : 'Hi,',
         ];
     }
