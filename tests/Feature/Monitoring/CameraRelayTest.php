@@ -156,4 +156,45 @@ class CameraRelayTest extends TestCase
         $viewers(0); // the grace job runs at once on the sync queue
         $this->assertSame([], $this->wanted($alpha, $camera), 'The last viewer leaving unwants it.');
     }
+
+    public function test_watch_asks_the_boxs_go2rtc_for_the_stream_and_its_mjpeg(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        $alpha = $this->provisionTenant('Alpha');
+        $camera = $this->camera($alpha);
+
+        $url = $this->signedInAs($alpha['admin'])
+            ->postJson("/api/v1/monitoring/cameras/{$camera->id}/watch", ['quality' => 'main'])
+            ->assertOk()->json('play.url');
+
+        $path = "cam-{$camera->id}-main";
+        $this->assertStringContainsString("src={$path}_jpg", $url);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->method() === 'PUT'
+            && str_contains($r->url(), "name={$path}&")
+            && str_contains(urldecode($r->url()), "src=rtsp://box:".self::SECRET."@127.0.0.1:8554/{$path}"));
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => str_contains($r->url(), "name={$path}_jpg&")
+            && str_contains(urldecode($r->url()), "src=ffmpeg:{$path}#video=mjpeg#width=1280#height=720"));
+    }
+
+    public function test_the_box_reads_the_relay_with_the_shared_secret_from_loopback_only(): void
+    {
+        $this->hook(['action' => 'read', 'path' => 'cam-x-sub', 'user' => 'box', 'password' => self::SECRET, 'ip' => '127.0.0.1'])->assertOk();
+        $this->hook(['action' => 'read', 'path' => 'cam-x-sub', 'user' => 'box', 'password' => self::SECRET, 'ip' => '203.0.113.9'])->assertUnauthorized();
+        $this->hook(['action' => 'publish', 'path' => 'cam-x-sub', 'user' => 'box', 'password' => self::SECRET, 'ip' => '127.0.0.1'])->assertUnauthorized();
+    }
+
+    public function test_play_check_lets_a_valid_token_through_to_its_own_mjpeg_only(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $a = $this->camera($alpha);
+        $b = $this->camera($alpha);
+        $token = app(CameraRelay::class)->mintPlay($a, $alpha['admin'], 'sub')['token'];
+
+        $check = fn (string $src) => $this->withHeader('X-Relay-Secret', self::SECRET)
+            ->withHeader('X-Original-URI', "/api/stream.mjpeg?src={$src}&token={$token}")
+            ->get('/api/v1/camera-relay/play-check');
+
+        $check("cam-{$a->id}-sub_jpg")->assertNoContent();
+        $check("cam-{$b->id}-sub_jpg")->assertUnauthorized();
+    }
 }

@@ -19,10 +19,8 @@ Future<void> startCameraBridge() async {
   if (!Platform.isWindows || cameraBridge != null) return;
   final store = BridgeStore();
   final key = await store.siteKey();
-  final exe = File(
-    '${File(Platform.resolvedExecutable).parent.path}${Platform.pathSeparator}go2rtc.exe',
-  );
-  if (key == null || !exe.existsSync()) return;
+  final exe = File(enginePathFor(Platform.resolvedExecutable));
+  if (key == null) return; // a missing engine is reported, not hidden
 
   final dir = await getApplicationSupportDirectory();
   final bridge = CameraBridgeService(

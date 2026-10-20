@@ -5,6 +5,13 @@ import 'dart:io';
 import 'bridge_api.dart';
 import 'bridge_store.dart';
 
+/// Where the bundled go2rtc sits: `engine\go2rtc.exe` beside the app.
+String enginePathFor(String appExe) {
+  final i = appExe.lastIndexOf(RegExp(r'[\\/]'));
+  final sep = i < 0 ? r'\' : appExe[i];
+  return '${appExe.substring(0, i + 1)}engine${sep}go2rtc.exe';
+}
+
 /// The RTSP URL for one recorder channel. Amcrest/Dahua: subtype 0 is the
 /// main stream, 1 the sub stream.
 String recorderRtsp(Recorder r, String channel, String quality) {
@@ -54,12 +61,16 @@ class Engine {
 
   String get version => '1.9.14';
 
+  /// The binary is not where the installer puts it; the bridge says so in
+  /// every check-in instead of trying to start it.
+  bool get missing => !File(exe).existsSync();
+
   /// Idempotent: the same set twice does nothing.
   Future<void> apply(List<WantedCamera> wanted, Recorder? recorder) async {
     final config = recorder == null || wanted.isEmpty
         ? ''
         : go2rtcConfig(recorder, wanted);
-    if (config == _applied) return;
+    if (config == _applied || missing) return;
     _applied = config;
     _wanted = wanted;
     _authFailed.clear();

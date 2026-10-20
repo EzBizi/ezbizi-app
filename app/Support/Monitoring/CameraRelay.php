@@ -6,6 +6,8 @@ use App\Models\CameraSite;
 use App\Models\MonitoringCamera;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Which of a site's cameras somebody is watching right now, and the signed
@@ -98,10 +100,33 @@ class CameraRelay
         $base = rtrim((string) config('camera_bridge.play_url'), '/');
 
         return [
-            'url' => "{$base}/api/stream.mjpeg?src={$path}&token={$token}",
+            'url' => "{$base}/api/stream.mjpeg?src={$path}_jpg&token={$token}",
             'token' => $token,
             'expires_at' => date(DATE_ATOM, $expires),
         ];
+    }
+
+    /**
+     * Have the box's go2rtc read this path from the relay and offer it as
+     * MJPEG (`<path>_jpg`). Idempotent; go2rtc only pulls while somebody
+     * watches. A failure is logged, not thrown: the viewer then sees no
+     * frames, and the desk sees why.
+     */
+    public function ensureBoxStream(string $path, string $quality): void
+    {
+        $api = rtrim((string) config('camera_bridge.box_go2rtc'), '/');
+        $secret = (string) config('camera_bridge.relay_secret');
+        [$w, $h] = $quality === 'main' ? [1280, 720] : [640, 360];
+        try {
+            foreach ([
+                $path => "rtsp://box:{$secret}@127.0.0.1:8554/{$path}",
+                "{$path}_jpg" => "ffmpeg:{$path}#video=mjpeg#width={$w}#height={$h}",
+            ] as $name => $src) {
+                Http::timeout(2)->put("{$api}/api/streams?".http_build_query(['name' => $name, 'src' => $src]))->throw();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('camera relay: box go2rtc refused a stream', ['path' => $path, 'error' => $e->getMessage()]);
+        }
     }
 
     /** The relay's auth hook asks this: is $token good for $action on $path now? */

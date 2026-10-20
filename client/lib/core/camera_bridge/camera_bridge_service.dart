@@ -84,6 +84,7 @@ class CameraBridgeService {
       }
       await api.checkin({
         'engine_version': engine.version,
+        if (engine.missing) 'reason': 'engine_missing',
         'found': [for (final f in _found) f.toJson()],
         'cameras': await engine.health(),
       });

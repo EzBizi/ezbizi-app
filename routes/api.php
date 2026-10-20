@@ -554,6 +554,7 @@ Route::prefix('v1/monitoring/bridge')
 // The box's MediaMTX asking about a token, or reporting viewers. X-Relay-Secret, no user.
 Route::post('v1/camera-relay/auth', [CameraRelayController::class, 'auth'])->middleware('throttle:600,1');
 Route::post('v1/camera-relay/viewers', [CameraRelayController::class, 'viewers'])->middleware('throttle:600,1');
+Route::get('v1/camera-relay/play-check', [CameraRelayController::class, 'playCheck'])->middleware('throttle:600,1');
 
 Route::get('v1/web/plugin/values', [WebPluginController::class, 'values'])
     ->middleware('throttle:web-plugin')
