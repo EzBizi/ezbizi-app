@@ -26,10 +26,24 @@ class BridgeStore {
   static const _host = 'ezbizi.camera_bridge.recorder_host';
   static const _user = 'ezbizi.camera_bridge.recorder_user';
   static const _pass = 'ezbizi.camera_bridge.recorder_pass';
+  static const _site = 'ezbizi.camera_bridge.site_name';
+  static const _off = 'ezbizi.camera_bridge.off';
 
   Future<String?> siteKey() => _s.read(key: _key);
   Future<void> saveSiteKey(String key) => _s.write(key: _key, value: key);
-  Future<void> clearSiteKey() => _s.delete(key: _key);
+  Future<void> clearSiteKey() async {
+    await _s.delete(key: _key);
+    await _s.delete(key: _site);
+  }
+
+  /// The site this PC is paired with, as named in EzBizi.
+  Future<String?> siteName() => _s.read(key: _site);
+  Future<void> saveSiteName(String name) => _s.write(key: _site, value: name);
+
+  /// Switched off on this PC (kept across restarts).
+  Future<bool> switchedOff() async => await _s.read(key: _off) == '1';
+  Future<void> setSwitchedOff(bool off) =>
+      off ? _s.write(key: _off, value: '1') : _s.delete(key: _off);
 
   Future<Recorder?> recorder() async {
     final host = await _s.read(key: _host);

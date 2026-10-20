@@ -20,7 +20,8 @@ Future<void> startCameraBridge() async {
   final store = BridgeStore();
   final key = await store.siteKey();
   final exe = File(enginePathFor(Platform.resolvedExecutable));
-  if (key == null) return; // a missing engine is reported, not hidden
+  // A missing engine is reported, not hidden; switched off means not at all.
+  if (key == null || await store.switchedOff()) return;
 
   final dir = await getApplicationSupportDirectory();
   final bridge = CameraBridgeService(
@@ -37,4 +38,15 @@ Future<void> startCameraBridge() async {
     cameraBridge = null; // pairing again starts a fresh one
   });
   await bridge.start();
+}
+
+/// The panel's on/off switch: remembered, and applied now.
+Future<void> setCameraBridgeOn(bool on) async {
+  await BridgeStore().setSwitchedOff(!on);
+  if (on) {
+    await startCameraBridge();
+  } else {
+    cameraBridge?.stop();
+    cameraBridge = null;
+  }
 }
