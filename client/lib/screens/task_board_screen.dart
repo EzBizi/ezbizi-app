@@ -155,8 +155,59 @@ bool _late(_Json task, [_Json? board]) {
 }
 
 /// Today, Tomorrow, Yesterday, or the day in the organization's format.
-String _dueLabel(Object? due, DisplayFormats formats) {
-  final day = due is String ? DateTime.tryParse(due) : null;
+String _dueLabel(Object? due, DisplayFormats formats) =>
+    _dayLabel(due is String ? DateTime.tryParse(due) : null, formats);
+
+/// The day a task was made, in the same words as Due: a stamp, read as the
+/// day it was here.
+String _createdLabel(Object? at, DisplayFormats formats) {
+  final stamp = at is String ? DateTime.tryParse(at)?.toLocal() : null;
+  return _dayLabel(
+    stamp == null ? null : DateTime(stamp.year, stamp.month, stamp.day),
+    formats,
+  );
+}
+
+/// The built-in columns in the table's order, with the names a server from
+/// before `builtin_columns` showed (Jose, 2026-10-20).
+const _builtinDefaults = {
+  'owner': 'Owner',
+  'status': 'Status',
+  'due': 'Due',
+  'created': 'Created',
+  'about': 'About',
+  'updates': 'Updates',
+};
+
+/// A built-in column's name on this board: its own, or today's.
+String _builtinLabel(_Json? board, String key) {
+  final row = (board?['builtin_columns'] as Map?)?[key];
+  final label = row is Map ? row['label'] : null;
+  return label is String && label.trim().isNotEmpty
+      ? label
+      : _builtinDefaults[key]!;
+}
+
+/// Whether the board shows a built-in column. Created starts hidden, as the
+/// server has it; a server without the field shows what it always did.
+bool _builtinShown(_Json? board, String key) {
+  final row = (board?['builtin_columns'] as Map?)?[key];
+  final visible = row is Map ? row['visible'] : null;
+  return visible is bool ? visible : key != 'created';
+}
+
+/// Every owner's name, the primary first: `owners`, or the one `owner`.
+List<String> _ownerNames(_Json task) {
+  final owners = [
+    for (final o in (task['owners'] as List? ?? const []))
+      if (o is Map && o['name'] is String) o['name'] as String,
+  ];
+  if (owners.isNotEmpty) return owners;
+  final one = (task['owner'] as Map?)?['name'];
+  return one is String ? [one] : const [];
+}
+
+String _dayLabel(DateTime? day, DisplayFormats formats) {
   if (day == null) return '';
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
@@ -191,6 +242,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   String? _addError;
   final _newTitle = TextEditingController();
 
+  /// The built-in column being renamed, and the group whose headings hold
+  /// the box; why the last rename was refused, said under it.
+  ({String key, Object? group})? _renaming;
+  String? _renameError;
+  final _columnName = TextEditingController();
+
   DisplayFormats get _formats =>
       widget.session.me?.display ?? DisplayFormats.fallback;
 
@@ -206,6 +263,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   void dispose() {
     _newTitle.dispose();
     _groupName.dispose();
+    _columnName.dispose();
     super.dispose();
   }
 
@@ -323,7 +381,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     if (q.isEmpty) return true;
     return [
       t['title'],
-      (t['owner'] as Map?)?['name'],
+      ..._ownerNames(t),
       _statusLabel(_board!, _statusOf(t)),
       (t['about'] as Map?)?['label'],
     ].any((v) => v is String && v.toLowerCase().contains(q));
@@ -466,6 +524,144 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       onSubmitted: (_) => _saveGroup(id),
     ),
   );
+
+  /// One built-in column's name or visibility, only that key sent; the
+  /// server merges it into the rest. Null when it took, else why not.
+  Future<String?> _setBuiltin(String key, _Json change) async {
+    final res = await widget.api.patch('/task-boards/${_board!['id']}', {
+      'builtin_columns': {key: change},
+    });
+    if (!mounted) return null;
+    if (!res.ok) return res.reason;
+    final saved = (res.body['data'] as Map?)?['builtin_columns'];
+    setState(() {
+      final now = {...(_board!['builtin_columns'] as Map? ?? const {})};
+      now[key] = {...(now[key] as Map? ?? const {}), ...change};
+      _board = {..._board!, 'builtin_columns': saved is Map ? saved : now};
+    });
+    return null;
+  }
+
+  Future<void> _showBuiltin(String key, bool visible) async {
+    final why = await _setBuiltin(key, {'visible': visible});
+    if (why != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(why)));
+    }
+  }
+
+  Future<void> _saveColumnName() async {
+    final r = _renaming;
+    if (r == null) return;
+    final name = _columnName.text.trim();
+    if (name.isEmpty || name == _builtinLabel(_board, r.key)) {
+      return setState(() => _renaming = null);
+    }
+    final why = await _setBuiltin(r.key, {'label': name});
+    if (!mounted) return;
+    setState(() {
+      _renameError = why;
+      if (why == null) _renaming = null;
+    });
+  }
+
+  /// A built-in column's heading: its name, and on a board you may edit a
+  /// menu to rename or hide it (Jose, 2026-10-20).
+  Widget _builtinHead(String key, Object? group, Widget label) {
+    if (!_canEdit) return label;
+    return MenuAnchor(
+      menuChildren: [
+        MenuItemButton(
+          key: ValueKey('builtin-rename-$key'),
+          leadingIcon: const Icon(Icons.edit_outlined, size: 18),
+          onPressed: () => setState(() {
+            _renaming = (key: key, group: group);
+            _renameError = null;
+            _columnName.text = _builtinLabel(_board, key);
+          }),
+          child: const Text('Rename'),
+        ),
+        MenuItemButton(
+          key: ValueKey('builtin-hide-$key'),
+          leadingIcon: const Icon(Icons.visibility_off_outlined, size: 18),
+          onPressed: () => _showBuiltin(key, false),
+          child: const Text('Hide column'),
+        ),
+      ],
+      builder: (context, menu, _) => InkWell(
+        key: ValueKey('builtin-head-$key'),
+        onTap: () => menu.isOpen ? menu.close() : menu.open(),
+        child: Align(alignment: Alignment.centerLeft, child: label),
+      ),
+    );
+  }
+
+  /// The box a built-in column's new name is typed into, under the
+  /// headings it was asked from.
+  Widget _columnNameField(String key) => _cellBorder(
+    context,
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: 320,
+          child: TextField(
+            key: const Key('builtin-name'),
+            controller: _columnName,
+            autofocus: true,
+            maxLength: 60,
+            decoration: InputDecoration(
+              isDense: true,
+              labelText: 'Rename "${_builtinLabel(_board, key)}"',
+              hintText: 'Name the column, then press Enter',
+              counterText: '',
+              errorText: _renameError,
+              errorMaxLines: 3,
+              suffixIcon: IconButton(
+                key: const Key('builtin-name-cancel'),
+                tooltip: 'Cancel',
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => setState(() => _renaming = null),
+              ),
+            ),
+            onSubmitted: (_) => _saveColumnName(),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// Columns: the built-in columns this board hides, to show again.
+  Widget _columnsControl() {
+    final hidden = [
+      for (final key in _builtinDefaults.keys)
+        if (!_builtinShown(_board, key)) key,
+    ];
+    return MenuAnchor(
+      menuChildren: [
+        for (final key in hidden)
+          MenuItemButton(
+            key: ValueKey('builtin-show-$key'),
+            leadingIcon: const Icon(Icons.visibility_outlined, size: 18),
+            onPressed: () => _showBuiltin(key, true),
+            child: Text('Show ${_builtinLabel(_board, key)}'),
+          ),
+        if (hidden.isEmpty)
+          const MenuItemButton(
+            onPressed: null,
+            child: Text('Every column is showing'),
+          ),
+      ],
+      builder: (context, menu, _) => OutlinedButton.icon(
+        key: const Key('tasks-columns'),
+        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+        icon: const Icon(Icons.view_column_outlined, size: 18),
+        label: Text(
+          hidden.isEmpty ? 'Columns' : 'Columns · ${hidden.length} hidden',
+        ),
+      ),
+    );
+  }
 
   /// Add a column of [type] (UI queue 84). The board reloads after.
   Future<void> _addColumn(String type) async {
@@ -893,6 +1089,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               icon: const Icon(Icons.label_outline, size: 18),
               label: const Text('Statuses…'),
             ),
+          if (_canEdit && _board?['builtin_columns'] is Map) _columnsControl(),
           ..._boardFaces(phone: phone),
           if (!_canEdit)
             Text(
@@ -1128,7 +1325,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   children: [
                     header,
                     if (!folded) ...[
-                      _headings(context),
+                      _headings(context, id),
+                      if (_renaming case final r? when r.group == id)
+                        _columnNameField(r.key),
                       for (final t in shown) ...[
                         _row(context, t, colour),
                         if (_expanded.contains(t['id'])) ...[
@@ -1183,6 +1382,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     owner: 130.0,
     status: 130.0,
     due: 104.0,
+    created: 104.0,
     about: 170.0,
     updates: 84.0,
     custom: 120.0,
@@ -1193,11 +1393,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// scrolls sideways instead of squeezing the task to nothing.
   double get _fixedWidth =>
       6 +
-      _widths.owner +
-      _widths.status +
-      _widths.due +
-      _widths.about +
-      _widths.updates +
+      (_builtinShown(_board, 'owner') ? _widths.owner : 0) +
+      (_builtinShown(_board, 'status') ? _widths.status : 0) +
+      (_builtinShown(_board, 'due') ? _widths.due : 0) +
+      (_builtinShown(_board, 'created') ? _widths.created : 0) +
+      (_builtinShown(_board, 'about') ? _widths.about : 0) +
+      (_builtinShown(_board, 'updates') ? _widths.updates : 0) +
       _widths.add +
       _widths.custom * boardColumns(_board).length;
 
@@ -1218,7 +1419,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     child: child,
   );
 
-  Widget _headings(BuildContext context) {
+  Widget _headings(BuildContext context, Object? group) {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodySmall?.copyWith(
       fontSize: 10.5,
@@ -1227,6 +1428,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       color: theme.colorScheme.onSurfaceVariant,
     );
     Text h(String s) => Text(s.toUpperCase(), style: style, maxLines: 1);
+    Widget b(String key, double width) => _cell(
+      context,
+      width,
+      _builtinHead(
+        key,
+        group,
+        Tooltip(
+          message: _builtinLabel(_board, key),
+          child: h(_builtinLabel(_board, key)),
+        ),
+      ),
+    );
+    bool shown(String key) => _builtinShown(_board, key);
     return _cellBorder(
       context,
       SizedBox(
@@ -1241,9 +1455,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 child: Align(alignment: Alignment.centerLeft, child: h('Task')),
               ),
             ),
-            _cell(context, _widths.owner, h('Owner')),
-            _cell(context, _widths.status, h('Status')),
-            _cell(context, _widths.due, h('Due')),
+            if (shown('owner')) b('owner', _widths.owner),
+            if (shown('status')) b('status', _widths.status),
+            if (shown('due')) b('due', _widths.due),
+            if (shown('created')) b('created', _widths.created),
             for (final c in boardColumns(_board))
               _cell(
                 context,
@@ -1257,8 +1472,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   ),
                 ),
               ),
-            _cell(context, _widths.about, h('About')),
-            _cell(context, _widths.updates, h('Updates')),
+            if (shown('about')) b('about', _widths.about),
+            if (shown('updates')) b('updates', _widths.updates),
             if (_canEdit)
               SizedBox(
                 width: _widths.add,
@@ -1290,10 +1505,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   Widget _row(BuildContext context, _Json t, Color colour, {bool sub = false}) {
     final theme = Theme.of(context);
-    final owner = (t['owner'] as Map?)?['name'] as String?;
+    final owners = _ownerNames(t);
+    final owner = owners.firstOrNull;
     final about = (t['about'] as Map?)?['label'] as String?;
     final updates = (t['updates_count'] as num?) ?? 0;
     final late = _late(t, _board);
+    bool shown(String key) => _builtinShown(_board, key);
 
     return _cellBorder(
       context,
@@ -1330,39 +1547,53 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   ),
                 ),
               ),
-              _cell(
-                context,
-                _widths.owner,
-                owner == null
-                    ? const SizedBox.shrink()
-                    : Row(
-                        children: [
-                          _avatar(context, owner),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              owner.split(' ').first,
-                              overflow: TextOverflow.ellipsis,
+              if (shown('owner'))
+                _cell(
+                  context,
+                  _widths.owner,
+                  owner == null
+                      ? const SizedBox.shrink()
+                      : Row(
+                          children: [
+                            _avatar(context, owner),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                owner.split(' ').first,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-              ),
-              SizedBox(width: _widths.status, child: _statusCell(context, t)),
-              _cell(
-                context,
-                _widths.due,
-                Text(
-                  _dueLabel(t['due_on'], _formats),
-                  maxLines: 1,
-                  style: late
-                      ? TextStyle(
-                          color: theme.colorScheme.error,
-                          fontWeight: FontWeight.w700,
-                        )
-                      : null,
+                            if (owners.length > 1) _moreOwners(t, owners),
+                          ],
+                        ),
                 ),
-              ),
+              if (shown('status'))
+                SizedBox(width: _widths.status, child: _statusCell(context, t)),
+              if (shown('due'))
+                _cell(
+                  context,
+                  _widths.due,
+                  Text(
+                    _dueLabel(t['due_on'], _formats),
+                    maxLines: 1,
+                    style: late
+                        ? TextStyle(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w700,
+                          )
+                        : null,
+                  ),
+                ),
+              if (shown('created'))
+                _cell(
+                  context,
+                  _widths.created,
+                  Text(
+                    _createdLabel(t['created_at'], _formats),
+                    key: ValueKey('task-created-${t['id']}'),
+                    maxLines: 1,
+                  ),
+                ),
               for (final c in boardColumns(_board))
                 c.type == 'status'
                     ? SizedBox(
@@ -1390,38 +1621,40 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                               : null,
                         ),
                       ),
-              _cell(
-                context,
-                _widths.about,
-                Text(
-                  about ?? '—',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: about == null
-                      ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
-                      : TextStyle(
-                          color: theme.colorScheme.primary,
-                          fontWeight: FontWeight.w700,
+              if (shown('about'))
+                _cell(
+                  context,
+                  _widths.about,
+                  Text(
+                    about ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: about == null
+                        ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
+                        : TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                  ),
+                ),
+              if (shown('updates'))
+                _cell(
+                  context,
+                  _widths.updates,
+                  updates == 0
+                      ? const SizedBox.shrink()
+                      : Row(
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 14,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Text('$updates'),
+                          ],
                         ),
                 ),
-              ),
-              _cell(
-                context,
-                _widths.updates,
-                updates == 0
-                    ? const SizedBox.shrink()
-                    : Row(
-                        children: [
-                          Icon(
-                            Icons.chat_bubble_outline,
-                            size: 14,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Text('$updates'),
-                        ],
-                      ),
-              ),
               // Under the headings' +, so every column lines up.
               if (_canEdit) SizedBox(width: _widths.add),
             ],
@@ -1430,6 +1663,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       ),
     );
   }
+
+  /// "+2" after a task's primary owner, every name on hover.
+  Widget _moreOwners(_Json t, List<String> owners) => Tooltip(
+    message: owners.join(', '),
+    child: Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        '+${owners.length - 1}',
+        key: ValueKey('task-owners-more-${t['id']}'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ),
+  );
 
   /// ▸ / ▾ before a task: its subtasks under it, or a place to add the first.
   Widget _subtaskToggle(_Json t) {
@@ -1515,8 +1764,13 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final theme = Theme.of(context);
     final colours = _statusColours(context, _statusFor(_board, _statusOf(t)));
     final late = _late(t, _board);
-    final owner = (t['owner'] as Map?)?['name'] as String?;
+    final owners = _ownerNames(t);
+    final owner = owners.firstOrNull;
     final due = _dueLabel(t['due_on'], _formats);
+    final created = _builtinShown(_board, 'created')
+        ? _createdLabel(t['created_at'], _formats)
+        : '';
+    bool shown(String key) => _builtinShown(_board, key);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1557,32 +1811,36 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           runSpacing: 4,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colours.fill,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                _statusLabel(_board!, _statusOf(t)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: colours.ink,
+                            if (shown('status'))
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colours.fill,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  _statusLabel(_board!, _statusOf(t)),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: colours.ink,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (owner != null) ...[_avatar(context, owner)],
+                            if (owner != null && shown('owner')) ...[
+                              _avatar(context, owner),
+                              if (owners.length > 1) _moreOwners(t, owners),
+                            ],
                             if (!sub) ...[
                               _subtaskCountChip(context, t),
                               _subtaskToggle(t),
                             ],
-                            if (due.isNotEmpty)
+                            if (due.isNotEmpty && shown('due'))
                               Text(
                                 due,
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -1590,6 +1848,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                       ? theme.colorScheme.error
                                       : theme.colorScheme.onSurfaceVariant,
                                   fontWeight: late ? FontWeight.w700 : null,
+                                ),
+                              ),
+                            if (created.isNotEmpty)
+                              Text(
+                                '${_builtinLabel(_board, 'created')} $created',
+                                key: ValueKey('task-created-${t['id']}'),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
                             for (final c in boardColumns(_board))
@@ -1620,7 +1886,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                                   ),
                                 ),
                             if ((t['about'] as Map?)?['label']
-                                case final String about)
+                                case final String about when shown('about'))
                               Text(
                                 about,
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -1896,6 +2162,61 @@ class _TaskPanelState extends State<_TaskPanel> {
     }
   }
 
+  /// The owners after the primary, each removable, and a picker to add
+  /// another: every owner sent, primary first (`assignee_user_ids`).
+  Widget _moreOwnersEditor(_Json task, Map<String, String> people) {
+    final names = {
+      for (final o in task['owners'] as List)
+        if (o is Map && o['id'] is String) o['id'] as String: '${o['name']}',
+    };
+    final primary = (task['owner'] as Map)['id'] as String;
+    final ids = [primary, ...names.keys.where((id) => id != primary)];
+    final others = ids.skip(1).toList();
+    if (others.isEmpty && !_canEdit) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final id in others)
+          InputChip(
+            key: ValueKey('task-panel-owner-$id'),
+            label: Text(names[id] ?? people[id] ?? 'Someone'),
+            onDeleted: _canEdit
+                ? () => _patch({
+                    'assignee_user_ids': [
+                      for (final x in ids)
+                        if (x != id) x,
+                    ],
+                  })
+                : null,
+          ),
+        if (_canEdit)
+          SizedBox(
+            width: 200,
+            child: SearchPickerField<String>(
+              key: const Key('task-panel-owner-add'),
+              value: null,
+              isDense: true,
+              hint: 'Add an owner',
+              options: [
+                for (final p in people.entries)
+                  if (!ids.contains(p.key))
+                    SearchOption(value: p.key, label: p.value),
+              ],
+              onChanged: (id) {
+                if (id != null) {
+                  _patch({
+                    'assignee_user_ids': [...ids, id],
+                  });
+                }
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SidePanel(
@@ -2000,7 +2321,7 @@ class _TaskPanelState extends State<_TaskPanel> {
         ],
         const SizedBox(height: 8),
         fact(
-          'Status',
+          _builtinLabel(widget.board, 'status'),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -2026,7 +2347,7 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
         ),
         fact(
-          'Owner',
+          _builtinLabel(widget.board, 'owner'),
           SearchPickerField<String>(
             key: const Key('task-panel-owner'),
             value: owner?['id'] as String?,
@@ -2044,8 +2365,10 @@ class _TaskPanelState extends State<_TaskPanel> {
                 : null,
           ),
         ),
+        if (owner != null && task['owners'] is List)
+          fact('', _moreOwnersEditor(task, people)),
         fact(
-          'Due',
+          _builtinLabel(widget.board, 'due'),
           // The day boxes need the whole width, so Late sits under the label.
           under: _late(task, widget.board)
               ? const StatusPill('Late', tone: Tone.bad)
@@ -2067,7 +2390,7 @@ class _TaskPanelState extends State<_TaskPanel> {
           ),
         ),
         fact(
-          'About',
+          _builtinLabel(widget.board, 'about'),
           Text(
             (task['about'] as Map?)?['label'] as String? ?? '—',
             style: TextStyle(
