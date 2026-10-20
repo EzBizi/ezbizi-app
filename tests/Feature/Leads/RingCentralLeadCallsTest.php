@@ -78,6 +78,13 @@ class RingCentralLeadCallsTest extends TestCase
             $this->assertSame(['+17320000001', 'NJ - GMB'], [$calls[0]->line_number, $calls[0]->line_name], 'the number they dialled (Jose, 2026-10-20)');
             $this->assertSame(95000, $calls[0]->duration_ms);
             $this->assertNull($calls[1]->duration_ms, 'missed: rang out');
+            // Who picked up, or whose phones rang (Jose, 2026-10-20).
+            $this->assertSame(['Ana Diaz', null], [$calls[0]->answered_by, $calls[0]->rang]);
+            $this->assertSame([null, 'Ana Diaz'], [$calls[1]->answered_by, $calls[1]->rang]);
+            // A row filed before this was kept is filled by the next read.
+            $calls[0]->forceFill(['answered_by' => null])->save();
+            app(RingCentralLeadCalls::class)->file([self::rc('1', '+15550000001', '2026-10-14T14:00:00Z')], self::LINES, $t['company']->id);
+            $this->assertSame('Ana Diaz', $calls[0]->refresh()->answered_by);
 
             $this->assertSame(Company::query()->where('name', 'AngiSweep')->value('id'), $rc[3]->company_id, 'a brand line is its company');
             $this->assertNull($rc[3]->franchise_id);
@@ -350,6 +357,45 @@ class RingCentralLeadCallsTest extends TestCase
             ]);
             $this->assertSame(['ALz3' => true], app(RingCentralCallLog::class)->activeCallIds());
         });
+    }
+
+    /**
+     * Desk, 2026-10-20: a 30-day catch-up stopped on "did not list the calls in
+     * progress (429)". Without the list, only a recent call might be live.
+     */
+    public function test_with_no_active_list_older_calls_are_filed_and_recent_ones_wait(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            $rc = new \App\Models\SocialConnection;
+            $rc->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'company', 'scope_id' => $t['company']->id,
+                'provider' => 'ringcentral', 'remote_id' => '123', 'display_name' => 'RingCentral']);
+            $rc->connect(['refresh_token' => '-', 'server' => 'https://rc.test', 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+            $rc->save();
+        });
+        $record = fn (string $id, string $from, $at) => ['id' => $id, 'direction' => 'Inbound', 'startTime' => $at->toIso8601String(),
+            'from' => ['phoneNumber' => $from], 'to' => ['phoneNumber' => '+17320000001'], 'result' => 'Accepted',
+            'legs' => [['legType' => 'PstnToSip', 'from' => ['name' => 'Sasha'], 'result' => 'Call connected', 'duration' => 60]]];
+        $records = [$record('old', '+15550000001', now()->subDays(5)), $record('new', '+15550000002', now()->subHour())];
+        \Illuminate\Support\Facades\Http::fake([
+            'rc.test/restapi/oauth/token' => \Illuminate\Support\Facades\Http::response(['access_token' => 't', 'expires_in' => 3600]),
+            'rc.test/restapi/v1.0/account/~/active-calls*' => \Illuminate\Support\Facades\Http::response([], 429),
+            'rc.test/restapi/v1.0/account/~/phone-number*' => \Illuminate\Support\Facades\Http::response(['records' => []]),
+            // Each day asks for its own calls.
+            'rc.test/restapi/v1.0/account/~/call-log*' => function ($request) use ($records) {
+                $from = \Carbon\CarbonImmutable::parse($request['dateFrom']);
+                $to = \Carbon\CarbonImmutable::parse($request['dateTo']);
+
+                return \Illuminate\Support\Facades\Http::response(['records' => array_values(array_filter($records,
+                    fn ($r) => \Carbon\CarbonImmutable::parse($r['startTime'])->between($from, $to)))]);
+            },
+        ]);
+
+        $this->artisan('ezbizi:leads-ringcentral', ['--days' => 30])->assertSuccessful();
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(['rc_old'],
+            LeadConversation::query()->pluck('remote_id')->all(), 'the hour-old call waits for a run that can tell'));
+        $this->inTenant($t['org'], fn () => $this->assertSame('Sasha', LeadConversation::query()->value('answered_by')));
     }
 
     /** Jose, 2026-10-19: "think we can also get the lenght of the call" (B Imperato, 0:00:01). */

@@ -2520,6 +2520,11 @@ class _LeadThreadState extends State<LeadThread> {
                       '${who == 'Customer' ? 'to' : 'from'} ${formatPhoneNumber(c['line_number'] as String?)}',
                       if ((c['line_name'] as String?)?.isNotEmpty == true)
                         c['line_name'] as String,
+                      // Who picked up, or whose phones rang (Jose, 2026-10-20).
+                      if ((c['answered_by'] as String?)?.isNotEmpty == true)
+                        'answered by ${c['answered_by']}'
+                      else if ((c['rang'] as String?)?.isNotEmpty == true)
+                        'rang ${c['rang']}',
                     ].join(' · '),
                     key: ValueKey('call-line-$id'),
                     style: theme.textTheme.bodySmall?.copyWith(

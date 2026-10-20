@@ -93,6 +93,10 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 .'EzBizi never copies the audio; it streams it on request with the connected '
                 .'account\'s credentials, so removing the link removes the reach.',
                 Erasure::erase()),
+            new PersonalDataEntry('answered_by, rang', PersonalDataEntry::IDENTITY,
+                'The staff member who picked up a call, or whose phones rang, as RingCentral '
+                .'names them, so the business sees who handled it.',
+                Erasure::keep('a work record of who handled a business call; it goes with the row')),
             new PersonalDataEntry('attachments', PersonalDataEntry::CONTENT,
                 'Links to photographs or files the person sent with a message.',
                 Erasure::erase()),
@@ -115,7 +119,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
 
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
-        'occurred_at', 'duration_ms', 'line_number', 'line_name', 'recording_url', 'text', 'transcript', 'attachments',
+        'occurred_at', 'duration_ms', 'line_number', 'line_name', 'answered_by', 'rang', 'recording_url', 'text', 'transcript', 'attachments',
         'is_automatic',
     ];
 

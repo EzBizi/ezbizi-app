@@ -1025,6 +1025,9 @@ class LeadsController extends Controller
             // Our number on a call and its line (Jose, 2026-10-20).
             'line_number' => $c->line_number,
             'line_name' => $c->line_name,
+            // Who picked up, or whose phones rang (Jose, 2026-10-20).
+            'answered_by' => $c->answered_by,
+            'rang' => $c->rang,
             'text' => $c->text,
             // A call's words, machine-transcribed from the recording, divided
             // by speaker once Grok has (ezbizi:label-call-transcripts).
