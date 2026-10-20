@@ -1027,6 +1027,7 @@ Route::prefix('v1')
             Route::get('repair-split', 'repairSplit');
             Route::get('refunds', 'refunds');
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
+            Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
