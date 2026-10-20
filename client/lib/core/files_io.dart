@@ -79,6 +79,11 @@ Future<PickedBytes?> pickImage() => _openBytes(const [
 Future<PickedBytes?> pickBytes({String accept = ''}) =>
     _openBytes(acceptGroups(accept));
 
+/// No camera package in the native builds: file_selector opens files only.
+bool get canTakePhoto => false;
+
+Future<PickedBytes?> takePhoto() async => null;
+
 Future<PickedFile?> pickText() async {
   final file = await fs.openFile(acceptedTypeGroups: acceptGroups('.csv,.txt'));
   if (file == null) return null;
