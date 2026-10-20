@@ -65,6 +65,30 @@ class WorkizWebSessionTest extends TestCase
         $this->postJson($link, ['cookies' => $this->cookies()])->assertStatus(422)->assertJsonPath('message', WorkizWebSession::EXPIRED);
     }
 
+    /** Roles & Permissions, 2026-10-20: a link is good once. A replayed one cannot re-point the reports. */
+    public function test_a_link_works_once(): void
+    {
+        Http::fake(['app.workiz.com/root/home' => Http::response('<script>var accountId = "98765";</script>')]);
+        $link = $this->link();
+        $this->postJson($link, ['cookies' => $this->cookies()])->assertOk();
+
+        $this->postJson($link, ['cookies' => ['sendajob_sessid' => 'theirs'] + $this->cookies()])->assertStatus(410);
+
+        $row = $this->inTenant($this->t['org'], fn () => SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->sole());
+        $this->assertSame('sess-abc', $row->credentials['cookies']['sendajob_sessid']);
+        $this->assertArrayNotHasKey('handoff_nonce', $row->credentials);
+    }
+
+    /** The login reads every account: only the organization view sets it up or maps it (AGENTS.md). */
+    public function test_a_branch_view_cannot_get_a_link_or_map_accounts(): void
+    {
+        $c = $this->connected();
+        $branch = $this->userWithRole($this->t, 'Branch', ['reports.build', 'reports.view'], onlyAt: $this->t['franchise']);
+
+        $this->signedInAs($branch)->postJson('/api/v1/social/workiz-web/link')->assertForbidden();
+        $this->signedInAs($branch)->putJson('/api/v1/social/workiz-web/'.$c->id.'/accounts', ['account' => 'main', 'franchise_id' => null])->assertForbidden();
+    }
+
     /** One connected login, the main account mapped to the branch and a sub-account not mapped. */
     private function connected(): SocialConnection
     {

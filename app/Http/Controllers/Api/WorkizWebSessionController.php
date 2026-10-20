@@ -11,7 +11,9 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizWebSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
@@ -28,8 +30,7 @@ class WorkizWebSessionController extends Controller
     public function link(Request $request): JsonResponse
     {
         $user = $request->user();
-        abort_unless($user->hasPermission(SocialProvider::WorkizWeb->connectPermission()), Status::HTTP_FORBIDDEN,
-            Refusal::permission(SocialProvider::WorkizWeb->connectAct())->message());
+        $this->mayConfigure($request);
 
         $connection = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->first() ?? new SocialConnection;
 
@@ -43,9 +44,15 @@ class WorkizWebSessionController extends Controller
             $connection->forceFill(['status' => 'expired', 'status_reason' => 'Not signed in yet.'])->save();
         }
 
+        // One use per link: a new link replaces the nonce, and a session that is
+        // kept clears it, so a copied URL cannot re-point the reports later.
+        $nonce = Str::random(40);
+        $connection->connect(['handoff_nonce' => $nonce] + (array) $connection->credentials);
+        $connection->save();
+
         return response()->json(['data' => [
             'id' => $connection->getKey(),
-            'link' => URL::temporarySignedRoute('social.workiz-web.handoff', now()->addMinutes(30), ['connection' => $connection->getKey()]),
+            'link' => URL::temporarySignedRoute('social.workiz-web.handoff', now()->addMinutes(30), ['connection' => $connection->getKey(), 'nonce' => $nonce]),
         ]]);
     }
 
@@ -54,9 +61,17 @@ class WorkizWebSessionController extends Controller
     {
         $row = SocialConnection::query()->withoutGlobalScopes()->where('provider', SocialProvider::WorkizWeb->value)->findOrFail($connection);
         $cookies = $request->validate(['cookies' => ['required', 'array'], 'cookies.*' => ['string', 'max:2000']])['cookies'];
+        $nonce = (string) ($row->credentials['handoff_nonce'] ?? '');
+        abort_unless($nonce !== '' && hash_equals($nonce, (string) $request->query('nonce')), Status::HTTP_GONE,
+            'This link has been used or replaced. Get a new one in EzBizi.');
 
         $refused = $tenant->run($row->organization()->withoutGlobalScopes()->firstOrFail(), function () use ($row, $cookies) {
             $refused = WorkizWebSession::adopt($row, $cookies);
+
+            if ($refused === null) {
+                $row->connect(array_diff_key((array) $row->credentials, ['handoff_nonce' => 1]));
+                $row->save();
+            }
 
             if ($refused === null) {
                 $this->audit->log('social.connected', $row, ['provider' => SocialProvider::WorkizWeb->value, 'by' => 'session handoff']);
@@ -98,7 +113,16 @@ class WorkizWebSessionController extends Controller
     private function guard(Request $request, SocialConnection $connection): void
     {
         abort_unless($connection->provider === SocialProvider::WorkizWeb->value, Status::HTTP_NOT_FOUND);
-        abort_unless($request->user()->hasPermission(SocialProvider::WorkizWeb->connectPermission()), Status::HTTP_FORBIDDEN,
+        $this->mayConfigure($request);
+    }
+
+    /** The login reads every account, so it belongs to the whole organization: changed only from its view (AGENTS.md). */
+    private function mayConfigure(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission(SocialProvider::WorkizWeb->connectPermission()), Status::HTTP_FORBIDDEN,
             Refusal::permission(SocialProvider::WorkizWeb->connectAct())->message());
+        abort_unless(ViewScope::forUser($user)->isOrganization() && $user->canActOnOrganization($user->organization),
+            Status::HTTP_FORBIDDEN, 'The Workiz web login belongs to the whole organization. Switch to the organization view to change it.');
     }
 }
