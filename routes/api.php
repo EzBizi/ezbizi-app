@@ -1900,6 +1900,10 @@ Route::prefix('v1')
         // not the same authority as editing their row.
         Route::post('hr/people/{user}/totp/reset', [HrPeopleController::class, 'resetTotp']);
         Route::post('hr/people/{user}/reset-link', [HrPeopleController::class, 'resetLink']);
+        // Permanent deletion, apart from deactivating (Jose, 2026-10-20):
+        // what it would remove, then the act. UserPolicy::deletePermanently.
+        Route::get('hr/people/{user}/deletion', [HrPeopleController::class, 'deletionPreview']);
+        Route::delete('hr/people/{user}', [HrPeopleController::class, 'destroy']);
 
         Route::middleware('permission:hr.invitations.view')->group(function () {
             Route::get('hr/invitations', [HrInvitationsController::class, 'index']);

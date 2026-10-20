@@ -147,7 +147,6 @@ class _RecordsTabState extends State<RecordsTab> {
     super.dispose();
   }
 
-
   /// The companies and franchises this person can see, each named by its
   /// company ("A-1 Chimney › Ohio"), in that order.
   List<SearchOption<String>> get _places {
@@ -157,9 +156,11 @@ class _RecordsTabState extends State<RecordsTab> {
     String pathOf(String? companyId) {
       final names = <String>[];
       final seen = <String>{};
-      for (var c = companies[companyId];
-          c != null && seen.add(c.id);
-          c = companies[c.parentCompanyId]) {
+      for (
+        var c = companies[companyId];
+        c != null && seen.add(c.id);
+        c = companies[c.parentCompanyId]
+      ) {
         names.insert(0, c.name);
       }
       return names.join(' › ');
@@ -171,9 +172,10 @@ class _RecordsTabState extends State<RecordsTab> {
       for (final f in me.franchises)
         SearchOption(
           value: 'franchise:${f.id}',
-          label: [pathOf(f.companyId), f.name]
-              .where((part) => part.isNotEmpty)
-              .join(' › '),
+          label: [
+            pathOf(f.companyId),
+            f.name,
+          ].where((part) => part.isNotEmpty).join(' › '),
         ),
     ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
     return rows;
@@ -345,9 +347,8 @@ class _RecordsTabState extends State<RecordsTab> {
                     () => _listWidth =
                         _listWidth.clamp(240.0, widest) + d.delta.dx,
                   ),
-                  onHorizontalDragEnd: (_) => _keepWidth(
-                    _listWidth.clamp(240.0, widest),
-                  ),
+                  onHorizontalDragEnd: (_) =>
+                      _keepWidth(_listWidth.clamp(240.0, widest)),
                   onDoubleTap: () => _keepWidth(300),
                   child: const SizedBox(
                     width: 8,
@@ -585,8 +586,11 @@ class _RecordsTabState extends State<RecordsTab> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.person_search_outlined,
-                  size: 40, color: theme.colorScheme.outline),
+              Icon(
+                Icons.person_search_outlined,
+                size: 40,
+                color: theme.colorScheme.outline,
+              ),
               const SizedBox(height: 12),
               Text(
                 'Choose somebody on the left to see their whole record.',
@@ -616,6 +620,10 @@ class _RecordsTabState extends State<RecordsTab> {
       formats: _formats,
       onBack: narrow ? () => setState(() => _selected = null) : null,
       onChanged: () => _load(),
+      onDeleted: () {
+        setState(() => _selected = null);
+        _load();
+      },
       onOpenOnboarding: (onboardingId) =>
           setState(() => _reading = onboardingId),
     );
@@ -709,6 +717,7 @@ class _PersonRecord extends StatefulWidget {
     required this.formats,
     required this.onChanged,
     required this.onOpenOnboarding,
+    this.onDeleted,
     this.onBack,
   });
 
@@ -720,6 +729,9 @@ class _PersonRecord extends StatefulWidget {
   final DisplayFormats formats;
   final VoidCallback onChanged;
   final ValueChanged<String> onOpenOnboarding;
+
+  /// They were deleted for good: the record closes and the list reloads.
+  final VoidCallback? onDeleted;
 
   /// Only on a phone, where the record replaced the list.
   final VoidCallback? onBack;
@@ -1243,8 +1255,57 @@ class _PersonRecordState extends State<_PersonRecord> {
           'A single-use link you hand over yourself — for somebody locked out '
               'of their mailbox too.',
         ),
+        // Jose, 2026-10-20: "different than deactivation, we are missing
+        // full deletion". Its own key (UserPolicy::deletePermanently).
+        Builder(
+          builder: (context) {
+            final refusedDelete = self
+                ? 'This is for somebody else. Delete your own account from '
+                      'Your account.'
+                : widget.session.me?.refusal(
+                    'hr.delete',
+                    'delete people permanently',
+                  );
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('delete-permanently'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Delete permanently'),
+                  onPressed: refusedDelete == null && !_busy
+                      ? _deletePermanently
+                      : null,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  refusedDelete ??
+                      'Erases them and their personal data everywhere, so '
+                          'their email and phone can be used for a new account. '
+                          'Unlike Deactivate, it cannot be undone.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            );
+          },
+        ),
       ],
     );
+  }
+
+  Future<void> _deletePermanently() async {
+    final deleted = await showSidePanel<bool>(
+      context,
+      builder: (_) => _DeletePanel(
+        api: widget.api,
+        personId: widget.personId,
+        name: _person['name'] as String? ?? '',
+      ),
+    );
+    if (deleted == true && mounted) widget.onDeleted?.call();
   }
 
   /// The lost-phone path. Confirmed first, because it signs them out of
@@ -1954,7 +2015,10 @@ class _OnboardingSectionState extends State<_OnboardingSection> {
                             IconButton(
                               key: Key('record-onboarding-download-${row.id}'),
                               tooltip: 'Download the signed PDF',
-                              icon: const Icon(Icons.download_outlined, size: 20),
+                              icon: const Icon(
+                                Icons.download_outlined,
+                                size: 20,
+                              ),
                               onPressed: () async {
                                 final refusal = await downloadSignedPdf(
                                   widget.api,
@@ -2150,10 +2214,8 @@ class _DetailKind {
       _FieldSpec('body', 'Note', _FieldType.multiline, required: true),
     ],
     title: (row, _) => row['body']?.toString() ?? '',
-    subtitle: (row, formats) => _join([
-      row['author']?.toString(),
-      _date(row['created_at'], formats),
-    ]),
+    subtitle: (row, formats) =>
+        _join([row['author']?.toString(), _date(row['created_at'], formats)]),
   );
 }
 
@@ -2214,11 +2276,8 @@ class _DetailListState extends State<_DetailList> {
   Future<void> _edit([Map<String, dynamic>? row]) async {
     final values = await showSidePanel<Map<String, dynamic>>(
       context,
-      builder: (_) => _DetailForm(
-        kind: widget.kind,
-        initial: row,
-        formats: widget.formats,
-      ),
+      builder: (_) =>
+          _DetailForm(kind: widget.kind, initial: row, formats: widget.formats),
     );
 
     if (values == null || !mounted) return;
@@ -2471,9 +2530,9 @@ class _DetailFormState extends State<_DetailForm> {
         ),
         FilledButton(
           onPressed: _complete
-              ? () => Navigator.of(context).pop({
-                  for (final f in widget.kind.fields) f.key: _value(f),
-                })
+              ? () => Navigator.of(
+                  context,
+                ).pop({for (final f in widget.kind.fields) f.key: _value(f)})
               : null,
           child: const Text('Save'),
         ),
@@ -2485,6 +2544,167 @@ class _DetailFormState extends State<_DetailForm> {
           for (final f in widget.kind.fields) ...[
             _field(f),
             const SizedBox(height: 14),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// What deleting somebody removes, read from the server's own dry run, and
+/// their name typed back before anything happens (Jose, 2026-10-20).
+class _DeletePanel extends StatefulWidget {
+  const _DeletePanel({
+    required this.api,
+    required this.personId,
+    required this.name,
+  });
+
+  final ApiClient api;
+  final String personId;
+  final String name;
+
+  @override
+  State<_DeletePanel> createState() => _DeletePanelState();
+}
+
+class _DeletePanelState extends State<_DeletePanel> {
+  Map<String, dynamic>? _data;
+  String? _error;
+  String _typed = '';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.api.get(
+      '/hr/people/${widget.personId}/deletion',
+    );
+    if (!mounted) return;
+    setState(() {
+      if (response.ok) {
+        _data = response.body['data'] as Map<String, dynamic>?;
+      } else {
+        _error = response.reason;
+      }
+    });
+  }
+
+  bool get _matches =>
+      _typed.trim().toLowerCase() == widget.name.trim().toLowerCase() &&
+      widget.name.trim().isNotEmpty;
+
+  Future<void> _delete() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final response = await widget.api.deleteWithBody(
+      '/hr/people/${widget.personId}',
+      {'confirm': _typed.trim()},
+    );
+    if (!mounted) return;
+    if (response.ok) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _error = response.reason;
+    });
+  }
+
+  /// "emergency_contacts" reads as "Emergency contacts".
+  static String _label(Object? table) {
+    final words = '$table'.replaceAll('_', ' ').trim();
+    return words.isEmpty ? words : words[0].toUpperCase() + words.substring(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final blocked = _data?['blocked_because'] as String?;
+    final tables = [
+      for (final t in ((_data?['preview'] as Map?)?['tables'] as List? ?? []))
+        if (t is Map && ((t['rows'] as num?) ?? 0) > 0) t,
+    ];
+    final removed = [
+      for (final t in tables)
+        if (((t['rows_dropped'] as num?) ?? 0) > 0)
+          '${_label(t['table'])}: ${t['rows_dropped']}',
+    ];
+    final blanked = [
+      for (final t in tables)
+        if ((t['columns_erased'] as List?)?.isNotEmpty ?? false)
+          _label(t['table']),
+    ];
+
+    return SidePanel(
+      title: 'Delete ${widget.name} permanently?',
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('delete-permanently-confirm'),
+          style: FilledButton.styleFrom(
+            backgroundColor: theme.colorScheme.error,
+          ),
+          onPressed: _matches && blocked == null && !_busy ? _delete : null,
+          child: Text(_busy ? 'Deleting…' : 'Delete permanently'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This cannot be undone. They are signed out everywhere, their '
+            'personal data is erased in every module, and their email and '
+            'phone become free for a new account. Jobs, invoices, payroll '
+            'totals and the audit log stay, with their name replaced by '
+            '"Removed account".',
+          ),
+          const SizedBox(height: 16),
+          if (_error != null) ...[
+            ErrorNote(_error!),
+            const SizedBox(height: 12),
+          ],
+          if (_data == null && _error == null)
+            const LinearProgressIndicator()
+          else if (blocked != null)
+            ErrorNote(blocked)
+          else if (_data != null) ...[
+            if (removed.isNotEmpty) ...[
+              Text('Removed', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              for (final line in removed) Text('• $line'),
+              const SizedBox(height: 12),
+            ],
+            if (blanked.isNotEmpty) ...[
+              Text('Erased, record kept', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              for (final line in blanked) Text('• $line'),
+              const SizedBox(height: 16),
+            ],
+            Text(
+              'Type their name, ${widget.name}, to confirm.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              key: const Key('delete-permanently-name'),
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Their name',
+              ),
+              onChanged: (value) => setState(() => _typed = value),
+            ),
           ],
         ],
       ),

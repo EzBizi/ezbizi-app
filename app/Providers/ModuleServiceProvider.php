@@ -495,10 +495,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // keys they are held by NO existing role until somebody ticks them,
                 // which is the safe direction for a new sensitive grant. An
                 // administrator holds them by identity, as every key.
-                actions: ['view', 'create', 'edit', 'security.reset', 'pay.view', 'pay.edit'],
+                // `delete`, 2026-10-20 (Jose: "we are missing full deletion"):
+                // erasing a person for good, apart from deactivating them. New,
+                // so held by no role until ticked; administrators by identity.
+                actions: ['view', 'create', 'edit', 'security.reset', 'pay.view', 'pay.edit', 'delete'],
                 actionLabels: [
                     'pay.view' => 'See pay rates',
                     'pay.edit' => 'Change pay rates',
+                    'delete' => 'Delete people permanently',
                 ],
                 /*
                  * ── The seven tabs, grantable one at a time ──
