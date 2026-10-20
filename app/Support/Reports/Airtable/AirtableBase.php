@@ -131,6 +131,9 @@ final class AirtableBase
             if ($response->status() === 401) {
                 throw AirtableRefused::token('Airtable did not accept that token.');
             }
+            if ($response->status() === 403) {
+                throw AirtableRefused::token("This token can't list your bases. Add the schema.bases:read scope to it in Airtable › Builder hub › Personal access tokens.");
+            }
             if ($response->failed()) {
                 throw AirtableRefused::token('Airtable refused the request ('.$response->status().').');
             }

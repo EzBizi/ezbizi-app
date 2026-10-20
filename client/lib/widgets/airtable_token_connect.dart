@@ -47,8 +47,11 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
         _ticked
           ..clear()
           ..addAll([
+            // Nothing connected yet: every base starts ticked (Jose, 2026-10-20).
             for (final b in _bases!)
-              if (b['connected'] == true) '${b['id']}',
+              if (b['connected'] == true ||
+                  !_bases!.any((x) => x['connected'] == true))
+                '${b['id']}',
           ]);
       } else {
         _error = r.message;
@@ -140,7 +143,7 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
               contentPadding: EdgeInsets.zero,
               value: _ticked.contains(b['id']),
               title: Text('${b['name']}'),
-              subtitle: Text('${b['id']}'),
+              subtitle: Text('${b['permission']}'),
               onChanged: (on) => setState(
                 () => on == true
                     ? _ticked.add('${b['id']}')
