@@ -332,6 +332,20 @@ class _CameraBridgePanelState extends State<CameraBridgePanel> {
             Text(count == 1 ? '1 camera found' : '$count cameras found'),
           );
         }
+        // A recorder's channels are not listed by the scan yet (Monitoring,
+        // until the hardware test): say so rather than look stuck. Not ticked:
+        // nothing has counted a camera.
+        if (s.recorderFoundAt != null) {
+          return _row(
+            context,
+            n,
+            _Mark.pending,
+            const Text(
+              'Recorder found — its cameras appear once it is connected',
+              key: ValueKey('camera-bridge-cameras-via-recorder'),
+            ),
+          );
+        }
         return _row(context, n, _Mark.pending, const Text('Cameras found'));
       case BridgeLine.talking:
         final last = s.lastOk;
