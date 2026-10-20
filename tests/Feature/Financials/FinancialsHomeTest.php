@@ -42,6 +42,13 @@ class FinancialsHomeTest extends TestCase
         $this->assertSame('airtable', $areas['pnl']['source']);
         $this->assertSame([null, '/financials/adjustments'], array_column($areas['refunds']['tables'], 'route'));
         $this->assertSame([false, true], array_column($areas['refunds']['tables'], 'may_open'));
+        $this->assertTrue($areas['refunds']['tables'][0]['may_mirror']);
+
+        // "Mirror it": the server picks (or makes) the base; the chip then opens.
+        $this->signedInAs($t['admin'])->postJson('/api/v1/financials/airtable-links', ['base_id' => 'appR', 'table_id' => 'tblRef'])->assertCreated();
+        $again = collect($this->signedInAs($t['admin'])->getJson('/api/v1/financials/home')->json('data.areas'))->keyBy('key');
+        $this->assertNotNull($again['refunds']['tables'][0]['table_id']);
+        $this->assertFalse($again['refunds']['tables'][0]['may_mirror']);
         $this->assertSame('Budget', $home['bases'][0]['name']);
         $this->assertSame('native', $home['bases'][0]['source']);
         $this->assertTrue($home['may_create_base']);

@@ -9,6 +9,7 @@ use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
 use App\Models\FinancialView;
 use App\Models\Franchise;
+use App\Models\SocialConnection;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Financials\AirtableMirror;
@@ -475,6 +476,30 @@ class FinancialsController extends Controller
         $this->audit->log('financials.airtable_linked', $table, metadata: $input, actor: $request->user());
 
         return response()->json(['data' => $this->tableShape($table)], 201);
+    }
+
+    /**
+     * Mirror an Airtable table without choosing a base: it goes into the
+     * Financials base named after its Airtable base, made at the organization
+     * level the first time. What a home chip's "Mirror it" calls.
+     */
+    public function mirrorAirtable(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'base_id' => ['required', 'string', 'max:32'],
+            'table_id' => ['required', 'string', 'max:32'],
+        ]);
+        $name = SocialConnection::query()->where('provider', 'airtable')->where('remote_id', $input['base_id'])->value('display_name')
+            ?? 'Airtable';
+
+        $base = FinancialBase::query()->whereNull('company_id')->where('name', $name)->first();
+        if ($base === null) {
+            $this->authorize('create', [FinancialBase::class, null, null]);
+            $base = FinancialBase::create(['name' => $name, 'created_by_user_id' => $request->user()->id]);
+            $this->audit->log('financials.base_created', $base, actor: $request->user());
+        }
+
+        return $this->linkAirtable($request, $base);
     }
 
     public function refreshAirtable(Request $request, FinancialTable $table): JsonResponse

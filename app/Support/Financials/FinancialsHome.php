@@ -60,7 +60,7 @@ final class FinancialsHome
                 'figure' => self::figure($key, $mine, $native, $weekFrom, $weekTo, $monthFrom, $user),
                 'source' => $mine->isEmpty() ? 'native' : ($native['tables'] === [] ? 'airtable' : 'both'),
                 'refreshed_at' => self::refreshed($mine, $native['at']),
-                'tables' => [...self::airtableTables($mine), ...$native['tables']],
+                'tables' => [...self::airtableTables($mine, $user), ...$native['tables']],
             ];
         }
 
@@ -149,7 +149,7 @@ final class FinancialsHome
         return ['may_open' => $may, 'refused' => $may ? null : 'Your role does not have this tab.'];
     }
 
-    private static function airtableTables(Collection $sources): array
+    private static function airtableTables(Collection $sources, User $user): array
     {
         if ($sources->isEmpty()) {
             return [];
@@ -169,6 +169,8 @@ final class FinancialsHome
             'table_id' => $mirrors[$s->base_id.'/'.$s->table_id]->id ?? null,
             'route' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? '/financials/tables/'.$mirrors[$s->base_id.'/'.$s->table_id]->id : null,
             'may_open' => isset($mirrors[$s->base_id.'/'.$s->table_id]),
+            // POST /financials/airtable-links {base_id, table_id} mirrors it; the server picks the base.
+            'may_mirror' => ! isset($mirrors[$s->base_id.'/'.$s->table_id]) && $user->hasPermission('financials.edit') && $user->hasPermission('financials.create'),
             'refused' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? null : 'Not mirrored into a base yet.',
             'name' => trim(($stats[$s->base_id.'/'.$s->table_id]->name ?? $s->table_id).($s->filter_value ? ' · '.$s->filter_value : '')),
             'count' => (int) ($stats[$s->base_id.'/'.$s->table_id]->n ?? 0),
