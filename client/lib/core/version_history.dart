@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0463',
+      date: '20 Oct 2026',
+      items: [
+        'Jobs: the job panel, list and filters show a job\'s type, sub-status and tags. A job has its own photos and files, with Workiz\'s shown below them.',
+        'Workiz: send your signed-in Workiz session from the new Chrome extension (one click, single-use link), and EzBizi reads Workiz\'s own Payments report on the server. The card shows when it last reached Workiz.',
+        'Customer Experience: complaints from callers who gave no name show their phone number. Removed at the source appears only when the review or lead itself was deleted.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0462',
       date: '20 Oct 2026',
       items: [
