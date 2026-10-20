@@ -105,6 +105,17 @@ final class WhatsAppGroups
     }
 
     /**
+     * A text to one person on this number (a rule's report text, 2026-10-20):
+     * the text now inside the 24-hour window, otherwise held behind the one
+     * "report ready" template and sent when they write in. False when the
+     * person has no usable phone.
+     */
+    public function deliverTextToUser(WhatsAppNumber $number, User $user, string $title, string $body): bool
+    {
+        return $this->toPerson($number, $user, $title, ['type' => 'text', 'text' => ['body' => $body]], $body, null, null);
+    }
+
+    /**
      * @param  array<string, mixed>  $message  the Cloud API message, minus who it is to
      */
     private function fanOut(string $purpose, string $title, array $message, string $body, ?string $mediaId = null, ?string $filename = null): int
