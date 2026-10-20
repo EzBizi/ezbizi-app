@@ -34,5 +34,9 @@ class RetireA1LeadsGbpTest extends TestCase
 
         $this->assertSame(0, DB::table('permissions')->where('key', 'like', 'a1leads_gbp.%')->count());
         $this->assertSame(1, DB::table('permission_role')->where('role_id', $role)->count(), 'only reviews.view is left');
+
+        // And back: the saved grants are restored with the rows.
+        (require base_path('database/migrations/2026_10_20_171508_retire_the_a1leads_gbp_module.php'))->down();
+        $this->assertSame(4, DB::table('permission_role')->where('role_id', $role)->count(), 'the three ticks are given back');
     }
 }

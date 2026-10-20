@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 
 /**
  * The A1Leads GBP tab is gone (Jose, 2026-10-20: "let's get rid of the A1Leads
@@ -11,8 +12,9 @@ use Illuminate\Support\Facades\DB;
  * first, so no role keeps a tick that grants nothing and no row points at none.
  *
  * Its tables stay: a1leads_reviews is a frozen copy with its own retention, and
- * automation_events rows still name A1LeadsReviewEvent subjects. down() puts
- * the permission rows back but cannot put back who held them.
+ * automation_events rows still name A1LeadsReviewEvent subjects. The grants
+ * are saved to storage/app/backups/a1leads_gbp_grants.json first; down() puts
+ * the permission rows and those grants back.
  */
 return new class extends Migration
 {
@@ -21,6 +23,14 @@ return new class extends Migration
     public function up(): void
     {
         $ids = DB::table('permissions')->where('key', 'like', self::MODULE.'.%')->pluck('id');
+
+        // Who held which tick, kept before it is deleted, so down() can give
+        // the grants back (desk, 2026-10-20).
+        $held = DB::table('permission_role')->join('permissions', 'permissions.id', '=', 'permission_role.permission_id')
+            ->whereIn('permission_role.permission_id', $ids)->get(['permission_role.role_id', 'permissions.key'])
+            ->map(fn ($r) => ['role_id' => $r->role_id, 'key' => $r->key])->all();
+        File::ensureDirectoryExists(dirname(self::backup()));
+        File::put(self::backup(), json_encode($held, JSON_PRETTY_PRINT));
 
         DB::table('permission_role')->whereIn('permission_id', $ids)->delete();
         DB::table('permissions')->whereIn('id', $ids)->delete();
@@ -36,5 +46,17 @@ return new class extends Migration
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
+
+        foreach (File::exists(self::backup()) ? (array) json_decode(File::get(self::backup()), true) : [] as $grant) {
+            $permission = DB::table('permissions')->where('key', $grant['key'])->value('id');
+            if ($permission !== null && DB::table('roles')->where('id', $grant['role_id'])->exists()) {
+                DB::table('permission_role')->insertOrIgnore(['role_id' => $grant['role_id'], 'permission_id' => $permission]);
+            }
+        }
+    }
+
+    private static function backup(): string
+    {
+        return storage_path('app/backups/a1leads_gbp_grants.json');
     }
 };
