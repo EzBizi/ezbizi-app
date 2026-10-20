@@ -14,6 +14,31 @@ import 'package:http/testing.dart';
 /// Settings › Monitoring › Camera sites (UI queue 117, option 1 + phone 4),
 /// against the camera bridge plan's Task 3 routes, mocked.
 void main() {
+  // Monitoring 2026-10-20: channels the bridge found are named and added
+  // here; one already added (matched on channel) is not offered again.
+  testWidgets('a found channel is named and added', (tester) async {
+    final server = _Server();
+    await _pump(tester, server, _manage);
+    await tester.tap(find.byKey(const ValueKey('camera-site-s-yard')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('camera-found-add-1')), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('camera-found-name-2')),
+      'Back fence',
+    );
+    await tester.tap(find.byKey(const ValueKey('camera-found-add-2')));
+    await tester.pumpAndSettle();
+
+    expect(
+      server.writes,
+      contains(
+        'POST /monitoring/camera-sites/s-yard/cameras '
+        '{"channel":2,"label":"Back fence"}',
+      ),
+    );
+  });
+
   testWidgets('the hub lists Monitoring only with monitoring.cameras.view', (
     tester,
   ) async {
@@ -364,6 +389,7 @@ class _Server {
   final cameras = [
     {
       'id': 'c-gate',
+      'channel': 1,
       'label': 'Gate',
       'enabled': true,
       'supports': ['live'],
@@ -415,6 +441,21 @@ class _Server {
           'data': {
             ...site,
             'cameras': id == 's-yard' ? cameras : const <dynamic>[],
+            // Channel 1 is already the Gate; 2 is new.
+            'found': id == 's-yard'
+                ? [
+                    {
+                      'key': 'nvr',
+                      'label': 'NVR',
+                      'kind': 'recorder',
+                      'address': '192.168.1.64',
+                      'channels': [
+                        {'channel': 1, 'label': 'Cam 1'},
+                        {'channel': 2, 'label': null},
+                      ],
+                    },
+                  ]
+                : const <dynamic>[],
           },
         });
       }

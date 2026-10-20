@@ -68,6 +68,9 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
   @override
   void dispose() {
     _tick?.cancel();
+    for (final c in _foundNames.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -245,6 +248,118 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
         ..addAll(before);
       _actionError = res.reason;
     });
+  }
+
+  /// Channels the bridge found on the recorder and nobody has added yet
+  /// (`found`, Monitoring 2026-10-20). Matched on `channel` once cameras
+  /// carry it; until then nothing found is hidden, rather than guessed.
+  List<({String channel, String label, String device})> _found(
+    Map<String, dynamic> site,
+    List<Map<String, dynamic>> cameras,
+  ) {
+    final added = {
+      for (final c in cameras)
+        if (c['channel'] != null) '${c['channel']}',
+    };
+    return [
+      for (final d in (site['found'] as List? ?? const []))
+        for (final ch in (_map(d)['channels'] as List? ?? const []))
+          if (!added.contains('${_map(ch)['channel']}'))
+            (
+              channel: '${_map(ch)['channel']}',
+              label: '${_map(ch)['label'] ?? ''}',
+              device: '${_map(d)['label'] ?? _map(d)['address'] ?? 'Recorder'}',
+            ),
+    ];
+  }
+
+  final Map<String, TextEditingController> _foundNames = {};
+  String? _adding;
+
+  Future<void> _addChannel(String channel, String label) async {
+    final id = _openId;
+    if (id == null) return;
+    setState(() {
+      _adding = channel;
+      _actionError = null;
+    });
+    final res = await widget.api.post('/monitoring/camera-sites/$id/cameras', {
+      // As the bridge reported it: a number stays a number.
+      'channel': int.tryParse(channel) ?? channel,
+      'label': label.trim().isEmpty ? 'Channel $channel' : label.trim(),
+    });
+    if (!mounted) return;
+    setState(() {
+      _adding = null;
+      if (!res.ok) _actionError = res.reason;
+    });
+    if (res.ok) await _openSite(id);
+  }
+
+  Widget _foundBox(
+    BuildContext context,
+    List<({String channel, String label, String device})> found,
+  ) {
+    final theme = Theme.of(context);
+    return _section(
+      context,
+      key: const ValueKey('camera-site-found'),
+      children: [
+        Text('Found on the recorder', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'Name a channel and add it to show it here.',
+          style: _muted(context),
+        ),
+        const SizedBox(height: 8),
+        for (final f in found)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 120,
+                  child: Text(
+                    '${f.device} · ${f.channel}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _muted(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    key: ValueKey('camera-found-name-${f.channel}'),
+                    controller: _foundNames.putIfAbsent(
+                      f.channel,
+                      () => TextEditingController(text: f.label),
+                    ),
+                    enabled: _manage,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      labelText: 'Name',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Refused(
+                  reason: _refusal('add a camera'),
+                  child: FilledButton.tonal(
+                    key: ValueKey('camera-found-add-${f.channel}'),
+                    onPressed: _manage && _adding == null
+                        ? () => _addChannel(
+                            f.channel,
+                            _foundNames[f.channel]?.text ?? '',
+                          )
+                        : null,
+                    child: Text(_adding == f.channel ? 'Adding…' : 'Add'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   // ── Building ─────────────────────────────────────────────────────
@@ -516,6 +631,11 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
             children: [for (final c in cameras) _cameraTile(context, c)],
           ),
         );
+      }
+      final found = _found(site, cameras);
+      if (found.isNotEmpty) {
+        children.add(const SizedBox(height: 20));
+        children.add(_foundBox(context, found));
       }
       if (site['device'] != null) {
         children.add(const SizedBox(height: 20));
