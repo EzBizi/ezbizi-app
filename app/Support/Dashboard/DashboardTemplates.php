@@ -81,7 +81,6 @@ final class DashboardTemplates
                 'leads' => ['large', 'line'],
                 'marketing' => ['medium', 'line'],
                 'reviews' => ['medium', 'bar'],
-                'a1leads_gbp' => ['small'],
                 'business_profile' => ['small'],
                 'ads_performance' => ['small'],
                 'web_management' => ['small'],

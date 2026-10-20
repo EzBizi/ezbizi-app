@@ -767,33 +767,6 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
-  'a1leads_gbp': Tour(
-    version: 1,
-    steps: [
-      TourStep(
-        anchor: 'tour-a1leads_gbp-source',
-        title: 'How fresh this is',
-        body:
-            'Where these reviews were read from, and when. It warns you when '
-            'the data has stopped refreshing.',
-      ),
-      TourStep(
-        anchor: 'tour-a1leads_gbp-filters',
-        title: 'Narrow the reviews',
-        body: 'By rating, reply, period and whether a customer was matched.',
-      ),
-      TourStep(
-        anchor: 'tour-a1leads_gbp-view-toggle',
-        title: 'Board or Table',
-        body: 'The same reviews as cards or as rows.',
-      ),
-      TourStep(
-        anchor: 'gbp-panel',
-        title: 'The review',
-        body: 'The open review, beside the list.',
-      ),
-    ],
-  ),
   'guidelines': Tour(
     version: 1,
     steps: [

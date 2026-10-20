@@ -1,10 +1,5 @@
 {
     "modules": {
-        "a1leads_gbp": {
-            "label": "A1Leads GBP",
-            "parent": null,
-            "tabs": []
-        },
         "ads_performance": {
             "label": "Google Ads",
             "parent": "reports",
@@ -338,9 +333,6 @@
         }
     },
     "permissions": [
-        "a1leads_gbp.manage",
-        "a1leads_gbp.reply",
-        "a1leads_gbp.view",
         "ads_performance.manage",
         "ads_performance.view",
         "ai_assistance.ai.view",
