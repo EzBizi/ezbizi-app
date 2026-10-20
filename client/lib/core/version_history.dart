@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0458',
+      date: '20 Oct 2026',
+      items: [
+        'Workiz: when connecting, choose API v1 or v2 (a signed-in session is coming). Each connected account can be edited to replace its key or switch API, and shows when it last synced.',
+        'Automations: a rule can WhatsApp a daily or weekly report text (PPC, dispatchers, technician sales, weekly losses, weekly reviews) to chosen people, once a day each.',
+        'WhatsApp: corrections to a draft report can be typed in plain words. The bot shows exactly what will change and waits for YES. Switch it off in AI settings.',
+        'Business Profile: calls, website clicks, directions and search terms per location are read daily.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0457',
       date: '20 Oct 2026',
       items: [
