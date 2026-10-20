@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 122 · Jobs › notes (off Workiz, slice c) — **sent 2026-10-20** (`docs/previews/jobs-notes-layouts.html`)
+
+Jobs asked (235d841b0: notes newest first, POST jobs/{job}/notes, append-only). **1** (recommended) a Notes · n tab beside Photos & files, box + Add note (Ctrl+Enter) on top, notes with initials/name/time, latest-note line on Details, greyed without jobs.edit. **2** at the end of Details. **3** one timeline with history. Phone **4** (recommended) / **5** / **6**.
+
 ### 121 · Financials › Home as cards (Airtable-style) — **sent 2026-10-20 — Jose: "go ahead with ur recommendations" (1 and 4)** (`docs/previews/financials-home-layouts.html`)
 
 Financials asked (data-driven cards: role groups + native tables). **1** (recommended) equal-size cards, 4 across: icon/colour, name, one live figure, source badge (Native / Airtable mirror / both), refreshed-at; Your areas then Your bases + New base; search from 8 cards; no Airtable → Native badges only; card opens the area with table chips and view switch. **2** a list. **3** big-number tiles over small cards. Phone **4** (recommended, 2-up) / **5** / **6**.
