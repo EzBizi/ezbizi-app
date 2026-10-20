@@ -158,15 +158,19 @@ class ComplaintsController extends Controller
     private function present(Complaint $c, array $sources): array
     {
         $source = $sources[$c->source_type][$c->source_id] ?? null;
-        [$title, $summary] = match (true) {
-            $source instanceof Review => [$source->reviewer_name, $source->comment],
-            $source instanceof Lead => [$source->contact_name, $source->summary],
-            default => [null, null],
+        [$title, $summary, $phone] = match (true) {
+            $source instanceof Review => [$source->reviewer_name, $source->comment, null],
+            $source instanceof Lead => [$source->contact_name, $source->summary, $source->phone],
+            default => [null, null, null],
         };
 
         return [
             'id' => $c->id, 'kind' => $c->kind, 'status' => $c->status,
             'title' => $title, 'summary' => $summary, 'rating' => $c->rating,
+            // A caller who never gave a name still has a number (desk, 2026-10-20).
+            'phone' => $phone,
+            // Only when the review or lead itself is gone: a nameless one is not.
+            'source_missing' => $source === null,
             'branch' => $c->franchise?->only(['id', 'name']),
             'owner' => $c->owner?->only(['id', 'name']),
             'raised_at' => $c->raised_at?->toIso8601String(), 'updated_at' => $c->updated_at?->toIso8601String(),
@@ -182,7 +186,7 @@ class ComplaintsController extends Controller
 
         return [
             'review' => Review::query()->whereIn('id', $ids('review'))->get(['id', 'reviewer_name', 'comment'])->keyBy('id'),
-            'lead' => Lead::query()->whereIn('id', $ids('lead'))->get(['id', 'contact_name', 'summary'])->keyBy('id'),
+            'lead' => Lead::query()->whereIn('id', $ids('lead'))->get(['id', 'contact_name', 'summary', 'phone'])->keyBy('id'),
         ];
     }
 
