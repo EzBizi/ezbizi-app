@@ -768,6 +768,55 @@ void main() {
     );
   });
 
+  // Jose, 2026-10-20: inboxes for an email auto-reply are ticked, not typed.
+  testWidgets('"is one of" over a fixed set is ticked, and sends the values', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(
+      onCreate: (body) => sent = body,
+      triggerFields: const ['address'],
+      triggerFieldValues: const {
+        'address': [
+          {'value': 'office@brightside.example', 'label': 'Office'},
+          {'value': 'jobs@brightside.example', 'label': 'Jobs'},
+          {'value': 'billing@brightside.example', 'label': 'Billing'},
+        ],
+      },
+    ));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Closed-office reply');
+    await _goTo(tester, 'when');
+    await _tap(tester, find.text('Created'));
+
+    await _goTo(tester, 'only-if');
+    await _tap(tester, find.text('Add a condition'));
+    await _type(tester, 'Field', 'address');
+    tester
+        .widget<SearchPickerField<String>>(
+          find.widgetWithText(SearchPickerField<String>, 'Is'),
+        )
+        .onChanged!('in');
+    await tester.pumpAndSettle();
+
+    await _tap(tester, find.widgetWithText(FilterChip, 'Office'));
+    await _tap(tester, find.widgetWithText(FilterChip, 'Billing'));
+
+    await _goTo(tester, 'then');
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a notification'));
+    await _type(tester, 'Message', 'Replied');
+    await _save(tester);
+
+    expect(((sent!['conditions'] as Map)['all'] as List).single, {
+      'field': 'address',
+      'op': 'in',
+      'value': ['office@brightside.example', 'billing@brightside.example'],
+    });
+  });
+
   /// A line the carrier will refuse is not offered.
   ///
   /// Twilio approves outbound SMS per number. Before this the picker listed

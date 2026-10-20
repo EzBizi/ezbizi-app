@@ -5,16 +5,31 @@ import '../core/deep_links.dart';
 import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'business_profile_screen.dart';
+import 'customer_experience/complaints_tab.dart';
 import 'customer_experience/review_links_tab.dart';
 
 /// Customer Experience — Reviews and Business Profile, moved out of Marketing
 /// on 2026-09-25 (Jose).
 ///
-/// One chip of its own, Review links (2026-10-15, on Reviews' grant). Every
+/// Two chips of its own: Review links (2026-10-15, on Reviews' grant) and
+/// Complaints (2026-10-20, the registry's one tab here, on
+/// `customer_experience.complaints.view`). Every
 /// other chip is a module the server says is drawn
 /// here (`ModuleDefinition::$parent`), so their order, labels and whether they
 /// appear at all come off `/me` — MarketingScreen's contract. If a chip is
 /// missing, the grant is missing; this screen cannot be the reason.
+/// The chips a child module is drawn as, where it is more than one: Business
+/// Profile is GBP Listings and GBP Performance (Jose, 2026-10-20). Both on the
+/// module's own grant; the registry test reads this to know they are the
+/// module, not tabs it lacks. Review links is Reviews' second chip for the
+/// same reason: drawn on Reviews' grant, so it is that module, not a tab of
+/// this one.
+const customerExperienceChildChips = {
+  'business_profile': ['GBP Listings', 'GBP Performance'],
+  'reviews': ['Reviews', 'Review links'],
+};
+
 class CustomerExperienceScreen extends StatefulWidget {
   const CustomerExperienceScreen({
     super.key,
@@ -54,7 +69,8 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
     if (key == null) return;
     for (final module in widget.session.me?.reachableModules ?? const []) {
       if (module.key == key && module.parent == 'customer_experience') {
-        if (_tab != module.label) setState(() => _tab = module.label);
+        final label = _labelOf(module.key, module.label);
+        if (_tab != label) setState(() => _tab = label);
         return;
       }
     }
@@ -62,15 +78,31 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
 
   /// Built per frame: a module switched off or a role edited mid-session must
   /// take its chip with it rather than leave one that answers 403.
+  /// Business Profile is two chips, Listings and Performance (Jose,
+  /// 2026-10-20: "Reviews - GBP Listings - GBP Performance - Review Links").
+  static String _labelOf(String key, String label) =>
+      customerExperienceChildChips[key]?.first ?? label;
+
   List<(String, IconData, Widget Function())> _tabsFor(Me me) => [
     for (final module in me.reachableModules)
       if (module.parent == 'customer_experience')
-        if (moduleScreens[module.key] case final screen?)
+        if (moduleScreens[module.key] case final screen?) ...[
           (
-            module.label,
+            _labelOf(module.key, module.label),
             screen.icon,
             () => screen.build(widget.api, widget.session),
           ),
+          if (module.key == 'business_profile')
+            (
+              customerExperienceChildChips['business_profile']![1],
+              Icons.insights_outlined,
+              () => BusinessProfileScreen(
+                api: widget.api,
+                session: widget.session,
+                performance: true,
+              ),
+            ),
+        ],
     // What customers did with their review links (Jose, 2026-10-15). Reviews'
     // own activity, so Reviews' grant; the server asks the same.
     if (me.reaches('reviews'))
@@ -78,6 +110,14 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
         'Review links',
         Icons.ads_click_outlined,
         () => ReviewLinksTab(api: widget.api, session: widget.session),
+      ),
+    // Every bad review, bad rating and complaint call (Jose, 2026-10-20). The
+    // registry's TabDefinition('complaints'), so its own grant.
+    if (me.can('customer_experience.complaints.view'))
+      (
+        'Complaints',
+        Icons.report_problem_outlined,
+        () => ComplaintsTab(api: widget.api, session: widget.session),
       ),
   ];
 
@@ -93,7 +133,7 @@ class _CustomerExperienceScreenState extends State<CustomerExperienceScreen> {
           padding: const EdgeInsets.all(24),
           child: Text(
             'Nothing inside Customer Experience is available to your role. '
-            'Reviews and Business Profile are granted separately.',
+            'Reviews, Business Profile and Complaints are granted separately.',
             style: Theme.of(context).textTheme.bodyMedium,
             textAlign: TextAlign.center,
           ),

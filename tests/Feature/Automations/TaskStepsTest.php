@@ -95,6 +95,32 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-10-20: one complaint task with both owners, in Customer Experience, its columns filled. */
+    public function test_one_task_has_every_owner_its_group_and_its_columns(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $second = $this->userWithRole($t, 'Viewer', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $second) {
+            $board = TaskBoard::query()->where('franchise_id', $t['franchise']->id)->first();
+            $group = \App\Models\TaskGroup::query()->create(['board_id' => $board->id, 'name' => 'Customer Experience', 'position' => 9]);
+            $col = \App\Models\TaskColumn::query()->create(['board_id' => $board->id, 'name' => 'Phone number', 'type' => 'text', 'position' => 1]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'lead.received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'lead.received', 'payload' => ['after' => ['phone' => '+13055550123']],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Complaint',
+                'assignees' => ['user:'.$t['admin']->id, 'user:'.$second->id], 'group' => 'Customer Experience',
+                'values' => ['Phone number' => '{{phone}}']], $event, null, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame([$t['admin']->id, $second->id], $task->owners()->pluck('user_id')->all());
+            $this->assertSame($group->id, $task->group_id);
+            $this->assertSame('+13055550123', $task->values()->where('column_id', $col->id)->value('value_text'));
+        });
+    }
+
     public function test_a_notification_can_go_to_whoever_the_task_is_given_to(): void
     {
         $t = $this->provisionTenant('Alpha');

@@ -339,25 +339,12 @@ Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
 // tenant gets muted, and a muted alarm is worse than none.
 Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);
 
-// New A-1 Chimney Google reviews, for Bar's automations (Jose, 2026-09-25).
-// A1 Leads installs its snapshot once a day; every fifteen minutes notices a
-// new one within a quarter hour, and a run with no new snapshot is one file
-// read. It only RAISES `a1leads_gbp.review_received`; the outbox sweep above
-// delivers it.
-Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->withoutOverlapping(10);
-
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
 // NOT runInBackground(): the scheduler is a systemd oneshot unit with
 // KillMode=control-group, so a background child is killed the moment
 // schedule:run exits, and a lost-signal alert could die mid-sweep (2026-09-28).
 Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5);
-
-// A-1 Chimney's Google reviews, in step with A1 Leads' change feed so the
-// A1Leads GBP tab is a minute old rather than a day (Rodrigo, 2026-09-25). It
-// reads A1 Leads' own database - no Google request - and an idle run is one
-// empty page.
-Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlapping(10);
 
 // Every Google Ads account's Local Services certification (licence, insurance,
 // background check), once a morning before the day's calls - an account that
@@ -396,6 +383,8 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
+// Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
+Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).
 Schedule::command('ezbizi:gbp-performance-sync')->dailyAt('05:40')->timezone('America/New_York')->withoutOverlapping(60);
 // The day on Google, for each organization's rules (A1 Leads takeover, 2026-10-19).

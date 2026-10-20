@@ -29,7 +29,12 @@ class GbpPerformanceSync extends Command
         $from = $to->subDays(max(1, (int) $this->option('days')) - 1);
         $failed = 0;
 
-        $locations = BusinessLocation::withoutGlobalScopes()->whereNull('not_listed_since')->whereNotNull('connection_id')->get();
+        $listed = BusinessLocation::withoutGlobalScopes()->whereNull('not_listed_since')->whereNotNull('connection_id')->get();
+        // Google serves no counts for an unverified listing (403), and a demo
+        // listing has nothing behind it: skipped and said so, not failed (2026-10-20).
+        $locations = $listed->filter(fn (BusinessLocation $l) => $l->verification_state === BusinessLocation::VERIFIED
+            && ! str_starts_with((string) $l->remote_name, 'DEMO-'));
+        $skipped = $listed->count() - $locations->count();
 
         foreach ($locations as $location) {
             $organization = Organization::withoutGlobalScopes()->find($location->organization_id);
@@ -54,7 +59,7 @@ class GbpPerformanceSync extends Command
             }
         }
 
-        $this->info(($locations->count() - $failed).' listing(s) read, '.$failed.' failed.');
+        $this->info(($locations->count() - $failed).' listing(s) read, '.$failed.' failed, '.$skipped.' skipped (not verified or demo).');
 
         return self::SUCCESS;
     }

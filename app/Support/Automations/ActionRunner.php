@@ -4,8 +4,6 @@ namespace App\Support\Automations;
 
 use App\Mail\InspectionReportMail;
 use App\Models\Automation;
-use App\Models\A1LeadsReviewEvent;
-use App\Services\A1Leads\A1LeadsGbpReplies;
 use App\Models\TimeClockReport;
 use App\Support\TimeClock\TimeClockReports;
 use App\Support\Modules\ModuleRegistry;
@@ -428,7 +426,6 @@ class ActionRunner
             'publish_reply' => $this->publishReviewReply($action, $event, $subject, $automation),
             'onboarding.start' => $this->startOnboarding($action, $subject),
             'add_to_audience' => $this->addToAudience($action, $subject),
-            'review_reply' => $this->replyOnGoogle($action, $event, $subject, $automation),
             'send_report' => $this->sendWorkHoursReport($action, $event, $automation),
             'whatsapp.group_send' => $this->sendToWhatsAppGroup($action, $event, $subject, $automation),
 
@@ -436,6 +433,7 @@ class ActionRunner
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
+            'message.reply' => $this->replyToMessage($action, $event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'deactivate' => $this->deactivate($subject),
             'assign_to_user' => $this->assignToUser($action, $event, $subject),
@@ -2055,6 +2053,43 @@ class ActionRunner
         ];
     }
 
+    /**
+     * Reply to the email that arrived, in its thread, from the inbox it came to
+     * (Eve and Jose, 2026-10-20: after-hours and Sunday auto replies that leave
+     * the customer's email unread). The reply is a new message; the original's
+     * read state is never touched.
+     *
+     * Never to ourselves or to a robot, and at most once a day per sender per
+     * inbox, so two auto-responders cannot answer each other.
+     */
+    private function replyToMessage(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'message.reply';
+        $messageId = (string) ($event->payload['message_id'] ?? '');
+        $from = strtolower((string) ($event->payload['from_address'] ?? ''));
+        if (! $subject instanceof Mailbox || $messageId === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Rules using this step belong on "an email arrived".'];
+        }
+        if ($from === '' || $from === strtolower((string) $subject->address)
+            || preg_match('/(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce)/', $from) === 1) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not answered: the sender is this inbox or an automatic address.'];
+        }
+        if (! \Illuminate\Support\Facades\Cache::add("message.reply:{$subject->getKey()}:{$from}", true, now()->addDay())) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Already answered this sender today.'];
+        }
+
+        try {
+            app(\App\Support\Email\MailboxReaders::class)->for($subject)
+                ->reply($subject, $messageId, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Cache::forget("message.reply:{$subject->getKey()}:{$from}");
+
+            return ['type' => $type, 'ok' => false, 'detail' => $e->getMessage()];
+        }
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Replied to {$from} from {$subject->address}; their email stays unread."];
+    }
+
     private function markVoicemailDealt(AutomationEvent $event, ?Model $subject): array
     {
         if (! $subject instanceof PhoneCall) {
@@ -2546,75 +2581,6 @@ class ActionRunner
 
         return ['type' => $type, 'ok' => true,
             'detail' => 'Sent "'.$report->name.'" for '.$sent['range'].' to '.implode(', ', $sent['to']).'.'];
-    }
-
-    /**
-     * Post a public reply under a new A-1 Chimney Google review.
-     *
-     * Jose, 2026-09-25: "this will be set using EzBizi Automations that Bar
-     * himself will set up for the reply." Through A1LeadsGbpReplies::publish,
-     * the same path as the Reply button, so A1 Leads stays the only writer.
-     *
-     * THE REVIEW COMES FROM THE SUBJECT ROW, never the payload: the row is
-     * what the import wrote, and nothing a rule author types can point this
-     * at a different review.
-     *
-     * THE AUTHOR MUST BE ABLE TO DO IT BY HAND: hold `a1leads_gbp.reply` and
-     * reach the review's company. A rule never widens what its author may do.
-     *
-     * ALREADY ANSWERED IS NOT A FAILURE: it is the normal outcome when A1
-     * Leads' own worker or somebody at the desk got there first, and counting
-     * it would switch the rule off within five reviews.
-     *
-     * AN UNKNOWN OUTCOME IS SAID AS ONE. A dropped connection mid-post may
-     * have published; the engine never re-runs a non-webhook step, and the
-     * sentence tells a person to look on Google rather than run it again.
-     */
-    private function replyOnGoogle(array $action, AutomationEvent $event, ?Model $subject, ?Automation $automation): array
-    {
-        $type = 'review_reply';
-
-        if (! $subject instanceof A1LeadsReviewEvent) {
-            return ['type' => $type, 'ok' => false,
-                'detail' => 'This step only works on a new Google review, and this rule is about something else.'];
-        }
-
-        $author = $automation?->activeVersion?->created_by !== null
-            ? User::query()->find($automation->activeVersion->created_by)
-            : null;
-
-        if ($author === null || ! $author->hasPermission('a1leads_gbp.reply')
-            || ! $author->reachableCompanies()->contains(fn ($c) => $c->getKey() === $subject->company_id)) {
-            return ['type' => $type, 'ok' => false,
-                'detail' => 'The person who built this rule may not reply to these reviews, so nothing was '
-                    .'posted. Somebody who can should open the rule and save it again.'];
-        }
-
-        $text = trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject));
-
-        if ($text === '') {
-            return ['type' => $type, 'ok' => false, 'detail' => 'The reply was empty, so nothing was posted.'];
-        }
-
-        $result = app(A1LeadsGbpReplies::class)->publish(
-            (string) $subject->google_review_name, $text, null, null, $automation,
-        );
-
-        if ($result['status'] >= 200 && $result['status'] < 300 && ($result['body']['data']['ok'] ?? false) === true) {
-            return ['type' => $type, 'ok' => true, 'detail' => 'Replied on Google.'];
-        }
-
-        $code = (string) ($result['body']['error']['code'] ?? '');
-        $said = (string) ($result['body']['error']['message'] ?? 'A1 Leads refused the reply.');
-
-        return match ($code) {
-            'already_answered' => ['type' => $type, 'ok' => true,
-                'detail' => 'The review already had a reply, so nothing was posted.'],
-            'reply_outcome_unknown' => ['type' => $type, 'ok' => false, 'unknown' => true,
-                'detail' => 'The connection dropped while posting, so the reply may or may not be on '
-                    .'Google. Check the review there. Do not run this again.'],
-            default => ['type' => $type, 'ok' => false, 'detail' => $said],
-        };
     }
 
     /**
@@ -3346,9 +3312,11 @@ class ActionRunner
         // "Book online now: {{booking_link}}" is a line, not a message: with no
         // booking page it is dropped and the rest still goes (Leads, 2026-10-13).
         // The same for an offered slot with no open window (2026-10-19).
-        foreach (['booking_link', 'offered_slot'] as $field) {
+        // "If it's urgent, call us at {{office_phone}}." likewise, where a place has no phone (2026-10-20).
+        foreach (['booking_link', 'offered_slot', 'office_phone'] as $field) {
             if (preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $template)
-                && blank($subject?->getAttribute($field))) {
+                && blank($subject?->getAttribute($field))
+                && blank($event->payload['after'][$field] ?? $event->payload[$field] ?? null)) {
                 $template = implode("\n", array_filter(
                     explode("\n", $template),
                     fn (string $line) => ! preg_match('/\{\{\s*'.$field.'\s*\}\}/i', $line),
@@ -3438,7 +3406,10 @@ class ActionRunner
             return ['type' => 'task.create', 'ok' => false, 'detail' => 'The task needs a title.'];
         }
 
-        $assignee = $this->userFromStored($action['assignee'] ?? null);
+        // One task with every owner (Jose, 2026-10-20: not one copy per person), the first the primary.
+        $owners = collect(self::idList($action['assignees'] ?? []))->map(fn ($id) => $this->userFromStored(str_starts_with((string) $id, 'user:') ? $id : 'user:'.$id))
+            ->prepend($this->userFromStored($action['assignee'] ?? null))->filter()->unique(fn (User $u) => $u->getKey())->values();
+        $assignee = $owners->first();
         $scope = $event->scope_snapshot ?? [];
         // The PLACE's board, with the person as assignee: a personal board
         // only its owner may write, so a rule giving a task to somebody else
@@ -3455,10 +3426,16 @@ class ActionRunner
         $about = $subject ? array_search($subject::class, Task::ABOUT, true) : false;
         $board = app(TaskBoards::class)->ensureFor($owner);
 
-        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $assignee, $about, $subject, $automation) {
+        // The board's own columns by name, and its group by name (Task Board, 60f643812).
+        $values = array_map(fn ($v) => $this->interpolate((string) $v, $event, $subject), (array) ($action['values'] ?? []));
+        $group = trim((string) ($action['group'] ?? ''));
+
+        return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
-                'assignee_user_id' => $assignee?->getKey(),
+                'assignee_user_ids' => $owners->map->getKey()->all(),
+                ...($values === [] ? [] : ['values' => $values]),
+                ...($group === '' ? [] : ['group' => $group]),
                 'about_type' => $about === false ? null : $about,
                 'about_id' => $about === false ? null : $subject->getKey(),
             ], $actor, $automation?->getKey());

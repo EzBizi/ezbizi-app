@@ -24,8 +24,8 @@ class LeadOfficeHours
 
     public function isOpen(Lead $lead, ?\DateTimeInterface $now = null): bool
     {
-        $local = $this->local($lead, $now);
-        $hours = $this->hoursOn($lead, $local);
+        $local = $this->local($this->scope($lead), $now);
+        $hours = $this->hoursOn($this->scope($lead), $local);
 
         return $hours !== null
             && $local->format('H:i') >= $hours['open']
@@ -39,12 +39,18 @@ class LeadOfficeHours
      */
     public function nextOpening(Lead $lead, ?\DateTimeInterface $now = null): ?string
     {
-        $local = $this->local($lead, $now);
-        $format = $this->settings->get('time_format', $this->scope($lead)) === '24h' ? 'H:i' : 'g:i A';
+        return $this->nextOpeningAt($this->scope($lead), $now);
+    }
+
+    /** nextOpening() for any place: franchise, company or organization. */
+    public function nextOpeningAt(Model $place, ?\DateTimeInterface $now = null): ?string
+    {
+        $local = $this->local($place, $now);
+        $format = $this->settings->get('time_format', $place) === '24h' ? 'H:i' : 'g:i A';
 
         for ($d = 0; $d <= 7; $d++) {
             $day = $local->addDays($d);
-            $hours = $this->hoursOn($lead, $day);
+            $hours = $this->hoursOn($place, $day);
 
             if ($hours === null || ($d === 0 && $local->format('H:i') >= $hours['open'])) {
                 continue;
@@ -68,11 +74,11 @@ class LeadOfficeHours
      */
     public function closedSince(Lead $lead, ?\DateTimeInterface $now = null): CarbonImmutable
     {
-        $local = $this->local($lead, $now);
+        $local = $this->local($this->scope($lead), $now);
 
         for ($d = 0; $d <= 7; $d++) {
             $day = $local->subDays($d);
-            $hours = $this->hoursOn($lead, $day);
+            $hours = $this->hoursOn($this->scope($lead), $day);
 
             if ($hours === null) {
                 continue;
@@ -89,19 +95,28 @@ class LeadOfficeHours
     }
 
     /** @return array{open: string, close: string}|null */
-    private function hoursOn(Lead $lead, CarbonImmutable $day): ?array
+    private function hoursOn(Model $place, CarbonImmutable $day): ?array
     {
-        $week = (array) $this->settings->get('leads.office_hours', $this->scope($lead));
+        $week = (array) $this->settings->get('leads.office_hours', $place);
         $hours = $week[self::DAYS[$day->dayOfWeek]] ?? null;
 
         return is_array($hours) && isset($hours['open'], $hours['close']) ? $hours : null;
     }
 
-    private function local(Lead $lead, ?\DateTimeInterface $now): CarbonImmutable
+    private function local(Model $place, ?\DateTimeInterface $now): CarbonImmutable
     {
-        $zone = (string) ($this->settings->get('timezone', $this->scope($lead)) ?: 'UTC');
+        $zone = (string) ($this->settings->get('timezone', $place) ?: 'UTC');
 
         return CarbonImmutable::instance($now ?? now())->setTimezone($zone);
+    }
+
+    /** Open now at this place (franchise, company or organization) - the email auto reply's office_open (Jose, 2026-10-20). */
+    public function isOpenAt(Model $place, ?\DateTimeInterface $now = null): bool
+    {
+        $local = $this->local($place, $now);
+        $hours = $this->hoursOn($place, $local);
+
+        return $hours !== null && $local->format('H:i') >= $hours['open'] && $local->format('H:i') < $hours['close'];
     }
 
     private function scope(Lead $lead): Model

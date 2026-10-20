@@ -183,6 +183,8 @@ void main() {
     await _pump(tester, player: player, recordingGate: gate);
 
     expect(find.text('Customer called · 2:05'), findsOneWidget);
+    // The number they dialled and its line (Jose, 2026-10-20).
+    expect(find.text('to +1 (732) 659-1055 · NJ - GMB'), findsOneWidget);
     expect(find.textContaining('Customer called'), findsOneWidget);
     expect(find.textContaining('PHONE_CALL'), findsNothing);
     expect(find.byKey(const Key('recording-play')), findsOneWidget);
@@ -324,7 +326,12 @@ void main() {
     expect(typingLine('+1 (914) 325-8137'), 'Customer is typing…');
   });
 
-  testWidgets('a text lead never says it is typing', (tester) async {
+  /// A text lead's customer never sees "typing" (only a website chat shows
+  /// it), but the signal still goes: it is the "is replying" hold the other
+  /// dispatchers see (Jose, 2026-10-20).
+  testWidgets('a text lead signals typing for the other dispatchers only', (
+    tester,
+  ) async {
     await _pump(
       tester,
       player: FakeRecordingPlayer(),
@@ -333,7 +340,42 @@ void main() {
 
     await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hello');
     await tester.pump();
-    expect(_typingPosts, isEmpty);
+    expect(_typingPosts, ['/api/v1/leads/lead-1/typing']);
+    expect(find.textContaining('is typing'), findsNothing);
+  });
+
+  /// Jose, 2026-10-20: Ara and Tiara answered one customer four times in a
+  /// minute. While somebody else is replying the send waits, until "Reply
+  /// anyway"; and a reply that landed since the thread was read stops the
+  /// send until "Send anyway".
+  testWidgets('another replier holds the send, and a crossed reply asks first', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      replying: 'Ara Awe',
+      conflictOnce: 'Ara Awe just replied: Hi! We can come Friday.. Send anyway?',
+    );
+
+    expect(find.text('Ara Awe is replying…'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('reply-box')), 'Hello!');
+    await tester.pump();
+    final send = tester.widget<FilledButton>(find.byKey(const ValueKey('reply-send')));
+    expect(send.onPressed, isNull, reason: 'held while Ara is replying');
+
+    await tester.tap(find.byKey(const ValueKey('reply-anyway')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('reply-send')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ara Awe just replied: Hi! We can come Friday.. Send anyway?'), findsOneWidget);
+    expect(_sent, isEmpty, reason: 'not sent until they say so');
+
+    await tester.tap(find.byKey(const ValueKey('reply-send-anyway')));
+    await tester.pumpAndSettle();
+    expect(_sent, ['Hello!']);
+    expect(_forced, [true]);
   });
 
   /// Toula, 2026-10-01: "images should open in it not out of the page".
@@ -1126,6 +1168,7 @@ void main() {
 
 final _sent = <String>[];
 final _typingPosts = <String>[];
+final _forced = <bool>[];
 final _creditPosts = <String>[];
 final _followUpPosts = <String>[];
 
@@ -1157,8 +1200,12 @@ Future<void> _pump(
   List<String>? ai,
   String? postalCode,
   Map<String, dynamic>? credit,
+  String? replying,
+  String? conflictOnce,
 }) async {
   _sent.clear();
+  _forced.clear();
+  var conflict = conflictOnce;
   _typingPosts.clear();
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -1178,7 +1225,18 @@ Future<void> _pump(
       }
 
       if (request.method == 'POST' && request.url.path.endsWith('/messages')) {
-        final text = (jsonDecode(request.body) as Map)['text'] as String;
+        final body = jsonDecode(request.body) as Map;
+        final text = body['text'] as String;
+        if (conflict != null && body['force'] != true) {
+          final message = conflict;
+          conflict = null;
+          return http.Response(
+            jsonEncode({'message': message}),
+            409,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        if (body['force'] == true) _forced.add(true);
         if (refuseSend != null) {
           return http.Response(
             jsonEncode({'message': refuseSend}),
@@ -1271,6 +1329,8 @@ Future<void> _pump(
               'customer': customer,
               'details': details,
               'viewers': viewers,
+              'replying': replying,
+              'seen_at': '2026-09-08T17:59:00Z',
               'visitor_typing': visitorTyping,
               'booking': booking,
               'credit': credit,
@@ -1282,6 +1342,8 @@ Future<void> _pump(
                   'from': 'CONSUMER',
                   'occurred_at': '2026-09-06T10:00:00Z',
                   'duration_ms': 125000,
+                  'line_number': '+17326591055',
+                  'line_name': 'NJ - GMB',
                   'text': null,
                   'transcript': callTranscript,
                       'summary': callSummary,

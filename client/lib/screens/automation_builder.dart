@@ -3235,6 +3235,31 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                       ),
                   ],
                 )
+              : (arity == OperatorArity.many &&
+                    _fieldValues[row.field.text.trim()] != null)
+              // A CLOSED SET under "is one of" is ticked, not typed (Jose,
+              // 2026-10-20: email auto-replies set up in the builder by him —
+              // which inboxes, with nobody typing an address).
+              ? Wrap(
+                  key: ValueKey('values-${row.key}'),
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final option in _fieldValues[row.field.text.trim()]!)
+                      FilterChip(
+                        label: Text(option.label),
+                        selected: row.parsedValues.contains(option.value),
+                        onSelected: _busy
+                            ? null
+                            : (on) => setState(() {
+                                final picked = [...row.parsedValues]
+                                  ..remove(option.value);
+                                if (on) picked.add(option.value);
+                                row.value.text = picked.join(', ');
+                              }),
+                      ),
+                  ],
+                )
               : TextField(
                   controller: row.value,
                   enabled: !_busy,

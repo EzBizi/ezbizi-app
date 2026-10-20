@@ -52,9 +52,6 @@ IconData dashboardPanelIcon(String key) {
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,
     'business_profile': Icons.storefront_outlined,
-    // New Google reviews raised to Automations. Matches module_screens.dart,
-    // so the sidebar and the dashboard agree.
-    'a1leads_gbp': Icons.business_outlined,
     // Sales pipeline; matches module_screens.dart.
     'sales': Icons.trending_up,
     // Training is a guide somebody reads and a test they sit, so the icon is

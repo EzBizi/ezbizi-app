@@ -1,6 +1,6 @@
 import '../tab_tours.dart';
 
-/// Leads' sources, Customers › Memberships and Customer Experience's two
+/// Leads' sources, Customers › Memberships and Customer Experience's
 /// tabs, each its own walkthrough, keyed as tourKeyFor() looks them up (see
 /// reports_tours.dart for the pattern).
 ///
@@ -812,6 +812,111 @@ const Map<String, Tour> leadsTours = {
         body:
             'Says why: no profile connected, every listing showing, or none '
             'fetched yet.',
+      ),
+    ],
+  ),
+  'customer_experience/GBP Listings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-business-profile-not-showing',
+        title: 'Not showing',
+        body: 'Only the listings Google is not showing on Maps, with how many.',
+      ),
+      TourStep(
+        anchor: 'tour-customer_experience-check-google',
+        title: 'Check Google',
+        body:
+            'Reads your listings from Google again and says how many it '
+            'checked.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-account',
+        title: 'The profile',
+        body:
+            'Which Business Profile is connected. Change it in Settings › '
+            'Integrations.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-listings',
+        title: 'Your listings',
+        body:
+            "Each listing's address and category. A red mark with Google's "
+            'own word, such as suspended, means Google is not showing it.',
+      ),
+      TourStep(
+        anchor: 'tour-business-profile-empty',
+        title: 'Nothing here',
+        body:
+            'Says why: no profile connected, every listing showing, or none '
+            'fetched yet.',
+      ),
+    ],
+  ),
+  // Its own chip since 2026-10-20 (Jose: "Reviews - GBP Listings - GBP
+  // Performance - Review Links").
+  'customer_experience/GBP Performance': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'gbp-performance-range',
+        title: 'Which days',
+        body: 'The last 28 days unless you pick others.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-listing',
+        title: 'Which listing',
+        body: 'Every listing together, or one.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-fresh',
+        title: 'How fresh',
+        body: 'Google fills in the latest days late; this says how far it has.',
+      ),
+      TourStep(
+        anchor: 'gbp-performance-table',
+        title: 'Each listing',
+        body: 'Its calls, clicks, directions and views. Open one for the '
+            'searches that found it.',
+      ),
+    ],
+  ),
+  // Jose, 2026-10-20: every bad rating and how far it got.
+  'customer_experience/Complaints': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-complaints-status',
+        title: 'Where each one is',
+        body:
+            'Open is New and In progress together. Each tab says how many '
+            'complaints it holds.',
+      ),
+      TourStep(
+        anchor: 'tour-complaints-view',
+        title: 'Table or Board',
+        body:
+            'Table is one line a complaint; Board is a column per status, '
+            'where you drag a card to move it.',
+      ),
+      TourStep(
+        anchor: 'tour-complaints-filters',
+        title: 'Narrow it down',
+        body:
+            'What kind (bad review, bad rating or complaint call), whose it '
+            'is, which branch, how recent, or a name or words they used.',
+      ),
+      TourStep(
+        anchor: 'tour-complaints-list',
+        title: 'The complaints',
+        body:
+            'Click one to read it whole beside the list, change its status '
+            'and owner, add notes, and open the review or lead it came from.',
+      ),
+      TourStep(
+        anchor: 'tour-complaints-empty',
+        title: 'Nothing here',
+        body: 'Says which status or filter is empty.',
       ),
     ],
   ),

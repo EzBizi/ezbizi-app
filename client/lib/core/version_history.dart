@@ -14,6 +14,27 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0461',
+      date: '20 Oct 2026',
+      items: [
+        'Customer Experience: a new Complaints tab lists every bad review, website Bad Rating and complaint call, with status (New, In progress, Solved, Can\'t be solved), owner and notes, as a table or a board.',
+        'Customer Experience: GBP Listings is a table by branch, with listings not showing on Google first. A listing\'s branch and its auto-reply switch are changed from its panel. Review links open on today.',
+        'Leads: when someone starts typing a reply, others viewing the lead see who is replying, and a reply sent after someone else\'s asks first. The first person to reply becomes the lead\'s dispatcher.',
+        'Leads: a call card shows the number the customer dialled and its line.',
+        'Task Board: tasks can have several owners. About can show as Summary, there\'s a Created column, and headers can be renamed or hidden.',
+        'Automations: an email can be answered automatically when the office is closed, in the same thread and without marking it read. A template is ready, switched off. Inboxes and open/closed are picked from a list.',
+        'Human Resources: Delete permanently, separate from deactivating, for administrators. It removes a person\'s data across EzBizi and keeps business records anonymised.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0460',
+      date: '20 Oct 2026',
+      items: [
+        'The A1Leads GBP tab is gone: its reviews, statuses, notes and matches are in Customer Experience › Reviews.',
+        'Customer Experience: the tabs read Reviews · GBP Listings · GBP Performance · Review links.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0459',
       date: '20 Oct 2026',
       items: [

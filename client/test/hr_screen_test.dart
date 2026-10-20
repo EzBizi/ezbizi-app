@@ -795,6 +795,81 @@ void main() {
   /// a shell on the production box. It is its own key — hr.edit does not
   /// carry it — and it asks first, because it signs the colleague out
   /// everywhere.
+  // Jose, 2026-10-20: "different than deactivation, we are missing full
+  // deletion".
+  testWidgets('deleting permanently lists what goes and waits for the name', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(
+        onDeletePerson: (body) => sent = body,
+        me: {
+          ..._me,
+          'permissions': [
+            'hr.view',
+            'hr.edit',
+            'hr.delete',
+            'hr.dashboard.view',
+            'hr.onboarding.view',
+            'hr.records.view',
+            'hr.invitations.view',
+            'hr.contracts.view',
+          ],
+        },
+      ),
+    );
+
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Access'));
+    await _tap(tester, find.byKey(const Key('delete-permanently')));
+
+    expect(find.text('• Emergency contacts: 1'), findsOneWidget);
+    expect(find.text('• Users'), findsOneWidget);
+
+    final confirm = find.byKey(const Key('delete-permanently-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+
+    await tester.enterText(
+      find.byKey(const Key('delete-permanently-name')),
+      'Bea Okafor',
+    );
+    await tester.pump();
+    await _tap(tester, confirm);
+
+    expect(sent, {'confirm': 'Bea Okafor'});
+  });
+
+  testWidgets('without hr.delete the button says why and does nothing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        me: {
+          ..._me,
+          'permissions': [
+            'hr.view',
+            'hr.edit',
+            'hr.dashboard.view',
+            'hr.records.view',
+          ],
+        },
+      ),
+    );
+
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Access'));
+
+    final button = find.byKey(const Key('delete-permanently'));
+    expect(button, findsOneWidget);
+    expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
+  });
+
   testWidgets('resetting an authenticator asks first, then posts', (
     tester,
   ) async {
@@ -1665,9 +1740,44 @@ MockClientHandler _handler({
   Map<String, Object?> scopeOptions = _scopeOptions,
   int scopeOptionsStatus = 200,
   int revokeStatus = 200,
+  void Function(Map<String, dynamic> body)? onDeletePerson,
 }) {
   return (request) async {
     final path = request.url.path;
+
+    // Permanent deletion (2026-10-20): the dry run, then the act.
+    if (path.endsWith('/deletion')) {
+      return _json({
+        'data': {
+          'blocked_because': null,
+          'preview': {
+            'tables': [
+              {
+                'table': 'emergency_contacts',
+                'rows': 1,
+                'rows_dropped': 1,
+                'columns_erased': <String>[],
+              },
+              {
+                'table': 'users',
+                'rows': 1,
+                'rows_dropped': 0,
+                'columns_erased': ['email'],
+              },
+            ],
+          },
+        },
+      });
+    }
+    if (request.method == 'DELETE' &&
+        RegExp(r'/hr/people/[^/]+$').hasMatch(path)) {
+      onDeletePerson?.call(
+        (jsonDecode(request.body) as Map).cast<String, dynamic>(),
+      );
+      return _json({
+        'data': {'deleted': true},
+      });
+    }
 
     if (path.endsWith('/me/preferences')) {
       onPreference?.call(

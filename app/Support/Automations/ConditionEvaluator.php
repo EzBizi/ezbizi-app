@@ -252,6 +252,11 @@ class ConditionEvaluator
             return $value ? '1' : '0';
         }
 
+        // A picker sends "true"/"false" as text; they mean the boolean (office_open, 2026-10-20).
+        if ($value === 'true' || $value === 'false') {
+            return $value === 'true' ? '1' : '0';
+        }
+
         if (is_array($value)) {
             return json_encode($value);
         }

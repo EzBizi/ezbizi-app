@@ -17,9 +17,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
-use App\Http\Controllers\Api\A1LeadsGbpController;
 use App\Http\Controllers\Api\SalesController;
-use App\Http\Controllers\Api\A1LeadsReviewOpsController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -981,38 +979,12 @@ Route::prefix('v1')
         Route::get('sales/deals', [SalesController::class, 'index'])->middleware('permission:sales.view');
         Route::put('sales/deals/{job}', [SalesController::class, 'update'])->middleware('permission:sales.manage');
 
-        Route::middleware('permission:a1leads_gbp.view')->group(function () {
-            Route::get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
-
-            // The list on its own, for filter changes and paging. Same grant,
-            // same tab; a separate route so changing a dropdown costs one
-            // upstream read rather than four.
-            Route::get('a1leads-gbp/reviews', [A1LeadsGbpController::class, 'reviews']);
-        });
-
-        // Public posting stays in A1 Leads. EzBizi only submits an audited,
-        // exact-review request through a separately credentialed live tunnel.
-        // Replying is its own permission (Jose, 2026-09-25).
-        Route::middleware('permission:a1leads_gbp.reply')->group(function () {
-            Route::get('a1leads-gbp/reply/preflight', [A1LeadsGbpController::class, 'replyPreflight']);
-        });
-
-        // The POST checks the permission inside the controller, not here, so a
-        // refused attempt can be audited - Rodrigo's contract audits attempts,
-        // and a middleware refusal would leave no trace.
-        Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);
-
-        // Review operations moved over from A1 Tools (Rodrigo's routes, 25
-        // Sep). Each checks its own permission inside: draft needs reply, the
-        // writes need manage, the report status needs view.
-        Route::post('a1leads-gbp/reviews/{id}/draft', [A1LeadsReviewOpsController::class, 'draft']);
-        Route::get('a1leads-gbp/reviews/{id}/suggestions', [A1LeadsReviewOpsController::class, 'suggestions']);
-        Route::post('a1leads-gbp/reviews/{id}/match', [A1LeadsReviewOpsController::class, 'match']);
-        Route::post('a1leads-gbp/cards/mark', [A1LeadsReviewOpsController::class, 'markCard']);
-        Route::post('a1leads-gbp/report', [A1LeadsReviewOpsController::class, 'report']);
-        Route::get('a1leads-gbp/report/status', [A1LeadsReviewOpsController::class, 'reportStatus']);
-
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
+        // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
+        Route::get('complaints', [\App\Http\Controllers\Api\ComplaintsController::class, 'index']);
+        Route::get('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'show']);
+        Route::patch('complaints/{complaint}', [\App\Http\Controllers\Api\ComplaintsController::class, 'update']);
+        Route::post('complaints/{complaint}/notes', [\App\Http\Controllers\Api\ComplaintsController::class, 'addNote']);
         // How listings perform on Google (A1 Leads takeover, 2026-10-20).
         Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
@@ -1948,6 +1920,10 @@ Route::prefix('v1')
         // not the same authority as editing their row.
         Route::post('hr/people/{user}/totp/reset', [HrPeopleController::class, 'resetTotp']);
         Route::post('hr/people/{user}/reset-link', [HrPeopleController::class, 'resetLink']);
+        // Permanent deletion, apart from deactivating (Jose, 2026-10-20):
+        // what it would remove, then the act. UserPolicy::deletePermanently.
+        Route::get('hr/people/{user}/deletion', [HrPeopleController::class, 'deletionPreview']);
+        Route::delete('hr/people/{user}', [HrPeopleController::class, 'destroy']);
 
         Route::middleware('permission:hr.invitations.view')->group(function () {
             Route::get('hr/invitations', [HrInvitationsController::class, 'index']);

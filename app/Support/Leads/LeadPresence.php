@@ -26,8 +26,45 @@ final class LeadPresence
     private const LASTS = 25;
 
     /** The reader closed the thread: off the lead now, not in 25 seconds. */
+    /** How long a typist holds the lead after their last keystroke. */
+    private const REPLYING_LASTS = 60;
+
+    /**
+     * Somebody is writing to the customer (Jose, 2026-10-20: two people
+     * answered the same lead within a minute). Everyone else viewing it sees
+     * "<name> is replying" and their composer waits, until this person sends,
+     * stops typing for a minute, or leaves.
+     */
+    public static function replying(string $leadId, User $user): void
+    {
+        Cache::put(self::replyingKey($leadId), ['id' => (string) $user->getKey(), 'name' => (string) $user->name], self::REPLYING_LASTS);
+    }
+
+    /** Who else is replying to this lead right now, or null. */
+    public static function replyingOther(string $leadId, User $user): ?string
+    {
+        $holder = Cache::get(self::replyingKey($leadId));
+
+        return is_array($holder) && ($holder['id'] ?? null) !== (string) $user->getKey() ? (string) ($holder['name'] ?? '') : null;
+    }
+
+    /** The hold ends when its holder sends or leaves; nobody else can end it. */
+    public static function stopReplying(string $leadId, User $user): void
+    {
+        $holder = Cache::get(self::replyingKey($leadId));
+        if (is_array($holder) && ($holder['id'] ?? null) === (string) $user->getKey()) {
+            Cache::forget(self::replyingKey($leadId));
+        }
+    }
+
+    private static function replyingKey(string $leadId): string
+    {
+        return 'lead-replying:'.$leadId;
+    }
+
     public static function checkOut(string $leadId, User $user): void
     {
+        self::stopReplying($leadId, $user);
         $viewers = (array) Cache::get(self::key($leadId), []);
         unset($viewers[(string) $user->getKey()]);
         Cache::put(self::key($leadId), $viewers, self::LASTS + 15);

@@ -115,7 +115,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
 
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
-        'occurred_at', 'duration_ms', 'recording_url', 'text', 'transcript', 'attachments',
+        'occurred_at', 'duration_ms', 'line_number', 'line_name', 'recording_url', 'text', 'transcript', 'attachments',
         'is_automatic',
     ];
 

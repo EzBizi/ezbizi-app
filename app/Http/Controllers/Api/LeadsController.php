@@ -575,6 +575,10 @@ class LeadsController extends Controller
         // own timer, so this is the check-in (LeadPresence).
         LeadPresence::checkIn((string) $lead->id, request()->user());
         $data['viewers'] = LeadPresence::others([(string) $lead->id], request()->user())[(string) $lead->id] ?? [];
+        // Somebody else is writing to this customer right now (Jose, 2026-10-20).
+        $data['replying'] = LeadPresence::replyingOther((string) $lead->id, request()->user());
+        // The server's clock for "what you have seen": sent back with a reply (seen_at).
+        $data['seen_at'] = now()->toIso8601String();
 
         $matches = $this->customerMatches($lead);
         $data['customer_matches'] = $matches
@@ -1018,6 +1022,9 @@ class LeadsController extends Controller
             'from' => $c->participant,
             'occurred_at' => $c->occurred_at?->toIso8601String(),
             'duration_ms' => $c->duration_ms,
+            // Our number on a call and its line (Jose, 2026-10-20).
+            'line_number' => $c->line_number,
+            'line_name' => $c->line_name,
             'text' => $c->text,
             // A call's words, machine-transcribed from the recording, divided
             // by speaker once Grok has (ezbizi:label-call-transcripts).
@@ -1104,6 +1111,7 @@ class LeadsController extends Controller
     {
         $this->authorize('update', $lead);
         ChatPeople::agentTyping((string) $lead->getKey(), $request->user());
+        LeadPresence::replying((string) $lead->getKey(), $request->user());
 
         return response()->json(['ok' => true]);
     }
@@ -1151,11 +1159,30 @@ class LeadsController extends Controller
 
         $input = $request->validate([
             'text' => ['required', 'string', 'max:2000'],
+            // When this person last saw the thread; a staff reply after it
+            // stops the send until they say so (`force`).
+            'seen_at' => ['nullable', 'date'],
+            'force' => ['nullable', 'boolean'],
         ]);
 
         $text = trim($input['text']);
 
         abort_if($text === '', Response::HTTP_UNPROCESSABLE_ENTITY, 'Write something to send.');
+
+        /*
+         * Two people answering one customer at once (Jose, 2026-10-20: Ara and
+         * Tiara sent four messages in under a minute). Checked here, not only on
+         * screen, so it holds for two people who never saw each other.
+         */
+        if (! ($input['force'] ?? false) && ($input['seen_at'] ?? null) !== null) {
+            $other = $this->replyAfter($lead, Carbon::parse($input['seen_at']), $request->user());
+            if ($other !== null) {
+                return response()->json([
+                    'message' => "{$other['by']} just replied: {$other['text']}. Send anyway?",
+                    'conflict' => $other,
+                ], Response::HTTP_CONFLICT);
+            }
+        }
 
         // Which door the text goes through is the source's business, not this
         // controller's: Google's Local Services, a website chat, and a form
@@ -1182,8 +1209,39 @@ class LeadsController extends Controller
             'conversation_id' => $row->id,
             'characters' => mb_strlen($text),
         ], actor: $request->user());
+        LeadPresence::stopReplying((string) $lead->getKey(), $request->user());
+
+        // The first person to answer is whose lead it is, on the board too,
+        // unless somebody already said who (dispatcher_by_user_id).
+        Lead::query()->whereKey($lead->getKey())->whereNull('dispatcher')->whereNull('dispatcher_by_user_id')
+            ->toBase()->update(['dispatcher' => mb_substr((string) $request->user()->name, 0, 120)]);
 
         return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
+    }
+
+    /**
+     * The newest reply a person (not a rule) sent this customer after $since,
+     * by somebody other than $me: who and its first line, or null.
+     *
+     * @return array{by: string, text: string, at: ?string}|null
+     */
+    private function replyAfter(Lead $lead, \Carbon\CarbonInterface $since, User $me): ?array
+    {
+        $rows = LeadConversation::query()->where('lead_id', $lead->getKey())
+            ->where('participant', LeadConversation::FROM_ADVERTISER)->where('is_automatic', false)
+            ->where('created_at', '>', $since)->orderByDesc('created_at')->get(['id', 'text', 'occurred_at']);
+        foreach ($rows as $row) {
+            $sent = AuditEvent::query()->where('action', 'lead.replied')->where('target_id', $lead->getKey())
+                ->where('changes->conversation_id', (string) $row->id)->first(['actor_id', 'actor_label']);
+            if ($sent !== null && (string) $sent->actor_id === (string) $me->getKey()) {
+                continue;   // their own earlier message
+            }
+            $by = $sent === null ? 'Someone' : (trim((string) preg_replace('/\s*<[^>]*>$/', '', (string) $sent->actor_label)) ?: 'Someone');
+
+            return ['by' => $by, 'text' => mb_substr(strtok((string) $row->text, "\n") ?: '', 0, 120), 'at' => $row->occurred_at?->toIso8601String()];
+        }
+
+        return null;
     }
 
     /**

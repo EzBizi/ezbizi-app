@@ -35,7 +35,22 @@ void main() {
     await _pump(tester, _handler());
 
     expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'GBP Listings'), findsOneWidget);
+    // Jose, 2026-10-20: "Reviews - GBP Listings - GBP Performance - Review
+    // Links", Business Profile as two chips.
+    final labels = [
+      for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)))
+        if (chip.label case final Text t) t.data,
+    ].whereType<String>().toList();
+    expect(
+      labels,
+      containsAllInOrder([
+        'Reviews',
+        'GBP Listings',
+        'GBP Performance',
+        'Review links',
+      ]),
+    );
   });
 
   /*
@@ -57,7 +72,7 @@ void main() {
     await _pump(tester, _handler(reachable: const ['reviews']));
 
     expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'GBP Listings'), findsNothing);
   });
 
   testWidgets('a role with only Business Profile gets that one', (
@@ -65,7 +80,7 @@ void main() {
   ) async {
     await _pump(tester, _handler(reachable: const ['business_profile']));
 
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'GBP Listings'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsNothing);
   });
 
@@ -124,11 +139,11 @@ void main() {
   ) async {
     await _pump(tester, _handler());
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Business Profile'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'GBP Listings'));
     await tester.pumpAndSettle();
 
     final chip = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, 'Business Profile'),
+      find.widgetWithText(ChoiceChip, 'GBP Listings'),
     );
 
     expect(chip.selected, isTrue);
@@ -145,7 +160,7 @@ void deepLinkTests() {
     tester,
   ) async {
     await _pump(tester, _handler());
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Business Profile'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'GBP Listings'));
     await tester.pumpAndSettle();
     asked.clear();
 
@@ -229,6 +244,15 @@ void reviewLinkTests() {
       );
     },
   );
+
+  testWidgets('review links open on today', (tester) async {
+    await _pump(tester, _handler(reachable: const ['reviews']));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Review links'));
+    await tester.pumpAndSettle();
+
+    final today = tester.widget<ChoiceChip>(find.byKey(const ValueKey('report-dates-Today')));
+    expect(today.selected, isTrue);
+  });
 
   testWidgets('the table switches between branch and person', (tester) async {
     await _pump(tester, _handler(reachable: const ['reviews']));

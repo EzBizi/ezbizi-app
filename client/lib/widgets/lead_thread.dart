@@ -211,8 +211,21 @@ class _LeadThreadState extends State<LeadThread> {
   bool _visitorTyping = false;
   DateTime _typedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Somebody else writing to this customer right now, and whether this
+  /// person chose to reply anyway (Jose, 2026-10-20: two people answered one
+  /// customer four times in a minute).
+  String? _replyingOther;
+  bool _replyAnyway = false;
+
+  /// When this thread was last read, on the server's clock; sent with a reply
+  /// so a reply somebody else sent since then stops it ([_conflict]).
+  String? _seenAt;
+  String? _conflict;
+
   void _typing() {
-    if (!_isLiveChat || _compose.text.trim().isEmpty) return;
+    // Every lead, not only a live chat: the typing mark is also the "is
+    // replying" hold the other viewers see.
+    if (_compose.text.trim().isEmpty) return;
     final now = DateTime.now();
     if (now.difference(_typedAt) < const Duration(seconds: 3)) return;
     _typedAt = now;
@@ -306,20 +319,33 @@ class _LeadThreadState extends State<LeadThread> {
     });
   }
 
-  Future<void> _send() async {
+  Future<void> _send({bool force = false}) async {
     final text = _compose.text.trim();
     if (text.isEmpty || _sending) return;
 
     setState(() {
       _sending = true;
       _sendError = null;
+      _conflict = null;
     });
 
     final response = await widget.api.post(
       '/leads/${widget.lead['id']}/messages',
-      {'text': text},
+      {'text': text, 'seen_at': ?_seenAt, if (force) 'force': true},
     );
     if (!mounted) return;
+
+    // Somebody else answered since this thread was read: say who and what,
+    // and let this person decide (the server's check, so it holds for two
+    // people who never saw each other).
+    if (response.statusCode == 409) {
+      setState(() {
+        _sending = false;
+        _conflict = response.message;
+      });
+      unawaited(_load(quiet: true));
+      return;
+    }
 
     if (!response.ok) {
       setState(() {
@@ -387,6 +413,9 @@ class _LeadThreadState extends State<LeadThread> {
       _details = data['details'] as Map<String, dynamic>?;
       _booking = data['booking'] as Map<String, dynamic>?;
       _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
+      _replyingOther = data['replying'] as String?;
+      if (_replyingOther == null) _replyAnyway = false;
+      _seenAt = data['seen_at'] as String? ?? _seenAt;
       _visitorTyping = data['visitor_typing'] == true;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
@@ -913,6 +942,51 @@ class _LeadThreadState extends State<LeadThread> {
               ),
             ),
           ),
+        if (_conflict != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              key: const ValueKey('reply-conflict'),
+              children: [
+                Expanded(
+                  child: Text(
+                    _conflict!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('reply-send-anyway'),
+                  onPressed: _sending ? null : () => _send(force: true),
+                  child: const Text('Send anyway'),
+                ),
+              ],
+            ),
+          ),
+        if (_replyingOther != null && !_replyAnyway)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              key: const ValueKey('reply-held'),
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_replyingOther!.isEmpty ? 'Someone' : _replyingOther} is replying…',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: const ValueKey('reply-anyway'),
+                  onPressed: () => setState(() => _replyAnyway = true),
+                  child: const Text('Reply anyway'),
+                ),
+              ],
+            ),
+          ),
         if (_visitorTyping)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
@@ -1095,7 +1169,10 @@ class _LeadThreadState extends State<LeadThread> {
               style: FilledButton.styleFrom(
                 minimumSize: const Size(0, _controlHeight),
               ),
-              onPressed: _sending ? null : _send,
+              // Held while somebody else is replying, until "Reply anyway".
+              onPressed: _sending || (_replyingOther != null && !_replyAnyway)
+                  ? null
+                  : _send,
               icon: _sending
                   ? const SizedBox(
                       width: 16,
@@ -2435,6 +2512,20 @@ class _LeadThreadState extends State<LeadThread> {
                     ),
                   ],
                 ),
+                // Which of our numbers, and its line (Jose, 2026-10-20: "can we
+                // show What number they called as well?").
+                if ((c['line_number'] as String?)?.isNotEmpty == true)
+                  Text(
+                    [
+                      '${who == 'Customer' ? 'to' : 'from'} ${formatPhoneNumber(c['line_number'] as String?)}',
+                      if ((c['line_name'] as String?)?.isNotEmpty == true)
+                        c['line_name'] as String,
+                    ].join(' · '),
+                    key: ValueKey('call-line-$id'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 if (hasRecording)
                   RecordingPlaybackBar(
                     key: ValueKey('recording-$id'),

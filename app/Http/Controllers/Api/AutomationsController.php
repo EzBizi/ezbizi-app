@@ -93,7 +93,6 @@ class AutomationsController extends Controller
         'publish_reply',
         'onboarding.start',
         'add_to_audience',
-        'review_reply',
         'send_report',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
@@ -103,6 +102,7 @@ class AutomationsController extends Controller
         // Email's, three segments in the module so it does not arrive here as a
         // bare `mark_dealt` in the namespace every module shares.
         'message.mark_dealt',
+        'message.reply',
         'email.send',
         'whatsapp.send',
         'whatsapp.group_send',
@@ -821,6 +821,15 @@ class AutomationsController extends Controller
                 array_keys($set),
                 array_values($set),
             );
+        }
+
+        // Email auto replies Jose sets up himself (2026-10-20): pick the inbox
+        // and open/closed from a list rather than typing them.
+        if ($key === 'email.received') {
+            // Values only: a field is still offered only once an event carried it.
+            $values['address'] = \App\Models\Mailbox::query()->orderBy('address')->get(['address', 'display_name'])
+                ->map(fn ($m) => ['value' => $m->address, 'label' => trim(($m->display_name ? $m->display_name.' · ' : '').$m->address)])->all();
+            $values['office_open'] = [['value' => 'true', 'label' => 'Open'], ['value' => 'false', 'label' => 'Closed']];
         }
 
         /*
@@ -2079,6 +2088,10 @@ class AutomationsController extends Controller
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
             $type('message.mark_dealt', 'Mark an email dealt with'),
+            // After-hours email auto replies (Eve and Jose, 2026-10-20). Their email stays unread.
+            $type('message.reply', 'Reply to the email', false, [
+                $parameter('body', 'Reply', 'text', variables: true),
+            ]),
 
             // The line, the destination and the words are all stated in the
             // rule, because this action is deliberately not bound to the
@@ -2208,9 +2221,6 @@ class AutomationsController extends Controller
                 // Off = the week that just finished, which is right for a rule
                 // at the end of the week. On = the week still running.
                 $parameter('this_week', 'This week so far, not the last full week', 'boolean', false),
-            ]),
-            $type('review_reply', 'Reply on Google', true, [
-                $parameter('message', 'The reply', 'rich_text', variables: true),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Models\Automation;
 use App\Models\BusinessLocation;
-use App\Models\A1LeadsReviewEvent;
 use App\Models\AdsAccountState;
 use App\Models\Company;
 use App\Models\Customer;
@@ -496,10 +495,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // keys they are held by NO existing role until somebody ticks them,
                 // which is the safe direction for a new sensitive grant. An
                 // administrator holds them by identity, as every key.
-                actions: ['view', 'create', 'edit', 'security.reset', 'pay.view', 'pay.edit'],
+                // `delete`, 2026-10-20 (Jose: "we are missing full deletion"):
+                // erasing a person for good, apart from deactivating them. New,
+                // so held by no role until ticked; administrators by identity.
+                actions: ['view', 'create', 'edit', 'security.reset', 'pay.view', 'pay.edit', 'delete'],
                 actionLabels: [
                     'pay.view' => 'See pay rates',
                     'pay.edit' => 'Change pay rates',
+                    'delete' => 'Delete people permanently',
                 ],
                 /*
                  * ── The seven tabs, grantable one at a time ──
@@ -2848,101 +2851,6 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * == A1Leads GBP: a bridge to Rodrigo's system, and only that ==
-             *
-             * Jose, 2026-09-23: *"we are integrating Rodrigo's system as a
-             * different thing"*, and, after this module briefly swallowed
-             * EzBizi's own two: *"we still need our system in place for when we
-             * get OUR GBP Credentials and we'll need the google reviewers to see
-             * it. SO PUT IT BACK WHERE IT WAS, THE A1LEADS GBP TAB IS A NEW
-             * ENTIRE THING."*
-             *
-             * So this is NOT a container for `reviews` and `business_profile`.
-             * Those are EzBizi's own modules, they read EzBizi's own tables, they
-             * stay inside Marketing, and they are what a Google reviewer is shown
-             * when our own Business Profile API access arrives. Nothing here
-             * touches them and nothing here should ever be their parent again.
-             *
-             * What this module is: a read-only window onto A1 Leads, the system
-             * that still holds Google Business Profile for A-1 Chimney while
-             * EzBizi has no API access of its own. Its data arrives from that
-             * system's partner API; it writes nothing, to Google or to us.
-             *
-             * == Temporary, and named so you can tell ==
-             *
-             * EzBizi's own Business Profile application was refused 2026-09-22
-             * on the 60-day rule; earliest re-file 26 October
-             * (docs/BUSINESS-PROFILE.md 9b). When that lands and the migration
-             * finishes, this module is deleted whole. It is named after somebody
-             * else's product on purpose: the name stops making sense at the
-             * moment it should go.
-             */
-            new ModuleDefinition(
-                key: 'a1leads_gbp',
-                label: 'A1Leads GBP',
-                // `reply` is its own tick - Jose, 2026-09-25: "Separate Reply
-                // permission". Seeing A-1's reviews does not include answering
-                // them in public. One public reply to one exact review, through
-                // the live A1 Leads writer with its own key; every attempt
-                // audited (`a1leads_gbp.review_replied`,
-                // `a1leads_gbp.review_reply_failed`).
-                // `manage` since 2026-09-25: a review's workflow card, its
-                // Workiz match and a policy report to Google - the A1 Tools
-                // operations moved here before A1 Tools is retired. None of
-                // them posts a public reply; that is `reply` alone.
-                actions: ['view', 'reply', 'manage'],
-                // AUTOMATED since 2026-09-25. Jose: "this will be set using EzBizi
-                // Automations that Bar himself will set up for the reply." It was
-                // exempt until then, on the grounds that a rule built on a copy
-                // fires on our import rather than on a customer; the trigger
-                // answers that by firing only for reviews Google stamped after
-                // the previous snapshot (see `ezbizi:a1leads-review-watch`).
-                // The subject is an A1LeadsReviewEvent: one row per new review,
-                // unique per review (so "once" is a key, not a hope), sitting at
-                // A-1 Chimney's company so a company-level rule covers it.
-                subject: new AutomationSubject(A1LeadsReviewEvent::class, 'Google review', key: 'a1leads_gbp'),
-                emits: [A1LeadsReviewEvent::class],
-                triggers: [
-                    new TriggerDefinition(
-                        key: 'a1leads_gbp.review_received',
-                        label: 'New Google review',
-                        description: 'A new Google review of A-1 Chimney arrived in the daily A1 Leads '
-                            .'snapshot. Raised once per review, only for reviews written since the '
-                            .'previous snapshot - never for the backlog. The payload carries the '
-                            .'rating, the name of the reviewer, the location, and whether it already '
-                            .'has a reply.',
-                    ),
-                    new TriggerDefinition(
-                        key: 'a1leads_gbp.review_removed',
-                        label: 'Google review removed',
-                        description: 'Google no longer shows a review of A-1 Chimney that it used to. '
-                            .'It carries the rating, the reviewer, the location and what the review said.',
-                    ),
-                ],
-                /*
-                 * Jose, 2026-09-25, on Rodrigo's cutover checklist: "this will
-                 * be set using EzBizi Automations that Bar himself will set up
-                 * for the reply." That ruling retired the exemption that said
-                 * an automation must not post under a customer review.
-                 *
-                 * ONE WRITER. The step calls A1LeadsGbpReplies::publish, the same
-                 * path the Reply button uses, so A1 Leads stays the only thing
-                 * that writes to Google (Rodrigo's rule). It never answers a
-                 * review that already has a reply: publish() reads it live first.
-                 */
-                automationActions: [
-                    new ActionDefinition(
-                        key: 'a1leads_gbp.review_reply',
-                        label: 'Reply on Google',
-                        description: 'Posts a public reply under the review on Google, through A1 Leads. '
-                            .'Skipped if the review already has a reply. A1 Leads checks the text before '
-                            .'it goes out: greet by first name only, no job, address, phone or technician, '
-                            .'no promises or admissions, no emoji, hashtags, dashes or signature.',
-                    ),
-                ],
-            ),
-
-            /*
              * ── Customer Experience: a container for Reviews and Business Profile ──
              *
              * Jose, 2026-09-25: *"inside you will move reviews and business
@@ -2961,10 +2869,32 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'customer_experience',
                 label: 'Customer Experience',
-                actions: ['view'],
-                automationExemptBecause: 'A container for other modules. It holds no '
-                    .'records and raises no events; Reviews and Business Profile declare '
-                    .'their own triggers and subjects.',
+                // Complaints (Jose, 2026-10-20): every bad review, Bad Rating and
+                // complaint call, and where handling it has got to. The tab is
+                // customer_experience.complaints.view; working one is .manage.
+                actions: ['view', 'complaints.manage'],
+                actionLabels: ['complaints.manage' => 'Work complaints (status, owner, notes)'],
+                tabs: [
+                    new TabDefinition('complaints', 'Complaints'),
+                ],
+                auditActionPrefixes: ['complaint'],
+                subject: new AutomationSubject(\App\Models\Complaint::class, 'Complaint', key: 'complaint'),
+                emits: [\App\Models\Complaint::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'complaint.opened',
+                        label: 'Complaint opened',
+                        description: 'A review of 3 stars or fewer, a Bad Rating from the website, or a call '
+                            .'heard as a complaint was added to Complaints. It carries the kind and, for a '
+                            .'review, the rating.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'complaint.status_changed',
+                        label: 'Complaint status changed',
+                        description: 'Somebody moved a complaint to New, In progress, Solved or Cannot be '
+                            .'solved. It carries the status before and after.',
+                    ),
+                ],
             ),
 
             /*
@@ -3318,7 +3248,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A new message reached one of the shared inboxes. It '
                             .'carries which inbox it arrived at, who it is from, the subject, '
                             .'when it was sent and whether anything is attached — never the '
-                            .'contents, which are not stored anywhere. EzBizi checks each '
+                            .'contents, which are not stored anywhere. For replies it also '
+                            .'carries the sender domain (from_domain), whether the inbox '
+                            .'office is open (office_open), when it next opens (office_opens), '
+                            .'its office phone, company name and a greeting. EzBizi checks each '
                             .'connected inbox every few minutes rather than the instant mail '
                             .'lands, so a rule on this runs within about five minutes rather '
                             .'than immediately. Connecting an inbox for the first time raises '
@@ -3474,6 +3407,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'that anyone read it — "Seen by" stays a statement about people. '
                             .'It changes what the team sees in EzBizi and sends nothing to '
                             .'anyone.',
+                    ),
+                    new ActionDefinition(
+                        key: 'email.message.reply',
+                        label: 'Reply to the email',
+                        description: 'Answers the email that arrived, in its thread, from the same inbox '
+                            .'- for example after hours or on Sundays. The email itself stays '
+                            .'unread. Never answers this inbox itself or an automatic address, and '
+                            .'answers each sender at most once a day.',
                     ),
                 ],
             ),
