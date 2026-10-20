@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\ReportBatchFile;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
 use App\Models\WhatsAppMessage;
@@ -11,6 +12,7 @@ use App\Support\Social\WhatsAppGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -32,6 +34,9 @@ class WhatsAppPeriodReportsTest extends TestCase
 
     /** @var list<array<string, mixed>> */
     private array $sent = [];
+
+    /** @var list<string> */
+    private array $uploads = [];
 
     private array $t = [];
 
@@ -108,8 +113,33 @@ class WhatsAppPeriodReportsTest extends TestCase
         });
     }
 
+    /** The proof layer, 2026-10-20: APPROVE sends the PDFs the preview froze, not a rebuild. */
+    public function test_approve_sends_the_frozen_revision_and_records_its_hash(): void
+    {
+        $this->approvalSetUp();
+        $this->artisan('ezbizi:whatsapp-period-reports', ['period' => 'week'])->assertSuccessful();
+
+        $batch = WhatsAppReportBatch::query()->withoutGlobalScopes()->sole();
+        $files = ReportBatchFile::query()->withoutGlobalScopes()->where('batch_id', $batch->id)->get();
+        $this->assertSame(1, $batch->revision);
+        $this->assertCount(2, $files, 'the branch PDF and the consolidated one');
+        $consolidated = $files->firstWhere('franchise_id', null);
+        $this->assertStringContainsString(substr($consolidated->sha256, 0, 8), $this->sent[1]['text']['body']);
+
+        // Whatever the stored file holds is what goes out.
+        Storage::disk('local')->put($consolidated->path, '%PDF-THE-APPROVED-ONE');
+        $this->uploads = [];
+        $this->inbound('approve');
+
+        $batch->refresh();
+        $this->assertSame(1, $batch->approved_revision);
+        $this->assertSame($consolidated->sha256, $batch->approved_sha256);
+        $this->assertTrue(collect($this->uploads)->contains(fn ($b) => str_contains($b, '%PDF-THE-APPROVED-ONE')), 'sent the frozen file, not a rebuild');
+    }
+
     private function approvalSetUp(): User
     {
+        Storage::fake('local');
         config([
             'services.meta.client_secret' => self::SECRET,
             'services.meta.whatsapp_token' => 'a-token',
@@ -117,6 +147,8 @@ class WhatsAppPeriodReportsTest extends TestCase
         ]);
         Http::fake(function ($request) {
             if (str_ends_with($request->url(), '/media')) {
+                $this->uploads[] = $request->body();
+
                 return Http::response(['id' => 'MEDIA-'.count($this->sent)]);
             }
             if (str_ends_with($request->url(), '/messages')) {
