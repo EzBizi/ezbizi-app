@@ -3,6 +3,7 @@
 namespace App\Support\Tasks;
 
 use App\Models\Task;
+use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
 use App\Models\TaskColumn;
 use App\Models\TaskColumnValue;
@@ -38,6 +39,10 @@ class TaskWriter
      * @param  array{title: string, parent_task_id?: ?string, group_id?: ?string, status?: ?string, status_id?: ?string, assignee_user_id?: ?string, due_on?: ?string, about_type?: ?string, about_id?: ?string, priority?: ?string, estimate_minutes?: ?int, values?: array<string, mixed>}  $input
      *
      * `status` is a built-in key or a status name on this board (any case).
+     * `group` is a group NAME (any case), an alternative to group_id.
+     * `assignee_user_ids` lists every owner, the first the primary
+     * (assignee_user_id); assignee_user_id alone still works.
+     * `values` may be keyed by column id or by column name (any case).
      */
     public function create(TaskBoard $board, array $input, ?User $actor, ?string $automationId = null): Task
     {
@@ -51,7 +56,8 @@ class TaskWriter
                 }
             }
 
-            $groupId = $input['group_id'] ?? null;
+            $owners = $this->ownersFrom($board, $input, []);
+            $groupId = $this->groupIdFrom($board, $input);
             $groupId = match (true) {
                 $parent !== null => $parent->group_id,
                 $groupId !== null => $this->groupOn($board, $groupId)->id,
@@ -84,6 +90,10 @@ class TaskWriter
                 'created_by_automation_id' => $automationId,
             ]);
 
+            if ($owners !== null) {
+                $this->syncOwners($task, $owners);
+            }
+
             if (! empty($input['values'])) {
                 $this->writeValues($task, $input['values'], $actor);
             }
@@ -91,6 +101,7 @@ class TaskWriter
             $this->audit->log('task.created', $task, actor: $actor);
             $this->events->emitAfterCommit('task.created', $task, [
                 'assignee_user_id' => $task->assignee_user_id,
+                'assignee_user_ids' => $this->ownerIds($task),
                 'board_id' => $task->board_id,
                 'board_name' => $task->board?->name,
                 'after' => $this->snapshot($task),
@@ -104,6 +115,10 @@ class TaskWriter
     public function update(Task $task, array $input, ?User $actor): Task
     {
         return DB::transaction(function () use ($task, $input, $actor) {
+            $owners = $this->ownersFrom($task->board, $input, $this->ownerIds($task));
+            if (empty($input['group_id']) && isset($input['group'])) {
+                $input['group_id'] = $this->groupIdFrom($task->board, $input);
+            }
             $fields = array_intersect_key($input, array_flip([
                 'title', 'group_id', 'assignee_user_id', 'due_on', 'about_type',
                 'about_id', 'priority', 'estimate_minutes',
@@ -132,6 +147,14 @@ class TaskWriter
                 $this->writeValues($task, $input['values'], $actor);
             }
 
+            $ownersChanged = $owners !== null && $owners !== $this->ownerIds($task);
+            if ($ownersChanged) {
+                $this->syncOwners($task, $owners);
+                if (! $task->isDirty()) {
+                    $this->audit->log('task.owners_changed', $task, metadata: ['assignee_user_ids' => $owners], actor: $actor);
+                }
+            }
+
             if (! $task->isDirty()) {
                 return $task;
             }
@@ -148,6 +171,7 @@ class TaskWriter
             if ($statusChanged) {
                 $this->events->emitAfterCommit('task.status_changed', $task, [
                     'assignee_user_id' => $task->assignee_user_id,
+                    'assignee_user_ids' => $this->ownerIds($task),
                     'board_id' => $task->board_id,
                     'board_name' => $task->board?->name,
                     'before' => $before,
@@ -209,6 +233,88 @@ class TaskWriter
         $trashed = Task::onlyTrashed()->where('status_id', $from->id);
         $trashed->clone()->update(['status_id' => $to->id, 'status' => $to->statusKey()]
             + ($to->is_done === $wasDone ? [] : ['completed_at' => $to->is_done ? now() : null]));
+    }
+
+    /** group_id as given, or the id of the group named by `group` (any case); null when neither. */
+    private function groupIdFrom(TaskBoard $board, array $input): ?string
+    {
+        if (! empty($input['group_id'])) {
+            return (string) $input['group_id'];
+        }
+        if (! isset($input['group']) || ! is_string($input['group']) || trim($input['group']) === '') {
+            return null;
+        }
+        $wanted = mb_strtolower(trim($input['group']));
+
+        return TaskGroup::query()->where('board_id', $board->id)->get()
+            ->first(fn (TaskGroup $g) => mb_strtolower(trim($g->name)) === $wanted)?->id
+            ?? throw ValidationException::withMessages(['group' => "This board has no group called {$input['group']}."]);
+    }
+
+    /**
+     * The owners $input asks for, primary first, or null when it names none.
+     * Sets $input['assignee_user_id'] to the primary. A lone
+     * assignee_user_id replaces the primary and keeps the other owners.
+     *
+     * @param  list<string>  $current
+     * @return list<string>|null
+     */
+    private function ownersFrom(TaskBoard $board, array &$input, array $current): ?array
+    {
+        if (array_key_exists('assignee_user_ids', $input)) {
+            $ids = $input['assignee_user_ids'] ?? [];
+            if (! is_array($ids) || count($ids) > 50) {
+                throw ValidationException::withMessages(['assignee_user_ids' => 'A list of up to 50 people.']);
+            }
+            $assignable = app(TaskBoards::class)->assignable($board)->pluck('name', 'id');
+            $out = [];
+            foreach (array_values($ids) as $i => $id) {
+                if (! is_string($id) || ! $assignable->has($id)) {
+                    $name = is_string($id) ? User::query()->whereKey($id)->value('name') : null;
+                    throw ValidationException::withMessages(["assignee_user_ids.{$i}" => $name !== null
+                        ? ($board->isPrivate() ? "Add {$name} to this board first." : "{$name} cannot own a task on this board.")
+                        : 'That person is not in this organization.']);
+                }
+                $out[$id] = true;
+            }
+            $out = array_keys($out);
+            $input['assignee_user_id'] = $out[0] ?? null;
+
+            return $out;
+        }
+
+        if (array_key_exists('assignee_user_id', $input)) {
+            $primary = $input['assignee_user_id'];
+
+            return $primary === null || $primary === ''
+                ? []
+                : array_values(array_unique([(string) $primary, ...array_slice($current, 1)]));
+        }
+
+        return null;
+    }
+
+    /** @return list<string> every owner, primary first */
+    private function ownerIds(Task $task): array
+    {
+        if (! $task->exists) {
+            return [];
+        }
+
+        return TaskAssignee::query()->where('task_id', $task->id)->orderBy('position')->pluck('user_id')->all();
+    }
+
+    /** @param  list<string>  $ids */
+    private function syncOwners(Task $task, array $ids): void
+    {
+        TaskAssignee::query()->where('task_id', $task->id)->whereNotIn('user_id', $ids)->delete();
+        foreach ($ids as $position => $id) {
+            TaskAssignee::query()->updateOrCreate(
+                ['task_id' => $task->id, 'user_id' => $id],
+                ['organization_id' => $task->organization_id, 'position' => $position],
+            );
+        }
+        $task->unsetRelation('owners');
     }
 
     private function groupOn(TaskBoard $board, string $groupId): TaskGroup
@@ -280,7 +386,8 @@ class TaskWriter
         foreach ($values as $columnId => $value) {
             $key = "values.{$columnId}";
             $column = $columns->get($columnId)
-                ?? throw ValidationException::withMessages([$key => 'That column is not on this board.']);
+                ?? $columns->first(fn (TaskColumn $c) => mb_strtolower(trim($c->name)) === mb_strtolower(trim((string) $columnId)))
+                ?? throw ValidationException::withMessages([$key => "This board has no column called {$columnId}."]);
 
             if ($value === null) {
                 $rows[$column->id] = null;
@@ -353,6 +460,7 @@ class TaskWriter
             'title' => $task->title,
             ...$this->statusOf($task),
             'assignee_user_id' => $task->assignee_user_id,
+            'assignee_user_ids' => $this->ownerIds($task),
             'due_on' => $task->due_on?->toDateString(),
             'about_type' => $task->about_type,
             'about_id' => $task->about_id,
