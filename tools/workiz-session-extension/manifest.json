@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Send my Workiz session to EzBizi",
+  "version": "1.0.0",
+  "description": "After you sign in to Workiz, sends that signed-in session to EzBizi so its server can read your Workiz reports. Does nothing until you click Send.",
+  "permissions": ["cookies"],
+  "host_permissions": ["https://app.workiz.com/*", "https://app.ezbizi.com/*"],
+  "action": { "default_title": "Send my Workiz session to EzBizi", "default_popup": "popup.html" }
+}

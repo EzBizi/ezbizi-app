@@ -174,6 +174,8 @@ Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
  */
 Schedule::command('ezbizi:sync-workiz-records')->everyTenMinutes()->withoutOverlapping(30);
 Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlapping(30);
+// Workiz's own Payments report, through each tenant's signed-in web session.
+Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOverlapping(30);
 // A newly connected Workiz account's whole history, paced and resumable.
 Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=20 --pause=5')->everyFiveMinutes()->withoutOverlapping(60);
 

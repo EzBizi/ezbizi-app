@@ -44,6 +44,7 @@ class SocialNetworkMark extends StatelessWidget {
     // grey square for them (Jose, 2026-10-13).
     'mailchimp': 'assets/social/mailchimp.svg',
     'workiz': 'assets/social/workiz.svg',
+    'workiz_web': 'assets/social/workiz.svg',
     'ringcentral': 'assets/social/ringcentral.svg',
     'airtable': 'assets/social/airtable.svg',
     'whatsapp': 'assets/social/whatsapp.svg',
