@@ -277,7 +277,8 @@ Future<List<http.Request>> _pump(
             ? json({'message': 'Not found.'}, 404)
             : json({'data': served});
       }
-      if (path.endsWith('/airtable-links') && request.method == 'POST') {
+      if (path.endsWith('/financials/airtable-links') &&
+          request.method == 'POST') {
         linked = true;
         return json({'data': _table}, 201);
       }
@@ -464,6 +465,7 @@ const _adjustments = [
 Map<String, dynamic> _quarrels({
   String? unmirroredId,
   bool nativeOpen = true,
+  bool mayMirror = true,
 }) => _area(
   'quarrels',
   'Quarrels & Returns',
@@ -485,6 +487,7 @@ Map<String, dynamic> _quarrels({
       'table_id': unmirroredId,
       'route': unmirroredId == null ? null : '/financials/tables/$unmirroredId',
       'may_open': unmirroredId != null,
+      'may_mirror': unmirroredId == null && mayMirror,
       'refused': unmirroredId == null ? 'Not mirrored into a base yet.' : null,
     },
     {
@@ -522,11 +525,12 @@ Map<String, dynamic> _homeWith({
   List<Map<String, dynamic>>? bases,
   bool mayCreate = true,
   bool nativeOpen = true,
+  bool mayMirror = true,
 }) => {
   'areas':
       areas ??
       [
-        _quarrels(nativeOpen: nativeOpen),
+        _quarrels(nativeOpen: nativeOpen, mayMirror: mayMirror),
         _area('pebbles', 'Pebble Deposits', source: 'airtable'),
       ],
   'bases':
@@ -646,37 +650,41 @@ void homeTests() {
     expect(find.text('Your areas'), findsOneWidget);
   });
 
-  testWidgets('an unmirrored source mirrors into the first base, then opens', (
-    tester,
-  ) async {
-    final seen = await _pump(
-      tester,
-      home: _homeWith(),
-      homeAfterLink: _homeWith(areas: [_quarrels(unmirroredId: 't1')]),
-    );
-    await openQuarrels(tester);
-    await tester.tap(find.text('Unlinked returns · 5'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('not mirrored into a base yet'), findsOneWidget);
-    await tester.tap(find.text('Mirror it into Books'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'an unmirrored source mirrors where the server picks, then opens',
+    (tester) async {
+      final seen = await _pump(
+        tester,
+        home: _homeWith(),
+        homeAfterLink: _homeWith(areas: [_quarrels(unmirroredId: 't1')]),
+      );
+      await openQuarrels(tester);
+      await tester.tap(find.text('Unlinked returns · 5'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('not mirrored into a base yet'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Mirror it'));
+      await tester.pumpAndSettle();
 
-    final post = seen.singleWhere((r) => r.method == 'POST');
-    expect(post.url.path, endsWith('/financials/bases/b1/airtable-links'));
-    expect(jsonDecode(post.body), {'base_id': 'appQ', 'table_id': 'tblU'});
-    final after = seen.sublist(seen.indexOf(post));
-    expect(after.any((r) => r.url.path.endsWith('/financials/home')), isTrue);
-    expect(chip(tester, 'appQ/tblU/fr-9').selected, isTrue);
-    expect(find.text('Diesel'), findsOneWidget);
-  });
+      final post = seen.singleWhere((r) => r.method == 'POST');
+      expect(post.url.path, endsWith('/financials/airtable-links'));
+      expect(post.url.path, isNot(contains('/bases/')));
+      expect(jsonDecode(post.body), {'base_id': 'appQ', 'table_id': 'tblU'});
+      final after = seen.sublist(seen.indexOf(post));
+      expect(after.any((r) => r.url.path.endsWith('/financials/home')), isTrue);
+      expect(chip(tester, 'appQ/tblU/fr-9').selected, isTrue);
+      expect(find.text('Diesel'), findsOneWidget);
+    },
+  );
 
-  testWidgets('without the rights to mirror, the chip says why', (
-    tester,
-  ) async {
+  testWidgets('without may_mirror, the chip says why', (tester) async {
     await _pump(
       tester,
-      home: _homeWith(nativeOpen: false),
-      permissions: const ['financials.view', 'financials.bases.view'],
+      // may_mirror false while the role holds every grant: the server's
+      // flag alone decides.
+      home: _homeWith(nativeOpen: false, mayMirror: false),
     );
     await openQuarrels(tester);
     expect(
@@ -693,7 +701,7 @@ void homeTests() {
     expect(chip(tester, 'adjustments').onSelected, isNull);
     // The mirrored source still opens.
     expect(find.text('Diesel'), findsOneWidget);
-    expect(find.text('Mirror it into Books'), findsNothing);
+    expect(find.text('Mirror it'), findsNothing);
   });
 
   testWidgets('refunds recorded in EzBizi list this month in place', (

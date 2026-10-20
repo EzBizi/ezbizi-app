@@ -76,6 +76,7 @@ class AreaTable {
     this.tableId,
     this.route,
     this.mayOpen,
+    this.mayMirror,
     this.refused,
   });
 
@@ -86,6 +87,7 @@ class AreaTable {
     tableId: t['table_id'] as String?,
     route: t['route'] as String?,
     mayOpen: t['may_open'] as bool?,
+    mayMirror: t['may_mirror'] as bool?,
     refused: t['refused'] as String?,
   );
 
@@ -98,6 +100,9 @@ class AreaTable {
   /// Whether the server says this person may open it, and its sentence when
   /// not. Null from a server that does not say.
   final bool? mayOpen;
+
+  /// Whether Mirror it is offered (financials.edit and financials.create).
+  final bool? mayMirror;
   final String? refused;
 
   /// The server's refusal for an Airtable source no base mirrors yet: the

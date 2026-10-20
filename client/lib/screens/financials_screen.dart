@@ -822,14 +822,10 @@ class _FinancialsScreenState extends State<FinancialBases> {
                   false) =>
         'Your role cannot see Bills',
       'bills' || 'adjustments' || 'repair_moves' => null,
-      // Linking needs a base to link into (POST bases/{base}/airtable-links)
-      // and that base's update policy, financials.edit, besides
-      // may_create_base.
-      _ when !_mayCreateBase || !_can('edit') =>
-        t.refused ?? 'Your role cannot mirror Airtable tables',
-      _ when _bases.isEmpty => 'Make a base first to mirror it into',
-      _ when t.airtable == null => t.refused ?? 'Cannot be mirrored from here',
-      _ => null,
+      // An Airtable source no base mirrors: the server's may_mirror alone
+      // says whether Mirror it is offered.
+      _ when t.mayMirror == true && t.airtable != null => null,
+      _ => t.refused ?? AreaTable.notMirrored,
     };
   }
 
@@ -846,13 +842,12 @@ class _FinancialsScreenState extends State<FinancialBases> {
 
   bool _mirroring = false;
 
-  /// Mirrors an area's Airtable source into the first base (the bases come
-  /// sorted by name), then reloads the home so the chip opens the new table.
+  /// Mirrors an area's Airtable source (the server picks or makes the base),
+  /// then reloads the home, whose chip now carries the new table's id.
   Future<void> _mirror(AreaTable t) async {
     final (baseId, tableId) = t.airtable!;
-    final into = _bases.first['id'];
     setState(() => _mirroring = true);
-    final r = await widget.api.post('/financials/bases/$into/airtable-links', {
+    final r = await widget.api.post('/financials/airtable-links', {
       'base_id': baseId,
       'table_id': tableId,
     });
@@ -975,7 +970,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
                       FilledButton.icon(
                         key: const ValueKey('financials-mirror-it'),
                         icon: const Icon(Icons.sync_alt),
-                        label: Text('Mirror it into ${_bases.first['name']}'),
+                        label: const Text('Mirror it'),
                         onPressed: _mirroring ? null : () => _mirror(shown),
                       ),
                     ],
