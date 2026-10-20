@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
@@ -437,6 +440,53 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   Map<String, dynamic>? _pendingTemplate;
   String? _error;
 
+  // ── the five steps (UI queue 113) ────────────────────────────────
+
+  /// Which step is on screen: 0 Name, 1 When, 2 Only if, 3 Then, 4 Review.
+  int _stepIndex = 0;
+
+  /// Steps somebody has moved on from, so an Only if left empty on purpose
+  /// reads as "none" rather than as not looked at yet.
+  final Set<int> _left = <int>{};
+
+  /// Which of the rule's steps the Then screen has open.
+  int _selectedAction = 0;
+
+  /// The box that takes `{{ }}` the cursor was last in, for the details beside
+  /// the Then step. Checked against the open step's own boxes before use, so a
+  /// removed step's controller is never written to.
+  TextEditingController? _activeBox;
+  final Set<TextEditingController> _watchedBoxes = <TextEditingController>{};
+
+  /// Set while the Then step draws its details beside the editor, which is
+  /// when the chips under each box would be the same chips twice.
+  bool _detailsBeside = false;
+
+  /// Below this width of the builder's own box the steps stack.
+  static const _narrowBelow = 760.0;
+
+  static const _stepLabels = ['Name', 'When', 'Only if', 'Then', 'Review'];
+  static const _stepKeys = ['name', 'when', 'only-if', 'then', 'review'];
+
+  /// How often each trigger happened in the last 30 days, when the server says.
+  ///
+  /// `GET /automations/trigger-stats` may not exist on the server this build
+  /// talks to. Any failure leaves this null and the cards say nothing — a
+  /// missing count is not a zero.
+  Map<String, int>? _triggerStats;
+
+  /// What `POST /automations/would-have-run` answered for the conditions as
+  /// they are now, and the request it answered. Shown only while the two
+  /// match, so a count never describes conditions that have since changed.
+  ({int wouldRun, int total, List<({String label, bool ran})> examples})?
+  _rehearsal;
+  String? _rehearsalFor;
+  String? _rehearsalPending;
+  Timer? _rehearsalTimer;
+
+  /// The most events `would-have-run` reads.
+  static const _rehearsalCeiling = 500;
+
   bool get _isEdit => widget.editing != null;
   String? get _id => widget.editing?['id'] as String?;
 
@@ -755,6 +805,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
     final editing = widget.editing;
 
+    // An existing rule opens on Review, so the whole of it is read first; a
+    // new one starts at its name.
+    _stepIndex = editing == null ? 0 : 4;
+    if (editing == null) _loadTriggerStats();
+
     if (editing != null) {
       _name.text = editing['name'] as String? ?? '';
       _description.text = editing['description'] as String? ?? '';
@@ -778,6 +833,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     _name.dispose();
     _description.dispose();
     _scheduleTime.dispose();
+    _rehearsalTimer?.cancel();
 
     for (final condition in _conditions) {
       condition.dispose();
@@ -1010,6 +1066,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // wrong was that the ONLY marker was the tail of a paragraph, so the
           // row looked like every other one.
           badge: trigger.isRaised ? null : 'Not raised yet',
+          note: switch (_triggerStats?[trigger.key]) {
+            final count? => _timesInMonth(count),
+            null => null,
+          },
         ),
     ],
   );
@@ -1385,18 +1445,27 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   // ── whether it can be saved, and why not ─────────────────────────
 
   /// The one thing stopping a save, in the words of whoever has to fix it.
-  String? get _blocker {
-    if (_name.text.trim().isEmpty) return 'Give it a name first.';
+  ///
+  /// The same checks in the same order as when the form was one page — only
+  /// split by the step that owns each, so Next can refuse with the sentence
+  /// Save would have used.
+  String? get _blocker =>
+      _nameProblem ?? _whenProblem ?? _conditionsProblem ?? _actionsProblem;
 
+  String? get _nameProblem =>
+      _name.text.trim().isEmpty ? 'Give it a name first.' : null;
+
+  String? get _whenProblem {
     if (_trigger == null) return 'Choose what it should react to.';
 
     // Before the lock check below, not after: a schedule is part of WHAT THE
     // RULE IS, like its trigger, and it stays editable on a rule whose version
     // is locked. Putting this after the lock would let a locked scheduled rule
     // be saved with a half-filled schedule.
-    final schedule = _scheduleProblem;
-    if (schedule != null) return schedule;
+    return _scheduleProblem;
+  }
 
+  String? get _conditionsProblem {
     // Nothing below is editable when the version is locked, so nothing below
     // can be wrong. Requiring an action there would leave the button dead
     // forever on the very rule whose name this screen still offers to change.
@@ -1425,6 +1494,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         return 'One of the conditions lists no values to match against.';
       }
     }
+
+    return null;
+  }
+
+  String? get _actionsProblem {
+    if (_lockedBecause != null) return null;
 
     if (_actions.isEmpty) return 'Add at least one thing for it to do.';
 
@@ -1572,48 +1647,639 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   // ── the form ─────────────────────────────────────────────────────
 
+  /// Five steps with a timeline across the top (UI queue 113, Jose's 1 and 4).
+  ///
+  /// Jose, 2026-10-20: *"Right now all the steps are in one screens, instead
+  /// perhaps we could do multiple, like steps with sort of like a timeline on
+  /// the top to go back and forth easily."* Each step has the width to itself;
+  /// what the form asks, sends and refuses is unchanged — only where each part
+  /// sits. Below [_narrowBelow] of the builder's OWN width the timeline is
+  /// numbered dots and every step's panes stack.
   @override
   Widget build(BuildContext context) {
-    final blocker = _blocker;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < _narrowBelow;
+        final gutter = narrow ? 12.0 : 24.0;
+        // The width inside a step's box: the page, less its gutters and the
+        // box's own padding. Decided here, once, so a step can choose between
+        // side by side and stacked while it builds.
+        final inner =
+            (constraints.maxWidth - gutter * 2).clamp(0.0, 1180.0) - 32;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Center(
-              child: ConstrainedBox(
-                // Wide enough for two panes beside each other, narrow enough
-                // that a line of help text is still one line of reading rather
-                // than a sentence stretched across a 27-inch monitor.
-                constraints: const BoxConstraints(maxWidth: 1080),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_isEdit) _editingBanner(context),
-                    if (!_isEdit) _templateBar(context),
-                    _nameStep(context),
-                    const SizedBox(height: 24),
-                    _triggerStep(context),
-                    _conditionStep(context),
-                    _actionStep(context),
-                    if (_isEdit) ...[
-                      const SizedBox(height: 24),
-                      _historyStep(context),
-                    ],
-                    if (_error != null) ...[
-                      const SizedBox(height: 20),
-                      ErrorNote(_error!),
-                    ],
-                  ],
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(gutter, 12, gutter, 10),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: _timeline(context, narrow),
                 ),
               ),
             ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(gutter, 16, gutter, 24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_isEdit) _editingBanner(context),
+                        _currentStep(context, narrow, inner),
+                        if (_error != null) ...[
+                          const SizedBox(height: 20),
+                          ErrorNote(_error!),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            _footer(context, narrow),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _currentStep(BuildContext context, bool narrow, double inner) {
+    _detailsBeside = false;
+
+    return switch (_stepIndex) {
+      0 => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!_isEdit) _templateBar(context),
+          _nameStep(context),
+        ],
+      ),
+      1 => _triggerStep(context, narrow, inner),
+      2 => _conditionStep(context, narrow, inner),
+      3 => _actionStep(context, narrow, inner),
+      _ => _reviewStep(context),
+    };
+  }
+
+  void _goTo(int step) {
+    setState(() {
+      if (step != _stepIndex) _left.add(_stepIndex);
+      _stepIndex = step;
+    });
+  }
+
+  /// What stops the step on screen from being finished — the share of
+  /// [_blocker] that belongs to it, word for word.
+  String? _problemOf(int step) => switch (step) {
+    0 => _nameProblem,
+    1 => _whenProblem,
+    2 => _conditionsProblem,
+    3 => _actionsProblem,
+    _ => _blocker,
+  };
+
+  bool _stepDone(int step) => switch (step) {
+    0 => _nameProblem == null,
+    1 => _whenProblem == null,
+    // An empty Only if is an answer once somebody has moved past it, and on a
+    // saved rule, where it was given when the rule was written.
+    2 =>
+      _conditionsProblem == null &&
+          (_conditions.isNotEmpty ||
+              _hasOpaque ||
+              _left.contains(2) ||
+              _isEdit),
+    3 => _actionsProblem == null,
+    _ => false,
+  };
+
+  /// The line under a step on the timeline, once there is something to say.
+  String? _stepSummary(int step) {
+    switch (step) {
+      case 0:
+        final name = _name.text.trim();
+        return name.isEmpty ? null : name;
+      case 1:
+        final trigger = _trigger;
+        if (trigger == null) return null;
+        return widget.catalogue.locate(trigger)?.$2.label ?? trigger;
+      case 2:
+        if (_hasOpaque) return 'kept as stored';
+        if (_conditions.isNotEmpty) {
+          return '${_conditions.length} '
+              '${_conditions.length == 1 ? 'condition' : 'conditions'}';
+        }
+        return _left.contains(2) || _isEdit ? 'none' : null;
+      case 3:
+        final count = _lockedBecause != null
+            ? _loadedActions.length
+            : _actions.length;
+        return count == 0 ? null : '$count ${count == 1 ? 'step' : 'steps'}';
+      default:
+        return 'test and turn on';
+    }
+  }
+
+  Widget _timeline(BuildContext context, bool narrow) {
+    final children = <Widget>[];
+
+    for (var i = 0; i < _stepLabels.length; i++) {
+      if (i > 0) {
+        final line = _timelineLine(context, _stepDone(i - 1));
+        children.add(
+          narrow ? Expanded(child: line) : SizedBox(width: 18, child: line),
+        );
+      }
+      children.add(
+        narrow
+            ? _timelineDot(context, i)
+            : Expanded(child: _timelineStep(context, i)),
+      );
+    }
+
+    return Row(children: children);
+  }
+
+  Widget _timelineLine(BuildContext context, bool done) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: SizedBox(
+      height: 2,
+      child: ColoredBox(
+        color: done
+            ? ToneColours.of(context, Tone.ok).ink
+            : EzBiziTheme.edge(context),
+      ),
+    ),
+  );
+
+  /// The number in its circle: filled on the step on screen, a tick once a
+  /// step is complete, an outline before either.
+  Widget _timelineMark(BuildContext context, int step) {
+    final scheme = Theme.of(context).colorScheme;
+    final current = step == _stepIndex;
+    final done = !current && _stepDone(step);
+    final ok = ToneColours.of(context, Tone.ok);
+
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: current
+            ? scheme.primary
+            : done
+            ? ok.fill
+            : scheme.surface,
+        border: Border.all(
+          color: current
+              ? scheme.primary
+              : done
+              ? ok.ink
+              : scheme.outline,
+          width: 1.5,
+        ),
+      ),
+      child: done
+          ? Icon(Icons.check, size: 14, color: ok.ink)
+          : Text(
+              '${step + 1}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: current ? scheme.onPrimary : scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+    );
+  }
+
+  Widget _timelineStep(BuildContext context, int step) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final current = step == _stepIndex;
+    final summary = _stepSummary(step);
+
+    return Material(
+      color: current ? scheme.primaryContainer : scheme.surface,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        key: ValueKey('automation-step-${_stepKeys[step]}'),
+        borderRadius: BorderRadius.circular(10),
+        onTap: _busy ? null : () => _goTo(step),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          child: Row(
+            children: [
+              _timelineMark(context, step),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _stepLabels[step],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: current ? scheme.onPrimaryContainer : null,
+                      ),
+                    ),
+                    if (summary != null)
+                      Text(
+                        summary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        const Divider(height: 1),
-        _footer(context, blocker),
+      ),
+    );
+  }
+
+  /// The phone's timeline: a dot per step, and the words only on the one on
+  /// screen (Jose's 4).
+  Widget _timelineDot(BuildContext context, int step) {
+    final current = step == _stepIndex;
+
+    return InkWell(
+      key: ValueKey('automation-step-${_stepKeys[step]}'),
+      borderRadius: BorderRadius.circular(14),
+      onTap: _busy ? null : () => _goTo(step),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _timelineMark(context, step),
+            if (current) ...[
+              const SizedBox(width: 6),
+              Text(
+                _stepLabels[step],
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── the counts the server may or may not answer ─────────────────
+
+  String _timesInMonth(int count) =>
+      '$count ${count == 1 ? 'time' : 'times'} in the last 30 days';
+
+  /// `GET /automations/trigger-stats?triggers=a,b` answers
+  /// `{data: {key: {last_30_days: n}}}`, leaving out triggers that are unknown
+  /// or out of reach. Any failure — a 404 from a server without the endpoint
+  /// included — leaves the cards without a count.
+  Future<void> _loadTriggerStats() async {
+    final keys = [
+      for (final module in widget.catalogue.modules)
+        for (final trigger in module.triggers) trigger.key,
+    ];
+    if (keys.isEmpty) return;
+
+    final response = await widget.api.get(
+      '/automations/trigger-stats?triggers='
+      '${Uri.encodeQueryComponent(keys.join(','))}',
+    );
+    if (!mounted || !response.ok) return;
+
+    final data = response.data;
+    final counts = <String, int>{};
+
+    if (data is Map) {
+      for (final entry in data.entries) {
+        final count = entry.value is Map
+            ? (entry.value as Map)['last_30_days']
+            : null;
+        if (count is num) counts['${entry.key}'] = count.toInt();
+      }
+    }
+
+    if (counts.isEmpty) return;
+    setState(() => _triggerStats = counts);
+  }
+
+  /// The conditions as `POST /automations/would-have-run` is asked about
+  /// them, or null when there is nothing honest to ask: no trigger, a clause
+  /// the save would refuse, or no conditions at all (which runs every time).
+  String? get _rehearsalRequest {
+    if (_trigger == null || _conditionsProblem != null) return null;
+    if (_conditions.isEmpty && !_hasOpaque) return null;
+
+    // The conditions exactly as the save sends them.
+    return jsonEncode({
+      'trigger': _trigger,
+      'conditions': _conditionsPayload(),
+    });
+  }
+
+  /// Asks once per distinct set of conditions, after typing pauses.
+  void _scheduleRehearsal() {
+    final request = _rehearsalRequest;
+    if (request == null ||
+        request == _rehearsalFor ||
+        request == _rehearsalPending) {
+      return;
+    }
+
+    _rehearsalPending = request;
+    _rehearsalTimer?.cancel();
+    _rehearsalTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => _rehearse(request),
+    );
+  }
+
+  Future<void> _rehearse(String request) async {
+    final response = await widget.api.post(
+      '/automations/would-have-run',
+      jsonDecode(request) as Map<String, dynamic>,
+    );
+    if (!mounted || _rehearsalPending != request) return;
+
+    // `{total, matched, examples: [{occurred_at, matched}]}`, the examples
+    // newest first and at most five.
+    final data = response.ok ? response.data : null;
+    final wouldRun = data is Map ? data['matched'] : null;
+    final total = data is Map ? data['total'] : null;
+
+    setState(() {
+      _rehearsalPending = null;
+      _rehearsalFor = request;
+      _rehearsal = data is Map && wouldRun is num && total is num
+          ? (
+              wouldRun: wouldRun.toInt(),
+              total: total.toInt(),
+              examples: [
+                for (final example in (data['examples'] as List? ?? const []))
+                  if (example is Map)
+                    (
+                      label: formatStamp(
+                        example['occurred_at'],
+                        'date unknown',
+                        formats: widget.formats,
+                      ),
+                      ran: example['matched'] == true,
+                    ),
+              ].take(5).toList(),
+            )
+          : null;
+    });
+  }
+
+  /// "9 of 23 would have run", beside the conditions it describes — or
+  /// nothing, when the server did not answer for these conditions.
+  Widget? _rehearsalCard(BuildContext context) {
+    final rehearsal = _rehearsal;
+    if (rehearsal == null || _rehearsalFor != _rehearsalRequest) return null;
+
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final ok = ToneColours.of(context, Tone.ok);
+
+    return Container(
+      key: const ValueKey('automation-would-have-run'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The server reads at most the newest 500 events, so a total of 500
+          // is a ceiling, not a month.
+          Text(
+            rehearsal.total >= _rehearsalCeiling
+                ? '${rehearsal.wouldRun} of the newest ${rehearsal.total} '
+                      'would have run'
+                : '${rehearsal.wouldRun} of ${rehearsal.total} would have run, '
+                      'last 30 days',
+            style: theme.textTheme.titleSmall,
+          ),
+          for (final example in rehearsal.examples) ...[
+            const SizedBox(height: 6),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  example.ran ? Icons.check : Icons.close,
+                  size: 16,
+                  color: example.ran ? ok.ink : scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(example.label, style: theme.textTheme.bodySmall),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Review ───────────────────────────────────────────────────────
+
+  Widget _reviewStep(BuildContext context) {
+    return _step(
+      context,
+      5,
+      'Review',
+      'The rule as one sentence. Tap any part of it to change that part.',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sentence(context),
+          if (widget.onTry case final tryIt?) ...[
+            const SizedBox(height: 16),
+            _tryCard(context, tryIt),
+          ],
+          const SizedBox(height: 16),
+          _whereLine(context),
+          if (_isEdit) ...[const SizedBox(height: 20), _historyStep(context)],
+        ],
+      ),
+    );
+  }
+
+  String get _triggerWords =>
+      _trigger == null ? 'nothing chosen yet' : widget.catalogue.describeTrigger(_trigger!);
+
+  String _clauseWords(_ConditionRow row) {
+    final field = row.field.text.trim().isEmpty
+        ? 'a field not chosen yet'
+        : row.field.text.trim();
+    final op = widget.catalogue.operatorLabel(row.op);
+
+    return switch (arityOf(row.op)) {
+      OperatorArity.none => '$field $op',
+      OperatorArity.one => '$field $op ${row.value.text.trim()}',
+      OperatorArity.many => '$field $op ${row.parsedValues.join(', ')}',
+    };
+  }
+
+  String get _conditionWords {
+    if (_hasOpaque) return 'only if its stored conditions hold';
+    if (_conditions.isEmpty) return 'every time';
+
+    return 'only if ${[for (final row in _conditions) _clauseWords(row)].join(' and ')}';
+  }
+
+  String get _actionWords {
+    final labels = _lockedBecause != null
+        ? [
+            for (final action in _loadedActions)
+              _actionTypeLabel(action['type'] as String? ?? ''),
+          ]
+        : [
+            for (final row in _actions)
+              row.catalogueKey == null
+                  ? 'a step not chosen yet'
+                  : _actionLabel(row.catalogueKey!),
+          ];
+
+    return labels.isEmpty ? 'nothing yet' : labels.join(', then ');
+  }
+
+  /// Where it applies, as the end of the sentence.
+  String get _placeWords {
+    final place = _place;
+    if (place == null) return 'Where you are now';
+
+    for (final known in widget.catalogue.places) {
+      if (known.key == place) return known.label;
+    }
+
+    if (place == 'organization') return 'Everywhere in this business';
+
+    final label = (widget.editing?['scope'] as Map?)?['label'];
+    return label is String && label.isNotEmpty ? label : 'In one place';
+  }
+
+  /// "When …, only if …, then …. Everywhere in this business." Each part is
+  /// the way back to the step that wrote it.
+  Widget _sentence(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final base = theme.textTheme.titleSmall?.copyWith(
+      fontWeight: FontWeight.w500,
+      height: 1.6,
+    );
+    final link = base?.copyWith(
+      color: scheme.primary,
+      fontWeight: FontWeight.w700,
+      decoration: TextDecoration.underline,
+      decorationColor: scheme.primary,
+    );
+
+    InlineSpan part(String text, int step) => WidgetSpan(
+      alignment: PlaceholderAlignment.baseline,
+      baseline: TextBaseline.alphabetic,
+      child: InkWell(
+        key: ValueKey('automation-sentence-${_stepKeys[step]}'),
+        onTap: _busy ? null : () => _goTo(step),
+        child: Text(text, style: link),
+      ),
+    );
+
+    return Container(
+      key: const ValueKey('automation-sentence'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text.rich(
+        TextSpan(
+          style: base,
+          children: [
+            const TextSpan(text: 'When '),
+            part(_triggerWords, 1),
+            const TextSpan(text: ', '),
+            part(_conditionWords, 2),
+            const TextSpan(text: ', then '),
+            part(_actionWords, 3),
+            const TextSpan(text: '. '),
+            part('$_placeWords.', 0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tryCard(BuildContext context, VoidCallback tryIt) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Try it', style: theme.textTheme.titleSmall),
+                const SizedBox(height: 2),
+                Text(
+                  'A rehearsal of the saved rule against the most recent real '
+                  'event. Nothing is actually done.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            key: const Key('automation-builder-try'),
+            onPressed: _busy ? null : tryIt,
+            child: const Text('Try the saved rule'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _whereLine(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Row(
+      children: [
+        const Icon(Icons.place_outlined, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Where it applies: $_placeWords',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+        TextButton(
+          key: const ValueKey('automation-review-where'),
+          onPressed: _busy ? null : () => _goTo(0),
+          child: const Text('Change'),
+        ),
       ],
     );
   }
@@ -1911,7 +2577,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  Widget _triggerStep(BuildContext context) {
+  Widget _triggerStep(BuildContext context, bool narrow, double inner) {
     final chosen = _trigger;
 
     if (_isEdit) {
@@ -1925,6 +2591,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              key: const ValueKey('automation-when-locked'),
               children: [
                 const Icon(Icons.bolt_outlined, size: 18),
                 const SizedBox(width: 10),
@@ -1938,6 +2605,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 ),
               ],
             ),
+            if (chosen != null) ...[
+              const SizedBox(height: 12),
+              _pickedTrigger(context, chosen, showChosen: false),
+            ],
             // THE WHEN STAYS EDITABLE. What a rule reacts to is fixed; when a
             // clock rule runs is not, and the save sends it on every edit.
             // Hidden here, a scheduled rule could not be saved at all.
@@ -1946,6 +2617,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ),
       );
     }
+
+    final picker = CataloguePicker(
+      key: const ValueKey('tour-automations-trigger'),
+      groups: _triggerGroups,
+      selected: chosen,
+      searchHint: 'Search events',
+      height: narrow ? 380 : 460,
+      cards: true,
+      onSelected: _chooseTrigger,
+    );
+    final picked = chosen == null ? null : _pickedTrigger(context, chosen);
+    final beside = picked != null && !narrow && inner >= 900;
 
     return _step(
       context,
@@ -1956,22 +2639,98 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          CataloguePicker(
-            key: const ValueKey('tour-automations-trigger'),
-            groups: _triggerGroups,
-            selected: chosen,
-            searchHint: 'Search events',
-            height: 300,
-            onSelected: _chooseTrigger,
-          ),
-          if (chosen != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Chosen: ${widget.catalogue.describeTrigger(chosen)}',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+          if (beside)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: picker),
+                const SizedBox(width: 16),
+                SizedBox(width: 300, child: picked),
+              ],
+            )
+          else ...[
+            picker,
+            if (picked != null) ...[const SizedBox(height: 12), picked],
           ],
           if (_isScheduled) _scheduleEditor(context),
+        ],
+      ),
+    );
+  }
+
+  /// The chosen event: what it is, how often it happened, and what it carries
+  /// for the steps after it.
+  Widget _pickedTrigger(
+    BuildContext context,
+    String key, {
+    bool showChosen = true,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final trigger = widget.catalogue.locate(key)?.$2;
+    final count = _triggerStats?[key];
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
+    return Container(
+      key: const ValueKey('automation-picked-trigger'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showChosen)
+            Text(
+              'Chosen: ${widget.catalogue.describeTrigger(key)}',
+              style: theme.textTheme.titleSmall,
+            ),
+          if (showChosen && trigger?.description != null)
+            const SizedBox(height: 6),
+          if (trigger?.description != null)
+            Text(trigger!.description!, style: muted),
+          if (count != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _timesInMonth(count),
+              key: const ValueKey('automation-trigger-count'),
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: scheme.primary,
+              ),
+            ),
+          ],
+          if (_triggerFields.isNotEmpty || _fieldsSampled == 0) ...[
+            const SizedBox(height: 12),
+            Text('What this event carries', style: theme.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            if (_triggerFields.isEmpty)
+              Text(
+                'This has not happened here yet, so there is nothing to list.',
+                style: muted,
+              )
+            else ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final field in _triggerFields)
+                    Chip(
+                      label: Text(field),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Test them in Only if, and drop them into a message in Then.',
+                style: muted,
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -2170,7 +2929,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   String _dayLabel(String day) =>
       day.substring(0, 1).toUpperCase() + day.substring(1, 3);
 
-  Widget _conditionStep(BuildContext context) {
+  Widget _conditionStep(BuildContext context, bool narrow, double inner) {
+    _scheduleRehearsal();
+    final rehearsal = _rehearsalCard(context);
+
     if (_lockedBecause != null || _hasOpaque) {
       return _step(
         context,
@@ -2183,7 +2945,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   'cannot draw. They are shown as stored and saved back exactly '
                   'as they are, rather than being flattened into something that '
                   'would mean something else.',
-        !_hasOpaque
+        _withRehearsal(
+          !_hasOpaque
             ? Text(
                 'There are none, so it runs every time.',
                 style: Theme.of(context).textTheme.bodyMedium,
@@ -2199,6 +2962,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
+          rehearsal,
+          beside: !narrow && inner >= 900,
+        ),
       );
     }
 
@@ -2209,17 +2975,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _conditions.isEmpty
           ? 'Optional. With nothing here it runs every time the event happens.'
           : 'Every one of these has to be true.',
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final row in _conditions)
-            Padding(
-              key: row.key,
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _conditionRow(context, row),
-            ),
-          _fieldCatalogue(context),
-        ],
+      _withRehearsal(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final row in _conditions)
+              Padding(
+                key: row.key,
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _conditionRow(context, row, narrow),
+              ),
+            _fieldCatalogue(context),
+          ],
+        ),
+        rehearsal,
+        beside: !narrow && inner >= 900,
       ),
       action: TextButton.icon(
         key: const ValueKey('tour-automations-add-condition'),
@@ -2233,6 +3003,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         icon: const Icon(Icons.add, size: 16),
         label: const Text('Add a condition'),
       ),
+    );
+  }
+
+  /// The conditions, and beside them (or under them) what recent events say
+  /// they would have done.
+  Widget _withRehearsal(Widget rows, Widget? card, {required bool beside}) {
+    if (card == null) return rows;
+
+    if (beside) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: rows),
+          const SizedBox(width: 16),
+          SizedBox(width: 280, child: card),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [rows, const SizedBox(height: 12), card],
     );
   }
 
@@ -2384,17 +3176,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  Widget _conditionRow(BuildContext context, _ConditionRow row) {
+  Widget _conditionRow(BuildContext context, _ConditionRow row, bool narrow) {
     final arity = arityOf(row.op);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(flex: 3, child: _fieldChooser(context, row)),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 3,
-          child: SearchPickerField<String>(
+    final field = _fieldChooser(context, row);
+    final operator = SearchPickerField<String>(
                    value: row.op,
                    label: 'Is',
                    isDense: true,
@@ -2405,12 +3191,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                    onChanged: _busy
                 ? null
                 : (value) => setState(() => row.op = value ?? row.op),
-                 ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 4,
-          child: arity == OperatorArity.none
+                 );
+    final compared = arity == OperatorArity.none
               ? Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
@@ -2469,23 +3251,56 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                                     '${_fieldValues[row.field.text.trim()]!.map((o) => o.value).join(', ')}')
                         : null,
                   ),
-                ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close, size: 18),
-          tooltip: 'Remove this condition',
-          onPressed: _busy
-              ? null
-              : () => setState(() {
-                  _conditions.remove(row);
-                  row.dispose();
-                }),
-        ),
+                );
+    final remove = IconButton(
+      icon: const Icon(Icons.close, size: 18),
+      tooltip: 'Remove this condition',
+      onPressed: _busy
+          ? null
+          : () => setState(() {
+              _conditions.remove(row);
+              row.dispose();
+            }),
+    );
+
+    // On a phone the three boxes do not fit in one line, so the field gets a
+    // line of its own and the comparison sits under it.
+    if (narrow) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [Expanded(child: field), remove],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 2, child: operator),
+              const SizedBox(width: 8),
+              Expanded(flex: 3, child: compared),
+              const SizedBox(width: 40),
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(flex: 3, child: field),
+        const SizedBox(width: 8),
+        Expanded(flex: 3, child: operator),
+        const SizedBox(width: 8),
+        Expanded(flex: 4, child: compared),
+        remove,
       ],
     );
   }
 
-  Widget _actionStep(BuildContext context) {
+  Widget _actionStep(BuildContext context, bool narrow, double inner) {
     final budget = widget.catalogue.actionBudget;
 
     if (_lockedBecause != null) {
@@ -2517,6 +3332,107 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       );
     }
 
+    final selected = _actions.isEmpty
+        ? null
+        : _selectedAction.clamp(0, _actions.length - 1);
+
+    final add = TextButton.icon(
+      key: const ValueKey('tour-automations-add-step'),
+      onPressed: _busy
+          ? null
+          : () => setState(() {
+              final row = _ActionRow();
+              _attach(row);
+              _actions.add(row);
+              _selectedAction = _actions.length - 1;
+            }),
+      icon: const Icon(Icons.add, size: 16),
+      label: const Text('Add a step'),
+    );
+
+    // The details sit beside the editor whenever the list does, so the chips
+    // under each box would be the same chips twice. Set before the editor is
+    // built, which reads it.
+    _detailsBeside = !narrow;
+
+    final editor = selected == null
+        ? Text(
+            'Nothing yet. A rule with no actions would watch for something and '
+            'then do nothing about it.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          )
+        : Padding(
+            key: _actions[selected].key,
+            padding: EdgeInsets.zero,
+            child: _actionCard(context, selected, _actions[selected]),
+          );
+
+    final Widget body;
+
+    if (narrow) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (var i = 0; i < _actions.length; i++)
+                ChoiceChip(
+                  key: ValueKey('automation-then-step-$i'),
+                  label: Text(_stepListLabel(i)),
+                  selected: i == selected,
+                  onSelected: _busy
+                      ? null
+                      : (_) => setState(() => _selectedAction = i),
+                ),
+              add,
+            ],
+          ),
+          const SizedBox(height: 12),
+          editor,
+        ],
+      );
+    } else {
+      final details = _detailsPanel(
+        context,
+        selected == null ? null : _actions[selected],
+      );
+      final list = SizedBox(
+        width: 200,
+        child: _stepList(context, selected, add),
+      );
+
+      // Three columns only while the editor keeps room for the action
+      // picker's category column (640px inside its card); below that the
+      // details go under the editor rather than squeezing it.
+      body = inner >= 1100
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                list,
+                const SizedBox(width: 16),
+                Expanded(child: editor),
+                const SizedBox(width: 16),
+                SizedBox(width: 220, child: details),
+              ],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                list,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [editor, const SizedBox(height: 12), details],
+                  ),
+                ),
+              ],
+            );
+    }
+
     return _step(
       context,
       4,
@@ -2533,34 +3449,147 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             _triggerNoticeBanner(context),
             const SizedBox(height: 12),
           ],
-          for (var i = 0; i < _actions.length; i++)
-            Padding(
-              key: _actions[i].key,
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _actionCard(context, i, _actions[i]),
-            ),
-          if (_actions.isEmpty)
-            Text(
-              'Nothing yet. A rule with no actions would watch for something and '
-              'then do nothing about it.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+          body,
         ],
-      ),
-      action: TextButton.icon(
-        key: const ValueKey('tour-automations-add-step'),
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                final row = _ActionRow();
-                _attach(row);
-                _actions.add(row);
-              }),
-        icon: const Icon(Icons.add, size: 16),
-        label: const Text('Add a step'),
       ),
     );
   }
+
+  String _stepListLabel(int index) {
+    final picked = _actions[index].catalogueKey;
+
+    return '${index + 1} · ${picked == null ? 'New step' : _actionLabel(picked)}';
+  }
+
+  /// The rule's steps in order, the open one marked.
+  Widget _stepList(BuildContext context, int? selected, Widget add) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < _actions.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: i == selected ? scheme.primaryContainer : scheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(
+                  color: i == selected ? scheme.primary : scheme.outlineVariant,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                key: ValueKey('automation-then-step-$i'),
+                onTap: _busy ? null : () => setState(() => _selectedAction = i),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Text(
+                    _stepListLabel(i),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: i == selected ? scheme.onPrimaryContainer : null,
+                      fontWeight: i == selected ? FontWeight.w600 : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Align(alignment: Alignment.centerLeft, child: add),
+      ],
+    );
+  }
+
+  /// The boxes of one step that take `{{ }}`, by the same rule [_actionFields]
+  /// uses to draw them.
+  List<TextEditingController> _variableBoxesOf(_ActionRow row) {
+    switch (row.type) {
+      case 'update_field' ||
+          'webhook' ||
+          'voicemail.mark_dealt' ||
+          'missed.create_job':
+        return const [];
+      case 'whatsapp.send':
+        return row.whatsAppValues;
+    }
+
+    final definition = widget.catalogue.actionType(row.type);
+    if (definition == null) return [row.message];
+
+    return [
+      for (final parameter in definition.parameters)
+        if (parameter.variables) row.parameter(parameter.key),
+    ];
+  }
+
+  /// What the event carries, beside the step being written: one tap drops a
+  /// field in where the cursor last was — the same insert the chips under each
+  /// box have always done.
+  Widget _detailsPanel(BuildContext context, _ActionRow? row) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final boxes = row == null || row.picking
+        ? const <TextEditingController>[]
+        : _variableBoxesOf(row);
+    final target = boxes.contains(_activeBox)
+        ? _activeBox
+        : (boxes.isEmpty ? null : boxes.first);
+
+    return Container(
+      key: const ValueKey('automation-then-details'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Details', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            _insertableFields.isEmpty
+                ? _variableHint()
+                : target == null
+                ? 'Nothing in this step takes details.'
+                : 'Click one to drop it in where the cursor is.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          if (_insertableFields.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final field in _insertableFields)
+                  _variableChip(
+                    field,
+                    target == null || _busy
+                        ? null
+                        : () => _insertVariable(target, field),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _variableChip(String field, VoidCallback? onPressed) => ActionChip(
+    label: Text(
+      _fieldSamples[field] == null ? field : '$field — ${_fieldSamples[field]}',
+    ),
+    visualDensity: VisualDensity.compact,
+    onPressed: onPressed,
+  );
 
   /// What the last trigger change took away.
   ///
@@ -2646,6 +3675,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                       : () => setState(() {
                           _actions.remove(row);
                           row.dispose();
+                          if (_selectedAction >= _actions.length) {
+                            _selectedAction = _actions.isEmpty
+                                ? 0
+                                : _actions.length - 1;
+                          }
                         }),
                 ),
               ],
@@ -3523,6 +4557,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// does not reach. It still gets a chip, because the field is real and the
   /// rule will resolve it when it runs; what it cannot have is a preview.
   Widget _variableTools(TextEditingController controller) {
+    // Remembers which box the cursor is in, for the details beside the step.
+    if (_watchedBoxes.add(controller)) {
+      controller.addListener(() {
+        if (controller.selection.isValid) _activeBox = controller;
+      });
+    }
+
     if (_insertableFields.isEmpty) return const SizedBox.shrink();
 
     final typed = controller.text;
@@ -3546,24 +4587,19 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final field in _insertableFields)
-                ActionChip(
-                  label: Text(
-                    _fieldSamples[field] == null
-                        ? field
-                        : '$field — ${_fieldSamples[field]}',
+          // Under the box only when they are not already beside the step.
+          if (!_detailsBeside)
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final field in _insertableFields)
+                  _variableChip(
+                    field,
+                    _busy ? null : () => _insertVariable(controller, field),
                   ),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: _busy
-                      ? null
-                      : () => _insertVariable(controller, field),
-                ),
-            ],
-          ),
+              ],
+            ),
           if (canPreview) ...[
             const SizedBox(height: 6),
             Text(
@@ -3927,14 +4963,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         .map(Map<String, dynamic>.from)
         .toList();
 
-    return _step(
-      context,
-      5,
-      'History',
-      'Every save is kept here. Put an older one back to undo a change.',
-      Column(
+    final theme = Theme.of(context);
+
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text('History', style: theme.textTheme.titleSmall),
+          Text(
+            'Every save is kept here. Put an older one back to undo a change.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 4),
           for (final version in versions)
             ListTile(
               dense: true,
@@ -3965,46 +5004,109 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     ),
             ),
         ],
-      ),
     );
   }
 
-  Widget _footer(BuildContext context, String? blocker) {
+  /// Back, where you are, Cancel, and the way forward — Next while there is a
+  /// next step, Save on Review. Next refuses with the sentence Save would have
+  /// used for the same gap, so nobody reaches Review to learn it there.
+  Widget _footer(BuildContext context, bool narrow) {
+    final review = _stepIndex == 4;
+    final blocker = _blocker;
+    final problem = _problemOf(_stepIndex);
+    final note = review
+        // The button says no; this says why. A disabled control with no
+        // explanation is the thing people file bugs about.
+        ? (blocker ??
+              (_isEdit
+                  ? 'Saving makes this the live version straight away.'
+                  : 'It is saved switched off. Turn it on once you have read '
+                        'it back.'))
+        : problem;
+    final style = Theme.of(context).textTheme.bodySmall;
+
+    final back = TextButton(
+      key: const ValueKey('automation-builder-back'),
+      onPressed: _busy || _stepIndex == 0
+          ? null
+          : () => _goTo(_stepIndex - 1),
+      child: const Text('‹ Back'),
+    );
+    final cancel = TextButton(
+      onPressed: _busy ? null : widget.onCancel,
+      child: const Text('Cancel'),
+    );
+    final skip =
+        _stepIndex == 2 &&
+            _conditions.isEmpty &&
+            !_hasOpaque &&
+            _lockedBecause == null
+        ? TextButton(
+            key: const ValueKey('automation-builder-skip'),
+            onPressed: _busy ? null : () => _goTo(3),
+            child: const Text('Skip, no conditions'),
+          )
+        : null;
+    final forward = review
+        ? FilledButton(
+            key: const ValueKey('tour-automations-save'),
+            onPressed: _busy || blocker != null ? null : _submit,
+            child: Text(_isEdit ? 'Save changes' : 'Save'),
+          )
+        : FilledButton(
+            key: const ValueKey('automation-builder-next'),
+            onPressed: _busy || problem != null
+                ? null
+                : () => _goTo(_stepIndex + 1),
+            child: Text(
+              narrow ? 'Next ›' : 'Next: ${_stepLabels[_stepIndex + 1]} ›',
+            ),
+          );
+    final count = Text('Step ${_stepIndex + 1} of 5', style: style);
+
+    if (narrow) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (note != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(note, style: style),
+              ),
+            Row(
+              children: [
+                back,
+                Expanded(child: Center(child: count)),
+                forward,
+              ],
+            ),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              children: [cancel, ?skip],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              // The button says no; this says why. A disabled control with no
-              // explanation is the thing people file bugs about.
-              blocker ??
-                  (_isEdit
-                      ? 'Saving makes this the live version straight away.'
-                      : 'It is saved switched off. Turn it on once you have read '
-                            'it back.'),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
+          back,
+          const SizedBox(width: 12),
+          count,
           const SizedBox(width: 16),
-          TextButton(
-            onPressed: _busy ? null : widget.onCancel,
-            child: const Text('Cancel'),
-          ),
-          if (widget.onTry case final tryIt?) ...[
-            const SizedBox(width: 10),
-            OutlinedButton(
-              key: const Key('automation-builder-try'),
-              onPressed: _busy ? null : tryIt,
-              child: const Text('Try the saved rule'),
-            ),
-          ],
+          Expanded(child: Text(note ?? '', style: style)),
+          const SizedBox(width: 16),
+          cancel,
+          if (skip != null) ...[const SizedBox(width: 10), skip],
           const SizedBox(width: 10),
-          FilledButton(
-            key: const ValueKey('tour-automations-save'),
-            onPressed: _busy || blocker != null ? null : _submit,
-            child: Text(_isEdit ? 'Save changes' : 'Create automation'),
-          ),
+          forward,
         ],
       ),
     );
@@ -4048,20 +5150,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // The line from the block above; the first block gets the gap.
-        Padding(
-          padding: const EdgeInsets.only(left: 30),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              width: 2,
-              height: 24,
-              child: number == 2
-                  ? null
-                  : ColoredBox(color: EzBiziTheme.edge(context)),
-            ),
-          ),
-        ),
         // A box, not a Card: a step's own action cards are Cards, and the
         // two must stay told apart.
         DecoratedBox(
