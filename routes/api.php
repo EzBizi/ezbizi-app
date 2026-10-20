@@ -1351,6 +1351,9 @@ Route::prefix('v1')
         Route::get('reports/scoring/calls', [ScoringReportController::class, 'calls'])->middleware('permission:reports.scoring.view');
         // How much each metric counts (Jose, 2026-10-14); seen with the tab, set with its own permission.
         // The weekly/monthly report's goals (A1 Leads takeover, 2026-10-16).
+        // Correcting a report draft before it is approved (2026-10-20).
+        Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
+        Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');

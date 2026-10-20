@@ -7,6 +7,7 @@ use App\Models\Franchise;
 use App\Models\User;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Reports\Texts\ReportGoals;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -49,6 +50,17 @@ final class ReportChanges
         }
         if ($batch->approved_at !== null) {
             $refuse('That report is already approved and sent.');
+        }
+
+        // The report is the organization's: changing it is for the
+        // organization view, except one branch's own goal from a view that
+        // covers that branch (Roles & Permissions, 2026-10-20).
+        $view = ViewScope::forUser($by);
+        $organizationWide = $view->isOrganization() && $by->canActOnOrganization($by->organization);
+        $ownBranchGoal = $key === 'report.goal' && ($params['branch'] ?? null) !== null
+            && in_array((string) $params['branch'], $view->franchiseIds(), true);
+        if (! $organizationWide && ! $ownBranchGoal) {
+            $refuse('Correcting the whole report is done from the organization view.');
         }
 
         $settings = (array) ($batch->settings ?? []);
