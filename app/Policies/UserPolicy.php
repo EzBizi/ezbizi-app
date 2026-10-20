@@ -147,6 +147,28 @@ class UserPolicy
     }
 
     /**
+     * Erase somebody for good (Jose, 2026-10-20: "different than deactivation,
+     * we are missing full deletion"). Its own key, for the reason
+     * `security.reset` is; never yourself, which is Your account's own delete.
+     */
+    public function deletePermanently(User $user, User $person): Response
+    {
+        if (! $user->hasPermission('hr.delete')) {
+            return Refusal::permission('delete people permanently');
+        }
+
+        if ($user->is($person)) {
+            return Response::deny('This is for somebody else. To delete your own account, use Your account.');
+        }
+
+        if (! $this->withinReach($user, $person)) {
+            return $this->outOfBounds($user);
+        }
+
+        return Response::allow();
+    }
+
+    /**
      * They hold `hr.edit` and this person is not theirs. Which of two reasons?
      *
      * ── Neither the person nor their place is ever named ─────────

@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
-use App\Models\EmploymentEvent;
+use App\Models\Company;
 use App\Models\EmergencyContact;
+use App\Models\EmploymentEvent;
+use App\Models\Franchise;
 use App\Models\HeldEquipment;
 use App\Models\HrNote;
 use App\Models\PayRate;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Auth\PasswordResets;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
@@ -17,18 +20,17 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Hr\PtoPolicy;
 use App\Support\Hr\StartDate;
 use App\Support\Modules\PermissionCatalogue;
+use App\Support\Privacy\Anonymiser;
 use App\Support\Privacy\ConsentLedger;
 use App\Support\Privacy\SensitiveValues;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\TimeClock;
 use App\Support\TimeClock\WorkSchedule;
-use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
-use App\Services\Auth\PasswordResets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -137,9 +139,9 @@ class HrPeopleController extends Controller
             // aside from role"). Somebody placed only at organization level
             // matches neither.
             ->when($request->query('company_id'), function ($q, $companyId) {
-                $company = \App\Models\Company::query()->find($companyId);
+                $company = Company::query()->find($companyId);
                 $companies = $company?->subtreeCompanyIds() ?? [];
-                $franchises = \App\Models\Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
+                $franchises = Franchise::query()->whereIn('company_id', $companies)->pluck('id')->all();
                 $q->whereHas('assignments', fn ($a) => $a->whereIn('assigned_company_id', $companies)
                     ->orWhereIn('assigned_franchise_id', $franchises));
             })
@@ -209,10 +211,10 @@ class HrPeopleController extends Controller
                 ...$this->reach->optionsFor($actor),
 
                 'roles' => Role::query()->orderBy('name')->get()->map(fn (Role $role) => [
-                    'id'               => $role->id,
-                    'name'             => $role->name,
+                    'id' => $role->id,
+                    'name' => $role->name,
                     'is_administrator' => $role->isAdministrator(),
-                    'assignable'       => $this->catalogue->mayAssignRole($actor, $role),
+                    'assignable' => $this->catalogue->mayAssignRole($actor, $role),
                 ])->all(),
             ],
         ]);
@@ -261,6 +263,69 @@ class HrPeopleController extends Controller
      * and leaving them alive would mean a thief keeps the access this call was
      * made to take away.
      */
+    /**
+     * What deleting this person would remove and keep, and whether it can
+     * happen: the erasure's own dry run, so the list shown is the list done.
+     */
+    public function deletionPreview(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('deletePermanently', $user);
+
+        return response()->json(['data' => [
+            'blocked_because' => $this->deletionBlockedBecause($user),
+            'preview' => app(Anonymiser::class)->preview($user),
+        ]]);
+    }
+
+    /**
+     * Delete a person for good (Jose, 2026-10-20: "I need to delete this user
+     * entirely, so i can make a new one for him"). The erasure every module
+     * declares (PersonalDataPurge): their personal data goes, the records the
+     * business keeps get the stand-in, and the email and phone are free for a
+     * new account. The name typed back, not ticked: one stray tap must not do
+     * this.
+     */
+    public function destroy(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('deletePermanently', $user);
+
+        $request->validate(['confirm' => ['required', 'string']]);
+        if (mb_strtolower(trim($request->string('confirm')->toString())) !== mb_strtolower(trim((string) $user->name))) {
+            return response()->json([
+                'message' => 'Type their name exactly as it is shown to delete them. Nothing has been deleted.',
+                'code' => 'confirmation_mismatch',
+            ], 422);
+        }
+
+        if (($blocked = $this->deletionBlockedBecause($user)) !== null) {
+            return response()->json(['message' => $blocked, 'code' => 'last_administrator'], 409);
+        }
+
+        DB::transaction(function () use ($user) {
+            // Ids only: naming them in the record of their deletion would undo it.
+            $this->audit->log('person.deleted', $user, []);
+            $user->tokens()->delete();
+            app(Anonymiser::class)->purge($user);
+            $user->forceFill(['is_active' => false])->save();
+        });
+
+        return response()->json(['data' => [
+            'deleted' => true,
+            'message' => 'Deleted. Their email and phone are free to use for a new account.',
+        ]]);
+    }
+
+    /** The last active administrator stays, as on Your account's own delete. */
+    private function deletionBlockedBecause(User $user): ?string
+    {
+        $floor = app(AdministratorFloor::class);
+
+        return $floor->isActiveAdministrator($user) && $floor->otherActiveAdministrators($user) === 0
+            ? 'They are the only administrator of this organization, so deleting them would leave it '
+                .'with nobody able to run it. Make somebody else an administrator first.'
+            : null;
+    }
+
     public function resetTotp(Request $request, User $user): JsonResponse
     {
         $this->authorize('resetSecurity', $user);
@@ -350,20 +415,20 @@ class HrPeopleController extends Controller
             // here — they sign in with it, and changing it from this screen can
             // lock them out with no way back that does not go through somebody
             // else.
-            'first_name'    => ['sometimes', 'required', 'string', 'max:60'],
-            'middle_name'   => ['sometimes', 'nullable', 'string', 'max:60'],
-            'last_name'     => ['sometimes', 'required', 'string', 'max:60'],
-            'phone'         => ['sometimes', 'nullable', 'string', 'max:40'],
-            'address'       => ['sometimes', 'nullable', 'string', 'max:500'],
+            'first_name' => ['sometimes', 'required', 'string', 'max:60'],
+            'middle_name' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'last_name' => ['sometimes', 'required', 'string', 'max:60'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:40'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:500'],
             // The home address in parts, as Your account takes them (Jose,
             // 2026-09-30); `address` is composed from them below.
             'address_line1' => ['sometimes', 'nullable', 'string', 'max:191'],
             'address_line2' => ['sometimes', 'nullable', 'string', 'max:191'],
-            'city'          => ['sometimes', 'nullable', 'string', 'max:100'],
-            'state'         => ['sometimes', 'nullable', 'string', 'max:64'],
-            'postal_code'   => ['sometimes', 'nullable', 'string', 'max:20'],
-            'country'       => ['sometimes', 'nullable', 'string', 'max:100'],
-            'gender'        => ['sometimes', 'nullable', 'string', 'max:40'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'state' => ['sometimes', 'nullable', 'string', 'max:64'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'country' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'gender' => ['sometimes', 'nullable', 'string', 'max:40'],
             'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
 
             // The day they started. Not a `users` column — it is the earliest
@@ -376,7 +441,7 @@ class HrPeopleController extends Controller
             // instead so she has full access"). The invitation's pair, and the
             // same reach rule: only a place the editor reaches themselves.
             'scope_type' => ['sometimes', 'required', Rule::in(ScopeReach::TYPES)],
-            'scope_id'   => ['required_with:scope_type', 'uuid'],
+            'scope_id' => ['required_with:scope_type', 'uuid'],
         ]);
 
         $startedOn = $input['started_on'] ?? null;
@@ -391,8 +456,7 @@ class HrPeopleController extends Controller
             // Moving replaces where they work. A place of theirs the editor
             // cannot see would be deleted unseen, so that is refused instead.
             if ($user->assignments()->get()->contains(fn (Assignment $a) => ! $this->reach->coversAssignment($actor, $a))) {
-                throw ValidationException::withMessages(['scope_id' =>
-                    'They also work somewhere you cannot reach, so moving them would remove a place '
+                throw ValidationException::withMessages(['scope_id' => 'They also work somewhere you cannot reach, so moving them would remove a place '
                     .'you cannot see. Ask somebody who reaches all of it.',
                 ]);
             }
@@ -414,8 +478,7 @@ class HrPeopleController extends Controller
          * one, where somebody switches off the wrong row and it is their own.
          */
         if ($deactivating && $user->is($actor)) {
-            throw ValidationException::withMessages(['is_active' =>
-                'You cannot switch off your own access. The moment it saved you would lose '
+            throw ValidationException::withMessages(['is_active' => 'You cannot switch off your own access. The moment it saved you would lose '
                 .'this screen, and somebody else would have to switch you back on. Ask a '
                 .'colleague to do it if you mean it.',
             ]);
@@ -496,19 +559,19 @@ class HrPeopleController extends Controller
 
             $this->audit->log('user.updated', $user, changes: [
                 'before' => $masked($before),
-                'after'  => $masked($changed),
+                'after' => $masked($changed),
             ], actor: $actor);
 
             $user->save();
 
             if (array_key_exists('is_active', $changed)) {
-                \App\Models\EmploymentEvent::create([
+                EmploymentEvent::create([
                     'organization_id' => $user->organization_id,
-                    'user_id'         => $user->id,
-                    'kind'            => $user->is_active
-                        ? \App\Models\EmploymentEvent::STARTED
-                        : \App\Models\EmploymentEvent::LEFT,
-                    'occurred_on'     => now()->toDateString(),
+                    'user_id' => $user->id,
+                    'kind' => $user->is_active
+                        ? EmploymentEvent::STARTED
+                        : EmploymentEvent::LEFT,
+                    'occurred_on' => now()->toDateString(),
                 ]);
 
                 /*
@@ -525,7 +588,7 @@ class HrPeopleController extends Controller
                     $user,
                     [
                         'before' => ['is_active' => (bool) ($before['is_active'] ?? false)],
-                        'after'  => ['is_active' => $user->is_active],
+                        'after' => ['is_active' => $user->is_active],
                     ],
                     actor: $actor,
                 );
@@ -542,7 +605,7 @@ class HrPeopleController extends Controller
                 // answer it — the same reasoning as role.permissions_changed.
                 $this->audit->log('user.role_changed', $user, changes: [
                     'before' => ['role_id' => $before['role_id'] ?? null],
-                    'after'  => ['role_id' => $user->role_id],
+                    'after' => ['role_id' => $user->role_id],
                 ]);
             }
         });
@@ -606,17 +669,17 @@ class HrPeopleController extends Controller
         $user->load('role:id,name', 'assignments.assignedCompany:id,name',
             'assignments.assignedFranchise:id,name');
 
-        $pto    = app(PtoPolicy::class);
+        $pto = app(PtoPolicy::class);
         $answer = $pto->for($user);
 
         return response()->json(['data' => $this->present($user, $actor) + [
-            'middle_name'   => $user->middle_name,
-            'phone'         => $user->phone,
-            'address'       => $user->address,
+            'middle_name' => $user->middle_name,
+            'phone' => $user->phone,
+            'address' => $user->address,
             ...$user->addressParts(),
-            'gender'        => $user->gender,
+            'gender' => $user->gender,
             'date_of_birth' => $user->date_of_birth?->toDateString(),
-            'started_on'    => $answer['started_on'],
+            'started_on' => $answer['started_on'],
 
             // The four lists of 2026-09-29. Pay is null — not an empty list —
             // for somebody without `hr.pay.view`: "no rate recorded" and "you
@@ -671,7 +734,7 @@ class HrPeopleController extends Controller
 
         $this->audit->log('user.start_date_changed', $user, changes: [
             'before' => ['started_on' => $result['before']],
-            'after'  => ['started_on' => $result['after']],
+            'after' => ['started_on' => $result['after']],
         ], actor: $actor);
     }
 
@@ -870,30 +933,30 @@ class HrPeopleController extends Controller
     private function present(User $person, User $actor): array
     {
         return [
-            'id'         => $person->id,
-            'name'       => $person->name,
+            'id' => $person->id,
+            'name' => $person->name,
             'first_name' => $person->first_name,
-            'last_name'  => $person->last_name,
-            'email'      => $person->email,
-            'is_active'  => $person->is_active,
-            'role'       => [
-                'id'   => $person->role_id,
+            'last_name' => $person->last_name,
+            'email' => $person->email,
+            'is_active' => $person->is_active,
+            'role' => [
+                'id' => $person->role_id,
                 'name' => $person->role?->name,
             ],
             'assignments' => $person->assignments
                 ->filter(fn (Assignment $a) => $this->reach->coversAssignment($actor, $a))
                 ->map(fn (Assignment $a) => [
-                    'id'       => $a->id,
-                    'type'     => $a->scopeType(),
+                    'id' => $a->id,
+                    'type' => $a->scopeType(),
                     'scope_id' => $a->scopeId(),
-                    'name'     => match ($a->scopeType()) {
+                    'name' => match ($a->scopeType()) {
                         Assignment::SCOPE_ORGANIZATION => $actor->organization->name,
-                        Assignment::SCOPE_COMPANY      => $a->assignedCompany?->name,
-                        Assignment::SCOPE_FRANCHISE    => $a->assignedFranchise?->name,
+                        Assignment::SCOPE_COMPANY => $a->assignedCompany?->name,
+                        Assignment::SCOPE_FRANCHISE => $a->assignedFranchise?->name,
                     },
                 ])->values()->all(),
             'joined_at' => $person->created_at?->toIso8601String(),
-            'work_schedule'      => $person->work_schedule,
+            'work_schedule' => $person->work_schedule,
             'lock_screen_exempt' => (bool) $person->lock_screen_exempt,
         ];
     }
