@@ -139,13 +139,16 @@ class TaskBoardCustomerExperienceTest extends TestCase
 
     public function test_title_parsing_is_certain_or_null(): void
     {
-        $this->assertSame(['John Smith', '(555) 123-4567'], TasksCustomerExperience::parseTitle('Complaint: John Smith (555) 123-4567'));
-        $this->assertSame(['Mary O\'Neil', '555-987-6543'], TasksCustomerExperience::parseTitle('Bad review: Mary O\'Neil - 555-987-6543'));
-        $this->assertSame(['Ann Lee', '+1 555.222.3333'], TasksCustomerExperience::parseTitle('BAD REVIEW - Ann Lee | +1 555.222.3333'));
-        $this->assertSame([null, '5551112222'], TasksCustomerExperience::parseTitle('Complaint: 5551112222'));
-        $this->assertSame([null, null], TasksCustomerExperience::parseTitle('Complaint: chimney still leaks after job #123'));
-        $this->assertSame([null, null], TasksCustomerExperience::parseTitle('Complaint: two numbers 555-111-2222 and 555-333-4444'));
-        $this->assertSame([null, null], TasksCustomerExperience::parseTitle('Call back Mr Smith'));
+        // The two shapes read from production on 2026-10-20.
+        $this->assertSame(['Nicole Johnson', '+14196779098', 'Chimney cap blew off; booked a repair'],
+            TasksCustomerExperience::parseTitle('Complaint: Nicole Johnson +14196779098 - Chimney cap blew off; booked a repair'));
+        $this->assertSame([null, '+14048243631', 'Wants Level 2 chimney inspection pricing'],
+            TasksCustomerExperience::parseTitle('Complaint:  +14048243631 - Wants Level 2 chimney inspection pricing'));
+        $this->assertSame(['Ann Lee', '+15552223333', 'Left 1 star'], TasksCustomerExperience::parseTitle('Bad review: Ann Lee +15552223333 - Left 1 star'));
+        $this->assertNull(TasksCustomerExperience::parseTitle('Complaint: John Smith (555) 123-4567 - no E.164'));
+        $this->assertNull(TasksCustomerExperience::parseTitle('Complaint: Ann +15552223333 no dash summary'));
+        $this->assertNull(TasksCustomerExperience::parseTitle('complaint about the crew'));
+        $this->assertNull(TasksCustomerExperience::parseTitle('Call back Mr Smith'));
     }
 
     private function seedTasks(): array
@@ -158,12 +161,12 @@ class TaskBoardCustomerExperienceTest extends TestCase
             $w = app(TaskWriter::class);
             $make = fn (string $title, array $extra = []) => $w->create($this->board, ['title' => $title] + $extra, null)->id;
 
-            $parent = $make('Complaint: John Smith (555) 123-4567');
+            $parent = $make('Complaint: Nicole Johnson +14196779098 - Chimney cap blew off; booked a repair');
 
             return [
                 'plain' => $parent,
-                'review' => $make('Bad review: Mary Jones - 555-987-6543'),
-                'linked' => $make('Complaint: Linda (555) 999-0000', ['about_type' => 'lead', 'about_id' => $lead->id]),
+                'review' => $make('Bad review:  +14048243631 - Wants Level 2 chimney inspection pricing'),
+                'linked' => $make('Complaint: Linda +15559990000 - Leak came back', ['about_type' => 'lead', 'about_id' => $lead->id]),
                 'unparsed' => $make('complaint about the crew'),
                 'other' => $make('Order ladders'),
                 'sub' => $w->create($this->board, ['title' => 'Complaint: sub', 'parent_task_id' => $parent], null)->id,
@@ -197,16 +200,17 @@ class TaskBoardCustomerExperienceTest extends TestCase
             ->expectsOutputToContain('moved:        4')
             ->expectsOutputToContain('typed:        4')
             ->expectsOutputToContain('phone filled: 3')
-            ->expectsOutputToContain('name filled:  3')
+            ->expectsOutputToContain('name filled:  2')
+            ->expectsOutputToContain('retitled:     3')
             ->expectsOutputToContain('unparsed:     1 '.$ids['unparsed'])
             ->assertSuccessful();
 
-        $this->assertSame(['group' => 'Customer Experience', 'type' => 'complaint', 'name' => 'John Smith', 'phone' => '(555) 123-4567',
-            'title' => 'Complaint: John Smith (555) 123-4567'], $this->valuesOf($ids['plain']));
-        $this->assertSame(['Customer Experience', 'bad_review', 'Mary Jones', '555-987-6543'], array_values(array_slice($this->valuesOf($ids['review']), 0, 4)));
+        $this->assertSame(['group' => 'Customer Experience', 'type' => 'complaint', 'name' => 'Nicole Johnson', 'phone' => '+14196779098',
+            'title' => 'Chimney cap blew off; booked a repair'], $this->valuesOf($ids['plain']));
+        $this->assertSame(['Customer Experience', 'bad_review', null, '+14048243631', 'Wants Level 2 chimney inspection pricing'], array_values($this->valuesOf($ids['review'])));
         // The linked lead wins over the title.
-        $this->assertSame(['Customer Experience', 'complaint', 'Linda Lead', '+15550001111'], array_values(array_slice($this->valuesOf($ids['linked']), 0, 4)));
-        $this->assertSame(['Customer Experience', 'complaint', null, null], array_values(array_slice($this->valuesOf($ids['unparsed']), 0, 4)));
+        $this->assertSame(['Customer Experience', 'complaint', 'Linda Lead', '+15550001111', 'Leak came back'], array_values($this->valuesOf($ids['linked'])));
+        $this->assertSame(['Customer Experience', 'complaint', null, null, 'complaint about the crew'], array_values($this->valuesOf($ids['unparsed'])));
         $this->assertNotSame('Customer Experience', $this->valuesOf($ids['other'])['group']);
         $this->assertNull($this->valuesOf($ids['other'])['type']);
         $this->assertNull($this->valuesOf($ids['sub'])['type']); // subtasks are not matched; they follow their parent's group
@@ -222,11 +226,12 @@ class TaskBoardCustomerExperienceTest extends TestCase
 
         $before = $this->inTenant($this->tenant['org'], fn () => [TaskColumn::query()->count(), TaskGroup::query()->count(), \App\Models\AuditEvent::query()->count()]);
         $this->artisan('ezbizi:tasks-customer-experience', ['board_id' => $this->board->id])
-            ->expectsOutputToContain('matched:      4')
+            ->expectsOutputToContain('matched:      1') // retitled tasks no longer start with the prefix
             ->expectsOutputToContain('moved:        0')
             ->expectsOutputToContain('typed:        0')
             ->expectsOutputToContain('phone filled: 0')
             ->expectsOutputToContain('name filled:  0')
+            ->expectsOutputToContain('retitled:     0')
             ->assertSuccessful();
         $this->assertSame($before, $this->inTenant($this->tenant['org'], fn () => [TaskColumn::query()->count(), TaskGroup::query()->count(), \App\Models\AuditEvent::query()->count()]));
     }

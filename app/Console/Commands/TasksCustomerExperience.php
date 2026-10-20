@@ -25,8 +25,9 @@ use Illuminate\Support\Facades\DB;
  * a name or phone already in a column is never overwritten.
  *
  * Name and phone come from the task's linked record (a lead, a customer, or
- * a job's customer) when it has one, else from the title. The title is
- * never changed.
+ * a job's customer) when it has one, else from the title. A title in the
+ * automation's shape is rewritten to its summary (TaskWriter audits the old
+ * one); any other title is left alone and listed as unparsed.
  */
 class TasksCustomerExperience extends Command
 {
@@ -45,7 +46,7 @@ class TasksCustomerExperience extends Command
     ];
 
     /** A North American number as people write it: 555-123-4567, (555) 123 4567, +1 555.123.4567, 5551234567. */
-    public const PHONE = '/(?<!\d)(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}(?!\d)/';
+    public const TITLE = '/^(?:Complaint|Bad review):\s*(?<name>.*?)\s*(?<phone>\+\d{10,15})\s+-\s+(?<summary>.+)$/isu';
 
     protected $signature = 'ezbizi:tasks-customer-experience {board_id} {--dry-run} {--column-name='.self::DEFAULT_TYPE_COLUMN.'}';
 
@@ -64,7 +65,7 @@ class TasksCustomerExperience extends Command
         $typeName = trim((string) $this->option('column-name')) ?: self::DEFAULT_TYPE_COLUMN;
 
         return $tenant->run($org, function () use ($board, $writer, $audit, $dry, $typeName) {
-            $counts = ['matched' => 0, 'moved' => 0, 'typed' => 0, 'phone filled' => 0, 'name filled' => 0];
+            $counts = ['matched' => 0, 'moved' => 0, 'typed' => 0, 'phone filled' => 0, 'name filled' => 0, 'retitled' => 0];
             $unparsed = [];
 
             $run = function () use ($board, $writer, $audit, $typeName, &$counts, &$unparsed) {
@@ -104,8 +105,13 @@ class TasksCustomerExperience extends Command
                         $values[$setup['phone']->id] = $phone;
                         $counts['phone filled']++;
                     }
-                    if ((blank($nameNow) && blank($name)) || (blank($phoneNow) && blank($phone))) {
+                    // Name and phone now have their own columns: the title keeps the summary.
+                    $parsed = self::parseTitle($task->title);
+                    if ($parsed === null) {
                         $unparsed[] = $task->id;
+                    } elseif ($parsed[2] !== $task->title) {
+                        $input['title'] = mb_substr($parsed[2], 0, 255);
+                        $counts['retitled']++;
                     }
 
                     if ($values !== []) {
@@ -150,34 +156,22 @@ class TasksCustomerExperience extends Command
     }
 
     /**
-     * [name, phone] from the title: whatever follows the prefix, the phone
-     * being the one number in it and the name what remains, when that is
-     * plainly a name (letters, spaces, . ' - &; no digits, no @). Either is
-     * null when not certain.
+     * The automation's exact shape (read from production, 2026-10-20):
+     * "Complaint: Nicole Johnson +14196779098 - Chimney cap blew off" and
+     * "Complaint:  +14048243631 - Wants pricing" (no name). Returns
+     * [name or null, E.164 phone, summary], or null when the title is not
+     * in that shape.
      *
-     * @return array{0: ?string, 1: ?string}
+     * @return array{0: ?string, 1: string, 2: string}|null
      */
-    public static function parseTitle(string $title): array
+    public static function parseTitle(string $title): ?array
     {
-        $kind = self::kindOf($title);
-        if ($kind === null) {
-            return [null, null];
+        if (preg_match(self::TITLE, trim($title), $m) !== 1) {
+            return null;
         }
-        $rest = mb_substr(ltrim($title), mb_strlen(self::KINDS[$kind][2]));
+        $name = trim($m['name']);
 
-        $phone = null;
-        if (preg_match_all(self::PHONE, $rest, $m) === 1) {
-            $phone = trim($m[0][0]);
-            $rest = str_replace($m[0][0], ' ', $rest);
-        }
-
-        // A name only after a separator: "Complaint: Ann Lee", never "Complaint about the crew".
-        $separated = preg_match('/^\s*[:\-–—|]/u', $rest) === 1;
-        $name = trim(preg_replace('/\s+/u', ' ', $rest) ?? '', " \t:-–—|,;/()[]");
-        $plain = $separated && $name !== '' && mb_strlen($name) <= 80
-            && preg_match("/^[\\p{L}][\\p{L}\\p{M} .'’&-]*$/u", $name) === 1;
-
-        return [$plain ? $name : null, $phone];
+        return [$name === '' ? null : $name, $m['phone'], trim($m['summary'])];
     }
 
     /** @return array{0: ?string, 1: ?string} name and phone, the linked record's first, then the title's */
@@ -192,7 +186,7 @@ class TasksCustomerExperience extends Command
             $record instanceof Customer => [$record->name, $record->phone],
             default => [null, null],
         };
-        [$titleName, $titlePhone] = self::parseTitle($task->title);
+        [$titleName, $titlePhone] = self::parseTitle($task->title) ?? [null, null];
 
         return [filled($name) ? trim($name) : $titleName, filled($phone) ? trim($phone) : $titlePhone];
     }
