@@ -143,7 +143,12 @@ class _AirtableTokenConnectState extends State<AirtableTokenConnect> {
               contentPadding: EdgeInsets.zero,
               value: _ticked.contains(b['id']),
               title: Text('${b['name']}'),
-              subtitle: Text('${b['permission']}'),
+              subtitle: Text(
+                [
+                  if (b['tables'] != null) '${b['tables']} tables',
+                  '${b['permission']}',
+                ].join(' · '),
+              ),
               onChanged: (on) => setState(
                 () => on == true
                     ? _ticked.add('${b['id']}')

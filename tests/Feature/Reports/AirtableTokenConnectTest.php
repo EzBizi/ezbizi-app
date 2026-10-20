@@ -50,6 +50,7 @@ class AirtableTokenConnectTest extends TestCase
         $listed = $as->postJson('/api/v1/social/airtable/bases', ['api_token' => 'pat_old'])->assertOk()->json('data');
         $this->assertSame(['Profit And Loss', 'Repair Teams'], array_column($listed, 'name'));
         $this->assertSame([false, false], array_column($listed, 'connected'));
+        $this->assertSame([1, 1], array_column($listed, 'tables'));
 
         $as->postJson('/api/v1/social/airtable/connect', ['api_token' => 'pat_old', 'base_ids' => [self::PNL, self::REP]])->assertOk();
         $listed = $as->postJson('/api/v1/social/airtable/bases', ['api_token' => 'pat_old'])->json('data');
