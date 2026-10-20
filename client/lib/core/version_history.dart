@@ -18,6 +18,7 @@ class VersionHistory {
       date: '20 Oct 2026',
       items: [
         'The A1Leads GBP tab is gone: its reviews, statuses, notes and matches are in Customer Experience › Reviews.',
+        'Customer Experience: the tabs read Reviews · GBP Listings · GBP Performance · Review links.',
       ],
     ),
     VersionRelease(
