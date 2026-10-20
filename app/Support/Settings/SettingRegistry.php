@@ -1007,6 +1007,16 @@ class SettingRegistry
                 help: 'A new WhatsApp contact is asked "I need a service" or "I want to work with you": '
                     .'a service request becomes a lead, a job request goes to HR. Off, they get the menu.',
             ),
+            new SettingDefinition(
+                key: 'ai_assistance.report_corrections',
+                label: 'Correct report drafts by WhatsApp',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Somebody with "Correct reports" can reply to a report draft in their own words, such as '
+                    .'"leave out job 4512". AI reads it, the bot repeats the change back, and nothing changes until they answer YES.',
+            ),
         ];
     }
 
