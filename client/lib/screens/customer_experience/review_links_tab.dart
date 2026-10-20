@@ -35,10 +35,8 @@ const _labels = {
 
 class _ReviewLinksTabState extends State<ReviewLinksTab> {
   late final DateTime _today = DateSpan.single(DateTime.now()).from;
-  late DateSpan _span = DateSpan(
-    DateTime(_today.year, _today.month, _today.day - 29),
-    _today,
-  );
+  // Opens on today (Jose, 2026-10-20: "review links should default to today").
+  late DateSpan _span = DateSpan.single(_today);
   bool _byPerson = false;
   Map<String, dynamic>? _data;
   String? _error;
