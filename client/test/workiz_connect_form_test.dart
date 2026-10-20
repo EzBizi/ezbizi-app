@@ -38,14 +38,21 @@ void main() {
     });
   });
 
-  testWidgets('the signed-in session is shown and cannot be picked', (
+  testWidgets('the signed-in session can be picked, not while editing', (
     tester,
   ) async {
     await _pump(tester, []);
-    final seg = tester.widget<SegmentedButton<String>>(
+    var seg = tester.widget<SegmentedButton<String>>(
       find.byKey(const ValueKey('workiz-method')),
     );
     expect(seg.segments.last.value, 'session');
+    expect(seg.segments.last.enabled, isTrue);
+    expect(find.text('Signed-in session'), findsOneWidget);
+
+    await _pump(tester, [], id: 'c-7', method: 'v2');
+    seg = tester.widget<SegmentedButton<String>>(
+      find.byKey(const ValueKey('workiz-method')),
+    );
     expect(seg.segments.last.enabled, isFalse);
   });
 
