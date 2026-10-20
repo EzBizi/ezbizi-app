@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0464',
+      date: '20 Oct 2026',
+      items: [
+        'Financials: the home shows one card per area (Disputes & Refunds, Deposits, Repair Teams, Profit & Loss, Invoices, Payroll), each opening its tables. Mirroring an Airtable table puts it in the base named after its Airtable base.',
+        'Integrations › Airtable: the form shows how many tables each base has, and the first connect ticks every base.',
+        'Jobs: Take a photo uses the phone\'s own camera on Android and iPhone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0463',
       date: '20 Oct 2026',
       items: [
