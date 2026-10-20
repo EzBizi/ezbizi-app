@@ -121,8 +121,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
   /// The base open in place of the home, or null.
   String? _baseId;
 
-  /// The area open in place of the home, or null.
+  /// The area open in place of the home, or null, and its table on show.
   FinancialCard? _area;
+  String? _areaTable;
   String? _tableId;
   Map? _table;
   String? _viewId;
@@ -170,13 +171,11 @@ class _FinancialsScreenState extends State<FinancialBases> {
   bool get _mayCreateBase =>
       _home == null ? _can('create') : _home!['may_create_base'] == true;
 
-  /// The open area's or base's tables: (id, name, record count or null).
-  List<(String, String, int?)> get _tables =>
-      _area?.tables ??
-      [
-        for (final t in (_base?['tables'] as List? ?? const []).cast<Map>())
-          ('${t['id']}', '${t['name']}', null),
-      ];
+  /// The open base's tables: (id, name, record count or null).
+  List<(String, String, int?)> get _tables => [
+    for (final t in (_base?['tables'] as List? ?? const []).cast<Map>())
+      ('${t['id']}', '${t['name']}', null),
+  ];
 
   @override
   void initState() {
@@ -228,20 +227,29 @@ class _FinancialsScreenState extends State<FinancialBases> {
     _openTable(_tables.firstOrNull?.$1);
   }
 
-  void _openArea(FinancialCard card) {
-    setState(() {
-      _baseId = null;
-      _area = card;
-      _tableId = null;
-      _search = '';
-    });
-    _openTable(card.tables.firstOrNull?.$1);
-  }
+  void _openArea(FinancialCard card) => setState(() {
+    _baseId = null;
+    _area = card;
+    _areaTable = card.tables.map((t) => t.$1).where(_opensHere).firstOrNull;
+    _tableId = null;
+    _table = null;
+  });
+
+  /// Which of an area's tables this client can open with what already
+  /// exists. Its keys are not Financials table ids: an Airtable source is
+  /// "base/table[/franchise]" and a native one names its own list
+  /// (adjustments, repair_moves, bills). Only bills has a screen today, the
+  /// Bills tab's list, and only for a role that may see that tab.
+  bool _opensHere(String key) =>
+      key == 'bills' &&
+      (widget.session.me?.permissions.contains('financials.bills.view') ??
+          false);
 
   void _backHome() {
     setState(() {
       _baseId = null;
       _area = null;
+      _areaTable = null;
       _tableId = null;
       _table = null;
       _viewId = null;
@@ -545,8 +553,10 @@ class _FinancialsScreenState extends State<FinancialBases> {
       );
     }
 
+    if (_area case final area?) return _areaPage(area);
+
     final tables = _tables;
-    final card = _area ?? baseCards.where((b) => b.id == _baseId).firstOrNull;
+    final card = baseCards.where((b) => b.id == _baseId).firstOrNull;
     final badge = sourceLabel(card?.source);
     final refreshed = refreshedLabel(card?.refreshedAt);
     final selectedTable = tables.indexWhere((t) => t.$1 == _tableId);
@@ -578,10 +588,9 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 onPressed: _backHome,
               ),
               Text(
-                _area?.name ??
-                    (_base?['place'] == null
-                        ? '${_base?['name'] ?? ''}'
-                        : '${_base?['name']} · ${_base?['place']}'),
+                (_base?['place'] == null
+                    ? '${_base?['name'] ?? ''}'
+                    : '${_base?['name']} · ${_base?['place']}'),
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               if (badge != null) StatusPill(badge),
@@ -593,7 +602,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-              if (canEdit && _area == null)
+              if (canEdit)
                 IconButton(
                   tooltip: 'Rename base',
                   icon: const Icon(Icons.edit_outlined),
@@ -623,19 +632,19 @@ class _FinancialsScreenState extends State<FinancialBases> {
                   selected: selectedTable < 0 ? 0 : selectedTable,
                   onSelected: (i) => _openTable(tables[i].$1),
                 ),
-              if (canEdit && _area == null && _table != null)
+              if (canEdit && _table != null)
                 IconButton(
                   tooltip: 'Rename table',
                   icon: const Icon(Icons.drive_file_rename_outline),
                   onPressed: _renameTable,
                 ),
-              if (canEdit && _area == null)
+              if (canEdit)
                 TextButton.icon(
                   icon: const Icon(Icons.add),
                   label: const Text('Add table'),
                   onPressed: _newTable,
                 ),
-              if (canEdit && _area == null)
+              if (canEdit)
                 TextButton.icon(
                   icon: const Icon(Icons.sync_alt),
                   label: const Text('Mirror Airtable'),
@@ -784,6 +793,85 @@ class _FinancialsScreenState extends State<FinancialBases> {
           ),
         ] else
           const Expanded(child: Center(child: Text('No tables here yet.'))),
+      ],
+    );
+  }
+
+  /// An area of the books, in place of the home: its tables as chips, and
+  /// the one on show below. A table nothing here can open yet is a disabled
+  /// chip that says so.
+  Widget _areaPage(FinancialCard area) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final badge = sourceLabel(area.source);
+    final refreshed = refreshedLabel(area.refreshedAt);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              IconButton(
+                key: const ValueKey('financials-back'),
+                tooltip: 'Back to Financials home',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _backHome,
+              ),
+              Text(area.name, style: Theme.of(context).textTheme.titleMedium),
+              if (badge != null) StatusPill(badge),
+              if (refreshed != null)
+                Text(refreshed, style: TextStyle(fontSize: 12, color: muted)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Wrap(
+            key: const ValueKey('financials-area-tables'),
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final (key, name, count) in area.tables)
+                ChoiceChip(
+                  key: ValueKey('financials-area-table-$key'),
+                  label: Text(
+                    [
+                      name,
+                      if (count != null) '$count',
+                      if (!_opensHere(key)) 'Opens soon',
+                    ].join(' · '),
+                  ),
+                  selected: key == _areaTable,
+                  onSelected: _opensHere(key)
+                      ? (_) => setState(() => _areaTable = key)
+                      : null,
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: switch (_areaTable) {
+            'bills' => FinancialBillsTab(
+              api: widget.api,
+              me: widget.session.me!,
+            ),
+            _ => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'These tables open here soon. Their figures are on the card.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: muted),
+                ),
+              ),
+            ),
+          },
+        ),
       ],
     );
   }

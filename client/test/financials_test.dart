@@ -393,8 +393,8 @@ Map<String, dynamic> _area(
 }) => {
   'key': key,
   'name': name,
-  'icon': 'refund',
-  'colour_hint': 'teal',
+  'icon': 'undo',
+  'colour_hint': 1,
   'figure': 'This week: \$120 · 2 open',
   'source': source,
   'refreshed_at': DateTime.now()
@@ -415,13 +415,14 @@ Map<String, dynamic> _homeWith({
         _area(
           'quarrels',
           'Quarrels & Returns',
-          source: 'airtable',
+          source: 'both',
           tables: [
-            {'key': 'tq1', 'name': 'Quarrels', 'count': 3},
-            {'key': 'tq2', 'name': 'Returns', 'count': 41},
+            {'key': 'appQ/tblQ', 'name': 'Quarrels', 'count': 3},
+            {'key': 'adjustments', 'name': 'Recorded in EzBizi', 'count': 2},
+            {'key': 'bills', 'name': 'Bills', 'count': 1},
           ],
         ),
-        _area('pebbles', 'Pebble Deposits', source: 'both'),
+        _area('pebbles', 'Pebble Deposits', source: 'airtable'),
       ],
   'bases':
       bases ??
@@ -504,25 +505,48 @@ void homeTests() {
     expect(find.text('Books'), findsNothing);
   });
 
-  testWidgets('an area opens in place with its tables, and goes back', (
+  testWidgets('an area opens in place: bills open, the rest open soon', (
     tester,
   ) async {
     final seen = await _pump(tester, home: _homeWith());
     await tester.tap(find.text('Quarrels & Returns'));
     await tester.pumpAndSettle();
-    expect(find.text('Quarrels · 3'), findsOneWidget);
-    expect(find.text('Returns · 41'), findsOneWidget);
-    expect(find.text('Diesel'), findsOneWidget);
-    expect(seen.last.url.path, endsWith('/financials/tables/tq1'));
-    expect(find.text('Bills'), findsOneWidget);
-
-    await tester.tap(find.text('Returns · 41'));
-    await tester.pumpAndSettle();
-    expect(seen.last.url.path, endsWith('/financials/tables/tq2'));
+    expect(find.text('Quarrels · 3 · Opens soon'), findsOneWidget);
+    expect(find.text('Recorded in EzBizi · 2 · Opens soon'), findsOneWidget);
+    expect(find.text('Bills · 1'), findsOneWidget);
+    ChoiceChip chip(String key) => tester.widget<ChoiceChip>(
+      find.byKey(ValueKey('financials-area-table-$key')),
+    );
+    expect(chip('appQ/tblQ').onSelected, isNull);
+    expect(chip('adjustments').onSelected, isNull);
+    expect(chip('bills').selected, isTrue);
+    // The Bills tab's own list, in place.
+    expect(seen.last.url.path, endsWith('/financials/bills'));
+    expect(find.text('New Jersey · 2026-09-01 to 2026-09-30'), findsOneWidget);
+    // An area's keys are never Financials table ids.
+    expect(
+      seen.where((r) => r.url.path.contains('/financials/tables/')),
+      isEmpty,
+    );
 
     await tester.tap(find.byKey(const ValueKey('financials-back')));
     await tester.pumpAndSettle();
     expect(find.text('Your areas'), findsOneWidget);
+  });
+
+  testWidgets('without the Bills tab, an area bills chip opens soon too', (
+    tester,
+  ) async {
+    final seen = await _pump(
+      tester,
+      home: _homeWith(),
+      permissions: const ['financials.view', 'financials.bases.view'],
+    );
+    await tester.tap(find.text('Quarrels & Returns'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bills · 1 · Opens soon'), findsOneWidget);
+    expect(find.textContaining('These tables open here soon'), findsOneWidget);
+    expect(seen.where((r) => r.url.path.endsWith('/bills')), isEmpty);
   });
 
   testWidgets('no + New base without the create permission', (tester) async {

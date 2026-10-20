@@ -24,7 +24,10 @@ class FinancialCard {
   final String id;
   final String name;
   final String? icon;
-  final String? colourHint;
+
+  /// A palette index (what /financials/home sends, 0–5) or a hue's name
+  /// (a base's own colour).
+  final Object? colourHint;
   final String? figure;
 
   /// native, airtable or both; null when the server did not say.
@@ -38,7 +41,7 @@ class FinancialCard {
     id: '${a['key']}',
     name: '${a['name'] ?? ''}',
     icon: a['icon'] as String?,
-    colourHint: a['colour_hint'] as String?,
+    colourHint: a['colour_hint'],
     figure: _text(a['figure']),
     source: a['source'] as String?,
     refreshedAt: a['refreshed_at'] as String?,
@@ -51,7 +54,7 @@ class FinancialCard {
   static FinancialCard base(Map b) => FinancialCard(
     id: '${b['id']}',
     name: '${b['name'] ?? ''}',
-    colourHint: (b['colour_hint'] ?? b['colour']) as String?,
+    colourHint: b['colour_hint'] ?? b['colour'],
     figure: _text(b['figure']),
     source: b['source'] as String?,
     refreshedAt: b['refreshed_at'] as String?,
@@ -107,25 +110,22 @@ const _hues = {
 
 /// A hint names a hue of the app's own palette; anything else takes the
 /// card's place in its section, so neighbours differ.
-ToneColours cardColours(BuildContext context, String? hint, int index) =>
-    PersonColours.hue(context, _hues[hint?.toLowerCase()] ?? index % 8);
+ToneColours cardColours(BuildContext context, Object? hint, int index) =>
+    PersonColours.hue(context, switch (hint) {
+      final int i when i >= 0 => i % 8,
+      final String name => _hues[name.toLowerCase()] ?? index % 8,
+      _ => index % 8,
+    });
 
+/// The Material names /financials/home sends for its areas.
 const _icons = <String, IconData>{
-  'refund': Icons.undo,
-  'refunds': Icons.undo,
-  'dispute': Icons.undo,
-  'deposit': Icons.south,
-  'deposits': Icons.south,
-  'repair': Icons.build_outlined,
+  'undo': Icons.undo,
+  'savings': Icons.savings_outlined,
   'build': Icons.build_outlined,
-  'pnl': Icons.functions,
-  'sum': Icons.functions,
-  'profit': Icons.functions,
-  'invoice': Icons.receipt_long_outlined,
-  'receipt': Icons.receipt_long_outlined,
-  'payroll': Icons.engineering_outlined,
-  'people': Icons.engineering_outlined,
-  'table': Icons.table_chart_outlined,
+  'trending_up': Icons.trending_up,
+  'receipt_long': Icons.receipt_long_outlined,
+  'payments': Icons.payments_outlined,
+  'table_chart': Icons.table_chart_outlined,
 };
 
 IconData cardIcon(String? name, {required bool isBase}) =>
