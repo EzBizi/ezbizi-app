@@ -235,6 +235,35 @@ Each ships on its own, gated, through the deploy desk.
 8. **Wiring guide artwork** is produced by UI/UX with the screens. Step 2 of
    delivery waits for it.
 
+## Relay — settled by spike (2026-10-20, Task 1)
+
+Measured on the dev PC with MediaMTX v1.21.2 and go2rtc v1.9.14, a 720p
+H.264 test camera, and a PHP stub standing in for Laravel's auth hook.
+
+- **Bridge → relay: RTMP(S) push.** go2rtc's `publish:` speaks RTMP/RTMPS
+  only (plain RTSP push is "unsupported scheme"). It pulls the recorder's RTSP
+  and pushes to MediaMTX without re-encoding.
+- **Path shape: one segment, `cam-<camera_id>-<quality>`.** go2rtc splits a
+  multi-segment RTMP path into app/stream and repeats the query, which mangled
+  the token (`good/abc?user=bridge`). A single segment arrived clean.
+- **Token: `?user=bridge&pass=<token>`** on the publish URL; MediaMTX hands it
+  to the hook as `password`.
+- **Relay: MediaMTX, `authMethod: http`.** Every publish and read calls the
+  hook with `{action: publish|read, path, user, password, ip, protocol}`;
+  200 allows, 401 refuses. Verified: wrong token → read 401, publish refused.
+- **Viewer format: MJPEG**, produced by a go2rtc on the box reading MediaMTX
+  locally and transcoding (`ffmpeg:<src>#video=mjpeg#width=640#height=360`).
+  ~12 fps delivered. **Cost: ~10% of one core per watched camera** (1.8 CPU-s
+  over 19 s, 720p in → 360p out); the box's 16 cores leave room for well over
+  100 simultaneous viewers' cameras. MediaMTX's HLS output is available for a
+  smoother web player later. go2rtc on the box needs its internal RTSP server
+  on (loopback only) to feed ffmpeg.
+- **Port (correction to review decision 1):** RTMPS needs a port the box
+  accepts. Either a dedicated port (e.g. 1936) opened in the security group,
+  or nginx `stream` + `ssl_preread` routing a dedicated hostname
+  (`relay.ezbizi.com`) on 443 to MediaMTX. The deploy desk chooses; the bridge
+  only needs the URL. The site still opens nothing inbound.
+
 ## Left to the builder
 
 The go2rtc-vs-MediaMTX choice on the server; HLS vs WebRTC above the MJPEG
