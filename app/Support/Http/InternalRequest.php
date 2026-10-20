@@ -46,13 +46,29 @@ final class InternalRequest
 
         // The inner `tenant` middleware forgets the tenant on its way out; run()
         // puts the outer one back. The container's request goes back too.
+        // The guards cache whoever they resolved first. A queue worker runs
+        // these for one person after another, so when the cached user is not
+        // this request's person the guards are reset; otherwise the second
+        // person is answered as the first (measured 2026-10-20: Beta's `me`
+        // came back as Alpha's in one process). Afterwards the outer person
+        // goes back, so the caller carries on as itself.
+        $outer = $as->user();
+        $cached = app('auth')->guard()->hasUser() ? app('auth')->guard()->user() : null;
+        $switch = $cached !== null && $cached->getAuthIdentifier() !== $outer->getAuthIdentifier();
+        if ($switch) {
+            app('auth')->forgetGuards();
+        }
+
         try {
             return app(TenantContext::class)->run(
-                $as->user()->organization,
+                $outer->organization,
                 fn () => app(Kernel::class)->handle($sub),
             );
         } finally {
             app()->instance('request', $as);
+            if ($switch) {
+                app('auth')->forgetGuards();
+            }
         }
     }
 }
