@@ -362,6 +362,40 @@ final class AutomationTemplates
                 ],
             ],
             [
+                'key' => 'auto-reply-good-reviews',
+                'name' => 'Answer 4 and 5-star reviews automatically',
+                'description' => 'AI writes a thank-you for each review, so no two are the same, and it is '
+                    .'published on Google only on listings where automatic replies are switched on under '
+                    .'Business Profile, and only for reviews written in the last 30 days.',
+                'trigger_key' => 'review.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'rating', 'op' => 'gte', 'value' => '4'],
+                    ],
+                ],
+                // Written by AI for each review, so no two are the same (Jose, 2026-10-20).
+                'actions' => [
+                    ['type' => 'publish_reply', 'ai' => true],
+                ],
+            ],
+            [
+                'key' => 'draft-bad-reviews-for-approval',
+                'name' => 'Draft replies to 3 stars or less, for approval',
+                'description' => 'A low review is never answered by itself: a reply is drafted and '
+                    .'somebody is told to read and publish it.',
+                'trigger_key' => 'review.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'rating', 'op' => 'lte', 'value' => '3'],
+                    ],
+                ],
+                'actions' => [
+                    ['type' => 'draft_reply', 'ai' => true],
+                    ['type' => 'notify', 'message' => 'A {{rating}}-star review has a drafted reply waiting for approval.',
+                        'details' => '{{comment}}'],
+                ],
+            ],
+            [
                 'key' => 'review-removed',
                 'name' => 'Say when Google removes a review',
                 'description' => 'Google stopped showing a review, confirmed three times, two hours apart.',

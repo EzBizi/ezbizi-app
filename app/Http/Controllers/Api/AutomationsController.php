@@ -90,6 +90,7 @@ class AutomationsController extends Controller
         'reassign_owner',
         'job.create',
         'draft_reply',
+        'publish_reply',
         'onboarding.start',
         'add_to_audience',
         'review_reply',
@@ -2186,7 +2187,13 @@ class AutomationsController extends Controller
                 $parameter('in_days', 'Schedule it this many days later', 'text', required: false),
             ]),
             $type('draft_reply', 'Draft a reply to the review', true, [
-                $parameter('message', 'The reply', 'rich_text', variables: true),
+                // AI writes each one for its own review (Jose, 2026-10-20: "they can't be all the same").
+                $parameter('ai', 'Let AI write it for this review', 'boolean', false),
+                $parameter('message', 'The reply (when AI is not writing it)', 'rich_text', false, variables: true),
+            ]),
+            $type('publish_reply', 'Publish a reply on Google', true, [
+                $parameter('ai', 'Let AI write it for this review', 'boolean', false),
+                $parameter('message', 'The reply (when AI is not writing it)', 'rich_text', false, variables: true),
             ]),
             $type('onboarding.start', 'Start the onboarding', true, [
                 $parameter('contract_id', 'Which contract', 'contract'),

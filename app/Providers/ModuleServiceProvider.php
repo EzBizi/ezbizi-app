@@ -3060,8 +3060,20 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'review.draft_reply',
                         label: 'Draft a reply',
                         description: 'Writes a suggested reply to the review that triggered the '
-                            .'rule and leaves it waiting for a person. It does not publish, and '
-                            .'nothing in this module can.',
+                            .'rule and leaves it waiting for a person. It does not publish.',
+                    ),
+                    /*
+                     * Jose, 2026-10-16/20 (A1 Leads takeover): good reviews answered
+                     * automatically. Guarded three ways - the listing's own
+                     * auto-reply switch, off by default; the author's publish grant
+                     * and reach; never over another reply.
+                     */
+                    new ActionDefinition(
+                        key: 'review.publish_reply',
+                        label: 'Publish a reply on Google',
+                        description: 'Posts the reply under the review on Google, by itself. Only on '
+                            .'listings where automatic replies are switched on under Business Profile; '
+                            .'elsewhere it posts nothing. Never over a reply or draft already there.',
                     ),
                 ],
             ),

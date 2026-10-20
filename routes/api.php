@@ -996,6 +996,8 @@ Route::prefix('v1')
         // How listings perform on Google (A1 Leads takeover, 2026-10-20).
         Route::get('business-profile/performance', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'index']);
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
+        // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
+        Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);

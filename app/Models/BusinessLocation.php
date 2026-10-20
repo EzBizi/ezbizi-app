@@ -112,6 +112,7 @@ class BusinessLocation extends Model implements HoldsPersonalData, StatesRetenti
         return [
             'hours'        => 'array',
             'is_published' => 'boolean',
+            'auto_reply' => 'boolean',
             'not_listed_since' => 'datetime',
             'synced_at'    => 'datetime',
         ];
