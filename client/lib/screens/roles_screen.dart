@@ -1859,6 +1859,9 @@ class _RolePageState extends State<_RolePage> {
         // desktop it is several hundred more.
         LayoutBuilder(
           builder: (context, constraints) => Column(
+            // Headings to the left, under the module (Jose, 2026-10-20: the
+            // support text sat in the middle).
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // TABS FIRST, UNDER THEIR OWN HEADING, and then what may be done.
               //
