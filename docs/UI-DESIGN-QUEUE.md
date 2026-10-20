@@ -2965,15 +2965,15 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 120 · Integrations › Workiz web login (signed-in session handoff) — **sent 2026-10-20** (`docs/previews/workiz-web-login-layouts.html`)
+### 120 · Integrations › Workiz web login (signed-in session handoff) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/workiz-web-login-layouts.html`)
 
 Workiz asked (workiz_web: link, extension, accounts→branch). **1** (recommended) Signed-in session becomes Workiz's third method: Get a link (30 min, Copy) → extension paste + Send → the page turns green by itself; account→branch table; red Signed out with Send it again; Jose's terms sentence on the card; extension popup restyled to the same steps. **2** a separate tile. **3** set up from Reports. Phone **4** (recommended: status + table, handoff needs a computer) / **5** / **6**.
 
-### 119 · Jobs › Photos & files: the job's own (off Workiz, slice b) — **sent 2026-10-20** (`docs/previews/jobs-files-layouts.html`)
+### 119 · Jobs › Photos & files: the job's own (off Workiz, slice b) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/jobs-files-layouts.html`)
 
 Jobs asked (attachments API, attachable_type=jobs). **1** (recommended) "Added in EzBizi" grid + Add + drop zone, per-tile progress and failure, Remove asks once; "From Workiz · read-only" below with a copied-in-later note. **2** one grid with a Workiz badge. **3** EzBizi | Workiz tabs. Phone **4** (recommended: Take a photo + Choose files) / **5** / **6**.
 
-### 118 · Jobs › type, sub-status and tags (off Workiz, step 1) — **sent 2026-10-20** (`docs/previews/jobs-type-tags-layouts.html`)
+### 118 · Jobs › type, sub-status and tags (off Workiz, step 1) — **sent 2026-10-20 — Jose: "go ahead with all ur recommendations" (1 and 4)** (`docs/previews/jobs-type-tags-layouts.html`)
 
 Jobs asked (cff7eceae: job_type, sub_status, tags, meta.labels). **1** (recommended) Status · Sub-status · Type pickers on the panel's header line, tags as removable chips under the title with + Tag (search the words in use, add a new one); list: type as an outlined label after the number, two tags + "+N"; Type and Tags (any-of) filters. **2** a Details card + list columns. **3** coloured tag dots. Phone **4** (recommended) / **5** / **6**.
 
