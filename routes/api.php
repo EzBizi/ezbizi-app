@@ -1451,6 +1451,15 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.settings.view')->group(function () {
             Route::put('scheduling/locations/notes/{company}', [SchedulingLocationsController::class, 'note']);
         });
+        Route::middleware('permission:scheduling.helpers.view')->group(function () {
+            Route::get('scheduling/helpers', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'index']);
+            Route::post('scheduling/helpers', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'store']);
+            Route::get('scheduling/helpers/bookings', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'bookings']);
+            Route::post('scheduling/helpers/bookings', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'book']);
+            Route::patch('scheduling/helpers/bookings/{booking}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'updateBooking']);
+            Route::delete('scheduling/helpers/bookings/{booking}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'destroyBooking']);
+            Route::patch('scheduling/helpers/{helper}', [\App\Http\Controllers\Api\SchedulingHelpersController::class, 'update']);
+        });
         Route::get('scheduling/routes', [SchedulingAvailabilityController::class, 'routes'])
             ->middleware('permission:scheduling.routing.view');
         Route::get('scheduling/reschedules', [SchedulingAvailabilityController::class, 'reschedules'])

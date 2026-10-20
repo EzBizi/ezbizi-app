@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
+import 'scheduling/helpers_pane.dart';
 import 'scheduling/locations_pane.dart';
 import 'scheduling/overbooking_pane.dart';
 import 'scheduling/rescheduling_pane.dart';
@@ -86,6 +87,18 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'Routing',
       Icons.route_outlined,
       () => RoutingPane(api: widget.api, visible: _visible('routing')),
+    ),
+    (
+      // A1 Tools' helper calendar: helpers booked to technicians by day or
+      // half (A1 Leads takeover; UI queue 112, Jose: 1 and 4).
+      'helpers',
+      'Helpers',
+      Icons.group_add_outlined,
+      () => HelpersPane(
+        api: widget.api,
+        session: widget.session,
+        visible: _visible('helpers'),
+      ),
     ),
     (
       // Every branch, the closest one, who to call (UI queue 49).
