@@ -865,6 +865,8 @@ Route::prefix('v1')
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
+        // Before the resource, or 'project-management' reads as a job id.
+        Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::apiResource('jobs', JobsController::class);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board

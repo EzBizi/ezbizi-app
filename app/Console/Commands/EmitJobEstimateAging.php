@@ -3,11 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\AutomationEvent;
-use App\Models\Estimate;
 use App\Models\Job;
 use App\Models\Organization;
-use App\Models\WorkizRecord;
 use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\EstimateAging;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -46,18 +45,13 @@ class EmitJobEstimateAging extends Command
                 Job::query()->whereIn('status', $statuses)->with('franchise:id,timezone')
                     ->chunkById(500, function ($jobs) use ($events, &$raised) {
                         $ids = $jobs->modelKeys();
-                        $ours = Estimate::query()->whereIn('job_id', $ids)
-                            ->selectRaw('job_id, MAX(COALESCE(issued_on, DATE(created_at))) AS d')->groupBy('job_id')->pluck('d', 'job_id');
-                        $theirs = WorkizRecord::query()->whereIn('job_id', $ids)->where('type', 'estimate')
-                            ->selectRaw('job_id, MAX(DATE(starts_at)) AS d')->groupBy('job_id')->pluck('d', 'job_id');
-                        $paid = WorkizRecord::query()->whereIn('job_id', $ids)->where('type', 'payment')->where('status', 'succeeded')
-                            ->selectRaw("job_id, SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'refund' THEN -amount ELSE amount END) AS paid")
-                            ->groupBy('job_id')->pluck('paid', 'job_id');
+                        $dates = EstimateAging::latestEstimateDates($ids);
+                        $paid = EstimateAging::paidCents($ids);
                         $already = AutomationEvent::query()->where('event_key', self::TRIGGER)->whereIn('subject_id', $ids)
                             ->where('occurred_at', '>=', now()->startOfDay())->pluck('subject_id')->flip();
 
                         foreach ($jobs as $job) {
-                            $date = max(array_filter([$ours[$job->id] ?? null, $theirs[$job->id] ?? null]) ?: [null]);
+                            $date = $dates[$job->id] ?? null;
                             if ($date === null || $already->has($job->id)) {
                                 continue;
                             }
@@ -67,7 +61,7 @@ class EmitJobEstimateAging extends Command
                                 'status' => $job->status,
                                 'days_since_estimate' => (int) Carbon::parse($date, $today->timezone)->diffInDays($today),
                                 'estimate_date' => $date,
-                                'paid_total' => (int) round(((float) ($paid[$job->id] ?? 0)) * 100),
+                                'paid_total' => $paid[$job->id] ?? 0,
                             ]]);
                             $raised++;
                         }
