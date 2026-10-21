@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0472',
+      date: '21 Oct 2026',
+      items: [
+        'Financials › Invoices: a charge sheet per period with one row per branch and the charge columns you set up (typed, filled from what EzBizi already knows, or a formula). Make invoices turns it into a draft invoice per branch with a PDF carrying your company\'s name, address and logo.',
+        'Invoices are approved, then emailed from your own connected mail server, one per branch or one summary to accounting. Payments are recorded against them and overdue ones are flagged daily.',
+        'Roles and permissions: view, create, edit, delete, approve and send invoices. Automations: triggers when an invoice is approved, sent, paid or overdue.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0471',
       date: '21 Oct 2026',
       items: [
