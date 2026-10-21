@@ -114,7 +114,8 @@ class NotificationPushTest extends TestCase
 
         Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
             && $request['message']['token'] === 'token-admin-phone'
-            && $request['message']['notification']['title'] === 'New Live Chat Lead'
+            && $request['message']['notification']['title'] === 'EzBizi - Alpha'
+            && $request['message']['notification']['body'] === 'New Live Chat Lead'
             // Named, or FCM delivers on its own generic fallback channel —
             // measured on a real handset. On Android 8+ the channel is what a
             // person sees in Settings and what they MUTE, so a fallback means
@@ -191,7 +192,7 @@ class NotificationPushTest extends TestCase
         $channelOf = fn (string $title) => collect(Http::recorded())
             ->map(fn ($pair) => $pair[0])
             ->first(fn ($request) => str_contains($request->url(), 'messages:send')
-                && $request['message']['notification']['title'] === $title)['message']['android']['notification']['channel_id'];
+                && $request['message']['notification']['body'] === $title)['message']['android']['notification']['channel_id'];
 
         $this->assertSame('ezbizi_urgent', $channelOf('An alert'));
         $this->assertSame('ezbizi_urgent', $channelOf('New lead'));
@@ -218,7 +219,7 @@ class NotificationPushTest extends TestCase
         $channelOf = fn (string $title) => collect(Http::recorded())
             ->map(fn ($pair) => $pair[0])
             ->first(fn ($request) => str_contains($request->url(), 'messages:send')
-                && $request['message']['notification']['title'] === $title)['message']['android']['notification']['channel_id'];
+                && $request['message']['notification']['body'] === $title)['message']['android']['notification']['channel_id'];
         $this->assertSame('ezbizi_urgent', $channelOf('Possible complaint call'));
         $this->assertSame('ezbizi_notifications', $channelOf('Weekly summary'));
 
@@ -253,7 +254,7 @@ class NotificationPushTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch('No row', onlyTo: $tenant['admin']));
 
         $message = fn (string $title) => collect(Http::recorded())->map(fn ($pair) => $pair[0])
-            ->first(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['notification']['title'] === $title);
+            ->first(fn ($r) => str_contains($r->url(), 'messages:send') && $r['message']['notification']['body'] === $title);
 
         $this->assertSame(['notification_id' => $row->id], $message('With a row')['message']['data']);
         $this->assertArrayNotHasKey('data', $message('No row')['message']);
@@ -518,6 +519,38 @@ class NotificationPushTest extends TestCase
      * Asserting the LENGTH is what distinguishes the two. A DER signature for
      * P-256 is 70-72 bytes and varies run to run; 64 exactly is the JOSE form.
      */
+    /**
+     * Jose, 2026-10-21: every push reads Title / Subtitle / Description —
+     * "EzBizi - <Company> - <Branch>", what happened, then its content. His
+     * screenshot had no company or branch anywhere.
+     */
+    public function test_a_push_says_whose_it_is_what_happened_and_the_content(): void
+    {
+        Http::fake([
+            self::OAUTH => Http::response(['access_token' => 'ya29.test', 'expires_in' => 3600]),
+            self::FCM => Http::response(['name' => 'projects/ezbizi-506117/messages/1']),
+            self::APNS => Http::response('', 200),
+        ]);
+        $this->configureFcm();
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Xi');
+        $this->device($tenant, $tenant['admin']->id, 'token-android');
+        $iphone = $this->device($tenant, $tenant['admin']->id, 'token-iphone');
+        $this->inTenant($tenant['org'], fn () => $iphone->forceFill(['platform' => 'ios'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New reply on "Live Chat"', body: 'Thank you', subject: $tenant['franchise'], source: 'system',
+        ));
+
+        $header = 'EzBizi - '.$tenant['company']->name.' - '.$tenant['franchise']->name;
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
+            && $request['message']['notification']['title'] === $header
+            && $request['message']['notification']['body'] === "New reply on \"Live Chat\"\nThank you");
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'token-iphone')
+            && $request['aps']['alert'] === ['title' => $header, 'subtitle' => 'New reply on "Live Chat"', 'body' => 'Thank you']);
+    }
+
     public function test_the_provider_token_is_signed_in_jose_form_not_der(): void
     {
         Http::fake([self::APNS => Http::response('', 200)]);

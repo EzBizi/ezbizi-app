@@ -146,7 +146,7 @@ class PushSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null): int
+    public function send(Collection $devices, string $title, ?string $body, bool $urgent = false, ?string $notificationId = null, ?string $subtitle = null): int
     {
         if ($devices->isEmpty()) {
             return 0;
@@ -161,7 +161,12 @@ class PushSender
          */
         [$apple, $google] = $devices->partition(fn (DeviceToken $device) => $device->platform === 'ios');
 
-        $sent = $this->apns->send($apple, $title, $body, $notificationId);
+        $sent = $this->apns->send($apple, $title, $body, $notificationId, $subtitle);
+
+        // Android has no subtitle line a data-less FCM notification can set, so
+        // what happened leads the body (Jose, 2026-10-21: Title / Subtitle /
+        // Description on every push).
+        $body = implode("\n", array_filter([$subtitle, $body], fn ($line) => $line !== null && $line !== '')) ?: null;
 
         if ($google->isEmpty() || ! $this->fcmConfigured()) {
             return $sent;

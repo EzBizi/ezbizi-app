@@ -4,6 +4,7 @@ namespace App\Support\Notifications;
 
 use App\Models\Assignment;
 use App\Models\DeviceToken;
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -222,7 +223,7 @@ class NotificationDispatcher
          * dismissed with a swipe and costs nobody else anything. The 200-row
          * cap above already bounds it.
          */
-        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $urgent || $this->isUrgent($source, $eventId), $rowIds);
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($alertable, $title, $body, $scope, $urgent || $this->isUrgent($source, $eventId), $rowIds, $this->pushHeader($scope, $subject));
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.
@@ -287,7 +288,7 @@ class NotificationDispatcher
     }
 
     /** @param array<string, string> $rowIds user id => that person's notification id */
-    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope, bool $urgent = false, array $rowIds = []): int
+    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope, bool $urgent = false, array $rowIds = [], string $header = 'EzBizi'): int
     {
         if (! $this->channelOn('notifications.push_enabled', $scope) || ! $this->push->configured()) {
             return 0;
@@ -304,7 +305,7 @@ class NotificationDispatcher
         $reached = $devices
             ->groupBy('user_id')
             ->filter(fn (Collection $forOnePerson, $userId) => $this->push->send(
-                $forOnePerson, $title, $body, $urgent, $rowIds[$userId] ?? null,
+                $forOnePerson, $header, $body, $urgent, $rowIds[$userId] ?? null, $title,
             ) > 0)
             ->count();
 
@@ -756,6 +757,25 @@ class NotificationDispatcher
      * code — a second setting that looks live and is not, which is the whole
      * defect above repeated one level down.
      */
+    /**
+     * The first line of every push: whose notification it is (Jose,
+     * 2026-10-21) — "EzBizi - A-1 Chimney - Connecticut", the branch dropped
+     * when the record has none, the organization when it has no company.
+     */
+    private function pushHeader(Model $scope, ?Model $subject): string
+    {
+        $companyId = $subject?->getAttribute('company_id');
+        $company = is_string($companyId) ? Company::query()->find($companyId) : null;
+
+        $parts = match (true) {
+            $scope instanceof Franchise => [$scope->company?->name, $scope->name],
+            $company !== null => [$company->name],
+            default => [$scope->getAttribute('name')],
+        };
+
+        return implode(' - ', array_filter(['EzBizi', ...$parts], fn ($part) => is_string($part) && $part !== ''));
+    }
+
     private function settingsScope(?Model $subject): Model
     {
         $franchiseId = $this->franchiseIdFor($subject);
