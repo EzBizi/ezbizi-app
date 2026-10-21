@@ -357,6 +357,100 @@ void main() {
     );
   });
 
+  group('the issuer', () {
+    testWidgets("is the invoice's own, its logo fetched through the API", (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoice(tester, 'INV-0142');
+      expect(
+        _textOf(tester, 'invoice-issuer-name'),
+        'Brightside Springfield LLC',
+      );
+      expect(
+        _textOf(tester, 'invoice-issuer-address'),
+        '12 Elm St\nSpringfield, IL 62701',
+      );
+      expect(
+        find.byKey(const ValueKey('invoice-issuer-logo-image')),
+        findsOneWidget,
+      );
+      expect(
+        api.requests.where((r) => r.$2.endsWith('/branding/companies/co-1')),
+        hasLength(1),
+      );
+    });
+
+    testWidgets('a logo that fails to load draws nothing', (tester) async {
+      final api = await _pump(tester);
+      await _openInvoice(tester, 'INV-0139');
+      expect(_textOf(tester, 'invoice-issuer-name'), 'Brightside Oakdale LLC');
+      expect(
+        find.byKey(const ValueKey('invoice-issuer-address')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('invoice-issuer-logo-image')),
+        findsNothing,
+      );
+      expect(
+        api.requests.where((r) => r.$2.endsWith('/branding/companies/co-9')),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('without one, the organization, and no logo is asked for', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoice(tester, 'INV-0145');
+      expect(
+        _textOf(tester, 'invoice-issuer-name'),
+        'Brightside Home Services',
+      );
+      expect(
+        find.byKey(const ValueKey('invoice-issuer-logo-image')),
+        findsNothing,
+      );
+      expect(api.requests.where((r) => r.$2.contains('/branding/')), isEmpty);
+    });
+  });
+
+  group('the branch filter', () {
+    testWidgets('sends franchise_id for the branch picked', (tester) async {
+      final api = await _pump(tester);
+      await _openInvoices(tester, sub: 'Invoices');
+      expect(api.lastQuery.containsKey('franchise_id'), isFalse);
+      await tester.tap(find.byKey(const ValueKey('invoice-filter-branch')));
+      await tester.pumpAndSettle();
+      expect(find.text('Springfield Gutters · Shelbyville'), findsOneWidget);
+      await tester.tap(find.text('Brightside Home Services · Oakdale').last);
+      await tester.pumpAndSettle();
+
+      expect(api.lastQuery['franchise_id'], 'fr-oak');
+      expect(find.text('INV-0139'), findsOneWidget);
+      expect(find.text('INV-0142'), findsNothing);
+    });
+
+    testWidgets('offers only the branches in the current view', (tester) async {
+      await _pump(
+        tester,
+        scope: const {
+          'type': 'company',
+          'id': 'co-1',
+          'label': 'Brightside Home Services',
+          'path': ['Brightside Home Services'],
+        },
+      );
+      await _openInvoices(tester, sub: 'Invoices');
+      await tester.tap(find.byKey(const ValueKey('invoice-filter-branch')));
+      await tester.pumpAndSettle();
+      expect(find.text('Brightside Home Services · Riverton'), findsOneWidget);
+      expect(find.text('Springfield Gutters · Shelbyville'), findsNothing);
+    });
+  });
+
   group('on a phone (390 × 844)', () {
     testWidgets(
       'the sheet is a list of branches; tap one to edit it in place',
@@ -415,6 +509,11 @@ void main() {
   });
 }
 
+/// A 1 x 1 transparent PNG.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+);
+
 const _noMailServer =
     'This business has not connected its own mail server yet, so invoices cannot be sent.';
 
@@ -449,6 +548,9 @@ Future<void> _openInvoice(WidgetTester tester, String number) async {
 class _Api {
   final requests = <(String, String, Object?)>[];
 
+  /// The query of the last GET /invoices.
+  Map<String, String> lastQuery = const {};
+
   /// The JSON bodies sent to [path] with [method].
   List<Map<String, dynamic>> sent(String method, String path) => [
     for (final (m, p, b) in requests)
@@ -468,6 +570,7 @@ Map<String, dynamic> _invoice(
   bool canApprove = true,
   bool viewerOnly = false,
   String? voidReason,
+  Map<String, dynamic>? issuer,
 }) {
   final may = !viewerOnly;
   return {
@@ -504,6 +607,7 @@ Map<String, dynamic> _invoice(
         : null,
     'voided_at': status == 'void' ? '2026-10-21T10:00:00Z' : null,
     'void_reason': voidReason,
+    'issuer': ?issuer,
     'can_approve': may && canApprove && status == 'draft',
     'can_send': may && (status == 'approved' || status == 'sent'),
     'can_record_payment': may && ['approved', 'sent', 'paid'].contains(status),
@@ -521,6 +625,12 @@ Future<_Api> _pump(
   bool refuseSend = false,
   String? refuseRows,
   Size size = const Size(1400, 900),
+  Map<String, dynamic> scope = const {
+    'type': 'organization',
+    'id': 'org-1',
+    'label': 'Brightside Home Services',
+    'path': ['Brightside Home Services'],
+  },
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -551,6 +661,11 @@ Future<_Api> _pump(
         branch: 'Brightside Springfield',
         total: 388000,
         viewerOnly: viewerOnly,
+        issuer: {
+          'name': 'Brightside Springfield LLC',
+          'address': '12 Elm St\nSpringfield, IL 62701',
+          'logo_url': '/branding/companies/co-1',
+        },
       ),
       _invoice(
         'i3',
@@ -558,6 +673,11 @@ Future<_Api> _pump(
         'sent',
         branch: 'Brightside Oakdale',
         total: 161000,
+        issuer: {
+          'name': 'Brightside Oakdale LLC',
+          'address': null,
+          'logo_url': '/branding/companies/co-9',
+        },
         overdue: true,
         viewerOnly: viewerOnly,
       ),
@@ -652,20 +772,24 @@ Future<_Api> _pump(
             'franchise_label': 'Branch',
             'is_read_only': false,
           },
-          'scope': {
-            'type': 'organization',
-            'id': 'org-1',
-            'label': 'Brightside Home Services',
-            'path': ['Brightside Home Services'],
-          },
+          'scope': scope,
           'companies': [
             {
               'id': 'co-1',
               'name': 'Brightside Home Services',
               'parent_company_id': null,
             },
+            {
+              'id': 'co-2',
+              'name': 'Springfield Gutters',
+              'parent_company_id': null,
+            },
           ],
-          'franchises': <Map>[],
+          'franchises': [
+            {'id': 'fr-oak', 'name': 'Oakdale', 'company_id': 'co-1'},
+            {'id': 'fr-riv', 'name': 'Riverton', 'company_id': 'co-1'},
+            {'id': 'fr-sg', 'name': 'Shelbyville', 'company_id': 'co-2'},
+          ],
           'modules': [
             {
               'key': 'financials',
@@ -702,6 +826,14 @@ Future<_Api> _pump(
       });
     }
     if (path.endsWith('/financials/bills')) return json({'data': <Map>[]});
+    if (path.endsWith('/branding/companies/co-1')) {
+      return http.Response.bytes(
+        _png,
+        200,
+        headers: const {'content-type': 'image/png'},
+      );
+    }
+    if (path.contains('/branding/')) return json({'message': 'No logo.'}, 404);
 
     if (path.endsWith('/invoices/sheets') && method == 'GET') {
       return json({
@@ -859,8 +991,14 @@ Future<_Api> _pump(
       });
     }
     if (path.endsWith('/api/v1/invoices') && method == 'GET') {
+      api.lastQuery = request.url.queryParameters;
+      // Oakdale's branch was billed INV-0139 only.
+      final branch = request.url.queryParameters['franchise_id'];
       return json({
-        'data': invoices.values.toList(),
+        'data': [
+          for (final i in invoices.values)
+            if (branch == null || (branch == 'fr-oak' && i['id'] == 'i3')) i,
+        ],
         'totals': {
           'sent_cents': 813000,
           'unpaid_cents': 425000,
