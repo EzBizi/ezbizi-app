@@ -2326,6 +2326,12 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Invoices',
                 parent: 'financials',
                 sidebar: false,
+                // Drawn inside the Invoices tab of Financials.
+                tabs: [
+                    new TabDefinition('charge_sheets', 'Charge sheets'),
+                    new TabDefinition('invoices', 'Invoices'),
+                    new TabDefinition('settings', 'Settings', 'edit'),
+                ],
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve', 'send'],
                 actionLabels: [
                     'approve' => 'Approve invoices for sending',
