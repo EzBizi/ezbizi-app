@@ -47,6 +47,7 @@ class JobWorkizExtrasTest extends TestCase
         ]], $workiz['payments']);
         $this->assertSame([[
             'number' => '200023384-2', 'total_minor' => 120000, 'status' => 'Won', 'dated_on' => '2026-09-20',
+            'portal_url' => 'https://wrkz.me/hs8I92', 'estimate_link' => 'https://app.workiz.com/clientPortal/estimate/EST-1:abc',
         ]], $workiz['estimates']);
         $this->assertSame([[
             'who' => 'Chaim Perez', 'starts_at' => '2026-10-01T13:00:00+00:00', 'ends_at' => '2026-10-01T15:30:00+00:00', 'labor_cost_minor' => 7500,
@@ -119,7 +120,8 @@ class JobWorkizExtrasTest extends TestCase
             $record(['type' => 'payment', 'remote_id' => 'PAY-1', 'amount' => '324.70', 'status' => 'succeeded', 'user_remote_id' => 'USR-7',
                 'starts_at' => '2026-10-02 11:00:00', 'payload' => ['type' => 'charge']]);
             $record(['type' => 'estimate', 'remote_id' => 'EST-1', 'amount' => '1200.00', 'status' => 'Won', 'starts_at' => '2026-09-20 09:00:00',
-                'payload' => ['serialId' => '200023384-2', 'declineReason' => 'free text, never copied']]);
+                'payload' => ['serialId' => '200023384-2', 'declineReason' => 'free text, never copied'],
+                'links' => ['portal' => 'https://wrkz.me/hs8I92', 'estimate' => 'https://app.workiz.com/clientPortal/estimate/EST-1:abc', 'proposal' => null]]);
             $record(['type' => 'timesheet', 'remote_id' => 'TS-1', 'amount' => '75.00', 'user_remote_id' => 'USR-7',
                 'starts_at' => '2026-10-01 13:00:00', 'ends_at' => '2026-10-01 15:30:00', 'payload' => []]);
         });

@@ -71,6 +71,9 @@ final class WorkizExtras
                 // Workiz's own word: Won, Declined, Pending, Archived, Unsent, Approved.
                 'status' => $r->status,
                 'dated_on' => $r->starts_at?->toDateString(),
+                // Workiz's client-portal links, where the client approves and pays (Jose, 2026-10-21).
+                'portal_url' => $r->links['portal'] ?? null,
+                'estimate_link' => $r->links['estimate'] ?? null,
             ])->values()->all(),
             'timesheets' => $of('timesheet')->sortBy('starts_at')->map(fn (WorkizRecord $r) => [
                 'who' => $who[$r->franchise_id.'|'.$r->user_remote_id] ?? null,
