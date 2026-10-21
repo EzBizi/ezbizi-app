@@ -226,8 +226,10 @@ class GoogleWorkspaceAuthController extends Controller
 
         $org    = $request->user()->organization;
         $target = $this->workspace->bindTarget($request->user());
-        $type   = (string) $request->query('scope_type', $target['type']);
-        $id     = (string) $request->query('scope_id', $target['id']);
+        // input(), not query(): the disconnect panel sends the scope in the
+        // body beside the authenticator code. A query string still works.
+        $type   = (string) $request->input('scope_type', $target['type']);
+        $id     = (string) $request->input('scope_id', $target['id']);
 
         $this->assertMayActOnScope($request->user(), $type, $id, 'disconnect Google Workspace');
 
@@ -238,6 +240,8 @@ class GoogleWorkspaceAuthController extends Controller
                 'message' => 'This part of the business has not connected a Google Workspace.',
             ]);
         }
+
+        app(\App\Support\Integrations\DisconnectCode::class)->require($request);
 
         $domain = $connection->domain;
 

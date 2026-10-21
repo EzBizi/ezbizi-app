@@ -45,7 +45,7 @@ class JobProjectManagementTest extends TestCase
     public function test_without_financials_no_amounts(): void
     {
         [$alpha, $job] = $this->world();
-        $pm = $this->userWithRole($alpha, 'PM', ['jobs.view', 'jobs.project_management.view']);
+        $pm = $this->userWithRole($alpha, 'PM', ['jobs.view', 'project_management.view']);
 
         $body = $this->signedInAs($pm)->getJson('/api/v1/jobs/project-management')->assertOk();
         $this->assertSame('partial', $body->json('data.0.stage'));
@@ -78,6 +78,12 @@ class JobProjectManagementTest extends TestCase
         $this->assertSame([], $get('stage=full'));
         $this->assertSame([$job], $get('franchise_id='.$alpha['franchise']->id));
         $this->assertSame([], $get('min_days=25'));
+        // Search: number, customer, phone (digits only), Workiz number.
+        $this->assertSame([$job], $get('q=J-1'));
+        $this->assertSame([$job], $get('q=A+Customer'));
+        $this->assertSame([$job], $get('q=(555)%20010'));
+        $this->assertSame([$job], $get('q=7000242'));
+        $this->assertSame([], $get('q=nobody'));
     }
 
     /** @return array{0: array, 1: string} */
@@ -94,7 +100,7 @@ class JobProjectManagementTest extends TestCase
             ]);
             $settings->set('jobs.estimate_aging_statuses', $alpha['org'], ['dpa']);
 
-            $customer = Customer::create(['owning_franchise_id' => $alpha['franchise']->id, 'number' => 'C-1', 'name' => 'A Customer']);
+            $customer = Customer::create(['owning_franchise_id' => $alpha['franchise']->id, 'number' => 'C-1', 'name' => 'A Customer', 'phone' => '+15550101234']);
             $job = Job::create(['franchise_id' => $alpha['franchise']->id, 'customer_id' => $customer->id,
                 'number' => 'J-1', 'title' => 'A job', 'status' => 'dpa', 'currency' => 'USD']);
 
@@ -126,7 +132,7 @@ final class WorkizJobFixture
 {
     public static function mirror(Job $job, array $payload): void
     {
-        $row = \App\Models\WorkizJob::create(['franchise_id' => $job->franchise_id, 'remote_id' => 'JOB-'.$job->number,
+        $row = \App\Models\WorkizJob::create(['franchise_id' => $job->franchise_id, 'remote_id' => 'JOB-'.$job->number, 'serial_id' => '700024283',
             'status' => 'x', 'payload' => $payload, 'synced_at' => now()]);
         $row->job_id = $job->id;
         $row->save();

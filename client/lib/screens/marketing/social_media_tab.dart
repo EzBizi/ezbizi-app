@@ -15,6 +15,7 @@ import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/disconnect_panel.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/list_table.dart';
@@ -699,40 +700,23 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// confirmation" is the argument every one of the five in the app was
   /// shipped on.
   Future<void> _disconnect(_SocialConnection page) async {
-    final go = await showSidePanel<bool>(
+    final done = await confirmDisconnect(
       context,
-      builder: (context) => SidePanel(
-        title: 'Disconnect ${page.displayName}?',
-        subtitle: page.providerLabel,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Keep it'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Disconnect'),
-          ),
-        ],
-        child: Text(
+      api: widget.api,
+      title: 'Disconnect ${page.displayName}?',
+      subtitle: page.providerLabel,
+      explanation:
           'EzBizi forgets this ${page.providerLabel} account and its tokens. '
-          'Anything scheduled to it stops. To revoke EzBizi at '
-          '${page.providerLabel}’s end as well, use that network’s own '
-          'settings.',
-        ),
+          'To revoke EzBizi at ${page.providerLabel}’s end as well, use that '
+          'network’s own settings.',
+      dependentsPath: '/integrations/social/${page.id}/dependents',
+      perform: (code) => widget.api.deleteWithBody(
+        '/social/connections/${page.id}',
+        {'code': code},
       ),
     );
 
-    if (go != true || !mounted) return;
-
-    final response = await widget.api.delete('/social/connections/${page.id}');
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() => _loadError = response.reason);
-      return;
-    }
+    if (done == null || !mounted) return;
 
     await _load();
   }

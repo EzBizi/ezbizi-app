@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/disconnect_panel.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
@@ -305,17 +306,27 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
   }
 
   Future<void> _disconnectWorkspace(WorkspaceLink link) async {
-    final response = await widget.api.delete(
-      '/email/workspace',
-      {
+    // The panel lists what stops and takes the authenticator code the
+    // server requires for every disconnect.
+    final response = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect Google Workspace?',
+      explanation:
+          'EzBizi stops opening the shared inboxes picked from this '
+          'directory until the Workspace is connected again.',
+      dependentsPath:
+          '/integrations/workspace/${link.scopeType}:${link.scopeId}/dependents',
+      perform: (code) => widget.api.deleteWithBody('/email/workspace', {
         'scope_type': link.scopeType,
         'scope_id': link.scopeId,
-      },
+        'code': code,
+      }),
     );
 
-    if (!mounted) return;
+    if (!mounted || response == null) return;
 
-    setState(() => _notice = response.ok ? response.message : response.reason);
+    setState(() => _notice = response.message);
     await _load();
   }
 

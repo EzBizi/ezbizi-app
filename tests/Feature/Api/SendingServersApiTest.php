@@ -6,6 +6,7 @@ use App\Models\SendingIdentity;
 use App\Support\Mail\MailTransport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class SendingServersApiTest extends TestCase
 {
+    use GivesAuthenticatorCodes;
     use BuildsTenants;
     use RefreshDatabase;
 
@@ -194,6 +196,27 @@ class SendingServersApiTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_disconnecting_needs_a_fresh_authenticator_code(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $this->userWithRole($tenant, 'Owner', ['organizations.edit']);
+        $company = '?'.http_build_query($this->scope($tenant));
+
+        $this->signedInAs($admin)->putJson(self::PATH.$company, $this->body())->assertOk();
+
+        $this->signedInAs($admin)->deleteJson(self::PATH.$company)
+            ->assertStatus(422)->assertJsonPath('code', 'no_authenticator');
+
+        $this->authenticatorCode($admin);
+        $this->signedInAs($admin)->deleteJson(self::PATH.$company)
+            ->assertStatus(422)->assertJsonPath('code', 'authenticator_code_required');
+        $this->signedInAs($admin)->deleteJson(self::PATH.$company, ['code' => '000000'])
+            ->assertStatus(422)->assertJsonPath('code', 'authenticator_code_invalid');
+
+        $code = $this->authenticatorCode($admin);
+        $this->signedInAs($admin)->deleteJson(self::PATH.$company, $code)->assertOk();
+    }
+
     public function test_disconnecting_says_what_the_business_falls_back_to(): void
     {
         /*
@@ -217,7 +240,8 @@ class SendingServersApiTest extends TestCase
             'from_name' => 'A-1 Chimney Connecticut',
         ]))->assertOk();
 
-        $this->signedInAs($admin)->deleteJson(self::PATH.$franchise)
+        $code = $this->authenticatorCode($admin);
+        $this->signedInAs($admin)->deleteJson(self::PATH.$franchise, $code)
             ->assertOk()
             ->assertJsonPath('data.connected_here', null)
             // Inherited from the company, not fallen back to EzBizi.

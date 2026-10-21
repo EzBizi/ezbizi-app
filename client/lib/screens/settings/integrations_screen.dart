@@ -382,6 +382,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             : (_mayConnectProvider(open) ? _disconnectConnection : null),
         purpose: _purpose[open],
         onEdit: open == 'workiz' && _maySeeExperimental ? _editWorkiz : null,
+        mayMoveWorkizWeb: _mayConnectProvider('workiz_web'),
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
@@ -591,27 +592,32 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
   /// Disconnect, through the same `DELETE /email/workspace` Email uses.
   /// Answers the server's refusal, or null when it went.
-  Future<String?> _disconnectWorkspace(IntegrationConnection row) async {
-    final response = await widget.api.delete('/email/workspace', {
+  Future<ApiResponse> _disconnectWorkspace(
+    IntegrationConnection row,
+    String code,
+  ) async {
+    final response = await widget.api.deleteWithBody('/email/workspace', {
       'scope_type': row.scopeType,
       'scope_id': row.scopeId,
+      'code': code,
     });
-    if (!response.ok) return response.reason;
-    await _load();
-    return null;
+    if (response.ok) await _load();
+    return response;
   }
 
   /// Disconnect one account through Marketing's own endpoint, the one every
   /// module's Disconnect uses. Answers the refusal, or what is left to remove
   /// on the provider's side, or null.
-  Future<String?> _disconnectConnection(IntegrationConnection row) async {
-    final response = await widget.api.delete('/social/connections/${row.id}');
-    if (!response.ok) return response.reason;
-    await _load();
-    final problems =
-        ((response.body['data'] as Map?)?['problems'] as List<dynamic>?) ??
-        const [];
-    return problems.isEmpty ? null : problems.join(' ');
+  Future<ApiResponse> _disconnectConnection(
+    IntegrationConnection row,
+    String code,
+  ) async {
+    final response = await widget.api.deleteWithBody(
+      '/social/connections/${row.id}',
+      {'code': code},
+    );
+    if (response.ok) await _load();
+    return response;
   }
 
   bool get _maySeeExperimental =>

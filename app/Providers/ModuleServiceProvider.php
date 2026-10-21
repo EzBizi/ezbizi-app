@@ -1154,9 +1154,6 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('work', 'Work', action: 'view'),
                     new TabDefinition('materials', 'Materials'),
-                    // Jose, 2026-10-21: every job waiting on an estimate, as a
-                    // timeline. Its own tick: it shows who paid and who did not.
-                    new TabDefinition('project_management', 'Project Management'),
                 ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
@@ -1314,6 +1311,21 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'A customer accepted an estimate. The usual next step is booking the work.',
                     ),
                 ],
+            ),
+
+            /*
+             * Project Management (Jose, 2026-10-21): every job waiting on an
+             * estimate, as a timeline with its cancel clock. Its own sidebar
+             * module ("This Project Management should be its own tab, not a
+             * sub tab of Jobs"). It reads Jobs' records and events, and writes
+             * nothing of its own.
+             */
+            new ModuleDefinition(
+                key: 'project_management',
+                label: 'Project Management',
+                actions: ['view'],
+                automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
+                auditExemptBecause: 'It changes nothing; every change it shows was audited by Jobs.',
             ),
 
             /*

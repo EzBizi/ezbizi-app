@@ -43,8 +43,8 @@ void main() {
     );
     expect(picker.options.map((o) => o.label), [
       'Every branch',
-      'Main · Brightside Garage Doors',
-      'Main · Brightside Home Services',
+      'Brightside Garage Doors · Main',
+      'Brightside Home Services · Main',
     ]);
   });
 }

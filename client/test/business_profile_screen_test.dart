@@ -98,7 +98,7 @@ void main() {
     expect(pill.label, 'Suspended');
     expect(pill.tone, Tone.bad);
     expect(find.text('Not showing · 1'), findsOneWidget);
-    expect(find.text('Springfield · Brightside'), findsOneWidget);
+    expect(find.text('Brightside · Springfield'), findsOneWidget);
   });
 
   testWidgets('a row is led by its branch, and an unfiled one says so', (
@@ -114,7 +114,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('gbp-row-loc-1')),
-        matching: find.text('Springfield · Brightside'),
+        matching: find.text('Brightside · Springfield'),
       ),
       findsOneWidget,
     );
@@ -267,7 +267,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('gbp-pane-branch')),
-        matching: find.text('Springfield · Brightside'),
+        matching: find.text('Brightside · Springfield'),
       ),
       findsOneWidget,
     );
@@ -301,7 +301,7 @@ void main() {
     final card = find.byKey(const ValueKey('gbp-card-loc-2'));
     expect(card, findsOneWidget);
     expect(
-      find.descendant(of: card, matching: find.text('Northgate · Brightside')),
+      find.descendant(of: card, matching: find.text('Brightside · Northgate')),
       findsOneWidget,
     );
     expect(
@@ -409,7 +409,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(Dialog),
-        matching: find.text('Northgate · Brightside'),
+        matching: find.text('Brightside · Northgate'),
       ),
     );
     await tester.pumpAndSettle();
@@ -421,7 +421,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('gbp-row-loc-1')),
-        matching: find.text('Northgate · Brightside'),
+        matching: find.text('Brightside · Northgate'),
       ),
       findsOneWidget,
     );

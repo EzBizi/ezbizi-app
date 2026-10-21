@@ -105,7 +105,11 @@ void main() {
         },
       ],
       moreProviders: const [
-        {'value': 'workiz_web', 'label': 'Workiz web login'},
+        {
+          'value': 'workiz_web',
+          'label': 'Workiz web login',
+          'permission': 'reports.build',
+        },
       ],
     );
 
@@ -123,16 +127,88 @@ void main() {
     );
     expect(current.data, isNot(contains(WorkizSessionLogin.legacyNote)));
     expect(find.byKey(const ValueKey('disconnect:w-1')), findsOneWidget);
+    // Moved rather than sent again; only the legacy row offers it.
+    expect(find.byKey(const ValueKey('workiz-move:w-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('workiz-move:w-2')), findsNothing);
 
     // A company's login disconnects through the ask-first panel.
     await tester.tap(find.byKey(const ValueKey('disconnect:w-2')));
     await tester.pumpAndSettle();
     expect(sent.where((r) => r.method == 'DELETE'), isEmpty);
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
     await tester.pumpAndSettle();
     expect(sent.where((r) => r.method == 'DELETE').map((r) => r.url.path), [
       '/api/v1/social/connections/w-2',
     ]);
+  });
+
+  // Workiz's moveToCompany: a legacy login moves to a company, its session
+  // kept, from the organization view. A 409 shows the server's sentence.
+  testWidgets('a legacy web login moves to its company with one PUT', (
+    tester,
+  ) async {
+    final sent = <http.Request>[];
+    var conflict = true;
+    await _pump(
+      tester,
+      permissions: const ['reports.build', 'reports.experimental.view'],
+      sent: sent,
+      workizPermission: 'reports.build',
+      connections: const [
+        {
+          'id': 'w-1',
+          'provider': 'workiz_web',
+          'display_name': 'Workiz web login',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'status': 'connected',
+        },
+      ],
+      moreProviders: const [
+        {
+          'value': 'workiz_web',
+          'label': 'Workiz web login',
+          'permission': 'reports.build',
+        },
+      ],
+      put: (request) => conflict
+          ? _json({
+              'message': 'That company already has a Workiz web login.',
+            }, 409)
+          : _json({
+              'data': {'id': 'w-1', 'company_id': 'co-h'},
+            }),
+    );
+
+    await _open(tester, 'workiz');
+    // One company in view, so it is picked and names the button.
+    expect(find.text('Move to Harbor Home Services'), findsOneWidget);
+    expect(find.byKey(const ValueKey('disconnect:w-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-move:w-1')));
+    await tester.pumpAndSettle();
+    final put = sent.lastWhere((r) => r.method == 'PUT');
+    expect(put.url.path, '/api/v1/social/workiz-web/w-1/company');
+    expect(jsonDecode(put.body), {'company_id': 'co-h'});
+    expect(
+      find.text('That company already has a Workiz web login.'),
+      findsOneWidget,
+    );
+
+    conflict = false;
+    int loads() =>
+        sent.where((r) => r.url.path.endsWith('/social/connections')).length;
+    final before = loads();
+    await tester.tap(find.byKey(const ValueKey('workiz-move:w-1')));
+    await tester.pumpAndSettle();
+    expect(sent.where((r) => r.method == 'PUT'), hasLength(2));
+    expect(loads(), greaterThan(before));
+    expect(
+      find.text('That company already has a Workiz web login.'),
+      findsNothing,
+    );
   });
 
   testWidgets('reports.build opens the Workiz form and not the Airtable one', (
@@ -265,6 +341,7 @@ Future<void> _pump(
   List<Map<String, dynamic>> moreProviders = const [],
   List<http.Request>? sent,
   String? workizPermission,
+  http.Response Function(http.Request)? put,
 }) async {
   tester.view.physicalSize = const Size(1280, 2000);
   tester.view.devicePixelRatio = 1.0;
@@ -278,6 +355,8 @@ Future<void> _pump(
       if (request.method == 'DELETE') {
         return _json({'data': <String, dynamic>{}});
       }
+
+      if (request.method == 'PUT' && put != null) return put(request);
 
       if (path.endsWith('/me')) {
         return _json({

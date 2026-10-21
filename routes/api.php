@@ -2200,6 +2200,9 @@ Route::prefix('v1')
         Route::post('social/connections/{connection}/instagram-comments/{comment}/replies', [InstagramCommentsController::class, 'reply']);
         Route::post('social/connections/{connection}/instagram-comments/{comment}/hide', [InstagramCommentsController::class, 'hide']);
         Route::delete('social/providers/{provider}/connections', [SocialConnectionsController::class, 'destroyProvider']);
+        // What stops working if a connection is disconnected (the disconnect panel).
+        Route::get('integrations/{kind}/{id}/dependents', [\App\Http\Controllers\Api\IntegrationDependentsController::class, 'show'])
+            ->where('kind', 'social|phone|workspace');
         Route::post('social/bluesky/connect', [BlueskyConnectController::class, 'store']);
         Route::post('social/{network}/start', [SocialAuthController::class, 'start'])
             ->where('network', SocialProvider::oauthRoutePattern());

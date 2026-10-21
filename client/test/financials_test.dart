@@ -183,7 +183,8 @@ Future<List<http.Request>> _pump(
             'email': 'jose@example.com',
             'role': {'name': 'Administrator'},
             'has_avatar': false,
-            'preferences': <String, dynamic>{},
+            // As the server sends an unset widths preference: [] (empty PHP array).
+            'preferences': <String, dynamic>{'financials.column_widths': []},
             'organization': {
               'id': 'org-1',
               'name': 'Everdoors',

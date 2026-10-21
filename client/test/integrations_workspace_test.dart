@@ -50,13 +50,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     // Asked once more since UI queue 110.
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
     await tester.pumpAndSettle();
 
     expect(
       calls,
       contains(
-        'DELETE /api/v1/email/workspace?scope_type=company&scope_id=co-a1',
+        'DELETE /api/v1/email/workspace',
       ),
     );
   });

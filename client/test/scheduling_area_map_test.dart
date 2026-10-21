@@ -235,7 +235,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('area-map-branch')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Branch fr-2 · Brightside').last);
+    await tester.tap(find.text('Brightside · Branch fr-2').last);
     await tester.pumpAndSettle();
 
     expect(sent('GET', '/scheduling/areas-map').last.url.queryParameters, {

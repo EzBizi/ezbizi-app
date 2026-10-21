@@ -8,8 +8,8 @@ import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import 'search_picker.dart';
-import 'side_panel.dart';
 import 'status_pill.dart';
+import 'disconnect_panel.dart';
 
 /// The Workiz web login: a signed-in Workiz session, handed to EzBizi through
 /// the EzBizi browser extension (UI queue 120, option 1 and phone 4).
@@ -21,7 +21,8 @@ import 'status_pill.dart';
 /// (good for 30 minutes), paste it into the extension in the browser that is
 /// signed in to Workiz, and wait — this polls the connections every 5 seconds
 /// while the link is live and turns green on its own. Under it, every Workiz
-/// account the login reaches, each filed on one of that company's branches.
+/// account the login reaches, each on the branch the server read from the
+/// account's own name ("auto"), which Change overrides.
 ///
 /// Every call tolerates a server without the routes: a 404 says "Not available
 /// on this server yet" rather than an error.
@@ -52,10 +53,16 @@ class WorkizSessionLogin extends StatefulWidget {
   /// The hint in a branch view, and on a 403 that sends no sentence.
   static const branchHint = 'Switch to the company view to change it.';
 
-  /// The note on a login sent before logins were per company.
-  static const legacyNote =
-      'Sent before logins were per company. Send it again from the '
-      "company's view, then disconnect this one.";
+  /// The note on a login sent before logins were per company; [WorkizWebMove]
+  /// beside it moves the login to its company, session kept.
+  static const legacyNote = 'Sent before logins were per company.';
+
+  /// Under the accounts table: what the login reaches, and no more. The
+  /// server keeps one login per EzBizi company (the link reuses the
+  /// company's row; a move onto a company that has one answers 409).
+  static const reach =
+      'This login reads the Workiz accounts listed above. Another Workiz '
+      'company is connected from its own EzBizi company.';
 
   /// The branches an account can be filed on: the current view's, limited
   /// to the login's company.
@@ -132,6 +139,9 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   bool _again = false;
 
   List<Map<String, dynamic>>? _accounts;
+
+  /// Accounts whose branch picker is open (Change pressed).
+  final Set<String> _changing = {};
   Timer? _ticker;
   bool _disconnecting = false;
 
@@ -333,6 +343,9 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     setState(() {
       _failure = null;
       account['franchise_id'] = branch;
+      // A branch picked here is an override of the one read from the name.
+      account['mapped'] = branch != null;
+      _changing.remove('${account['account']}');
     });
   }
 
@@ -341,36 +354,24 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   Future<void> _disconnect() async {
     final id = _row?['id'];
     if (id == null) return;
-    final go = await showSidePanel<bool>(
-      context,
-      builder: (c) => SidePanel(
-        title: 'Disconnect',
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(c).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const ValueKey('workiz-session-disconnect-confirm'),
-            onPressed: () => Navigator.of(c).pop(true),
-            child: const Text('Disconnect'),
-          ),
-        ],
-        child: const Text(WorkizSessionLogin.disconnectQuestion),
-      ),
-    );
-    if (go != true || !mounted) return;
     setState(() {
       _disconnecting = true;
       _failure = null;
     });
-    final response = await widget.api.delete('/social/connections/$id');
+    // The panel lists what stops and takes the authenticator code the
+    // server requires for every disconnect.
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect',
+      explanation: WorkizSessionLogin.disconnectQuestion,
+      dependentsPath: '/integrations/social/$id/dependents',
+      perform: (code) =>
+          widget.api.deleteWithBody('/social/connections/$id', {'code': code}),
+    );
     if (!mounted) return;
-    if (!response.ok) {
-      setState(() {
-        _disconnecting = false;
-        _failure = response.message;
-      });
+    if (done == null) {
+      setState(() => _disconnecting = false);
       return;
     }
     _ticker?.cancel();
@@ -709,6 +710,16 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
       ))
         SearchOption<String>(value: b.id, label: b.label),
     ];
+    // The branch an account already sits on may be switched off, so its name
+    // is looked up among every branch, not only the pickable ones.
+    final labels = {
+      for (final b in branchOptions(
+        widget.branches,
+        widget.companies,
+        activeOnly: false,
+      ))
+        b.id: b.label,
+    };
 
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -743,19 +754,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: SearchPickerField<String>(
-                      key: ValueKey(
-                        'workiz-session-branch:${account['account']}',
-                      ),
-                      value: account['franchise_id'] as String?,
-                      options: options,
-                      hint: 'Choose a branch',
-                      isDense: true,
-                      errorText: account['franchise_id'] == null ? '' : null,
-                      onChanged: (branch) => _file(account, branch),
-                    ),
-                  ),
+                  Expanded(child: _branchCell(account, options, labels, small)),
                 ],
               ),
             ),
@@ -766,6 +765,188 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
                 "Payments from an account with no branch aren't filed "
                 'anywhere.',
                 style: small,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              WorkizSessionLogin.reach,
+              key: const ValueKey('workiz-session-reach'),
+              style: small,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The branch an account's payments are filed on. The server fills it from
+  /// the account's own name ("auto"); Change opens the picker to override it.
+  /// No branch at all shows the picker, highlighted.
+  Widget _branchCell(
+    Map<String, dynamic> account,
+    List<SearchOption<String>> options,
+    Map<String, String> labels,
+    TextStyle? small,
+  ) {
+    final id = '${account['account']}';
+    final branch = account['franchise_id'] as String?;
+
+    if (branch == null || _changing.contains(id)) {
+      return SearchPickerField<String>(
+        key: ValueKey('workiz-session-branch:$id'),
+        value: branch,
+        options: options,
+        hint: 'Choose a branch',
+        isDense: true,
+        errorText: branch == null ? '' : null,
+        onChanged: (picked) {
+          if (picked == branch) {
+            setState(() => _changing.remove(id));
+          } else {
+            _file(account, picked);
+          }
+        },
+      );
+    }
+
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 6,
+      children: [
+        Text(
+          '→ ${labels[branch] ?? 'A branch outside this view'}',
+          key: ValueKey('workiz-session-branch-name:$id'),
+        ),
+        if (account['mapped'] != true)
+          Text('auto', key: ValueKey('workiz-session-auto:$id'), style: small),
+        TextButton(
+          key: ValueKey('workiz-session-change:$id'),
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+          ),
+          onPressed: () => setState(() => _changing.add(id)),
+          child: const Text('Change'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Moves a Workiz web login sent before logins were per company (an
+/// organization-scoped row) to a company, its session kept:
+/// `PUT /social/workiz-web/{id}/company {company_id}`. The server answers it
+/// in the organization view only; a 409 (that company already has a login)
+/// shows its sentence here. Success calls [onMoved] so the page reloads.
+class WorkizWebMove extends StatefulWidget {
+  const WorkizWebMove({
+    super.key,
+    required this.api,
+    required this.connectionId,
+    required this.companies,
+    this.onMoved,
+  });
+
+  final ApiClient api;
+  final String connectionId;
+
+  /// The companies in view; only the active ones are offered.
+  final List<CompanySummary> companies;
+
+  final Future<void> Function()? onMoved;
+
+  @override
+  State<WorkizWebMove> createState() => _WorkizWebMoveState();
+}
+
+class _WorkizWebMoveState extends State<WorkizWebMove> {
+  late final List<CompanySummary> _pickable = [
+    for (final c in widget.companies)
+      if (c.isActive) c,
+  ];
+  late String? _picked = _pickable.length == 1 ? _pickable.first.id : null;
+  bool _moving = false;
+  String? _failure;
+
+  Future<void> _move() async {
+    final company = _picked;
+    if (company == null) return;
+    setState(() {
+      _moving = true;
+      _failure = null;
+    });
+    final response = await widget.api.put(
+      '/social/workiz-web/${widget.connectionId}/company',
+      {'company_id': company},
+    );
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _moving = false;
+        _failure = response.message;
+      });
+      return;
+    }
+    setState(() => _moving = false);
+    await widget.onMoved?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final id = widget.connectionId;
+    final name = _pickable.where((c) => c.id == _picked).firstOrNull?.name;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 240,
+                child: SearchPickerField<String>(
+                  key: ValueKey('workiz-move-company:$id'),
+                  value: _picked,
+                  hint: 'Choose a company',
+                  isDense: true,
+                  options: [
+                    for (final c in _pickable)
+                      SearchOption<String>(value: c.id, label: c.name),
+                  ],
+                  onChanged: (company) => setState(() {
+                    _picked = company;
+                    _failure = null;
+                  }),
+                ),
+              ),
+              FilledButton(
+                key: ValueKey('workiz-move:$id'),
+                onPressed: name == null || _moving ? null : _move,
+                child: Text(
+                  _moving
+                      ? 'Moving…'
+                      : name == null
+                      ? 'Move to a company'
+                      : 'Move to $name',
+                ),
+              ),
+            ],
+          ),
+          if (_failure != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _failure!,
+                key: ValueKey('workiz-move-failure:$id'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ),
         ],

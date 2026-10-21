@@ -1012,13 +1012,13 @@ String? _name(Object? record) {
   return name.isEmpty ? null : name;
 }
 
-/// "Branch · Company" for a listing filed under a branch, the order every
+/// "Company · Branch" for a listing filed under a branch, the order every
 /// branch picker uses (Jose, 2026-10-21); null when it is not filed.
 String? _branchName(Map<String, dynamic> l) {
   final branch = _name(l['franchise']);
   if (branch == null) return null;
   final company = _name(l['company']);
-  return company == null ? branch : '$branch · $company';
+  return company == null ? branch : '$company · $branch';
 }
 
 /// What the row is called: its branch, or Google's own name when it has none.

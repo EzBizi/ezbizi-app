@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\SocialConnection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /**
@@ -16,6 +17,7 @@ use Tests\TestCase;
  */
 class SocialConnectionsApiTest extends TestCase
 {
+    use GivesAuthenticatorCodes;
     use BuildsTenants;
     use RefreshDatabase;
 
@@ -196,8 +198,9 @@ class SocialConnectionsApiTest extends TestCase
         $t   = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
+        $code = $this->authenticatorCode($t['admin']);
         $this->signedInAs($t['admin'])
-            ->deleteJson(self::ENDPOINT.'/'.$row->getKey())
+            ->deleteJson(self::ENDPOINT.'/'.$row->getKey(), $code)
             ->assertOk();
 
         $this->inTenant($t['org'], function () use ($row) {
