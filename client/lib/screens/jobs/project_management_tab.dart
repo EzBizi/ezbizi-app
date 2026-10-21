@@ -15,7 +15,8 @@ import '../../widgets/status_pill.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
 
-/// Jobs › Project Management (UI queue: option 1, phone 4; Jose 2026-10-21).
+/// Project Management (UI queue: option 1, phone 4; Jose 2026-10-21), its own
+/// module since the same day; drawn by project_management_screen.dart.
 ///
 /// Every job in a status the organization watches (`meta.watched`, the
 /// setting "Statuses that wait on an estimate"), closest to its cancel first,
