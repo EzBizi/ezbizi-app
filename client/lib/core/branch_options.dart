@@ -1,12 +1,12 @@
 import 'session.dart';
 
-/// One branch as a picker offers it: "Connecticut · Everdoors".
+/// One branch as a picker offers it: "Everdoors · Connecticut".
 class BranchOption {
   const BranchOption({required this.branch, required this.label});
 
   final FranchiseSummary branch;
 
-  /// "Branch · Company", or the branch name alone when its company is not
+  /// "Company · Branch", or the branch name alone when its company is not
   /// among the companies given.
   final String label;
 
@@ -17,7 +17,8 @@ class BranchOption {
 ///
 /// Jose, 2026-10-21, on a picker reading "Main" twenty times and
 /// "Connecticut" seven: a branch name alone does not say which one it is.
-/// Every branch picker labels "Branch · Company" and sorts by company, then
+/// Every branch picker labels "Company · Branch" (Jose, 2026-10-21: "like
+/// a-1chimney texas") and sorts by company, then
 /// branch, so a company's branches sit together.
 ///
 /// [companyId] limits the list to that company and its Sub Companies. Only
@@ -48,7 +49,7 @@ List<BranchOption> branchOptions(
           company: byId[f.companyId]?.name,
           option: BranchOption(
             branch: f,
-            label: [f.name, ?byId[f.companyId]?.name].join(' · '),
+            label: [?byId[f.companyId]?.name, f.name].join(' · '),
           ),
         ),
   ];
