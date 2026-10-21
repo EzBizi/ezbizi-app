@@ -1324,6 +1324,17 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'project_management',
                 label: 'Project Management',
                 actions: ['view'],
+                /*
+                 * Dashboard | Pending Jobs | Settings (UI queue 127). All three
+                 * are the one grant the module always was: naming `view`
+                 * mints no permission, so no role gains or loses a tab, and
+                 * Settings' writes stay the settings API's to refuse.
+                 */
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
+                    new TabDefinition('pending', 'Pending Jobs', action: 'view'),
+                    new TabDefinition('settings', 'Settings', action: 'view'),
+                ],
                 automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
                 auditExemptBecause: 'It changes nothing; every change it shows was audited by Jobs.',
             ),

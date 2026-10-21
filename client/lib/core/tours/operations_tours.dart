@@ -796,16 +796,52 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management ───────────────────────────────────────────────
-  // Its own module since 2026-10-21; the anchors kept their Jobs names.
+  // Its own module since 2026-10-21; Dashboard, Pending Jobs and Settings
+  // since UI queue 127. Pending Jobs' anchors kept their Jobs names.
   'project_management': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-dash-range',
+        title: 'Dates',
+        body: 'Today, Yesterday, This week, This month, or dates you choose.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-tiles',
+        title: 'What happened',
+        body:
+            'Payments, status changes, tag changes, cancellations and '
+            'deadlines due in those dates. Click a number for its jobs.',
+        since: 2,
+      ),
+    ],
+  ),
+  'project_management/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-settings-watched',
+        title: 'Watched statuses',
+        body: 'Jobs in these statuses show in Pending Jobs.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-settings-cancelled',
+        title: 'Cancelled',
+        body: 'A job moving into one of these counts as cancelled.',
+      ),
+    ],
+  ),
+  'project_management/Pending Jobs': Tour(
     version: 1,
     steps: [
       TourStep(
         anchor: 'tour-jobs-pm-stages',
         title: 'Stage',
         body:
-            'Waiting, Partly paid, Paid in full or Closed, each with how many '
-            'jobs are in it.',
+            'Recently paid, the jobs with a payment in the dates you choose. '
+            'Then Waiting, Partly paid, Paid in full or Closed, each with how '
+            'many jobs are in it.',
       ),
       TourStep(
         anchor: 'tour-jobs-pm-filters',
