@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AirtableRecord;
 use App\Models\FinancialSource;
+use App\Models\FinancialTable;
 use App\Support\Audit\AuditLogger;
 use App\Support\Financials\AirtableMirror;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -119,9 +123,37 @@ class FinancialSourcesController extends Controller
         return $input;
     }
 
+    /**
+     * "Copy now": the organization's Airtable copy is refreshed right after
+     * this answers, then its mirrors. At most once every two minutes.
+     */
+    public function copyNow(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('financials.edit'), Response::HTTP_FORBIDDEN, 'Your role cannot change Financials settings.');
+        $org = $this->tenant->idOrFail();
+        if (! Cache::add("financials-copy-now:{$org}", true, 120)) {
+            throw ValidationException::withMessages(['copy' => 'A copy started less than two minutes ago. Give it a moment.']);
+        }
+        $this->audit->log('financials.copy_requested', metadata: [], actor: $request->user());
+        dispatch(function () use ($org) {
+            Artisan::call('ezbizi:airtable-snapshot', ['--organization' => $org]);
+            Artisan::call('ezbizi:financials-airtable-refresh');
+        })->afterResponse();
+
+        return response()->json(['data' => ['message' => 'Copying from Airtable now. Refresh in a minute to see it.']], 202);
+    }
+
     private function shape(FinancialSource $s): array
     {
+        $cut = FinancialTable::query()->where('source_base_id', $s->base_id)->where('source_table_id', $s->table_id)->whereNotNull('cut_over_at')->exists();
+        $copied = AirtableRecord::query()->where('base_id', $s->base_id)->where('table_id', $s->table_id)->max('fetched_at');
+
         return [
+            // mirror: kept in step with Airtable; native: cut over to EzBizi.
+            'kind' => $cut ? 'native' : 'mirror',
+            'last_copied_at' => $cut || $copied === null ? null : now()->parse($copied)->toIso8601String(),
+            // This place's own rows (a shared table's filter applied).
+            'rows' => $s->rows()->count(),
             'id' => $s->id,
             'base_id' => $s->base_id,
             'table_id' => $s->table_id,
