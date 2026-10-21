@@ -220,13 +220,7 @@ final class RingCentralLeadCalls
                 // 2026-10-16: menu hang-ups excluded, voicemails included).
                 if (($outcome === self::MISSED || $outcome === self::VOICEMAIL)
                     && $times[$i]->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
-                    $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
-                        'phone' => $lead->phone,
-                        'contact_name' => $lead->contact_name,
-                        'line' => $line,
-                        'occurred_at' => $times[$i]->toIso8601String(),
-                        'source' => $lead->source,
-                    ]]);
+                    $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $times[$i])]);
                 }
             });
             $filed++;
@@ -282,13 +276,7 @@ final class RingCentralLeadCalls
         // Held back while it was live: told now that it ended unanswered.
         if ($was === self::WORDS[self::IN_PROGRESS] && ($outcome === self::MISSED || $outcome === self::VOICEMAIL)
             && $at->gte(CarbonImmutable::now()->subMinutes(self::ANNOUNCE_WITHIN_MINUTES))) {
-            $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => [
-                'phone' => $lead->phone,
-                'contact_name' => $lead->contact_name,
-                'line' => (string) $lead->category,
-                'occurred_at' => $at->toIso8601String(),
-                'source' => $lead->source,
-            ]]);
+            $this->events->emitAfterCommit('lead.missed_call', $lead, ['after' => self::missed($lead, self::line($call, $lineNames), $at)]);
         }
     }
 
@@ -423,7 +411,30 @@ final class RingCentralLeadCalls
         ];
     }
 
-    /** @param  array<string, mixed>  $staff  names whose phones rang, as keys */
+    /**
+     * What a missed-call alert says: the line they dialled by its name (its
+     * number when it has none) and who called, when the business knows them
+     * (Automations, 2026-10-20: "Missed Call: (219) 670-6463 · NJ - GMB").
+     *
+     * @param  array{line_number: ?string, line_name: ?string}  $line
+     * @return array<string, ?string>
+     */
+    private static function missed(Lead $lead, array $line, CarbonImmutable $at): array
+    {
+        $name = $lead->contact_name;
+        if (($name === null || $name === '') && $lead->phone !== null) {
+            $name = app(\App\Support\Phone\NumberNames::class)->for([$lead->phone])[$lead->phone]['name'] ?? null;
+        }
+
+        return [
+            'phone' => $lead->phone,
+            'contact_name' => $name !== '' ? $name : null,
+            'line' => (string) ($line['line_name'] ?? $line['line_number'] ?? $lead->category ?? ''),
+            'occurred_at' => $at->toIso8601String(),
+            'source' => $lead->source,
+        ];
+    }
+
     /** @param  array<string, mixed>  $own  our own lines' ten digits, as keys */
     public static function isLeadCall(array $call, array $own): bool
     {
