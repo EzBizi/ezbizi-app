@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Change a Workiz job from EzBizi: reschedule it, assign or unassign a
@@ -294,6 +295,107 @@ final class WorkizJobWriter
         } finally {
             $lock->release();
         }
+    }
+
+    /** Workiz's own words for a status (v2 lists exactly these, measured 2026-10-20). */
+    public const STATUSES = ['Submitted', 'In progress', 'Pending', 'done pending approval', 'Canceled', 'Done'];
+
+    /**
+     * Move a job to a status, and a sub-status by its name in that account
+     * (GET /jobSubStatus). Workiz's refusal is thrown as it reads: "Must
+     * assign technician to perform this action" for a Done Pending Approval
+     * with no tech, a Canceled with no sub-status (measured on NY 900018655).
+     */
+    public function setStatus(WorkizJob $job, string $status, ?string $subStatusName = null): WorkizJob
+    {
+        [$connection, $id] = $this->v2Job($job);
+        $word = collect(self::STATUSES)->first(fn (string $s) => strcasecmp($s, trim($status)) === 0)
+            ?? throw new RuntimeException('Workiz has no status "'.$status.'". It takes: '.implode(', ', self::STATUSES).'.');
+        $body = ['status' => $word];
+
+        if ($subStatusName !== null && trim($subStatusName) !== '') {
+            $body['subStatusId'] = $this->named($connection, '/jobSubStatus', $subStatusName, 'sub-status');
+        }
+
+        return $this->put($connection, $job, $id, $body, 'workiz.job_status_set', $body + ['sub_status' => $subStatusName]);
+    }
+
+    /**
+     * Add tags by name, keeping the job's own: Workiz's PUT replaces the whole
+     * list. Each name is the account's own tag (GET /tags), matched without
+     * case and spacing, or by one close spelling, since accounts spell them
+     * differently ("DEPOSIT RECIEVED" on NY). A tag the account lacks is
+     * refused, never created.
+     *
+     * @param  list<string>  $names
+     */
+    public function addTags(WorkizJob $job, array $names): WorkizJob
+    {
+        [$connection, $id] = $this->v2Job($job);
+        $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
+
+        if ($read['refused'] !== null) {
+            throw new RuntimeException('Workiz did not answer for the job: '.$read['refused']);
+        }
+
+        $current = $read['data']['data'] ?? $read['data'];
+        $current = is_array($current) && array_is_list($current) ? ($current[0] ?? []) : (array) $current;
+        $ids = collect($current['tags'] ?? [])->pluck('id')->filter()->values()->all();
+
+        foreach ($names as $name) {
+            $ids[] = $this->named($connection, '/tags', $name, 'tag');
+        }
+
+        return $this->put($connection, $job, $id, ['tags' => array_values(array_unique($ids))], 'workiz.job_tags_added', ['tags' => $names]);
+    }
+
+    /** @return array{0: SocialConnection, 1: string} */
+    private function v2Job(WorkizJob $job): array
+    {
+        $connection = $this->connection($job->franchise_id);
+        $id = $job->payload['v2']['id'] ?? null;
+
+        return match (true) {
+            $connection === null => throw new RuntimeException('This branch has no Workiz connection.'),
+            ! WorkizV2::uses($connection) => throw new RuntimeException('This branch is not on its Workiz v2 key.'),
+            ! is_string($id) || $id === '' => throw new RuntimeException('EzBizi has not read this job through Workiz v2 yet; try again after the next sync.'),
+            default => [$connection, $id],
+        };
+    }
+
+    /** The account's own id for a sub-status or tag named $name. */
+    private function named(SocialConnection $connection, string $path, string $name, string $what): string
+    {
+        $read = WorkizV2::send($connection, 'GET', $path);
+
+        if ($read['refused'] !== null) {
+            throw new RuntimeException('Workiz did not list its '.$what.'s: '.$read['refused']);
+        }
+
+        $norm = fn ($v) => strtoupper((string) preg_replace('/\s+/', ' ', trim((string) $v)));
+        $rows = collect($read['data']['data'] ?? $read['data'] ?? [])->filter(fn ($r) => is_array($r) && isset($r['id'], $r['name']));
+        $hit = $rows->first(fn ($r) => $norm($r['name']) === $norm($name));
+        $close = $rows->filter(fn ($r) => levenshtein($norm($r['name']), $norm($name)) <= 2);
+        $hit ??= $close->count() === 1 ? $close->first() : null;
+
+        return (string) ($hit['id'] ?? throw new RuntimeException('Workiz has no '.$what.' "'.$name.'" in this account.'));
+    }
+
+    private function put(SocialConnection $connection, WorkizJob $job, string $id, array $body, string $action, array $metadata): WorkizJob
+    {
+        $sent = WorkizV2::send($connection, 'PUT', '/jobs/'.rawurlencode($id), $body);
+
+        if ($sent['refused'] !== null) {
+            throw new RuntimeException($sent['refused']);
+        }
+
+        $this->audit->log($action, $job, metadata: $metadata);
+
+        if (is_array($sent['data'])) {
+            WorkizJob::land($connection, WorkizV2::job($sent['data']['data'][0] ?? $sent['data']['data'] ?? $sent['data']));
+        }
+
+        return $job->fresh();
     }
 
     private function connection(string $franchiseId): ?SocialConnection

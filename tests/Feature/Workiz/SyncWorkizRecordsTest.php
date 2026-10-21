@@ -143,6 +143,35 @@ class SyncWorkizRecordsTest extends TestCase
         $this->assertSame($job->id, $this->record($tenant, 'payment')->job_id);
     }
 
+    /**
+     * Automations, 2026-10-21: a payment new to the mirror raises
+     * job.payment_received on its EzBizi job, once. One dated weeks back is
+     * history arriving and raises nothing.
+     */
+    public function test_a_new_payment_raises_payment_received_once(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $job = $this->inTenant($tenant['org'], function () use ($connection) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+            $job = Job::create(['franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep', 'status' => 'Submitted', 'currency' => 'USD']);
+            WorkizJob::land($connection, WorkizV2::job(array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'totalPrice' => 500, 'status' => 'done pending approval'])));
+            WorkizJob::query()->update(['job_id' => $job->id]);
+
+            return $job;
+        });
+        $recent = array_replace(self::RECORDS['payments'], ['id' => 'PAY-NEW', 'amount' => 200, 'date' => now()->subHour()->format('Y-m-d H:i:s')]);
+        $old = array_replace(self::RECORDS['payments'], ['id' => 'PAY-OLD', 'amount' => 100, 'date' => now()->subMonth()->format('Y-m-d H:i:s')]);
+        $this->fake(['payments' => [$recent, $old]]);
+
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment']])->assertSuccessful();
+        $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment']])->assertSuccessful();
+
+        $events = $this->inTenant($tenant['org'], fn () => \App\Models\AutomationEvent::query()->where('event_key', 'job.payment_received')->get());
+        $this->assertCount(1, $events);
+        $this->assertSame($job->id, $events[0]->subject_id);
+        $this->assertEquals(['amount' => 200, 'paid_total' => 300, 'job_total' => 500, 'fully_paid' => false, 'status' => 'done pending approval'], $events[0]->payload['after']);
+    }
+
     /** A second run asks only for what changed since the newest it holds, less two days; --full asks from 2023. */
     public function test_a_second_run_reads_only_what_changed(): void
     {
