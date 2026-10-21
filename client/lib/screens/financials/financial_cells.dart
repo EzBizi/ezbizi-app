@@ -70,7 +70,8 @@ String formatCell(Map field, dynamic v) {
   final options = field['options'] as Map? ?? const {};
   switch (field['type']) {
     case 'currency':
-      final n = (v as num?) ?? num.tryParse('$v');
+      // Text in a money column (an Airtable "#ERROR!") shows as itself.
+      final n = v is num ? v : num.tryParse('$v');
       if (n == null) return '$v';
       final p = (options['precision'] as int?) ?? 2;
       final s = n.abs().toStringAsFixed(p);
@@ -87,7 +88,8 @@ String formatCell(Map field, dynamic v) {
     case 'multi_select':
       return (v as List).join(', ');
     case 'rating':
-      return '★' * ((v as num).toInt());
+      final stars = v is num ? v : num.tryParse('$v');
+      return stars == null ? '$v' : '★' * stars.toInt();
     case 'formula':
       if (v is double) {
         return v == v.roundToDouble()
