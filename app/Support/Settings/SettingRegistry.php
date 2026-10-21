@@ -1625,8 +1625,8 @@ class SettingRegistry
                 label: 'Earned per',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'year',
-                options: ['week', 'month', 'year'],
-                optionLabels: ['week' => 'Week', 'month' => 'Month', 'year' => 'Year'],
+                options: ['week', 'month', 'quarter', 'year'],
+                optionLabels: ['week' => 'Week', 'month' => 'Month', 'quarter' => 'Quarter (3 months)', 'year' => 'Year'],
                 allowedScopes: $orgOnly,
                 // Six days a year and half a day a month are the same allowance
                 // said two ways, and EzBizi converting between them would put
@@ -1636,22 +1636,25 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.waiting',
-                label: 'Can be used after',
+                // The number only: 90 here with Months below is seven and a half
+                // years (Jose's screenshot, 2026-10-21), so both labels say so.
+                label: 'Can be used after (number — its unit is the next setting)',
                 type: SettingDefinition::TYPE_INT,
                 default: 0,
                 allowedScopes: $orgOnly,
-                help: 'Counted from the day somebody started. Zero means it can be used from their first day.',
+                help: 'Counted from the day somebody started, in the unit set just below. Zero means it can be used from their first day. Check the unit: 90 with Months is seven and a half years.',
             ),
             new SettingDefinition(
                 key: 'pto.waiting_unit',
-                label: 'Counted in',
+                label: 'UNIT of "Can be used after": days, weeks, months or years',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'day',
-                options: ['day', 'week', 'month', 'year'],
+                options: ['day', 'week', 'month', 'quarter', 'year'],
                 optionLabels: [
                     'day' => 'Days',
                     'week' => 'Weeks',
                     'month' => 'Months',
+                    'quarter' => 'Quarters (3 months)',
                     'year' => 'Years',
                 ],
                 allowedScopes: $orgOnly,

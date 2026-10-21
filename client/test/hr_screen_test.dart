@@ -872,6 +872,43 @@ void main() {
     expect(tester.widget<ButtonStyleButton>(button).onPressed, isNull);
   });
 
+  // Jose, 2026-10-21: days already used, so a balance starts right.
+  testWidgets('time off shows the balance and the days recorded as used', (
+    tester,
+  ) async {
+    final writes = <(String, String, Map<String, dynamic>?)>[];
+    await _pump(
+      tester,
+      _handler(
+        onDetail: (method, path, body) => writes.add((method, path, body)),
+        pto: {
+          'allowance': 2,
+          'allowance_period': 'quarter',
+          'eligible': true,
+          'eligible_from': null,
+          'earned': 6,
+          'used': 2.5,
+          'balance': 3.5,
+        },
+        ptoUsed: [
+          {'id': 'p-1', 'days': 1.5, 'used_on': null, 'note': 'Before'},
+        ],
+      ),
+    );
+
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Time off'));
+
+    expect(find.text('2 days a quarter'), findsOneWidget);
+    expect(
+      find.text('3.5 days left: 6 days earned, 2.5 days used.'),
+      findsOneWidget,
+    );
+    expect(find.text('1.5 days used'), findsOneWidget);
+    expect(find.text('before EzBizi · Before'), findsOneWidget);
+  });
+
   testWidgets('resetting an authenticator asks first, then posts', (
     tester,
   ) async {
@@ -1743,6 +1780,8 @@ MockClientHandler _handler({
   int scopeOptionsStatus = 200,
   int revokeStatus = 200,
   void Function(Map<String, dynamic> body)? onDeletePerson,
+  Map<String, Object?>? pto,
+  List<Map<String, Object?>> ptoUsed = const [],
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1881,7 +1920,8 @@ MockClientHandler _handler({
           'gender': null,
           'date_of_birth': null,
           'started_on': null,
-          'pto': null,
+          'pto': pto,
+          'pto_used': ptoUsed,
           'emergency_contacts': <Map<String, Object?>>[],
           'notes': notes,
           'equipment': equipment,

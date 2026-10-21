@@ -95,9 +95,8 @@ class _PtoTabState extends State<PtoTab> {
         // The CARD's width rather than the window's — the same reason the
         // Training card asks: this is a pane inside a shell, and a window
         // measurement would put the desktop layout into a narrow column.
-        builder: (context, constraints) => constraints.maxWidth < 600
-            ? _phone(context)
-            : _desktop(context),
+        builder: (context, constraints) =>
+            constraints.maxWidth < 600 ? _phone(context) : _desktop(context),
       ),
     );
   }
@@ -234,6 +233,7 @@ class _PtoTabState extends State<PtoTab> {
     final period = switch (_policy['allowance_period']) {
       'week' => 'a week',
       'month' => 'a month',
+      'quarter' => 'a quarter',
       _ => 'a year',
     };
 
@@ -250,6 +250,7 @@ class _PtoTabState extends State<PtoTab> {
     final word = switch (_policy['waiting_unit']) {
       'week' => 'week',
       'month' => 'month',
+      'quarter' => 'quarter',
       'year' => 'year',
       _ => 'day',
     };

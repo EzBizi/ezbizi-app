@@ -1168,8 +1168,17 @@ class _PersonRecordState extends State<_PersonRecord> {
     final period = switch (pto['allowance_period']) {
       'week' => 'a week',
       'month' => 'a month',
+      'quarter' => 'a quarter',
       _ => 'a year',
     };
+    String days(num? n) {
+      final v = (n ?? 0).toDouble();
+      final text = v == v.roundToDouble()
+          ? v.toInt().toString()
+          : v.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '');
+      return v == 1 ? '1 day' : '$text days';
+    }
+
     final from = DateTime.tryParse(pto['eligible_from']?.toString() ?? '');
 
     return Column(
@@ -1189,6 +1198,17 @@ class _PersonRecordState extends State<_PersonRecord> {
               : 'They can use it from ${widget.formats.formatDate(from)}.',
           style: theme.textTheme.bodyMedium,
         ),
+        const SizedBox(height: 8),
+        // Earned less what HR recorded as used (Jose, 2026-10-21).
+        Text(
+          pto['balance'] == null
+              ? 'Their balance needs their start date. Add it under Employment.'
+              : '${days(pto['balance'] as num?)} left: '
+                    '${days(pto['earned'] as num?)} earned, '
+                    '${days(pto['used'] as num?)} used.',
+          key: const Key('pto-balance'),
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 12),
         Text(
           'Read only: the allowance is the organization’s policy, set under '
@@ -1196,6 +1216,17 @@ class _PersonRecordState extends State<_PersonRecord> {
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.outline,
           ),
+        ),
+        const SizedBox(height: 20),
+        _DetailList(
+          key: ValueKey('pto-used-$_version'),
+          kind: _DetailKind.ptoUsed,
+          rows: _rows('pto_used'),
+          personId: widget.personId,
+          api: widget.api,
+          formats: widget.formats,
+          refused: _noEdit,
+          onChanged: _reload,
         ),
       ],
     );
@@ -2202,6 +2233,28 @@ class _DetailKind {
       row['returned_on'] == null
           ? 'still held'
           : 'returned ${_date(row['returned_on'], formats)}',
+    ]),
+  );
+
+  static final ptoUsed = _DetailKind(
+    path: 'pto-used',
+    noun: 'days used',
+    empty: 'No days recorded as used.',
+    intro:
+        'Days they have already taken, so the balance starts right. The day '
+        'is optional: leave it empty for days taken before EzBizi.',
+    fields: const [
+      _FieldSpec('days', 'Days', _FieldType.number, required: true),
+      _FieldSpec('used_on', 'Day off', _FieldType.date),
+      _FieldSpec('note', 'Note', _FieldType.multiline),
+    ],
+    title: (row, _) {
+      final n = (row['days'] as num?) ?? 0;
+      return n == 1 ? '1 day used' : '$n days used';
+    },
+    subtitle: (row, formats) => _join([
+      row['used_on'] == null ? 'before EzBizi' : _date(row['used_on'], formats),
+      row['note']?.toString(),
     ]),
   );
 
