@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaPolygon;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -121,6 +122,8 @@ final class SchedulingAreaMapController extends Controller
             }
 
             ServiceAreaZip::where('service_area_id', $row->id)->whereIn('zip', $plan['remove'])->delete();
+            ServiceAreaZipRelease::release($plan['remove']);
+            ServiceAreaZipRelease::claim(array_merge($plan['add'], $moved));
             foreach (array_merge($plan['add'], $moved) as $zip) {
                 ServiceAreaZip::create(['franchise_id' => $row->franchise_id, 'service_area_id' => $row->id, 'zip' => $zip, 'source' => 'drawn']);
             }
