@@ -2,8 +2,9 @@
 
 namespace App\Support\Reports\Airtable;
 
-use App\Models\AirtableRecord;
 use App\Models\FinancialSource;
+use App\Models\Organization;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Collection;
 
 /**
@@ -49,9 +50,6 @@ final class ReportSources
             $names = array_merge(self::FIELDS[$role] ?? [], (array) $source->field_map);
 
             foreach (self::records($org, $source) as $f) {
-                if (! $source->owns($f)) {
-                    continue;
-                }
                 $date = (string) ($f[$names['date'] ?? 'Date'] ?? '');
                 // A table that stands for the branch only for some dates (2026-10-16:
                 // Washington's P&L was New York's until 9-20) gives only its own days.
@@ -86,7 +84,7 @@ final class ReportSources
             $dateField = (array) $source->field_map + ['date' => 'Date'];
             foreach (self::records($org, $source) as $f) {
                 $date = (string) ($f[$dateField['date']] ?? '');
-                if ($source->owns($f) && ($date === '' || $source->covers($date))) {
+                if ($date === '' || $source->covers($date)) {
                     $out[] = $f;
                 }
             }
@@ -116,10 +114,19 @@ final class ReportSources
     }
 
     /** @return list<array<string, mixed>> */
+    /**
+     * The source's rows from whichever store is live (Financials, 2026-10-21):
+     * the hourly copy, or the Financials table once the tenant cut that table
+     * over to EzBizi. owns() is already applied. Read inside the source's own
+     * tenant, since a report can run outside one.
+     *
+     * @return list<array<string, mixed>>
+     */
     private static function records(string $org, FinancialSource $source): array
     {
-        return AirtableRecord::withoutGlobalScopes()->where('organization_id', $org)
-            ->where('base_id', $source->base_id)->where('table_id', $source->table_id)->whereNull('gone_at')
-            ->pluck('fields')->map(fn ($f) => is_array($f) ? $f : (array) json_decode((string) $f, true))->all();
+        $tenant = app(TenantContext::class);
+        $read = fn () => $source->rows()->all();
+
+        return $tenant->id() === $org ? $read() : $tenant->run(Organization::query()->findOrFail($org), $read);
     }
 }
