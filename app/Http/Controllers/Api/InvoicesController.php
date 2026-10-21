@@ -185,11 +185,14 @@ class InvoicesController extends Controller
         $this->may($user, 'view');
         $input = $request->validate([
             'status' => ['nullable', Rule::in([...Invoice::STATUSES, 'overdue'])],
+            'franchise_id' => ['nullable', 'uuid'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
         ]);
         $invoices = Invoice::query()->with('lines', 'payments')
             ->when(($input['status'] ?? null) && $input['status'] !== 'overdue', fn ($q) => $q->where('status', $input['status']))
+            // A branch: what it was billed (or, for its own invoices, what it issued).
+            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where(fn ($w) => $w->where(fn ($b) => $b->where('bill_to_type', 'franchise')->where('bill_to_id', $id))->orWhere('franchise_id', $id)))
             ->when($input['from'] ?? null, fn ($q, $d) => $q->where('issued_on', '>=', $d))
             ->when($input['to'] ?? null, fn ($q, $d) => $q->where('issued_on', '<=', $d))
             ->orderByDesc('issued_on')->orderByDesc('number')->limit(500)->get()
@@ -400,7 +403,18 @@ class InvoicesController extends Controller
     {
         $names = User::query()->whereIn('id', array_filter([$i->approved_by_user_id, ...$i->payments->pluck('recorded_by_user_id')]))->pluck('name', 'id');
 
+        // Who issued it, as the PDF shows it: the company, else the organization.
+        $issuer = $i->company_id ? Company::find($i->company_id) : Organization::find($i->organization_id);
+
         return [
+            'issuer' => [
+                'name' => $issuer?->name,
+                'address' => trim(implode('
+', array_filter([$issuer?->address_line1, $issuer?->address_line2,
+                    trim(($issuer?->city ?? '').', '.($issuer?->state ?? '').' '.($issuer?->postal_code ?? ''), ', ')]))) ?: null,
+                'logo_url' => $issuer?->logo_path === null ? null
+                    : ($i->company_id ? '/branding/companies/'.$i->company_id : '/branding/organization'),
+            ],
             'approved_by_name' => $names[$i->approved_by_user_id] ?? null,
             'amount_due_cents' => $i->dueCents(),
             'can_approve' => $i->status === 'draft' && $user->hasPermission('invoices.approve'),
