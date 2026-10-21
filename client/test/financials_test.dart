@@ -353,29 +353,28 @@ void screenTests() {
     expect(find.text('Add source'), findsOneWidget);
   });
 
-  testWidgets('a table that mirrors Airtable says so and offers no writing', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      table: {
-        ..._table,
-        'mirror': {
-          'base_id': 'appX',
-          'table_id': 'tblR',
-          'synced_at': DateTime.now().toUtc().toIso8601String(),
+  testWidgets(
+    'a table that mirrors Airtable says so, edits cells, and keeps its columns to Airtable',
+    (tester) async {
+      await _pump(
+        tester,
+        table: {
+          ..._table,
+          'mirror': {
+            'base_id': 'appX',
+            'table_id': 'tblR',
+            'synced_at': DateTime.now().toUtc().toIso8601String(),
+          },
         },
-      },
-      openBooks: true,
-    );
-    expect(
-      find.textContaining('Mirrors Airtable, read-only here'),
-      findsOneWidget,
-    );
-    expect(find.text('Refresh now'), findsOneWidget);
-    expect(find.text('Add record'), findsNothing);
-    expect(find.text('Diesel'), findsOneWidget);
-  });
+        openBooks: true,
+      );
+      expect(find.textContaining('Kept in step with Airtable'), findsOneWidget);
+      expect(find.text('Refresh now'), findsOneWidget);
+      expect(find.text('Add record'), findsWidgets);
+      expect(find.byTooltip('Import CSV'), findsNothing);
+      expect(find.text('Diesel'), findsOneWidget);
+    },
+  );
 
   testWidgets('the grid shows records with a total, and kanban stacks them', (
     tester,
