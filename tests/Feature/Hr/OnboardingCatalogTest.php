@@ -320,11 +320,16 @@ class OnboardingCatalogTest extends TestCase
 
         $coo = $this->inTenant($alpha['org'], fn () => Contract::where('name', CooContract::NAME)->firstOrFail()->currentVersion);
         $fields = $coo->fieldSet()->toArray();
-        $this->assertSame(['date_of_hire', 'job_title', 'salary_amount', 'salary_period', 'work_days', 'work_hours', 'ssn', 'employee_signature'],
+        $this->assertSame(['date_of_hire', 'job_title', 'salary_amount', 'salary_period',
+            'incentive_year', 'incentive_division', 'incentive_pct', 'incentive_minimum', 'perf_comp_year',
+            'perf_plan_due', 'perf_comp_minimum', 'pto_days', 'paid_holidays',
+            'work_days', 'work_hours', 'ssn', 'employee_signature'],
             collect($fields)->pluck('key')->all());
-        // Nobody's name or deal from the signed copy, only the form's questions.
-        $this->assertStringNotContainsString('Eric', $coo->body);
-        $this->assertStringNotContainsString('120,000', $coo->body);
+        // Nobody's name or deal from the signed copy: every amount is a question
+        // (Jose, 2026-10-21: "should all be empty fields").
+        foreach (['Eric', '120,000', '3,000', '30,000', '2026', '2027', 'Roofing', 'six (6)', 'Jewish'] as $fixed) {
+            $this->assertStringNotContainsString($fixed, $coo->body);
+        }
 
         // The designer itself accepts the same wording and questions.
         $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
