@@ -25,6 +25,7 @@ import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_where.dart';
+import 'jobs/project_management_tab.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -72,13 +73,23 @@ class _JobsScreenState extends State<JobsScreen> {
 
   bool get _seesMoney => widget.session.me?.can('jobs.financials') ?? false;
 
-  /// Jobs or Estimates (queue 32). Estimates are money: their own permission
-  /// and the Financials toggle, and without both there is no bar at all.
-  int _tab = 0;
+  /// Jobs, Estimates (queue 32) or Project Management. Estimates are money:
+  /// their own permission and the Financials toggle. Project Management is
+  /// its own tick. With only Jobs there is no bar at all.
+  String _tab = 'jobs';
 
-  /// Estimates is built on its first open, so it fetches nothing before
-  /// anyone looks, and then kept, as the Jobs tab is.
-  bool _estimatesOpened = false;
+  /// A tab is built on its first open, so it fetches nothing before anyone
+  /// looks, and then kept, as the Jobs tab is.
+  final Set<String> _opened = {'jobs'};
+
+  bool get _seesProjectManagement =>
+      widget.session.me?.can('jobs.project_management.view') ?? false;
+
+  List<String> get _tabs => [
+    'jobs',
+    if (_seesEstimates) 'estimates',
+    if (_seesProjectManagement) 'project_management',
+  ];
 
   bool get _seesEstimates =>
       _seesMoney && (widget.session.me?.can('estimates.view') ?? false);
@@ -307,7 +318,9 @@ class _JobsScreenState extends State<JobsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_seesEstimates) return _jobsTab(context);
+    final tabs = _tabs;
+    if (tabs.length < 2) return _jobsTab(context);
+    final selected = tabs.indexOf(_tab).clamp(0, tabs.length - 1);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -316,20 +329,27 @@ class _JobsScreenState extends State<JobsScreen> {
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
             key: const ValueKey('tour-jobs-tabs'),
-            labels: const [
-              ('Jobs', Icons.construction_outlined),
-              ('Estimates', Icons.request_quote_outlined),
+            labels: [
+              for (final t in tabs)
+                switch (t) {
+                  'estimates' => ('Estimates', Icons.request_quote_outlined),
+                  'project_management' => (
+                    'Project Management',
+                    Icons.timeline_outlined,
+                  ),
+                  _ => ('Jobs', Icons.construction_outlined),
+                },
             ],
-            selected: _tab,
-            onSelected: (tab) => setState(() {
-              _tab = tab;
-              _estimatesOpened |= tab == 1;
+            selected: selected,
+            onSelected: (i) => setState(() {
+              _tab = tabs[i];
+              _opened.add(_tab);
             }),
           ),
         ),
         const Divider(height: 1),
         Expanded(
-          // Both tabs stay alive: a look at the estimates must not drop a
+          // Every tab stays alive: a look at the estimates must not drop a
           // docked job's unsaved edits, which the list itself refuses to
           // switch away from. Offstage rather than IndexedStack, for the
           // reason automations_screen gives: hidden, a tab leaves the
@@ -337,13 +357,26 @@ class _JobsScreenState extends State<JobsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 0, child: _jobsTab(context)),
-              Offstage(
-                offstage: _tab != 1,
-                child: _estimatesOpened
-                    ? EstimatesTab(api: widget.api, session: widget.session)
-                    : const SizedBox.shrink(),
-              ),
+              Offstage(offstage: _tab != 'jobs', child: _jobsTab(context)),
+              if (_seesEstimates)
+                Offstage(
+                  offstage: _tab != 'estimates',
+                  child: _opened.contains('estimates')
+                      ? EstimatesTab(api: widget.api, session: widget.session)
+                      : const SizedBox.shrink(),
+                ),
+              if (_seesProjectManagement)
+                Offstage(
+                  offstage: _tab != 'project_management',
+                  child: _opened.contains('project_management')
+                      ? ProjectManagementTab(
+                          api: widget.api,
+                          session: widget.session,
+                          statuses: _statusChoices,
+                          labels: _labels,
+                        )
+                      : const SizedBox.shrink(),
+                ),
             ],
           ),
         ),

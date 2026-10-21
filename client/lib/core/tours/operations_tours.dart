@@ -795,6 +795,30 @@ const Map<String, Tour> operationsTours = {
       _jobMaterials,
     ],
   ),
+  'jobs/Project Management': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-jobs-pm-stages',
+        title: 'Stage',
+        body:
+            'Waiting, Partly paid, Paid in full or Closed, each with how many '
+            'jobs are in it.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-pm-filters',
+        title: 'Branch and days',
+        body: 'One branch, and only the jobs waiting at least so many days.',
+      ),
+      TourStep(
+        anchor: 'tour-jobs-pm-list',
+        title: 'The jobs',
+        body:
+            'Closest to cancelling first. Click one for its timeline, and Open '
+            'the job from there.',
+      ),
+    ],
+  ),
   // The open job's own strip, with Estimates beside Jobs and without.
   'jobs/Jobs/Job': _jobPanelJob,
   'jobs/Job': _jobPanelJob,
