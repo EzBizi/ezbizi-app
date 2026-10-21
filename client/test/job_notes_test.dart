@@ -224,9 +224,10 @@ void main() {
     expect(_tab('Notes'), findsOneWidget);
     expect(
       find.text('Notes'),
-      findsNWidgets(2),
-      reason: 'the tab and the description field',
+      findsOneWidget,
+      reason: 'only the tab: the job field is Description',
     );
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
     await openNotes(tester);
 
     expect(find.text('No notes yet'), findsOneWidget);

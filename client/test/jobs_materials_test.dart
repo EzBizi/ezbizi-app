@@ -61,15 +61,14 @@ void main() {
     // just as well against a panel that failed to load at all, which is the
     // failure it would otherwise be blind to.
     //
-    // 'Notes' rather than the job number, and the two wrong drafts are worth
+    // 'Description' rather than the job number, and the two wrong drafts are worth
     // the comment. `find.text('JOB-1042')` finds nothing — the panel's
     // subtitle joins number, customer and franchise with ' · '. And
     // `find.textContaining('JOB-1042')` finds TWO, because the list row
     // behind the panel carries the number as well, so it would have passed
-    // with the panel closed and proved nothing. The Notes field exists only
+    // with the panel closed and proved nothing. The Description field exists only
     // inside the loaded panel.
-    // The field, not the Notes tab (queue 122), which the panel draws too.
-    expect(find.widgetWithText(TextField, 'Notes'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
   });
 
   testWidgets('a job nothing was issued against says so rather than nothing', (

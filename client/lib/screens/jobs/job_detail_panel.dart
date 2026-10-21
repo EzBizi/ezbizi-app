@@ -777,7 +777,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _description,
-                  decoration: const InputDecoration(labelText: 'Notes'),
+                  decoration: const InputDecoration(labelText: 'Description'),
                   minLines: 2,
                   maxLines: 6,
                   enabled: editable,

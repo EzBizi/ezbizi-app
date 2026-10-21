@@ -39,10 +39,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Inspections'), findsNothing);
-    // The control, and the one that works: only the loaded panel has a Notes
-    // field. See jobs_materials_test.dart for the two drafts that did not.
-    // The field, not the Notes tab (queue 122), which the panel draws too.
-    expect(find.widgetWithText(TextField, 'Notes'), findsOneWidget);
+    // The control, and the one that works: only the loaded panel has a
+    // Description field. See jobs_materials_test.dart for the two drafts that did not.
+    expect(find.widgetWithText(TextField, 'Description'), findsOneWidget);
   });
 
   testWidgets('a job with no inspection says so rather than nothing', (
