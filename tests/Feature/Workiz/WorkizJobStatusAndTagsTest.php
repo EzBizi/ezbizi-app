@@ -75,8 +75,8 @@ class WorkizJobStatusAndTagsTest extends TestCase
         $this->inTenant($this->t['org'], fn () => $this->writer()->setStatus($this->job, 'done pending approval'));
     }
 
-    /** Workiz replaces the list, so the job's own tags are kept; NY spells it "DEPOSIT RECIEVED". */
-    public function test_tags_are_added_to_the_jobs_own_by_the_accounts_spelling(): void
+    /** Jose 10-21: the list is replaced and the dropped tags audited; NY spells it "DEPOSIT RECIEVED". */
+    public function test_tags_replace_the_jobs_own_by_the_accounts_spelling(): void
     {
         $job = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'tags' => [['id' => 'TAG-1', 'name' => 'Membership']]]);
         Http::fake([
@@ -86,12 +86,13 @@ class WorkizJobStatusAndTagsTest extends TestCase
             },
         ]);
 
-        $this->inTenant($this->t['org'], fn () => $this->writer()->addTags($this->job, ['DEPOSIT RECEIVED', 'dont  change tech']));
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['DEPOSIT RECEIVED', 'dont  change tech']));
 
-        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['tags'] === ['TAG-1', 'TAG-D', 'TAG-T']);
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['tags'] === ['TAG-D', 'TAG-T']);
+        $this->assertSame(['Membership'], $this->inTenant($this->t['org'], fn () => \App\Models\AuditEvent::query()->where('action', 'workiz.job_tags_set')->sole()->metadata['removed']));
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Workiz has no tag "VIP" in this account.');
-        $this->inTenant($this->t['org'], fn () => $this->writer()->addTags($this->job, ['VIP']));
+        $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['VIP']));
     }
 }

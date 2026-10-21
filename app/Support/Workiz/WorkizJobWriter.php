@@ -321,17 +321,20 @@ final class WorkizJobWriter
     }
 
     /**
-     * Add tags by name, keeping the job's own: Workiz's PUT replaces the whole
-     * list. Each name is the account's own tag (GET /tags), matched without
-     * case and spacing, or by one close spelling, since accounts spell them
-     * differently ("DEPOSIT RECIEVED" on NY). A tag the account lacks is
-     * refused, never created.
+     * Make the job's tags exactly these names (Jose, 2026-10-21: "existing
+     * tags should be removed"). Each name is the account's own tag (GET
+     * /tags), matched without case and spacing, or by one close spelling,
+     * since accounts spell them differently ("DEPOSIT RECIEVED" on NY). A tag
+     * the account lacks is refused, never created. The tags dropped are
+     * audited under `removed`.
      *
      * @param  list<string>  $names
      */
-    public function addTags(WorkizJob $job, array $names): WorkizJob
+    public function setTags(WorkizJob $job, array $names): WorkizJob
     {
         [$connection, $id] = $this->v2Job($job);
+        // Resolved first: an unknown name refuses before anything is read or removed.
+        $ids = array_values(array_unique(array_map(fn (string $name) => $this->named($connection, '/tags', $name, 'tag'), $names)));
         $read = WorkizV2::send($connection, 'GET', '/jobs/'.rawurlencode($id));
 
         if ($read['refused'] !== null) {
@@ -340,13 +343,9 @@ final class WorkizJobWriter
 
         $current = $read['data']['data'] ?? $read['data'];
         $current = is_array($current) && array_is_list($current) ? ($current[0] ?? []) : (array) $current;
-        $ids = collect($current['tags'] ?? [])->pluck('id')->filter()->values()->all();
+        $removed = collect($current['tags'] ?? [])->reject(fn ($t) => in_array($t['id'] ?? null, $ids, true))->pluck('name')->values()->all();
 
-        foreach ($names as $name) {
-            $ids[] = $this->named($connection, '/tags', $name, 'tag');
-        }
-
-        return $this->put($connection, $job, $id, ['tags' => array_values(array_unique($ids))], 'workiz.job_tags_added', ['tags' => $names]);
+        return $this->put($connection, $job, $id, ['tags' => $ids], 'workiz.job_tags_set', ['tags' => $names, 'removed' => $removed]);
     }
 
     /** @return array{0: SocialConnection, 1: string} */
