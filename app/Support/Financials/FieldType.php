@@ -12,7 +12,7 @@ final class FieldType
 {
     public const TYPES = [
         'text', 'long_text', 'number', 'currency', 'percent', 'date', 'checkbox',
-        'single_select', 'multi_select', 'email', 'phone', 'url', 'rating', 'formula',
+        'single_select', 'multi_select', 'email', 'phone', 'url', 'rating', 'formula', 'attachment',
     ];
 
     /** Normalize one incoming cell; null clears it. */
@@ -36,6 +36,10 @@ final class FieldType
             'multi_select' => is_array($value) && array_diff($value, self::choices($options)) === []
                 ? array_values(array_unique($value)) : $fail('has a value that is not one of its choices.'),
             'formula' => null,
+            // Files as Airtable gives them: [{filename, url, type?, size?}]. Only mirrored for now.
+            'attachment' => is_array($value) && collect($value)->every(fn ($a) => is_array($a) && isset($a['url']))
+                ? array_values(array_map(fn ($a) => array_intersect_key($a, array_flip(['id', 'filename', 'url', 'type', 'size'])), $value))
+                : $fail('must be a list of files.'),
             default => $fail('unknown field type.'),
         };
     }

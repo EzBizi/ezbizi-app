@@ -149,32 +149,41 @@ final class FinancialsHome
         return ['may_open' => $may, 'refused' => $may ? null : 'Your role does not have this tab.'];
     }
 
+    /**
+     * One chip per Airtable table, however many places share it. Its count is
+     * the rows that belong to the places in view (a shared table's filter is
+     * applied); a table with nothing in the copy is left out.
+     */
     private static function airtableTables(Collection $sources, User $user): array
     {
         if ($sources->isEmpty()) {
             return [];
         }
-        $stats = AirtableRecord::query()->whereNull('gone_at')
-            ->where(fn ($q) => $sources->unique(fn ($s) => $s->base_id.$s->table_id)->each(fn ($s) => $q->orWhere(fn ($w) => $w->where('base_id', $s->base_id)->where('table_id', $s->table_id))))
-            ->selectRaw('base_id, table_id, MAX(table_name) as name, COUNT(*) as n')->groupBy('base_id', 'table_id')->get()
-            ->keyBy(fn ($r) => $r->base_id.'/'.$r->table_id);
-
-        // A Financials table that mirrors this Airtable table, when one exists,
-        // is what a chip opens; otherwise there is nothing to open yet.
         $mirrors = FinancialTable::query()->whereNotNull('source_table_id')->get()
             ->keyBy(fn ($t) => $t->source_base_id.'/'.$t->source_table_id);
 
-        return $sources->map(fn (FinancialSource $s) => [
-            'key' => $s->base_id.'/'.$s->table_id.($s->franchise_id ? '/'.$s->franchise_id : ''),
-            'table_id' => $mirrors[$s->base_id.'/'.$s->table_id]->id ?? null,
-            'route' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? '/financials/tables/'.$mirrors[$s->base_id.'/'.$s->table_id]->id : null,
-            'may_open' => isset($mirrors[$s->base_id.'/'.$s->table_id]),
-            // POST /financials/airtable-links {base_id, table_id} mirrors it; the server picks the base.
-            'may_mirror' => ! isset($mirrors[$s->base_id.'/'.$s->table_id]) && $user->hasPermission('financials.edit') && $user->hasPermission('financials.create'),
-            'refused' => isset($mirrors[$s->base_id.'/'.$s->table_id]) ? null : 'Not mirrored into a base yet.',
-            'name' => trim(($stats[$s->base_id.'/'.$s->table_id]->name ?? $s->table_id).($s->filter_value ? ' · '.$s->filter_value : '')),
-            'count' => (int) ($stats[$s->base_id.'/'.$s->table_id]->n ?? 0),
-        ])->values()->all();
+        $out = [];
+        foreach ($sources->groupBy(fn ($s) => $s->base_id.'/'.$s->table_id) as $key => $group) {
+            [$baseId, $tableId] = explode('/', $key);
+            $rows = AirtableRecord::query()->whereNull('gone_at')->where('base_id', $baseId)->where('table_id', $tableId)->get(['table_name', 'fields']);
+            if ($rows->isEmpty()) {
+                continue;
+            }
+            $count = $rows->filter(fn ($r) => $group->contains(fn (FinancialSource $s) => $s->owns((array) $r->fields)))->count();
+            $mirror = $mirrors[$key] ?? null;
+            $out[] = [
+                'key' => $key,
+                'name' => (string) $rows->first()->table_name,
+                'count' => $count,
+                'table_id' => $mirror?->id,
+                'route' => $mirror ? '/financials/tables/'.$mirror->id : null,
+                'may_open' => $mirror !== null,
+                'may_mirror' => $mirror === null && $user->hasPermission('financials.edit') && $user->hasPermission('financials.create'),
+                'refused' => $mirror ? null : 'Not mirrored into a base yet.',
+            ];
+        }
+
+        return $out;
     }
 
     private static function refreshed(Collection $sources, ?string $nativeAt): ?string

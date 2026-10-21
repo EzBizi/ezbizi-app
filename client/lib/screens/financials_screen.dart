@@ -9,6 +9,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'financials/financial_adjustments.dart';
 import 'financials/financial_bills.dart';
+import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
@@ -458,6 +459,49 @@ class _FinancialsScreenState extends State<FinancialBases> {
     if (changed == true) await _reload();
   }
 
+  /// A batch of cell edits from the grid: a paste, a fill-down, a delete, an undo.
+  Future<String?> _changeCells(List<CellChange> changes) async {
+    final byRecord = <String, Map<String, dynamic>>{};
+    for (final c in changes) {
+      (byRecord['${c.record['id']}'] ??= {})[c.fieldId] = c.value;
+    }
+    final r = await widget.api.patch('/financials/tables/$_tableId/records', {
+      'changes': [
+        for (final e in byRecord.entries) {'id': e.key, 'values': e.value},
+      ],
+    });
+    if (!mounted) return null;
+    if (r.ok) {
+      final updated = {
+        for (final rec in (r.body['data'] as List).cast<Map>())
+          '${rec['id']}': rec,
+      };
+      setState(() {
+        final records = (_table!['records'] as List);
+        for (var i = 0; i < records.length; i++) {
+          final fresh = updated['${records[i]['id']}'];
+          if (fresh != null) records[i] = fresh;
+        }
+      });
+      return null;
+    }
+    return r.message;
+  }
+
+  List<Map> _grouped(List<Map> rows, Map config) {
+    final field = _fields
+        .where((f) => f['id'] == config['group_field'])
+        .firstOrNull;
+    if (field == null) return rows;
+    final sorted = [...rows];
+    sorted.sort(
+      (a, b) => '${(a['values'] as Map)[field['id']] ?? ''}'.compareTo(
+        '${(b['values'] as Map)[field['id']] ?? ''}',
+      ),
+    );
+    return sorted;
+  }
+
   Future<void> _patch(Map record, String fieldId, dynamic value) async {
     final r = await widget.api.patch('/financials/records/${record['id']}', {
       'values': {fieldId: value},
@@ -787,15 +831,25 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 return r.ok ? null : r.message;
               },
             ),
-            _ => GridView2(
+            _ => FinancialGrid(
+              key: ValueKey('grid:$_tableId'),
+              tableId: '$_tableId',
               fields: shown,
               allFields: _fields,
-              records: rows,
+              // ponytail: grouping sorts rows by the group column; headers per group come back if missed.
+              records: _grouped(rows, config),
               config: config,
               onOpen: _openRecord,
-              onPatch: _patch,
+              onChange: _changeCells,
               onField: _editField,
               canEdit: canWrite,
+              widths: Map<String, dynamic>.from(
+                (widget.session.me?.preferences['financials.column_widths']
+                        as Map?) ??
+                    const {},
+              ),
+              onWidths: (w) =>
+                  widget.session.setPreference('financials.column_widths', w),
             ),
           },
         ),
