@@ -105,8 +105,9 @@ void main() {
         SystemChannels.platform,
         (call) async {
           if (call.method == 'Clipboard.getData') return {'text': clipboard};
-          if (call.method == 'Clipboard.setData')
+          if (call.method == 'Clipboard.setData') {
             clipboard = (call.arguments as Map)['text'] as String?;
+          }
           return null;
         },
       );
