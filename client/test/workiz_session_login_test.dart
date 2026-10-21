@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/widgets/workiz_connect_form.dart';
 import 'package:ezbizi_client/widgets/workiz_session_login.dart';
 import 'package:flutter/material.dart';
@@ -113,13 +114,123 @@ void main() {
       find.byKey(const ValueKey('workiz-session-branch:acct-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Maple Branch').last);
+    await tester.tap(find.text('Maple Branch · Harbor Home Services').last);
     await tester.pumpAndSettle();
 
     final put = server.sent.lastWhere((r) => r.method == 'PUT');
     expect(put.url.path, '/api/v1/social/workiz-web/w-1/accounts');
     expect(jsonDecode(put.body), {'account': 'acct-1', 'franchise_id': 'f-1'});
     expect(find.text('Choose a branch'), findsNothing);
+  });
+
+  // Jose, 2026-10-21: the picker listed every company's "Main" bare.
+  testWidgets('an organization login offers every branch, with its company', (
+    tester,
+  ) async {
+    final server = _Server()
+      ..row = {
+        'id': 'w-1',
+        'provider': 'workiz_web',
+        'status': 'connected',
+        'scope_type': 'organization',
+        'scope_id': 'org-1',
+      };
+    await _pumpSession(tester, server);
+
+    expect(_branchLabels(tester), [
+      'Cedar Branch · Harbor Home Services',
+      'Maple Branch · Harbor Home Services',
+      'Maple Branch · Summit Garage Doors',
+    ]);
+  });
+
+  testWidgets("a company's login offers only that company's branches", (
+    tester,
+  ) async {
+    final server = _Server()
+      ..row = {
+        'id': 'w-1',
+        'provider': 'workiz_web',
+        'status': 'connected',
+        'scope_type': 'company',
+        'scope_id': 'co-s',
+      };
+    await _pumpSession(tester, server);
+
+    expect(_branchLabels(tester), ['Maple Branch · Summit Garage Doors']);
+  });
+
+  // Jose, 2026-10-21: "no way to disconnect either".
+  testWidgets('Disconnect asks first, then DELETEs and shows the steps', (
+    tester,
+  ) async {
+    var done = 0;
+    final server = _Server()
+      ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'connected'};
+    await _pumpSession(
+      tester,
+      server,
+      mayDisconnect: true,
+      onDone: () => done++,
+    );
+
+    // The page's list reloads after it, as it does on connecting.
+    final before = done;
+    await tester.tap(find.byKey(const ValueKey('workiz-session-disconnect')));
+    await tester.pumpAndSettle();
+    expect(find.text(WorkizSessionLogin.disconnectQuestion), findsOneWidget);
+    expect(server.sent.where((r) => r.method == 'DELETE'), isEmpty);
+
+    await tester.tap(
+      find.byKey(const ValueKey('workiz-session-disconnect-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    final delete = server.sent.singleWhere((r) => r.method == 'DELETE');
+    expect(delete.url.path, '/api/v1/social/connections/w-1');
+    expect(find.text(WorkizSessionLogin.disconnectQuestion), findsNothing);
+    expect(find.text('Connected'), findsNothing);
+    expect(find.byKey(const ValueKey('workiz-session-get')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workiz-session-disconnect')),
+      findsNothing,
+    );
+    expect(done, before + 1);
+  });
+
+  testWidgets('Cancel sends nothing; a refusal shows inline', (tester) async {
+    final server = _Server()
+      ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'expired'}
+      ..refuseDelete = true;
+    await _pumpSession(tester, server, mayDisconnect: true);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-session-disconnect')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(server.sent.where((r) => r.method == 'DELETE'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('workiz-session-disconnect')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('workiz-session-disconnect-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('You cannot disconnect this.'), findsOneWidget);
+    expect(find.text('Signed out'), findsOneWidget);
+  });
+
+  testWidgets('Disconnect is hidden without the permission', (tester) async {
+    final server = _Server()
+      ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'connected'};
+    await _pumpSession(tester, server);
+
+    expect(find.text('Connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workiz-session-disconnect')),
+      findsNothing,
+    );
   });
 
   testWidgets('signed out says why and offers Send it again', (tester) async {
@@ -159,9 +270,18 @@ void main() {
   ) async {
     final server = _Server()
       ..row = {'id': 'w-1', 'provider': 'workiz_web', 'status': 'connected'};
-    await _pumpSession(tester, server, organizationView: false);
+    await _pumpSession(
+      tester,
+      server,
+      organizationView: false,
+      mayDisconnect: true,
+    );
 
     expect(find.text('Connected'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workiz-session-disconnect')),
+      findsNothing,
+    );
     expect(find.text(WorkizSessionLogin.organizationOnly), findsOneWidget);
     expect(find.byKey(const ValueKey('workiz-session-get')), findsNothing);
     expect(find.text('Lakeview Plumbing'), findsNothing);
@@ -231,6 +351,7 @@ class _Server {
   Map<String, dynamic>? row;
   bool routes = true;
   bool forbidden = false;
+  bool refuseDelete = false;
   int links = 0;
 
   late final client = MockClient((request) async {
@@ -242,6 +363,14 @@ class _Server {
       headers: const {'content-type': 'application/json'},
     );
 
+    if (request.method == 'DELETE' &&
+        path.startsWith('/api/v1/social/connections/')) {
+      if (refuseDelete) {
+        return json({'message': 'You cannot disconnect this.'}, 403);
+      }
+      row = null;
+      return json({'data': <String, dynamic>{}});
+    }
     if (path == '/api/v1/social/connections') {
       return json({
         'data': [
@@ -285,6 +414,7 @@ Future<void> _pumpSession(
   VoidCallback? onDone,
   bool fresh = false,
   bool organizationView = true,
+  bool mayDisconnect = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -295,10 +425,36 @@ Future<void> _pumpSession(
             key: fresh ? UniqueKey() : null,
             api: ApiClient(client: server.client),
             branches: const [
-              FranchiseSummary(id: 'f-1', name: 'Maple Branch'),
-              FranchiseSummary(id: 'f-2', name: 'Cedar Branch'),
+              FranchiseSummary(
+                id: 'f-1',
+                name: 'Maple Branch',
+                companyId: 'co-h',
+              ),
+              FranchiseSummary(
+                id: 'f-2',
+                name: 'Cedar Branch',
+                companyId: 'co-h',
+              ),
+              FranchiseSummary(
+                id: 'f-3',
+                name: 'Maple Branch',
+                companyId: 'co-s',
+              ),
+            ],
+            companies: const [
+              CompanySummary(
+                id: 'co-s',
+                name: 'Summit Garage Doors',
+                parentCompanyId: null,
+              ),
+              CompanySummary(
+                id: 'co-h',
+                name: 'Harbor Home Services',
+                parentCompanyId: null,
+              ),
             ],
             organizationView: organizationView,
+            mayDisconnect: mayDisconnect,
             onDone: onDone ?? () {},
           ),
         ),
@@ -309,3 +465,11 @@ Future<void> _pumpSession(
   await tester.tap(find.text('Signed-in session'));
   await tester.pumpAndSettle();
 }
+
+List<String> _branchLabels(WidgetTester tester) => tester
+    .widget<SearchPickerField<String>>(
+      find.byKey(const ValueKey('workiz-session-branch:acct-1')),
+    )
+    .options
+    .map((o) => o.label)
+    .toList();

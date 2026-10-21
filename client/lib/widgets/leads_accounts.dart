@@ -30,6 +30,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import 'connect_account.dart';
@@ -1398,10 +1399,11 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
               value: c['leads_franchise_id'] as String?,
               options: [
                 const SearchOption(value: null, label: 'Company level'),
-                for (final f
-                    in widget.session.me?.franchises ??
-                        const <FranchiseSummary>[])
-                  SearchOption(value: f.id, label: f.name),
+                for (final b in branchOptions(
+                  widget.session.me?.franchises ?? const [],
+                  widget.session.me?.companies ?? const [],
+                ))
+                  SearchOption(value: b.id, label: b.label),
               ],
               onChanged: _busy ? null : _place,
             ),

@@ -675,7 +675,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       key: _workizFormKey,
       api: widget.api,
       branches: widget.session.me?.franchisesInView ?? const [],
+      companies: widget.session.me?.companies ?? const [],
       organizationView: widget.session.me?.scope.type == 'organization',
+      // The server's disconnect gate is the provider's connect permission.
+      mayDisconnect: _mayConnectProvider('workiz_web'),
       onDone: _load,
     ),
   ];

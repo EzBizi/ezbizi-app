@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
@@ -323,8 +324,8 @@ class _SourcePanelState extends State<_SourcePanel> {
             options: [
               for (final c in widget.me.companiesInView)
                 SearchOption(value: c.id, label: c.name),
-              for (final f in widget.me.franchisesInView)
-                SearchOption(value: f.id, label: f.name),
+              for (final b in branchOptionsInView(widget.me))
+                SearchOption(value: b.id, label: b.label),
             ],
             onChanged: (v) => setState(() => _place = v),
           ),

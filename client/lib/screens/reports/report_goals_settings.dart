@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
@@ -141,14 +142,9 @@ class _ReportGoalsSettingsState extends State<ReportGoalsSettings> {
 
     // Named with their company: forty branches called "Main" and
     // "Connecticut" told nobody which one (Jose, 2026-10-20).
-    final company = {for (final c in _me.companiesInView) c.id: c.name};
-    final places = [
-      for (final f in _me.franchisesInView)
-        (f.id, [?company[f.companyId], f.name].join(' · ')),
-    ]..sort((a, b) => a.$2.compareTo(b.$2));
     final branches = [
       if (_organization) (null, 'Every branch'),
-      ...places,
+      for (final b in branchOptionsInView(_me)) (b.id, b.label),
     ];
 
     return ListView(
