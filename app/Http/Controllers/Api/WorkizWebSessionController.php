@@ -56,8 +56,8 @@ class WorkizWebSessionController extends Controller
         // One use per link: a new link replaces the nonce, and a session that is
         // kept clears it, so a copied URL cannot re-point the reports later.
         $nonce = Str::random(40);
-        $connection->connect(['handoff_nonce' => $nonce] + (array) $connection->credentials);
-        $connection->save();
+        // Credentials only: a link is not a session, so an expired one stays expired.
+        $connection->forceFill(['credentials' => ['handoff_nonce' => $nonce] + (array) $connection->credentials])->save();
 
         return response()->json(['data' => [
             'id' => $connection->getKey(),
@@ -99,7 +99,9 @@ class WorkizWebSessionController extends Controller
 
         return response()->json(['data' => collect(WorkizWebSession::accounts($connection))
             ->map(fn (string $name, string $id) => ['account' => $id, 'name' => $name, 'mapped' => isset($map[$id]),
-                'franchise_id' => WorkizWebSession::franchiseFor($connection, $id, $name)?->getKey()])->values()]);
+                'franchise_id' => WorkizWebSession::franchiseFor($connection, $id, $name)?->getKey(),
+                // Per account: when payments and estimate links were last read, and why not.
+                'read' => ((array) ($connection->credentials['reads'] ?? []))[$id] ?? null])->values()]);
     }
 
     /** PUT /api/v1/social/workiz-web/{connection}/accounts {account, franchise_id|null}: tenant data, not code. */
@@ -113,8 +115,7 @@ class WorkizWebSessionController extends Controller
             Status::HTTP_UNPROCESSABLE_ENTITY, 'That branch is not in this company.');
 
         $map = array_filter([$data['account'] => $data['franchise_id']] + (array) ($connection->credentials['accounts'] ?? []));
-        $connection->connect(['accounts' => $map] + (array) $connection->credentials);
-        $connection->save();
+        $connection->forceFill(['credentials' => ['accounts' => $map] + (array) $connection->credentials])->save();
         $this->audit->log('social.workiz_web_mapped', $connection, $data, actor: $request->user());
 
         return response()->json(['data' => ['accounts' => $map]]);
@@ -139,8 +140,7 @@ class WorkizWebSessionController extends Controller
             Status::HTTP_CONFLICT, 'That company already has a Workiz web login.');
 
         // The map named branches anywhere in the organization; under a company it starts again.
-        $connection->connect(array_diff_key((array) $connection->credentials, ['accounts' => 1]));
-        $connection->forceFill(['scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $company, 'remote_id' => $company])->save();
+        $connection->forceFill(['credentials' => array_diff_key((array) $connection->credentials, ['accounts' => 1]),'scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $company, 'remote_id' => $company])->save();
         $this->audit->log('social.workiz_web_moved', $connection, ['company_id' => $company], actor: $request->user());
 
         return response()->json(['data' => ['id' => $connection->getKey(), 'company_id' => $company]]);

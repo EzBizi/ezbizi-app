@@ -58,6 +58,8 @@ class SyncWorkizWebEstimateLinks extends Command
             $franchise = WorkizWebSession::franchiseFor($connection, $account, $name);
 
             if ($franchise === null) {
+                WorkizWebSession::note($connection, $account, 'estimates', 'No branch matches this account. Choose one.');
+
                 continue;
             }
 
@@ -97,6 +99,7 @@ class SyncWorkizWebEstimateLinks extends Command
 
             // inAccount answers its own refusal to open the account as a call result.
             $refused = is_array($refused) ? $refused['refused'] : $refused;
+            WorkizWebSession::note($connection, $account, 'estimates', $refused);
 
             if ($refused !== null) {
                 $this->warn($name.': '.$refused);

@@ -113,7 +113,8 @@ final class WorkizWebSession
      */
     public static function accounts(SocialConnection $connection): array
     {
-        $read = self::call($connection, '/ajaxc/franchise/index/', ['getRelated' => true]);
+        // The account switcher's own list (main.js getSubAccounts), measured 2026-10-21: A-1's nine.
+        $read = self::call($connection, '/ajaxc/franchise/');
         // The signed-in account by its own name ("A1 Chimney - Nationwide"), which is what files it to a branch.
         $info = self::call($connection, '/ajaxc/account/getInfo/');
         $accounts = ['main' => trim((string) ($info['data']['data']['account_name'] ?? $info['data']['account_name'] ?? '')) ?: 'Main account'];
@@ -139,7 +140,7 @@ final class WorkizWebSession
                 $in = self::call($connection, '/ajaxc/franchise/franchiseLogin/', ['acid' => $account, 'loginToRelated' => false]);
 
                 if ($in['refused'] !== null || ($in['data']['flag'] ?? null) !== true) {
-                    return ['data' => null, 'refused' => $in['refused'] ?? 'Workiz would not open account '.$account.'.'];
+                    return ['data' => null, 'refused' => $in['refused'] ?? 'Workiz would not switch to this account, so it was not read.'];
                 }
             }
 
@@ -173,8 +174,31 @@ final class WorkizWebSession
                 fn ($q) => $q->whereIn('company_id', \App\Models\Company::find($connection->scope_id)?->subtreeCompanyIds() ?? []))
             ->get();
 
-        return $branches->filter(fn (Franchise $f) => trim($f->name) !== '' && stripos($name, trim($f->name)) !== false)
+        // "A1 Chimney - CT": Workiz names A-1's accounts by state code.
+        $tail = trim((string) strrchr('-'.$name, '-'), "- 	");
+        $names = array_filter([$name, \App\Support\Social\MetaAdInsights::STATES[strtoupper($tail)] ?? null]);
+
+        return $branches->filter(fn (Franchise $f) => trim($f->name) !== ''
+            && collect($names)->contains(fn (string $n) => stripos($n, trim($f->name)) !== false))
             ->sortByDesc(fn (Franchise $f) => mb_strlen($f->name))->first();
+    }
+
+    /**
+     * The card's per-account line: when each account was last read and why
+     * it was not, kept beside the session (Jose, 2026-10-21).
+     */
+    public static function note(SocialConnection $connection, string $account, string $what, ?string $refused): void
+    {
+        // Fresh: a call may just have marked the session expired, which a stale copy would undo.
+        $connection = $connection->fresh();
+        $cred = (array) $connection->credentials;
+        $reads = (array) ($cred['reads'] ?? []);
+        $reads[$account] = array_filter([
+            $what.'_at' => $refused === null ? now()->toIso8601String() : ($reads[$account][$what.'_at'] ?? null),
+            'error' => $refused,
+        ] + ($reads[$account] ?? []), fn ($v, $k) => $k !== 'error' || $refused !== null, ARRAY_FILTER_USE_BOTH);
+        // Credentials only: connect() would also mark an expired session connected.
+        $connection->forceFill(['credentials' => ['reads' => $reads] + $cred])->save();
     }
 
     /** @param  array<string, string>  $cookies */

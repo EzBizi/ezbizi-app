@@ -127,7 +127,7 @@ class WorkizWebSessionTest extends TestCase
     {
         $this->connected();
         Http::fake([
-            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => [
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => [
                 ['fid' => '555', 'account_custom_name' => 'Sub branch', 'invite_status' => '1', 'status' => '1', 'account_status' => 'active'],
             ]]),
             'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [
@@ -171,7 +171,7 @@ class WorkizWebSessionTest extends TestCase
             return [$record, $job];
         });
         Http::fake([
-            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
             'app.workiz.com/ajaxc/estimate/estimateReport/' => Http::response(['flag' => true, 'aaData' => [
                 ['id' => '6793881', 'estimate_id' => '100077936-1', 'status_updated_at' => now()->toDateTimeString()],
                 ['id' => '1', 'estimate_id' => '1-1', 'status_updated_at' => '2020-01-01 00:00:00'],
@@ -199,7 +199,7 @@ class WorkizWebSessionTest extends TestCase
         $branch = $this->t['franchise']->name;
         Http::fake([
             'app.workiz.com/ajaxc/account/getInfo/' => Http::response(['flag' => true, 'data' => ['account_name' => 'A1 Chimney - '.$branch]]),
-            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
             'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [
                 ['id' => 72, 'amount' => '50.00', 'date' => '2026-10-19 10:00:00'],
             ]]),
@@ -221,5 +221,32 @@ class WorkizWebSessionTest extends TestCase
         $row = $this->inTenant($this->t['org'], fn () => $c->fresh());
         $this->assertSame([SocialConnection::SCOPE_COMPANY, $this->t['company']->id, 'sess-abc'], [$row->scope_type, $row->scope_id, $row->credentials['cookies']['sendajob_sessid']]);
         $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/company', ['company_id' => $this->t['company']->id])->assertNotFound();
+    }
+
+    /** Jose, 2026-10-21: one session; the box switches to each Workiz account in turn. "A1 Chimney - CT" is Connecticut. */
+    public function test_each_account_is_switched_to_and_filed_by_its_state(): void
+    {
+        $c = $this->connected();
+        $ct = $this->inTenant($this->t['org'], fn () => $this->extraFranchise($this->t, 'Connecticut'));
+        $ga = $this->inTenant($this->t['org'], fn () => $this->extraFranchise($this->t, 'Georgia'));
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => [
+                ['fid' => '132666', 'account_custom_name' => 'A1 Chimney - CT', 'invite_status' => '1', 'status' => '1', 'account_status' => 'converted'],
+                ['fid' => '143612', 'account_custom_name' => 'A1 Chimney - GA', 'invite_status' => '1', 'status' => '1', 'account_status' => 'converted'],
+            ]]),
+            'app.workiz.com/ajaxc/franchise/franchiseLogin/' => fn (Request $r) => Http::response(['flag' => $r['acid'] === '132666']),
+            'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [['id' => 81, 'amount' => '10.00', 'date' => '2026-10-19 10:00:00']]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-payments', ['--from' => '2026-10-19', '--to' => '2026-10-20'])->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($c, $ct, $ga) {
+            $this->assertEqualsCanonicalizing([$this->t['franchise']->id, $ct->id], WorkizRecord::query()->pluck('franchise_id')->all());
+            $reads = $c->fresh()->credentials['reads'];
+            $this->assertArrayHasKey('payments_at', $reads['132666']);
+            $this->assertSame('Workiz would not switch to this account, so it was not read.', $reads['143612']['error']);
+            $this->assertNotNull($ga);
+        });
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), 'goToMaster'));
     }
 }
