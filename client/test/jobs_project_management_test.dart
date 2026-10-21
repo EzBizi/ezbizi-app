@@ -17,6 +17,11 @@ import 'package:http/testing.dart';
 /// and the timeline beside it (UI queue, option 1 and phone 4). Pumped as the
 /// module's screen, so the status words in the timeline come from its own
 /// /settings read. Every name invented.
+///
+/// Since UI queue 127 the table is the Pending Jobs tab and opens on Recently
+/// paid; these tests open the tab and choose Waiting first, as somebody would,
+/// and see only the requests from there on. Recently paid, the Dashboard and
+/// Settings are project_management_dashboard_test.dart.
 void main() {
   // A fixed local noon: the countdown is all about "now".
   final now = DateTime(2026, 10, 21, 12);
@@ -356,6 +361,7 @@ Future<void> _pump(
   bool screen = false,
   List<String> permissions = const ['jobs.view', 'project_management.view'],
 }) async {
+  final requests = <Uri>[];
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -369,7 +375,8 @@ Future<void> _pump(
         });
       }
       if (path.endsWith('/jobs/project-management')) {
-        seen?.add(request.url);
+        requests.add(request.url);
+        _forward?.call(request.url);
         return _json({
           'data': rows,
           'meta': {'watched': watched, 'deadline_days': 30},
@@ -417,7 +424,24 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  if (screen) return;
+
+  // Pending Jobs, then Waiting: the table these tests were written for.
+  await tester.tap(find.text('Pending Jobs'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
+  await tester.pumpAndSettle();
+  expect(requests.last.queryParameters.containsKey('filter'), isFalse);
+  seen?.add(requests.last);
+  // From here on, every request is seen.
+  if (seen != null) {
+    _forward = (uri) => seen.add(uri);
+    addTearDown(() => _forward = null);
+  }
 }
+
+/// Where the stub sends requests after setup.
+void Function(Uri)? _forward;
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
   jsonEncode(body),

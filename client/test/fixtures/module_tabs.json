@@ -244,7 +244,11 @@
         "project_management": {
             "label": "Project Management",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "Dashboard",
+                "Pending Jobs",
+                "Settings"
+            ]
         },
         "reports": {
             "label": "Reports",

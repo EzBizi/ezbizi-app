@@ -16,6 +16,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
+import 'pm_range.dart';
 
 /// Project Management (UI queue: option 1, phone 4; Jose 2026-10-21), its own
 /// module since the same day; drawn by project_management_screen.dart.
@@ -36,6 +37,7 @@ class ProjectManagementTab extends StatefulWidget {
     this.statuses = const [],
     this.labels,
     this.now,
+    this.generation = 0,
   });
 
   final ApiClient api;
@@ -50,6 +52,9 @@ class ProjectManagementTab extends StatefulWidget {
   /// behaviour, and a test that cannot move "now" asserts nothing about it.
   final DateTime Function()? now;
 
+  /// Bumped by the screen when Settings changes what is watched: read again.
+  final int generation;
+
   @override
   State<ProjectManagementTab> createState() => _ProjectManagementTabState();
 }
@@ -57,7 +62,12 @@ class ProjectManagementTab extends StatefulWidget {
 /// The four stages, in the segment's order.
 const pmStages = ['waiting', 'partial', 'full', 'closed'];
 
+/// Jobs with a payment in a date range (UI queue 127), the segment's first
+/// choice and the one it opens on. Asked of the server, unlike the stages.
+const pmRecentlyPaid = 'recently_paid';
+
 String pmStageLabel(String? stage) => switch (stage) {
+  pmRecentlyPaid => 'Recently paid',
   'waiting' => 'Waiting',
   'partial' => 'Partly paid',
   'full' => 'Paid in full',
@@ -134,8 +144,12 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   List<String> _watched = const [];
   int _deadlineDays = 30;
 
-  /// The segment: a stage, or null for All. Waiting first, as drawn.
-  String? _stage = 'waiting';
+  /// The segment: Recently paid, a stage, or null for All. Recently paid
+  /// first and chosen, as drawn (UI queue 127).
+  String? _stage = pmRecentlyPaid;
+  PmRange _range = PmRange.today;
+
+  bool get _paidMode => _stage == pmRecentlyPaid;
   String? _branch;
   int? _minDays;
 
@@ -154,6 +168,12 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(ProjectManagementTab old) {
+    super.didUpdateWidget(old);
+    if (old.generation != widget.generation) _load();
   }
 
   @override
@@ -176,6 +196,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     });
 
     final response = await widget.api.get('/jobs/project-management', {
+      if (_paidMode) ...{'filter': pmRecentlyPaid, ..._range.query(_now())},
       'franchise_id': ?_branch,
       if (_minDays != null) 'min_days': '$_minDays',
       if (_search.text.trim().isNotEmpty) 'q': _search.text.trim(),
@@ -221,7 +242,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     return counts;
   }
 
-  List<Map<String, dynamic>> get _shown => _stage == null
+  List<Map<String, dynamic>> get _shown => _stage == null || _paidMode
       ? _rows
       : [
           for (final r in _rows)
@@ -253,8 +274,9 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
 
         // A phone draws the timeline in place of the list.
         if (!wide && open != null) {
-          return _Timeline(
+          return PmTimeline(
             key: const ValueKey('pm-timeline'),
+            back: true,
             row: open,
             now: _now(),
             me: _me,
@@ -287,6 +309,9 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   }
 
   String _note() {
+    if (_paidMode) {
+      return 'Jobs with a payment in these dates, newest payment first.';
+    }
     if (_loading || _error != null) {
       return 'Jobs waiting on an estimate, closest to cancelling first.';
     }
@@ -317,12 +342,34 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
               ],
             ),
           ),
-          onSelected: (_) => setState(() => _stage = value),
+          onSelected: (_) {
+            if (value == _stage) return;
+            // Recently paid is a different set of rows, read from the
+            // server; the stages filter the watched ones here.
+            final reread = value == pmRecentlyPaid || _paidMode;
+            setState(() {
+              _stage = value;
+              if (reread) _rows = const [];
+            });
+            if (reread) _load();
+          },
         );
 
+    // The stage counts are of the watched rows, so Recently paid's rows count
+    // only themselves.
     final chips = [
+      chip(
+        pmRecentlyPaid,
+        pmStageLabel(pmRecentlyPaid),
+        count: _paidMode && !_loading ? _rows.length : null,
+      ),
       for (final s in pmStages)
-        chip(s, pmStageLabel(s), count: counts[s], tone: pmStageTone(s)),
+        chip(
+          s,
+          pmStageLabel(s),
+          count: _paidMode ? null : counts[s],
+          tone: pmStageTone(s),
+        ),
       chip(null, 'All'),
     ];
 
@@ -371,49 +418,76 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     return Padding(
       key: const ValueKey('tour-jobs-pm-filters'),
       padding: EdgeInsets.fromLTRB(wide ? 24 : 16, 0, wide ? 24 : 16, 8),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: wide ? 300 : double.infinity,
-            child: TextField(
-              key: const ValueKey('pm-search'),
-              controller: _search,
-              onChanged: _typed,
-              decoration: const InputDecoration(
-                isDense: true,
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Job, customer, address, phone or tech',
+          if (_paidMode)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: PmRangeControl(
+                range: _range,
+                now: _now(),
+                formats: _me.display,
+                narrow: !wide,
+                onChanged: (r) => _refilter(() => _range = r),
               ),
             ),
-          ),
-          if (branches.isNotEmpty)
-            _picker<String?>(
-              key: const ValueKey('pm-branch'),
-              value: _branch,
-              width: 220,
-              options: [
-                const SearchOption(value: null, label: 'All branches'),
-                for (final b in branches)
-                  SearchOption(value: b.id, label: b.label),
-              ],
-              onChanged: (v) => _branch = v,
-            ),
-          _picker<int?>(
-            key: const ValueKey('pm-min-days'),
-            value: _minDays,
-            width: 170,
-            options: [
-              const SearchOption(value: null, label: 'At least 0 days'),
-              for (final d in const [7, 14, 21, 28])
-                SearchOption(value: d, label: 'At least $d days'),
-            ],
-            onChanged: (v) => _minDays = v,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _filterRow(wide: wide, branches: branches),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _filterRow({
+    required bool wide,
+    required List<BranchOption> branches,
+  }) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: wide ? 300 : double.infinity,
+          child: TextField(
+            key: const ValueKey('pm-search'),
+            controller: _search,
+            onChanged: _typed,
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Job, customer, address, phone or tech',
+            ),
+          ),
+        ),
+        if (branches.isNotEmpty)
+          _picker<String?>(
+            key: const ValueKey('pm-branch'),
+            value: _branch,
+            width: 220,
+            options: [
+              const SearchOption(value: null, label: 'All branches'),
+              for (final b in branches)
+                SearchOption(value: b.id, label: b.label),
+            ],
+            onChanged: (v) => _branch = v,
+          ),
+        _picker<int?>(
+          key: const ValueKey('pm-min-days'),
+          value: _minDays,
+          width: 170,
+          options: [
+            const SearchOption(value: null, label: 'At least 0 days'),
+            for (final d in const [7, 14, 21, 28])
+              SearchOption(value: d, label: 'At least $d days'),
+          ],
+          onChanged: (v) => _minDays = v,
+        ),
+      ],
     );
   }
 
@@ -429,6 +503,13 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     }
 
     final rows = _shown;
+    if (rows.isEmpty && _paidMode) {
+      return const _Empty(
+        key: ValueKey('pm-none'),
+        title: 'No payments in these dates.',
+        body: 'Jobs in the watched statuses with a payment show here.',
+      );
+    }
     if (rows.isEmpty) {
       return _Empty(
         key: const ValueKey('pm-none'),
@@ -484,7 +565,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
                 VerticalDivider(width: 1, color: scheme.outlineVariant),
                 SizedBox(
                   width: 360,
-                  child: _Timeline(
+                  child: PmTimeline(
                     key: const ValueKey('pm-timeline'),
                     row: open,
                     now: now,
@@ -719,9 +800,10 @@ class _Empty extends StatelessWidget {
   }
 }
 
-/// One job's header and its timeline, a dot per event.
-class _Timeline extends StatelessWidget {
-  const _Timeline({
+/// One job's header and its timeline, a dot per event. Pending Jobs and the
+/// Dashboard both open it.
+class PmTimeline extends StatelessWidget {
+  const PmTimeline({
     super.key,
     required this.row,
     required this.now,
@@ -729,6 +811,7 @@ class _Timeline extends StatelessWidget {
     required this.status,
     required this.onClose,
     required this.onOpenJob,
+    this.back = false,
   });
 
   final Map<String, dynamic> row;
@@ -737,6 +820,10 @@ class _Timeline extends StatelessWidget {
   final String Function(Object?) status;
   final VoidCallback onClose;
   final VoidCallback onOpenJob;
+
+  /// Drawn full screen on a phone: a back arrow before the name, where the
+  /// side pane has a close cross after it.
+  final bool back;
 
   @override
   Widget build(BuildContext context) {
@@ -771,6 +858,16 @@ class _Timeline extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (back)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: IconButton(
+                      key: const ValueKey('pm-timeline-close'),
+                      tooltip: 'Back',
+                      onPressed: onClose,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
+                  ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -790,12 +887,13 @@ class _Timeline extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  key: const ValueKey('pm-timeline-close'),
-                  tooltip: 'Close',
-                  onPressed: onClose,
-                  icon: const Icon(Icons.close),
-                ),
+                if (!back)
+                  IconButton(
+                    key: const ValueKey('pm-timeline-close'),
+                    tooltip: 'Close',
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close),
+                  ),
               ],
             ),
           ),
