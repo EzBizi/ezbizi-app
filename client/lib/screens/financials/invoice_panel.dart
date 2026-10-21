@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -593,7 +595,15 @@ class _InvoicePanelState extends State<InvoicePanel> {
   Widget _document(BuildContext context, Map invoice) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // Who issued it, as the PDF shows it; the organization only when the
+    // server does not say.
+    final issuer = invoice['issuer'] as Map?;
     final org = widget.me.organization;
+    final issuerName = issuer == null ? org.name : '${issuer['name'] ?? ''}';
+    final issuerAddress = issuer == null
+        ? org.address
+        : issuer['address'] as String?;
+    final logo = issuer?['logo_url'] as String?;
     final billTo = (invoice['bill_to'] as Map?) ?? const {};
     final editing = invoice['can_edit'] == true;
     final head = theme.textTheme.labelMedium;
@@ -616,9 +626,23 @@ class _InvoicePanelState extends State<InvoicePanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(org.name, style: theme.textTheme.titleSmall),
-                    if (org.address != null)
-                      Text(org.address!, style: theme.textTheme.bodySmall),
+                    if (logo != null)
+                      _IssuerLogo(
+                        key: ValueKey('invoice-issuer-logo-$logo'),
+                        api: widget.api,
+                        path: logo,
+                      ),
+                    Text(
+                      issuerName,
+                      key: const ValueKey('invoice-issuer-name'),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    if (issuerAddress != null && issuerAddress.isNotEmpty)
+                      Text(
+                        issuerAddress,
+                        key: const ValueKey('invoice-issuer-address'),
+                        style: theme.textTheme.bodySmall,
+                      ),
                   ],
                 ),
               ),
@@ -919,3 +943,49 @@ String _plainText(String html) => html
     .replaceAll(RegExp(r'[ \t]+'), ' ')
     .replaceAll(RegExp(r'\n\s*\n+'), '\n')
     .trim();
+
+/// The issuer's logo, fetched with the session's token (the branding paths
+/// are authenticated). Nothing is drawn while it loads, when it fails, or
+/// when the bytes are not an image.
+class _IssuerLogo extends StatefulWidget {
+  const _IssuerLogo({super.key, required this.api, required this.path});
+
+  final ApiClient api;
+  final String path;
+
+  @override
+  State<_IssuerLogo> createState() => _IssuerLogoState();
+}
+
+class _IssuerLogoState extends State<_IssuerLogo> {
+  Uint8List? _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    final bytes = await widget.api.getBytes(widget.path);
+    if (!mounted || bytes == null || bytes.isEmpty) return;
+    setState(() => _bytes = Uint8List.fromList(bytes));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _bytes;
+    if (bytes == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Image.memory(
+        bytes,
+        key: const ValueKey('invoice-issuer-logo-image'),
+        height: 40,
+        fit: BoxFit.contain,
+        alignment: Alignment.centerLeft,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      ),
+    );
+  }
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../widgets/grouped_rows.dart';
 import '../../widgets/search_picker.dart';
@@ -124,6 +125,9 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
 
   /// `YYYY-MM` of the period shown, or null for any time.
   String? _month;
+
+  /// The branch shown, or null for every branch in view.
+  String? _branch;
   late String? _openId = widget.initialOpenId;
 
   static const _statuses = [
@@ -144,7 +148,10 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
   }
 
   Future<void> _load() async {
-    final query = <String, Object>{'status': ?_status};
+    final query = <String, Object>{
+      'status': ?_status,
+      'franchise_id': ?_branch,
+    };
     if (_month case final m?) {
       final first = DateTime.parse('$m-01');
       query['from'] = isoDay(first);
@@ -280,6 +287,27 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
               _load();
             },
           ),
+        // The branches in the current view, never all of reach.
+        if (branchOptionsInView(widget.me, activeOnly: false)
+            case final branches when branches.length > 1)
+          SizedBox(
+            width: phone ? double.infinity : 260,
+            child: SearchPickerField<String>(
+              key: const ValueKey('invoice-filter-branch'),
+              label: 'Branch',
+              isDense: true,
+              value: _branch,
+              options: [
+                const SearchOption(value: null, label: 'All branches'),
+                for (final b in branches)
+                  SearchOption(value: b.id, label: b.label),
+              ],
+              onChanged: (id) {
+                setState(() => _branch = id);
+                _load();
+              },
+            ),
+          ),
         SizedBox(
           width: phone ? double.infinity : 220,
           child: SearchPickerField<String>(
@@ -334,7 +362,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            _status == null && _month == null
+            _status == null && _month == null && _branch == null
                 ? 'No invoices yet. They are made from a charge sheet.'
                 : 'No invoices match.',
           ),
