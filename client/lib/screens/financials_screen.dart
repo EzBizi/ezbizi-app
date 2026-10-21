@@ -14,6 +14,7 @@ import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
+import 'financials/invoices_tab.dart';
 
 /// Financials — the Airtable replacement (Jose, 2026-10-14).
 ///
@@ -63,6 +64,14 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Bills',
           Icons.receipt_long_outlined,
           FinancialBillsTab(api: widget.api, me: widget.session.me!),
+        ),
+      // A child module, drawn as a tab here (design 128).
+      if (widget.session.me?.reachableModules.any((m) => m.key == 'invoices') ??
+          false)
+        (
+          'Invoices',
+          Icons.request_quote_outlined,
+          InvoicesTab(api: widget.api, session: widget.session),
         ),
       if (_may('settings'))
         (
