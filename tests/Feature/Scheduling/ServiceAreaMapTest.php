@@ -52,7 +52,7 @@ class ServiceAreaMapTest extends TestCase
 
         $plan = $as->postJson("/api/v1/scheduling/areas/{$a->id}/polygons/preview", ['polygons' => [self::SQUARE]])->assertOk()->json('data');
         $this->assertSame(['20601', '20603'], $plan['add']);
-        $this->assertSame([['zip' => '20602', 'area_id' => $b->id, 'area_name' => 'Waldorf']], $plan['conflicts']);
+        $this->assertSame([['zip' => '20602', 'area_id' => $b->id, 'area_name' => 'Waldorf', 'may_take' => true]], $plan['conflicts']);
         $this->assertSame(['30301'], $plan['outside']);
         $this->assertSame([], $plan['remove']);
 
