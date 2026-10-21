@@ -45,7 +45,7 @@ class JobProjectManagementTest extends TestCase
     public function test_without_financials_no_amounts(): void
     {
         [$alpha, $job] = $this->world();
-        $pm = $this->userWithRole($alpha, 'PM', ['jobs.view', 'jobs.project_management.view']);
+        $pm = $this->userWithRole($alpha, 'PM', ['jobs.view', 'project_management.view']);
 
         $body = $this->signedInAs($pm)->getJson('/api/v1/jobs/project-management')->assertOk();
         $this->assertSame('partial', $body->json('data.0.stage'));
