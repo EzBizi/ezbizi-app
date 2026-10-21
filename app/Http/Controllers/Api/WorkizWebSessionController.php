@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SocialConnection;
 use App\Support\Access\Refusal;
@@ -30,15 +31,23 @@ class WorkizWebSessionController extends Controller
     public function link(Request $request): JsonResponse
     {
         $user = $request->user();
-        $this->mayConfigure($request);
+        $view = ViewScope::forUser($user);
+        abort_if($view->type === ViewScope::FRANCHISE, Status::HTTP_FORBIDDEN,
+            'The Workiz web login belongs to the company. Switch to the company view to change it.');
+        // The company in view; the organization view names one.
+        $company = $view->type === ViewScope::COMPANY ? $view->id : $request->validate(['company_id' => ['nullable', 'uuid']])['company_id'] ?? null;
+        abort_if($company === null || ! Company::query()->whereKey($company)->exists(), Status::HTTP_UNPROCESSABLE_ENTITY,
+            'Choose the company whose Workiz this is.');
+        $this->mayConfigure($request, $company);
 
-        $connection = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->first() ?? new SocialConnection;
+        $connection = SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)
+            ->where('scope_type', SocialConnection::SCOPE_COMPANY)->where('scope_id', $company)->first() ?? new SocialConnection;
 
         if (! $connection->exists) {
             $connection->forceFill([
-                'organization_id' => $user->organization_id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
-                'scope_id' => $user->organization_id, 'provider' => SocialProvider::WorkizWeb->value,
-                'remote_id' => $user->organization_id, 'display_name' => 'Workiz web login',
+                'organization_id' => $user->organization_id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $company, 'provider' => SocialProvider::WorkizWeb->value,
+                'remote_id' => $company, 'display_name' => 'Workiz web login',
             ]);
             $connection->connect([]);
             $connection->forceFill(['status' => 'expired', 'status_reason' => 'Not signed in yet.'])->save();
@@ -97,7 +106,10 @@ class WorkizWebSessionController extends Controller
     {
         $this->guard($request, $connection);
         $data = $request->validate(['account' => ['required', 'string', 'max:40'], 'franchise_id' => ['nullable', 'uuid']]);
-        abort_if($data['franchise_id'] !== null && ! Franchise::query()->whereKey($data['franchise_id'])->exists(), Status::HTTP_UNPROCESSABLE_ENTITY);
+        // Only a branch of the login's own company (and its Sub Companies).
+        abort_if($data['franchise_id'] !== null && ! Franchise::query()->whereKey($data['franchise_id'])
+            ->whereIn('company_id', Company::find($connection->scope_id)?->subtreeCompanyIds() ?? [])->exists(),
+            Status::HTTP_UNPROCESSABLE_ENTITY, 'That branch is not in this company.');
 
         $map = array_filter([$data['account'] => $data['franchise_id']] + (array) ($connection->credentials['accounts'] ?? []));
         $connection->connect(['accounts' => $map] + (array) $connection->credentials);
@@ -110,16 +122,22 @@ class WorkizWebSessionController extends Controller
     private function guard(Request $request, SocialConnection $connection): void
     {
         abort_unless($connection->provider === SocialProvider::WorkizWeb->value, Status::HTTP_NOT_FOUND);
-        $this->mayConfigure($request);
+        $this->mayConfigure($request, $connection->scope_type === SocialConnection::SCOPE_COMPANY ? $connection->scope_id : null);
     }
 
-    /** The login reads every account, so it belongs to the whole organization: changed only from its view (AGENTS.md). */
-    private function mayConfigure(Request $request): void
+    /**
+     * The login reads every Workiz account of one company (Jose, 2026-10-21:
+     * "the workiz belongs to a-1chimney only"), so it is changed from that
+     * company's view or the organization's, never a branch's (AGENTS.md).
+     */
+    private function mayConfigure(Request $request, ?string $company): void
     {
         $user = $request->user();
         abort_unless($user->hasPermission(SocialProvider::WorkizWeb->connectPermission()), Status::HTTP_FORBIDDEN,
             Refusal::permission(SocialProvider::WorkizWeb->connectAct())->message());
-        abort_unless(ViewScope::forUser($user)->isOrganization() && $user->canActOnOrganization($user->organization),
-            Status::HTTP_FORBIDDEN, 'The Workiz web login belongs to the whole organization. Switch to the organization view to change it.');
+        $view = ViewScope::forUser($user);
+        $reach = $view->isOrganization() ? $user->canActOnOrganization($user->organization) : $view->type === ViewScope::COMPANY;
+        abort_unless($company !== null && $reach && $view->coversCompany($company),
+            Status::HTTP_FORBIDDEN, 'The Workiz web login belongs to the company. Switch to the company view to change it.');
     }
 }

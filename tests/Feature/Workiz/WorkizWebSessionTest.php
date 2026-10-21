@@ -38,7 +38,8 @@ class WorkizWebSessionTest extends TestCase
 
     private function link(): string
     {
-        return $this->signedInAs($this->t['admin'])->postJson('/api/v1/social/workiz-web/link')->assertOk()->json('data.link');
+        return $this->signedInAs($this->t['admin'])->withHeader('X-EzBizi-View', 'company:'.$this->t['company']->id)
+            ->postJson('/api/v1/social/workiz-web/link')->assertOk()->json('data.link');
     }
 
     public function test_a_session_sent_to_the_link_is_kept_and_proved(): void
@@ -50,6 +51,7 @@ class WorkizWebSessionTest extends TestCase
 
         $row = $this->inTenant($this->t['org'], fn () => SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)->sole());
         $this->assertSame(['connected', '406487', '98765'], [$row->status, $row->credentials['user_id'], $row->credentials['account_id']]);
+        $this->assertSame([SocialConnection::SCOPE_COMPANY, $this->t['company']->id], [$row->scope_type, $row->scope_id], 'the company in view owns it');
         $this->assertNotNull($row->last_reached_at, 'the card says when it was sent');
         $this->assertSame($this->cookies(), $row->credentials['cookies'], 'only the three cookies Workiz needs');
         Http::assertSent(fn (Request $r) => str_contains($r->header('Cookie')[0] ?? '', 'sendajob_sessid=sess-abc'));
@@ -79,7 +81,22 @@ class WorkizWebSessionTest extends TestCase
         $this->assertArrayNotHasKey('handoff_nonce', $row->credentials);
     }
 
-    /** The login reads every account: only the organization view sets it up or maps it (AGENTS.md). */
+    /** Jose, 2026-10-21: the Workiz belongs to one company, so a branch of another company cannot be mapped. */
+    public function test_only_a_branch_of_the_logins_company_can_be_mapped(): void
+    {
+        $c = $this->connected();
+        $other = $this->inTenant($this->t['org'], function () {
+            $company = \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other Co']);
+
+            return \App\Models\Franchise::query()->create(['organization_id' => $this->t['org']->id, 'company_id' => $company->id, 'name' => 'Other branch']);
+        });
+        $put = fn (string $f) => $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/accounts', ['account' => '555', 'franchise_id' => $f]);
+
+        $put($other->id)->assertStatus(422);
+        $put($this->t['franchise']->id)->assertOk();
+    }
+
+    /** The login reads every account of its company: a branch view never sets it up or maps it (AGENTS.md). */
     public function test_a_branch_view_cannot_get_a_link_or_map_accounts(): void
     {
         $c = $this->connected();
@@ -95,9 +112,9 @@ class WorkizWebSessionTest extends TestCase
         return $this->inTenant($this->t['org'], function () {
             $c = new SocialConnection;
             $c->forceFill([
-                'organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
-                'scope_id' => $this->t['org']->id, 'provider' => SocialProvider::WorkizWeb->value,
-                'remote_id' => $this->t['org']->id, 'display_name' => 'Workiz web login',
+                'organization_id' => $this->t['org']->id, 'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $this->t['company']->id, 'provider' => SocialProvider::WorkizWeb->value,
+                'remote_id' => $this->t['company']->id, 'display_name' => 'Workiz web login',
             ]);
             $c->connect(['cookies' => $this->cookies(), 'user_id' => '406487', 'account_id' => '98765', 'accounts' => ['main' => $this->t['franchise']->id]]);
             $c->forceFill(['status' => 'connected'])->save();
