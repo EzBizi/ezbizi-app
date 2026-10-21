@@ -92,6 +92,10 @@ void main() {
             ),
           );
           await tester.pump(const Duration(seconds: 1));
+          // A pane that loads before drawing its strip needs the second frame
+          // (Marketing opens on Social Media since 2026-10-21, so Newsletter
+          // is now loaded on tap rather than at start).
+          await tester.pump(const Duration(seconds: 1));
           inner[pane] = _strip(tester, 1);
         }
 

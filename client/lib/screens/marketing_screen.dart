@@ -83,6 +83,17 @@ class _MarketingScreenState extends State<MarketingScreen> {
   /// or an administrator edits the role they hold. A `late final` list would go
   /// on offering a chip whose screen has started answering 403.
   List<(String, IconData, Widget Function())> _tabsFor(Me me) => [
+    // First, so Marketing opens on it (Jose, 2026-10-21: "make social media
+    // management the default tab in marketing instead of newsletter").
+    // Social Media Management is Marketing's own pane and the only one, which
+    // is why this module declares no tabs of its own: a `marketing.social.view`
+    // would be a checkbox that is never ticked apart from `marketing.view`.
+    if (me.reaches('marketing'))
+      (
+        'Social Media Management',
+        Icons.share_outlined,
+        () => SocialMediaTab(api: widget.api, session: widget.session),
+      ),
     /*
      * Newsletter is its own MODULE with its own grant, so it asks for that
      * grant and not Marketing's.
@@ -104,15 +115,6 @@ class _MarketingScreenState extends State<MarketingScreen> {
         'Newsletter',
         Icons.campaign_outlined,
         () => NewsletterTab(api: widget.api, session: widget.session),
-      ),
-    // Social Media Management is Marketing's own pane and the only one, which
-    // is why this module declares no tabs of its own: a `marketing.social.view`
-    // would be a checkbox that is never ticked apart from `marketing.view`.
-    if (me.reaches('marketing'))
-      (
-        'Social Media Management',
-        Icons.share_outlined,
-        () => SocialMediaTab(api: widget.api, session: widget.session),
       ),
     // The modules drawn inside this one. `reachableModules` is in the server's
     // registry order, which is the order the sidebar used to show them in, so

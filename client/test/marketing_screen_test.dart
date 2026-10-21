@@ -2757,7 +2757,7 @@ void main() {
 
   group('the tab is actually reachable from the sidebar', () {
     testWidgets('a role granted Marketing gets the destination, and it opens '
-        'on Newsletter rather than a blank body', (tester) async {
+        'on Social Media Management rather than a blank body', (tester) async {
       tester.view.physicalSize = const Size(1280, 900);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -2797,7 +2797,9 @@ void main() {
       // strip rendered; the card proves the tab under it did too, which a
       // blank body would not.
       expect(find.widgetWithText(ChoiceChip, 'Newsletter'), findsOneWidget);
-      expect(find.text('Newsletter'), findsWidgets);
+      // Social Media is first and opens by default (Jose, 2026-10-21).
+      expect(find.byType(SocialMediaTab), findsOneWidget);
+      expect(find.byType(NewsletterTab), findsNothing);
     });
   });
 }
