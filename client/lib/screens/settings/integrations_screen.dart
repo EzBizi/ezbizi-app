@@ -382,6 +382,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
             : (_mayConnectProvider(open) ? _disconnectConnection : null),
         purpose: _purpose[open],
         onEdit: open == 'workiz' && _maySeeExperimental ? _editWorkiz : null,
+        mayMoveWorkizWeb: _mayConnectProvider('workiz_web'),
         onChanged: _load,
         onBack: () => setState(() => _open = null),
       );
