@@ -150,7 +150,8 @@ class SyncWorkizRecords extends Command
         }
 
         $payments = WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', 'payment')
-            ->whereIn('remote_id', $fresh)->whereNotNull('job_id')->where('starts_at', '>=', now()->subDays(2))->get();
+            ->whereIn('remote_id', $fresh)->whereNotNull('job_id')->where('status', 'succeeded')
+            ->where('starts_at', '>=', now()->subDays(2))->get();
 
         foreach ($payments as $payment) {
             $job = \App\Models\Job::query()->find($payment->job_id);
@@ -160,12 +161,24 @@ class SyncWorkizRecords extends Command
                 continue;
             }
 
-            $paid = (float) WorkizRecord::query()->where('job_id', $payment->job_id)->where('type', 'payment')->sum('amount');
+            // Succeeded charges less refunds (Jobs, 2026-10-21); Workiz writes a refund's amount unsigned.
+            $paidMinor = WorkizRecord::query()->where('job_id', $payment->job_id)->where('type', 'payment')->where('status', 'succeeded')->get()
+                ->sum(fn (WorkizRecord $r) => (self::kind($r) === 'refund' ? -1 : 1) * (int) round(abs((float) $r->amount) * 100));
+            $paid = $paidMinor / 100;
             $total = (float) ($mirror?->payload['JobTotalPrice'] ?? 0);
+            $collector = $payment->user_remote_id === null ? null : \App\Models\WorkizTeamMember::query()
+                ->where('franchise_id', $payment->franchise_id)->where('remote_id', $payment->user_remote_id)->value('name');
             app(\App\Support\Automations\EventEmitter::class)->emit('job.payment_received', $job, ['after' => [
                 'amount' => (float) $payment->amount, 'paid_total' => $paid, 'job_total' => $total,
                 'fully_paid' => $total > 0 && $paid >= $total, 'status' => $mirror?->status,
+                'amount_minor' => (int) round(abs((float) $payment->amount) * 100), 'kind' => self::kind($payment),
+                'paid_on' => $payment->starts_at?->toDateString(), 'collected_by' => $collector, 'paid_total_minor' => $paidMinor,
             ]]);
         }
+    }
+
+    private static function kind(WorkizRecord $payment): string
+    {
+        return strtolower((string) ($payment->payload['type'] ?? '')) === 'refund' ? 'refund' : 'charge';
     }
 }

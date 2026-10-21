@@ -161,7 +161,10 @@ class SyncWorkizRecordsTest extends TestCase
         });
         $recent = array_replace(self::RECORDS['payments'], ['id' => 'PAY-NEW', 'amount' => 200, 'date' => now()->subHour()->format('Y-m-d H:i:s')]);
         $old = array_replace(self::RECORDS['payments'], ['id' => 'PAY-OLD', 'amount' => 100, 'date' => now()->subMonth()->format('Y-m-d H:i:s')]);
-        $this->fake(['payments' => [$recent, $old]]);
+        // Jobs, 2026-10-21: succeeded only, and the total is charges less refunds.
+        $refund = array_replace(self::RECORDS['payments'], ['id' => 'PAY-REF', 'amount' => 50, 'type' => 'refund', 'date' => now()->subMonth()->format('Y-m-d H:i:s')]);
+        $failed = array_replace(self::RECORDS['payments'], ['id' => 'PAY-FAIL', 'amount' => 75, 'status' => 'failed', 'date' => now()->subHour()->format('Y-m-d H:i:s')]);
+        $this->fake(['payments' => [$recent, $old, $refund, $failed]]);
 
         $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment']])->assertSuccessful();
         $this->artisan('ezbizi:sync-workiz-records', ['--type' => ['payment']])->assertSuccessful();
@@ -169,7 +172,9 @@ class SyncWorkizRecordsTest extends TestCase
         $events = $this->inTenant($tenant['org'], fn () => \App\Models\AutomationEvent::query()->where('event_key', 'job.payment_received')->get());
         $this->assertCount(1, $events);
         $this->assertSame($job->id, $events[0]->subject_id);
-        $this->assertEquals(['amount' => 200, 'paid_total' => 300, 'job_total' => 500, 'fully_paid' => false, 'status' => 'done pending approval'], $events[0]->payload['after']);
+        $this->assertEquals(['amount' => 200, 'paid_total' => 250, 'job_total' => 500, 'fully_paid' => false, 'status' => 'done pending approval',
+            'amount_minor' => 20000, 'kind' => 'charge', 'paid_on' => now()->subHour()->toDateString(), 'collected_by' => null, 'paid_total_minor' => 25000,
+        ], $events[0]->payload['after']);
     }
 
     /** A second run asks only for what changed since the newest it holds, less two days; --full asks from 2023. */
