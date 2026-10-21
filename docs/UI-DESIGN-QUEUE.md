@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 125 · Scheduling › Service areas drawn on a map — **sent 2026-10-21** (`docs/previews/service-areas-map-layouts.html`)
+
+Scheduling asked (efbd6e645: area map, areas-map, polygons preview/save, delete with move_zips_to). **1** (recommended) all areas on one map (colour per branch / per area) with ZIP dots, area list, draw/reshape tool, a review panel (adds, belongs to another area with Take it, would drop out, typed outside kept), Save/Clear drawing; delete asks in a side pane where the ZIPs go. **2** one area per page with its own map. **3** ZIP lists with a view-only map. Phone **4** (recommended: view-only map + list) / **5** / **6**.
+
 ### 124 · Financials › Settings › Airtable sources — **sent 2026-10-21 — no answer in 10 min, went with 1 and 4** (`docs/previews/airtable-sources-layouts.html`)
 
 Jose 2026-10-21: "i feel like this screen can be better." **1** (recommended) a role × branch matrix (plus All branches), each cell the mapped table with rows, last copy (red when stale), Mirror/Native, empty "— · Add"; a cell opens a side pane (base/table, branch, valid from/until, Copy now, Remove); role, branch and search filters. **2** grouped by Airtable base. **3** grouped by role. Phone **4** (recommended: one branch column as a list) / **5** / **6**.
