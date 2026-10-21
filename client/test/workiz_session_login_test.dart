@@ -122,6 +122,74 @@ void main() {
     expect(find.text('Choose a branch'), findsNothing);
   });
 
+  // Workiz, 2026-10-21: the server fills the branch from the account's own
+  // name (mapped false); nothing to do until somebody presses Change.
+  testWidgets('an auto branch shows as text with Change and sends no PUT', (
+    tester,
+  ) async {
+    final server = _Server()
+      ..row = _web('connected')
+      ..accounts = [
+        {
+          'account': 'acct-1',
+          'name': 'Lakeview Plumbing - Maple',
+          'mapped': false,
+          'franchise_id': 'f-1',
+        },
+      ];
+    await _pumpSession(tester, server);
+
+    expect(find.text('→ Harbor Home Services · Maple Branch'), findsOneWidget);
+    expect(find.byKey(const ValueKey('workiz-session-auto:acct-1')), findsOne);
+    expect(find.text('Choose a branch'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('workiz-session-branch:acct-1')),
+      findsNothing,
+    );
+    expect(server.sent.where((r) => r.method == 'PUT'), isEmpty);
+
+    // Change opens the picker; picking another branch PUTs it.
+    await tester.tap(
+      find.byKey(const ValueKey('workiz-session-change:acct-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(server.sent.where((r) => r.method == 'PUT'), isEmpty);
+    await tester.tap(
+      find.byKey(const ValueKey('workiz-session-branch:acct-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Harbor Home Services · Cedar Branch').last);
+    await tester.pumpAndSettle();
+
+    final put = server.sent.lastWhere((r) => r.method == 'PUT');
+    expect(put.url.path, '/api/v1/social/workiz-web/w-1/accounts');
+    expect(jsonDecode(put.body), {'account': 'acct-1', 'franchise_id': 'f-2'});
+    expect(find.text('→ Harbor Home Services · Cedar Branch'), findsOneWidget);
+    // Picked by a person now, so no longer "auto".
+    expect(
+      find.byKey(const ValueKey('workiz-session-auto:acct-1')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('no branch shows the picker highlighted; the reach is said', (
+    tester,
+  ) async {
+    final server = _Server()..row = _web('connected');
+    await _pumpSession(tester, server);
+
+    final picker = tester.widget<SearchPickerField<String>>(
+      find.byKey(const ValueKey('workiz-session-branch:acct-1')),
+    );
+    expect(picker.value, isNull);
+    expect(picker.errorText, '');
+    expect(
+      find.byKey(const ValueKey('workiz-session-change:acct-1')),
+      findsNothing,
+    );
+    expect(find.text(WorkizSessionLogin.reach), findsOneWidget);
+  });
+
   // Jose, 2026-10-21: the picker listed every company's "Main" bare, and
   // the login belongs to one company, so only its branches are offered.
   testWidgets("a company's login offers only that company's branches", (
@@ -410,6 +478,16 @@ class _Server {
 
   final sent = <http.Request>[];
   Map<String, dynamic>? row;
+
+  /// What GET accounts answers; one account with no branch unless set.
+  List<Map<String, dynamic>> accounts = [
+    {
+      'account': 'acct-1',
+      'name': 'Lakeview Plumbing',
+      'mapped': false,
+      'franchise_id': null,
+    },
+  ];
   bool routes = true;
   bool forbidden = false;
   bool refuseDelete = false;
@@ -455,15 +533,7 @@ class _Server {
       });
     }
     if (path.endsWith('/accounts') && request.method == 'GET') {
-      return json({
-        'data': [
-          {
-            'account': 'acct-1',
-            'name': 'Lakeview Plumbing',
-            'franchise_id': null,
-          },
-        ],
-      });
+      return json({'data': accounts});
     }
     return json({'data': <String, dynamic>{}});
   });

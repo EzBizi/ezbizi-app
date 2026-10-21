@@ -76,8 +76,14 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.onDisconnect,
     this.purpose,
     this.onEdit,
+    this.mayMoveWorkizWeb = false,
     required this.onBack,
   });
+
+  /// Whether a legacy (organization-scoped) Workiz web login offers Move to
+  /// a company: the `workiz_web` connect permission. The server answers the
+  /// move in the organization view only; elsewhere the row says so.
+  final bool mayMoveWorkizWeb;
 
   final ApiClient api;
   final Session session;
@@ -313,6 +319,34 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
   static bool _legacyWorkizWeb(IntegrationConnection row) =>
       row.provider == 'workiz_web' && row.scopeType == 'organization';
 
+  /// A row's detail line; a legacy Workiz web login adds Move to a company
+  /// under it (PUT, session kept), or in another view, where to do it.
+  Widget _subtitle(IntegrationConnection row, Widget detail) {
+    if (!_legacyWorkizWeb(row) || !widget.mayMoveWorkizWeb) return detail;
+    final me = widget.session.me;
+    final organization = me?.scope.type == 'organization';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        detail,
+        if (organization)
+          WorkizWebMove(
+            api: widget.api,
+            connectionId: row.id,
+            companies: me?.companiesInView ?? const [],
+            onMoved: widget.onChanged,
+          )
+        else
+          Text(
+            'Switch to the organization view to move it to a company.',
+            key: ValueKey('workiz-move-hint:${row.id}'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+      ],
+    );
+  }
+
   static String _ago(DateTime at) {
     final d = DateTime.now().difference(at.toLocal());
     if (d.inMinutes < 1) return 'just now';
@@ -431,24 +465,27 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                     // connection leads with its name and still shows the id
                     // underneath — that is what identifies it to the provider
                     // when something is wrong.
-                    subtitle: Text(
-                      [
-                        if (_legacyWorkizWeb(row))
-                          WorkizSessionLogin.legacyNote,
-                        if (row.beneath != null) row.beneath!,
-                        if ((row.detail ?? '').isNotEmpty) row.detail!,
-                        // When it last synced (UI queue 109).
-                        if (row.lastSyncedAt != null)
-                          'synced ${_ago(row.lastSyncedAt!)}',
-                        if (!row.connected) row.statusReason ?? 'Not working',
-                      ].join(' · '),
-                      key: ValueKey('connection-detail:${row.id}'),
-                      maxLines: _legacyWorkizWeb(row) ? 4 : 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: row.connected
-                            ? theme.colorScheme.onSurfaceVariant
-                            : theme.colorScheme.error,
+                    subtitle: _subtitle(
+                      row,
+                      Text(
+                        [
+                          if (_legacyWorkizWeb(row))
+                            WorkizSessionLogin.legacyNote,
+                          if (row.beneath != null) row.beneath!,
+                          if ((row.detail ?? '').isNotEmpty) row.detail!,
+                          // When it last synced (UI queue 109).
+                          if (row.lastSyncedAt != null)
+                            'synced ${_ago(row.lastSyncedAt!)}',
+                          if (!row.connected) row.statusReason ?? 'Not working',
+                        ].join(' · '),
+                        key: ValueKey('connection-detail:${row.id}'),
+                        maxLines: _legacyWorkizWeb(row) ? 4 : 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: row.connected
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.error,
+                        ),
                       ),
                     ),
                     trailing:
