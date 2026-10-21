@@ -33,6 +33,8 @@ Schedule::command('ezbizi:watch-missed-calls')->everyTwoMinutes()->withoutOverla
 Schedule::command('ezbizi:airtable-snapshot')->hourlyAt(17)->withoutOverlapping(10);
 // Financials tables linked to Airtable read that copy, ten minutes after it lands.
 Schedule::command('ezbizi:financials-airtable-refresh')->hourlyAt(27)->withoutOverlapping(10);
+// Invoices that passed their due date unpaid raise invoice.overdue once each.
+Schedule::command('ezbizi:invoices-overdue')->dailyAt('08:05')->withoutOverlapping(10);
 Schedule::command('ezbizi:ai-booked-no-job')->dailyAt('07:40')->timezone('America/New_York')->withoutOverlapping(30);
 
 // Everything else's retention (§10), read off each model's own declaration.

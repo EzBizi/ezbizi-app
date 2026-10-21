@@ -182,6 +182,7 @@ use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\FinancialBillsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
+use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
@@ -1042,6 +1043,25 @@ Route::prefix('v1')
             Route::post('financials/adjustments', [FinancialAdjustmentsController::class, 'store']);
             Route::patch('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'update']);
             Route::delete('financials/adjustments/{adjustment}', [FinancialAdjustmentsController::class, 'destroy']);
+        });
+        // Invoices (child module of Financials). Actions are checked in the controller.
+        Route::prefix('invoices')->controller(InvoicesController::class)->group(function (): void {
+            Route::get('charge-columns', 'columns');
+            Route::put('charge-columns', 'saveColumns');
+            Route::get('sheets', 'sheets');
+            Route::post('sheets', 'storeSheet');
+            Route::get('sheets/{sheet}', 'showSheet');
+            Route::patch('sheets/{sheet}/rows', 'updateRows');
+            Route::post('sheets/{sheet}/invoice', 'invoiceSheet');
+            Route::delete('sheets/{sheet}', 'destroySheet');
+            Route::post('send', 'send');
+            Route::get('/', 'index');
+            Route::get('{invoice}', 'show');
+            Route::patch('{invoice}', 'update');
+            Route::post('{invoice}/approve', 'approve');
+            Route::post('{invoice}/payments', 'pay');
+            Route::post('{invoice}/void', 'void');
+            Route::get('{invoice}/pdf', 'pdf');
         });
         Route::middleware('permission:financials.bills.view')->group(function (): void {
             Route::get('financials/bills', [FinancialBillsController::class, 'index']);

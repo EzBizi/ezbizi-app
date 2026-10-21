@@ -47,6 +47,7 @@ class RecordNumberGenerator
     public const SALES           = 'inventory_sale';
     public const SERVICES        = 'service';
     public const ESTIMATES       = 'estimate';
+    public const INVOICES        = 'invoice';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -131,6 +132,7 @@ class RecordNumberGenerator
             self::SERVICES        => 'SVC-',
             // The registry has an estimate prefix setting already (numbering.estimate_prefix).
             self::ESTIMATES       => (string) $this->settings->get('numbering.estimate_prefix', $scope),
+            self::INVOICES        => (string) $this->settings->get('numbering.invoice_prefix', $scope),
             default         => '',
         };
 
