@@ -472,6 +472,25 @@ class RingCentralLeadCallsTest extends TestCase
 
         $this->assertSame(1, \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->count());
         $this->assertSame(RingCentralLeadCalls::MISSED, $this->inTenant($t['org'], fn () => Lead::query()->value('source_status')));
+        // The alert names the line they dialled (Automations, 2026-10-20).
+        $after = \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->value('payload')['after'];
+        $this->assertSame(['NJ - GMB', null], [$after['line'], $after['contact_name']]);
+    }
+
+    /** A known customer's missed call says who; a line with no name says its number. */
+    public function test_a_missed_call_alert_names_a_known_caller_and_an_unnamed_line_by_number(): void
+    {
+        $t = $this->setUpTenant();
+        $this->inTenant($t['org'], function () use ($t) {
+            \App\Models\Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-0081', 'name' => 'Jane Doe', 'phone' => '+15550000081']);
+            app(RingCentralLeadCalls::class)->file([
+                self::rc('81', '+15550000081', now()->subMinutes(20)->toIso8601String(), '+19990000000',
+                    extra: ['answered_by' => null, 'talk_seconds' => null, 'recording_id' => null, 'rang' => ['Ana Diaz'], 'result' => 'Missed']),
+            ], self::LINES, $t['company']->id);
+        });
+
+        $after = \App\Models\AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.missed_call')->value('payload')['after'];
+        $this->assertSame(['+19990000000', 'Jane Doe'], [$after['line'], $after['contact_name']]);
     }
 
     /** Jose, 2026-10-19: a call from someone on an archived lead reopens it - "yes of course". */
