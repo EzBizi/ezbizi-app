@@ -3,7 +3,10 @@
 namespace Tests\Feature\Financials;
 
 use App\Models\AirtableRecord;
+use App\Models\AirtableRecordVersion;
 use App\Models\FinancialRecord;
+use App\Models\FinancialSource;
+use App\Models\FinancialTable;
 use App\Models\SocialConnection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -92,6 +95,12 @@ class AirtableWriteTest extends TestCase
         $this->assertSame(15, $now[$rows['Diesel']['id']]['values'][$fields['Amount']['id']]);
         $this->assertSame(999, $now[$rows['Rent']['id']]['values'][$fields['Amount']['id']]);
 
+        // The row as it stood before the edit is kept as a version, as the hourly copy does.
+        $this->inTenant($t['org'], function () {
+            $rec1 = AirtableRecord::query()->where('record_id', 'rec1')->sole();
+            $this->assertSame(10, AirtableRecordVersion::query()->where('airtable_record_id', $rec1->id)->sole()->fields['Amount']);
+        });
+
         // Computed columns are never written.
         $as->patchJson("/api/v1/financials/tables/{$table['id']}/records", ['changes' => [
             ['id' => $rows['Diesel']['id'], 'values' => [$fields['Total']['id'] => '1']],
@@ -118,5 +127,13 @@ class AirtableWriteTest extends TestCase
         $this->artisan('ezbizi:financials-airtable-refresh')->assertSuccessful();
         $diesel = collect($as->getJson("/api/v1/financials/tables/{$table['id']}")->json('data.records'))->firstWhere('id', $rows['Diesel']['id']);
         $this->assertSame(77, $diesel['values'][$fields['Amount']['id']]);
+
+        // Reports read the live store by Airtable column name, before and after a cut-over.
+        $this->inTenant($t['org'], function () {
+            $source = FinancialSource::create(['base_id' => 'appX', 'table_id' => 'tblR', 'role' => 'hq_expenses']);
+            $this->assertContains(77, $source->rows()->pluck('Amount')->all());
+            FinancialTable::query()->update(['cut_over_at' => null]);
+            $this->assertNotContains(77, $source->rows()->pluck('Amount')->all());
+        });
     }
 }
