@@ -81,4 +81,43 @@ class FinancialsApiTest extends TestCase
         $this->signedInAs($beta['admin'])->getJson("/api/v1/financials/tables/{$tableId}")->assertNotFound();
         $this->assertSame([], $this->signedInAs($beta['admin'])->getJson('/api/v1/financials/bases')->json('data'));
     }
+
+    public function test_many_cells_change_at_once_or_none_do(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $as = $this->signedInAs($t['admin']);
+        $base = $as->postJson('/api/v1/financials/bases', ['name' => 'Books', 'template' => 'bookkeeping'])->json('data');
+        $tableId = $base['tables'][0]['id'];
+        $fields = collect($as->getJson("/api/v1/financials/tables/{$tableId}")->json('data.fields'))->keyBy('name');
+        $a = $as->postJson("/api/v1/financials/tables/{$tableId}/records", ['values' => [$fields['Name']['id'] => 'A']])->json('data.id');
+        $b = $as->postJson("/api/v1/financials/tables/{$tableId}/records", ['values' => [$fields['Name']['id'] => 'B']])->json('data.id');
+        $amount = $fields['Amount']['id'];
+
+        // A paste of two amounts.
+        $as->patchJson("/api/v1/financials/tables/{$tableId}/records", ['changes' => [
+            ['id' => $a, 'values' => [$amount => '10.50']], ['id' => $b, 'values' => [$amount => '3']],
+        ]])->assertOk()->assertJsonPath('data.0.values.'.$amount, 10.5);
+
+        // One bad cell refuses the whole paste; nothing changed.
+        $as->patchJson("/api/v1/financials/tables/{$tableId}/records", ['changes' => [
+            ['id' => $a, 'values' => [$amount => '99']], ['id' => $b, 'values' => [$amount => 'lots']],
+        ]])->assertStatus(422);
+        $rows = collect($as->getJson("/api/v1/financials/tables/{$tableId}")->json('data.records'))->keyBy('id');
+        $this->assertSame(10.5, $rows[$a]['values'][$amount]);
+
+        // Delete over a selection is a change to null.
+        $as->patchJson("/api/v1/financials/tables/{$tableId}/records", ['changes' => [['id' => $b, 'values' => [$amount => null]]]])->assertOk();
+        $rows = collect($as->getJson("/api/v1/financials/tables/{$tableId}")->json('data.records'))->keyBy('id');
+        $this->assertArrayNotHasKey($amount, $rows[$b]['values']);
+    }
+
+    public function test_column_widths_are_this_persons_and_kept_in_bounds(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $key = '01a0a0be-6b35-72d6-95c1-cef7e622fd3c:01a0a0be-6b35-72d6-95c1-cef7e622fd3d';
+        $this->signedInAs($t['admin'])->patchJson('/api/v1/me/preferences', ['preferences' => ['financials.column_widths' => [
+            $key => 2000, 'not a key' => 100,
+        ]]])->assertOk();
+        $this->assertSame([$key => 800], $this->signedInAs($t['admin'])->getJson('/api/v1/me')->json('data.preferences')['financials.column_widths']);
+    }
 }

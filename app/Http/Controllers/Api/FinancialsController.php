@@ -9,7 +9,6 @@ use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
 use App\Models\FinancialView;
 use App\Models\Franchise;
-use App\Models\SocialConnection;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Financials\AirtableMirror;
@@ -269,6 +268,46 @@ class FinancialsController extends Controller
         return response()->json(['data' => $this->recordShape($record)]);
     }
 
+    /**
+     * Many cells at once — a paste, a fill-down, a delete over a selection,
+     * an undo (Jose, 2026-10-21: "like any excel sheet"). All or nothing: a
+     * cell that does not fit its column refuses the whole change.
+     */
+    public function updateRecords(Request $request, FinancialTable $table): JsonResponse
+    {
+        $this->authorize('update', $table->base);
+        $this->refuseMirror($table);
+        $changes = $request->validate([
+            'changes' => ['required', 'array', 'min:1', 'max:5000'],
+            'changes.*.id' => ['required', 'uuid'],
+            'changes.*.values' => ['required', 'array'],
+        ])['changes'];
+
+        $records = $table->records()->whereIn('id', array_column($changes, 'id'))->get()->keyBy('id');
+        if ($records->count() !== count(array_unique(array_column($changes, 'id')))) {
+            throw ValidationException::withMessages(['changes' => 'A row in the change is not in this table any more. Reload and try again.']);
+        }
+
+        $saved = DB::transaction(function () use ($changes, $records, $table, $request) {
+            foreach ($changes as $change) {
+                $record = $records[$change['id']];
+                $record->values = array_filter(
+                    array_replace($record->values ?? [], $this->cleanValues($table, $change['values'], keepNulls: true)),
+                    fn ($v) => $v !== null,
+                );
+                if ($record->isDirty('values')) {
+                    $record->save();
+                    $this->audit->logChange('financials.record_updated', $record, $request->user());
+                    $this->events->emit('financial_record.updated', $record, ['table' => $table->name]);
+                }
+            }
+
+            return $records->values();
+        });
+
+        return response()->json(['data' => $saved->map(fn ($r) => $this->recordShape($r))->values()]);
+    }
+
     public function destroyRecord(Request $request, FinancialRecord $record): JsonResponse
     {
         $this->authorize('delete', $record->table->base);
@@ -489,15 +528,8 @@ class FinancialsController extends Controller
             'base_id' => ['required', 'string', 'max:32'],
             'table_id' => ['required', 'string', 'max:32'],
         ]);
-        $name = SocialConnection::query()->where('provider', 'airtable')->where('remote_id', $input['base_id'])->value('display_name')
-            ?? 'Airtable';
-
-        $base = FinancialBase::query()->whereNull('company_id')->where('name', $name)->first();
-        if ($base === null) {
-            $this->authorize('create', [FinancialBase::class, null, null]);
-            $base = FinancialBase::create(['name' => $name, 'created_by_user_id' => $request->user()->id]);
-            $this->audit->log('financials.base_created', $base, actor: $request->user());
-        }
+        $this->authorize('create', [FinancialBase::class, null, null]);
+        $base = AirtableMirror::baseFor($input['base_id'], $request->user()->id);
 
         return $this->linkAirtable($request, $base);
     }
