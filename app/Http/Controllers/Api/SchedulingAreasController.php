@@ -10,6 +10,7 @@ use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -232,7 +233,9 @@ class SchedulingAreasController extends Controller
 
         $result = DB::transaction(function () use ($row, $to) {
             $count = ServiceAreaZip::where('service_area_id', $row->id)->count();
-            if ($to !== null) {
+            if ($to === null) {
+                ServiceAreaZipRelease::release(ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip'));
+            } else {
                 ServiceAreaZip::where('service_area_id', $row->id)
                     ->update(['service_area_id' => $to->id, 'franchise_id' => $to->franchise_id]);
             }
@@ -538,6 +541,9 @@ class SchedulingAreasController extends Controller
         }
 
         DB::transaction(function () use ($row, $wanted) {
+            $before = ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip');
+            ServiceAreaZipRelease::release($before->diff($wanted->keys()));
+            ServiceAreaZipRelease::claim($wanted->keys());
             ServiceAreaZip::where('service_area_id', $row->id)->delete();
 
             foreach ($wanted as $zip => $city) {

@@ -5,6 +5,7 @@ namespace Tests\Feature\Scheduling;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Models\WorkizJob;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Scheduling\Schedule;
@@ -51,6 +52,32 @@ class BuildZipMapTest extends TestCase
             'payload' => [],
             'synced_at' => now(),
         ]);
+    }
+
+    /**
+     * Jose, 2026-10-21: he removed 20662 from Maryland to give it to Charlotte
+     * Hall, and the sweep put it back in Maryland twelve seconds later, so
+     * every add to Charlotte Hall was refused as a clash.
+     */
+    public function test_a_zip_a_person_removed_is_not_re_added_by_the_sweep(): void
+    {
+        [$tenant, $maryland] = $this->tenantWithArea('Maryland');
+        $charlotte = ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Charlotte Hall']);
+        $this->job($tenant, 'Maryland', '20662', 'Nanjemoy');
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+        $as = $this->signedInAs($tenant['admin']);
+
+        $as->putJson("/api/v1/scheduling/areas/{$maryland->id}/zips", ['zips' => []])->assertOk();
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame(0, ServiceAreaZip::query()->where('zip', '20662')->count(), 'The sweep re-added a zip a person removed.');
+
+        $as->putJson("/api/v1/scheduling/areas/{$charlotte->id}/zips", ['zips' => ['20662']])->assertOk();
+        // Assigned again by hand: no longer released, and the sweep leaves it where the person put it.
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame($charlotte->id, ServiceAreaZip::query()->where('zip', '20662')->value('service_area_id'));
+        $this->assertSame(0, ServiceAreaZipRelease::query()->count());
     }
 
     public function test_it_maps_a_zip_to_the_area_its_jobs_name(): void

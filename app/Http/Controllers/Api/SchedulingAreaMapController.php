@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaPolygon;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -88,7 +89,7 @@ final class SchedulingAreaMapController extends Controller
         $row = $this->reachable($request)->findOrFail($area);
         $this->authorize('update', $row);
 
-        return response()->json(['data' => $this->plan($row, $this->shapes($request))]);
+        return response()->json(['data' => $this->plan($row, $this->shapes($request), $request)]);
     }
 
     /** PUT /scheduling/areas/{area}/polygons {polygons, take?: [zip]} */
@@ -100,7 +101,7 @@ final class SchedulingAreaMapController extends Controller
         $take = collect($request->validate(['take' => ['sometimes', 'array'], 'take.*' => ['string', 'max:16']])['take'] ?? []);
 
         $result = DB::transaction(function () use ($request, $row, $shapes, $take) {
-            $plan = $this->plan($row, $shapes);
+            $plan = $this->plan($row, $shapes, $request);
 
             // Moves only what was asked for, from areas this person can edit.
             $moved = [];
@@ -121,6 +122,8 @@ final class SchedulingAreaMapController extends Controller
             }
 
             ServiceAreaZip::where('service_area_id', $row->id)->whereIn('zip', $plan['remove'])->delete();
+            ServiceAreaZipRelease::release($plan['remove']);
+            ServiceAreaZipRelease::claim(array_merge($plan['add'], $moved));
             foreach (array_merge($plan['add'], $moved) as $zip) {
                 ServiceAreaZip::create(['franchise_id' => $row->franchise_id, 'service_area_id' => $row->id, 'zip' => $zip, 'source' => 'drawn']);
             }
@@ -146,7 +149,7 @@ final class SchedulingAreaMapController extends Controller
      * remove: drawn here before and now outside. outside: typed or derived and
      * now outside (kept).
      */
-    private function plan(ServiceArea $row, array $shapes): array
+    private function plan(ServiceArea $row, array $shapes, Request $request): array
     {
         $inside = $this->zipsInside($shapes);
         $owners = ServiceAreaZip::query()->whereIn('zip', $inside)->with('serviceArea:id,name')->get()->keyBy('zip');
@@ -156,7 +159,9 @@ final class SchedulingAreaMapController extends Controller
         return [
             'add' => array_values(array_diff($inside, $owners->keys()->map(fn ($z) => (string) $z)->all())),
             'conflicts' => $owners->filter(fn ($z) => $z->service_area_id !== $row->id)
-                ->map(fn ($z) => ['zip' => (string) $z->zip, 'area_id' => $z->service_area_id, 'area_name' => $z->serviceArea?->name])
+                ->map(fn ($z) => ['zip' => (string) $z->zip, 'area_id' => $z->service_area_id, 'area_name' => $z->serviceArea?->name,
+                    // Whether save's `take` may move it: the owner is reachable and editable.
+                    'may_take' => ($owner = $this->reachable($request)->find($z->service_area_id)) !== null && $request->user()->can('update', $owner)])
                 ->values()->all(),
             'remove' => $outsideMine->where('source', 'drawn')->pluck('zip')->values()->all(),
             'outside' => $outsideMine->filter(fn ($z) => $z->source !== 'drawn')->pluck('zip')->values()->all(),
