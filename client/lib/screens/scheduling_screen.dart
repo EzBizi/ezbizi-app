@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'scheduling/area_map_pane.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/helpers_pane.dart';
@@ -265,31 +266,56 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
     final notes =
         widget.session.me?.permissions.contains('scheduling.locations.view') ??
         false;
-    final panes = [
-      () => CapacitySettings(
-        api: widget.api,
-        session: widget.session,
-        visible: widget.visible && _tab == 0,
-      ),
-      () => TechnicianLinks(
-        api: widget.api,
-        visible: widget.visible && _tab == 1,
-      ),
-      if (notes)
-        () => DispatcherNotesSettings(
+    // Each sub-tab with its pane; `visible` is asked by position, which is
+    // computed here so a tab drawn or not (Locations) cannot shift another's.
+    final tabs = <(String, IconData, Widget Function(bool visible))>[
+      (
+        'Availability',
+        Icons.event_available_outlined,
+        (visible) => CapacitySettings(
           api: widget.api,
           session: widget.session,
-          visible: widget.visible && _tab == 2,
+          visible: visible,
+        ),
+      ),
+      // Drawn service areas (UI queue 125).
+      (
+        'Service areas',
+        Icons.map_outlined,
+        (visible) => AreaMapPane(
+          api: widget.api,
+          session: widget.session,
+          visible: visible,
+        ),
+      ),
+      (
+        'Schedule',
+        Icons.engineering_outlined,
+        (visible) => TechnicianLinks(api: widget.api, visible: visible),
+      ),
+      if (notes)
+        (
+          'Locations',
+          Icons.place_outlined,
+          (visible) => DispatcherNotesSettings(
+            api: widget.api,
+            session: widget.session,
+            visible: visible,
+          ),
         ),
       // The suggested-availability radius and look-ahead (Jose, 2026-10-13:
       // "make it so i can change that in the app as well on the scheduling
       // settings"): the Settings rows of the scheduling group, as Field's
       // Settings tab draws its own.
-      () => SettingsScreen(
-        key: const ValueKey('tour-scheduling-suggestions'),
-        api: widget.api,
-        session: widget.session,
-        onlyGroup: 'scheduling',
+      (
+        'Routing & suggestions',
+        Icons.near_me_outlined,
+        (_) => SettingsScreen(
+          key: const ValueKey('tour-scheduling-suggestions'),
+          api: widget.api,
+          session: widget.session,
+          onlyGroup: 'scheduling',
+        ),
       ),
     ];
 
@@ -299,12 +325,7 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
         TabBarLike(
           key: const ValueKey('tour-scheduling-settings-tabs'),
           level: TabLevel.secondary,
-          labels: [
-            ('Availability', Icons.event_available_outlined),
-            ('Schedule', Icons.engineering_outlined),
-            if (notes) ('Locations', Icons.place_outlined),
-            ('Routing & suggestions', Icons.near_me_outlined),
-          ],
+          labels: [for (final t in tabs) (t.$1, t.$2)],
           selected: _tab,
           onSelected: (i) => setState(() {
             _tab = i;
@@ -316,11 +337,11 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              for (var i = 0; i < panes.length; i++)
+              for (var i = 0; i < tabs.length; i++)
                 Offstage(
                   offstage: i != _tab,
                   child: _shown.contains(i)
-                      ? panes[i]()
+                      ? tabs[i].$3(widget.visible && _tab == i)
                       : const SizedBox.shrink(),
                 ),
             ],
