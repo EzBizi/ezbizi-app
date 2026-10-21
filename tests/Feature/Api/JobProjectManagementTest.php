@@ -68,6 +68,38 @@ class JobProjectManagementTest extends TestCase
         $this->assertStringStartsWith('2026-10-31T00:00:00', $waiting['deadline_at']);
     }
 
+    /** Jose, 2026-10-22: what happened in a window, each stat opening its jobs. */
+    public function test_the_dashboard_counts_what_happened_in_the_window(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+
+        $stats = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management/stats?from=2026-10-05&to=2026-10-12')
+            ->assertOk()->json('data');
+
+        $this->assertSame(['count' => 1, 'job_ids' => [$job], 'amount_minor' => 5000], $stats['payments']);
+        // The rule's dpa → dpa is not a change; the entry on the 5th is.
+        $this->assertSame(['count' => 1, 'job_ids' => [$job]], $stats['status_changes']);
+        $this->assertSame(['count' => 1, 'job_ids' => [$job]], $stats['tag_changes']);
+        $this->assertSame(0, $stats['cancellations']['count'], 'no cancelled statuses named');
+
+        $this->assertSame(0, $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/stats?from=2026-10-13&to=2026-10-14')->json('data.payments.count'));
+    }
+
+    public function test_recently_paid_and_drill_down_and_each_step_reads_as_a_sentence(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+        $get = fn (string $q) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management?{$q}")->assertOk()->json('data');
+
+        $this->assertSame([$job], array_column($get('filter=recently_paid&from=2026-10-10&to=2026-10-10'), 'id'));
+        $this->assertSame([], $get('filter=recently_paid&from=2026-10-11&to=2026-10-20'));
+        $row = $get('ids[]='.$job)[0];
+        $this->assertSame('Payment received, partly paid', $row['timeline'][1]['what']);
+        $this->assertSame('+DEPOSIT RECEIVED', $row['timeline'][2]['what']);
+    }
+
     public function test_filters_by_stage_branch_and_days(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));

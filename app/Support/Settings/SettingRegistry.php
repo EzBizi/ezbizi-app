@@ -932,6 +932,18 @@ class SettingRegistry
                     .'estimate, and what has been paid. Automations can act on it, for example '
                     .'cancelling after 30 days with nothing paid.',
             ),
+            /*
+             * Which statuses mean cancelled, for Project Management's
+             * "Cancellations" (2026-10-22). Empty: none counted, nothing guessed.
+             */
+            new SettingDefinition(
+                key: 'jobs.cancelled_statuses', label: 'Statuses that mean the job was cancelled',
+                type: SettingDefinition::TYPE_SUBSET,
+                choicesFrom: 'jobs.statuses',
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Project Management counts a job as cancelled when it moves into one of these.',
+            ),
             new SettingDefinition(
                 key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
                 type: SettingDefinition::TYPE_SUBSET,
