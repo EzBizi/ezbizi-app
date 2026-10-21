@@ -901,11 +901,14 @@ class _FinancialsScreenState extends State<FinancialBases> {
               onChange: _changeCells,
               onField: canShape ? _editField : (_) {},
               canEdit: canWrite,
-              widths: Map<String, dynamic>.from(
-                (widget.session.me?.preferences['financials.column_widths']
-                        as Map?) ??
-                    const {},
-              ),
+              // Unset, the server sends [] (an empty PHP array), not {}.
+              widths: switch (widget
+                  .session
+                  .me
+                  ?.preferences['financials.column_widths']) {
+                final Map m => Map<String, dynamic>.from(m),
+                _ => const {},
+              },
               onWidths: (w) =>
                   widget.session.setPreference('financials.column_widths', w),
             ),
