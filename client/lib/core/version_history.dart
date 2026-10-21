@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0465',
+      date: '21 Oct 2026',
+      items: [
+        'Branch pickers name the company too ("Connecticut · A-1 Chimney"), sorted by company, across customers, jobs, estimates, scheduling, financials, leads, Business Profile and complaints.',
+        'Integrations › Workiz: the signed-in session can be disconnected.',
+        'Jobs: a daily check for jobs waiting on an estimate, ready for Project Management. Nothing runs until its statuses are chosen in Settings.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0464',
       date: '20 Oct 2026',
       items: [
