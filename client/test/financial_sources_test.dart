@@ -13,10 +13,15 @@ import 'package:http/testing.dart';
 // Financials → Settings → Airtable sources as a role × branch matrix (UI
 // queue 124). Every name here is invented.
 
-const _sources = {
+String _ago(Duration d) => DateTime.now().toUtc().subtract(d).toIso8601String();
+
+Map<String, dynamic> _sources({bool neverCopied = false}) => {
   'data': [
     {
       'id': 's-ref',
+      'kind': 'mirror',
+      'last_copied_at': neverCopied ? null : _ago(const Duration(minutes: 4)),
+      'rows': 412,
       'base_id': 'appNorth',
       'table_id': 'tblRef',
       'role': 'refunds',
@@ -30,6 +35,9 @@ const _sources = {
     },
     {
       'id': 's-chk-sp',
+      'kind': 'mirror',
+      'last_copied_at': _ago(const Duration(days: 3)),
+      'rows': 38,
       'base_id': 'appNorth',
       'table_id': 'tblChkSp',
       'role': 'check_returns',
@@ -43,6 +51,9 @@ const _sources = {
     },
     {
       'id': 's-chk-rv',
+      'kind': 'native',
+      'last_copied_at': null,
+      'rows': 1,
       'base_id': 'appNorth',
       'table_id': 'tblChkRv',
       'role': 'check_returns',
@@ -115,6 +126,8 @@ Future<List<http.Request>> _pump(
   WidgetTester tester, {
   double width = 1400,
   bool canEdit = true,
+  bool copyNowRefused = false,
+  bool neverCopied = false,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -130,13 +143,27 @@ Future<List<http.Request>> _pump(
       seen.add(request);
       final path = request.url.path;
       if (path.endsWith('/financials/sources') && request.method == 'GET') {
-        return json(_sources);
+        return json(_sources(neverCopied: neverCopied));
+      }
+      if (path.endsWith('/financials/sources/copy-now')) {
+        return copyNowRefused
+            ? json({
+                'message': 'The given data was invalid.',
+                'errors': {
+                  'copy': [
+                    'A copy started less than two minutes ago. Give it a moment.',
+                  ],
+                },
+              }, 422)
+            : json({
+                'data': {'message': 'Copying from Airtable now. Refresh soon.'},
+              }, 202);
       }
       if (path.contains('/financials/sources/') && request.method == 'DELETE') {
         return json(null, 204);
       }
       if (path.contains('/financials/sources')) {
-        return json({'data': (_sources['data']! as List)[1]});
+        return json({'data': (_sources()['data']! as List)[1]});
       }
       return json({'message': 'Nothing stubbed for $path.'}, 500);
     }),
@@ -180,7 +207,6 @@ void main() {
         tester.getTopLeft(find.text(label)).dx,
     ];
     expect(headers, orderedEquals([...headers]..sort()));
-    expect(find.text('3 mapped · 3 branches'), findsOneWidget);
 
     expect(
       find.descendant(
@@ -189,8 +215,14 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('38 rows · from 2026-01-01'), findsOneWidget);
+    expect(
+      find.text('38 rows · last copy 3 d ago · from 2026-01-01'),
+      findsOneWidget,
+    );
+    expect(find.text('412 rows · last copy 4 min ago'), findsOneWidget);
+    // A native table has no copy to date.
     expect(find.text('1 row'), findsOneWidget);
+    expect(find.text('3 mapped · 3 branches · last copy 4 min ago'), findsOne);
     expect(find.byKey(const ValueKey('tour-financials-sources')), findsOne);
   });
 
@@ -351,5 +383,113 @@ void main() {
     expect(find.text('Bounced Springfield'), findsOneWidget);
     expect(find.text('— · Add'), findsOneWidget);
     expect(find.text('Technician payroll'), findsOneWidget);
+  });
+
+  testWidgets('each source wears Mirror or Native', (tester) async {
+    await _pump(tester);
+    expect(
+      find.descendant(
+        of: _cell('check_returns', 'fr-rv'),
+        matching: find.text('Native'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: _cell('refunds', 'all'),
+        matching: find.text('Mirror'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Mirror'), findsNWidgets(2));
+    expect(find.text('Native'), findsOneWidget);
+  });
+
+  testWidgets('a copy older than a day is red; a fresh one is not', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final error = Theme.of(
+      tester.element(find.byType(FinancialSourcesSettings)),
+    ).colorScheme.error;
+    Color? colour(String text) =>
+        tester.widget<Text>(find.text(text)).style?.color;
+    expect(colour('38 rows · last copy 3 d ago · from 2026-01-01'), error);
+    expect(colour('412 rows · last copy 4 min ago'), isNot(error));
+    expect(colour('1 row'), isNot(error));
+  });
+
+  testWidgets('a mirror never copied says so', (tester) async {
+    await _pump(tester, neverCopied: true);
+    expect(find.text('412 rows · never copied'), findsOneWidget);
+  });
+
+  testWidgets('Copy now shows the server sentence and reads the list again '
+      'a minute later', (tester) async {
+    final seen = await _pump(tester);
+    int gets() => seen.where((r) => r.method == 'GET').length;
+    final before = gets();
+    await tester.tap(find.byKey(const ValueKey('sources-copy-now')));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      seen.where((r) => r.url.path.endsWith('/financials/sources/copy-now')),
+      hasLength(1),
+    );
+    expect(
+      find.text('Copying from Airtable now. Refresh soon.'),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 59));
+    expect(gets(), before);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(gets(), before + 1);
+  });
+
+  testWidgets('a refused Copy now shows why, in place', (tester) async {
+    await _pump(tester, copyNowRefused: true);
+    await tester.tap(find.byKey(const ValueKey('sources-copy-now')));
+    await tester.pumpAndSettle();
+    final note = find.text(
+      'A copy started less than two minutes ago. Give it a moment.',
+    );
+    expect(note, findsOneWidget);
+    expect(
+      tester.widget<Text>(note).style?.color,
+      Theme.of(tester.element(note)).colorScheme.error,
+    );
+    // Nothing is read again after a refusal.
+    await tester.pump(const Duration(seconds: 61));
+  });
+
+  testWidgets('Copy now in the side panel', (tester) async {
+    final seen = await _pump(tester);
+    await tester.tap(find.text('Bounced Springfield'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('source-panel-copy-now')));
+    await tester.pump();
+    await tester.pump();
+    expect(
+      seen.where((r) => r.url.path.endsWith('/financials/sources/copy-now')),
+      hasLength(1),
+    );
+    expect(
+      find.text('Copying from Airtable now. Refresh soon.'),
+      findsNWidgets(2),
+    );
+    // Let the refetch timer fire so none is left pending.
+    await tester.pump(const Duration(seconds: 61));
+  });
+
+  testWidgets('without Financials edit Copy now is greyed and says why', (
+    tester,
+  ) async {
+    await _pump(tester, canEdit: false);
+    final button = tester.widget<ButtonStyleButton>(
+      find.byKey(const ValueKey('sources-copy-now')),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.text('Copy now needs Financials edit.'), findsOneWidget);
   });
 }

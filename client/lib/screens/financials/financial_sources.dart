@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 
 /// Financials → Settings: which of the organization's Airtable tables is which
 /// part of its books, and which column means what. Reports read this map.
@@ -15,9 +19,9 @@ import '../../widgets/side_panel.dart';
 /// neither reads "— · Add". Below 760 px the matrix is one branch's column,
 /// picked on top, as a list of rows.
 ///
-/// The server sends no last-copy time and no mirror/native mark for a source,
-/// so the cells show neither: a cell says only what `/financials/sources`
-/// says.
+/// Each cell says what `/financials/sources` says of the source: its own row
+/// count (a shared table's filter applied), Mirror or Native, and when a
+/// mirror was last copied, in red once that is more than a day ago.
 class FinancialSourcesSettings extends StatefulWidget {
   const FinancialSourcesSettings({
     super.key,
@@ -57,6 +61,18 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
   String _narrowBranch = _allBranches;
   final _search = TextEditingController();
 
+  /// Copy now: the server's answer, shown under the header line.
+  String? _copyNote;
+  bool _copyFailed = false;
+  bool _copying = false;
+
+  /// The list is read again a minute after a copy starts, when it has had
+  /// time to land.
+  Timer? _refetch;
+
+  /// Copy now asks only for Financials edit (it copies, it changes nothing).
+  bool get _canCopy => widget.me.can('financials.edit');
+
   bool get _canEdit =>
       widget.me.can('financials.edit') &&
       widget.me.scope.type == 'organization';
@@ -69,6 +85,7 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
 
   @override
   void dispose() {
+    _refetch?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -179,6 +196,7 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
         api: widget.api,
         me: widget.me,
         data: _data!,
+        onCopyNow: _canCopy ? _copyNow : null,
         source: source,
         initialRole: role,
         initialPlace: branchId,
@@ -187,10 +205,50 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
     if (saved == true) await _load();
   }
 
+  /// POST copy-now. Returns the sentence to show, and whether it is a refusal.
+  Future<({String text, bool failed})> _copyNow() async {
+    setState(() => _copying = true);
+    final r = await widget.api.post('/financials/sources/copy-now', const {});
+    final failed = !r.ok;
+    final text = failed
+        ? r.reason
+        : '${(r.body['data'] as Map?)?['message'] ?? 'Copying from Airtable now.'}';
+    if (!failed) {
+      _refetch?.cancel();
+      _refetch = Timer(const Duration(seconds: 60), () {
+        if (mounted) _load();
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _copying = false;
+        _copyNote = text;
+        _copyFailed = failed;
+      });
+    }
+    return (text: text, failed: failed);
+  }
+
+  /// "last copy 4 min ago" for a mirror, "never copied" for a mirror with
+  /// none; nothing for a native table.
+  String? _copyLabel(Map s) {
+    if (s['kind'] != 'mirror') return null;
+    final at = s['last_copied_at'] as String?;
+    return at == null ? 'never copied' : 'last copy ${sourcesAgo(at)}';
+  }
+
+  bool _stale(Map s) {
+    final at = DateTime.tryParse('${s['last_copied_at'] ?? ''}');
+    return s['kind'] == 'mirror' &&
+        at != null &&
+        DateTime.now().difference(at.toLocal()) > const Duration(hours: 24);
+  }
+
   String _detail(Map s) {
-    final rows = _tableOf(s)?['rows'];
+    final rows = s['rows'];
     return [
       if (rows != null) '$rows row${rows == 1 ? '' : 's'}',
+      ?_copyLabel(s),
       if (s['franchise_id'] == null && s['company_id'] != null)
         '${s['place'] ?? 'One company'} only',
       if (s['valid_from'] != null) 'from ${s['valid_from']}',
@@ -198,7 +256,7 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
     ].join(' · ');
   }
 
-  double get _entryHeight => MediaQuery.textScalerOf(context).scale(40);
+  double get _entryHeight => MediaQuery.textScalerOf(context).scale(44);
 
   /// What one cell says. Fixed line heights so the pinned role column and
   /// the scrolling cells keep the same row height.
@@ -224,19 +282,36 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      _tableName(s),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _tableName(s),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (s['kind'] == 'mirror' || s['kind'] == 'native') ...[
+                          const SizedBox(width: 6),
+                          StatusPill(
+                            s['kind'] == 'native' ? 'Native' : 'Mirror',
+                            tone: s['kind'] == 'native'
+                                ? Tone.ok
+                                : Tone.neutral,
+                          ),
+                        ],
+                      ],
                     ),
                     Text(
                       _detail(s),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: muted,
+                      style: _stale(s)
+                          ? muted?.copyWith(color: theme.colorScheme.error)
+                          : muted,
                     ),
                   ],
                 ),
@@ -478,6 +553,64 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
     );
   }
 
+  /// "N mapped · M branches · last copy …", and Copy now (it copies every
+  /// table, so it sits here rather than on one cell).
+  Widget _headerLine(int branches) {
+    final theme = Theme.of(context);
+    final newest = [
+      for (final s in _sources)
+        if (s['kind'] == 'mirror')
+          ?DateTime.tryParse('${s['last_copied_at'] ?? ''}'),
+    ]..sort();
+    final text = [
+      '${_sources.length} mapped',
+      '$branches branch${branches == 1 ? '' : 'es'}',
+      if (newest.isNotEmpty)
+        'last copy ${sourcesAgo(newest.last.toIso8601String())}',
+    ].join(' · ');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            OutlinedButton.icon(
+              key: const ValueKey('sources-copy-now'),
+              icon: const Icon(Icons.sync),
+              label: const Text('Copy now'),
+              onPressed: _canCopy && !_copying ? _copyNow : null,
+            ),
+          ],
+        ),
+        if (!_canCopy)
+          Text(
+            'Copy now needs Financials edit.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        if (_copyNote != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _copyNote!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: _copyFailed ? theme.colorScheme.error : null,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final all = _data == null ? const <_Column>[] : _allColumns;
@@ -535,13 +668,7 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
               ),
             if (_data != null) ...[
               const SizedBox(height: 8),
-              Text(
-                '${_sources.length} mapped · $branches '
-                'branch${branches == 1 ? '' : 'es'}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
+              _headerLine(branches),
               const SizedBox(height: 12),
               if (!narrow) ...[
                 _filters(all),
@@ -568,6 +695,7 @@ class _SourcePanel extends StatefulWidget {
     this.source,
     this.initialRole,
     this.initialPlace,
+    this.onCopyNow,
   });
 
   final ApiClient api;
@@ -579,6 +707,9 @@ class _SourcePanel extends StatefulWidget {
   /// part of the books and branch.
   final String? initialRole;
   final String? initialPlace;
+
+  /// Copy now, or null when this person may not (the panel says why).
+  final Future<({String text, bool failed})> Function()? onCopyNow;
 
   @override
   State<_SourcePanel> createState() => _SourcePanelState();
@@ -623,6 +754,18 @@ class _SourcePanelState extends State<_SourcePanel> {
 
   /// Remove asks once: the first press turns the button into the real one.
   bool _confirmRemove = false;
+
+  ({String text, bool failed})? _copied;
+
+  Future<void> _copyNow() async {
+    setState(() => _busy = true);
+    final result = await widget.onCopyNow!();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _copied = result;
+    });
+  }
 
   static const _markerLabels = {
     'summary': 'Value marking a summary row (e.g. Weekly Summary)',
@@ -732,6 +875,31 @@ class _SourcePanelState extends State<_SourcePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.source != null) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('source-panel-copy-now'),
+                icon: const Icon(Icons.sync),
+                label: const Text('Copy now'),
+                onPressed: widget.onCopyNow == null || _busy ? null : _copyNow,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 12),
+              child: Text(
+                _copied?.text ??
+                    (widget.onCopyNow == null
+                        ? 'Copy now needs Financials edit.'
+                        : 'Copies every Airtable table, this one included.'),
+                style: TextStyle(
+                  color: _copied?.failed == true
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
+              ),
+            ),
+          ],
           if (_confirmRemove)
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
@@ -871,4 +1039,15 @@ class _SourcePanelState extends State<_SourcePanel> {
       ),
     );
   }
+}
+
+/// "4 min ago", "3 h ago", "2 d ago".
+String sourcesAgo(String iso, {DateTime? now}) {
+  final at = DateTime.tryParse(iso)?.toLocal();
+  if (at == null) return 'at an unknown time';
+  final minutes = (now ?? DateTime.now()).difference(at).inMinutes;
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return '$minutes min ago';
+  if (minutes < 60 * 24) return '${minutes ~/ 60} h ago';
+  return '${minutes ~/ (60 * 24)} d ago';
 }
