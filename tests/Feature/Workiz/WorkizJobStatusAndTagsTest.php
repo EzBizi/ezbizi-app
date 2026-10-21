@@ -78,7 +78,7 @@ class WorkizJobStatusAndTagsTest extends TestCase
     /** Jose 10-21: the list is replaced and the dropped tags audited; NY spells it "DEPOSIT RECIEVED". */
     public function test_tags_replace_the_jobs_own_by_the_accounts_spelling(): void
     {
-        $job = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'tags' => [['id' => 'TAG-1', 'name' => 'Membership']]]);
+        $job = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'tags' => [['id' => 'TAG-1', 'name' => 'Membership'], ['id' => 'TAG-D', 'name' => 'DEPOSIT RECIEVED']]]);
         Http::fake([
             'api.workiz.com/crm/api/v2/tags*' => Http::response(['data' => [['id' => 'TAG-1', 'name' => 'Membership'], ['id' => 'TAG-D', 'name' => 'DEPOSIT RECIEVED'], ['id' => 'TAG-T', 'name' => 'DONT CHANGE TECH']]]),
             'api.workiz.com/crm/api/v2/jobs/JOB-1' => function (Request $r) use ($job) {
