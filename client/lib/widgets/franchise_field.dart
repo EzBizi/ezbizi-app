@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 
+import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
 
@@ -91,18 +92,20 @@ class FranchiseField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = franchises ?? me.franchisesInView;
-
-    // Sorted by the whole path, so the two Connecticuts sit under their own
-    // companies rather than next to each other. Unsorted, the list arrives in
-    // whatever order the server built it and the repetition reads as a glitch.
-    final sorted = [...options]
-      ..sort((a, b) => franchisePath(me, a).compareTo(franchisePath(me, b)));
+    // "Connecticut · Everdoors", sorted by company then branch, so the two
+    // Connecticuts sit under their own companies rather than next to each
+    // other: the one order every branch picker uses (Jose, 2026-10-21).
+    // Switched-off places stay: a record may already be filed on one.
+    final sorted = branchOptions(
+      franchises ?? me.franchisesInView,
+      me.companies,
+      activeOnly: false,
+    );
 
     // Only when it earns its place. In an organization with one company the
-    // prefix is the same on every row, so it is noise that pushes the name
+    // suffix is the same on every row, so it is noise that pushes the name
     // itself off the edge of a narrow field.
-    final ambiguous = sorted.map((f) => f.companyId).toSet().length > 1;
+    final ambiguous = sorted.map((f) => f.branch.companyId).toSet().length > 1;
 
     return SearchPickerField<String>(
              value: value,
@@ -111,7 +114,7 @@ class FranchiseField extends StatelessWidget {
              helperMaxLines: 3,
              options: [
         for (final f in sorted)
-          SearchOption(value: f.id, label: ambiguous ? franchisePath(me, f) : f.name),
+          SearchOption(value: f.id, label: ambiguous ? f.label : f.branch.name),
       ],
              onChanged: enabled ? onChanged : null,
            );

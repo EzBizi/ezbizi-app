@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/job_money.dart';
 import '../core/job_status.dart';
 import '../core/numbers.dart';
@@ -468,10 +469,13 @@ class _JobsScreenState extends State<JobsScreen> {
             ? 'Jobs no area has claimed'
             : 'Jobs no area has claimed — ${formatCount(_unplaced!)}',
       ),
-    for (final f in me.franchisesInView) ...[
+    // "Main · Everdoors", by company then branch (Jose, 2026-10-21).
+    for (final (f, label) in [
+      for (final b in branchOptionsInView(me)) (b.branch, b.label),
+    ]) ...[
       SearchOption<String?>(
         value: 'f:${f.id}',
-        label: f.name,
+        label: label,
         detail: _areas.any((a) => a.franchiseId == f.id)
             ? 'Every area in ${f.name}'
             : null,

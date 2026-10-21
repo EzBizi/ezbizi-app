@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import 'search_picker.dart';
+import 'side_panel.dart';
 import 'status_pill.dart';
 
 /// The Workiz web login: a signed-in Workiz session, handed to EzBizi through
@@ -25,8 +27,10 @@ class WorkizSessionLogin extends StatefulWidget {
     super.key,
     required this.api,
     this.branches = const [],
+    this.companies = const [],
     this.onConnected,
     this.organizationView = true,
+    this.mayDisconnect = false,
   });
 
   final ApiClient api;
@@ -45,6 +49,18 @@ class WorkizSessionLogin extends StatefulWidget {
 
   /// The branches an account can be filed on: the current view's.
   final List<FranchiseSummary> branches;
+
+  /// Names each of [branches] with its company ("Main · Everdoors").
+  final List<CompanySummary> companies;
+
+  /// Whether this person holds the connect permission, which is the
+  /// server's disconnect gate. Disconnect shows only with it, and only in
+  /// the organization view (the server refuses it anywhere else).
+  final bool mayDisconnect;
+
+  static const disconnectQuestion =
+      "Disconnect the Workiz web login? EzBizi stops reading Workiz's reports "
+      'until someone sends a session again.';
 
   /// Called once the session arrives, so the page's list can reload.
   final VoidCallback? onConnected;
@@ -82,6 +98,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
 
   List<Map<String, dynamic>>? _accounts;
   Timer? _ticker;
+  bool _disconnecting = false;
 
   bool get _connected => _row?['status'] == 'connected';
 
@@ -252,6 +269,55 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     });
   }
 
+  /// Asks once in a side panel, then `DELETE /social/connections/{id}` and
+  /// back to the steps. A refusal shows inline.
+  Future<void> _disconnect() async {
+    final id = _row?['id'];
+    if (id == null) return;
+    final go = await showSidePanel<bool>(
+      context,
+      builder: (c) => SidePanel(
+        title: 'Disconnect',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey('workiz-session-disconnect-confirm'),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+        child: const Text(WorkizSessionLogin.disconnectQuestion),
+      ),
+    );
+    if (go != true || !mounted) return;
+    setState(() {
+      _disconnecting = true;
+      _failure = null;
+    });
+    final response = await widget.api.delete('/social/connections/$id');
+    if (!mounted) return;
+    if (!response.ok) {
+      setState(() {
+        _disconnecting = false;
+        _failure = response.message;
+      });
+      return;
+    }
+    _ticker?.cancel();
+    setState(() {
+      _disconnecting = false;
+      _row = null;
+      _accounts = null;
+      _link = null;
+      _again = false;
+    });
+    await _refresh();
+    widget.onConnected?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -288,6 +354,17 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
               ),
             ] else ...[
               if (_row != null) _status(theme, small),
+              if (_row != null && widget.mayDisconnect)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('workiz-session-disconnect'),
+                    onPressed: _disconnecting ? null : _disconnect,
+                    child: Text(
+                      _disconnecting ? 'Disconnecting…' : 'Disconnect',
+                    ),
+                  ),
+                ),
               if (steps && phone)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -512,9 +589,19 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
 
   Widget _table(ThemeData theme, TextStyle? small) {
     final accounts = _accounts!;
+    // Named with their company, and only the company the login belongs to:
+    // every company's "Main" in one list told nobody which was which (Jose,
+    // 2026-10-21). An organization-wide login offers every branch.
+    final company = _row?['scope_type'] == 'company'
+        ? _row!['scope_id'] as String?
+        : null;
     final options = [
-      for (final b in widget.branches)
-        SearchOption<String>(value: b.id, label: b.name),
+      for (final b in branchOptions(
+        widget.branches,
+        widget.companies,
+        companyId: company,
+      ))
+        SearchOption<String>(value: b.id, label: b.label),
     ];
 
     return Padding(
