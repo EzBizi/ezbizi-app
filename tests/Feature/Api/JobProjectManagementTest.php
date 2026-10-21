@@ -101,6 +101,7 @@ class JobProjectManagementTest extends TestCase
         $row = $get('ids[]='.$job)[0];
         $this->assertSame('Payment received, partly paid', $row['timeline'][1]['what']);
         $this->assertSame('+DEPOSIT RECEIVED', $row['timeline'][2]['what']);
+        $this->assertSame('Entered Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
     }
 
     public function test_filters_by_stage_branch_and_days(): void

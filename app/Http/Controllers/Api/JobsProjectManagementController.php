@@ -92,6 +92,10 @@ class JobsProjectManagementController extends Controller
         $events = AutomationEvent::query()->whereIn('subject_id', $ids)->where('subject_type', Job::class)
             ->whereIn('event_key', ['job.status_changed', 'job.updated'])->orderBy('occurred_at')->get()->groupBy('subject_id');
 
+        // The organization's words for its statuses, for each step's sentence (UI/UX, 2026-10-21).
+        $this->labels = collect((array) $settings->get('jobs.statuses', $user->organization))
+            ->filter(fn ($s) => is_array($s) && isset($s['value']))->mapWithKeys(fn ($s) => [$s['value'] => $s['label'] ?? $s['value']])->all();
+
         $rows = $jobs->map(fn (Job $job) => $this->row($job, $watched, $money, $estimates[$job->id] ?? null,
             $paid[$job->id] ?? 0, $payments[$job->id] ?? collect(), $events[$job->id] ?? collect()))
             ->filter(fn (array $r) => ($input['stage'] ?? null) === null || $r['stage'] === $input['stage'])
@@ -180,13 +184,21 @@ class JobsProjectManagementController extends Controller
             ->whereBetween('starts_at', [$from.' 00:00:00', $to.' 23:59:59']);
     }
 
+    /** @var array<string, string> status key => the organization's label */
+    private array $labels = [];
+
+    private function label(?string $status): string
+    {
+        return $status === null ? 'none' : ($this->labels[$status] ?? $status);
+    }
+
     /** One line a person reads, for the drill-down (UI/UX, 2026-10-22). */
     private function what(array $step): string
     {
         return match ($step['kind']) {
-            'entered' => 'Entered '.$step['status'],
+            'entered' => 'Entered '.$this->label($step['status']),
             'payment' => $step['marks'] === 'full' ? 'Payment received, paid in full' : 'Payment received, partly paid',
-            'status' => 'Status '.($step['from'] ?? 'none').' → '.($step['to'] ?? 'none'),
+            'status' => 'Status '.$this->label($step['from'] ?? null).' → '.$this->label($step['to'] ?? null),
             'tags' => trim(implode(' ', [
                 ...array_map(fn ($t) => '+'.$t, $step['tags']['added']),
                 ...array_map(fn ($t) => '−'.$t, $step['tags']['removed']),
