@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0467',
+      date: '21 Oct 2026',
+      items: [
+        'Financials: tables mirrored from Airtable can be edited here and the change is written to Airtable. A cell changed in Airtable meanwhile keeps Airtable\'s value and says so. Cut over to EzBizi per table makes EzBizi the source, and reports keep reading it.',
+        'Financials › Settings: Airtable sources as a grid of roles by branch, with each table\'s rows, last copy and Copy now.',
+        'Human Resources: a Chief Operating Officer contract template, whose incentive, bonus plan, PTO and holidays are filled in, marked TBD or left out per hire.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0466',
       date: '21 Oct 2026',
       items: [
