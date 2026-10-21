@@ -1055,6 +1055,8 @@ Route::prefix('v1')
             Route::post('sheets/{sheet}/invoice', 'invoiceSheet');
             Route::delete('sheets/{sheet}', 'destroySheet');
             Route::post('send', 'send');
+            Route::post('send-preview', 'preview');
+            Route::get('settings', 'settings');
             Route::get('/', 'index');
             Route::get('{invoice}', 'show');
             Route::patch('{invoice}', 'update');

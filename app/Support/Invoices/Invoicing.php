@@ -107,7 +107,7 @@ final class Invoicing
 
     // ── Invoices ──────────────────────────────────────────────
 
-    /** One draft per row with money on it and no invoice yet. @return list<Invoice> */
+    /** One draft per row with money on it and no invoice yet. @return array{made: list<Invoice>, skipped: list<array{row_id: string, label: string, reason: string}>} */
     public function invoiceSheet(User $user, FinancialChargeSheet $sheet): array
     {
         $issuer = $sheet->company_id ? Company::find($sheet->company_id) : null;
@@ -115,10 +115,19 @@ final class Invoicing
         $due = (int) $this->settings->get('money.payment_terms_days', $scope);
         $names = collect($sheet->columns)->pluck('name', 'id');
 
-        $made = DB::transaction(function () use ($user, $sheet, $issuer, $scope, $due, $names) {
+        $skipped = [];
+        $made = DB::transaction(function () use ($user, $sheet, $issuer, $scope, $due, $names, &$skipped) {
             $made = [];
             foreach ($sheet->rows()->with('franchise.company')->get() as $row) {
-                if ($row->invoice_id !== null || $row->totalCents() <= 0) {
+                if ($row->invoice_id !== null) {
+                    $number = Invoice::query()->whereKey($row->invoice_id)->value('number');
+                    $skipped[] = ['row_id' => $row->id, 'label' => $row->label, 'reason' => "Already invoiced ({$number})."];
+
+                    continue;
+                }
+                if ($row->totalCents() <= 0) {
+                    $skipped[] = ['row_id' => $row->id, 'label' => $row->label, 'reason' => 'Nothing to bill.'];
+
                     continue;
                 }
                 $invoice = Invoice::create([
@@ -162,7 +171,7 @@ final class Invoicing
             $this->pdf->store($invoice->load('lines', 'company'));
         }
 
-        return $made;
+        return ['made' => $made, 'skipped' => $skipped];
     }
 
     /** Totals from the lines: tax per line, rounded per line. */
@@ -254,6 +263,28 @@ final class Invoicing
                 $this->events->emit('invoice.sent', $invoice, ['number' => $invoice->number], $user);
             }
         }
+    }
+
+    /**
+     * Who a send would go to, the subject, and the email as it would read.
+     *
+     * @param  list<Invoice>  $invoices
+     * @return array{to: list<string>, subject: string, html: string, mode: string}
+     */
+    public function preview(array $invoices): array
+    {
+        $first = $invoices[0];
+        $issuer = $first->company ?? Organization::find($first->organization_id);
+        $mode = (string) $this->settings->get('invoicing.email_mode', $issuer);
+        $columns = collect($invoices)->flatMap(fn ($i) => $i->lines->pluck('description'))->unique()->values()->all();
+        $group = $mode === 'summary' ? $invoices : [$first];
+        $to = $mode === 'summary'
+            ? $this->addresses((string) $this->settings->get('invoicing.summary_to', $issuer))
+            : (array) ($first->bill_to_emails ?? []);
+        $subject = count($group) === 1 ? "Invoice {$first->number} from {$issuer->name}" : "Invoices from {$issuer->name}";
+
+        return ['to' => $to, 'subject' => $subject, 'mode' => $mode,
+            'html' => (new InvoiceMail($group, $columns, (string) $issuer->name, $subject))->content()->htmlString];
     }
 
     public function recordPayment(User $user, Invoice $invoice, array $payment): InvoicePayment

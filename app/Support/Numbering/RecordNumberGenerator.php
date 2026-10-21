@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Human-facing record numbers — JOB-00042 (plan §6, §5.2).
@@ -38,16 +39,26 @@ use Illuminate\Support\Facades\DB;
 class RecordNumberGenerator
 {
     public const CUSTOMERS = 'customer';
-    public const JOBS      = 'job';
-    public const VEHICLES  = 'vehicle';
-    public const ITEMS           = 'inventory_item';
+
+    public const JOBS = 'job';
+
+    public const VEHICLES = 'vehicle';
+
+    public const ITEMS = 'inventory_item';
+
     public const PURCHASE_ORDERS = 'inventory_po';
-    public const TRANSFERS       = 'inventory_transfer';
-    public const ISSUES          = 'inventory_issue';
-    public const SALES           = 'inventory_sale';
-    public const SERVICES        = 'service';
-    public const ESTIMATES       = 'estimate';
-    public const INVOICES        = 'invoice';
+
+    public const TRANSFERS = 'inventory_transfer';
+
+    public const ISSUES = 'inventory_issue';
+
+    public const SALES = 'inventory_sale';
+
+    public const SERVICES = 'service';
+
+    public const ESTIMATES = 'estimate';
+
+    public const INVOICES = 'invoice';
 
     public function __construct(
         private readonly TenantContext $tenant,
@@ -87,12 +98,12 @@ class RecordNumberGenerator
          * loser waits its turn instead of dying.
          */
         DB::table('record_sequences')->insertOrIgnore([
-            'id'              => (string) \Illuminate\Support\Str::uuid7(),
+            'id' => (string) Str::uuid7(),
             'organization_id' => $organizationId,
-            'sequence_key'    => $sequenceKey,
-            'next_value'      => 1,
-            'created_at'      => now(),
-            'updated_at'      => now(),
+            'sequence_key' => $sequenceKey,
+            'next_value' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $value = DB::transaction(function () use ($organizationId, $sequenceKey) {
@@ -112,32 +123,41 @@ class RecordNumberGenerator
         return $this->format($sequenceKey, $scope, $value);
     }
 
+    /** The number next() would give now, without taking it (for "next: INV-00145"). */
+    public function peek(string $sequenceKey, Organization|Company|Franchise $scope): string
+    {
+        $value = (int) (DB::table('record_sequences')->where('organization_id', $this->tenant->idOrFail())
+            ->where('sequence_key', $sequenceKey)->value('next_value') ?? 1);
+
+        return $this->format($sequenceKey, $scope, $value);
+    }
+
     private function format(string $sequenceKey, Organization|Company|Franchise $scope, int $value): string
     {
         $prefix = match ($sequenceKey) {
-            self::JOBS      => (string) $this->settings->get('numbering.job_prefix', $scope),
+            self::JOBS => (string) $this->settings->get('numbering.job_prefix', $scope),
             // Customers have no prefix setting of their own yet — the registry
             // defines job, invoice and estimate prefixes only. Rather than invent
             // a fourth silently, customers use a plain 'C-'; add a setting when
             // somebody actually wants to change it.
             self::CUSTOMERS => 'C-',
-            self::VEHICLES  => (string) $this->settings->get('numbering.vehicle_prefix', $scope),
-            self::ITEMS           => (string) $this->settings->get('numbering.item_prefix', $scope),
+            self::VEHICLES => (string) $this->settings->get('numbering.vehicle_prefix', $scope),
+            self::ITEMS => (string) $this->settings->get('numbering.item_prefix', $scope),
             self::PURCHASE_ORDERS => (string) $this->settings->get('numbering.po_prefix', $scope),
             // Transfers have no prefix setting — spec §8.2 is prefix T-.
-            self::TRANSFERS       => 'T-',
+            self::TRANSFERS => 'T-',
             // Issues have no prefix setting — spec §8.4 is prefix IS-.
-            self::ISSUES          => 'IS-',
-            self::SALES           => 'SO-',
-            self::SERVICES        => 'SVC-',
+            self::ISSUES => 'IS-',
+            self::SALES => 'SO-',
+            self::SERVICES => 'SVC-',
             // The registry has an estimate prefix setting already (numbering.estimate_prefix).
-            self::ESTIMATES       => (string) $this->settings->get('numbering.estimate_prefix', $scope),
-            self::INVOICES        => (string) $this->settings->get('numbering.invoice_prefix', $scope),
-            default         => '',
+            self::ESTIMATES => (string) $this->settings->get('numbering.estimate_prefix', $scope),
+            self::INVOICES => (string) $this->settings->get('numbering.invoice_prefix', $scope),
+            default => '',
         };
 
         $padding = max(1, (int) $this->settings->get('numbering.pad_to_digits', $scope));
-        $number  = str_pad((string) $value, $padding, '0', STR_PAD_LEFT);
+        $number = str_pad((string) $value, $padding, '0', STR_PAD_LEFT);
 
         if ($this->settings->get('numbering.include_year', $scope)) {
             return $prefix.now()->year.'-'.$number;

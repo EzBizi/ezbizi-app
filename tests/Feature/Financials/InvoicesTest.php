@@ -70,9 +70,16 @@ class InvoicesTest extends TestCase
         $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $f1['id'], 'cells' => [$columns[2]['id'] => 170419]]]])->assertOk();
 
         // One draft for the branch with money on it; none for the empty one.
-        $made = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->assertCreated()->json('data');
-        $this->assertCount(1, $made);
-        $invoice = $made[0];
+        $this->assertSame('INV-00001', $as->getJson('/api/v1/invoices/settings')->json('data.next_number'));
+        $result = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->assertCreated()->json('data');
+        $this->assertCount(1, $result['made']);
+        $this->assertSame([['label' => 'Alpha Co Alpha F2', 'reason' => 'Nothing to bill.']], array_map(fn ($x) => ['label' => $x['label'], 'reason' => $x['reason']], $result['skipped']));
+        $invoice = $result['made'][0];
+        $this->assertTrue($invoice['can_approve']);
+        $this->assertFalse($invoice['can_send']);
+        $again = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data');
+        $this->assertSame([], $again['made']);
+        $this->assertStringContainsString('Already invoiced', $again['skipped'][0]['reason']);
         $this->assertSame('draft', $invoice['status']);
         $this->assertSame(83284 + 243230 + 170419, $invoice['total_cents']);
         $this->assertSame(['Office Bills', 'Office Payrolls', 'Parts'], array_column($invoice['lines'], 'description'));
@@ -85,7 +92,11 @@ class InvoicesTest extends TestCase
         $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $f1['id'], 'jobs' => 1]]])->assertStatus(422);
         $as->postJson('/api/v1/invoices/send', ['ids' => [$invoice['id']], 'to' => ['ct@branch.test']])->assertStatus(422);
 
-        $as->postJson("/api/v1/invoices/{$invoice['id']}/approve")->assertOk()->assertJsonPath('data.status', 'approved');
+        $as->postJson("/api/v1/invoices/{$invoice['id']}/approve")->assertOk()->assertJsonPath('data.status', 'approved')
+            ->assertJsonPath('data.approved_by_name', 'Alpha Admin')->assertJsonPath('data.can_send', true);
+        $preview = $as->postJson('/api/v1/invoices/send-preview', ['ids' => [$invoice['id']]])->assertOk()->json('data');
+        $this->assertSame('per_branch', $preview['mode']);
+        $this->assertStringContainsString('Office Bills', $preview['html']);
         $as->postJson('/api/v1/invoices/send', ['ids' => [$invoice['id']], 'to' => ['ct@branch.test']])->assertOk()->assertJsonPath('data.0.status', 'sent');
         $this->assertSame(['ct@branch.test'], $this->sent[0]['to']);
         $this->assertCount(1, $this->sent[0]['mail']->attachments());
@@ -115,7 +126,7 @@ class InvoicesTest extends TestCase
         $col = $as->putJson('/api/v1/invoices/charge-columns', ['columns' => [['name' => 'Royalties']]])->json('data.0.id');
         $sheet = $as->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30'])->json('data');
         $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 150000]]]])->assertOk();
-        $invoice = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.0');
+        $invoice = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.made.0');
         $as->patchJson("/api/v1/invoices/{$invoice['id']}", ['due_on' => now()->subDay()->toDateString(), 'bill_to_emails' => ['f1@branch.test']])->assertOk();
         $as->postJson("/api/v1/invoices/{$invoice['id']}/approve")->assertOk();
         $as->postJson('/api/v1/invoices/send', ['ids' => [$invoice['id']]])->assertOk();

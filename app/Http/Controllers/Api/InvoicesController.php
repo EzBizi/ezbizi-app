@@ -8,10 +8,12 @@ use App\Models\FinancialChargeSheet;
 use App\Models\FinancialChargeSheetRow;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Models\Organization;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Invoices\InvoicePdf;
 use App\Support\Invoices\Invoicing;
+use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -43,7 +45,9 @@ class InvoicesController extends Controller
         $this->may($request->user(), 'view');
 
         return response()->json(['data' => FinancialChargeColumn::query()->orderBy('position')->get()
-            ->map(fn ($c) => $c->only('id', 'name', 'source_column', 'position', 'is_active'))->values()]);
+            ->map(fn ($c) => $c->only('id', 'name', 'source_column', 'position', 'is_active') + [
+                'source_label' => $c->source_column === null ? 'Typed in on the sheet' : "From \"{$c->source_column}\" in Expenses by company",
+            ])->values()]);
     }
 
     /** The whole list at once, in order; a missing id is removed. */
@@ -153,9 +157,12 @@ class InvoicesController extends Controller
     {
         $user = $request->user();
         $this->may($user, 'create');
-        $made = $this->invoicing->invoiceSheet($user, $sheet);
+        $result = $this->invoicing->invoiceSheet($user, $sheet);
 
-        return response()->json(['data' => array_map(fn ($i) => $this->invoiceShape($i->fresh(['lines', 'payments'])), $made)], 201);
+        return response()->json(['data' => [
+            'made' => array_map(fn ($i) => $this->invoiceShape($i->fresh(['lines', 'payments']), $user), $result['made']),
+            'skipped' => $result['skipped'],
+        ]], 201);
     }
 
     public function destroySheet(Request $request, FinancialChargeSheet $sheet): JsonResponse
@@ -190,10 +197,11 @@ class InvoicesController extends Controller
             ->when(($input['status'] ?? null) === 'overdue', fn ($c) => $c->filter(fn (Invoice $i) => $i->isOverdue()));
 
         return response()->json([
-            'data' => $invoices->map(fn ($i) => $this->invoiceShape($i))->values(),
+            'data' => $invoices->map(fn ($i) => $this->invoiceShape($i, $user))->values(),
             'totals' => [
                 'sent_cents' => (int) $invoices->whereIn('status', ['sent', 'paid'])->sum('total_cents'),
-                'due_cents' => (int) $invoices->sum(fn (Invoice $i) => in_array($i->status, ['sent', 'approved'], true) ? $i->dueCents() : 0),
+                'unpaid_cents' => (int) $invoices->sum(fn (Invoice $i) => in_array($i->status, ['sent', 'approved'], true) ? $i->dueCents() : 0),
+                'overdue_cents' => (int) $invoices->sum(fn (Invoice $i) => $i->isOverdue() ? $i->dueCents() : 0),
             ],
         ]);
     }
@@ -202,7 +210,7 @@ class InvoicesController extends Controller
     {
         $this->may($request->user(), 'view', $invoice);
 
-        return response()->json(['data' => $this->invoiceShape($invoice->load('lines', 'payments'))]);
+        return response()->json(['data' => $this->invoiceShape($invoice->load('lines', 'payments'), $request->user())]);
     }
 
     /** Lines while a draft; who it bills and its notes until it is sent. */
@@ -233,7 +241,7 @@ class InvoicesController extends Controller
             app(InvoicePdf::class)->store($invoice->fresh()->load('lines', 'company'));
         }
 
-        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']))]);
+        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']), $request->user())]);
     }
 
     public function approve(Request $request, Invoice $invoice): JsonResponse
@@ -241,7 +249,7 @@ class InvoicesController extends Controller
         $this->may($request->user(), 'approve', $invoice);
         $this->invoicing->approve($request->user(), $invoice);
 
-        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']))]);
+        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']), $request->user())]);
     }
 
     public function send(Request $request): JsonResponse
@@ -262,7 +270,7 @@ class InvoicesController extends Controller
         }
         $this->invoicing->send($user, $invoices->all(), $input['to'] ?? []);
 
-        return response()->json(['data' => $invoices->map(fn ($i) => $this->invoiceShape($i->fresh(['lines', 'payments'])))->values()]);
+        return response()->json(['data' => $invoices->map(fn ($i) => $this->invoiceShape($i->fresh(['lines', 'payments']), $request->user()))->values()]);
     }
 
     public function pay(Request $request, Invoice $invoice): JsonResponse
@@ -285,7 +293,7 @@ class InvoicesController extends Controller
             'collected_by_user_id' => $input['collected_by_user_id'] ?? null,
         ]);
 
-        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']))], 201);
+        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']), $request->user())], 201);
     }
 
     public function void(Request $request, Invoice $invoice): JsonResponse
@@ -294,7 +302,32 @@ class InvoicesController extends Controller
         $reason = $request->validate(['reason' => ['required', 'string', 'max:500']])['reason'];
         $this->invoicing->void($request->user(), $invoice, $reason);
 
-        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']))]);
+        return response()->json(['data' => $this->invoiceShape($invoice->fresh(['lines', 'payments']), $request->user())]);
+    }
+
+    /** Who a send would reach, its subject and its body, before anybody presses Send. */
+    public function preview(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $ids = $request->validate(['ids' => ['required', 'array', 'min:1', 'max:100'], 'ids.*' => ['uuid']])['ids'];
+        $invoices = Invoice::query()->with('lines', 'company')->whereIn('id', $ids)->get();
+        foreach ($invoices as $invoice) {
+            $this->may($user, 'view', $invoice);
+        }
+        abort_if($invoices->isEmpty(), Response::HTTP_NOT_FOUND);
+
+        return response()->json(['data' => $this->invoicing->preview($invoices->all())]);
+    }
+
+    /** Settings › Invoicing extras: the next number this business would issue. */
+    public function settings(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $this->may($user, 'view');
+        $scope = Organization::find($this->tenant->idOrFail());
+
+        return response()->json(['data' => ['next_number' => app(RecordNumberGenerator::class)
+            ->peek(RecordNumberGenerator::INVOICES, $scope)]]);
     }
 
     public function pdf(Request $request, Invoice $invoice)
@@ -346,22 +379,35 @@ class InvoicesController extends Controller
     private function sheetShape(FinancialChargeSheet $sheet, User $user): array
     {
         $rows = $this->visibleRows($sheet, $user);
+        $invoices = Invoice::query()->whereIn('id', $rows->pluck('invoice_id')->filter())->get(['id', 'status', 'number'])->keyBy('id');
 
         return [
             'id' => $sheet->id, 'title' => $sheet->title, 'status' => $sheet->status,
+            'saved_at' => $sheet->updated_at?->toIso8601String(),
             'period_from' => $sheet->period_from->toDateString(), 'period_to' => $sheet->period_to->toDateString(),
             'columns' => $sheet->columns,
             'rows' => $rows->map(fn (FinancialChargeSheetRow $r) => [
                 'id' => $r->id, 'label' => $r->label, 'franchise_id' => $r->franchise_id, 'jobs' => $r->jobs,
                 'cells' => (object) ($r->cells ?? []), 'total_cents' => $r->totalCents(), 'invoice_id' => $r->invoice_id,
+                'invoice_status' => $invoices[$r->invoice_id]->status ?? null,
+                'invoice_number' => $invoices[$r->invoice_id]->number ?? null,
             ])->values(),
             'total_cents' => (int) $rows->sum(fn ($r) => $r->totalCents()),
         ];
     }
 
-    private function invoiceShape(Invoice $i): array
+    private function invoiceShape(Invoice $i, User $user): array
     {
+        $names = User::query()->whereIn('id', array_filter([$i->approved_by_user_id, ...$i->payments->pluck('recorded_by_user_id')]))->pluck('name', 'id');
+
         return [
+            'approved_by_name' => $names[$i->approved_by_user_id] ?? null,
+            'amount_due_cents' => $i->dueCents(),
+            'can_approve' => $i->status === 'draft' && $user->hasPermission('invoices.approve'),
+            'can_send' => in_array($i->status, ['approved', 'sent'], true) && $user->hasPermission('invoices.send'),
+            'can_record_payment' => in_array($i->status, ['approved', 'sent', 'paid'], true) && $user->hasPermission('invoices.edit'),
+            'can_void' => in_array($i->status, ['draft', 'approved', 'sent'], true) && $user->hasPermission('invoices.delete'),
+            'can_edit' => $i->status === 'draft' && $user->hasPermission('invoices.edit'),
             'id' => $i->id, 'number' => $i->number, 'status' => $i->status, 'overdue' => $i->isOverdue(),
             'issued_on' => $i->issued_on?->toDateString(), 'due_on' => $i->due_on?->toDateString(),
             'bill_to' => ['type' => $i->bill_to_type, 'id' => $i->bill_to_id, 'name' => $i->bill_to_name,
@@ -372,7 +418,8 @@ class InvoicesController extends Controller
             'subtotal_cents' => $i->subtotal_cents, 'tax_cents' => $i->tax_cents, 'total_cents' => $i->total_cents,
             'paid_cents' => $i->paidCents(), 'due_cents' => $i->dueCents(),
             'payments' => $i->payments->map(fn ($p) => ['id' => $p->id, 'kind' => $p->kind, 'paid_on' => $p->paid_on?->toDateString(),
-                'amount_cents' => $p->amount_cents, 'tip_cents' => $p->tip_cents, 'method' => $p->method, 'reference' => $p->reference])->values(),
+                'amount_cents' => $p->amount_cents, 'tip_cents' => $p->tip_cents, 'method' => $p->method, 'reference' => $p->reference,
+                'recorded_by_name' => $names[$p->recorded_by_user_id] ?? null])->values(),
             'source' => ['type' => $i->source_type, 'id' => $i->source_id],
             'has_pdf' => $i->pdf_path !== null,
             'approved_at' => $i->approved_at?->toIso8601String(), 'sent_at' => $i->sent_at?->toIso8601String(),
