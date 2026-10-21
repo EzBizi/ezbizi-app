@@ -135,6 +135,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('disconnect:w-2')));
     await tester.pumpAndSettle();
     expect(sent.where((r) => r.method == 'DELETE'), isEmpty);
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
     await tester.pumpAndSettle();
     expect(sent.where((r) => r.method == 'DELETE').map((r) => r.url.path), [

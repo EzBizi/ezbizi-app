@@ -44,6 +44,7 @@ import 'side_panel.dart';
 import 'social_network_mark.dart';
 import 'status_pill.dart';
 import 'tab_bar_like.dart';
+import 'disconnect_panel.dart';
 
 /// How a placement reads, and whether it can be changed.
 ///
@@ -1213,15 +1214,26 @@ class _LeadsAccountPanelState extends State<LeadsAccountPanel> {
       _error = null;
     });
 
-    final response = await widget.api.delete('/social/connections/$_id');
+    // The panel lists what stops and takes the authenticator code the
+    // server requires for every disconnect.
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect this account?',
+      explanation:
+          'EzBizi stops reading leads from this account. To use it again, it '
+          'has to be connected again.',
+      dependentsPath: '/integrations/social/$_id/dependents',
+      perform: (code) =>
+          widget.api.deleteWithBody('/social/connections/$_id', {'code': code}),
+    );
     if (!mounted) return;
 
     setState(() {
       _busy = false;
       _confirming = false;
-      _error = response.ok ? null : response.reason;
     });
-    if (response.ok) await widget.onChanged();
+    if (done != null) await widget.onChanged();
   }
 
   /// Pause or resume one campaign, through the Ads report's own action (Jose,

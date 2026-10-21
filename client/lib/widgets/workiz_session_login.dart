@@ -8,8 +8,8 @@ import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import 'search_picker.dart';
-import 'side_panel.dart';
 import 'status_pill.dart';
+import 'disconnect_panel.dart';
 
 /// The Workiz web login: a signed-in Workiz session, handed to EzBizi through
 /// the EzBizi browser extension (UI queue 120, option 1 and phone 4).
@@ -354,36 +354,24 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   Future<void> _disconnect() async {
     final id = _row?['id'];
     if (id == null) return;
-    final go = await showSidePanel<bool>(
-      context,
-      builder: (c) => SidePanel(
-        title: 'Disconnect',
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(c).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const ValueKey('workiz-session-disconnect-confirm'),
-            onPressed: () => Navigator.of(c).pop(true),
-            child: const Text('Disconnect'),
-          ),
-        ],
-        child: const Text(WorkizSessionLogin.disconnectQuestion),
-      ),
-    );
-    if (go != true || !mounted) return;
     setState(() {
       _disconnecting = true;
       _failure = null;
     });
-    final response = await widget.api.delete('/social/connections/$id');
+    // The panel lists what stops and takes the authenticator code the
+    // server requires for every disconnect.
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect',
+      explanation: WorkizSessionLogin.disconnectQuestion,
+      dependentsPath: '/integrations/social/$id/dependents',
+      perform: (code) =>
+          widget.api.deleteWithBody('/social/connections/$id', {'code': code}),
+    );
     if (!mounted) return;
-    if (!response.ok) {
-      setState(() {
-        _disconnecting = false;
-        _failure = response.message;
-      });
+    if (done == null) {
+      setState(() => _disconnecting = false);
       return;
     }
     _ticker?.cancel();

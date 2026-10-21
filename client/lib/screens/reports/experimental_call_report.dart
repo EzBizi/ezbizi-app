@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
+import '../../widgets/disconnect_panel.dart';
 import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -2917,16 +2918,25 @@ class _SourcesState extends State<_Sources> {
       _error = null;
     });
 
-    final response = await widget.api.delete('/social/connections/$id');
+    // The panel lists what stops and takes the authenticator code the
+    // server requires for every disconnect.
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect this Workiz account?',
+      explanation:
+          'EzBizi forgets this branch’s Workiz token. Nothing changes in '
+          'Workiz; to read it again, the token has to be pasted again.',
+      dependentsPath: '/integrations/social/$id/dependents',
+      perform: (code) =>
+          widget.api.deleteWithBody('/social/connections/$id', {'code': code}),
+    );
 
     if (!mounted) return;
 
     setState(() => _disconnecting = null);
 
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
+    if (done == null) return;
 
     await _refresh();
   }

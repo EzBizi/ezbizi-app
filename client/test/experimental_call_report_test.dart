@@ -1087,6 +1087,10 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('sources-disconnect-w1')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
+    await tester.pumpAndSettle();
     expect(deleted, ['/api/v1/social/connections/w1']);
 
     // The panel reads the report as reloaded: South alone, and silent.

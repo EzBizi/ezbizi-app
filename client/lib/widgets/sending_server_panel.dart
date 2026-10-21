@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/cascade_words.dart';
 import '../core/session.dart';
 import '../widgets/search_picker.dart';
+import 'disconnect_panel.dart';
 
 /// Where a business connects the mail server its own mail goes out through.
 ///
@@ -517,17 +518,17 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
         children: [
           Expanded(
             child: SearchPickerField<int>(
-                     value: _port,
-                     label: 'Port',
-                     // 587 and 465 only, matching the server. 25 is relay rather than
-                     // submission and accepting it would let this form reach a class
-                     // of machine the submission ports do not.
-                     options: const [
+              value: _port,
+              label: 'Port',
+              // 587 and 465 only, matching the server. 25 is relay rather than
+              // submission and accepting it would let this form reach a class
+              // of machine the submission ports do not.
+              options: const [
                 SearchOption(value: 587, label: '587 — STARTTLS'),
                 SearchOption(value: 465, label: '465 — TLS'),
               ],
-                     onChanged: (value) => setState(() => _port = value ?? 587),
-                   ),
+              onChanged: (value) => setState(() => _port = value ?? 587),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -594,17 +595,23 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
   }
 
   Future<void> _disconnect() async {
-    setState(() => _saving = true);
+    // The server requires an authenticator code for every disconnect. Mail
+    // falls back to the level above, so there is no dependents list here.
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Remove this mail server?',
+      explanation:
+          'Mail from this level goes out through whatever the level above '
+          'has set, or EzBizi’s own sender.',
+      perform: (code) =>
+          widget.api.deleteWithBody(_path, {..._scope, 'code': code}),
+    );
 
-    final response = await widget.api.delete(_path, _scope);
+    if (!mounted || done == null) return;
 
-    if (!mounted) return;
+    setState(() => _error = null);
 
-    setState(() {
-      _saving = false;
-      _error = response.ok ? null : _sentenceFrom(response);
-    });
-
-    if (response.ok) await _load();
+    await _load();
   }
 }

@@ -7,6 +7,7 @@ use App\Support\Social\SocialOAuthDrivers;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ use Tests\TestCase;
  */
 class GoogleConnectPermissionTest extends TestCase
 {
+    use GivesAuthenticatorCodes;
     use BuildsTenants;
     use RefreshDatabase;
 
@@ -133,8 +135,9 @@ class GoogleConnectPermissionTest extends TestCase
             'display_name'    => '706-109-4046',
         ]));
 
+        $code = $this->authenticatorCode($lead);
         $this->signedInAs($lead)
-            ->deleteJson('/api/v1/social/connections/'.$row->getKey())
+            ->deleteJson('/api/v1/social/connections/'.$row->getKey(), $code)
             ->assertOk();
 
         $this->assertNull(
@@ -161,8 +164,9 @@ class GoogleConnectPermissionTest extends TestCase
         $profile = $make(SocialProvider::GoogleBusinessProfile);
         $page    = $make(SocialProvider::Pinterest);
 
+        $code = $this->authenticatorCode($review);
         $this->signedInAs($review)
-            ->deleteJson('/api/v1/social/connections/'.$profile->getKey())
+            ->deleteJson('/api/v1/social/connections/'.$profile->getKey(), $code)
             ->assertOk();
 
         // The same permission must NOT reach a publishing account. Widening the

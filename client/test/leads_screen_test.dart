@@ -1275,6 +1275,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('account-disconnect-confirm')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
+    await tester.pumpAndSettle();
 
     expect(find.byType(LeadsConnections), findsOneWidget, reason: 'still open');
     expect(find.byKey(const ValueKey('row-c0')), findsNothing);

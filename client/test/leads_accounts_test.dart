@@ -396,6 +396,10 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('account-disconnect-confirm')));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
+    await tester.pumpAndSettle();
 
     expect(_deleted, ['/api/v1/social/connections/conn-400-000-0000']);
   });

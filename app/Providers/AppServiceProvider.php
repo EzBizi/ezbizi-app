@@ -54,6 +54,19 @@ class AppServiceProvider extends ServiceProvider
         // One instance per process — see plan §5.1
         $this->app->singleton(TenantContext::class);
 
+        // What stops working when an integration is disconnected. Each module
+        // adds its own counter here; the disconnect panel lists them all.
+        $this->app->tag([
+            \App\Support\Integrations\Dependents\Counters\AutomationsCounter::class,
+            \App\Support\Integrations\Dependents\Counters\ScheduledPostsCounter::class,
+            \App\Support\Integrations\Dependents\Counters\QueuedNewslettersCounter::class,
+            \App\Support\Integrations\Dependents\Counters\BusinessLocationsCounter::class,
+            \App\Support\Integrations\Dependents\Counters\WhatsAppNumbersCounter::class,
+            \App\Support\Integrations\Dependents\Counters\AirtableTablesCounter::class,
+            \App\Support\Integrations\Dependents\Counters\PhoneNumbersCounter::class,
+            \App\Support\Integrations\Dependents\Counters\WorkspaceMailboxesCounter::class,
+        ], \App\Support\Integrations\Dependents\DependentRegistry::TAG);
+
         // Bedrock, for what a model can say about a lead. No keys, no client:
         // LeadInsights::enabled() is false and every caller shows nothing.
         $this->app->bind(LeadInsights::class, function () {

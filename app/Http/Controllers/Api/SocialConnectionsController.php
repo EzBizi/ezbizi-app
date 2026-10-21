@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\WhatsAppNumber;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
+use App\Support\Integrations\DisconnectCode;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Social\Publishing\TikTokPublisher;
@@ -427,6 +428,9 @@ class SocialConnectionsController extends Controller
 
         $this->mayDisconnect($user, $row);
 
+        // A fresh authenticator code, after the row is found and authorised.
+        app(DisconnectCode::class)->require($request);
+
         $problems = $this->letGo($user, $row);
 
         return response()->json(['data' => [
@@ -465,6 +469,8 @@ class SocialConnectionsController extends Controller
 
         if ($rows->isNotEmpty()) {
             $this->mayDisconnect($user, $rows->first());
+
+            app(DisconnectCode::class)->require($request);
         }
 
         $problems = [];

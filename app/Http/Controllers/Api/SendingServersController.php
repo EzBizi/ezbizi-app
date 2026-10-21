@@ -208,6 +208,8 @@ class SendingServersController extends Controller
 
         abort_if($row === null, Response::HTTP_NOT_FOUND, 'Nothing is connected at this level.');
 
+        app(\App\Support\Integrations\DisconnectCode::class)->require($request);
+
         $address = $row->from_address;
 
         $row->delete();

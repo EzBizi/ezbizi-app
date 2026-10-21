@@ -372,6 +372,10 @@ void main() {
     // Through the confirmation, which is the only way it goes now.
     await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
     await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
+    await tester.pumpAndSettle();
 
     expect(deleted, 'id-Nationwide');
   });

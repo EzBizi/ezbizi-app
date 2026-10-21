@@ -42,6 +42,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(_deleted, isEmpty, reason: 'nothing goes before the confirmation');
 
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
     await tester.pumpAndSettle();
     expect(_deleted, ['/api/v1/social/connections/ga-1']);
