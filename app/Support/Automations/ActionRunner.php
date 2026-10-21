@@ -3251,6 +3251,20 @@ class ActionRunner
             }
         }
 
+        // "Tell the job's technician" (Jose's PM Action 1, 2026-10-21): the
+        // Workiz team on the job, through the confirmed Workiz-member-to-user link.
+        if (filter_var($action['to_job_technicians'] ?? false, FILTER_VALIDATE_BOOL)) {
+            $team = $subject instanceof Job
+                ? collect(WorkizJob::query()->where('job_id', $subject->getKey())->first()?->payload['team'] ?? [])->pluck('id')->filter()->all()
+                : [];
+            $techs = $team === [] ? [] : \App\Models\WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->pluck('user_id')->all();
+            if ($techs !== []) {
+                array_push($userIds, ...$techs);
+            } elseif ($userIds === [] && $roleIds === []) {
+                return ['type' => 'notify', 'ok' => true, 'skipped' => true, 'detail' => 'The job has no technician linked to an EzBizi user, so nobody was told.'];
+            }
+        }
+
         /*
          * A BAD ROLE ID IS A REFUSAL, NOT A 500.
          *
