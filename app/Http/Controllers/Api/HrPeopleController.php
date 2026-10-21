@@ -10,6 +10,7 @@ use App\Models\Franchise;
 use App\Models\HeldEquipment;
 use App\Models\HrNote;
 use App\Models\PayRate;
+use App\Models\PtoUsed;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Auth\PasswordResets;
@@ -693,6 +694,9 @@ class HrPeopleController extends Controller
             'equipment' => HeldEquipment::query()->where('user_id', $user->id)
                 ->orderByRaw('returned_on is not null')->orderBy('name')->get()
                 ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'pto_used' => PtoUsed::query()->where('user_id', $user->id)
+                ->orderByRaw('used_on is null')->orderByDesc('used_on')->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
             'pay_rates' => $actor->hasPermission('hr.pay.view')
                 ? PayRate::query()->where('user_id', $user->id)
                     ->orderByDesc('effective_on')->get()
@@ -705,6 +709,7 @@ class HrPeopleController extends Controller
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
                     'allowance', 'allowance_period', 'eligible_from', 'eligible',
+                    'earned', 'used', 'balance', 'counted_from',
                 ])->all()
                 : null,
         ]]);

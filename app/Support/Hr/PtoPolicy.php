@@ -4,6 +4,7 @@ namespace App\Support\Hr;
 
 use App\Models\EmploymentEvent;
 use App\Models\Organization;
+use App\Models\PtoUsed;
 use App\Models\User;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Carbon;
@@ -104,14 +105,29 @@ class PtoPolicy
         $eligibleFrom = $startedOn === null ? null : match ($unit) {
             'week' => $startedOn->copy()->addWeeks($waiting),
             'month' => $startedOn->copy()->addMonthsNoOverflow($waiting),
+            'quarter' => $startedOn->copy()->addMonthsNoOverflow(3 * $waiting),
             'year' => $startedOn->copy()->addYearsNoOverflow($waiting),
             default => $startedOn->copy()->addDays($waiting),
         };
 
+        $period = (string) $this->settings->get('pto.allowance_period', $organization);
+        $carryOver = (bool) $this->settings->get('pto.carry_over', $organization);
+        [$earned, $countedFrom] = $this->earned($startedOn, max(0, $allowance), $period, $carryOver);
+        $used = $this->used($user, $countedFrom);
+
         return [
             'enabled' => $this->enabledFor($organization),
             'allowance' => max(0, $allowance),
-            'allowance_period' => (string) $this->settings->get('pto.allowance_period', $organization),
+            'allowance_period' => $period,
+
+            // Earned since they started, in whole periods, less the days HR
+            // recorded as used (Jose, 2026-10-21). Null without a start date:
+            // what somebody earned cannot be counted from a day nobody knows.
+            // Without carryover the count restarts each 1 January.
+            'earned' => $earned,
+            'used' => $used,
+            'balance' => $earned === null ? null : round($earned - $used, 2),
+            'counted_from' => $countedFrom?->toDateString(),
             'waiting' => $waiting,
             'waiting_unit' => $unit,
             'carry_over' => (bool) $this->settings->get('pto.carry_over', $organization),
@@ -133,6 +149,42 @@ class PtoPolicy
             'eligible' => $waiting === 0
                 || ($eligibleFrom !== null && ! $eligibleFrom->isFuture()),
         ];
+    }
+
+    /**
+     * Whole periods completed since they started (or since 1 January when
+     * nothing carries over), times the allowance.
+     *
+     * @return array{0: ?float, 1: ?Carbon}
+     */
+    private function earned(?Carbon $startedOn, int $allowance, string $period, bool $carryOver): array
+    {
+        if ($startedOn === null) {
+            return [null, null];
+        }
+        $from = $carryOver ? $startedOn : $startedOn->copy()->max(now()->startOfYear());
+        $step = fn (Carbon $at, int $n) => match ($period) {
+            'week' => $at->copy()->addWeeks($n),
+            'month' => $at->copy()->addMonthsNoOverflow($n),
+            'quarter' => $at->copy()->addMonthsNoOverflow(3 * $n),
+            default => $at->copy()->addYearsNoOverflow($n),
+        };
+        // ponytail: counts period by period; fine for decades of weeks.
+        $periods = 0;
+        while (! $step($from, $periods + 1)->isFuture()) {
+            $periods++;
+        }
+
+        return [(float) ($periods * $allowance), $from];
+    }
+
+    /** Days recorded as used; without carryover, only those in this count (undated ones always). */
+    private function used(User $user, ?Carbon $from): float
+    {
+        return (float) PtoUsed::query()->where('user_id', $user->getKey())
+            ->when($from !== null, fn ($q) => $q->where(fn ($q) => $q->whereNull('used_on')
+                ->orWhere('used_on', '>=', $from->toDateString())))
+            ->sum('days');
     }
 
     /**

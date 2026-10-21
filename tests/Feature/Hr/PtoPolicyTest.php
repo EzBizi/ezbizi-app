@@ -52,6 +52,42 @@ class PtoPolicyTest extends TestCase
         ]));
     }
 
+    /** A quarter is three months, without overflow (Jose, 2026-10-21). */
+    public function test_a_waiting_period_in_quarters_is_three_months_each_without_overflow(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.waiting' => 1, 'pto.waiting_unit' => 'quarter']);
+        $this->started($t, '2026-01-31');
+
+        // 31 January + 3 months is 30 April, not 1 May.
+        $this->assertSame('2026-04-30', $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin'])['eligible_from']));
+    }
+
+    /**
+     * Earned per quarter, less the days HR recorded as used (Jose, 2026-10-21:
+     * "mark days as already used ... so existing balances start correct").
+     */
+    public function test_the_balance_is_whole_periods_earned_less_days_recorded_as_used(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'quarter', 'pto.carry_over' => true]);
+        $this->started($t, '2025-11-30');
+
+        // Feb 28, May 30, Aug 30 have passed; Nov 30 has not: three quarters.
+        $this->assertSame(6.0, $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin'])['earned']));
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$t['admin']->id}/details/pto-used",
+            ['days' => 1.5, 'note' => 'Taken before EzBizi'])->assertCreated();
+        $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$t['admin']->id}/details/pto-used",
+            ['days' => 1, 'used_on' => '2026-07-04'])->assertCreated();
+
+        $answer = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame(2.5, $answer['used']);
+        $this->assertSame(3.5, $answer['balance']);
+    }
+
     /**
      * Off, and zero days, until a company says otherwise.
      *
@@ -270,5 +306,4 @@ class PtoPolicyTest extends TestCase
             $this->assertTrue($answer['eligible'], 'Nothing to wait for, so nothing to wait on.');
         });
     }
-
 }
