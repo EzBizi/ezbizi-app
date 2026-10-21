@@ -190,4 +190,36 @@ class WorkizWebSessionTest extends TestCase
         });
         Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'getEstimateById/1/'));
     }
+
+    /** Jose, 2026-10-21: "can't it be just assigned to the company?" The account's own name files it. */
+    public function test_an_unmapped_account_files_to_the_branch_its_name_carries(): void
+    {
+        $c = $this->connected();
+        $this->inTenant($this->t['org'], fn () => tap($c, fn ($c) => $c->connect(array_diff_key((array) $c->credentials, ['accounts' => 1])))->save());
+        $branch = $this->t['franchise']->name;
+        Http::fake([
+            'app.workiz.com/ajaxc/account/getInfo/' => Http::response(['flag' => true, 'data' => ['account_name' => 'A1 Chimney - '.$branch]]),
+            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [
+                ['id' => 72, 'amount' => '50.00', 'date' => '2026-10-19 10:00:00'],
+            ]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-payments', ['--from' => '2026-10-19', '--to' => '2026-10-20'])->assertSuccessful();
+
+        $this->assertSame($this->t['franchise']->id, $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->sole()->franchise_id));
+    }
+
+    /** A login sent before 0.0.0466 belonged to the organization: it moves to a company, session kept, nothing re-sent. */
+    public function test_a_legacy_organization_login_moves_to_a_company(): void
+    {
+        $c = $this->connected();
+        $this->inTenant($this->t['org'], fn () => $c->forceFill(['scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $this->t['org']->id])->save());
+
+        $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/company', ['company_id' => $this->t['company']->id])->assertOk();
+
+        $row = $this->inTenant($this->t['org'], fn () => $c->fresh());
+        $this->assertSame([SocialConnection::SCOPE_COMPANY, $this->t['company']->id, 'sess-abc'], [$row->scope_type, $row->scope_id, $row->credentials['cookies']['sendajob_sessid']]);
+        $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/company', ['company_id' => $this->t['company']->id])->assertNotFound();
+    }
 }

@@ -1358,6 +1358,7 @@ Route::prefix('v1')
         Route::post('social/workiz-web/link', [WorkizWebSessionController::class, 'link']);
         Route::get('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'accounts']);
         Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
+        Route::put('social/workiz-web/{connection}/company', [WorkizWebSessionController::class, 'moveToCompany']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
 
         /*

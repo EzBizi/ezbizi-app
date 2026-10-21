@@ -98,7 +98,8 @@ class WorkizWebSessionController extends Controller
         $map = (array) ($connection->credentials['accounts'] ?? []);
 
         return response()->json(['data' => collect(WorkizWebSession::accounts($connection))
-            ->map(fn (string $name, string $id) => ['account' => $id, 'name' => $name, 'franchise_id' => $map[$id] ?? null])->values()]);
+            ->map(fn (string $name, string $id) => ['account' => $id, 'name' => $name, 'mapped' => isset($map[$id]),
+                'franchise_id' => WorkizWebSession::franchiseFor($connection, $id, $name)?->getKey()])->values()]);
     }
 
     /** PUT /api/v1/social/workiz-web/{connection}/accounts {account, franchise_id|null}: tenant data, not code. */
@@ -117,6 +118,32 @@ class WorkizWebSessionController extends Controller
         $this->audit->log('social.workiz_web_mapped', $connection, $data, actor: $request->user());
 
         return response()->json(['data' => ['accounts' => $map]]);
+    }
+
+    /**
+     * PUT /api/v1/social/workiz-web/{connection}/company {company_id}: a login
+     * sent before it belonged to a company (0.0.0466) moves to one, its
+     * session kept, instead of being sent again. Organization view only.
+     */
+    public function moveToCompany(Request $request, SocialConnection $connection): JsonResponse
+    {
+        abort_unless($connection->provider === SocialProvider::WorkizWeb->value && $connection->scope_type === SocialConnection::SCOPE_ORGANIZATION,
+            Status::HTTP_NOT_FOUND);
+        $company = $request->validate(['company_id' => ['required', 'uuid']])['company_id'];
+        abort_unless(Company::query()->whereKey($company)->exists(), Status::HTTP_UNPROCESSABLE_ENTITY, 'Choose the company whose Workiz this is.');
+        abort_unless(ViewScope::forUser($request->user())->isOrganization(), Status::HTTP_FORBIDDEN,
+            'Switch to the organization view to move this login to a company.');
+        $this->mayConfigure($request, $company);
+        abort_if(SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)
+            ->where('scope_type', SocialConnection::SCOPE_COMPANY)->where('scope_id', $company)->exists(),
+            Status::HTTP_CONFLICT, 'That company already has a Workiz web login.');
+
+        // The map named branches anywhere in the organization; under a company it starts again.
+        $connection->connect(array_diff_key((array) $connection->credentials, ['accounts' => 1]));
+        $connection->forceFill(['scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $company, 'remote_id' => $company])->save();
+        $this->audit->log('social.workiz_web_moved', $connection, ['company_id' => $company], actor: $request->user());
+
+        return response()->json(['data' => ['id' => $connection->getKey(), 'company_id' => $company]]);
     }
 
     private function guard(Request $request, SocialConnection $connection): void
