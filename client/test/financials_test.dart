@@ -348,8 +348,14 @@ void screenTests() {
     await _pump(tester);
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('Repair team sheet · Repair NJ'), findsOneWidget);
-    expect(find.text('Whole organization · 1 column mapped'), findsOneWidget);
+    // A row per part of the books, the All-branches column holding the table.
+    expect(find.text('Repair team sheet'), findsOneWidget);
+    expect(find.text('Profit & loss'), findsOneWidget);
+    expect(find.text('ALL BRANCHES'), findsOneWidget);
+    expect(find.text('Repair NJ'), findsOneWidget);
+    expect(find.text('12 rows'), findsOneWidget);
+    expect(find.text('— · Add'), findsOneWidget);
+    expect(find.text('1 mapped · 0 branches'), findsOneWidget);
     expect(find.text('Add source'), findsOneWidget);
   });
 
