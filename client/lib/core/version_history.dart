@@ -22,6 +22,8 @@ class VersionHistory {
         'Work Hours › Paid Time Off: each person shows Total, Used and Left, the date it resets, and the changes made to Used. People who cannot use theirs yet show the date they can.',
         'Project Management: a Dashboard opens first with what changed in the period (payments received, status and tag changes) and each job\'s timeline; Pending Jobs can show the recently paid. Project Management now needs permission to see Jobs.',
         'Marketing opens on Social Media Management.',
+        'Paid time off: a new setting chooses when the allowance resets (each work anniversary, 1 January, or each earned period), and carryover applies at that reset. Changing Used needs its own permission, Edit used paid time off, and asks for a reason.',
+        'Automations: new triggers when somebody\'s used days change, their balance runs out, their paid time off becomes available, or it resets within 30 days.',
       ],
     ),
     VersionRelease(
