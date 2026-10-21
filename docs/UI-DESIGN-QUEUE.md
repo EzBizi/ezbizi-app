@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 128 · Financials › Invoices: charge sheets, invoices, settings — **sent 2026-10-21** (`docs/previews/invoices-layouts.html`)
+### 128 · Financials › Invoices: charge sheets, invoices, settings — **sent 2026-10-21 — no answer in 10 min, went with 1 and 4** (`docs/previews/invoices-layouts.html`)
 
 Financials asked (session/invoices; child module `invoices` under `financials`). **1** (recommended) sub-tabs Charge sheets | Invoices | Settings; sheet = FinancialGrid-style grid (branch rows: Total jobs + a column per charge line, totals row/column), "Make invoices · N branches" drafts per non-zero branch and skips already-invoiced ones; invoices list with Sent/Unpaid/Overdue totals, status/branch/period filters, status chips; invoice side pane with Draft→Approved→Sent→Paid steps, PDF-like preview, lines editable while draft, next action as primary (Approve / Send… / Record payment), Void under More with a reason, approver and payments listed; Send… shows recipients, subject, email preview + PDF. Settings as sentences: charge lines (drag order, on/off, Airtable source or typed), email style, due days, prefix with next number. **2** full-page document. **3** sheet and invoices merged. Phone **4** (recommended: totals + invoice cards, pane full screen; sheet as branch list) / **5** / **6**.
 
