@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Financials;
 
+use App\Models\AirtableRecord;
 use App\Models\FinancialSource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -66,5 +68,25 @@ class FinancialSourcesTest extends TestCase
         $this->signedInAs($beta['admin'])->deleteJson("/api/v1/financials/sources/{$id}")->assertNotFound();
 
         $this->signedInAs($alpha['admin'])->deleteJson("/api/v1/financials/sources/{$id}")->assertNoContent();
+    }
+
+    public function test_each_source_says_its_kind_its_own_rows_and_when_it_was_last_copied(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach ([['r1', 'NJ'], ['r2', 'NJ'], ['r3', 'CT']] as [$id, $code]) {
+                AirtableRecord::query()->create(['organization_id' => $t['org']->id, 'base_id' => 'appF', 'table_id' => 'tblRef', 'table_name' => 'Refunds',
+                    'record_id' => $id, 'fields' => ['Company Name' => $code], 'fields_hash' => md5($id), 'fetched_at' => now()->subHours(30)]);
+            }
+            FinancialSource::create(['base_id' => 'appF', 'table_id' => 'tblRef', 'role' => 'refunds', 'franchise_id' => $t['franchise']->id,
+                'filter_field' => 'Company Name', 'filter_value' => 'NJ']);
+        });
+        $row = $this->signedInAs($t['admin'])->getJson('/api/v1/financials/sources')->assertOk()->json('data.0');
+        $this->assertSame(['mirror', 2], [$row['kind'], $row['rows']]);
+        $this->assertTrue(now()->parse($row['last_copied_at'])->lt(now()->subDay()));
+
+        Artisan::spy();
+        $this->signedInAs($t['admin'])->postJson('/api/v1/financials/sources/copy-now')->assertStatus(202);
+        $this->signedInAs($t['admin'])->postJson('/api/v1/financials/sources/copy-now')->assertStatus(422);
     }
 }
