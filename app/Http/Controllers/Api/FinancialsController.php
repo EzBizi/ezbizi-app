@@ -9,10 +9,10 @@ use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
 use App\Models\FinancialView;
 use App\Models\Franchise;
-use App\Models\SocialConnection;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Financials\AirtableMirror;
+use App\Support\Financials\AirtableWriter;
 use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
 use App\Support\Financials\FinancialsHome;
@@ -231,14 +231,16 @@ class FinancialsController extends Controller
     public function storeRecord(Request $request, FinancialTable $table): JsonResponse
     {
         $this->authorize('update', $table->base);
-        $this->refuseMirror($table);
         $values = $this->cleanValues($table, $request->validate(['values' => ['present', 'array']])['values']);
 
-        $record = $table->records()->create([
-            'values' => $values,
-            'position' => (int) $table->records()->max('position') + 1,
-            'created_by_user_id' => $request->user()->getKey(),
-        ]);
+        // A mirrored table: the row is made in Airtable first, then copied here.
+        $record = $table->isMirror()
+            ? AirtableWriter::create($table, $values)
+            : $table->records()->create([
+                'values' => $values,
+                'position' => (int) $table->records()->max('position') + 1,
+                'created_by_user_id' => $request->user()->getKey(),
+            ]);
         $this->audit->log('financials.record_created', $record, actor: $request->user());
         $this->events->emit('financial_record.created', $record, ['table' => $table->name]);
 
@@ -250,8 +252,15 @@ class FinancialsController extends Controller
     {
         $table = $record->table;
         $this->authorize('update', $table->base);
-        $this->refuseMirror($table);
         $input = $request->validate(['values' => ['sometimes', 'array'], 'position' => ['sometimes', 'integer', 'min:0']]);
+
+        if ($table->isMirror() && isset($input['values'])) {
+            $conflicts = AirtableWriter::update($table, [$record->id => $this->cleanValues($table, $input['values'], keepNulls: true)]);
+            $record->refresh();
+            $this->audit->logChange('financials.airtable_write', $record, $request->user());
+
+            return response()->json(['data' => $this->recordShape($record), 'conflicts' => $conflicts]);
+        }
 
         if (isset($input['values'])) {
             $record->values = array_filter(
@@ -269,12 +278,64 @@ class FinancialsController extends Controller
         return response()->json(['data' => $this->recordShape($record)]);
     }
 
+    /**
+     * Many cells at once — a paste, a fill-down, a delete over a selection,
+     * an undo (Jose, 2026-10-21: "like any excel sheet"). All or nothing: a
+     * cell that does not fit its column refuses the whole change.
+     */
+    public function updateRecords(Request $request, FinancialTable $table): JsonResponse
+    {
+        $this->authorize('update', $table->base);
+        $changes = $request->validate([
+            'changes' => ['required', 'array', 'min:1', 'max:5000'],
+            'changes.*.id' => ['required', 'uuid'],
+            'changes.*.values' => ['required', 'array'],
+        ])['changes'];
+
+        $records = $table->records()->whereIn('id', array_column($changes, 'id'))->get()->keyBy('id');
+        if ($records->count() !== count(array_unique(array_column($changes, 'id')))) {
+            throw ValidationException::withMessages(['changes' => 'A row in the change is not in this table any more. Reload and try again.']);
+        }
+
+        if ($table->isMirror()) {
+            $clean = [];
+            foreach ($changes as $change) {
+                $clean[$change['id']] = array_replace($clean[$change['id']] ?? [], $this->cleanValues($table, $change['values'], keepNulls: true));
+            }
+            $conflicts = AirtableWriter::update($table, $clean);
+            $fresh = $table->records()->whereIn('id', array_keys($clean))->get();
+            foreach ($fresh as $record) {
+                $this->audit->log('financials.airtable_write', $record, changes: ['values' => $clean[$record->id] ?? []], metadata: ['conflicts' => count($conflicts)], actor: $request->user());
+            }
+
+            return response()->json(['data' => $fresh->map(fn ($r) => $this->recordShape($r))->values(), 'conflicts' => $conflicts]);
+        }
+
+        $saved = DB::transaction(function () use ($changes, $records, $table, $request) {
+            foreach ($changes as $change) {
+                $record = $records[$change['id']];
+                $record->values = array_filter(
+                    array_replace($record->values ?? [], $this->cleanValues($table, $change['values'], keepNulls: true)),
+                    fn ($v) => $v !== null,
+                );
+                if ($record->isDirty('values')) {
+                    $record->save();
+                    $this->audit->logChange('financials.record_updated', $record, $request->user());
+                    $this->events->emit('financial_record.updated', $record, ['table' => $table->name]);
+                }
+            }
+
+            return $records->values();
+        });
+
+        return response()->json(['data' => $saved->map(fn ($r) => $this->recordShape($r))->values()]);
+    }
+
     public function destroyRecord(Request $request, FinancialRecord $record): JsonResponse
     {
         $this->authorize('delete', $record->table->base);
-        $this->refuseMirror($record->table);
         $this->audit->log('financials.record_deleted', $record, metadata: ['values' => $record->values], actor: $request->user());
-        $record->delete();
+        $record->table->isMirror() ? AirtableWriter::delete($record->table, $record) : $record->delete();
 
         return response()->json(null, 204);
     }
@@ -489,17 +550,36 @@ class FinancialsController extends Controller
             'base_id' => ['required', 'string', 'max:32'],
             'table_id' => ['required', 'string', 'max:32'],
         ]);
-        $name = SocialConnection::query()->where('provider', 'airtable')->where('remote_id', $input['base_id'])->value('display_name')
-            ?? 'Airtable';
-
-        $base = FinancialBase::query()->whereNull('company_id')->where('name', $name)->first();
-        if ($base === null) {
-            $this->authorize('create', [FinancialBase::class, null, null]);
-            $base = FinancialBase::create(['name' => $name, 'created_by_user_id' => $request->user()->id]);
-            $this->audit->log('financials.base_created', $base, actor: $request->user());
-        }
+        $this->authorize('create', [FinancialBase::class, null, null]);
+        $base = AirtableMirror::baseFor($input['base_id'], $request->user()->id);
 
         return $this->linkAirtable($request, $base);
+    }
+
+    /**
+     * Cut a mirrored table over to EzBizi, or back. Organization configuration:
+     * financials.edit from the organization view.
+     */
+    public function cutOver(Request $request, FinancialTable $table): JsonResponse
+    {
+        $this->authorize('update', $table->base);
+        abort_unless(ViewScope::forUser($request->user())->isOrganization(), 403, 'Cutting a table over is done from the organization view.');
+        if ($table->source_table_id === null) {
+            throw ValidationException::withMessages(['table' => 'This table was never kept in Airtable.']);
+        }
+        $back = $request->validate(['undo' => ['sometimes', 'boolean']])['undo'] ?? false;
+
+        $table->forceFill($back
+            ? ['cut_over_at' => null, 'cut_over_by_user_id' => null]
+            : ['cut_over_at' => now(), 'cut_over_by_user_id' => $request->user()->id])->save();
+        $this->audit->log($back ? 'financials.cut_over_undone' : 'financials.cut_over', $table, metadata: [
+            'airtable' => $table->source_base_id.'/'.$table->source_table_id,
+        ], actor: $request->user());
+        if ($back) {
+            AirtableMirror::refresh($table);
+        }
+
+        return response()->json(['data' => $this->tableShape($table->refresh())]);
     }
 
     public function refreshAirtable(Request $request, FinancialTable $table): JsonResponse
@@ -518,7 +598,7 @@ class FinancialsController extends Controller
     private function refuseMirror(FinancialTable $table): void
     {
         if ($table->isMirror()) {
-            throw ValidationException::withMessages(['table' => 'This table mirrors Airtable and refreshes every hour. Change it in Airtable.']);
+            throw ValidationException::withMessages(['table' => 'This table mirrors Airtable: its columns are changed in Airtable. Its cells can be edited here.']);
         }
     }
 
@@ -575,7 +655,15 @@ class FinancialsController extends Controller
             'base_id' => $t->base_id,
             'name' => $t->name,
             'mirror' => $t->isMirror() ? ['base_id' => $t->source_base_id, 'table_id' => $t->source_table_id, 'synced_at' => $t->synced_at?->toIso8601String()] : null,
-            'fields' => $t->fields()->get()->map(fn ($f) => $this->fieldShape($f))->values(),
+            'cut_over' => $t->cut_over_at === null ? null : ['at' => $t->cut_over_at->toIso8601String(), 'airtable' => $t->source_base_id.'/'.$t->source_table_id],
+            'fields' => (function () use ($t) {
+                // A mirrored table's computed Airtable columns are locked.
+                $computed = $t->isMirror() ? AirtableWriter::computedFields($t) : [];
+
+                return $t->fields()->get()->map(fn ($f) => $this->fieldShape($f) + [
+                    'locked' => $f->type === 'formula' || $f->type === 'attachment' || in_array($f->source_name, $computed, true),
+                ])->values();
+            })(),
             'views' => $t->views()->get()->map(fn ($v) => $this->viewShape($v))->values(),
             'records' => $t->records()->limit(self::MAX_RECORDS)->get()->map(fn ($r) => $this->recordShape($r))->values(),
         ];

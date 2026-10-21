@@ -1154,6 +1154,9 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('work', 'Work', action: 'view'),
                     new TabDefinition('materials', 'Materials'),
+                    // Jose, 2026-10-21: every job waiting on an estimate, as a
+                    // timeline. Its own tick: it shows who paid and who did not.
+                    new TabDefinition('project_management', 'Project Management'),
                 ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
@@ -1234,6 +1237,16 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 automationActions: [
+                    // Jose's Project Management rules (2026-10-21), through Workiz's writer.
+                    new ActionDefinition(
+                        key: 'job.workiz_update',
+                        label: 'Update the job in Workiz',
+                        description: 'Sets the status of the Workiz job (and sub-status) and/or replaces its tags '
+                            .'with the ones listed, in the spelling of each Workiz account. Tags not '
+                            .'listed are removed. A job not linked to Workiz is left alone. If Workiz '
+                            .'refuses, for example no technician on the job, its own words are shown.',
+                        executionType: 'workiz.job_update',
+                    ),
                     new ActionDefinition(
                         key: 'job.update_field',
                         label: 'Update a field',

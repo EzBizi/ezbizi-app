@@ -126,6 +126,7 @@ use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SchedulingAreaMapController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
@@ -865,6 +866,8 @@ Route::prefix('v1')
         // Each branch's Workiz notes on the customer, read live, never copied.
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
+        // Before the resource, or 'project-management' reads as a job id.
+        Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::apiResource('jobs', JobsController::class);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
@@ -1029,6 +1032,7 @@ Route::prefix('v1')
         // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
         Route::middleware('permission:financials.settings.view')->group(function (): void {
             Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
+            Route::post('financials/sources/copy-now', [FinancialSourcesController::class, 'copyNow']);
             Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
             Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
             Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
@@ -1059,6 +1063,7 @@ Route::prefix('v1')
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
+            Route::post('tables/{table}/cut-over', 'cutOver');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');
@@ -1069,6 +1074,7 @@ Route::prefix('v1')
             Route::delete('fields/{field}', 'destroyField');
             Route::post('tables/{table}/records', 'storeRecord');
             Route::patch('records/{record}', 'updateRecord');
+            Route::patch('tables/{table}/records', 'updateRecords');
             Route::delete('records/{record}', 'destroyRecord');
             Route::post('tables/{table}/views', 'storeView');
             Route::patch('views/{view}', 'updateView');
@@ -1541,6 +1547,11 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
             Route::delete('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'cancelChange']);
             Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+            // Drawn areas: shapes, preview, save; one area, a branch, the company.
+            Route::get('scheduling/areas-map', [SchedulingAreaMapController::class, 'overview']);
+            Route::get('scheduling/areas/{area}/map', [SchedulingAreaMapController::class, 'show']);
+            Route::post('scheduling/areas/{area}/polygons/preview', [SchedulingAreaMapController::class, 'preview']);
+            Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)

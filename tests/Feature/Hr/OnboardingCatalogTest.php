@@ -3,6 +3,7 @@
 namespace Tests\Feature\Hr;
 
 use App\Console\Commands\CallScoringClause;
+use App\Console\Commands\CooContract;
 use App\Models\Contract;
 use App\Models\ContractVersion;
 use App\Support\Contracts\ChecklistTable;
@@ -300,6 +301,42 @@ class OnboardingCatalogTest extends TestCase
         $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
     }
 
+    /** A1 Chimney's COO offer, made reusable (Jose, 2026-10-21). */
+    public function test_the_coo_offer_asks_customer_relations_paperwork_without_its_pay_lines(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $f = fn (string $key, string $type = 'text', string $by = 'employer') => ['key' => $key, 'label' => $key, 'type' => $type, 'filled_by' => $by, 'required' => true];
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Customer Relations', 'body' => 'Office agreement.',
+            'fields' => [$f('date_of_hire', 'date'), $f('job_title'), $f('hourly_rate', 'number'), $f('salary_amount', 'number'),
+                $f('salary_period'), $f('work_days'), $f('work_hours'), $f('county'), $f('ssn', 'text', 'employee'),
+                $f('employee_signature', 'signature', 'employee')],
+        ])->assertCreated();
+
+        $this->artisan('hr:coo-contract', ['organization' => 'Alpha', '--dry-run' => true])
+            ->expectsOutputToContain('Dry run. Nothing written.')->assertSuccessful();
+        $this->artisan('hr:coo-contract', ['organization' => 'Alpha'])->assertSuccessful();
+        $this->artisan('hr:coo-contract', ['organization' => 'Alpha'])->expectsOutputToContain('already there')->assertSuccessful();
+
+        $coo = $this->inTenant($alpha['org'], fn () => Contract::where('name', CooContract::NAME)->firstOrFail()->currentVersion);
+        $fields = $coo->fieldSet()->toArray();
+        $this->assertSame(['date_of_hire', 'job_title', 'salary_amount', 'salary_period',
+            'incentive_year', 'incentive_division', 'incentive_pct', 'incentive_minimum', 'perf_comp_year',
+            'perf_plan_due', 'perf_comp_minimum', 'pto_days', 'paid_holidays',
+            'work_days', 'work_hours', 'ssn', 'employee_signature'],
+            collect($fields)->pluck('key')->all());
+        // Nobody's name or deal from the signed copy: every amount is a question
+        // (Jose, 2026-10-21: "should all be empty fields").
+        foreach (['Eric', '120,000', '3,000', '30,000', '2026', '2027', 'Roofing', 'six (6)', 'Jewish'] as $fixed) {
+            $this->assertStringNotContainsString($fixed, $coo->body);
+        }
+
+        // The designer itself accepts the same wording and questions.
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'COO check', 'body' => $coo->body, 'fields' => $fields,
+        ])->assertCreated();
+    }
+
     /** A1 Tools' Recruiter agreement, built on Customer Relations (A1 takeover, 2026-10-16). */
     public function test_the_recruiter_contract_is_customer_relations_with_its_own_duties(): void
     {
@@ -307,7 +344,7 @@ class OnboardingCatalogTest extends TestCase
         $body = "This Customer Relations Employment Agreement (\"Agreement\") is entered into between:\r\n\r\n"
             ."2. POSITION & DUTIES\r\n\r\nThe Employee is hired to manage relations.\r\n\r\n• Answer complaints\r\n"
             ."The Employee is expected to maintain professional conduct and be kind.\r\n\r\n"
-            ."6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n".\App\Console\Commands\CallScoringClause::CLAUSE."\r\n\r\n"
+            ."6. COMPUTER AND ACTIVITY MONITORING\r\n\r\nDevices are monitored.\r\n\r\n".CallScoringClause::CLAUSE."\r\n\r\n"
             ."7. CONFIDENTIALITY\r\n\r\nKeep it.\r\n\r\n8. NON-SOLICITATION\r\n\r\nDo not.";
         $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
             'name' => 'Customer Relations', 'body' => $body,

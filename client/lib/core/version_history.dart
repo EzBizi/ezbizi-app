@@ -14,6 +14,43 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0468',
+      date: '21 Oct 2026',
+      items: [
+        'Scheduling › Settings › Service areas: draw an area on the map and its ZIP codes are added after a review; see one area, a branch or the whole company on the map. Deleting an area asks where its ZIP codes go.',
+        'Scheduling: a ZIP code you remove from an area stays removed. Before, the ZIP map that runs every 5 minutes could put it back from past jobs.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0467',
+      date: '21 Oct 2026',
+      items: [
+        'Financials: tables mirrored from Airtable can be edited here and the change is written to Airtable. A cell changed in Airtable meanwhile keeps Airtable\'s value and says so. Cut over to EzBizi per table makes EzBizi the source, and reports keep reading it.',
+        'Financials › Settings: Airtable sources as a grid of roles by branch, with each table\'s rows, last copy and Copy now.',
+        'Human Resources: a Chief Operating Officer contract template, whose incentive, bonus plan, PTO and holidays are filled in, marked TBD or left out per hire.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0466',
+      date: '21 Oct 2026',
+      items: [
+        'Jobs: a new Project Management tab follows each job waiting on payment as a timeline, with a countdown to its deadline. It stays empty until the statuses to watch are chosen in Settings.',
+        'Automations: two templates, both off: a payment on a Done Pending Approval job sets Submitted and the deposit tags; 30 days without payment cancels it as Estimate Declined. A new step updates the job in Workiz.',
+        'Jobs: a Notes tab keeps who wrote what and when. The job\'s old Notes field is now called Description.',
+        'Financials: tables scroll sideways, columns resize, and EzBizi\'s own tables edit like a spreadsheet (arrows, typing, paste from Excel, fill down, undo). Every Airtable table is mirrored automatically, tabs use the table names and count only the places in view, and attachments show as files.',
+        'Integrations › Workiz: the signed-in session belongs to a company and is sent from that company\'s view.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0465',
+      date: '21 Oct 2026',
+      items: [
+        'Branch pickers name the company too ("Connecticut · A-1 Chimney"), sorted by company, across customers, jobs, estimates, scheduling, financials, leads, Business Profile and complaints.',
+        'Integrations › Workiz: the signed-in session can be disconnected.',
+        'Jobs: a daily check for jobs waiting on an estimate, ready for Project Management. Nothing runs until its statuses are chosen in Settings.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0464',
       date: '20 Oct 2026',
       items: [

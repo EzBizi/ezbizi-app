@@ -7,6 +7,7 @@ use App\Models\FinancialBase;
 use App\Models\FinancialField;
 use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
+use App\Models\SocialConnection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +32,39 @@ final class AirtableMirror
             ->get()
             ->map(fn ($r) => ['base_id' => $r->base_id, 'table_id' => $r->table_id, 'table_name' => $r->table_name, 'rows' => (int) $r->rows])
             ->all();
+    }
+
+    /**
+     * Every table in the Airtable copy gets its Financials mirror, in the
+     * Financials base named after its Airtable base (made at the organization
+     * level the first time). Jose, 2026-10-21: "it should be automatically
+     * mirroring them all". Returns the tables it linked.
+     *
+     * @return list<FinancialTable>
+     */
+    public static function linkAll(?string $createdBy = null): array
+    {
+        $mirrored = FinancialTable::query()->whereNotNull('source_table_id')->get()
+            ->map(fn ($t) => $t->source_base_id.'/'.$t->source_table_id)->all();
+        $linked = [];
+        foreach (self::available() as $t) {
+            if (in_array($t['base_id'].'/'.$t['table_id'], $mirrored, true)) {
+                continue;
+            }
+            $linked[] = self::link(self::baseFor($t['base_id'], $createdBy), $t['base_id'], $t['table_id']);
+        }
+
+        return $linked;
+    }
+
+    /** The Financials base named after this Airtable base, made if missing. */
+    public static function baseFor(string $airtableBaseId, ?string $createdBy = null): FinancialBase
+    {
+        $name = SocialConnection::query()->where('provider', 'airtable')
+            ->where('remote_id', $airtableBaseId)->value('display_name') ?? 'Airtable';
+
+        return FinancialBase::query()->whereNull('company_id')->where('name', $name)->first()
+            ?? FinancialBase::create(['name' => $name, 'created_by_user_id' => $createdBy]);
     }
 
     public static function link(FinancialBase $base, string $baseId, string $tableId): FinancialTable
@@ -152,6 +186,9 @@ final class AirtableMirror
         $values = array_values(array_filter($values, fn ($v) => $v !== null && $v !== '' && $v !== []));
         $all = fn (callable $test) => $values !== [] && collect($values)->every($test);
 
+        if ($all(fn ($v) => is_array($v) && collect($v)->every(fn ($a) => is_array($a) && isset($a['url'])))) {
+            return ['attachment', null];
+        }
         if ($all(fn ($v) => is_bool($v))) {
             return ['checkbox', null];
         }
@@ -179,7 +216,11 @@ final class AirtableMirror
     /** A value that does not fit its column keeps its text rather than vanishing. */
     private static function cell(FinancialField $field, mixed $value): mixed
     {
-        if (is_array($value) && $field->type !== 'multi_select') {
+        // A formula error comes as {"error": "#ERROR!"}; it shows as that text, never breaks the row.
+        if (is_array($value) && isset($value['error']) && is_string($value['error'])) {
+            return $value['error'];
+        }
+        if (is_array($value) && ! in_array($field->type, ['multi_select', 'attachment'], true)) {
             $value = implode(', ', array_map(fn ($v) => is_scalar($v) ? (string) $v : json_encode($v), $value));
         }
 

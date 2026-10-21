@@ -257,6 +257,9 @@ Future<List<http.Request>> _pump(
               'franchise_id': null,
               'place': null,
               'field_map': {'team': 'Team'},
+              'kind': 'native',
+              'last_copied_at': null,
+              'rows': 12,
             },
           ],
           'roles': {'repair': 'Repair team sheet', 'pnl': 'Profit & loss'},
@@ -348,34 +351,39 @@ void screenTests() {
     await _pump(tester);
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('Repair team sheet · Repair NJ'), findsOneWidget);
-    expect(find.text('Whole organization · 1 column mapped'), findsOneWidget);
+    // A row per part of the books, the All-branches column holding the table.
+    expect(find.text('Repair team sheet'), findsOneWidget);
+    expect(find.text('Profit & loss'), findsOneWidget);
+    expect(find.text('ALL BRANCHES'), findsOneWidget);
+    expect(find.text('Repair NJ'), findsOneWidget);
+    expect(find.text('12 rows'), findsOneWidget);
+    expect(find.text('— · Add'), findsOneWidget);
+    expect(find.text('1 mapped · 0 branches'), findsOneWidget);
     expect(find.text('Add source'), findsOneWidget);
   });
 
-  testWidgets('a table that mirrors Airtable says so and offers no writing', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      table: {
-        ..._table,
-        'mirror': {
-          'base_id': 'appX',
-          'table_id': 'tblR',
-          'synced_at': DateTime.now().toUtc().toIso8601String(),
+  testWidgets(
+    'a table that mirrors Airtable says so, edits cells, and keeps its columns to Airtable',
+    (tester) async {
+      await _pump(
+        tester,
+        table: {
+          ..._table,
+          'mirror': {
+            'base_id': 'appX',
+            'table_id': 'tblR',
+            'synced_at': DateTime.now().toUtc().toIso8601String(),
+          },
         },
-      },
-      openBooks: true,
-    );
-    expect(
-      find.textContaining('Mirrors Airtable, read-only here'),
-      findsOneWidget,
-    );
-    expect(find.text('Refresh now'), findsOneWidget);
-    expect(find.text('Add record'), findsNothing);
-    expect(find.text('Diesel'), findsOneWidget);
-  });
+        openBooks: true,
+      );
+      expect(find.textContaining('Kept in step with Airtable'), findsOneWidget);
+      expect(find.text('Refresh now'), findsOneWidget);
+      expect(find.text('Add record'), findsWidgets);
+      expect(find.byTooltip('Import CSV'), findsNothing);
+      expect(find.text('Diesel'), findsOneWidget);
+    },
+  );
 
   testWidgets('the grid shows records with a total, and kanban stacks them', (
     tester,

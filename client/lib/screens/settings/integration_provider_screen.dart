@@ -8,6 +8,7 @@ import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/workiz_session_login.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
 ///
@@ -294,6 +295,24 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     if (mounted) setState(() => _error = refused);
   }
 
+  /// A Workiz web login is one per company, so its row names the company
+  /// ("Workiz web login · Harbor Home Services").
+  String _titleOf(IntegrationConnection row) {
+    if (row.provider != 'workiz_web' || row.scopeType != 'company') {
+      return row.title;
+    }
+    final company = widget.session.me?.companies
+        .where((c) => c.id == row.scopeId)
+        .firstOrNull;
+
+    return company == null ? row.title : '${row.title} · ${company.name}';
+  }
+
+  /// An organization-scoped Workiz web login was sent before logins were per
+  /// company (Workiz, 2026-10-21); it keeps Disconnect.
+  static bool _legacyWorkizWeb(IntegrationConnection row) =>
+      row.provider == 'workiz_web' && row.scopeType == 'organization';
+
   static String _ago(DateTime at) {
     final d = DateTime.now().difference(at.toLocal());
     if (d.inMinutes < 1) return 'just now';
@@ -404,7 +423,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                     dense: true,
                     leading: SocialNetworkMark(network: row.provider, size: 24),
                     title: Text(
-                      row.title,
+                      _titleOf(row),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -414,6 +433,8 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                     // when something is wrong.
                     subtitle: Text(
                       [
+                        if (_legacyWorkizWeb(row))
+                          WorkizSessionLogin.legacyNote,
                         if (row.beneath != null) row.beneath!,
                         if ((row.detail ?? '').isNotEmpty) row.detail!,
                         // When it last synced (UI queue 109).
@@ -421,7 +442,8 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
                           'synced ${_ago(row.lastSyncedAt!)}',
                         if (!row.connected) row.statusReason ?? 'Not working',
                       ].join(' · '),
-                      maxLines: 2,
+                      key: ValueKey('connection-detail:${row.id}'),
+                      maxLines: _legacyWorkizWeb(row) ? 4 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: row.connected

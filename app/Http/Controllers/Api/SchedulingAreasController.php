@@ -10,6 +10,7 @@ use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -211,16 +212,41 @@ class SchedulingAreasController extends Controller
         return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
     }
 
-    /** DELETE /api/v1/scheduling/areas/{area} */
+    /**
+     * DELETE /api/v1/scheduling/areas/{area}[?move_zips_to={area}]
+     *
+     * Its ZIPs go with it unless `move_zips_to` names another area this person
+     * can edit; the answer says which happened (Jose, 2026-10-21: removed
+     * areas' zip codes "don't move over").
+     */
     public function destroy(Request $request, string $area): JsonResponse
     {
         $row = $this->reachable($request)->findOrFail($area);
 
         $this->authorize('delete', $row);
 
-        $row->delete();
+        $to = null;
+        if ($request->filled('move_zips_to')) {
+            $to = $this->reachable($request)->whereKeyNot($row->id)->findOrFail((string) $request->input('move_zips_to'));
+            $this->authorize('update', $to);
+        }
 
-        return response()->json(null, 204);
+        $result = DB::transaction(function () use ($row, $to) {
+            $count = ServiceAreaZip::where('service_area_id', $row->id)->count();
+            if ($to === null) {
+                ServiceAreaZipRelease::release(ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip'));
+            } else {
+                ServiceAreaZip::where('service_area_id', $row->id)
+                    ->update(['service_area_id' => $to->id, 'franchise_id' => $to->franchise_id]);
+            }
+            $row->delete();
+
+            return $to === null
+                ? ['moved' => 0, 'unassigned' => $count, 'moved_to' => null]
+                : ['moved' => $count, 'unassigned' => 0, 'moved_to' => ['id' => $to->id, 'name' => $to->name]];
+        });
+
+        return response()->json(['data' => $result]);
     }
 
     /**
@@ -515,6 +541,9 @@ class SchedulingAreasController extends Controller
         }
 
         DB::transaction(function () use ($row, $wanted) {
+            $before = ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip');
+            ServiceAreaZipRelease::release($before->diff($wanted->keys()));
+            ServiceAreaZipRelease::claim($wanted->keys());
             ServiceAreaZip::where('service_area_id', $row->id)->delete();
 
             foreach ($wanted as $zip => $city) {

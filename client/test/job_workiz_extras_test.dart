@@ -54,7 +54,7 @@ void main() {
     final tabs = tester.widget<TabBarLike>(find.byKey(const Key('job-tabs')));
     expect(
       [for (final l in tabs.labels) l.$1],
-      ['Job', r'Money · $412.00', 'Photos & files · 3'],
+      ['Job', r'Money · $412.00', 'Photos & files · 3', 'Notes'],
     );
   });
 
@@ -214,7 +214,10 @@ void main() {
     );
 
     final tabs = tester.widget<TabBarLike>(find.byKey(const Key('job-tabs')));
-    expect([for (final l in tabs.labels) l.$1], ['Job', 'Photos & files · 3']);
+    expect(
+      [for (final l in tabs.labels) l.$1],
+      ['Job', 'Photos & files · 3', 'Notes'],
+    );
     expect(find.textContaining('Money'), findsNothing);
   });
 
@@ -225,7 +228,10 @@ void main() {
       await _pump(tester, workiz: null, money: null);
 
       final tabs = tester.widget<TabBarLike>(find.byKey(const Key('job-tabs')));
-      expect([for (final l in tabs.labels) l.$1], ['Job', 'Photos & files']);
+      expect(
+        [for (final l in tabs.labels) l.$1],
+        ['Job', 'Photos & files', 'Notes'],
+      );
       expect(find.byKey(const Key('job-workiz-facts')), findsNothing);
       expect(
         find.widgetWithText(TextField, 'What is the job'),

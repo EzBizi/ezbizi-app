@@ -1,6 +1,7 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../widgets/address_fields.dart';
@@ -449,8 +450,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         value: null,
                         label: 'All ${label.toLowerCase()}s',
                       ),
-                      for (final f in franchises)
-                        SearchOption<String?>(value: f.id, label: f.name),
+                      for (final b in branchOptionsInView(me))
+                        SearchOption<String?>(value: b.id, label: b.label),
                     ],
                     onChanged: (value) {
                       setState(() => _franchiseId = value);
