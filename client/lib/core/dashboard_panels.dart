@@ -22,6 +22,8 @@ IconData dashboardPanelIcon(String key) {
   'guidelines': Icons.menu_book_outlined,
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
+    // Same mark as its sidebar entry (module_screens.dart).
+    'project_management': Icons.timeline_outlined,
     'scheduling': Icons.calendar_month_outlined,
     // Same mark as its sidebar entry (module_screens.dart).
     'field': Icons.near_me_outlined,

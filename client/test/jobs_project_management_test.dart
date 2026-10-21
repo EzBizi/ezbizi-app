@@ -1,11 +1,11 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/job_status.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/jobs/project_management_tab.dart';
 import 'package:ezbizi_client/screens/jobs_screen.dart';
+import 'package:ezbizi_client/screens/project_management_screen.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
@@ -13,8 +13,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Jobs › Project Management: the table, its countdown, its filters and the
-/// timeline beside it (UI queue, option 1 and phone 4). Every name invented.
+/// Project Management, its own module: the table, its countdown, its filters
+/// and the timeline beside it (UI queue, option 1 and phone 4). Pumped as the
+/// module's screen, so the status words in the timeline come from its own
+/// /settings read. Every name invented.
 void main() {
   // A fixed local noon: the countdown is all about "now".
   final now = DateTime(2026, 10, 21, 12);
@@ -254,29 +256,29 @@ void main() {
     expect(find.byKey(const ValueKey('pm-card-j-2')), findsOneWidget);
   });
 
-  testWidgets('Jobs draws the tab for its permission only', (tester) async {
-    await _pump(tester, rows: rows(), now: now, screen: true);
-    final labels = [
-      for (final l
-          in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
-        l.$1,
-    ];
-    expect(labels, ['Jobs', 'Project Management']);
-
-    await tester.tap(find.text('Project Management'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('tour-jobs-pm-stages')), findsOneWidget);
-  });
-
-  testWidgets('without the permission there is no tab', (tester) async {
+  testWidgets('Jobs no longer draws it as a tab', (tester) async {
+    // Even for somebody who could see Estimates beside Jobs, the strip has
+    // no third entry: Project Management left it for the sidebar.
     await _pump(
       tester,
       rows: rows(),
       now: now,
       screen: true,
-      permissions: const ['jobs.view'],
+      permissions: const [
+        'jobs.view',
+        'jobs.financials',
+        'estimates.view',
+        'project_management.view',
+      ],
     );
+    final labels = [
+      for (final l
+          in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
+        l.$1,
+    ];
+    expect(labels, ['Jobs', 'Estimates']);
     expect(find.text('Project Management'), findsNothing);
+    expect(find.byKey(const ValueKey('tour-jobs-pm-stages')), findsNothing);
   });
 }
 
@@ -339,10 +341,7 @@ Future<void> _pump(
   List<Uri>? seen,
   Size size = const Size(1280, 900),
   bool screen = false,
-  List<String> permissions = const [
-    'jobs.view',
-    'jobs.project_management.view',
-  ],
+  List<String> permissions = const ['jobs.view', 'project_management.view'],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -396,14 +395,10 @@ Future<void> _pump(
       home: Scaffold(
         body: screen
             ? JobsScreen(api: api, session: session)
-            : ProjectManagementTab(
+            : ProjectManagementScreen(
                 api: api,
                 session: session,
                 now: () => now,
-                statuses: const [
-                  JobStatus(value: 'estimate_sent', label: 'Estimate sent'),
-                  JobStatus(value: 'approved', label: 'Approved'),
-                ],
               ),
       ),
     ),
