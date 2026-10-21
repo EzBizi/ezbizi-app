@@ -3,6 +3,7 @@
 namespace App\Support\Financials;
 
 use App\Models\AirtableRecord;
+use App\Models\AirtableRecordVersion;
 use App\Models\FinancialField;
 use App\Models\FinancialRecord;
 use App\Models\FinancialTable;
@@ -181,10 +182,26 @@ final class AirtableWriter
             }
             $fields = (array) ($r['fields'] ?? []);
             ksort($fields);
+            $hash = hash('sha256', (string) json_encode($fields));
+            $current = AirtableRecord::query()->where('base_id', $table->source_base_id)->where('table_id', $table->source_table_id)
+                ->where('record_id', $r['id'])->first();
+
+            // The row as it stood keeps a version, exactly as the hourly copy
+            // does, so a past report rebuilds the same whoever edited it.
+            if ($current !== null && $current->fields_hash !== $hash) {
+                AirtableRecordVersion::query()->create([
+                    'organization_id' => $table->organization_id,
+                    'airtable_record_id' => $current->id,
+                    'fields' => $current->fields,
+                    'seen_at' => $current->fetched_at,
+                ]);
+            }
+
             AirtableRecord::query()->updateOrCreate(
                 ['organization_id' => $table->organization_id, 'base_id' => $table->source_base_id, 'table_id' => $table->source_table_id, 'record_id' => $r['id']],
-                ['table_name' => $table->name, 'fields' => $fields, 'fields_hash' => hash('sha256', (string) json_encode($fields)),
-                    'record_created_at' => isset($r['createdTime']) ? now()->parse($r['createdTime']) : null, 'fetched_at' => now(), 'gone_at' => null],
+                ['table_name' => $current->table_name ?? $table->name, 'fields' => $fields, 'fields_hash' => $hash,
+                    'record_created_at' => isset($r['createdTime']) ? now()->parse($r['createdTime']) : $current?->record_created_at,
+                    'fetched_at' => now(), 'gone_at' => null],
             );
         }
         AirtableMirror::refresh($table);
