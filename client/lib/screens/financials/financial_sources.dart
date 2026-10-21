@@ -121,7 +121,7 @@ class _FinancialSourcesPanelState extends State<FinancialSourcesSettings> {
   }
 
   /// All branches, then every branch in view and every branch a source
-  /// names, labelled "Branch · Company" and in that order.
+  /// names, labelled "Company · Branch" and in that order.
   List<_Column> get _allColumns {
     final me = widget.me;
     final inView = {for (final f in me.franchisesInView) f.id};

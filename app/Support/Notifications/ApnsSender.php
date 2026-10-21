@@ -72,7 +72,7 @@ class ApnsSender
      * @param  Collection<int, DeviceToken>  $devices
      * @return int how many devices accepted the message
      */
-    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null): int
+    public function send(Collection $devices, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): int
     {
         if ($devices->isEmpty() || ! $this->configured()) {
             return 0;
@@ -92,7 +92,7 @@ class ApnsSender
         $sent = 0;
 
         foreach ($devices as $device) {
-            if ($this->deliver($device, $jwt, $title, $body, $notificationId)) {
+            if ($this->deliver($device, $jwt, $title, $body, $notificationId, $subtitle)) {
                 $sent++;
             }
         }
@@ -113,7 +113,7 @@ class ApnsSender
      * environment, and deleting on it would throw away a good token every time
      * somebody pointed a sandbox build at production.
      */
-    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null): bool
+    private function deliver(DeviceToken $device, string $jwt, string $title, ?string $body, ?string $notificationId = null, ?string $subtitle = null): bool
     {
         try {
             $response = Http::timeout(self::TIMEOUT)
@@ -126,7 +126,7 @@ class ApnsSender
                 ])
                 ->post($this->endpoint().$device->token, array_filter([
                     'aps' => [
-                        'alert' => array_filter(['title' => $title, 'body' => $body]),
+                        'alert' => array_filter(['title' => $title, 'subtitle' => $subtitle, 'body' => $body]),
                         'sound' => 'default',
                     ],
                     // Which bell row a tap opens — a custom key beside `aps`,

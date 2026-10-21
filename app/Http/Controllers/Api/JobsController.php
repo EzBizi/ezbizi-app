@@ -376,7 +376,12 @@ class JobsController extends Controller
     {
         $this->authorize('view', $job);
 
-        return response()->json(['data' => $this->present($job, detailed: true, money: $this->seesMoney($request))]);
+        return response()->json([
+            'data' => $this->present($job, detailed: true, money: $this->seesMoney($request)),
+            // The pickers' words wherever a job is opened from, not only the list
+            // (Project Management, a customer's jobs).
+            'meta' => ['labels' => $this->labelsIn(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds())],
+        ]);
     }
 
     /**

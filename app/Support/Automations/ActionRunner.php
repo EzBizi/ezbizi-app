@@ -3212,7 +3212,7 @@ class ActionRunner
             throw new InvalidArgumentException('notify needs a message.');
         }
 
-        $title = $this->interpolate($message, $event, $subject);
+        $title = self::tidyNotice($this->interpolate($message, $event, $subject));
 
         // A NOTIFICATION NEVER EMAILS. Jose, 2026-09-28: "the toggle should
         // not exist at all ... if i wanted an automation to send an email i
@@ -3251,6 +3251,20 @@ class ActionRunner
             }
         }
 
+        // "Tell the job's technician" (Jose's PM Action 1, 2026-10-21): the
+        // Workiz team on the job, through the confirmed Workiz-member-to-user link.
+        if (filter_var($action['to_job_technicians'] ?? false, FILTER_VALIDATE_BOOL)) {
+            $team = $subject instanceof Job
+                ? collect(WorkizJob::query()->where('job_id', $subject->getKey())->first()?->payload['team'] ?? [])->pluck('id')->filter()->all()
+                : [];
+            $techs = $team === [] ? [] : \App\Models\WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->pluck('user_id')->all();
+            if ($techs !== []) {
+                array_push($userIds, ...$techs);
+            } elseif ($userIds === [] && $roleIds === []) {
+                return ['type' => 'notify', 'ok' => true, 'skipped' => true, 'detail' => 'The job has no technician linked to an EzBizi user, so nobody was told.'];
+            }
+        }
+
         /*
          * A BAD ROLE ID IS A REFUSAL, NOT A 500.
          *
@@ -3268,7 +3282,7 @@ class ActionRunner
             // THE SECOND LINE (Jose, 2026-10-06, "Source Names for
             // notification"): the number, length and place under the headline,
             // or the reply itself. Interpolated like the title; empty is none.
-            $details = trim($this->interpolate((string) ($action['details'] ?? $action['body'] ?? ''), $event, $subject));
+            $details = self::tidyNotice($this->interpolate((string) ($action['details'] ?? $action['body'] ?? ''), $event, $subject));
 
             // A TITLE FITS ITS COLUMN (varchar 255). A long {{field}}, such as
             // a customer's whole message, failed the insert and switched
@@ -3586,6 +3600,20 @@ class ActionRunner
         return $sent === 0
             ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
             : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
+    }
+
+    /**
+     * A notification reads as written, not as its blanks (Jose, 2026-10-21:
+     * "Missed call: +12196706463 ()"): a US number reads (219) 670-6463,
+     * brackets a missing value left empty go, and spaces are tidied.
+     */
+    public static function tidyNotice(string $text): string
+    {
+        $text = preg_replace('/\+1(\d{3})(\d{3})(\d{4})/', '($1) $2-$3', $text) ?? $text;
+        $text = preg_replace('/\s*(\(\s*\)|\[\s*\])/', '', $text) ?? $text;
+        $text = preg_replace('/[ 	]{2,}/', ' ', $text) ?? $text;
+
+        return trim(preg_replace('/ +([,.:;!?])/', '$1', $text) ?? $text);
     }
 
     /** `user:<id>` as the pickers store it, an active person, or null. */

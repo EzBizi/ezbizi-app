@@ -795,7 +795,9 @@ const Map<String, Tour> operationsTours = {
       _jobMaterials,
     ],
   ),
-  'jobs/Project Management': Tour(
+  // ── Project Management ───────────────────────────────────────────────
+  // Its own module since 2026-10-21; the anchors kept their Jobs names.
+  'project_management': Tour(
     version: 1,
     steps: [
       TourStep(

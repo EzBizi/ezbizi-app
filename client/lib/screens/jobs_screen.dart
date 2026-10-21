@@ -25,7 +25,6 @@ import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 import 'jobs/job_labels.dart';
 import 'jobs/job_where.dart';
-import 'jobs/project_management_tab.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -73,22 +72,19 @@ class _JobsScreenState extends State<JobsScreen> {
 
   bool get _seesMoney => widget.session.me?.can('jobs.financials') ?? false;
 
-  /// Jobs, Estimates (queue 32) or Project Management. Estimates are money:
-  /// their own permission and the Financials toggle. Project Management is
-  /// its own tick. With only Jobs there is no bar at all.
+  /// Jobs or Estimates (queue 32). Estimates are money: their own permission
+  /// and the Financials toggle. With only Jobs there is no bar at all.
+  /// Project Management was a third tab until 2026-10-21; it is its own
+  /// module now (project_management_screen.dart).
   String _tab = 'jobs';
 
   /// A tab is built on its first open, so it fetches nothing before anyone
   /// looks, and then kept, as the Jobs tab is.
   final Set<String> _opened = {'jobs'};
 
-  bool get _seesProjectManagement =>
-      widget.session.me?.can('jobs.project_management.view') ?? false;
-
   List<String> get _tabs => [
     'jobs',
     if (_seesEstimates) 'estimates',
-    if (_seesProjectManagement) 'project_management',
   ];
 
   bool get _seesEstimates =>
@@ -333,10 +329,6 @@ class _JobsScreenState extends State<JobsScreen> {
               for (final t in tabs)
                 switch (t) {
                   'estimates' => ('Estimates', Icons.request_quote_outlined),
-                  'project_management' => (
-                    'Project Management',
-                    Icons.timeline_outlined,
-                  ),
                   _ => ('Jobs', Icons.construction_outlined),
                 },
             ],
@@ -363,18 +355,6 @@ class _JobsScreenState extends State<JobsScreen> {
                   offstage: _tab != 'estimates',
                   child: _opened.contains('estimates')
                       ? EstimatesTab(api: widget.api, session: widget.session)
-                      : const SizedBox.shrink(),
-                ),
-              if (_seesProjectManagement)
-                Offstage(
-                  offstage: _tab != 'project_management',
-                  child: _opened.contains('project_management')
-                      ? ProjectManagementTab(
-                          api: widget.api,
-                          session: widget.session,
-                          statuses: _statusChoices,
-                          labels: _labels,
-                        )
                       : const SizedBox.shrink(),
                 ),
             ],

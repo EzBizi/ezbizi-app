@@ -59,6 +59,11 @@ class JobLabelsTest extends TestCase
         $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs')->assertOk()
             ->assertJsonPath('meta.labels.job_types', ['Chimney Inspection', 'Chimney Sweep'])
             ->assertJsonPath('meta.labels.tags', ['On Monday', 'RESCHEDULE']);
+
+        // A single job carries the same words, for a panel opened from anywhere.
+        $one = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs')->json('data.0.id');
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/{$one}")->assertOk()
+            ->assertJsonPath('meta.labels.job_types', ['Chimney Inspection', 'Chimney Sweep']);
     }
 
     /** History from Workiz fills only what nobody has set, so a person's edit survives a re-run. */

@@ -200,9 +200,9 @@ void main() {
     final headers = [
       for (final label in [
         'ALL BRANCHES',
-        'OAKDALE · NORTHWIND',
-        'RIVERTON · NORTHWIND',
-        'SPRINGFIELD · NORTHWIND',
+        'NORTHWIND · OAKDALE',
+        'NORTHWIND · RIVERTON',
+        'NORTHWIND · SPRINGFIELD',
       ])
         tester.getTopLeft(find.text(label)).dx,
     ];
@@ -343,8 +343,8 @@ void main() {
         .onChanged!('fr-rv');
     await tester.pumpAndSettle();
     expect(find.text('ALL BRANCHES'), findsOneWidget);
-    expect(find.text('RIVERTON · NORTHWIND'), findsOneWidget);
-    expect(find.text('SPRINGFIELD · NORTHWIND'), findsNothing);
+    expect(find.text('NORTHWIND · RIVERTON'), findsOneWidget);
+    expect(find.text('NORTHWIND · SPRINGFIELD'), findsNothing);
     expect(find.text('Bounced Springfield'), findsNothing);
 
     tester
