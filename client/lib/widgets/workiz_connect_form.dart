@@ -27,7 +27,9 @@ class WorkizConnectForm extends StatefulWidget {
     this.label,
     this.branches = const [],
     this.companies = const [],
-    this.organizationView = true,
+    this.companiesInView = const [],
+    this.viewType = 'organization',
+    this.viewId,
     this.mayDisconnect = false,
   });
 
@@ -47,8 +49,14 @@ class WorkizConnectForm extends StatefulWidget {
   /// Names the [branches] by their company.
   final List<CompanySummary> companies;
 
-  /// See [WorkizSessionLogin.organizationView].
-  final bool organizationView;
+  /// See [WorkizSessionLogin.companiesInView].
+  final List<CompanySummary> companiesInView;
+
+  /// See [WorkizSessionLogin.viewType].
+  final String viewType;
+
+  /// See [WorkizSessionLogin.viewId].
+  final String? viewId;
 
   /// See [WorkizSessionLogin.mayDisconnect].
   final bool mayDisconnect;
@@ -163,8 +171,10 @@ class _WorkizConnectFormState extends State<WorkizConnectForm> {
             api: widget.api,
             branches: widget.branches,
             companies: widget.companies,
+            companiesInView: widget.companiesInView,
             onConnected: widget.onDone,
-            organizationView: widget.organizationView,
+            viewType: widget.viewType,
+            viewId: widget.viewId,
             mayDisconnect: widget.mayDisconnect,
           )
         else

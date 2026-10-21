@@ -1071,6 +1071,7 @@ Route::prefix('v1')
             Route::delete('fields/{field}', 'destroyField');
             Route::post('tables/{table}/records', 'storeRecord');
             Route::patch('records/{record}', 'updateRecord');
+            Route::patch('tables/{table}/records', 'updateRecords');
             Route::delete('records/{record}', 'destroyRecord');
             Route::post('tables/{table}/views', 'storeView');
             Route::patch('views/{view}', 'updateView');
