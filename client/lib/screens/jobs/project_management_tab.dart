@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -137,6 +139,11 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   String? _branch;
   int? _minDays;
 
+  /// Search on the server (Jose, 2026-10-21): job or Workiz number,
+  /// customer, address, city, zip, phone (4+ digits) and technician.
+  final _search = TextEditingController();
+  Timer? _typing;
+
   String? _openId;
 
   Me get _me => widget.session.me!;
@@ -149,6 +156,18 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _typing?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _typed(String _) {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 400), _load);
+  }
+
   Future<void> _load() async {
     final request = ++_request;
     setState(() {
@@ -159,6 +178,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     final response = await widget.api.get('/jobs/project-management', {
       'franchise_id': ?_branch,
       if (_minDays != null) 'min_days': '$_minDays',
+      if (_search.text.trim().isNotEmpty) 'q': _search.text.trim(),
     });
 
     if (!mounted || request != _request) return;
@@ -356,6 +376,19 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          SizedBox(
+            width: wide ? 300 : double.infinity,
+            child: TextField(
+              key: const ValueKey('pm-search'),
+              controller: _search,
+              onChanged: _typed,
+              decoration: const InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Job, customer, address, phone or tech',
+              ),
+            ),
+          ),
           if (branches.isNotEmpty)
             _picker<String?>(
               key: const ValueKey('pm-branch'),
