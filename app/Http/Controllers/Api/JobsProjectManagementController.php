@@ -40,6 +40,7 @@ class JobsProjectManagementController extends Controller
             'stage' => ['nullable', Rule::in(['waiting', 'partial', 'full', 'closed'])],
             'franchise_id' => ['nullable', 'uuid'],
             'min_days' => ['nullable', 'integer', 'min:0'],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
 
         $money = $user->hasPermission('jobs.financials');
@@ -56,6 +57,18 @@ class JobsProjectManagementController extends Controller
         $jobs = Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
+            // Jose, 2026-10-21: "search bar ... to find specific stuff". Job and
+            // Workiz numbers, the customer's name, phone and address, the tech.
+            ->when(filled($input['q'] ?? null), function ($q) use ($input) {
+                $like = '%'.trim($input['q']).'%';
+                $digits = preg_replace('/\D/', '', $input['q']);
+                $q->where(fn ($w) => $w->where('number', 'like', $like)
+                    ->orWhereHas('workizJob', fn ($z) => $z->where('serial_id', 'like', $like))
+                    ->orWhereHas('performedBy', fn ($u) => $u->where('name', 'like', $like))
+                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)
+                        ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
+                        ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
+            })
             ->where(fn ($q) => $q->whereIn('status', $watched)->orWhereIn('id', $left))
             ->with(['franchise:id,name,timezone', 'customer:id,name', 'workizJob'])
             ->get();
