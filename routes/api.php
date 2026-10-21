@@ -126,6 +126,7 @@ use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\SchedulingAreaMapController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
@@ -1546,6 +1547,11 @@ Route::prefix('v1')
             Route::put('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'scheduleChange']);
             Route::delete('scheduling/areas/{area}/scheduled/{date}', [SchedulingAreasController::class, 'cancelChange']);
             Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+            // Drawn areas: shapes, preview, save; one area, a branch, the company.
+            Route::get('scheduling/areas-map', [SchedulingAreaMapController::class, 'overview']);
+            Route::get('scheduling/areas/{area}/map', [SchedulingAreaMapController::class, 'show']);
+            Route::post('scheduling/areas/{area}/polygons/preview', [SchedulingAreaMapController::class, 'preview']);
+            Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
