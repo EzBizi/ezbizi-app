@@ -1218,6 +1218,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'and the job’s Workiz status.',
                     ),
                     new TriggerDefinition(
+                        key: 'job.estimate_aging',
+                        label: 'Estimate waiting',
+                        description: 'Once a day, for each job in a status your organization says '
+                            .'waits on an estimate (set in Settings). It says how many days since '
+                            .'the latest estimate and what has been paid, so a rule can act, for '
+                            .'example after 30 days with nothing paid.',
+                    ),
+                    new TriggerDefinition(
                         key: 'job.completed',
                         label: 'Completed',
                         description: 'A job reached one of the statuses your organization counts '

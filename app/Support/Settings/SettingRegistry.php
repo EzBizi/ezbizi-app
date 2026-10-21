@@ -916,6 +916,22 @@ class SettingRegistry
              * parent. NOT franchise — one branch cannot decide what the whole
              * business calls revenue.
              */
+            /*
+             * Which statuses mean "waiting on the customer's decision", for
+             * `job.estimate_aging` (Jose's Project Management rule 2,
+             * 2026-10-21). Empty by default: nothing ages until somebody says
+             * which of the organization's own words mean waiting.
+             */
+            new SettingDefinition(
+                key: 'jobs.estimate_aging_statuses', label: 'Statuses that wait on an estimate',
+                type: SettingDefinition::TYPE_SUBSET,
+                choicesFrom: 'jobs.statuses',
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Jobs in these statuses are checked once a day: how long since their latest '
+                    .'estimate, and what has been paid. Automations can act on it, for example '
+                    .'cancelling after 30 days with nothing paid.',
+            ),
             new SettingDefinition(
                 key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
                 type: SettingDefinition::TYPE_SUBSET,

@@ -115,7 +115,7 @@ touches apps, monitoring, social, Google or mail.
 | FB campaign categories → xAI: "names of the campaigns in an organization's connected Facebook ad accounts, and the names of its own service categories" · "Nothing about a customer is sent" | `/privacy/` Calls and messages + Who we rely on | `SuggestMetaCategories` (session/grok 68cefaee): prompt = category list + `MetaAdCampaign.name` only. **HELD, not written: ad spend / cost-per-job per source (Google Ads, LSA, Facebook) to Grok** — Google Ads figures are Google user data; the Google section allows xAI only "for that same purpose" (enquiries + coaching). **Jose 2026-10-12, relayed verbatim by Grok AI: "Facebook only for now (Recommended)" — no Google Ads/LSA figures to xAI; Google section and /google-ads-api/ unchanged.** Any Google spend to xAI later still needs a new verbatim yes for a new purpose, and /privacy/ Google section + /google-ads-api/ "No aggregation" paragraph changed before it ships. |
 | AI Assistance → xAI: question + "the Library answers that person is allowed to read" + "up to five matching branches (name, phone, address and service area)" · "their phone number is not" sent | `/privacy/` Calls and messages + Who we rely on | `AssistantBrain::aiAnswer` (session/grok f11d1190): prompt = org name + readable `AssistantEntry` rows + `locations()->take(5)` + `$query`; `WhatsAppStaffBot` calls it with the message text only. **Adding the sender's number, name or history to that prompt breaks "their phone number is not"**. |
 | WhatsApp figures → xAI: "jobs by source, sales, each technician's sales and deposits by name, and how many enquiries arrived from each source other than Google Local Services" · "No customer's name or contact details" | `/privacy/` Calls and messages + Who we rely on | `ReportAsk::answer` (d883e59b): question + branch names, then `PeriodReport::figures()` (created/closed by source, techs) + `ReportAsk::leads()` (counts by `source`). `leads()` excludes `Lead::SOURCE_LOCAL_SERVICES` since 76c2bb74 (on main, with a test) — LSA counts are Google user data and Jose ruled "Facebook only for now" (2026-10-12). **Removing that where-clause breaks the page.** Workiz `job_source` values named "Google LSA" are A1's own CRM records, not Google API data, so "jobs by source" may carry that label truthfully. |
-| Device permissions: "only when you tap Download on a how-to video, permission to add that video to your photos — on an iPhone, and on Android 9 or older" · "never reads your photos" · "no camera, no contacts, no calendar" | `/privacy/` Where EzBizi runs | `client/ios/Runner/Info.plist` `NSPhotoLibraryAddUsageDescription` only (no `NSPhotoLibraryUsageDescription`, no camera/contacts/calendar keys); `AndroidManifest.xml` `WRITE_EXTERNAL_STORAGE maxSdkVersion=29`, no READ_MEDIA_*/CAMERA/READ_CONTACTS/READ_CALENDAR. From 5d3045e6 (0.0.0431). **Any new Usage key or uses-permission breaks this paragraph.** |
+| Device permissions: "only when you tap Download on a how-to video, permission to add that video to your photos — on an iPhone, and on Android 9 or older" · "only when you tap to take a photo for a job, the camera — your iPhone asks first; on Android the phone's own camera app takes the picture" · "never reads your photos" · "no contacts, no calendar" | `/privacy/` Where EzBizi runs | `client/ios/Runner/Info.plist`: `NSPhotoLibraryAddUsageDescription`, and since 199538a9 (0.0.0463) `NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription` — the second is declared because image_picker requires it, never requested: `files_io.dart` `takePhoto` calls `ImagePicker().pickImage(source: ImageSource.camera)` only. **If any `ImageSource.gallery` / `pickMultiImage` appears, "never reads your photos" is false.** `AndroidManifest.xml`: `WRITE_EXTERNAL_STORAGE maxSdkVersion=29`, no CAMERA (the camera intent needs none), no READ_MEDIA_*/READ_CONTACTS/READ_CALENDAR. **Adding CAMERA to the Android manifest makes "on Android the camera app takes it" incomplete — Android would then prompt. Any new Usage key or uses-permission breaks this paragraph.** "no camera" removed 2026-10-20. |
 | AppAsk (WhatsApp staff line AND, since 5eb754c8 / 0.0.0432, the in-app AI tab via `AssistantController` when the Library has no answer) → xAI: "any record the person may see, including customers, jobs, calls, staff records, details of monitored computers, the contents of connected mailboxes, and Google Ads, Local Services and Business Profile data" · "Only text … never audio, images or files" · "read only" | `/privacy/` Calls and messages + Google user data + Who we rely on; `/google-ads-api/` | **Jose 2026-10-13: "Everything, as asked"** (relayed desk → Grok AI; supersedes "Facebook only for now" FOR THIS PATH ONLY — ReportAsk still excludes LSA). At 1a0802dd (950f1f32) BLOCKED is only auth/staff/mcp/me/api-keys/me/sessions; JSON-only gate (`Content-Type` contains json) stays; GETs run as the asker with a 2-minute token. History: 050d6753 refused, 57c80ace/35cf8644 blocked Google/mail/monitoring, 950f1f32 dropped those blocks on Jose's word. **Removing the JSON-only gate breaks "never audio, images or files"; a non-GET breaks "read only".** Gmail content to xAI also sits under Google's Workspace API user-data policy — that is a review risk, not a page falsehood. |
 | WhatsApp actions: "a small, fixed set of things — such as answering a review, moving a job, changing a lead's status or adding a scheduling note" · "repeats exactly what it is about to do and waits for a YES" · "does not ask for the app's second sign-in step" | `/privacy/` Keeping it safe (6d82a948, another session, 2026-10-16) | `AppAct::COMMANDS` (allowlist: review reply + publish, board reschedule, `PATCH leads/{lead}` `['status']` only, scheduling location note) and `AppAct::NEVER`; gate tick `ai_assistance.command`. Ships in 0.0.0446 — the page was written ahead of the release. **A new key in `COMMANDS` that is not one of those four kinds, or the allowlist becoming a denylist, breaks "small, fixed set"; a 2FA step added makes the bold sentence over-disclose (safe).** |
 | Call recordings by number: message → xAI "only to read the number and the dates" · recordings "pass through Meta" · "not sent to xAI" | `/privacy/` Calls and messages + Meta line | `CallRecordingsRequest` (6727b341) sends the staff text to Grok for phone/from/to; `SendCallRecordings` reads `RingCentralCallLog` only (no LeadConversation, so no LSA recordings) and uploads audio to the WhatsApp Cloud `/media` endpoint. **If it ever reads Lead recordings, Google LSA audio reaches Meta — re-check.** |
@@ -2944,3 +2944,41 @@ stays; recordings download, Settings redesign, RC Calls tagging — no sentence 
 
 Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0443.
+
+## 2026-10-20: 0.0.0456-0.0.0464 live, and `/privacy/` said "no camera" and "the video is on its own equipment"
+
+Production `/download/windows.json` 0.0.0464 at `76e6d53e` (= main). Live = repo for every
+`www/` file before this edit: `005d2600` published (desk `0133`, grep -> 1).
+
+**Two `/privacy/` sentences went false today, both from Monitoring/Jobs work.**
+- `199538a9` adds a camera to the Android and iOS apps (job photos, `ImageSource.camera`
+  only). "We ask for nothing else: no camera" was false the moment a store build carries
+  it. Now: "only when you tap to take a photo for a job, the camera — your iPhone asks
+  first; on Android the phone's own camera app takes the picture." True before and after
+  the store build ships. Device-permissions row above rewritten with the test.
+- The camera bridge (`eea59de4`..`7f9a8373`): an EzBizi app on a site PC relays that
+  site's cameras through the box (MediaMTX -> go2rtc -> MJPEG, `deploy/camera-relay/`),
+  and `CameraBridgeController::still` keeps one still per camera on `local` disk
+  (`camera-stills/<built-in function id>.jpg`, overwritten every 10 minutes). "We store the address …
+  the video is the organization's, on its own equipment" no longer covered it. Now says
+  the video passes through our server while watched and is not kept (`mediamtx.yml` has
+  no record path; hls/webrtc off), and that one still per camera is kept, each replacing
+  the last. **Not claimed:** deletion of a still when a camera or site is removed — nothing
+  deletes `camera-stills/` in the code. **Re-check when phase 3 (recordings: clip download
+  uploaded through the bridge) lands** — "EzBizi does not record" must then say clips a
+  person downloads pass through, and whether they are kept.
+
+Desk `0133` counts (10-20): local_services 46,706, thumbtack 18, facebook 11, instagram 1;
+estimates 2,231 (still held: billing/payments do not exist and the term is gated);
+**youtube sent 1, tiktok failed 1** — one YouTube `sent` row is not yet a customer's
+proven account (org not named), so "newly built and not yet proven" stays; ask the org
+before inverting. Ring groups not measured. No new social publisher, no Training/Scheduled
+Jobs change asked of the site.
+
+Checked, no edit: Workiz web-session extension and one-token Airtable — accounts the
+customer connects, neither named on the site; Complaints, job notes/tags/files, HR delete,
+Task Board, Automations tag/sub-status steps — no sentence touched. `AppAsk::answer`
+callers not re-counted.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms (LINE-split) ok -
+4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0443.
