@@ -171,6 +171,9 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     super.dispose();
   }
 
+  /// The opener's label words, replaced by the job's own once it loads.
+  late JobLabels? _labels = widget.labels;
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -195,6 +198,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     setState(() {
       _row = row;
       _notes = jobNotes(row['notes']);
+      // The job's own label words (Jobs, 2026-10-21), so the pickers fill
+      // wherever the panel was opened from.
+      _labels =
+          JobLabels.of((response.body['meta'] as Map?)?['labels']) ?? _labels;
       _loading = false;
     });
 
@@ -289,7 +296,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
   Future<void> _addTag() async {
     final offered = [
-      for (final t in {...?widget.labels?.tags})
+      for (final t in {...?_labels?.tags})
         if (!_tags.contains(t)) SearchOption(value: t, label: t),
     ];
     final picked = await showSearchPicker<String>(
@@ -366,7 +373,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       label: 'Sub-status',
       hint: 'None',
       allowClear: true,
-      options: _words(widget.labels?.subStatuses, _subStatus),
+      options: _words(_labels?.subStatuses, _subStatus),
       create: (typed) => typed,
       onChanged: editable
           ? (v) {
@@ -380,7 +387,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       label: 'Type',
       hint: 'None',
       allowClear: true,
-      options: _words(widget.labels?.jobTypes, _jobType),
+      options: _words(_labels?.jobTypes, _jobType),
       create: (typed) => typed,
       onChanged: editable
           ? (v) {

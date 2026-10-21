@@ -7,6 +7,7 @@ import 'package:ezbizi_client/core/timestamps.dart';
 import 'package:ezbizi_client/screens/jobs/job_detail_panel.dart';
 import 'package:ezbizi_client/screens/jobs/job_notes.dart';
 import 'package:ezbizi_client/widgets/refused.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +17,23 @@ import 'package:http/testing.dart';
 /// A job's notes (UI queue 122; Jose: option 1 and phone 4). Every name here
 /// is invented.
 void main() {
+  // Jobs, 2026-10-21: opened with no labels from its opener, the panel uses
+  // the job's own meta.labels, so its pickers are not empty.
+  testWidgets('the type picker offers the job labels', (
+    tester,
+  ) async {
+    final server = _Server(notes: const []);
+    await _pumpPanel(tester, server, permissions: ['jobs.view', 'jobs.edit']);
+
+    final picker = tester.widget<SearchPickerField<String>>(
+      find.byKey(const Key('job-type')),
+    );
+    expect(
+      picker.options.map((o) => o.label),
+      containsAll(['Chimney Sweep', 'Flue Inspection']),
+    );
+  });
+
   final now = DateTime.now();
   String stamp(DateTime at) => at.toIso8601String();
   final today = DateTime(now.year, now.month, now.day, now.hour, now.minute);
@@ -345,6 +363,14 @@ class _Server {
           'allowed_service_areas': <dynamic>[],
           'money': null,
           'notes': notes,
+        },
+        // The job's own label words (Jobs, 2026-10-21).
+        'meta': {
+          'labels': {
+            'job_types': ['Chimney Sweep', 'Flue Inspection'],
+            'sub_statuses': <String>[],
+            'tags': ['RESCHEDULE'],
+          },
         },
       });
     }
