@@ -1201,11 +1201,12 @@ class _PersonRecordState extends State<_PersonRecord> {
         const SizedBox(height: 8),
         // Earned less what HR recorded as used (Jose, 2026-10-21).
         Text(
-          pto['balance'] == null
+          pto['left'] == null
               ? 'Their balance needs their start date. Add it under Employment.'
-              : '${days(pto['balance'] as num?)} left: '
-                    '${days(pto['earned'] as num?)} earned, '
-                    '${days(pto['used'] as num?)} used.',
+              : '${days(pto['left'] as num?)} left of '
+                    '${days(pto['total'] as num?)}, '
+                    '${days(pto['used'] as num?)} used'
+                    '${pto['resets_on'] == null ? '' : ' · resets ${widget.formats.formatDate(DateTime.parse(pto['resets_on'].toString()))}'}.',
           key: const Key('pto-balance'),
           style: theme.textTheme.titleMedium,
         ),

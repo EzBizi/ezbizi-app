@@ -280,6 +280,30 @@ class ModuleServiceProvider extends ServiceProvider
                  * exist yet.
                  */
                 triggers: [
+                    // Paid time off (Jose, 2026-10-21), each with the person and
+                    // Total / Used / Left. On the person, so a rule is scoped by them.
+                    new TriggerDefinition(
+                        key: 'user.pto_used_changed',
+                        label: 'Paid time off used changed',
+                        description: 'Somebody changed how many paid days off a person has used. '
+                            .'Carries the person, total, used (before and after), left and the reason.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'user.pto_balance_empty',
+                        label: 'Paid time off balance reached zero',
+                        description: 'A change to the days used left a person with no paid time off, or less.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'user.pto_available',
+                        label: 'Paid time off becomes available',
+                        description: 'A person’s waiting period ended today, so they can now use paid time off.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'user.pto_reset_soon',
+                        label: 'Paid time off resets in 30 days',
+                        description: 'A person’s paid time off resets (their work anniversary, 1 January or '
+                            .'the period) 30 days from today. Carries what they still have left.',
+                    ),
                     new TriggerDefinition(
                         key: 'user.invited',
                         label: 'Invited',
@@ -760,11 +784,19 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'work_hours',
                 label: 'Work Hours',
-                actions: ['view', 'all', 'manage'],
-                actionRequires: ['all' => ['work_hours.general.view'], 'manage' => ['work_hours.all']],
+                // `pto.edit` (Jose, 2026-10-21): changing somebody's used paid
+                // days is its own grant, not general HR or hours editing.
+                // Seeing balances is the Paid Time Off tab's own key.
+                actions: ['view', 'all', 'manage', 'pto.edit'],
+                actionRequires: [
+                    'all' => ['work_hours.general.view'],
+                    'manage' => ['work_hours.all'],
+                    'pto.edit' => ['work_hours.pto.view'],
+                ],
                 actionLabels: [
                     'all' => "See everyone's hours",
                     'manage' => 'Edit hours and schedules',
+                    'pto.edit' => 'Edit used paid time off',
                 ],
                 tabs: [
                     new TabDefinition('general', 'General'),
@@ -776,7 +808,7 @@ class ModuleServiceProvider extends ServiceProvider
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),
                 ],
-                auditActionPrefixes: ['time_clock'],
+                auditActionPrefixes: ['time_clock', 'pto'],
                 /*
                  * The weekly hours email as a rule step (Jose, 2026-09-28: every
                  * Sunday 8 PM Miami time to the dispatch manager). The report

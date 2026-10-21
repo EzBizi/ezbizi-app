@@ -1939,6 +1939,8 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // Used typed into Total / Used / Left (Jose, 2026-10-21); UserPolicy::editPtoUsed.
+        Route::put('hr/people/{user}/pto/used', [HrPeopleController::class, 'setPtoUsed']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
