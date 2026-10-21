@@ -17,6 +17,7 @@ import '../../widgets/tag.dart';
 import 'job_labels.dart';
 import 'job_files.dart';
 import 'job_lines_tab.dart';
+import 'job_notes.dart';
 import 'job_where.dart';
 import 'job_workiz.dart';
 
@@ -64,7 +65,8 @@ class JobDetailPanel extends StatefulWidget {
 }
 
 class _JobDetailPanelState extends State<JobDetailPanel> {
-  /// Job, Money or Photos & files (UI queue 58; Jose: "as recommended").
+  /// Job, Money, Photos & files or Notes (UI queue 58; Jose: "as
+  /// recommended"; Notes is queue 122).
   String _tab = 'job';
 
   final _title = TextEditingController();
@@ -97,6 +99,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     api: widget.api,
     jobId: widget.id,
   );
+
+  /// The job's notes, newest first (queue 122). Held apart from [_row] so an
+  /// added one goes on top without reloading the panel.
+  List<Map<String, dynamic>> _notes = const [];
+  final _noteDraft = TextEditingController();
 
   bool _loading = true;
   bool _busy = false;
@@ -160,6 +167,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _description.dispose();
     _scheduled.dispose();
     _duration.dispose();
+    _noteDraft.dispose();
     super.dispose();
   }
 
@@ -186,6 +194,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
 
     setState(() {
       _row = row;
+      _notes = jobNotes(row['notes']);
       _loading = false;
     });
 
@@ -562,6 +571,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         fileCount == 0 ? 'Photos & files' : 'Photos & files · $fileCount',
         Icons.photo_library_outlined,
       ),
+      (
+        'notes',
+        _notes.isEmpty ? 'Notes' : 'Notes · ${_notes.length}',
+        Icons.sticky_note_2_outlined,
+      ),
     ];
     final current = tabs.any((t) => t.$1 == _tab) ? _tab : 'job';
 
@@ -589,9 +603,72 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
             formats: _me.display,
             addRefusal: _editRefusal,
           )
+        else if (current == 'notes')
+          JobNotes(
+            api: widget.api,
+            jobId: widget.id,
+            notes: _notes,
+            draft: _noteDraft,
+            formats: _me.display,
+            addRefusal: _editRefusal,
+            onAdded: (note) => setState(() => _notes = [note, ..._notes]),
+          )
         else
           _jobPage(context, row, editable, extras),
       ],
+    );
+  }
+
+  /// "Latest note: … · who · when ›", opening the Notes tab (queue 122).
+  Widget _latestNote(BuildContext context, Map<String, dynamic> note) {
+    final theme = Theme.of(context);
+    final text = [
+      noteFirstLine(note),
+      noteAuthor(note),
+      noteWhen(note['created_at'], formats: _me.display),
+    ].where((s) => s.isNotEmpty).join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: InkWell(
+        key: const Key('job-latest-note'),
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _tab = 'notes'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(
+            children: [
+              Icon(
+                Icons.sticky_note_2_outlined,
+                size: 16,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(
+                        text: 'Latest note: ',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: text),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -631,6 +708,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       ],
                     ),
                   ),
+                if (_notes.isNotEmpty) _latestNote(context, _notes.first),
                 // What Workiz says the job IS, before anything to edit
                 // (queue 58). Its money moved to the Money tab.
                 if (fields.isNotEmpty) WorkizFacts(fields: fields),
@@ -699,7 +777,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _description,
-                  decoration: const InputDecoration(labelText: 'Notes'),
+                  decoration: const InputDecoration(labelText: 'Description'),
                   minLines: 2,
                   maxLines: 6,
                   enabled: editable,

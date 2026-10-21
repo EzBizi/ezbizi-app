@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
@@ -260,8 +261,8 @@ class _BillPanelState extends State<_BillPanel> {
             options: [
               for (final c in widget.me.companiesInView)
                 SearchOption(value: c.id, label: c.name),
-              for (final f in widget.me.franchisesInView)
-                SearchOption(value: f.id, label: f.name),
+              for (final b in branchOptionsInView(widget.me))
+                SearchOption(value: b.id, label: b.label),
             ],
             onChanged: (v) => setState(() => _place = v),
           ),

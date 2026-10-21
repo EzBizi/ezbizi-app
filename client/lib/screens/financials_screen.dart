@@ -9,6 +9,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/tab_bar_like.dart';
 import 'financials/financial_adjustments.dart';
 import 'financials/financial_bills.dart';
+import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
 import 'financials/financial_sources.dart';
@@ -321,6 +322,23 @@ class _FinancialsScreenState extends State<FinancialBases> {
     await _loadBases();
   }
 
+  bool _confirmCut = false;
+
+  /// Cut a mirrored table over to EzBizi (or back). The first press asks.
+  Future<void> _cutOver({required bool undo}) async {
+    if (!undo && !_confirmCut) {
+      setState(() => _confirmCut = true);
+      return;
+    }
+    _confirmCut = false;
+    final r = await widget.api.post('/financials/tables/$_tableId/cut-over', {
+      if (undo) 'undo': true,
+    });
+    if (!mounted) return;
+    if (!r.ok) return _say(r.message);
+    await _reload();
+  }
+
   Future<void> _refreshMirror() async {
     final r = await widget.api.post('/financials/tables/$_tableId/refresh', {});
     if (!mounted) return;
@@ -451,11 +469,63 @@ class _FinancialsScreenState extends State<FinancialBases> {
         fields: _fields,
         record: record,
         initial: initial,
-        canEdit: _can('edit') && _table?['mirror'] == null,
-        canDelete: _can('delete') && _table?['mirror'] == null,
+        canEdit: _can('edit'),
+        canDelete: _can('delete'),
       ),
     );
     if (changed == true) await _reload();
+  }
+
+  /// A batch of cell edits from the grid: a paste, a fill-down, a delete, an undo.
+  Future<String?> _changeCells(List<CellChange> changes) async {
+    final byRecord = <String, Map<String, dynamic>>{};
+    for (final c in changes) {
+      (byRecord['${c.record['id']}'] ??= {})[c.fieldId] = c.value;
+    }
+    final r = await widget.api.patch('/financials/tables/$_tableId/records', {
+      'changes': [
+        for (final e in byRecord.entries) {'id': e.key, 'values': e.value},
+      ],
+    });
+    if (!mounted) return null;
+    if (r.ok) {
+      final conflicts = (r.body['conflicts'] as List?) ?? const [];
+      if (conflicts.isNotEmpty) {
+        _say(
+          '${conflicts.length} ${conflicts.length == 1 ? 'cell was' : 'cells were'} changed in Airtable since you '
+          "opened this, so Airtable's value was kept: "
+          '${conflicts.take(3).map((c) => '${c['field']} is now "${c['theirs'] ?? ''}"').join('; ')}. '
+          'Type yours again to replace it.',
+        );
+      }
+      final updated = {
+        for (final rec in (r.body['data'] as List).cast<Map>())
+          '${rec['id']}': rec,
+      };
+      setState(() {
+        final records = (_table!['records'] as List);
+        for (var i = 0; i < records.length; i++) {
+          final fresh = updated['${records[i]['id']}'];
+          if (fresh != null) records[i] = fresh;
+        }
+      });
+      return null;
+    }
+    return r.message;
+  }
+
+  List<Map> _grouped(List<Map> rows, Map config) {
+    final field = _fields
+        .where((f) => f['id'] == config['group_field'])
+        .firstOrNull;
+    if (field == null) return rows;
+    final sorted = [...rows];
+    sorted.sort(
+      (a, b) => '${(a['values'] as Map)[field['id']] ?? ''}'.compareTo(
+        '${(b['values'] as Map)[field['id']] ?? ''}',
+      ),
+    );
+    return sorted;
   }
 
   Future<void> _patch(Map record, String fieldId, dynamic value) async {
@@ -657,8 +727,10 @@ class _FinancialsScreenState extends State<FinancialBases> {
     final shown = _fields.where((f) => !hidden.contains(f['id'])).toList();
     final rows = applyView(_records, _fields, config, _search);
     final canEdit = _can('edit');
-    // A mirrored table takes views and settings, never cells.
-    final canWrite = canEdit && _table?['mirror'] == null;
+    // Cells edit everywhere (a mirrored table writes through to Airtable);
+    // a mirrored table's columns and CSV import stay Airtable's.
+    final canWrite = canEdit;
+    final canShape = canEdit && _table?['mirror'] == null;
 
     return [
       if (_table?['mirror'] case final Map mirror)
@@ -670,14 +742,44 @@ class _FinancialsScreenState extends State<FinancialBases> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Mirrors Airtable, read-only here. Refreshed '
-                  '${_ago(mirror['synced_at'] as String?)}; change it in Airtable.',
+                  'Kept in step with Airtable: edits here are saved there too. '
+                  'Refreshed ${_ago(mirror['synced_at'] as String?)}.',
                 ),
               ),
               if (canEdit)
                 TextButton(
                   onPressed: _refreshMirror,
                   child: const Text('Refresh now'),
+                ),
+              if (canEdit && widget.session.me?.scope.type == 'organization')
+                TextButton(
+                  key: const ValueKey('cut-over'),
+                  onPressed: () => _cutOver(undo: false),
+                  child: Text(
+                    _confirmCut
+                        ? 'Press again: Airtable stops being used for this table'
+                        : 'Cut over to EzBizi',
+                  ),
+                ),
+            ],
+          ),
+        ),
+      if (_table?['cut_over'] case final Map cut)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Kept in EzBizi since ${_ago(cut['at'] as String?)}; Airtable is no longer read or written for it.',
+                ),
+              ),
+              if (canEdit && widget.session.me?.scope.type == 'organization')
+                TextButton(
+                  onPressed: () => _cutOver(undo: true),
+                  child: const Text('Go back to Airtable'),
                 ),
             ],
           ),
@@ -728,7 +830,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
                   icon: const Icon(Icons.delete_outline),
                   onPressed: _deleteView,
                 ),
-              if (canWrite)
+              if (canShape)
                 IconButton(
                   tooltip: 'Import CSV',
                   icon: const Icon(Icons.upload_file_outlined),
@@ -787,15 +889,25 @@ class _FinancialsScreenState extends State<FinancialBases> {
                 return r.ok ? null : r.message;
               },
             ),
-            _ => GridView2(
+            _ => FinancialGrid(
+              key: ValueKey('grid:$_tableId'),
+              tableId: '$_tableId',
               fields: shown,
               allFields: _fields,
-              records: rows,
+              // ponytail: grouping sorts rows by the group column; headers per group come back if missed.
+              records: _grouped(rows, config),
               config: config,
               onOpen: _openRecord,
-              onPatch: _patch,
-              onField: _editField,
+              onChange: _changeCells,
+              onField: canShape ? _editField : (_) {},
               canEdit: canWrite,
+              widths: Map<String, dynamic>.from(
+                (widget.session.me?.preferences['financials.column_widths']
+                        as Map?) ??
+                    const {},
+              ),
+              onWidths: (w) =>
+                  widget.session.setPreference('financials.column_widths', w),
             ),
           },
         ),

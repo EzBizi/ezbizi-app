@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
@@ -368,8 +369,11 @@ class _HelpersPaneState extends State<HelpersPane> {
               isDense: true,
               value: _franchise,
               options: [
-                for (final f in places)
-                  SearchOption(value: f.id, label: f.name),
+                for (final b in branchOptions(
+                  places,
+                  _me?.companies ?? const [],
+                ))
+                  SearchOption(value: b.id, label: b.label),
               ],
               onChanged: (id) {
                 if (id == null || id == _franchise) return;

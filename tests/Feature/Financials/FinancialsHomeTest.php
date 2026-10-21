@@ -38,7 +38,7 @@ class FinancialsHomeTest extends TestCase
         $this->assertSame(['refunds', 'pnl'], $areas->keys()->all());
         $this->assertSame('both', $areas['refunds']['source']);
         $this->assertSame('This week: $125.50 refunded · 0 disputes', $areas['refunds']['figure']);
-        $this->assertSame(['Refunds · F1', 'Recorded in EzBizi'], array_column($areas['refunds']['tables'], 'name'));
+        $this->assertSame(['Refunds', 'Recorded in EzBizi'], array_column($areas['refunds']['tables'], 'name'));
         $this->assertSame('airtable', $areas['pnl']['source']);
         $this->assertSame([null, '/financials/adjustments'], array_column($areas['refunds']['tables'], 'route'));
         $this->assertSame([false, true], array_column($areas['refunds']['tables'], 'may_open'));
@@ -62,5 +62,27 @@ class FinancialsHomeTest extends TestCase
         // A business with no Airtable and nothing recorded: no area cards at all.
         $beta = $this->provisionTenant('Beta');
         $this->assertSame([], $this->signedInAs($beta['admin'])->getJson('/api/v1/financials/home')->json('data.areas'));
+    }
+
+    public function test_every_copied_table_mirrors_by_itself_and_a_shared_table_counts_only_its_places_rows(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach ([['r1', 'F1'], ['r2', 'F1'], ['r3', 'F2']] as [$id, $place]) {
+                AirtableRecord::query()->create(['organization_id' => $t['org']->id, 'base_id' => 'appR', 'table_id' => 'tblRef', 'table_name' => 'Refunds',
+                    'record_id' => $id, 'fields' => ['Company Name' => $place, 'Amount' => 1], 'fields_hash' => md5($id), 'fetched_at' => now()]);
+            }
+            FinancialSource::create(['base_id' => 'appR', 'table_id' => 'tblRef', 'role' => 'refunds', 'franchise_id' => $t['franchise']->id,
+                'company_id' => $t['company']->id, 'filter_field' => 'Company Name', 'filter_value' => 'F1']);
+        });
+
+        $this->artisan('ezbizi:financials-airtable-refresh')->assertSuccessful();
+
+        $chip = $this->signedInAs($t['admin'])->getJson('/api/v1/financials/home')->json('data.areas.0.tables.0');
+        $this->assertSame('Refunds', $chip['name']);
+        $this->assertSame(2, $chip['count']);
+        $this->assertNotNull($chip['table_id']);
+        $this->assertTrue($chip['may_open']);
+        $this->assertSame('Airtable', $this->signedInAs($t['admin'])->getJson('/api/v1/financials/home')->json('data.bases.0.name'));
     }
 }

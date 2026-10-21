@@ -168,7 +168,7 @@ void main() {
       await tester.tap(find.text('Chimney Sweep'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextField, 'Notes'),
+        find.widgetWithText(TextField, 'Description'),
         'Gate code 4471',
       );
       await tester.pump();

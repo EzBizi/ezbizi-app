@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import 'map_attribution.dart';
@@ -227,8 +228,11 @@ class _LeadsStatsState extends State<LeadsStats> {
                       isDense: true,
                       options: [
                         const SearchOption(value: null, label: 'All branches'),
-                        for (final f in places)
-                          SearchOption(value: f.id, label: f.name),
+                        for (final b in branchOptions(
+                          places,
+                          widget.session.me?.companies ?? const [],
+                        ))
+                          SearchOption(value: b.id, label: b.label),
                       ],
                       onChanged: (v) {
                         setState(() => _franchise = v);

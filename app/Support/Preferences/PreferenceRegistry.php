@@ -284,6 +284,15 @@ class PreferenceRegistry
                 'help' => 'Drag the line beside the leads list to change it.',
             ],
 
+            // Financials grid: a column dragged wider stays that wide for this
+            // person (Jose, 2026-10-21). "<table id>:<field id>" => pixels.
+            'financials.column_widths' => [
+                'label' => 'Financials column widths',
+                'type' => 'widths',
+                'default' => [],
+                'help' => 'Drag the edge of a column heading to change it.',
+            ],
+
             'hr.records.list_width' => [
                 'label' => 'People list width',
                 'type' => 'int',
@@ -373,6 +382,7 @@ class PreferenceRegistry
                 )),
             'order' => $this->cleanOrder($value),
             'versions' => $this->cleanVersions($value),
+            'widths' => $this->cleanWidths($value),
             default => (string) $value,
         };
     }
@@ -430,6 +440,23 @@ class PreferenceRegistry
      * version that is not a small whole number, is dropped, and what is left
      * is always readable.
      */
+    /** "<table uuid>:<field uuid>" => 60..800 pixels, at most 500 of them. */
+    private function cleanWidths(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $key => $width) {
+            if (is_string($key) && preg_match('/^[0-9a-f-]{36}:[0-9a-f-]{36}$/', $key) && is_numeric($width)) {
+                $out[$key] = max(60, min(800, (int) $width));
+            }
+        }
+
+        return array_slice($out, 0, 500, preserve_keys: true);
+    }
+
     private function cleanVersions(mixed $value): array
     {
         if (! is_array($value)) {

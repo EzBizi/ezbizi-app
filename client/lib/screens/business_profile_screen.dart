@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
@@ -293,16 +294,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   Widget _branchPicker(Map<String, dynamic> l) {
     final me = widget.session.me;
     final current = _franchiseId(l);
-    final companies = {for (final c in me?.companies ?? const []) c.id: c.name};
     final options = <SearchOption<String>>[
       const SearchOption(value: null, label: 'Not filed under a branch'),
-      for (final f in me?.franchisesInView ?? const [])
-        SearchOption(
-          value: f.id,
-          label: companies[f.companyId] == null
-              ? f.name
-              : '${companies[f.companyId]} · ${f.name}',
-        ),
+      if (me != null)
+        for (final b in branchOptionsInView(me))
+          SearchOption(value: b.id, label: b.label),
     ];
     // The branch it is on now, even when it is outside this view.
     if (current != null && !options.any((o) => o.value == current)) {
@@ -588,6 +584,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   /// Every branch a listing is filed under, plus "none" when one is not.
   List<SearchOption<String>> _branchOptions() {
     final seen = <String, String>{};
+    final sortBy = <String, String>{};
     var unfiled = false;
 
     for (final l in _locations) {
@@ -596,11 +593,17 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         unfiled = true;
       } else {
         seen.putIfAbsent(id, () => _branchName(l)!);
+        // By company, then branch: a company's branches sit together.
+        sortBy.putIfAbsent(
+          id,
+          () => '${_name(l['company']) ?? ''}\u0000${_name(l['franchise'])}'
+              .toLowerCase(),
+        );
       }
     }
 
     final named = seen.entries.toList()
-      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+      ..sort((a, b) => sortBy[a.key]!.compareTo(sortBy[b.key]!));
 
     return [
       const SearchOption(value: null, label: 'All branches'),
@@ -1009,12 +1012,13 @@ String? _name(Object? record) {
   return name.isEmpty ? null : name;
 }
 
-/// "Company · Branch" for a listing filed under a branch; null when it is not.
+/// "Branch · Company" for a listing filed under a branch, the order every
+/// branch picker uses (Jose, 2026-10-21); null when it is not filed.
 String? _branchName(Map<String, dynamic> l) {
   final branch = _name(l['franchise']);
   if (branch == null) return null;
   final company = _name(l['company']);
-  return company == null ? branch : '$company · $branch';
+  return company == null ? branch : '$branch · $company';
 }
 
 /// What the row is called: its branch, or Google's own name when it has none.

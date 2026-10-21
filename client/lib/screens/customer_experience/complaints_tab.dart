@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/deep_links.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/session.dart';
@@ -560,8 +561,8 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
               width: 180,
               options: [
                 const SearchOption(value: null, label: 'All branches'),
-                for (final b in branches)
-                  SearchOption(value: b.id, label: b.name),
+                for (final b in branchOptionsInView(widget.session.me!))
+                  SearchOption(value: b.id, label: b.label),
               ],
               onChanged: (v) => _branch = v,
             ),

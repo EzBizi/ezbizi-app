@@ -91,6 +91,40 @@ class FinancialSource extends Model implements StatesRetention
         return $this->overlaps($date, $date);
     }
 
+    /**
+     * This source's rows, as Airtable column name => value, from whichever
+     * store is live: the Airtable copy, or — once its table was cut over to
+     * EzBizi — the Financials table (values mapped back to the Airtable column
+     * names, so field maps keep working). Only rows that are this place's
+     * (owns()) and not gone. Dates and validity are the caller's.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function rows(): \Illuminate\Support\Collection
+    {
+        $cut = FinancialTable::query()->where('source_base_id', $this->base_id)->where('source_table_id', $this->table_id)
+            ->whereNotNull('cut_over_at')->first();
+
+        if ($cut !== null) {
+            $names = $cut->fields()->get()->mapWithKeys(fn (FinancialField $f) => [$f->id => $f->source_name ?? $f->name]);
+            $rows = $cut->records()->get()->map(function (FinancialRecord $r) use ($names) {
+                $out = [];
+                foreach ((array) $r->values as $fieldId => $value) {
+                    if (isset($names[$fieldId])) {
+                        $out[$names[$fieldId]] = $value;
+                    }
+                }
+
+                return $out;
+            });
+        } else {
+            $rows = AirtableRecord::query()->where('base_id', $this->base_id)->where('table_id', $this->table_id)
+                ->whereNull('gone_at')->get(['fields'])->map(fn (AirtableRecord $r) => (array) $r->fields);
+        }
+
+        return $rows->filter(fn (array $fields) => $this->owns($fields))->values();
+    }
+
     /** Whether a copied Airtable row belongs to this source's place. */
     public function owns(array $fields): bool
     {

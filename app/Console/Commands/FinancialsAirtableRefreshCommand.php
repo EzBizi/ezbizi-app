@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AirtableRecord;
 use App\Models\FinancialTable;
 use App\Models\Organization;
 use App\Support\Financials\AirtableMirror;
@@ -17,12 +18,16 @@ class FinancialsAirtableRefreshCommand extends Command
 
     public function handle(TenantContext $tenant): int
     {
-        $organizations = $tenant->runWithoutTenant(fn () => FinancialTable::query()
-            ->whereNotNull('source_table_id')->distinct()->pluck('organization_id'));
+        // Every organization with an Airtable copy: its tables all mirror.
+        $organizations = $tenant->runWithoutTenant(fn () => AirtableRecord::query()
+            ->distinct()->pluck('organization_id'));
 
         foreach (Organization::query()->whereIn('id', $organizations)->get() as $organization) {
             $tenant->run($organization, function () use ($organization) {
-                foreach (FinancialTable::query()->whereNotNull('source_table_id')->get() as $table) {
+                foreach (AirtableMirror::linkAll() as $table) {
+                    $this->line("{$organization->name} / {$table->name}: now mirrored");
+                }
+                foreach (FinancialTable::query()->whereNotNull('source_table_id')->whereNull('cut_over_at')->get() as $table) {
                     $done = AirtableMirror::refresh($table);
                     $this->line("{$organization->name} / {$table->name}: +{$done['added']} ~{$done['changed']} -{$done['removed']}");
                 }

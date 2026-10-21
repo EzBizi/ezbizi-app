@@ -6,6 +6,7 @@ use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Models\ServiceAreaZipRelease;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -260,7 +261,13 @@ class SchedulingBuildZipMap extends Command
         $unchanged = 0;
         $disputed = [];
 
+        // A zip a person took out of its area stays out (2026-10-21).
+        $released = ServiceAreaZipRelease::query()->pluck('zip')->flip();
+
         foreach ($best as $claim) {
+            if (isset($released[$claim['zip']])) {
+                continue;
+            }
             $existing = ServiceAreaZip::query()->where('zip', $claim['zip'])->first();
 
             /*
