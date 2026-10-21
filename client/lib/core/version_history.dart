@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0471',
+      date: '21 Oct 2026',
+      items: [
+        'Human Resources › Paid time off: days can be earned per quarter, and days somebody already used (including before EzBizi) can be added per person. Their Time off section shows days left, earned and used.',
+        'Paid time off settings: the waiting period and its unit are labelled so 90 months cannot be picked by mistake.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0470',
       date: '21 Oct 2026',
       items: [
