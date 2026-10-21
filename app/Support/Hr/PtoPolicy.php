@@ -112,22 +112,20 @@ class PtoPolicy
 
         $period = (string) $this->settings->get('pto.allowance_period', $organization);
         $carryOver = (bool) $this->settings->get('pto.carry_over', $organization);
-        [$earned, $countedFrom] = $this->earned($startedOn, max(0, $allowance), $period, $carryOver);
-        $used = $this->used($user, $countedFrom);
+        $reset = (string) $this->settings->get('pto.reset', $organization);
+        $balance = $this->balance($user, $startedOn, max(0, $allowance), $period, $reset, $carryOver);
 
         return [
             'enabled' => $this->enabledFor($organization),
             'allowance' => max(0, $allowance),
             'allowance_period' => $period,
+            'reset' => $reset,
 
-            // Earned since they started, in whole periods, less the days HR
-            // recorded as used (Jose, 2026-10-21). Null without a start date:
-            // what somebody earned cannot be counted from a day nobody knows.
-            // Without carryover the count restarts each 1 January.
-            'earned' => $earned,
-            'used' => $used,
-            'balance' => $earned === null ? null : round($earned - $used, 2),
-            'counted_from' => $countedFrom?->toDateString(),
+            // Earned per period, used up by the reset (Jose, 2026-10-21: "if
+            // you started 1 Apr 2025 you have until 1 Apr 2026"), less the days
+            // recorded as used. Null without a start date: what somebody
+            // earned cannot be counted from a day nobody knows.
+            ...$balance,
             'waiting' => $waiting,
             'waiting_unit' => $unit,
             'carry_over' => (bool) $this->settings->get('pto.carry_over', $organization),
@@ -152,39 +150,72 @@ class PtoPolicy
     }
 
     /**
-     * Whole periods completed since they started (or since 1 January when
-     * nothing carries over), times the allowance.
+     * Total, used and left in the current reset window, and when it resets.
      *
-     * @return array{0: ?float, 1: ?Carbon}
+     * The window runs from the last reset (each work anniversary, each
+     * 1 January, or each earned period) to the next. What was earned is whole
+     * periods counted from the start date; with carryover, what was left at
+     * the last reset comes along as `carried`. Undated used days ("before
+     * EzBizi") count in the current window.
+     *
+     * @return array{total: ?float, used: float, left: ?float, carried: ?float, resets_on: ?string, window_from: ?string}
      */
-    private function earned(?Carbon $startedOn, int $allowance, string $period, bool $carryOver): array
+    private function balance(User $user, ?Carbon $startedOn, int $allowance, string $period, string $reset, bool $carryOver): array
     {
-        if ($startedOn === null) {
-            return [null, null];
+        $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
+        if ($startedOn === null || $startedOn->isFuture()) {
+            return ['total' => null, 'used' => (float) $usedQuery()->sum('days'), 'left' => null,
+                'carried' => null, 'resets_on' => null, 'window_from' => null];
         }
-        $from = $carryOver ? $startedOn : $startedOn->copy()->max(now()->startOfYear());
+
         $step = fn (Carbon $at, int $n) => match ($period) {
             'week' => $at->copy()->addWeeks($n),
             'month' => $at->copy()->addMonthsNoOverflow($n),
             'quarter' => $at->copy()->addMonthsNoOverflow(3 * $n),
             default => $at->copy()->addYearsNoOverflow($n),
         };
-        // ponytail: counts period by period; fine for decades of weeks.
-        $periods = 0;
-        while (! $step($from, $periods + 1)->isFuture()) {
-            $periods++;
-        }
+        // Whole periods from the start date to $until. ponytail: counts one by
+        // one; decades of weeks is a few thousand steps.
+        $periods = function (Carbon $until) use ($startedOn, $step): int {
+            $n = 0;
+            while ($step($startedOn, $n + 1)->lte($until)) {
+                $n++;
+            }
 
-        return [(float) ($periods * $allowance), $from];
-    }
+            return $n;
+        };
+        $today = now()->startOfDay();
 
-    /** Days recorded as used; without carryover, only those in this count (undated ones always). */
-    private function used(User $user, ?Carbon $from): float
-    {
-        return (float) PtoUsed::query()->where('user_id', $user->getKey())
-            ->when($from !== null, fn ($q) => $q->where(fn ($q) => $q->whereNull('used_on')
-                ->orWhere('used_on', '>=', $from->toDateString())))
-            ->sum('days');
+        [$from, $next] = match ($reset) {
+            'anniversary' => (function () use ($startedOn, $today) {
+                $k = (int) $startedOn->diffInYears($today);
+                while ($startedOn->copy()->addYearsNoOverflow($k + 1)->lte($today)) {
+                    $k++;
+                }
+
+                return [$startedOn->copy()->addYearsNoOverflow($k), $startedOn->copy()->addYearsNoOverflow($k + 1)];
+            })(),
+            'period' => [$step($startedOn, $periods($today)), $step($startedOn, $periods($today) + 1)],
+            default => [$startedOn->copy()->max($today->copy()->startOfYear()), $today->copy()->startOfYear()->addYear()],
+        };
+
+        // Reset every period: that period's days are there from its first day.
+        $earnedNow = $reset === 'period' ? $allowance : ($periods($today) - $periods($from)) * $allowance;
+        $earnedBefore = $periods($from) * $allowance;
+        $usedNow = (float) $usedQuery()->where(fn ($q) => $q->whereNull('used_on')
+            ->orWhere('used_on', '>=', $from->toDateString()))->sum('days');
+        $usedBefore = (float) $usedQuery()->where('used_on', '<', $from->toDateString())->sum('days');
+        $carried = $carryOver ? max(0.0, $earnedBefore - $usedBefore) : 0.0;
+        $total = $earnedNow + $carried;
+
+        return [
+            'total' => round($total, 2),
+            'used' => round($usedNow, 2),
+            'left' => round($total - $usedNow, 2),
+            'carried' => round($carried, 2),
+            'resets_on' => $next->toDateString(),
+            'window_from' => $from->toDateString(),
+        ];
     }
 
     /**

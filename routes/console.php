@@ -23,6 +23,8 @@ Artisan::command('inspire', function () {
 Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
+// Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
+Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
 // Yesterday's RingCentral call log into the Experimental report's cache, so a
 // week or a month opens without waiting on RingCentral's rate limit.

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Hr;
 
+use App\Models\AutomationEvent;
 use App\Models\EmploymentEvent;
 use App\Support\Hr\PtoPolicy;
 use App\Support\Settings\SettingsResolver;
@@ -72,11 +73,11 @@ class PtoPolicyTest extends TestCase
     {
         Carbon::setTestNow('2026-10-21 12:00:00');
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'quarter', 'pto.carry_over' => true]);
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'quarter', 'pto.reset' => 'anniversary']);
         $this->started($t, '2025-11-30');
 
         // Feb 28, May 30, Aug 30 have passed; Nov 30 has not: three quarters.
-        $this->assertSame(6.0, $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin'])['earned']));
+        $this->assertSame(6.0, $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin'])['total']));
 
         $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$t['admin']->id}/details/pto-used",
             ['days' => 1.5, 'note' => 'Taken before EzBizi'])->assertCreated();
@@ -85,7 +86,81 @@ class PtoPolicyTest extends TestCase
 
         $answer = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
         $this->assertSame(2.5, $answer['used']);
-        $this->assertSame(3.5, $answer['balance']);
+        $this->assertSame(3.5, $answer['left']);
+    }
+
+    /**
+     * Earned per month, used by the work anniversary (Jose, 2026-10-21:
+     * "started 1 Apr 2025 you have until 1 Apr 2026"), and carryover applies
+     * at that reset.
+     */
+    public function test_days_are_used_by_the_work_anniversary_and_carry_over_at_it(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'month', 'pto.reset' => 'anniversary']);
+        $this->started($t, '2025-04-01');
+        $this->signedInAs($t['admin'])->postJson("/api/v1/hr/people/{$t['admin']->id}/details/pto-used",
+            ['days' => 5, 'used_on' => '2025-12-01'])->assertCreated();
+
+        // This year runs 1 Apr 2026 to 1 Apr 2027: May..Oct are six months.
+        $answer = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame(12.0, $answer['total']);
+        $this->assertSame(0.0, $answer['used']);
+        $this->assertSame('2027-04-01', $answer['resets_on']);
+
+        // With carryover, last year's 24 earned less 5 used comes along.
+        $this->set($t, ['pto.carry_over' => true]);
+        $answer = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame(19.0, $answer['carried']);
+        $this->assertSame(31.0, $answer['left']);
+    }
+
+    /** Used typed in is an audited adjustment, behind its own permission (Jose, 2026-10-21). */
+    public function test_used_is_set_as_an_adjustment_with_a_reason_behind_its_own_permission(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'month', 'pto.reset' => 'anniversary']);
+        $this->started($t, '2025-04-01');
+        $person = $t['admin'];
+        $url = "/api/v1/hr/people/{$person->id}/pto/used";
+
+        $hr = $this->userWithRole($t, 'HR', ['hr.view', 'hr.edit', 'work_hours.pto.view']);
+        $this->signedInAs($hr)->putJson($url, ['used' => 3, 'reason' => 'x'])->assertForbidden();
+        $this->signedInAs($t['admin'])->putJson($url, ['used' => 3])->assertStatus(422);
+
+        $this->signedInAs($t['admin'])->putJson($url, ['used' => 3, 'reason' => 'Taken before EzBizi'])
+            ->assertOk()->assertJsonPath('data.used', 3)->assertJsonPath('data.left', 9)
+            ->assertJsonPath('data.used_change.reason', 'Taken before EzBizi');
+        $this->signedInAs($t['admin'])->putJson($url, ['used' => 12, 'reason' => 'Two weeks in August'])
+            ->assertOk()->assertJsonPath('data.left', 0);
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->json('data'))->firstWhere('id', $person->id);
+        $this->assertTrue($row['can_edit_used']);
+        $this->assertSame([12, 3], array_map(fn ($c) => (int) $c['to'], $row['used_changes']));
+        $this->assertSame('Two weeks in August', $row['used_changes'][0]['reason']);
+
+        $events = AutomationEvent::withoutGlobalScopes()->pluck('event_key')->all();
+        $this->assertSame(2, count(array_keys($events, 'user.pto_used_changed')));
+        $this->assertSame(1, count(array_keys($events, 'user.pto_balance_empty')));
+    }
+
+    public function test_the_daily_run_raises_available_and_reset_soon_on_their_day(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.waiting' => 90,
+            'pto.waiting_unit' => 'day', 'pto.reset' => 'anniversary']);
+        $this->started($t, '2025-11-20');
+
+        $this->artisan('ezbizi:pto-daily-triggers')->assertSuccessful();
+
+        // 20 Nov 2025 + 90 days is 18 Feb 2026 (not today); the anniversary
+        // 20 Nov 2026 is 30 days away.
+        $events = AutomationEvent::withoutGlobalScopes()->pluck('event_key')->all();
+        $this->assertContains('user.pto_reset_soon', $events);
+        $this->assertNotContains('user.pto_available', $events);
     }
 
     /**

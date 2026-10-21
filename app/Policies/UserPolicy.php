@@ -177,6 +177,19 @@ class UserPolicy
     }
 
     /**
+     * Change how many paid days off somebody has used (Jose, 2026-10-21): its
+     * own key, `work_hours.pto.edit`, never general HR editing; within reach.
+     */
+    public function editPtoUsed(User $user, User $person): Response
+    {
+        if (! $user->hasPermission('work_hours.pto.edit')) {
+            return Refusal::permission('change used paid time off');
+        }
+
+        return $this->withinReach($user, $person) ? Response::allow() : $this->outOfBounds($user);
+    }
+
+    /**
      * They hold `hr.edit` and this person is not theirs. Which of two reasons?
      *
      * ── Neither the person nor their place is ever named ─────────

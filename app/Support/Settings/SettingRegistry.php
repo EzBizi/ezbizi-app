@@ -1683,7 +1683,24 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
                 allowedScopes: $orgOnly,
-                help: 'When off, the allowance starts again each period and unused days are lost. Check your own contracts and your state law before turning this on or leaving it off — both are lawful somewhere.',
+                help: 'At each reset (the "Use by / resets every" setting): when on, unused days come along into the next year or period; when off, they are lost. Check your own contracts and your state law before turning this on or leaving it off — both are lawful somewhere.',
+            ),
+            // Earned per month and used up by the work anniversary (Jose,
+            // 2026-10-21: started 1 Apr 2025, "until 1 Apr 2026 to use the
+            // days"). 1 January is what this did before the setting existed.
+            new SettingDefinition(
+                key: 'pto.reset',
+                label: 'Use by / resets every',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'jan_1',
+                options: ['anniversary', 'jan_1', 'period'],
+                optionLabels: [
+                    'anniversary' => 'Work anniversary year (from each person’s start date)',
+                    'jan_1' => 'Calendar year (1 January)',
+                    'period' => 'Each "Earned per" period',
+                ],
+                allowedScopes: $orgOnly,
+                help: 'When the days earned must be used by. Days are still earned per the "Earned per" setting; at each reset, carryover decides whether what is left comes along.',
             ),
         ];
     }

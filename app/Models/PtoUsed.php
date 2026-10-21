@@ -23,11 +23,16 @@ class PtoUsed extends Model implements HoldsPersonalData
 
     protected $table = 'pto_used';
 
-    protected $fillable = ['organization_id', 'user_id', 'days', 'used_on', 'note', 'created_by_user_id'];
+    protected $fillable = ['organization_id', 'user_id', 'days', 'used_on', 'note', 'set_from', 'set_to', 'created_by_user_id'];
 
     protected function casts(): array
     {
-        return ['used_on' => 'date', 'days' => 'decimal:2'];
+        return ['used_on' => 'date', 'days' => 'decimal:2', 'set_from' => 'decimal:2', 'set_to' => 'decimal:2'];
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function user(): BelongsTo
@@ -59,6 +64,12 @@ class PtoUsed extends Model implements HoldsPersonalData
             new PersonalDataEntry('note', PersonalDataEntry::CONTENT,
                 'What HR wrote about the days off, which can name a reason.',
                 Erasure::drop('Removed with the person: the note is about their time off.')),
+            new PersonalDataEntry('set_from', PersonalDataEntry::ACTIVITY,
+                'How many days off were recorded as used before a change, shown in its history.',
+                Erasure::drop('Removed with the person: the figure is about their time off.')),
+            new PersonalDataEntry('set_to', PersonalDataEntry::ACTIVITY,
+                'How many days off were recorded as used after a change, shown in its history.',
+                Erasure::drop('Removed with the person: the figure is about their time off.')),
             new PersonalDataEntry('created_by_user_id', PersonalDataEntry::IDENTITY,
                 'The colleague who recorded the days as used, shown beside them.',
                 Erasure::keep('A foreign key to the author\'s account, which the purge '

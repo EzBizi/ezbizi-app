@@ -327,6 +327,64 @@ class HrPeopleController extends Controller
             : null;
     }
 
+    /**
+     * Set how many paid days off somebody has used in the current window
+     * (Jose, 2026-10-21: "he types the number and Left recalculates"). Saved
+     * as an adjustment row carrying before, after and the reason - never by
+     * overwriting a number - and audited.
+     */
+    public function setPtoUsed(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('editPtoUsed', $user);
+        $input = $request->validate([
+            'used' => ['required', 'numeric', 'min:0', 'max:366'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $policy = app(PtoPolicy::class);
+        $before = $policy->for($user);
+        $to = round((float) $input['used'], 2);
+        $from = (float) $before['used'];
+
+        $change = null;
+        if ($to !== $from) {
+            DB::transaction(function () use ($user, $request, $input, $from, $to, $before, $policy, &$change) {
+                $change = PtoUsed::create([
+                    'organization_id' => $user->organization_id,
+                    'user_id' => $user->getKey(),
+                    'days' => $to - $from,
+                    // In this window, so it leaves with it at the reset.
+                    'used_on' => $before['window_from'] ?? now()->toDateString(),
+                    'note' => $input['reason'],
+                    'set_from' => $from,
+                    'set_to' => $to,
+                    'created_by_user_id' => $request->user()->getKey(),
+                ]);
+                $after = $policy->for($user);
+                $this->audit->log('user.pto_used_changed', $user, ['from' => $from, 'to' => $to]);
+
+                $payload = ['person' => ['id' => $user->getKey(), 'name' => $user->name],
+                    'total' => $after['total'], 'used' => $to, 'used_before' => $from, 'left' => $after['left'],
+                    'reason' => $input['reason']];
+                $this->events->emit('user.pto_used_changed', $user, $payload);
+                if ($after['left'] !== null && $after['left'] <= 0 && ($before['left'] ?? 1) > 0) {
+                    $this->events->emit('user.pto_balance_empty', $user, $payload);
+                }
+            });
+        }
+
+        return response()->json(['data' => collect($policy->for($user))
+            ->only(['total', 'used', 'left', 'carried', 'resets_on'])->all() + [
+                // The new history entry, so the list updates without a reload
+                // (UI/UX, 2026-10-21); null when Used did not change.
+                'used_change' => $change === null ? null : [
+                    'at' => $change->created_at?->toIso8601String(),
+                    'by_name' => $request->user()->name,
+                    'from' => $from, 'to' => $to, 'reason' => $change->note,
+                ],
+            ]]);
+    }
+
     public function resetTotp(Request $request, User $user): JsonResponse
     {
         $this->authorize('resetSecurity', $user);
@@ -709,7 +767,7 @@ class HrPeopleController extends Controller
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
                     'allowance', 'allowance_period', 'eligible_from', 'eligible',
-                    'earned', 'used', 'balance', 'counted_from',
+                    'total', 'used', 'left', 'carried', 'resets_on',
                 ])->all()
                 : null,
         ]]);
@@ -817,6 +875,19 @@ class HrPeopleController extends Controller
             // answer by a reach rule that was never about them.
             : collect([$actor]);
 
+        // Every change to Used, newest first, for the history under the row.
+        $changes = PtoUsed::query()->with('createdBy:id,name')
+            ->whereIn('user_id', $people->map->getKey()->all())->whereNotNull('set_to')
+            // Ordered ids break a tie inside one second.
+            ->latest()->orderByDesc('id')->get()
+            ->groupBy('user_id')->map(fn ($rows) => $rows->map(fn ($row) => [
+                'at' => $row->created_at?->toIso8601String(),
+                'by_name' => $row->createdBy?->name,
+                'from' => (float) $row->set_from,
+                'to' => (float) $row->set_to,
+                'reason' => $row->note,
+            ]));
+
         return response()->json([
             // The organization's own answer, sent once rather than repeated per
             // row: "this company has not set up paid time off" is a state of
@@ -829,7 +900,7 @@ class HrPeopleController extends Controller
             'policy' => collect($policy->for($actor))
                 ->only([
                     'enabled', 'allowance', 'allowance_period',
-                    'waiting', 'waiting_unit', 'carry_over',
+                    'waiting', 'waiting_unit', 'carry_over', 'reset',
                 ])
                 ->all(),
 
@@ -837,12 +908,21 @@ class HrPeopleController extends Controller
             // instead of the client guessing from a name.
             'me' => $actor->getKey(),
 
-            'data' => $people->map(function (User $person) use ($policy) {
+            'data' => $people->map(function (User $person) use ($policy, $actor, $changes) {
                 $answer = $policy->for($person);
 
                 return [
                     'id' => $person->getKey(),
                     'name' => $person->name,
+                    // Total / Used / Left, in the current reset window, and
+                    // whether this reader may change Used (Jose, 2026-10-21).
+                    'total' => $answer['total'],
+                    'used' => $answer['used'],
+                    'left' => $answer['left'],
+                    'carried' => $answer['carried'],
+                    'resets_on' => $answer['resets_on'],
+                    'can_edit_used' => $actor->can('editPtoUsed', $person),
+                    'used_changes' => $changes->get($person->getKey(), collect())->values(),
                     'role' => $person->role?->name,
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],

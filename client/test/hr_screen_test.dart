@@ -886,9 +886,10 @@ void main() {
           'allowance_period': 'quarter',
           'eligible': true,
           'eligible_from': null,
-          'earned': 6,
+          'total': 6,
           'used': 2.5,
-          'balance': 3.5,
+          'left': 3.5,
+          'resets_on': null,
         },
         ptoUsed: [
           {'id': 'p-1', 'days': 1.5, 'used_on': null, 'note': 'Before'},
@@ -902,7 +903,7 @@ void main() {
 
     expect(find.text('2 days a quarter'), findsOneWidget);
     expect(
-      find.text('3.5 days left: 6 days earned, 2.5 days used.'),
+      find.text('3.5 days left of 6 days, 2.5 days used.'),
       findsOneWidget,
     );
     expect(find.text('1.5 days used'), findsOneWidget);
