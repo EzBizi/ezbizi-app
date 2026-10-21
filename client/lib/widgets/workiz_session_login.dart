@@ -14,11 +14,14 @@ import 'status_pill.dart';
 /// The Workiz web login: a signed-in Workiz session, handed to EzBizi through
 /// the EzBizi browser extension (UI queue 120, option 1 and phone 4).
 ///
-/// One per organization, provider `workiz_web`. Three steps: get a link (good
-/// for 30 minutes), paste it into the extension in the browser that is signed
-/// in to Workiz, and wait — this polls the connections every 5 seconds while
-/// the link is live and turns green on its own. Under it, every Workiz account
-/// the login reaches, each filed on a branch.
+/// One per COMPANY, provider `workiz_web` (Workiz, 2026-10-21: "the workiz
+/// belongs to a-1chimney only"). A company view works on its own company; the
+/// organization view picks the company first and passes `company_id`; a
+/// branch view is told to switch to the company view. Three steps: get a link
+/// (good for 30 minutes), paste it into the extension in the browser that is
+/// signed in to Workiz, and wait — this polls the connections every 5 seconds
+/// while the link is live and turns green on its own. Under it, every Workiz
+/// account the login reaches, each filed on one of that company's branches.
 ///
 /// Every call tolerates a server without the routes: a 404 says "Not available
 /// on this server yet" rather than an error.
@@ -28,30 +31,41 @@ class WorkizSessionLogin extends StatefulWidget {
     required this.api,
     this.branches = const [],
     this.companies = const [],
+    this.companiesInView = const [],
     this.onConnected,
-    this.organizationView = true,
+    this.viewType = 'organization',
+    this.viewId,
     this.mayDisconnect = false,
   });
 
   final ApiClient api;
 
-  /// Whether the page is in the organization view. The link and the accounts
-  /// belong to the whole organization, so the server answers them only there
-  /// (403 elsewhere); from a company or branch view the card shows the status
-  /// read-only and [organizationOnly] in place of the steps and the table.
-  final bool organizationView;
+  /// The current view: `organization`, `company` or `franchise`. The server
+  /// answers the link and the accounts in the first two only (403 from a
+  /// branch); from a branch view the card shows the status read-only and
+  /// [branchHint] in place of the steps and the table, and asks for neither.
+  final String viewType;
 
-  /// The server's 403 sentence for the link and accounts outside the
-  /// organization view (Workiz, 2026-10-20).
-  static const organizationOnly =
-      'The Workiz web login belongs to the whole organization. Switch to the '
-      'organization view to change it.';
+  /// The scoped company or branch's id (`/me` scope id).
+  final String? viewId;
 
-  /// The branches an account can be filed on: the current view's.
+  /// The hint in a branch view, and on a 403 that sends no sentence.
+  static const branchHint = 'Switch to the company view to change it.';
+
+  /// The note on a login sent before logins were per company.
+  static const legacyNote =
+      'Sent before logins were per company. Send it again from the '
+      "company's view, then disconnect this one.";
+
+  /// The branches an account can be filed on: the current view's, limited
+  /// to the login's company.
   final List<FranchiseSummary> branches;
 
   /// Names each of [branches] with its company ("Main · Everdoors").
   final List<CompanySummary> companies;
+
+  /// The organization view's company picker: the companies in view.
+  final List<CompanySummary> companiesInView;
 
   /// Whether this person holds the connect permission, which is the
   /// server's disconnect gate. Disconnect shows only with it, and only in
@@ -77,16 +91,37 @@ class WorkizSessionLogin extends StatefulWidget {
 class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   static const _life = 30 * 60;
 
-  /// The `workiz_web` row, or null when none is connected.
-  Map<String, dynamic>? _row;
+  /// Every company-scoped `workiz_web` row, for the picker's status.
+  List<Map<String, dynamic>> _rows = const [];
+
+  /// The organization view's picked company.
+  String? _picked;
   bool _unavailable = false;
   String? _failure;
 
-  /// Why the steps and the table are not shown: outside the organization
-  /// view, decided up front or by a 403 from the server.
-  late String? _orgOnly = widget.organizationView
+  /// Why the steps and the table are not shown: a branch view, decided up
+  /// front, or a 403 from the server.
+  late String? _hint = _initialHint;
+
+  String? get _initialHint =>
+      widget.viewType == 'franchise' ? WorkizSessionLogin.branchHint : null;
+
+  bool get _organizationView => widget.viewType == 'organization';
+
+  /// The company whose login this card is: the company in view, the branch's
+  /// company, or the one picked in the organization view.
+  String? get _company => switch (widget.viewType) {
+    'company' => widget.viewId,
+    'franchise' => widget.companiesInView.firstOrNull?.id,
+    _ => _picked,
+  };
+
+  /// The login of [_company], or null when it has none.
+  Map<String, dynamic>? get _row => _rowOf(_company);
+
+  Map<String, dynamic>? _rowOf(String? company) => company == null
       ? null
-      : WorkizSessionLogin.organizationOnly;
+      : _rows.where((r) => r['scope_id'] == company).firstOrNull;
 
   String? _link;
   int _left = 0;
@@ -105,23 +140,44 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   @override
   void initState() {
     super.initState();
+    final pickable = _pickable;
+    if (_organizationView && pickable.length == 1) _picked = pickable.first.id;
     _refresh();
   }
+
+  /// Only companies, and only the active ones.
+  List<CompanySummary> get _pickable => [
+    for (final c in widget.companiesInView)
+      if (c.isActive) c,
+  ];
 
   @override
   void didUpdateWidget(WorkizSessionLogin old) {
     super.didUpdateWidget(old);
     // The form keeps its state across reloads (a global key), so a change of
     // view arrives here rather than as a fresh state.
-    if (old.organizationView == widget.organizationView) return;
+    if (old.viewType == widget.viewType && old.viewId == widget.viewId) return;
+    _hint = _initialHint;
+    _pickCompany(null, refresh: true);
+  }
+
+  /// Another company picked (or the view changed): its own link, status and
+  /// accounts.
+  void _pickCompany(String? company, {bool refresh = false}) {
     _ticker?.cancel();
-    _link = null;
-    _again = false;
-    _accounts = null;
-    _orgOnly = widget.organizationView
-        ? null
-        : WorkizSessionLogin.organizationOnly;
-    _refresh();
+    setState(() {
+      _picked = company;
+      _link = null;
+      _again = false;
+      _accounts = null;
+      _failure = null;
+      _copied = false;
+    });
+    if (refresh) {
+      _refresh();
+    } else if (_row != null && _hint == null) {
+      _loadAccounts();
+    }
   }
 
   @override
@@ -130,7 +186,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     super.dispose();
   }
 
-  /// A 403 on the link or the accounts: the organization view is needed.
+  /// A 403 on the link or the accounts: the company view is needed.
   /// Shows the server's own sentence as a hint and stops the polling.
   bool _forbidden(ApiResponse response) {
     if (response.statusCode != 403) return false;
@@ -140,9 +196,9 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
       _fetching = false;
       _link = null;
       _again = false;
-      _orgOnly = said is String && said.isNotEmpty
+      _hint = said is String && said.isNotEmpty
           ? said
-          : WorkizSessionLogin.organizationOnly;
+          : WorkizSessionLogin.branchHint;
     });
     return true;
   }
@@ -157,13 +213,17 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
       'include': 'data_sources',
     });
     if (!mounted || !response.ok) return false;
-    final row = _list(response.body)
+    // Company-scoped only: an organization-scoped row is the legacy login,
+    // listed on the page with its note rather than worked on here.
+    final rows = _list(response.body)
         .whereType<Map<String, dynamic>>()
-        .where((c) => c['provider'] == 'workiz_web')
-        .firstOrNull;
+        .where(
+          (c) => c['provider'] == 'workiz_web' && c['scope_type'] == 'company',
+        )
+        .toList();
     final was = _connected;
-    setState(() => _row = row);
-    if (row != null && _orgOnly == null) await _loadAccounts();
+    setState(() => _rows = rows);
+    if (_row != null && _hint == null) await _loadAccounts();
     if (_connected && !was) {
       _ticker?.cancel();
       if (mounted) {
@@ -179,9 +239,11 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
 
   Future<void> _loadAccounts() async {
     final id = _row?['id'];
-    if (id == null) return;
+    if (id == null || _hint != null) return;
     final response = await widget.api.get('/social/workiz-web/$id/accounts');
     if (!mounted || _forbidden(response)) return;
+    // The company changed while this was in flight.
+    if (_row?['id'] != id) return;
     if (response.statusCode == 404) {
       setState(() => _unavailable = true);
       return;
@@ -195,13 +257,18 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
   }
 
   Future<void> _getLink() async {
-    if (_orgOnly != null) return;
+    final company = _company;
+    if (_hint != null || company == null) return;
     setState(() {
       _fetching = true;
       _failure = null;
       _copied = false;
     });
-    final response = await widget.api.post('/social/workiz-web/link', {});
+    // A company view's link is for the company in view; the organization view
+    // names the company.
+    final response = await widget.api.post('/social/workiz-web/link', {
+      if (_organizationView) 'company_id': company,
+    });
     if (!mounted || _forbidden(response)) return;
     if (response.statusCode == 404) {
       setState(() {
@@ -309,7 +376,10 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     _ticker?.cancel();
     setState(() {
       _disconnecting = false;
-      _row = null;
+      _rows = [
+        for (final r in _rows)
+          if (r['id'] != id) r,
+      ];
       _accounts = null;
       _link = null;
       _again = false;
@@ -329,6 +399,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
       builder: (context, box) {
         final phone = box.maxWidth < 600;
         final steps = _row == null || _again || (!_connected && _link != null);
+        final chosen = _company != null;
 
         return Column(
           key: const ValueKey('workiz-session'),
@@ -340,19 +411,28 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
                 key: const ValueKey('workiz-session-unavailable'),
                 style: small,
               )
-            else if (_orgOnly != null) ...[
+            else if (_hint != null) ...[
               // Read-only status, and the sentence in place of the steps and
               // the table: a hint, not an error.
               if (_row != null) _status(theme, small),
               Padding(
                 padding: EdgeInsets.only(top: _row == null ? 0 : 8),
                 child: Text(
-                  _orgOnly!,
-                  key: const ValueKey('workiz-session-org-only'),
+                  _hint!,
+                  key: const ValueKey('workiz-session-hint'),
                   style: small,
                 ),
               ),
             ] else ...[
+              if (_organizationView) _companyPicker(),
+              if (_organizationView && !chosen)
+                Text(
+                  'Each company has its own Workiz web login.',
+                  key: const ValueKey('workiz-session-choose'),
+                  style: small,
+                ),
+            ],
+            if (!_unavailable && _hint == null && chosen) ...[
               if (_row != null) _status(theme, small),
               if (_row != null && widget.mayDisconnect)
                 Align(
@@ -396,6 +476,35 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
           ],
         );
       },
+    );
+  }
+
+  Widget _companyPicker() {
+    String? status(String id) => switch (_rowOf(id)?['status']) {
+      null => null,
+      'connected' => 'Connected',
+      _ => 'Signed out',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SearchPickerField<String>(
+        key: const ValueKey('workiz-session-company'),
+        label: 'For which company?',
+        hint: 'Choose a company',
+        value: _picked,
+        options: [
+          for (final c in _pickable)
+            SearchOption<String>(
+              value: c.id,
+              label: c.name,
+              detail: status(c.id),
+            ),
+        ],
+        onChanged: (company) {
+          if (company != _picked) _pickCompany(company);
+        },
+      ),
     );
   }
 
@@ -444,7 +553,7 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
               style: small?.copyWith(color: theme.colorScheme.error),
             ),
           ],
-          if (!_again && _link == null && _orgOnly == null) ...[
+          if (!_again && _link == null && _hint == null) ...[
             const SizedBox(height: 8),
             FilledButton(
               key: const ValueKey('workiz-session-again'),
@@ -591,15 +700,12 @@ class _WorkizSessionLoginState extends State<WorkizSessionLogin> {
     final accounts = _accounts!;
     // Named with their company, and only the company the login belongs to:
     // every company's "Main" in one list told nobody which was which (Jose,
-    // 2026-10-21). An organization-wide login offers every branch.
-    final company = _row?['scope_type'] == 'company'
-        ? _row!['scope_id'] as String?
-        : null;
+    // 2026-10-21), and the server refuses any other company's branch.
     final options = [
       for (final b in branchOptions(
         widget.branches,
         widget.companies,
-        companyId: company,
+        companyId: _company,
       ))
         SearchOption<String>(value: b.id, label: b.label),
     ];
