@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 127 · Jobs › Project Management: Dashboard | Pending Jobs | Settings — **sent 2026-10-21** (`docs/previews/project-management-dashboard-layouts.html`)
+
+Jobs asked (stats?from&to, filter=recently_paid). **1** (recommended) range segment Today/Yesterday/This week/This month/Custom + branch; five tiles Paid (amount only with financials), Status changes, Tag changes, Cancelled, Deadlines due; a tile lists its jobs below (what · when · by Person/Automation/Workiz); a job opens the shared timeline at the side; Pending Jobs gains a default "Recently paid" stage with the same range; Settings: watched statuses as removable chips + "cancels N days after its estimate". **2** a filtered event feed. **3** tiles plus a per-day chart. Phone **4** (recommended: 2×2 tiles, drill full screen) / **5** / **6**.
+
 ### 126 · Work Hours › Paid Time Off: balance, reset, settings — **sent 2026-10-21 — Jose: "good" (1 and 4)** (`docs/previews/paid-time-off-layouts.html`)
 
 Desk relayed Jose; HR builds the data. **1** (recommended) list with days Left per row (orange "From <date>" chip when not yet usable, "Start date unknown"), search + Everyone/Can use/Not yet; panel with Total/Used/Left tiles + bar, "Resets <date>, their work anniversary", can-use-from, carry-over; Used has Change (edit-PTO permission) opening a side pane with number + required reason, changes listed with who/when. Settings as sentences: earns N days every Week/Month/Quarter/Year; usable N Days/Weeks/Months/Years after start; resets On each person's work anniversary / Every Jan 1 / Never; carry over; a live example line. **2** one table with inline Used. **3** a card grid. Phone **4** (recommended: own tiles on top, list below, panel full screen) / **5** / **6**.
