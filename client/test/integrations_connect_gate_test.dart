@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/settings/integrations_screen.dart';
+import 'package:ezbizi_client/widgets/workiz_session_login.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -71,6 +72,67 @@ void main() {
     await _open(tester, 'workiz');
     expect(find.byKey(const ValueKey('connection:w-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('edit:w-1')), findsNothing);
+  });
+
+  // Workiz, 2026-10-21 (a09a8684): one web login per company. Each row names
+  // its company; the organization-scoped one is the login sent before that,
+  // and keeps Disconnect so it can be removed once resent.
+  testWidgets('web logins are listed per company; the legacy one says so', (
+    tester,
+  ) async {
+    final sent = <http.Request>[];
+    await _pump(
+      tester,
+      permissions: const ['reports.build', 'reports.experimental.view'],
+      sent: sent,
+      workizPermission: 'reports.build',
+      connections: const [
+        {
+          'id': 'w-1',
+          'provider': 'workiz_web',
+          'display_name': 'Workiz web login',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'status': 'connected',
+        },
+        {
+          'id': 'w-2',
+          'provider': 'workiz_web',
+          'display_name': 'Workiz web login',
+          'scope_type': 'company',
+          'scope_id': 'co-h',
+          'status': 'connected',
+        },
+      ],
+      moreProviders: const [
+        {'value': 'workiz_web', 'label': 'Workiz web login'},
+      ],
+    );
+
+    await _open(tester, 'workiz');
+    expect(
+      find.text('Workiz web login · Harbor Home Services'),
+      findsOneWidget,
+    );
+    final legacy = tester.widget<Text>(
+      find.byKey(const ValueKey('connection-detail:w-1')),
+    );
+    expect(legacy.data, WorkizSessionLogin.legacyNote);
+    final current = tester.widget<Text>(
+      find.byKey(const ValueKey('connection-detail:w-2')),
+    );
+    expect(current.data, isNot(contains(WorkizSessionLogin.legacyNote)));
+    expect(find.byKey(const ValueKey('disconnect:w-1')), findsOneWidget);
+
+    // A company's login disconnects through the ask-first panel.
+    await tester.tap(find.byKey(const ValueKey('disconnect:w-2')));
+    await tester.pumpAndSettle();
+    expect(sent.where((r) => r.method == 'DELETE'), isEmpty);
+    await tester.tap(find.byKey(const ValueKey('disconnect-confirm')));
+    await tester.pumpAndSettle();
+    expect(sent.where((r) => r.method == 'DELETE').map((r) => r.url.path), [
+      '/api/v1/social/connections/w-2',
+    ]);
   });
 
   testWidgets('reports.build opens the Workiz form and not the Airtable one', (
@@ -201,6 +263,8 @@ Future<void> _pump(
   required List<String> permissions,
   List<Map<String, dynamic>> connections = const [],
   List<Map<String, dynamic>> moreProviders = const [],
+  List<http.Request>? sent,
+  String? workizPermission,
 }) async {
   tester.view.physicalSize = const Size(1280, 2000);
   tester.view.devicePixelRatio = 1.0;
@@ -209,6 +273,11 @@ Future<void> _pump(
   final api = ApiClient(
     client: MockClient((request) async {
       final path = request.url.path;
+      sent?.add(request);
+
+      if (request.method == 'DELETE') {
+        return _json({'data': <String, dynamic>{}});
+      }
 
       if (path.endsWith('/me')) {
         return _json({
@@ -228,7 +297,11 @@ Future<void> _pump(
         return _json({
           'data': [
             const {'value': 'airtable', 'label': 'Airtable'},
-            const {'value': 'workiz', 'label': 'Workiz'},
+            {
+              'value': 'workiz',
+              'label': 'Workiz',
+              'permission': ?workizPermission,
+            },
             const {'value': 'ringcentral', 'label': 'RingCentral'},
             ...moreProviders,
           ],
@@ -273,6 +346,9 @@ const _me = {
     'franchise_label': 'Franchise',
     'is_read_only': false,
   },
+  'companies': [
+    {'id': 'co-h', 'name': 'Harbor Home Services', 'parent_company_id': null},
+  ],
   'scope': {
     'type': 'organization',
     'id': 'org-1',
