@@ -1031,6 +1031,7 @@ Route::prefix('v1')
         // Financials — the Airtable replacement. Actions live in FinancialBasePolicy.
         Route::middleware('permission:financials.settings.view')->group(function (): void {
             Route::get('financials/sources', [FinancialSourcesController::class, 'index']);
+            Route::post('financials/sources/copy-now', [FinancialSourcesController::class, 'copyNow']);
             Route::post('financials/sources', [FinancialSourcesController::class, 'store']);
             Route::patch('financials/sources/{source}', [FinancialSourcesController::class, 'update']);
             Route::delete('financials/sources/{source}', [FinancialSourcesController::class, 'destroy']);
@@ -1061,6 +1062,7 @@ Route::prefix('v1')
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
+            Route::post('tables/{table}/cut-over', 'cutOver');
             Route::get('tables/{table}', 'showTable');
             Route::patch('tables/{table}', 'updateTable');
             Route::delete('tables/{table}', 'destroyTable');

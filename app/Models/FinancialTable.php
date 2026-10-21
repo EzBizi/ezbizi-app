@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** Financials (the Airtable replacement) — see the create_financials_tables migration. */
-#[Fillable(['base_id', 'name', 'position', 'source_base_id', 'source_table_id', 'synced_at'])]
+#[Fillable(['base_id', 'name', 'position', 'source_base_id', 'source_table_id', 'synced_at', 'cut_over_at', 'cut_over_by_user_id'])]
 class FinancialTable extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -30,13 +30,13 @@ class FinancialTable extends Model implements StatesRetention
 
     protected function casts(): array
     {
-        return ['synced_at' => 'datetime'];
+        return ['synced_at' => 'datetime', 'cut_over_at' => 'datetime'];
     }
 
-    /** Mirrors a table of the Airtable copy, and is read-only here. */
+    /** Kept in step with an Airtable table (and not yet cut over to EzBizi). */
     public function isMirror(): bool
     {
-        return $this->source_table_id !== null;
+        return $this->source_table_id !== null && $this->cut_over_at === null;
     }
 
     public function base(): BelongsTo
