@@ -17,6 +17,9 @@ class VersionHistory {
       version: '0.0.0469',
       date: '21 Oct 2026',
       items: [
+        'Financials: tables and bases open again. Since 0.0.0466 they showed a grey screen for anyone who had never resized a column.',
+        'Workiz: each Workiz estimate on a job carries its customer link to view and pay, and {{estimate_link}} works in rules. The signed-in Workiz login files its accounts to branches by itself, and a login sent before logins were per company can be moved to its company in one click.',
+        'Jobs: a job opened from Project Management or a customer shows its type, sub-status and tags in the pickers.',
         'Project Management has its own place in the sidebar, with a search across job numbers, customers, addresses, phones and technicians. Who could see it in Jobs still can.',
         'Phone notifications say whose they are ("EzBizi - A-1 Chimney - Connecticut"), then what happened, then the details. Phone numbers read (219) 670-6463 and empty brackets are gone; a missed call names the line and the caller when known.',
         'Branch pickers read company first: "A-1 Chimney · Texas".',
