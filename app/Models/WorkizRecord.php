@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'franchise_id', 'connection_id', 'type', 'remote_id', 'job_remote_id', 'job_id', 'user_remote_id',
-    'starts_at', 'ends_at', 'amount', 'amount_due', 'status', 'remote_updated_at', 'payload', 'synced_at',
+    'starts_at', 'ends_at', 'amount', 'amount_due', 'status', 'remote_updated_at', 'payload', 'synced_at', 'links', 'links_read_at',
 ])]
 class WorkizRecord extends Model implements StatesRetention
 {
@@ -29,6 +29,8 @@ class WorkizRecord extends Model implements StatesRetention
     {
         return [
             'payload' => 'array',
+            'links' => 'array',
+            'links_read_at' => 'datetime',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'amount' => 'decimal:2',

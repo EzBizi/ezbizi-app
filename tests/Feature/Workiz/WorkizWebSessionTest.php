@@ -157,4 +157,37 @@ class WorkizWebSessionTest extends TestCase
         $this->assertSame(['expired', WorkizWebSession::EXPIRED], [$c->status, $c->status_reason]);
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->count()));
     }
+
+    /** Jose, 2026-10-21: Workiz's own client-portal link, kept on the estimate and offered to rules as {{estimate_link}}. */
+    public function test_estimate_links_land_on_the_mirrored_estimate(): void
+    {
+        $c = $this->connected();
+        [$record, $job] = $this->inTenant($this->t['org'], function () use ($c) {
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id]);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
+            $record = WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id,
+                'type' => 'estimate', 'remote_id' => 'ES-abc', 'job_id' => $job->id, 'payload' => ['serialId' => '100077936-1'], 'synced_at' => now()]);
+
+            return [$record, $job];
+        });
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/estimate/estimateReport/' => Http::response(['flag' => true, 'aaData' => [
+                ['id' => '6793881', 'estimate_id' => '100077936-1', 'status_updated_at' => now()->toDateTimeString()],
+                ['id' => '1', 'estimate_id' => '1-1', 'status_updated_at' => '2020-01-01 00:00:00'],
+            ]]),
+            'app.workiz.com/ajaxc/estimate/getEstimateById/6793881/' => Http::response(['flag' => true, 'data' => ['estimate' => [
+                'estimate_link' => 'https://app.workiz.com/clientPortal/estimate/ES-abc:'.str_repeat('e', 40),
+                'estimate_portal_url' => 'https://wrkz.me/hs8I92', 'proposal_portal_url' => 'https://wrkz.me/5rrcui',
+            ]]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-estimate-links')->expectsOutputToContain('1 Workiz estimate link(s) read.')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($record, $job) {
+            $this->assertSame('https://wrkz.me/hs8I92', $record->fresh()->links['portal']);
+            $this->assertSame('https://wrkz.me/hs8I92', $job->fresh()->estimate_link);
+        });
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'getEstimateById/1/'));
+    }
 }

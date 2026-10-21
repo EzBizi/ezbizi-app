@@ -413,4 +413,15 @@ class Job extends Model implements StatesRetention
 
         return $customer === null ? null : \App\Support\Memberships\CustomerLinks::jobReviewLink($customer, $this);
     }
+
+    /**
+     * `{{ estimate_link }}` on a job's automation: the client-portal link
+     * Workiz made for the job's latest estimate, where the client approves and
+     * pays the deposit (Jose, 2026-10-21). Read by ezbizi:workiz-web-estimate-links.
+     */
+    public function getEstimateLinkAttribute(): ?string
+    {
+        return WorkizRecord::query()->where('job_id', $this->getKey())->where('type', 'estimate')
+            ->whereNotNull('links')->latest('starts_at')->first()?->links['portal'] ?? null;
+    }
 }
