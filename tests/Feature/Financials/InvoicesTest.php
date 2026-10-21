@@ -135,6 +135,8 @@ class InvoicesTest extends TestCase
         $this->artisan('ezbizi:invoices-overdue')->assertSuccessful();
         $this->inTenant($t['org'], fn () => $this->assertSame(1, AutomationEvent::query()->where('event_key', 'invoice.overdue')->count()));
         $this->assertCount(1, $as->getJson('/api/v1/invoices?status=overdue')->json('data'));
+        $this->assertCount(1, $as->getJson("/api/v1/invoices?franchise_id={$t['franchise']->id}")->json('data'));
+        $this->assertSame('Alpha', $as->getJson("/api/v1/invoices/{$invoice['id']}")->json('data.issuer.name'));
 
         // Seeing is not approving or sending.
         $viewer = $this->userWithRole($t, 'Clerk', ['financials.view', 'invoices.view', 'invoices.edit']);
