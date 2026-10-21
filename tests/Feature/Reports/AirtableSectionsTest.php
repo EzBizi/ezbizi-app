@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\FinancialBase;
+use App\Models\FinancialField;
+use App\Models\FinancialRecord;
 use App\Models\FinancialSource;
+use App\Models\FinancialTable;
 use App\Models\ReportGoal;
 use App\Support\Reports\Texts\AirtableSections;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -147,5 +151,25 @@ class AirtableSectionsTest extends TestCase
         $seen = collect($as->getJson('/api/v1/reports/goals')->assertOk()->json('data.goals'));
         $this->assertSame([$this->branch], $seen->pluck('franchise_id')->all(), 'neither the sibling nor the organization-wide row');
         $this->assertCount(3, collect($this->signedInAs($this->t['admin'])->getJson('/api/v1/reports/goals')->json('data.goals')));
+    }
+
+    /** Financials, 2026-10-21: a table the tenant cut over to EzBizi is read from there, not the stale copy. */
+    public function test_a_cut_over_table_is_read_from_financials(): void
+    {
+        $this->airtableTable($this->t, null, 'hq_expenses', [['Date' => '2026-10-11', 'Category Name' => 'Rent', 'Cost' => 999]],
+            ['base_id' => 'appCut00000000001', 'table_id' => 'tblCut00000000001']);
+        $this->inTenant($this->t['org'], function () {
+            $base = FinancialBase::query()->create(['name' => 'Books', 'colour' => '#000000']);
+            $table = FinancialTable::query()->create(['base_id' => $base->id, 'name' => 'HQ', 'source_base_id' => 'appCut00000000001',
+                'source_table_id' => 'tblCut00000000001', 'cut_over_at' => now()]);
+            $f = fn ($name, $type) => FinancialField::query()->create(['table_id' => $table->id, 'name' => $name, 'source_name' => $name, 'type' => $type]);
+            [$date, $name, $cost] = [$f('Date', 'date'), $f('Category Name', 'text'), $f('Cost', 'number')];
+            FinancialRecord::query()->create(['table_id' => $table->id, 'values' => [$date->id => '2026-10-11', $name->id => 'Rent', $cost->id => 1200]]);
+        });
+
+        $html = app(AirtableSections::class)->hqExpenses($this->org, '2026-10-05', '2026-10-11');
+
+        $this->assertStringContainsString('<td>Rent</td><td>$1,200.00</td>', $html);
+        $this->assertStringNotContainsString('999', $html);
     }
 }
