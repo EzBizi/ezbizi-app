@@ -50,7 +50,7 @@ class SyncWorkizWebPayments extends Command
                 $count = 0;
 
                 foreach (WorkizWebSession::accounts($connection) as $account => $name) {
-                    $franchise = WorkizWebSession::franchiseFor($connection, $account);
+                    $franchise = WorkizWebSession::franchiseFor($connection, $account, $name);
 
                     if ($franchise === null) {
                         $this->line('Workiz web payments: '.$name.' is not mapped to a branch; skipped.');

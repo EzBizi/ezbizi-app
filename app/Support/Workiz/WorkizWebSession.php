@@ -114,7 +114,9 @@ final class WorkizWebSession
     public static function accounts(SocialConnection $connection): array
     {
         $read = self::call($connection, '/ajaxc/franchise/index/', ['getRelated' => true]);
-        $accounts = ['main' => 'Main account'];
+        // The signed-in account by its own name ("A1 Chimney - Nationwide"), which is what files it to a branch.
+        $info = self::call($connection, '/ajaxc/account/getInfo/');
+        $accounts = ['main' => trim((string) ($info['data']['data']['account_name'] ?? $info['data']['account_name'] ?? '')) ?: 'Main account'];
 
         foreach ((array) ($read['data']['data'] ?? []) as $row) {
             if (is_array($row) && (string) ($row['invite_status'] ?? '') === '1' && (string) ($row['status'] ?? '') !== '0'
@@ -152,15 +154,27 @@ final class WorkizWebSession
     }
 
     /**
-     * Which EzBizi franchise each account's books belong to: the tenant's own
-     * mapping on the connection, kept as data (`credentials.accounts`), so
-     * nothing about one tenant's names lives in code.
+     * Which EzBizi branch an account's books belong to (Jose, 2026-10-21: "can't
+     * it be just assigned to the company?"). The branch of the login's company
+     * whose name the Workiz account carries ("A1 Chimney - Nationwide" is
+     * Nationwide), the longest such name if several; the tenant's own mapping
+     * (`credentials.accounts`) overrides it. Null when neither names one.
      */
-    public static function franchiseFor(SocialConnection $connection, string $account): ?Franchise
+    public static function franchiseFor(SocialConnection $connection, string $account, string $name = ''): ?Franchise
     {
         $id = ((array) ($connection->credentials['accounts'] ?? []))[$account] ?? null;
 
-        return $id === null ? null : Franchise::query()->find($id);
+        if ($id !== null) {
+            return Franchise::query()->find($id);
+        }
+
+        $branches = Franchise::query()
+            ->when($connection->scope_type === SocialConnection::SCOPE_COMPANY,
+                fn ($q) => $q->whereIn('company_id', \App\Models\Company::find($connection->scope_id)?->subtreeCompanyIds() ?? []))
+            ->get();
+
+        return $branches->filter(fn (Franchise $f) => trim($f->name) !== '' && stripos($name, trim($f->name)) !== false)
+            ->sortByDesc(fn (Franchise $f) => mb_strlen($f->name))->first();
     }
 
     /** @param  array<string, string>  $cookies */

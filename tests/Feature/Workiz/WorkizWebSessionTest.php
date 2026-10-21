@@ -157,4 +157,69 @@ class WorkizWebSessionTest extends TestCase
         $this->assertSame(['expired', WorkizWebSession::EXPIRED], [$c->status, $c->status_reason]);
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->count()));
     }
+
+    /** Jose, 2026-10-21: Workiz's own client-portal link, kept on the estimate and offered to rules as {{estimate_link}}. */
+    public function test_estimate_links_land_on_the_mirrored_estimate(): void
+    {
+        $c = $this->connected();
+        [$record, $job] = $this->inTenant($this->t['org'], function () use ($c) {
+            $customer = \App\Models\Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id]);
+            $job = \App\Models\Job::factory()->create(['franchise_id' => $this->t['franchise']->id, 'customer_id' => $customer->id]);
+            $record = WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $c->id,
+                'type' => 'estimate', 'remote_id' => 'ES-abc', 'job_id' => $job->id, 'payload' => ['serialId' => '100077936-1'], 'synced_at' => now()]);
+
+            return [$record, $job];
+        });
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/estimate/estimateReport/' => Http::response(['flag' => true, 'aaData' => [
+                ['id' => '6793881', 'estimate_id' => '100077936-1', 'status_updated_at' => now()->toDateTimeString()],
+                ['id' => '1', 'estimate_id' => '1-1', 'status_updated_at' => '2020-01-01 00:00:00'],
+            ]]),
+            'app.workiz.com/ajaxc/estimate/getEstimateById/6793881/' => Http::response(['flag' => true, 'data' => ['estimate' => [
+                'estimate_link' => 'https://app.workiz.com/clientPortal/estimate/ES-abc:'.str_repeat('e', 40),
+                'estimate_portal_url' => 'https://wrkz.me/hs8I92', 'proposal_portal_url' => 'https://wrkz.me/5rrcui',
+            ]]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-estimate-links')->expectsOutputToContain('1 Workiz estimate link(s) read.')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($record, $job) {
+            $this->assertSame('https://wrkz.me/hs8I92', $record->fresh()->links['portal']);
+            $this->assertSame('https://wrkz.me/hs8I92', $job->fresh()->estimate_link);
+        });
+        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), 'getEstimateById/1/'));
+    }
+
+    /** Jose, 2026-10-21: "can't it be just assigned to the company?" The account's own name files it. */
+    public function test_an_unmapped_account_files_to_the_branch_its_name_carries(): void
+    {
+        $c = $this->connected();
+        $this->inTenant($this->t['org'], fn () => tap($c, fn ($c) => $c->connect(array_diff_key((array) $c->credentials, ['accounts' => 1])))->save());
+        $branch = $this->t['franchise']->name;
+        Http::fake([
+            'app.workiz.com/ajaxc/account/getInfo/' => Http::response(['flag' => true, 'data' => ['account_name' => 'A1 Chimney - '.$branch]]),
+            'app.workiz.com/ajaxc/franchise/index/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/payments/getPaymentsReport/' => Http::response(['flag' => true, 'aaData' => [
+                ['id' => 72, 'amount' => '50.00', 'date' => '2026-10-19 10:00:00'],
+            ]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-payments', ['--from' => '2026-10-19', '--to' => '2026-10-20'])->assertSuccessful();
+
+        $this->assertSame($this->t['franchise']->id, $this->inTenant($this->t['org'], fn () => WorkizRecord::query()->sole()->franchise_id));
+    }
+
+    /** A login sent before 0.0.0466 belonged to the organization: it moves to a company, session kept, nothing re-sent. */
+    public function test_a_legacy_organization_login_moves_to_a_company(): void
+    {
+        $c = $this->connected();
+        $this->inTenant($this->t['org'], fn () => $c->forceFill(['scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $this->t['org']->id])->save());
+
+        $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/company', ['company_id' => $this->t['company']->id])->assertOk();
+
+        $row = $this->inTenant($this->t['org'], fn () => $c->fresh());
+        $this->assertSame([SocialConnection::SCOPE_COMPANY, $this->t['company']->id, 'sess-abc'], [$row->scope_type, $row->scope_id, $row->credentials['cookies']['sendajob_sessid']]);
+        $this->signedInAs($this->t['admin'])->putJson('/api/v1/social/workiz-web/'.$c->id.'/company', ['company_id' => $this->t['company']->id])->assertNotFound();
+    }
 }
