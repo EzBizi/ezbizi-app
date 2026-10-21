@@ -167,6 +167,7 @@ class AutomationsController extends Controller
         'inspection_report.email',
         // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
         'inspection_report.workiz',
+        'workiz.job_update',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
          * `App\Support\Training\AssignmentWriter` a person's own POST
@@ -2230,6 +2231,11 @@ class AutomationsController extends Controller
             $type('time_clock.clock_out', 'Clock them out', true, []),
             $type('inspection_report.email', 'Email the report to the customer', true, []),
             $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
+            $type('workiz.job_update', 'Update the job in Workiz', true, [
+                $parameter('status', 'Status (e.g. Submitted, Canceled)', 'text', required: false),
+                $parameter('sub_status', 'Sub-status (e.g. Estimate Declined)', 'text', required: false),
+                $parameter('tags', 'Set tags to (comma-separated; others are removed)', 'text', required: false),
+            ]),
 
             /*
              * ONE PICKER FOR A GUIDE OR A TEST, stored as `guide:<id>` or

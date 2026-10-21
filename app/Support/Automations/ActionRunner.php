@@ -458,6 +458,7 @@ class ActionRunner
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
             'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
+            'workiz.job_update' => $this->updateWorkizJob($action, $subject),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
@@ -657,6 +658,46 @@ class ActionRunner
      * adds nothing. An inspection on a client alone, or on a job Workiz does
      * not have, is left alone.
      */
+    /**
+     * Jose's Project Management rules (2026-10-21): status, sub-status and
+     * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
+     * resolves each account's own names and ids and audits what it removed.
+     */
+    private function updateWorkizJob(array $action, ?Model $subject): array
+    {
+        $type = 'workiz.job_update';
+        if (! $subject instanceof Job) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a job.'];
+        }
+        $mirror = WorkizJob::query()->where('job_id', $subject->getKey())->first();
+        if ($mirror === null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'This job is not linked to Workiz, so nothing was changed there.'];
+        }
+        $status = trim((string) ($action['status'] ?? ''));
+        $sub = trim((string) ($action['sub_status'] ?? ''));
+        $tags = array_values(array_filter(array_map('trim', is_array($action['tags'] ?? null) ? $action['tags'] : explode(',', (string) ($action['tags'] ?? '')))));
+        if ($status === '' && $tags === []) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status or tags to set.'];
+        }
+
+        $done = [];
+        try {
+            $writer = app(WorkizJobWriter::class);
+            if ($status !== '') {
+                $mirror = $writer->setStatus($mirror, $status, $sub === '' ? null : $sub);
+                $done[] = 'status '.$status.($sub === '' ? '' : ' / '.$sub);
+            }
+            if ($tags !== []) {
+                $writer->setTags($mirror, $tags);
+                $done[] = 'tags '.implode(', ', $tags);
+            }
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => ($done === [] ? '' : 'Set '.implode('; ', $done).', then: ').$refusal->getMessage()];
+        }
+
+        return ['type' => $type, 'ok' => true, 'detail' => 'Set '.implode('; ', $done).' in Workiz.'];
+    }
+
     private function putInspectionReportOnWorkiz(?Model $subject): array
     {
         $type = 'inspection_report.workiz';
