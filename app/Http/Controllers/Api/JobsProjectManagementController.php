@@ -34,7 +34,7 @@ class JobsProjectManagementController extends Controller
     public function index(Request $request, SettingsResolver $settings): JsonResponse
     {
         $user = $request->user();
-        abort_unless($user->hasPermission('project_management.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        abort_unless($user->hasPermission('project_management.view') && $user->hasPermission('jobs.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
 
         $input = $request->validate([
             'stage' => ['nullable', Rule::in(['waiting', 'partial', 'full', 'closed'])],
@@ -116,7 +116,7 @@ class JobsProjectManagementController extends Controller
     public function stats(Request $request, SettingsResolver $settings): JsonResponse
     {
         $user = $request->user();
-        abort_unless($user->hasPermission('project_management.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+        abort_unless($user->hasPermission('project_management.view') && $user->hasPermission('jobs.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
 
         $input = $request->validate([
             'from' => ['required', 'date_format:Y-m-d'],

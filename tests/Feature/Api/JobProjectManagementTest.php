@@ -54,6 +54,9 @@ class JobProjectManagementTest extends TestCase
 
         $this->signedInAs($this->userWithRole($alpha, 'Viewer', ['jobs.view']))
             ->getJson('/api/v1/jobs/project-management')->assertForbidden();
+        // Jose, 2026-10-21: Project Management also needs Jobs view.
+        $this->signedInAs($this->userWithRole($alpha, 'PM only', ['project_management.view']))
+            ->getJson('/api/v1/jobs/project-management/stats?from=2026-10-01&to=2026-10-02')->assertForbidden();
     }
 
     public function test_with_nothing_paid_the_clock_runs_to_its_deadline(): void
