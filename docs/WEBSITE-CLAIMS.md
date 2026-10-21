@@ -2999,6 +2999,12 @@ are byte-identical to the repo, which means `0134` (the camera privacy edit) is 
 - PTO, Project Management, push wording, Workiz web session, branch pickers: no sentence
   on the site touched. No permission or `ImageSource` change in the client.
 
-Desk asked for counts (Training, ring groups, LSA, publishers, the youtube `sent` org,
-`invoices`). Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+Desk counts (10-21, production): `invoices` table absent (0.0.0472 building at
+`e9b877b67`), so 0 invoices; `training_progress` 68; ring groups 5 of 14 by the COLUMN
+only (the resolved fraction was not measured, so quote neither); newest real local_services
+lead 10-21 22:52 UTC, 47,202 total; `social_post_targets` facebook_page sent 1, instagram
+sent 1, pinterest sent 2 / failed 2, tiktok failed 1, youtube sent 1, so 5 providers and
+no 7th publisher. **The YouTube `sent` row is Triplex Group (formerly A1-Group), Jose's own
+org.** "Newly built and not yet proven" stays for one checkable reason: an unaudited YouTube
+API project's uploads are locked to private. Invert only when that video is confirmed public. Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461.
