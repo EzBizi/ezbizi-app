@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0470',
+      date: '21 Oct 2026',
+      items: [
+        'Integrations: disconnecting asks for your authenticator code and first shows what will stop working (automations, scheduled posts, newsletters, numbers, inboxes). Without an authenticator set up, you are told where to add one.',
+        'Workiz: one signed-in Workiz login reads every A-1 Workiz account in turn, files each to its branch by state, and shows per account when payments and estimate links were last read or why an account was skipped.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0469',
       date: '21 Oct 2026',
       items: [
