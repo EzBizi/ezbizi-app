@@ -68,7 +68,8 @@ void main() {
     // behind the panel carries the number as well, so it would have passed
     // with the panel closed and proved nothing. The Notes field exists only
     // inside the loaded panel.
-    expect(find.text('Notes'), findsOneWidget);
+    // The field, not the Notes tab (queue 122), which the panel draws too.
+    expect(find.widgetWithText(TextField, 'Notes'), findsOneWidget);
   });
 
   testWidgets('a job nothing was issued against says so rather than nothing', (
