@@ -1211,6 +1211,13 @@ class ModuleServiceProvider extends ServiceProvider
                             .'the work is — it does not decide who may open the job.',
                     ),
                     new TriggerDefinition(
+                        key: 'job.payment_received',
+                        label: 'Payment received',
+                        description: 'A payment on the job arrived from Workiz. It carries the amount, '
+                            .'what has been paid in all, the job total, whether that makes it fully paid, '
+                            .'and the job’s Workiz status.',
+                    ),
+                    new TriggerDefinition(
                         key: 'job.estimate_aging',
                         label: 'Estimate waiting',
                         description: 'Once a day, for each job in a status your organization says '

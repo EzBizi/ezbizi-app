@@ -114,7 +114,9 @@ class SyncWorkizRecords extends Command
             $older = $type === 'timesheet'
                 ? array_filter($rows, fn ($r) => (string) ($r['startDate'] ?? '') < $since)
                 : [];
+            $fresh = $type === 'payment' ? self::unheld($connection, array_column($rows, 'id')) : [];
             $landed += WorkizRecords::land($connection, $type, array_diff_key($rows, $older));
+            self::announce($connection, $fresh);
 
             if ($older !== [] || ! ($read['data']['hasMore'] ?? false)) {
                 break;
@@ -124,5 +126,46 @@ class SyncWorkizRecords extends Command
         }
 
         return ['landed' => $landed, 'failed' => null, 'status' => 200];
+    }
+
+    /** Which of these payment ids the mirror does not hold yet. @return list<string> */
+    private static function unheld(SocialConnection $connection, array $ids): array
+    {
+        $held = WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', 'payment')
+            ->whereIn('remote_id', $ids ?: ['-'])->pluck('remote_id')->all();
+
+        return array_values(array_diff(array_map('strval', $ids), $held));
+    }
+
+    /**
+     * `job.payment_received`, once per payment new to the mirror, on its
+     * EzBizi job (Automations, 2026-10-21: Jose's Project Management rules).
+     * A payment dated more than two days back is history arriving (a first
+     * read, a full sweep) and is not announced.
+     */
+    private static function announce(SocialConnection $connection, array $fresh): void
+    {
+        if ($fresh === []) {
+            return;
+        }
+
+        $payments = WorkizRecord::query()->where('franchise_id', $connection->scope_id)->where('type', 'payment')
+            ->whereIn('remote_id', $fresh)->whereNotNull('job_id')->where('starts_at', '>=', now()->subDays(2))->get();
+
+        foreach ($payments as $payment) {
+            $job = \App\Models\Job::query()->find($payment->job_id);
+            $mirror = \App\Models\WorkizJob::query()->where('job_id', $payment->job_id)->first();
+
+            if ($job === null) {
+                continue;
+            }
+
+            $paid = (float) WorkizRecord::query()->where('job_id', $payment->job_id)->where('type', 'payment')->sum('amount');
+            $total = (float) ($mirror?->payload['JobTotalPrice'] ?? 0);
+            app(\App\Support\Automations\EventEmitter::class)->emit('job.payment_received', $job, ['after' => [
+                'amount' => (float) $payment->amount, 'paid_total' => $paid, 'job_total' => $total,
+                'fully_paid' => $total > 0 && $paid >= $total, 'status' => $mirror?->status,
+            ]]);
+        }
     }
 }
