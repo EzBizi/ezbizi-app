@@ -34,12 +34,12 @@ void main() {
     ),
   ];
 
-  test('labels Branch · Company, sorted by company then branch', () {
+  test('labels Company · Branch, sorted by company then branch', () {
     expect(branchOptions(branches, companies).map((b) => b.label), [
-      'Main · harbor Home Services',
-      'Texas · Peak Openers',
-      'connecticut · Summit Garage Doors',
-      'Main · Summit Garage Doors',
+      'harbor Home Services · Main',
+      'Peak Openers · Texas',
+      'Summit Garage Doors · connecticut',
+      'Summit Garage Doors · Main',
       // Company unknown: the name alone, after the named ones.
       'Alpha',
       'Nationwide',
@@ -61,9 +61,9 @@ void main() {
     expect(
       branchOptions(branches, companies, companyId: 'co-s').map((b) => b.label),
       [
-        'Texas · Peak Openers',
-        'connecticut · Summit Garage Doors',
-        'Main · Summit Garage Doors',
+        'Peak Openers · Texas',
+        'Summit Garage Doors · connecticut',
+        'Summit Garage Doors · Main',
       ],
     );
     expect(

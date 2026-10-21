@@ -169,7 +169,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('pm-branch')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Lakeside · Brightway'));
+    await tester.tap(find.text('Brightway · Lakeside'));
     await tester.pumpAndSettle();
     expect(seen.last.queryParameters, {
       'min_days': '14',

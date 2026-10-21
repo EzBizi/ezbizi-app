@@ -113,7 +113,7 @@ void main() {
       find.byKey(const ValueKey('workiz-session-branch:acct-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Maple Branch · Harbor Home Services').last);
+    await tester.tap(find.text('Harbor Home Services · Maple Branch').last);
     await tester.pumpAndSettle();
 
     final put = server.sent.lastWhere((r) => r.method == 'PUT');
@@ -130,13 +130,13 @@ void main() {
     final server = _Server()..row = _web('connected', company: 'co-s');
     await _pumpSession(tester, server, viewId: 'co-s');
 
-    expect(_branchLabels(tester), ['Maple Branch · Summit Garage Doors']);
+    expect(_branchLabels(tester), ['Summit Garage Doors · Maple Branch']);
 
     final other = _Server()..row = _web('connected');
     await _pumpSession(tester, other, fresh: true);
     expect(_branchLabels(tester), [
-      'Cedar Branch · Harbor Home Services',
-      'Maple Branch · Harbor Home Services',
+      'Harbor Home Services · Cedar Branch',
+      'Harbor Home Services · Maple Branch',
     ]);
   });
 
@@ -206,8 +206,8 @@ void main() {
     expect(find.text('Lakeview Plumbing'), findsOneWidget);
     expect(server.sent.last.url.path, '/api/v1/social/workiz-web/w-1/accounts');
     expect(_branchLabels(tester), [
-      'Cedar Branch · Harbor Home Services',
-      'Maple Branch · Harbor Home Services',
+      'Harbor Home Services · Cedar Branch',
+      'Harbor Home Services · Maple Branch',
     ]);
   });
 
