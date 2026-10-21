@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
+import '../../widgets/disconnect_panel.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/workiz_session_login.dart';
 
@@ -134,7 +135,8 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// Disconnect one row. Every provider since UI queue 110, for somebody who
   /// may connect it (the server's disconnect gate is the connect permission).
   /// Asked once more before it runs. Answers the refusal to show, or null.
-  final Future<String?> Function(IntegrationConnection row)? onDisconnect;
+  final Future<ApiResponse> Function(IntegrationConnection row, String code)?
+  onDisconnect;
 
   /// What this service is for, in one line under its name (UI queue 110).
   final String? purpose;
@@ -273,32 +275,28 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     await widget.onChanged?.call();
   }
 
-  /// Asks once more, in a side panel, then disconnects (UI queue 110).
+  /// Asks once more, in a side panel, then disconnects (UI queue 110). The
+  /// panel lists what stops working and asks for an authenticator code —
+  /// the server refuses a disconnect without one.
   Future<void> _disconnect(IntegrationConnection row) async {
-    final sure = await showSidePanel<bool>(
+    final dependents = row.provider == 'google_workspace'
+        ? '/integrations/workspace/${row.scopeType}:${row.scopeId}/dependents'
+        : '/integrations/social/${row.id}/dependents';
+    final done = await confirmDisconnect(
       context,
-      builder: (context) => SidePanel(
-        title: 'Disconnect ${row.title}?',
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const ValueKey('disconnect-confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Disconnect'),
-          ),
-        ],
-        child: Text(
+      api: widget.api,
+      title: 'Disconnect ${row.title}?',
+      explanation:
           'EzBizi stops using this ${widget.providerLabel} connection. To use '
           'it again, it has to be connected again.',
-        ),
-      ),
+      dependentsPath: dependents,
+      perform: (code) => widget.onDisconnect!(row, code),
     );
-    if (sure != true || !mounted) return;
-    final refused = await widget.onDisconnect!(row);
-    if (mounted) setState(() => _error = refused);
+    if (done == null || !mounted) return;
+    final problems =
+        ((done.body['data'] as Map?)?['problems'] as List<dynamic>?) ??
+        const [];
+    setState(() => _error = problems.isEmpty ? null : problems.join(' '));
   }
 
   /// A Workiz web login is one per company, so its row names the company

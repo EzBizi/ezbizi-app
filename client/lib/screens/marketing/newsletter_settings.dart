@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/disconnect_panel.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/social_network_mark.dart';
@@ -98,15 +99,20 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
   }
 
   Future<void> _disconnect(String id, String name) async {
-    setState(() => _busy = true);
+    final done = await confirmDisconnect(
+      context,
+      api: widget.api,
+      title: 'Disconnect $name?',
+      explanation:
+          'EzBizi stops sending newsletters through this account. To use it '
+          'again, it has to be connected again.',
+      dependentsPath: '/integrations/social/$id/dependents',
+      perform: (code) =>
+          widget.api.deleteWithBody('/social/connections/$id', {'code': code}),
+    );
+    if (done == null || !mounted) return;
 
-    final response = await widget.api.delete('/social/connections/$id');
-    if (!mounted) return;
-
-    setState(() {
-      _busy = false;
-      _error = response.ok ? null : response.reason;
-    });
+    setState(() => _error = null);
 
     await _load();
     await widget.onChanged();
@@ -177,12 +183,14 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
         Align(
           alignment: Alignment.centerLeft,
           child: Refused(
-            reason: refusal ??
+            reason:
+                refusal ??
                 (_key.text.trim().isEmpty
                     ? 'Paste the API key from your Mailchimp account.'
                     : null),
             child: FilledButton(
-              onPressed: refusal == null && _key.text.trim().isNotEmpty && !_busy
+              onPressed:
+                  refusal == null && _key.text.trim().isNotEmpty && !_busy
                   ? _connect
                   : null,
               child: Text(_busy ? 'Connecting…' : 'Connect'),
@@ -193,7 +201,11 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
     );
   }
 
-  Widget _connected(BuildContext context, Map<String, dynamic> c, String? refusal) {
+  Widget _connected(
+    BuildContext context,
+    Map<String, dynamic> c,
+    String? refusal,
+  ) {
     final name = c['display_name'] as String? ?? 'Mailchimp';
     final healthy = (c['status'] as String? ?? '') == 'connected';
 
@@ -204,7 +216,8 @@ class _NewsletterSettingsState extends State<NewsletterSettings> {
       subtitle: Text(
         healthy
             ? 'Connected · newsletters send through this account'
-            : (c['status_reason'] as String? ?? 'This connection needs attention.'),
+            : (c['status_reason'] as String? ??
+                  'This connection needs attention.'),
       ),
       trailing: Refused(
         reason: refusal,

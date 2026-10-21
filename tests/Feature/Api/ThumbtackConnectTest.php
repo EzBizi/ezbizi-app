@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /**
@@ -27,6 +28,7 @@ use Tests\TestCase;
  */
 class ThumbtackConnectTest extends TestCase
 {
+    use GivesAuthenticatorCodes;
     use BuildsTenants;
     use RefreshDatabase;
 
@@ -146,8 +148,9 @@ class ThumbtackConnectTest extends TestCase
             '*/users/disconnect' => Http::response([]),
         ]);
 
+        $code = $this->authenticatorCode($t['admin']);
         $this->signedInAs($t['admin'])
-            ->deleteJson('/api/v1/social/connections/'.$connection->getKey())
+            ->deleteJson('/api/v1/social/connections/'.$connection->getKey(), $code)
             ->assertOk()
             ->assertJsonPath('data.problems', []);
 
@@ -181,8 +184,9 @@ class ThumbtackConnectTest extends TestCase
             '*/users/disconnect' => Http::response([]),
         ]);
 
+        $code = $this->authenticatorCode($t['admin']);
         $this->signedInAs($t['admin'])
-            ->deleteJson('/api/v1/social/providers/thumbtack/connections')
+            ->deleteJson('/api/v1/social/providers/thumbtack/connections', $code)
             ->assertOk()
             ->assertJsonPath('data.disconnected', 3)
             ->assertJsonPath('data.problems', []);
@@ -227,8 +231,9 @@ class ThumbtackConnectTest extends TestCase
 
         Http::fake(['*' => Http::response(['message' => 'Token expired.'], 401)]);
 
+        $code = $this->authenticatorCode($t['admin']);
         $response = $this->signedInAs($t['admin'])
-            ->deleteJson('/api/v1/social/connections/'.$connection->getKey())
+            ->deleteJson('/api/v1/social/connections/'.$connection->getKey(), $code)
             ->assertOk();
 
         // Gone locally, and honest about what is left behind on Thumbtack for

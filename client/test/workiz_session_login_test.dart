@@ -299,9 +299,9 @@ void main() {
     expect(find.text(WorkizSessionLogin.disconnectQuestion), findsOneWidget);
     expect(server.sent.where((r) => r.method == 'DELETE'), isEmpty);
 
-    await tester.tap(
-      find.byKey(const ValueKey('workiz-session-disconnect-confirm')),
-    );
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
     await tester.pumpAndSettle();
 
     final delete = server.sent.singleWhere((r) => r.method == 'DELETE');
@@ -324,15 +324,15 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('workiz-session-disconnect')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(find.text('Keep it'));
     await tester.pumpAndSettle();
     expect(server.sent.where((r) => r.method == 'DELETE'), isEmpty);
 
     await tester.tap(find.byKey(const ValueKey('workiz-session-disconnect')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('workiz-session-disconnect-confirm')),
-    );
+    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('disconnect-confirm')));
     await tester.pumpAndSettle();
 
     expect(find.text('You cannot disconnect this.'), findsOneWidget);

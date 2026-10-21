@@ -14,11 +14,13 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
+use Tests\Concerns\GivesAuthenticatorCodes;
 use Tests\TestCase;
 
 /** A tenant connects its OWN WhatsApp number - Embedded Signup (2026-10-19). */
 class WhatsAppConnectTest extends TestCase
 {
+    use GivesAuthenticatorCodes;
     use BuildsTenants;
     use RefreshDatabase;
 
@@ -160,8 +162,9 @@ class WhatsAppConnectTest extends TestCase
     {
         [$t, $connection] = $this->connected();
 
+        $code = $this->authenticatorCode($t['admin']);
         $this->signedInAs($t['admin'])
-            ->deleteJson('/api/v1/social/connections/'.$connection->id)
+            ->deleteJson('/api/v1/social/connections/'.$connection->id, $code)
             ->assertOk();
 
         $this->assertSame(0, WhatsAppNumber::query()->withoutGlobalScopes()->count());
@@ -194,7 +197,8 @@ class WhatsAppConnectTest extends TestCase
     {
         [$t, $connection] = $this->connected();
 
-        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/connections/'.$connection->id)->assertOk();
+        $code = $this->authenticatorCode($t['admin']);
+        $this->signedInAs($t['admin'])->deleteJson('/api/v1/social/connections/'.$connection->id, $code)->assertOk();
 
         Http::fake(fn () => Http::response(['messages' => [['id' => 'wamid.x']]]));
 

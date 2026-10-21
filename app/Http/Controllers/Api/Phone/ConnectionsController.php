@@ -336,6 +336,8 @@ class ConnectionsController extends Controller
     {
         $this->authorize('delete', $connection);
 
+        app(\App\Support\Integrations\DisconnectCode::class)->require($request);
+
         $close = $request->boolean('close');
 
         try {
