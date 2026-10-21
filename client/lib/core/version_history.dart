@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0466',
+      date: '21 Oct 2026',
+      items: [
+        'Jobs: a new Project Management tab follows each job waiting on payment as a timeline, with a countdown to its deadline. It stays empty until the statuses to watch are chosen in Settings.',
+        'Automations: two templates, both off: a payment on a Done Pending Approval job sets Submitted and the deposit tags; 30 days without payment cancels it as Estimate Declined. A new step updates the job in Workiz.',
+        'Jobs: a Notes tab keeps who wrote what and when. The job\'s old Notes field is now called Description.',
+        'Financials: tables scroll sideways, columns resize, and EzBizi\'s own tables edit like a spreadsheet (arrows, typing, paste from Excel, fill down, undo). Every Airtable table is mirrored automatically, tabs use the table names and count only the places in view, and attachments show as files.',
+        'Integrations › Workiz: the signed-in session belongs to a company and is sent from that company\'s view.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0465',
       date: '21 Oct 2026',
       items: [

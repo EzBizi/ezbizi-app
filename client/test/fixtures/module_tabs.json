@@ -151,7 +151,8 @@
             "parent": null,
             "tabs": [
                 "Work",
-                "Materials"
+                "Materials",
+                "Project Management"
             ]
         },
         "leads": {
@@ -451,6 +452,7 @@
         "jobs.export",
         "jobs.financials",
         "jobs.materials.view",
+        "jobs.project_management.view",
         "jobs.view",
         "leads.bad_rating.view",
         "leads.create",

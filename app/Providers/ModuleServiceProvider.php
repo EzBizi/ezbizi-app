@@ -1154,6 +1154,9 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('work', 'Work', action: 'view'),
                     new TabDefinition('materials', 'Materials'),
+                    // Jose, 2026-10-21: every job waiting on an estimate, as a
+                    // timeline. Its own tick: it shows who paid and who did not.
+                    new TabDefinition('project_management', 'Project Management'),
                 ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
