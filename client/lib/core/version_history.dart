@@ -18,7 +18,7 @@ class VersionHistory {
       date: '21 Oct 2026',
       items: [
         'Scheduling › Settings › Service areas: draw an area on the map and its ZIP codes are added after a review; see one area, a branch or the whole company on the map. Deleting an area asks where its ZIP codes go.',
-        'Scheduling: a ZIP code you remove from an area stays removed. Before, the hourly ZIP map could put it back from past jobs.',
+        'Scheduling: a ZIP code you remove from an area stays removed. Before, the ZIP map that runs every 5 minutes could put it back from past jobs.',
       ],
     ),
     VersionRelease(
