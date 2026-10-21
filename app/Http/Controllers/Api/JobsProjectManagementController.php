@@ -72,7 +72,8 @@ class JobsProjectManagementController extends Controller
             $paid[$job->id] ?? 0, $payments[$job->id] ?? collect(), $events[$job->id] ?? collect()))
             ->filter(fn (array $r) => ($input['stage'] ?? null) === null || $r['stage'] === $input['stage'])
             ->filter(fn (array $r) => ($input['min_days'] ?? null) === null || ($r['waiting']['days_waiting'] ?? -1) >= (int) $input['min_days'])
-            ->sortByDesc(fn (array $r) => $r['waiting']['days_waiting'] ?? -1)
+            // Closest to the cancel first; stopped and closed clocks after.
+            ->sortBy(fn (array $r) => $r['waiting']['deadline_at'] ?? '9999')
             ->values();
 
         return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS]]);
@@ -134,8 +135,15 @@ class JobsProjectManagementController extends Controller
             'waiting' => $estimateDate === null ? null : [
                 'estimate_date' => $estimateDate,
                 'days_waiting' => (int) Carbon::parse($estimateDate, $today->timezone)->diffInDays($today),
-                // What comes next on an open job with nothing paid in full.
-                'deadline' => $open && $stage !== 'full' ? Carbon::parse($estimateDate)->addDays(EstimateAging::DAYS)->toDateString() : null,
+                // The cancel clock (Jose, 2026-10-21: "a timer on all the done
+                // pending approval jobs"): runs only while nothing is paid,
+                // since the rule cancels on "nothing paid", and stops at the
+                // first payment. deadline_at is that day's start in the
+                // branch's zone, for a countdown in days and hours.
+                'deadline' => $stage === 'waiting' ? Carbon::parse($estimateDate)->addDays(EstimateAging::DAYS)->toDateString() : null,
+                'deadline_at' => $stage === 'waiting'
+                    ? Carbon::parse($estimateDate, $today->timezone)->addDays(EstimateAging::DAYS)->toIso8601String() : null,
+                'timer' => match (true) { ! $open => 'closed', $stage === 'waiting' => 'running', default => 'stopped' },
             ],
             'timeline' => $timeline->sortBy('at')->values()->all(),
         ];

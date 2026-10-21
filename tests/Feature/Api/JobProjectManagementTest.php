@@ -35,8 +35,9 @@ class JobProjectManagementTest extends TestCase
         $this->assertSame('2026-10-05', substr($row['timeline'][0]['at'], 0, 10));
         $this->assertSame(['added' => ['DEPOSIT RECEIVED'], 'removed' => []], $row['timeline'][2]['tags']);
         $this->assertSame('Automation', $row['timeline'][3]['by']);
-        $this->assertSame(['estimate_date' => '2026-10-01', 'days_waiting' => 20, 'deadline' => '2026-10-31'],
-            array_intersect_key($row['waiting'], array_flip(['estimate_date', 'days_waiting', 'deadline'])));
+        // Partly paid: the clock has stopped (Jose: the timer stops once a payment arrives).
+        $this->assertSame(['estimate_date' => '2026-10-01', 'days_waiting' => 20, 'deadline' => null, 'timer' => 'stopped'],
+            array_intersect_key($row['waiting'], array_flip(['estimate_date', 'days_waiting', 'deadline', 'timer'])));
         $this->assertSame(5000, $row['timeline'][1]['amount_minor']);
     }
 
@@ -53,6 +54,18 @@ class JobProjectManagementTest extends TestCase
 
         $this->signedInAs($this->userWithRole($alpha, 'Viewer', ['jobs.view']))
             ->getJson('/api/v1/jobs/project-management')->assertForbidden();
+    }
+
+    public function test_with_nothing_paid_the_clock_runs_to_its_deadline(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+        $this->inTenant($alpha['org'], fn () => \App\Models\WorkizRecord::query()->where('type', 'payment')->delete());
+
+        $waiting = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management')->assertOk()->json('data.0.waiting');
+
+        $this->assertSame(['running', '2026-10-31'], [$waiting['timer'], $waiting['deadline']]);
+        $this->assertStringStartsWith('2026-10-31T00:00:00', $waiting['deadline_at']);
     }
 
     public function test_filters_by_stage_branch_and_days(): void
