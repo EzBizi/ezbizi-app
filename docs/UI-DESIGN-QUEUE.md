@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 126 · Work Hours › Paid Time Off: balance, reset, settings — **sent 2026-10-21** (`docs/previews/paid-time-off-layouts.html`)
+
+Desk relayed Jose; HR builds the data. **1** (recommended) list with days Left per row (orange "From <date>" chip when not yet usable, "Start date unknown"), search + Everyone/Can use/Not yet; panel with Total/Used/Left tiles + bar, "Resets <date>, their work anniversary", can-use-from, carry-over; Used has Change (edit-PTO permission) opening a side pane with number + required reason, changes listed with who/when. Settings as sentences: earns N days every Week/Month/Quarter/Year; usable N Days/Weeks/Months/Years after start; resets On each person's work anniversary / Every Jan 1 / Never; carry over; a live example line. **2** one table with inline Used. **3** a card grid. Phone **4** (recommended: own tiles on top, list below, panel full screen) / **5** / **6**.
+
 ### 125 · Scheduling › Service areas drawn on a map — **sent 2026-10-21 — Jose: "yes go ahead" (1 and 4)** (`docs/previews/service-areas-map-layouts.html`)
 
 Scheduling asked (efbd6e645: area map, areas-map, polygons preview/save, delete with move_zips_to). **1** (recommended) all areas on one map (colour per branch / per area) with ZIP dots, area list, draw/reshape tool, a review panel (adds, belongs to another area with Take it, would drop out, typed outside kept), Save/Clear drawing; delete asks in a side pane where the ZIPs go. **2** one area per page with its own map. **3** ZIP lists with a view-only map. Phone **4** (recommended: view-only map + list) / **5** / **6**.
