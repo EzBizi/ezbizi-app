@@ -104,8 +104,11 @@ class _FinancialGridState extends State<FinancialGrid> {
           };
   }
 
+  /// Not typed into: formulas, files, and columns Airtable works out.
   bool _locked(Map f) =>
-      !widget.canEdit || const {'formula', 'attachment'}.contains(f['type']);
+      !widget.canEdit ||
+      f['locked'] == true ||
+      const {'formula', 'attachment'}.contains(f['type']);
 
   // ── Selection ─────────────────────────────────────────────
 
