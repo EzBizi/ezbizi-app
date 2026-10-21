@@ -629,90 +629,118 @@ class _FinancialsScreenState extends State<FinancialBases> {
     final selectedTable = tables.indexWhere((t) => t.$1 == _tableId);
     final canEdit = _can('edit');
 
+    return _pinBody([
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            IconButton(
+              key: const ValueKey('financials-back'),
+              tooltip: 'Back to Financials home',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _backHome,
+            ),
+            Text(
+              (_base?['place'] == null
+                  ? '${_base?['name'] ?? ''}'
+                  : '${_base?['name']} · ${_base?['place']}'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            if (badge != null) StatusPill(badge),
+            if (refreshed != null)
+              Text(
+                refreshed,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (canEdit)
+              IconButton(
+                tooltip: 'Rename base',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _renameBase,
+              ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (tables.isNotEmpty)
+              TabBarLike(
+                key: const ValueKey('financials-table-chips'),
+                level: TabLevel.secondary,
+                labels: [
+                  for (final t in tables)
+                    (
+                      t.$3 == null ? t.$2 : '${t.$2} · ${t.$3}',
+                      Icons.table_rows_outlined,
+                    ),
+                ],
+                selected: selectedTable < 0 ? 0 : selectedTable,
+                onSelected: (i) => _openTable(tables[i].$1),
+              ),
+            if (canEdit && _table != null)
+              IconButton(
+                tooltip: 'Rename table',
+                icon: const Icon(Icons.drive_file_rename_outline),
+                onPressed: _renameTable,
+              ),
+            if (canEdit)
+              TextButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text('Add table'),
+                onPressed: _newTable,
+              ),
+            if (canEdit)
+              TextButton.icon(
+                icon: const Icon(Icons.sync_alt),
+                label: const Text('Mirror Airtable'),
+                onPressed: _linkAirtable,
+              ),
+          ],
+        ),
+      ),
+      ..._tableSection(),
+    ]);
+  }
+
+  /// A page whose last child is its table (or list): everything above it
+  /// scrolls within at most half the height, so the table always keeps the
+  /// rest. On a phone the base's name, its tables, the mirror line and the
+  /// view's buttons wrap to more lines than the screen is tall, and the
+  /// table under them was laid out with no height at all.
+  Widget _pinBody(List<Widget> children) {
+    if (children case [...final above, Expanded(:final child)]) {
+      return LayoutBuilder(
+        builder: (context, box) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: box.maxHeight / 2),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: above,
+                ),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              IconButton(
-                key: const ValueKey('financials-back'),
-                tooltip: 'Back to Financials home',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _backHome,
-              ),
-              Text(
-                (_base?['place'] == null
-                    ? '${_base?['name'] ?? ''}'
-                    : '${_base?['name']} · ${_base?['place']}'),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (badge != null) StatusPill(badge),
-              if (refreshed != null)
-                Text(
-                  refreshed,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              if (canEdit)
-                IconButton(
-                  tooltip: 'Rename base',
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: _renameBase,
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (tables.isNotEmpty)
-                TabBarLike(
-                  key: const ValueKey('financials-table-chips'),
-                  level: TabLevel.secondary,
-                  labels: [
-                    for (final t in tables)
-                      (
-                        t.$3 == null ? t.$2 : '${t.$2} · ${t.$3}',
-                        Icons.table_rows_outlined,
-                      ),
-                  ],
-                  selected: selectedTable < 0 ? 0 : selectedTable,
-                  onSelected: (i) => _openTable(tables[i].$1),
-                ),
-              if (canEdit && _table != null)
-                IconButton(
-                  tooltip: 'Rename table',
-                  icon: const Icon(Icons.drive_file_rename_outline),
-                  onPressed: _renameTable,
-                ),
-              if (canEdit)
-                TextButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add table'),
-                  onPressed: _newTable,
-                ),
-              if (canEdit)
-                TextButton.icon(
-                  icon: const Icon(Icons.sync_alt),
-                  label: const Text('Mirror Airtable'),
-                  onPressed: _linkAirtable,
-                ),
-            ],
-          ),
-        ),
-        ..._tableSection(),
-      ],
+      children: children,
     );
   }
 
@@ -734,55 +762,41 @@ class _FinancialsScreenState extends State<FinancialBases> {
 
     return [
       if (_table?['mirror'] case final Map mirror)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(
-            children: [
-              const Icon(Icons.sync, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
+        _TableNote(
+          icon: Icons.sync,
+          text:
+              'Kept in step with Airtable: edits here are saved there too. '
+              'Refreshed ${_ago(mirror['synced_at'] as String?)}.',
+          actions: [
+            if (canEdit)
+              TextButton(
+                onPressed: _refreshMirror,
+                child: const Text('Refresh now'),
+              ),
+            if (canEdit && widget.session.me?.scope.type == 'organization')
+              TextButton(
+                key: const ValueKey('cut-over'),
+                onPressed: () => _cutOver(undo: false),
                 child: Text(
-                  'Kept in step with Airtable: edits here are saved there too. '
-                  'Refreshed ${_ago(mirror['synced_at'] as String?)}.',
+                  _confirmCut
+                      ? 'Press again: Airtable stops being used for this table'
+                      : 'Cut over to EzBizi',
                 ),
               ),
-              if (canEdit)
-                TextButton(
-                  onPressed: _refreshMirror,
-                  child: const Text('Refresh now'),
-                ),
-              if (canEdit && widget.session.me?.scope.type == 'organization')
-                TextButton(
-                  key: const ValueKey('cut-over'),
-                  onPressed: () => _cutOver(undo: false),
-                  child: Text(
-                    _confirmCut
-                        ? 'Press again: Airtable stops being used for this table'
-                        : 'Cut over to EzBizi',
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
       if (_table?['cut_over'] case final Map cut)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, size: 16),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Kept in EzBizi since ${_ago(cut['at'] as String?)}; Airtable is no longer read or written for it.',
-                ),
+        _TableNote(
+          icon: Icons.check_circle_outline,
+          text:
+              'Kept in EzBizi since ${_ago(cut['at'] as String?)}; Airtable is no longer read or written for it.',
+          actions: [
+            if (canEdit && widget.session.me?.scope.type == 'organization')
+              TextButton(
+                onPressed: () => _cutOver(undo: true),
+                child: const Text('Go back to Airtable'),
               ),
-              if (canEdit && widget.session.me?.scope.type == 'organization')
-                TextButton(
-                  onPressed: () => _cutOver(undo: true),
-                  child: const Text('Go back to Airtable'),
-                ),
-            ],
-          ),
+          ],
         ),
       if (_table != null) ...[
         Padding(
@@ -989,113 +1003,110 @@ class _FinancialsScreenState extends State<FinancialBases> {
     final refreshed = refreshedLabel(area.refreshedAt);
     final shown = area.tables.where((t) => t.key == _areaTable).firstOrNull;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              IconButton(
-                key: const ValueKey('financials-back'),
-                tooltip: 'Back to Financials home',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: _backHome,
-              ),
-              Text(area.name, style: Theme.of(context).textTheme.titleMedium),
-              if (badge != null) StatusPill(badge),
-              if (refreshed != null)
-                Text(refreshed, style: TextStyle(fontSize: 12, color: muted)),
-            ],
-          ),
+    return _pinBody([
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            IconButton(
+              key: const ValueKey('financials-back'),
+              tooltip: 'Back to Financials home',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _backHome,
+            ),
+            Text(area.name, style: Theme.of(context).textTheme.titleMedium),
+            if (badge != null) StatusPill(badge),
+            if (refreshed != null)
+              Text(refreshed, style: TextStyle(fontSize: 12, color: muted)),
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          child: Wrap(
-            key: const ValueKey('financials-area-tables'),
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final t in area.tables)
-                ChoiceChip(
-                  key: ValueKey('financials-area-table-${t.key}'),
-                  label: Text(
-                    [
-                      t.name,
-                      if (t.count != null) '${t.count}',
-                      ?_closedBecause(t),
-                    ].join(' · '),
-                  ),
-                  selected: t.key == _areaTable,
-                  onSelected: _closedBecause(t) == null
-                      ? (_) => _selectAreaTable(t)
-                      : null,
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Wrap(
+          key: const ValueKey('financials-area-tables'),
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final t in area.tables)
+              ChoiceChip(
+                key: ValueKey('financials-area-table-${t.key}'),
+                label: Text(
+                  [
+                    t.name,
+                    if (t.count != null) '${t.count}',
+                    ?_closedBecause(t),
+                  ].join(' · '),
                 ),
-            ],
-          ),
+                selected: t.key == _areaTable,
+                onSelected: _closedBecause(t) == null
+                    ? (_) => _selectAreaTable(t)
+                    : null,
+              ),
+          ],
         ),
-        const Divider(height: 1),
-        if (shown == null)
-          Expanded(
-            child: Center(
-              child: Text(
-                'Nothing here opens for your role yet.',
-                style: TextStyle(color: muted),
+      ),
+      const Divider(height: 1),
+      if (shown == null)
+        Expanded(
+          child: Center(
+            child: Text(
+              'Nothing here opens for your role yet.',
+              style: TextStyle(color: muted),
+            ),
+          ),
+        )
+      else if (shown.tableId != null)
+        ..._tableSection()
+      else
+        Expanded(
+          child: switch (shown.key) {
+            'bills' => FinancialBillsTab(
+              api: widget.api,
+              me: widget.session.me!,
+            ),
+            'adjustments' => FinancialAdjustmentsList(
+              key: const ValueKey('financials-adjustments'),
+              api: widget.api,
+              exclude: const {'repair_move'},
+              canEdit: _can('edit'),
+              canDelete: _can('delete'),
+            ),
+            'repair_moves' => FinancialAdjustmentsList(
+              key: const ValueKey('financials-repair-moves'),
+              api: widget.api,
+              kind: 'repair_move',
+              canEdit: _can('edit'),
+              canDelete: _can('delete'),
+            ),
+            _ => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${shown.name} is in the Airtable copy but not '
+                      'mirrored into a base yet.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      key: const ValueKey('financials-mirror-it'),
+                      icon: const Icon(Icons.sync_alt),
+                      label: const Text('Mirror it'),
+                      onPressed: _mirroring ? null : () => _mirror(shown),
+                    ),
+                  ],
+                ),
               ),
             ),
-          )
-        else if (shown.tableId != null)
-          ..._tableSection()
-        else
-          Expanded(
-            child: switch (shown.key) {
-              'bills' => FinancialBillsTab(
-                api: widget.api,
-                me: widget.session.me!,
-              ),
-              'adjustments' => FinancialAdjustmentsList(
-                key: const ValueKey('financials-adjustments'),
-                api: widget.api,
-                exclude: const {'repair_move'},
-                canEdit: _can('edit'),
-                canDelete: _can('delete'),
-              ),
-              'repair_moves' => FinancialAdjustmentsList(
-                key: const ValueKey('financials-repair-moves'),
-                api: widget.api,
-                kind: 'repair_move',
-                canEdit: _can('edit'),
-                canDelete: _can('delete'),
-              ),
-              _ => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${shown.name} is in the Airtable copy but not '
-                        'mirrored into a base yet.',
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.icon(
-                        key: const ValueKey('financials-mirror-it'),
-                        icon: const Icon(Icons.sync_alt),
-                        label: const Text('Mirror it'),
-                        onPressed: _mirroring ? null : () => _mirror(shown),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            },
-          ),
-      ],
-    );
+          },
+        ),
+    ]);
   }
 
   String _settingsLabel(Map config) {
@@ -1105,6 +1116,42 @@ class _FinancialsScreenState extends State<FinancialBases> {
         (config['hidden'] as List? ?? const []).length;
     return n == 0 ? 'Filter, sort, fields' : 'Filter, sort, fields ($n)';
   }
+}
+
+/// A line above a table (its mirror, its cut-over) and its buttons. The
+/// buttons wrap under the sentence: beside it on a phone they took the whole
+/// width, the sentence was laid one letter wide, and the table under it got
+/// no height at all.
+class _TableNote extends StatelessWidget {
+  const _TableNote({
+    required this.icon,
+    required this.text,
+    required this.actions,
+  });
+
+  final IconData icon;
+  final String text;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+    child: Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 6),
+            Flexible(child: Text(text)),
+          ],
+        ),
+        ...actions,
+      ],
+    ),
+  );
 }
 
 class _NamePanel extends StatefulWidget {
