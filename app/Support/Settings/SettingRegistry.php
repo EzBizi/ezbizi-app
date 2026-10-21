@@ -491,7 +491,24 @@ class SettingRegistry
                     '60' => 'Net 60',
                     '90' => 'Net 90',
                 ],
-                notYetInEffect: 'EzBizi will use this once it sends invoices.',
+                help: 'When an invoice is due, counted from the day it is issued.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.email_mode', label: 'How invoices are emailed',
+                type: SettingDefinition::TYPE_ENUM, default: 'per_branch',
+                options: ['per_branch', 'summary'],
+                optionLabels: [
+                    'per_branch' => 'One email per invoice, to whoever it bills',
+                    'summary' => 'One summary email with every invoice attached',
+                ],
+                editPermission: 'invoices.edit',
+                help: 'The email body is the summary table either way.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.summary_to', label: 'Summary email goes to',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                editPermission: 'invoices.edit',
+                help: 'Addresses for the summary email, separated by commas. Used when invoices go as one summary.',
             ),
         ];
     }
@@ -526,7 +543,6 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'numbering.invoice_prefix', label: 'Invoice number prefix',
                 type: SettingDefinition::TYPE_STRING, default: 'INV-',
-                notYetInEffect: 'EzBizi will use this once it sends invoices.',
             ),
             new SettingDefinition(
                 key: 'numbering.estimate_prefix', label: 'Estimate number prefix',

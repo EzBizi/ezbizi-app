@@ -58,8 +58,11 @@ class SettingNotYetInEffectTest extends TestCase
         // assertion below while checking nothing, and a renamed field would
         // produce exactly that with nothing to say the scan had stopped
         // working (StartUp.md §8).
+        // Lowered from 8 to 5 when invoicing put the invoice prefix and the
+        // payment terms into effect (2026-10-21): the floor catches a broken
+        // scan, not settings being switched on.
         $this->assertGreaterThan(
-            8,
+            5,
             count($claims),
             'Almost no setting carries a not-yet-in-effect sentence — the scan has stopped matching, so this test is green without checking anything.',
         );

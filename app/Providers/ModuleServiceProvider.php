@@ -26,6 +26,7 @@ use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
 use App\Models\FinancialRecord;
+use App\Models\Invoice;
 use App\Models\Task;
 use App\Models\Vehicle;
 use App\Models\WebSite;
@@ -2345,6 +2346,63 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'financial_record.updated',
                         label: 'Financials record changed',
                         description: 'A cell in a Financials record was changed. It carries the table name.',
+                    ),
+                ],
+            ),
+
+            /*
+             * Invoices (Jose, 2026-10-20/21): charge sheets per period, one
+             * draft invoice per branch with its PDF, approve, send from the
+             * organization's own mail, payments. One invoice model for the
+             * product — Jobs' customer invoices use it too. Drawn as a tab in
+             * Financials (parent), so it has no sidebar row of its own.
+             *
+             *   view     see charge sheets and invoices
+             *   create   make charge sheets and draft invoices
+             *   edit     change a draft, record payments, configure charge lines
+             *   delete   void an invoice (a sent one is never deleted)
+             *   approve  approve a draft for sending
+             *   send     email an approved invoice
+             */
+            new ModuleDefinition(
+                key: 'invoices',
+                label: 'Invoices',
+                parent: 'financials',
+                sidebar: false,
+                // Drawn inside the Invoices tab of Financials.
+                tabs: [
+                    new TabDefinition('charge_sheets', 'Charge sheets'),
+                    new TabDefinition('invoices', 'Invoices'),
+                    new TabDefinition('settings', 'Settings', 'edit'),
+                ],
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve', 'send'],
+                actionLabels: [
+                    'approve' => 'Approve invoices for sending',
+                    'send' => 'Send invoices by email',
+                ],
+                auditActionPrefixes: ['invoice', 'financials'],
+                subject: new AutomationSubject(Invoice::class, 'Invoice'),
+                emits: [Invoice::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'invoice.approved',
+                        label: 'Invoice approved',
+                        description: 'Somebody approved a draft invoice for sending.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'invoice.sent',
+                        label: 'Invoice sent',
+                        description: 'An invoice was emailed to whoever it bills.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'invoice.paid',
+                        label: 'Invoice paid',
+                        description: 'Payments recorded against an invoice reached its total.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'invoice.overdue',
+                        label: 'Invoice overdue',
+                        description: 'A sent invoice passed its due date with money still owed. Raised once per invoice.',
                     ),
                 ],
             ),

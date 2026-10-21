@@ -146,6 +146,15 @@
                 "Locations"
             ]
         },
+        "invoices": {
+            "label": "Invoices",
+            "parent": "financials",
+            "tabs": [
+                "Charge sheets",
+                "Invoices",
+                "Settings"
+            ]
+        },
         "jobs": {
             "label": "Jobs",
             "parent": null,
@@ -454,6 +463,14 @@
         "inventory.orders.view",
         "inventory.stock.view",
         "inventory.view",
+        "invoices.approve",
+        "invoices.charge_sheets.view",
+        "invoices.create",
+        "invoices.delete",
+        "invoices.edit",
+        "invoices.invoices.view",
+        "invoices.send",
+        "invoices.view",
         "jobs.create",
         "jobs.delete",
         "jobs.edit",

@@ -497,6 +497,71 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials/Invoices': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-invoices-tabs',
+        title: 'Invoices',
+        body:
+            'Charge sheets say what each branch owes for a period; invoices are made from them.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-sheet-picker',
+        title: 'The sheet',
+        body: 'Pick a period here, or start a new sheet beside it.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-sheet-grid',
+        title: 'What each branch owes',
+        body:
+            'Type in the cells; they save on their own. An invoiced row is locked and links to its invoice.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-make',
+        title: 'Make invoices',
+        body:
+            'Drafts one invoice per branch with money on it. A branch already invoiced is skipped.',
+      ),
+    ],
+  ),
+  'financials/Invoices/Invoices': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-invoices-totals',
+        title: 'Totals',
+        body: 'What was sent, what is still unpaid, and what is overdue.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-filters',
+        title: 'Filters',
+        body: 'By status and by the month an invoice is dated.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-list',
+        title: 'The invoices',
+        body:
+            'Open one to see it as its PDF, and take the next step: approve, send or record a payment.',
+      ),
+    ],
+  ),
+  'financials/Invoices/Settings': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-invoices-columns',
+        title: 'Charge lines',
+        body:
+            'The columns of every new sheet. Drag to reorder, switch off, or say which column of your books fills one.',
+      ),
+      TourStep(
+        anchor: 'tour-invoices-sentences',
+        title: 'Sending, due days, numbers',
+        body: 'How invoices are emailed, when they are due, and how their numbers start.',
+      ),
+    ],
+  ),
   'services': Tour(
     version: 1,
     steps: [
