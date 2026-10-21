@@ -179,6 +179,19 @@ void main() {
     });
   });
 
+  // Jose, 2026-10-21: a search bar, matched on the server.
+  testWidgets('search asks the server as you type', (tester) async {
+    final seen = <Uri>[];
+    await _pump(tester, rows: rows(), now: now, seen: seen);
+
+    await tester.enterText(find.byKey(const ValueKey('pm-search')), '4417');
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(seen, hasLength(1), reason: 'still typing');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(seen.last.queryParameters, {'q': '4417'});
+  });
+
   testWidgets('a row opens its timeline beside the table, with money', (
     tester,
   ) async {
