@@ -183,6 +183,19 @@ class SettingsApiTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_a_row_carries_its_section_or_null(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $rows = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'));
+
+        $this->assertSame('Daily approval', $rows->firstWhere('key', 'time_clock.approval_enabled')['section']);
+        $this->assertSame('Paid time off', $rows->firstWhere('key', 'pto.enabled')['section']);
+        $this->assertArrayHasKey('section', $rows->firstWhere('key', 'locale'));
+        $this->assertNull($rows->firstWhere('key', 'locale')['section']);
+    }
+
     public function test_a_roles_setting_offers_this_organizations_roles(): void
     {
         $registry = new SettingRegistry();
