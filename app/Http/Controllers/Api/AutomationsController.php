@@ -1461,6 +1461,47 @@ class AutomationsController extends Controller
             + $this->engine->rehearseDraft($draft, $input['conditions'] ?? null, $input['actions'], $event)]);
     }
 
+    /**
+     * GET /automations/readiness?scope_type&scope_id - can each sending step
+     * actually send from this place (UI/UX, 2026-10-22), so the builder says
+     * why before a rule is saved rather than after it fails.
+     */
+    public function readiness(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Automation::class);
+        $input = $request->validate(['scope_type' => ['nullable', 'in:company,franchise'], 'scope_id' => ['nullable', 'uuid']]);
+        $type = $input['scope_type'] ?? null;
+        $id = $type === null ? null : ($input['scope_id'] ?? null);
+
+        // The place, its company when it is a branch, and the organization.
+        $places = [['organization', $this->tenant->idOrFail()]];
+        if ($type === 'company') {
+            $places[] = ['company', $id];
+        }
+        if ($type === 'franchise') {
+            $places[] = ['franchise', $id];
+            $places[] = ['company', \App\Models\Franchise::query()->whereKey($id)->value('company_id')];
+        }
+        $here = fn ($q) => $q->where(function ($w) use ($places) {
+            foreach ($places as [$t, $i]) {
+                $w->orWhere(fn ($x) => $x->where('scope_type', $t)->where('scope_id', $i));
+            }
+        });
+
+        $sms = \App\Models\PhoneNumber::query()->where('sms_outbound_allowed', true)->where($here)->exists();
+        $whatsApp = \App\Models\WhatsAppNumber::query()->exists();
+        $email = \App\Models\SendingIdentity::query()->where($here)->exists() || \App\Models\Mailbox::query()->where($here)->exists();
+        $ready = fn (bool $ok, string $why) => ['ready' => $ok, 'why_not' => $ok ? null : $why];
+
+        return response()->json(['data' => [
+            'sms.send' => $ready($sms, 'No number here can send texts yet.'),
+            'lead.text' => $ready($sms, 'No number here can send texts yet.'),
+            'whatsapp.send' => $ready($whatsApp, 'WhatsApp is not connected.'),
+            'email.send' => $ready($email, 'No inbox or sending address is set up here.'),
+            'notify' => $ready(true, ''),
+        ]]);
+    }
+
     /** "scheduled_for" -> "Scheduled for"; "customer_id" -> "Customer". */
     public static function fieldLabel(string $field): string
     {
