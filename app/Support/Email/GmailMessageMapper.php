@@ -55,7 +55,9 @@ final class GmailMessageMapper
             fromAddress: $fromAddress,
             to:         $this->addressList($headers['to'] ?? ''),
             sentAt:     $this->sentAt($payload, $headers),
-            snippet:    $this->line((string) ($payload['snippet'] ?? '')),
+            // Gmail sends the snippet HTML-escaped ("it&#39;s", "&lt;"); it is
+            // shown as plain text, so it is decoded once here.
+            snippet:    $this->line(html_entity_decode((string) ($payload['snippet'] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
             hasAttachments: $this->hasAttachments($payload['payload'] ?? []),
 
             /*
