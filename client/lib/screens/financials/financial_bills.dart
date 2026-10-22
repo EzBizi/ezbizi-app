@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,11 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
   String? _error;
   bool _reading = false;
 
+  /// The search box, sent as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
+
   bool get _canEdit => widget.me.can('financials.edit');
 
   @override
@@ -38,8 +44,47 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _search.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
+  }
+
+  /// FinancialBillsController@index does not read `q` yet (it returns the
+  /// newest 500), so the loaded bills are also narrowed here, by place,
+  /// period and line names. Once the server honours `q` this is a no-op.
+  List<Map> _matching(List<Map> bills) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return bills;
+    return [
+      for (final b in bills)
+        if ([
+          b['place'] ?? 'Whole organization',
+          b['period_from'],
+          b['period_to'],
+          b['source'],
+          for (final l in (b['lines'] as List? ?? const []))
+            if (l is Map) l['name'],
+        ].whereType<Object>().join(' ').toLowerCase().contains(q))
+          b,
+    ];
+  }
+
   Future<void> _load() async {
-    final r = await widget.api.get('/financials/bills');
+    final r = await widget.api.get(
+      '/financials/bills',
+      _q.isEmpty ? null : {'q': _q},
+    );
     if (!mounted) return;
     setState(() {
       _bills = r.ok ? (r.body['data'] as List).cast<Map>() : null;
@@ -89,7 +134,7 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final bills = _bills ?? const <Map>[];
+    final bills = _matching(_bills ?? const <Map>[]);
     return ListView(
       key: const ValueKey('tour-financials-bills'),
       padding: const EdgeInsets.all(16),
@@ -102,7 +147,31 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: TextField(
+                  key: const Key('financials-bills-search'),
+                  controller: _search,
+                  onChanged: _searched,
+                  // bodyMedium for the text and the hint, as the dense pickers draw:
+                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    hintText: 'Place, period or line',
+                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(
+                        context,
+                      ).inputDecorationTheme.hintStyle?.color,
+                    ),
+                  ),
+                ),
+              ),
+            ),
             if (_canEdit) ...[
+              const SizedBox(width: 8),
               OutlinedButton(
                 onPressed: () => _open(),
                 child: const Text('Type one in'),
@@ -131,9 +200,11 @@ class _FinancialBillsTabState extends State<FinancialBillsTab> {
             child: Text(_error!),
           ),
         if (_bills != null && bills.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 24),
-            child: Text('No bills yet.'),
+          Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Text(
+              _q.isEmpty ? 'No bills yet.' : 'No bill matches "$_q".',
+            ),
           ),
         for (final b in bills)
           ListTile(

@@ -96,6 +96,11 @@ class _NewsletterTabState extends State<NewsletterTab> {
   int _dashRequest = 0;
   String? _selectedId;
 
+  /// The dashboard table's search box, sent as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _q = '';
+
   /// The newsletter whose Delete was tapped once; the next tap deletes it.
   String? _confirmingDelete;
   String? _loadError;
@@ -137,6 +142,8 @@ class _NewsletterTabState extends State<NewsletterTab> {
   @override
   void dispose() {
     _settleTimer?.cancel();
+    _searchDebounce?.cancel();
+    _search.dispose();
     _subject.dispose();
     _when.dispose();
     super.dispose();
@@ -195,7 +202,7 @@ class _NewsletterTabState extends State<NewsletterTab> {
       if (_selectedId == null && _all.isNotEmpty) _open(_all.first);
     });
 
-    if (_dashStatus != null) await _filter(_dashStatus);
+    if (_dashStatus != null || _q.isNotEmpty) await _filter(_dashStatus);
     if (_selectedId != null) await _refreshPreview();
   }
 
@@ -210,9 +217,12 @@ class _NewsletterTabState extends State<NewsletterTab> {
       _dashStatus = status;
       _dashLetters = null;
     });
-    if (status == null) return;
+    if (status == null && _q.isEmpty) return;
 
-    final response = await widget.api.get('/newsletters?status=$status');
+    final response = await widget.api.get('/newsletters', {
+      'status': ?status,
+      if (_q.isNotEmpty) 'q': _q,
+    });
     if (!mounted || request != _dashRequest || !response.ok) return;
 
     setState(() {
@@ -223,12 +233,35 @@ class _NewsletterTabState extends State<NewsletterTab> {
     });
   }
 
+  void _searched(String text) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _q = text.trim();
+      _filter(_dashStatus);
+    });
+  }
+
   /// The table's rows: the server's answer for the tile, or, until it lands,
   /// the matching rows already held.
-  List<NewsletterRow> get _tableRows => [
-    for (final n in _dashLetters ?? _all)
-      if (_dashStatus == null || n.row.status == _dashStatus) n.row,
-  ];
+  ///
+  /// NewslettersController@index does not read `q` yet (it returns the newest
+  /// fifty), so the rows are also narrowed here by subject, mailing list and
+  /// status. Once the server honours `q` that part is a no-op.
+  List<NewsletterRow> get _tableRows {
+    final q = _q.toLowerCase();
+    return [
+      for (final n in _dashLetters ?? _all)
+        if ((_dashStatus == null || n.row.status == _dashStatus) &&
+            (q.isEmpty ||
+                [
+                  n.row.subject,
+                  n.row.audienceName,
+                  n.row.status,
+                ].whereType<String>().join(' ').toLowerCase().contains(q)))
+          n.row,
+    ];
+  }
 
   /// Open a newsletter from the dashboard in the composer.
   ///
@@ -474,6 +507,23 @@ class _NewsletterTabState extends State<NewsletterTab> {
         rows: _tableRows,
         status: _dashStatus,
         onStatus: _filter,
+        query: _q,
+        search: TextField(
+          key: const Key('newsletters-search'),
+          controller: _search,
+          onChanged: _searched,
+          // bodyMedium for the text and the hint, as the dense pickers draw:
+          // 53 points tall, as they are; the theme's 16-point hint makes 56.
+          style: Theme.of(context).textTheme.bodyMedium,
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: const Icon(Icons.search, size: 18),
+            hintText: 'Subject or mailing list',
+            hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+            ),
+          ),
+        ),
         onNew: _create,
         scheduled: [
           for (final n in _all)

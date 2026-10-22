@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -58,6 +60,11 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
   List<Map>? _rows;
   String? _error;
 
+  /// The search box, sent as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
+
   (String, String) get _range {
     final now = widget.now ?? DateTime.now();
     final first = DateTime(now.year, now.month - _period);
@@ -71,6 +78,39 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _search.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
+  }
+
+  /// FinancialAdjustmentsController@index does not read `q` yet (it returns
+  /// up to 1000 in the period), so the loaded rows are also narrowed here.
+  /// Once the server honours `q` this is a no-op.
+  bool _matches(Map a) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return true;
+    return [
+      _kinds[a['kind']] ?? a['kind'],
+      a['place'],
+      a['technician'],
+      a['from_technician'],
+      a['team'],
+      a['job_number'],
+      a['reason'],
+    ].whereType<Object>().join(' ').toLowerCase().contains(q);
+  }
+
   Future<void> _load() async {
     setState(() {
       _rows = null;
@@ -79,14 +119,15 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
     final (from, to) = _range;
     final r = await widget.api.get(
       '/financials/adjustments?from=$from&to=$to'
-      '${widget.kind == null ? '' : '&kind=${widget.kind}'}',
+      '${widget.kind == null ? '' : '&kind=${widget.kind}'}'
+      '${_q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(_q)}'}',
     );
     if (!mounted) return;
     setState(() {
       if (r.ok) {
         _rows = [
           for (final a in (r.body['data'] as List).cast<Map>())
-            if (!widget.exclude.contains(a['kind'])) a,
+            if (!widget.exclude.contains(a['kind']) && _matches(a)) a,
         ];
       } else {
         _error = r.message;
@@ -120,6 +161,27 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
                 },
               ),
               Text('$from to $to', style: TextStyle(color: muted)),
+              SizedBox(
+                width: 240,
+                child: TextField(
+                  key: const Key('financials-adjustments-search'),
+                  controller: _search,
+                  onChanged: _searched,
+                  // bodyMedium for the text and the hint, as the dense pickers draw:
+                  // 53 points tall, as they are; the theme's 16-point hint makes 56.
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search, size: 18),
+                    hintText: 'Technician, job or reason',
+                    hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(
+                        context,
+                      ).inputDecorationTheme.hintStyle?.color,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -141,7 +203,9 @@ class _FinancialAdjustmentsListState extends State<FinancialAdjustmentsList> {
             (null, _) => const Center(child: CircularProgressIndicator()),
             (final List<Map> rows, _) when rows.isEmpty => Center(
               child: Text(
-                'Nothing recorded in this period.',
+                _q.isEmpty
+                    ? 'Nothing recorded in this period.'
+                    : 'Nothing in this period matches "$_q".',
                 style: TextStyle(color: muted),
               ),
             ),

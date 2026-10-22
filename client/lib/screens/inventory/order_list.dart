@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -54,10 +56,31 @@ class _OrderListState extends State<OrderList> {
   String? _selectedId;
   Map<String, dynamic>? _open;
 
+  /// The search box, sent to all three endpoints as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
   }
 
   @override
@@ -78,10 +101,14 @@ class _OrderListState extends State<OrderList> {
     final po = await widget.api.get('/inventory/purchase-orders', {
       if (_tile == 'receive') 'filter': 'to_receive',
       if (_tile == 'open') 'filter': 'open',
+      if (_q.isNotEmpty) 'q': _q,
     });
-    final issues = await widget.api.get('/inventory/issues');
+    final issues = await widget.api.get('/inventory/issues', {
+      if (_q.isNotEmpty) 'q': _q,
+    });
     final sales = await widget.api.get('/inventory/sales', {
       if (_tile == 'sales') 'filter': 'open',
+      if (_q.isNotEmpty) 'q': _q,
     });
 
     if (!mounted) return;
@@ -185,7 +212,31 @@ class _OrderListState extends State<OrderList> {
       }
     }
 
-    return rows;
+    // InventoryPurchaseOrdersController@index, InventorySalesController@index
+    // and InventoryIssuesController@index do not read `q` yet, so the loaded
+    // rows are also narrowed here. Once they do, this is a no-op.
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return rows;
+    return [
+      for (final entry in rows)
+        if (_matches(entry.row, q)) entry,
+    ];
+  }
+
+  /// Number, vendor, customer, job, note and line item names.
+  bool _matches(Map<String, dynamic> row, String q) {
+    final text = [
+      row['number'],
+      row['reference'],
+      row['note'],
+      inventoryMap(row['vendor'])?['name'],
+      inventoryMap(row['customer'])?['name'],
+      inventoryMap(row['job'])?['number'],
+      inventoryMap(row['location'])?['name'],
+      for (final line in inventoryMaps(row['lines']))
+        inventoryMap(line['item'])?['name'],
+    ].whereType<Object>().join(' ').toLowerCase();
+    return text.contains(q);
   }
 
   void _pick(String? tile) {
@@ -361,9 +412,34 @@ class _OrderListState extends State<OrderList> {
                   ),
                 ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            key: const Key('inventory-orders-search'),
+            controller: _search,
+            onChanged: _searched,
+            // bodyMedium for the text and the hint, as the dense pickers draw:
+            // 53 points tall, as they are; the theme's 16-point hint makes 56.
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: 'Number, vendor, customer or item',
+              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: rows.isEmpty
-              ? const Center(child: Text('There are no orders or sales.'))
+              ? Center(
+                  child: Text(
+                    _q.isEmpty
+                        ? 'There are no orders or sales.'
+                        : 'No order, sale or issue matches "$_q".',
+                  ),
+                )
               : LayoutBuilder(
                   builder: (context, box) => box.maxWidth >= 760 && !_hasPane
                       ? _table(context, rows)

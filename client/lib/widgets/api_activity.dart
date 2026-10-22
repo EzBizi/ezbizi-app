@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -83,21 +84,62 @@ class _ApiActivityState extends State<ApiActivity> {
   int? _reverting;
   final _said = <int, (String, Tone)>{};
 
+  /// The search box, sent as `q`, debounced. A new search starts again from
+  /// the newest row (no `before` cursor).
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
-  Future<void> _load({bool older = false}) async {
+  @override
+  void dispose() {
+    _search.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _q = text.trim();
+      _load(quiet: true);
+    });
+  }
+
+  /// ApiKeysController@activity does not read `q` yet, so the loaded rows are
+  /// also narrowed here. Once the server honours it this is a no-op.
+  bool _matches(Map<String, dynamic> row) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return true;
+    final text = [
+      verbOf(row),
+      row['path'],
+      row['who'],
+      row['key_name'],
+      row['action'],
+      row['status'],
+    ].whereType<Object>().join(' ').toLowerCase();
+    return text.contains(q);
+  }
+
+  /// [quiet] keeps the list (and the search box) on screen while a search
+  /// reloads, so typing is not interrupted by the spinner.
+  Future<void> _load({bool older = false, bool quiet = false}) async {
     setState(() {
-      _loading = !older;
+      _loading = !older && !quiet;
       _error = null;
       if (!older) _open = null;
     });
     final response = await widget.api.get(_path, {
       'key_id': ?(widget.keyId ?? _key),
       'user_id': ?_person,
+      if (_q.isNotEmpty) 'q': _q,
       if (older && _rows.isNotEmpty) 'before': '${_rows.last['at']}',
     });
     if (!mounted) return;
@@ -131,7 +173,8 @@ class _ApiActivityState extends State<ApiActivity> {
     final shown = [
       for (final (i, row) in _rows.indexed)
         if ((!_changesOnly || verbOf(row) != 'Read') &&
-            (!_refusedOnly || (int.tryParse('${row['status']}') ?? 0) >= 400))
+            (!_refusedOnly || (int.tryParse('${row['status']}') ?? 0) >= 400) &&
+            _matches(row))
           (i, row),
     ];
 
@@ -155,7 +198,9 @@ class _ApiActivityState extends State<ApiActivity> {
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: Text(
-                  _changesOnly
+                  _q.isNotEmpty
+                      ? 'Nothing done with an API key matches "$_q".'
+                      : _changesOnly
                       ? 'No changes made with an API key yet.'
                       : 'Nothing done with an API key yet.',
                   style: theme.textTheme.bodyMedium,
@@ -197,6 +242,25 @@ class _ApiActivityState extends State<ApiActivity> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        SizedBox(
+          width: 240,
+          child: TextField(
+            key: const Key('api-activity-search'),
+            controller: _search,
+            onChanged: _searched,
+            // bodyMedium for the text and the hint, as the dense pickers draw:
+            // 53 points tall, as they are; the theme's 16-point hint makes 56.
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: 'Path, person or key',
+              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+              ),
+            ),
+          ),
+        ),
         if (widget.everyone)
           SizedBox(
             width: 200,
