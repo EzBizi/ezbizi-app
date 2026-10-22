@@ -205,7 +205,7 @@ class NotificationDispatcher
             fn (User $user) => ($user->preferences['notifications.alerts'] ?? true) !== false
         )->values();
 
-        $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($alertable, $title, $body, $scope) : 0;
+        $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($alertable, $title, $body, $scope, $this->pushHeader($scope, $subject)) : 0;
 
         /*
          * AND THE THIRD CHANNEL — the only one that reaches a closed app.
@@ -363,7 +363,7 @@ class NotificationDispatcher
      *
      * @param  Collection<int, User>  $recipients  already capped by the caller
      */
-    private function alsoByEmail(Collection $recipients, string $title, ?string $body, Model $scope): int
+    private function alsoByEmail(Collection $recipients, string $title, ?string $body, Model $scope, ?string $header = null): int
     {
         if (! $this->channelOn('notifications.email_enabled', $scope)) {
             return 0;
@@ -386,7 +386,7 @@ class NotificationDispatcher
         // mail that was already on its way.
         $replyTo = trim((string) $this->settings->get('notifications.reply_to_email', $scope));
 
-        $notice = new NotificationNotice($title, $body, $replyTo === '' ? null : $replyTo);
+        $notice = new NotificationNotice($title, $body, $replyTo === '' ? null : $replyTo, $header);
 
         $sent = 0;
 
@@ -762,6 +762,15 @@ class NotificationDispatcher
      * 2026-10-21) — "EzBizi - A-1 Chimney - Connecticut", the branch dropped
      * when the record has none, the organization when it has no company.
      */
+    /**
+     * The same header for a record outside a dispatch — the bell list reads it
+     * so the panel, the toast, the push and the mail all say one thing.
+     */
+    public function headerFor(?Model $subject): string
+    {
+        return $this->pushHeader($this->settingsScope($subject), $subject);
+    }
+
     private function pushHeader(Model $scope, ?Model $subject): string
     {
         $companyId = $subject?->getAttribute('company_id');
