@@ -331,8 +331,11 @@ class _NotificationBellState extends State<NotificationBell>
     for (final item in arrivals) {
       await OsNotifications.show(
         id: _osId++,
-        title: item['title'] as String? ?? 'EzBizi',
-        body: item['body'] as String?,
+        // Header / what happened / content, like the push.
+        title: item['header'] as String? ?? item['title'] as String? ?? 'EzBizi',
+        body: item['header'] == null
+            ? item['body'] as String?
+            : [item['title'], item['body']].whereType<String>().join('\n'),
         payload: item['id']?.toString(),
       );
     }
@@ -564,11 +567,26 @@ class _NotificationBellState extends State<NotificationBell>
                                   : scheme.onSurfaceVariant,
                         ),
                       ),
-                      title: Text(
-                        n['title'] as String,
-                        style: unread
-                            ? const TextStyle(fontWeight: FontWeight.w600)
-                            : null,
+                      // Header / what happened / content — the same three
+                      // lines as the push (Jose, 2026-10-22).
+                      title: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (n['header'] case final String header)
+                            Text(
+                              header,
+                              key: ValueKey('notification-header-${n['id']}'),
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          Text(
+                            n['title'] as String,
+                            style: unread
+                                ? const TextStyle(fontWeight: FontWeight.w600)
+                                : null,
+                          ),
+                        ],
                       ),
                       subtitle: n['body'] != null
                           ? Text(n['body'] as String)

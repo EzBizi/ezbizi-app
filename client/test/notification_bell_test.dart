@@ -378,6 +378,22 @@ void main() {
     expect(DeepLinks.take('email')?.id, 'msg-123');
   });
 
+  testWidgets('a row leads with whose it is, like the push', (tester) async {
+    // Jose, 2026-10-22: "EzBizi - Company - Branch", then what happened,
+    // then the content — in the panel as on the phone.
+    await _pumpWithItem(
+      tester,
+      item: {..._email, 'header': 'EzBizi - A-1 Chimney - Georgia'},
+      onOpenModule: (_, _, _) {},
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    expect(find.text('EzBizi - A-1 Chimney - Georgia'), findsOneWidget);
+    expect(find.text('New email'), findsOneWidget);
+  });
+
   testWidgets('a link for another module waits for that module', (tester) async {
     addTearDown(() => DeepLinks.pending.value = null);
     DeepLinks.open(const DeepLink(module: 'email', type: 'email_message', id: 'm'));

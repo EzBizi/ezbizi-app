@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0475',
+      date: '22 Oct 2026',
+      items: [
+        'Notifications say whose they are everywhere: the bell panel, desktop pop-ups and notification emails now lead with "EzBizi - A-1 Chimney - Georgia", like phone pushes, then what happened, then the details.',
+        'Automations: "Where it applies" is one panel with the whole organization first, then each company with its branches beneath it, and search keeps the company heading.',
+        'Automations: the Change the status step can be saved (it never could before). Field values are checked against your own lists when a rule is saved and when it runs, and a step that cannot work with the rule\'s trigger is refused with the reason.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0474',
       date: '22 Oct 2026',
       items: [

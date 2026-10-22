@@ -6,16 +6,22 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
+import '../core/module_screens.dart';
+import '../core/sidebar_order.dart';
 import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
+import '../widgets/calendar_day_field.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
 import '../widgets/scope_choice_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
+import 'automation_steps/step_catalogue.dart';
+import 'automation_steps/step_fit.dart';
+import 'automation_steps/when_picker.dart';
 import 'hr/work_hours_reports_tab.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
@@ -54,9 +60,13 @@ class AutomationBuilder extends StatefulWidget {
     required this.onCancel,
     this.editing,
     this.canEditHoursReports = false,
-    this.onTry,
     this.companies = const [],
     this.branches = const [],
+    this.rules = const [],
+    this.onOpenRule,
+    this.sidebarOrder = const [],
+    this.viewPlace,
+    this.viewLabel,
   });
 
   final ApiClient api;
@@ -74,9 +84,22 @@ class AutomationBuilder extends StatefulWidget {
   final VoidCallback onSaved;
   final VoidCallback onCancel;
 
-  /// Rehearses the SAVED rule against a recent real event, beside Save
-  /// (UI queue 73). Null for a rule not saved yet: there is nothing to try.
-  final VoidCallback? onTry;
+  /// The rules already saved, as `GET /automations` lists them, so the When
+  /// step can say which ones use an event and link to them (UI queue 130).
+  final List<Map<String, dynamic>> rules;
+
+  /// Opens one of [rules] beside the list. Null draws the names unlinked.
+  final void Function(Map<String, dynamic> rule)? onOpenRule;
+
+  /// The person's own sidebar order, dividers included, so the When step's
+  /// rail runs in the order and groups they already know.
+  final List<String> sidebarOrder;
+
+  /// Where the person is standing, in the stored shape (`organization`,
+  /// `company:<id>`, `franchise:<id>`), and its name. A new rule with no
+  /// place chosen applies there, so Review names it and readiness checks it.
+  final String? viewPlace;
+  final String? viewLabel;
 
   /// The person's reach, from `/me`, which names and groups the catalogue's
   /// places in "Where it applies" (UI queue 129).
@@ -149,6 +172,9 @@ class _ActionRow {
   final value = TextEditingController();
   final url = TextEditingController();
   final message = TextEditingController();
+
+  /// "Set to" for a money field, in dollars; [value] holds the cents sent.
+  final money = TextEditingController();
 
   /// WhatsApp: the chosen template and one controller per blank it declares.
   ///
@@ -336,7 +362,9 @@ class _ActionRow {
     'recipient',
     'recipient_list',
     'report',
+    'report_text_kind',
     'roles',
+    'status',
     'training',
     'trigger_field',
   };
@@ -366,6 +394,7 @@ class _ActionRow {
     value.dispose();
     url.dispose();
     message.dispose();
+    money.dispose();
     pendingAddress.dispose();
     for (final c in whatsAppValues) {
       c.dispose();
@@ -461,6 +490,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   /// Which of the rule's steps the Then screen has open.
   int _selectedAction = 0;
+
+  /// Phone only: the open step fills the step's box, with a way back.
+  bool _phoneStepOpen = false;
+
+  /// What the server refused on each step at the last save, by step index
+  /// (`actions.N.value`, `actions.N.type`), shown on that step.
+  Map<int, String> _stepErrors = const {};
 
   /// The box that takes `{{ }}` the cursor was last in, for the details beside
   /// the Then step. Checked against the open step's own boxes before use, so a
@@ -800,7 +836,131 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 entry.key.toString(): entry.value.toString(),
             }
           : const {};
+      _fieldLabels = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['labels'] as Map? ?? const {}).entries)
+                entry.key.toString(): entry.value.toString(),
+            }
+          : const {};
+      _fieldTypes = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['types'] as Map? ?? const {}).entries)
+                entry.key.toString(): entry.value.toString(),
+            }
+          : const {};
+      _recentEvents = response.ok
+          ? [
+              for (final event
+                  in (response.data?['events'] as List? ?? const []))
+                if (event is Map && event['event_id'] != null)
+                  (
+                    id: '${event['event_id']}',
+                    at: event['occurred_at'] as String?,
+                    values: {
+                      for (final entry
+                          in (event['values'] as Map? ?? const {}).entries)
+                        '${entry.key}': '${entry.value}',
+                    },
+                  ),
+            ]
+          : const [];
+      _dryEvent = null;
+      if (response.ok) {
+        _detailCounts[key] = _plainFields.length;
+      }
     });
+  }
+
+  /// A detail's plain name: the server's words, or its key when the server
+  /// is older than labels.
+  String _labelOf(String field) => _fieldLabels[field] ?? field;
+
+  /// Technical ids (`role_id`, `scope_id`) are kept out of every list unless
+  /// asked for (UI queue 131).
+  bool _isTechnical(String field) => _fieldTypes[field] == 'id';
+
+  /// The details a person reads, ids left out.
+  List<String> get _plainFields => [
+    for (final field in _triggerFields)
+      if (!_isTechnical(field)) field,
+  ];
+
+  /// Plain names per detail, from `trigger-fields.labels`.
+  Map<String, String> _fieldLabels = const {};
+
+  /// text, number, date, boolean, enum or id, from `trigger-fields.types`.
+  Map<String, String> _fieldTypes = const {};
+
+  /// How many plain details each trigger carried, for the When cards, once
+  /// read. Only the chosen trigger's are read, so the others say nothing.
+  final Map<String, int> _detailCounts = {};
+
+  /// Up to three recent events of the chosen trigger, each one record's
+  /// values (`trigger-fields.events`): "Last 3 times", and what Try it can be
+  /// run on.
+  List<({String id, String? at, Map<String, String> values})> _recentEvents =
+      const [];
+
+  /// The event Try it runs on; null is the newest.
+  String? _dryEvent;
+
+  /// One event's values in words, plain details only, in the event's order.
+  String _eventWords(Map<String, String> values) => [
+    for (final field in _plainFields)
+      if (values[field] case final value?) _valueWords(field, value),
+  ].take(4).join(' · ');
+
+  /// When an event happened, as this organization writes a date and time.
+  String _eventWhen(String? at) =>
+      formatStamp(at, 'date unknown', formats: widget.formats);
+
+  /// Whether the condition menus and the details table show technical ids.
+  bool _showTechnical = false;
+
+  /// What `GET /automations/readiness` said for where the rule applies:
+  /// per message step, whether it can send there and why not. Null when the
+  /// server did not answer, which marks nothing.
+  Map<String, ({bool ready, String? whyNot})>? _readiness;
+  String? _readinessFor;
+
+  /// The place a rule applies in: the chosen one, else where the person is.
+  String get _effectivePlace => _place ?? widget.viewPlace ?? 'organization';
+
+  Future<void> _loadReadiness() async {
+    final place = _effectivePlace;
+    if (_readinessFor == place) return;
+    _readinessFor = place;
+
+    final parts = place.split(':');
+    final query = parts.length == 2
+        ? '?scope_type=${parts.first}&scope_id=${Uri.encodeQueryComponent(parts.last)}'
+        : '';
+    final response = await widget.api.get('/automations/readiness$query');
+    if (!mounted || _readinessFor != place) return;
+
+    final data = response.ok ? response.data : null;
+    setState(() {
+      _readiness = data is Map
+          ? {
+              for (final entry in data.entries)
+                if (entry.value is Map)
+                  '${entry.key}': (
+                    ready: (entry.value as Map)['ready'] == true,
+                    whyNot: (entry.value as Map)['why_not'] as String?,
+                  ),
+            }
+          : null;
+    });
+  }
+
+  /// Why a message step cannot send from here, or null when it can or the
+  /// server did not say.
+  String? _notReady(String? type) {
+    final answer = _readiness?[type];
+    if (answer == null || answer.ready) return null;
+    return answer.whyNot ?? 'This is not set up here yet.';
   }
 
   @override
@@ -836,6 +996,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _adoptConditions(editing['conditions']);
       _loadTriggerFields();
     }
+
+    _loadReadiness();
   }
 
   @override
@@ -1051,64 +1213,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   // ── what can be offered ──────────────────────────────────────────
 
-  /// Triggers, filed by TOP-LEVEL module rather than one category per module.
-  ///
-  /// Jose, 2026-09-24: *"The Marketing Tab is divided into tabs, when all of it
-  /// should be together."* Newsletter, Web Management, Reviews and Business
-  /// Profile are drawn inside Marketing in the app, and here they were five
-  /// separate categories — so the picker was grouped by how the SERVER splits
-  /// permissions rather than by where a person had just been looking.
-  ///
-  /// A child's rows carry its name, because once the category no longer says
-  /// "Reviews", "Reply published" beside "Newsletter sent" would not say which
-  /// part of Marketing it belongs to. It also keeps the child's name searchable.
-  List<PickerGroup> get _triggerGroups => _filedByTopLevel(
-    (module) => [
-      for (final trigger in module.triggers)
-        PickerItem(
-          key: trigger.key,
-          label: _underChild(module, trigger.label),
-          description: trigger.description,
-          // ENABLED stays true on purpose. A trigger declared ahead of its
-          // emitter is a reasonable thing to offer — hiding it or refusing the
-          // tap answers nobody's question about why an obvious event is
-          // missing, and the description explains the consequence. What was
-          // wrong was that the ONLY marker was the tail of a paragraph, so the
-          // row looked like every other one.
-          badge: trigger.isRaised ? null : 'Not raised yet',
-          note: switch (_triggerStats?[trigger.key]) {
-            final count? => _timesInMonth(count),
-            null => null,
-          },
-        ),
-    ],
-  );
-
-  /// One category per top-level module, children folded in, order kept.
-  ///
-  /// Order is first appearance, so Marketing stays where Marketing was rather
-  /// than moving to wherever its last child happened to sit. A module with
-  /// nothing to offer contributes no rows, and a category that ends up empty is
-  /// dropped — an empty heading reads as a module that is broken.
-  List<PickerGroup> _filedByTopLevel(
-    List<PickerItem> Function(CatalogueModule module) itemsOf,
-  ) {
-    final filed = <String, (CatalogueModule, List<PickerItem>)>{};
-
-    for (final module in widget.catalogue.modules) {
-      final items = itemsOf(module);
-      if (items.isEmpty) continue;
-
-      final top = widget.catalogue.topLevelOf(module);
-      filed.putIfAbsent(top.key, () => (top, <PickerItem>[])).$2.addAll(items);
-    }
-
-    return [
-      for (final (top, items) in filed.values)
-        PickerGroup(key: top.key, label: top.label, items: items),
-    ];
-  }
-
   /// A row's label, prefixed with its module when that module was folded into
   /// its parent's category and the heading no longer names it.
   String _underChild(CatalogueModule module, String label) =>
@@ -1123,125 +1227,110 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   List<CatalogueField> get _writableFields =>
       widget.catalogue.writableFieldsFor(_trigger);
 
-  /// The generic actions first, then what each module declares.
+  /// The steps that fit this rule, each once, in four groups (UI queue 133,
+  /// Jose's 1): For this (record), Send a message, Tell the team, Elsewhere.
   ///
-  /// Both, because neither list alone is the truth. The generic three are the
-  /// only ones the engine runs, and two of them — a webhook and a notification
-  /// — belong to no module at all, so a picker built from the modules would
-  /// hide the most useful things it can do. The module lists are what this
-  /// system is going to be able to do, marked so nobody plans a rule around
-  /// one and finds out at save time.
+  /// ── What is left out, and why it is left out rather than greyed ──
   ///
-  /// A third reason a row can be refused now: it does not apply to THIS rule.
-  /// "Customers › Update a field" was offered under a job trigger, enabled,
-  /// with a description promising to set a field on the customer — and the
-  /// engine wrote to the job. Marked and disabled, in the same way and for the
-  /// same reason as "Not built yet": hiding it answers nobody's question about
-  /// why an obvious action is missing.
+  /// The audit of every step against every trigger found most of the list
+  /// enabled under triggers it could never work on: they saved, then failed
+  /// every run in a log nobody reads. Jose: "how is the user supposed to even
+  /// know". A step that cannot apply here is not listed (see `stepFits`). A
+  /// step that applies but is not set up yet — no texting number here — is
+  /// listed, dimmed, with the reason.
+  ///
+  /// Each step is listed ONCE. "Update a field" was offered by the generic
+  /// list and again by Jobs, Customers, Fleet and Leads; the generic one is
+  /// kept, since it acts on whichever record the event is about.
   List<PickerGroup> get _actionGroups {
-    final subject = _subject;
-    // Only when a trigger has been chosen. Before that, "nothing is writable"
-    // and "we do not know yet" look identical, and refusing on the second would
-    // grey out the picker for a form nobody has filled in yet.
-    final nothingWritable = subject != null && subject.writableFields.isEmpty;
+    final subject = effectiveSubject(widget.catalogue, _trigger);
+    final byType = <String, PickerItem>{};
+
+    for (final type in widget.catalogue.actionTypes) {
+      if (type.moduleOnly || !_offerable(type)) continue;
+      if (!stepFits(
+        widget.catalogue,
+        type: type.key,
+        triggerKey: _trigger,
+        definition: type,
+      )) {
+        continue;
+      }
+      byType[type.key] = _stepItem(type.key, type.key, type.label, null);
+    }
+
+    for (final module in widget.catalogue.modules) {
+      for (final action in module.actions) {
+        // NOT LISTED rather than greyed. Jose, 2026-09-24: "i don't want to
+        // see any not built yet anymore".
+        if (!widget.catalogue.canUse(action)) continue;
+        final payload = widget.catalogue.payloadTypeFor(action)!;
+        final definition = widget.catalogue.actionType(payload);
+        if (definition != null && !_offerable(definition)) continue;
+        if (!moduleActionFits(
+          widget.catalogue,
+          module,
+          action,
+          triggerKey: _trigger,
+          type: payload,
+        )) {
+          continue;
+        }
+
+        // Once: the generic step already covers this record when it fits.
+        if (byType.containsKey(payload)) continue;
+        byType[payload] = _stepItem(
+          action.key,
+          payload,
+          action.label,
+          action.description,
+        );
+      }
+    }
+
+    final words =
+        recordWords(widget.catalogue, _trigger) ?? subject?.label.toLowerCase();
+    final record = words == null ? 'For this event' : 'For this $words';
+    final names = {
+      StepGroup.record: record,
+      StepGroup.message: 'Send a message',
+      StepGroup.team: 'Tell the team',
+      StepGroup.elsewhere: 'Elsewhere',
+    };
 
     return [
-      PickerGroup(
-        key: '_generic',
-        label: 'Works with anything',
-        items: [
-          for (final type in widget.catalogue.actionTypes)
-            if (!type.moduleOnly) _genericItem(type, subject, nothingWritable),
-        ],
-      ),
-      // Filed the same way as the triggers, for the same reason: Marketing's
-      // actions were spread across as many categories as it has tabs.
-      ..._filedByTopLevel(
-        (module) => [
-          for (final action in module.actions)
-            // NOT LISTED rather than listed and greyed. Jose, 2026-09-24: "i
-            // don't want to see any not built yet anymore". A module may still
-            // DECLARE an action ahead of the engine — the coverage audit reads
-            // those — but the builder offers only what will run.
-            if (widget.catalogue.canUse(action))
-              _moduleItem(module, action, subject),
-        ],
-      ),
+      for (final group in StepGroup.values)
+        if ([
+          for (final entry in byType.entries)
+            if (groupOf(entry.key) == group) entry.value,
+        ] case final items when items.isNotEmpty)
+          PickerGroup(key: '_${group.name}', label: names[group]!, items: items),
     ];
   }
 
-  PickerItem _genericItem(
-    CatalogueActionType type,
-    CatalogueSubject? subject,
-    bool nothingWritable,
+  /// A step type this build can offer at all: it can draw its form, and it
+  /// can be saved. "Change the status" with no status box could never be
+  /// saved (the audit's problem 1), so it waits for a server that declares it.
+  bool _offerable(CatalogueActionType type) =>
+      _ActionRow.canDraw(type) &&
+      !(type.key == 'change_status' && type.parameters.isEmpty);
+
+  /// One row of the Then list, dimmed with the reason when the message step
+  /// cannot send from where the rule applies.
+  PickerItem _stepItem(
+    String key,
+    String payload,
+    String label,
+    String? description,
   ) {
-    // The catalogue can name a type this build has no form for — that is the
-    // point of it being server-driven — and offering one produced a card saying
-    // "Create a task" that saved as a notification. Checked first, because
-    // "this app is too old" is true regardless of the trigger.
-    if (!_ActionRow.canDraw(type)) {
-      return PickerItem(
-        key: type.key,
-        label: type.label,
-        enabled: false,
-        badge: 'Needs a newer version of the app',
-      );
-    }
-
-    if (type.key == 'update_field' && nothingWritable) {
-      return PickerItem(
-        key: type.key,
-        label: type.label,
-        enabled: false,
-        badge: 'Nothing to set here',
-        description:
-            'This rule reacts to something about ${_article(subject!.label)}, '
-            'and a rule may not change ${_article(subject.label)}.',
-      );
-    }
-
-    return PickerItem(key: type.key, label: type.label);
-  }
-
-  PickerItem _moduleItem(
-    CatalogueModule module,
-    CatalogueAction action,
-    CatalogueSubject? subject,
-  ) {
-    // "Not built yet" wins. An action the engine cannot run is not usable for
-    // any trigger, so saying it is the wrong trigger would be a smaller truth
-    // in front of a larger one.
-    if (!widget.catalogue.canUse(action)) {
-      return PickerItem(
-        key: action.key,
-        label: _underChild(module, action.label),
-        description: action.description,
-        enabled: false,
-        badge: 'Not built yet',
-      );
-    }
-
-    if (widget.catalogue.moduleActionApplies(module, action.key, _trigger)) {
-      return PickerItem(
-        key: action.key,
-        label: _underChild(module, action.label),
-        description: action.description,
-      );
-    }
+    final notReady = _notReady(payload);
 
     return PickerItem(
-      key: action.key,
-      label: _underChild(module, action.label),
-      enabled: false,
-      badge: 'Not for this trigger',
-      // The catalogue's own sentence, then why it cannot happen here. The
-      // sentence is not wrong — it is about a customer — and that is exactly
-      // what makes it misleading under a job trigger.
-      description:
-          '${action.description ?? ''} This rule reacts to something about '
-                  '${_article(subject!.label)}, so it cannot act on '
-                  '${_article(module.subject!.label)}.'
-              .trim(),
+      key: key,
+      label: label,
+      description: notReady == null ? description : 'Set it up first.',
+      enabled: notReady == null,
+      badge: notReady,
     );
   }
 
@@ -1307,13 +1396,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // would refuse. An earlier version of this comment claimed the
           // trigger-change sweep read it, which was simply untrue —
           // _dropWhatNoLongerApplies does its own check and clears the row.
+          final payload = widget.catalogue.payloadTypeFor(action);
           return widget.catalogue.canUse(action) &&
-                  widget.catalogue.moduleActionApplies(
+                  payload != null &&
+                  moduleActionFits(
+                    widget.catalogue,
                     module,
-                    action.key,
-                    _trigger,
+                    action,
+                    triggerKey: _trigger,
+                    type: payload,
                   )
-              ? widget.catalogue.payloadTypeFor(action)
+              ? payload
               : null;
         }
       }
@@ -1377,6 +1470,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _fieldsSampled = null;
       _fieldValues = const {};
       _fieldSamples = const {};
+      _fieldLabels = const {};
+      _fieldTypes = const {};
+      _recentEvents = const [];
+      _dryEvent = null;
     });
 
     _loadTriggerFields();
@@ -1412,9 +1509,27 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ? null
           : widget.catalogue.moduleOwning(picked);
 
-      if (module != null &&
-          actionKey != null &&
-          !widget.catalogue.moduleActionApplies(module, actionKey, _trigger)) {
+      final declared = module?.actions
+          .where((a) => a.key == actionKey)
+          .firstOrNull;
+      final fits = row.type == null
+          ? true
+          : module != null && declared != null
+          ? moduleActionFits(
+              widget.catalogue,
+              module,
+              declared,
+              triggerKey: _trigger,
+              type: row.type!,
+            )
+          : stepFits(
+              widget.catalogue,
+              type: row.type!,
+              triggerKey: _trigger,
+              definition: widget.catalogue.actionType(row.type),
+            );
+
+      if (actionKey != null && !fits) {
         lost.add('step ${i + 1}, “${_actionLabel(actionKey)}”');
         row.catalogueKey = null;
         row.type = null;
@@ -1514,9 +1629,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (_actions.isEmpty) return 'Add at least one thing for it to do.';
 
     for (final action in _actions) {
-      if (action.type == null) return 'One of the steps has no action chosen.';
+      if (_actionProblemOf(action) case final missing?) return missing;
+    }
+
+    return null;
+  }
+
+  /// What stops one step being saved, in the words of whoever fixes it.
+  String? _actionProblemOf(_ActionRow action) {
+    if (action.type == null) return 'One of the steps has no action chosen.';
+
+    {
 
       final missing = switch (action.type) {
+        'change_status' when action.parameter('value').text.trim().isEmpty =>
+          'Which status should the step move it to?',
         'update_field' when action.field.text.trim().isEmpty =>
           'Which field should the step set?',
         // A field the subject does not have. Reachable two ways: a rule saved
@@ -1556,10 +1683,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         _ => null,
       };
 
-      if (missing != null) return missing;
+      return missing;
     }
-
-    return null;
   }
 
   Object? _conditionsPayload() {
@@ -1571,10 +1696,16 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     };
   }
 
-  Future<void> _submit() async {
+  /// Whether the rule being edited is switched on now. A new one is not.
+  bool get _isOn => widget.editing?['is_active'] == true;
+
+  /// Save it. [turnOn] also switches it on: a new rule is created switched
+  /// off by the server and then turned on, an edit carries `is_active`.
+  Future<void> _submit({bool turnOn = false}) async {
     setState(() {
       _busy = true;
       _error = null;
+      _stepErrors = const {};
     });
 
     final body = <String, dynamic>{
@@ -1610,6 +1741,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       },
     };
 
+    if (turnOn && _isEdit) body['is_active'] = true;
+
     final response = _isEdit
         ? await widget.api.patch('/automations/$_id', body)
         : await widget.api.post('/automations', body);
@@ -1617,11 +1750,42 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (!mounted) return;
 
     if (!response.ok) {
+      // A refusal about one step is shown on that step.
+      final errors = response.body['errors'];
+      final onSteps = <int, String>{};
+      if (errors is Map) {
+        for (final entry in errors.entries) {
+          final match = RegExp(r'^actions\.(\d+)\.').firstMatch('${entry.key}');
+          final first = entry.value is List && (entry.value as List).isNotEmpty
+              ? '${(entry.value as List).first}'
+              : '${entry.value}';
+          if (match != null) onSteps[int.parse(match.group(1)!)] = first;
+        }
+      }
       setState(() {
         _busy = false;
         _error = response.reason;
+        _stepErrors = onSteps;
       });
       return;
+    }
+
+    if (turnOn && !_isEdit) {
+      final id = response.data is Map ? (response.data as Map)['id'] : null;
+      final on = id == null
+          ? null
+          : await widget.api.patch('/automations/$id', {'is_active': true});
+      if (!mounted) return;
+      if (on == null || !on.ok) {
+        setState(() {
+          _busy = false;
+          _error =
+              'It was saved switched off, and could not be turned on: '
+              '${on?.reason ?? 'the server did not say which rule it saved'}. '
+              'Turn it on from the list.';
+        });
+        return;
+      }
     }
 
     widget.onSaved();
@@ -1949,6 +2113,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   // ── the counts the server may or may not answer ─────────────────
 
+  String _times(int count) => '$count ${count == 1 ? 'time' : 'times'}';
+
   String _timesInMonth(int count) =>
       '$count ${count == 1 ? 'time' : 'times'} in the last 30 days';
 
@@ -1971,19 +2137,45 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
     final data = response.data;
     final counts = <String, int>{};
+    final rules = <String, int>{};
+    final paired = <String, List<String>>{};
+    final details = <String, int>{};
 
     if (data is Map) {
       for (final entry in data.entries) {
-        final count = entry.value is Map
-            ? (entry.value as Map)['last_30_days']
-            : null;
-        if (count is num) counts['${entry.key}'] = count.toInt();
+        final row = entry.value;
+        if (row is! Map) continue;
+        final key = '${entry.key}';
+        if (row['last_30_days'] case final num count) {
+          counts[key] = count.toInt();
+        }
+        if (row['rules'] case final num count) rules[key] = count.toInt();
+        if (row['details'] case final num count) {
+          details[key] = count.toInt();
+        }
+        if (row['top_actions'] case final List types) {
+          paired[key] = [for (final type in types) '$type'];
+        }
       }
     }
 
     if (counts.isEmpty) return;
-    setState(() => _triggerStats = counts);
+    setState(() {
+      _triggerStats = counts;
+      _triggerRules = rules;
+      _triggerPaired = paired;
+      _triggerDetails = details;
+    });
   }
+
+  /// How many rules react to each trigger, and the steps they most often
+  /// take, from the same `trigger-stats` answer (UI queue 130).
+  Map<String, int> _triggerRules = const {};
+  Map<String, List<String>> _triggerPaired = const {};
+
+  /// How many details each trigger's recent events carry, from the same
+  /// answer, so every card can say it before any fields load.
+  Map<String, int> _triggerDetails = const {};
 
   /// The conditions as `POST /automations/would-have-run` is asked about
   /// them, or null when there is nothing honest to ask: no trigger, a clause
@@ -2078,10 +2270,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // is a ceiling, not a month.
           Text(
             rehearsal.total >= _rehearsalCeiling
-                ? '${rehearsal.wouldRun} of the newest ${rehearsal.total} '
-                      'would have run'
-                : '${rehearsal.wouldRun} of ${rehearsal.total} would have run, '
-                      'last 30 days',
+                ? 'Tested on the newest ${rehearsal.total} events: it would '
+                      'have run ${_times(rehearsal.wouldRun)}.'
+                : 'Tested on the last ${rehearsal.total} events (30 days): it '
+                      'would have run ${_times(rehearsal.wouldRun)}.',
             style: theme.textTheme.titleSmall,
           ),
           for (final example in rehearsal.examples) ...[
@@ -2113,17 +2305,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       context,
       5,
       'Review',
-      'The rule as one sentence. Tap any part of it to change that part.',
+      'The rule in plain words. Tap any part of it to change that part.',
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _sentence(context),
-          if (widget.onTry case final tryIt?) ...[
-            const SizedBox(height: 16),
-            _tryCard(context, tryIt),
-          ],
           const SizedBox(height: 16),
-          _whereLine(context),
+          _checklist(context),
+          const SizedBox(height: 16),
+          _tryIt(context),
           if (_isEdit) ...[const SizedBox(height: 20), _historyStep(context)],
         ],
       ),
@@ -2133,57 +2323,64 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   String get _triggerWords =>
       _trigger == null ? 'nothing chosen yet' : widget.catalogue.describeTrigger(_trigger!);
 
-  String _clauseWords(_ConditionRow row) {
-    final field = row.field.text.trim().isEmpty
-        ? 'a field not chosen yet'
-        : row.field.text.trim();
+  /// One condition in words, or null while it is missing a part.
+  String? _clauseWords(_ConditionRow row) {
+    final field = row.field.text.trim();
+    if (field.isEmpty) return null;
+    final label = _labelOf(field).toLowerCase();
     final op = widget.catalogue.operatorLabel(row.op);
 
+    String words(String value) => _valueWords(field, value);
+
     return switch (arityOf(row.op)) {
-      OperatorArity.none => '$field $op',
-      OperatorArity.one => '$field $op ${row.value.text.trim()}',
-      OperatorArity.many => '$field $op ${row.parsedValues.join(', ')}',
+      OperatorArity.none => 'the $label $op',
+      OperatorArity.one =>
+        row.value.text.trim().isEmpty
+            ? null
+            : 'the $label $op ${words(row.value.text.trim())}',
+      OperatorArity.many =>
+        row.parsedValues.isEmpty
+            ? null
+            : 'the $label $op ${row.parsedValues.map(words).join(', ')}',
     };
   }
 
-  String get _conditionWords {
-    if (_hasOpaque) return 'only if its stored conditions hold';
-    if (_conditions.isEmpty) return 'every time';
-
-    return 'only if ${[for (final row in _conditions) _clauseWords(row)].join(' and ')}';
-  }
-
-  String get _actionWords {
-    final labels = _lockedBecause != null
-        ? [
-            for (final action in _loadedActions)
-              _actionTypeLabel(action['type'] as String? ?? ''),
-          ]
-        : [
-            for (final row in _actions)
-              row.catalogueKey == null
-                  ? 'a step not chosen yet'
-                  : _actionLabel(row.catalogueKey!),
-          ];
-
-    return labels.isEmpty ? 'nothing yet' : labels.join(', then ');
-  }
-
-  /// Where it applies, as the end of the sentence.
+  /// Where it applies, said once, as the end of the sentence.
   ///
-  /// Named the way the picker names it: "Entire organization", "Ace Air Duct
-  /// (all branches)", "Ace Air Duct · Main".
+  /// Not "Where it applies: In the view…" and then the place again below it,
+  /// which said where twice (Jose, 2026-10-22).
   String get _placeWords {
     final place = _place;
-    if (place == null) return 'In the view you are in now';
+    if (place == 'organization') return 'across the whole organization';
+    if (place == null) {
+      final here = widget.viewLabel;
+      return here == null || here.isEmpty
+          ? 'in the view you are in now'
+          : widget.viewPlace == 'organization'
+          ? 'across $here, where you are now'
+          : 'in $here, where you are now';
+    }
 
     final named = scopeLabel(place, widget.companies, widget.branches);
-    if (named != null) return named;
+    if (named != null) return 'in $named';
 
+    for (final known in widget.catalogue.places) {
+      if (known.key == place) return 'in ${known.label}';
+    }
+
+    final label = (widget.editing?['scope'] as Map?)?['label'];
+    return label is String && label.isNotEmpty ? 'in $label' : 'in one place';
+  }
+
+  /// The chosen place's own name, for the picker that chose it.
+  String get _placeName {
+    final place = _place;
+    if (place == null) return 'In the view you are in now';
+    final named = scopeLabel(place, widget.companies, widget.branches);
+    if (named != null) return named;
     for (final known in widget.catalogue.places) {
       if (known.key == place) return known.label;
     }
-
     final label = (widget.editing?['scope'] as Map?)?['label'];
     return label is String && label.isNotEmpty ? label : 'In one place';
   }
@@ -2196,8 +2393,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         place.key: place.label,
   };
 
-  /// "When …, only if …, then …. Entire organization." Each part is
-  /// the way back to the step that wrote it.
+  /// A sentence from a step's own, lower-cased and without its full stop.
+  static String _inSentence(String says) {
+    final trimmed = says.endsWith('.') ? says.substring(0, says.length - 1) : says;
+    return trimmed.isEmpty
+        ? trimmed
+        : trimmed[0].toLowerCase() + trimmed.substring(1);
+  }
+
+  /// "When …, only if …, then …, in (place)." Each part is the way back to
+  /// the step that wrote it, and a missing part is written in red as what is
+  /// needed (UI queue 132, Jose's 1).
   Widget _sentence(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -2211,16 +2417,81 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       decoration: TextDecoration.underline,
       decorationColor: scheme.primary,
     );
+    final missing = link?.copyWith(
+      color: scheme.error,
+      decorationColor: scheme.error,
+    );
 
-    InlineSpan part(String text, int step) => WidgetSpan(
+    InlineSpan part(
+      String text,
+      int step, {
+      bool needed = false,
+      String? key,
+      int? action,
+    }) => WidgetSpan(
       alignment: PlaceholderAlignment.baseline,
       baseline: TextBaseline.alphabetic,
       child: InkWell(
-        key: ValueKey('automation-sentence-${_stepKeys[step]}'),
-        onTap: _busy ? null : () => _goTo(step),
-        child: Text(text, style: link),
+        key: ValueKey(key ?? 'automation-sentence-${_stepKeys[step]}'),
+        onTap: _busy
+            ? null
+            : () {
+                if (action != null) _selectedAction = action;
+                _goTo(step);
+              },
+        child: Text(text, style: needed ? missing : link),
       ),
     );
+
+    final conditions = <InlineSpan>[];
+    if (_hasOpaque) {
+      conditions.add(part('only if its stored conditions hold', 2));
+    } else if (_conditions.isEmpty) {
+      conditions.add(part('every time', 2));
+    } else {
+      final words = [for (final row in _conditions) _clauseWords(row)];
+      conditions.add(
+        words.contains(null)
+            ? part('pick which detail to check, and what it is', 2, needed: true)
+            : part('only if ${words.join(' and ')}', 2),
+      );
+    }
+
+    final steps = <InlineSpan>[];
+    if (_lockedBecause != null) {
+      steps.add(
+        part(
+          [
+            for (final action in _loadedActions)
+              _actionTypeLabel(action['type'] as String? ?? ''),
+          ].join(', then '),
+          3,
+        ),
+      );
+    } else if (_actions.isEmpty) {
+      steps.add(part('add something for it to do', 3, needed: true));
+    } else {
+      for (final (i, row) in _actions.indexed) {
+        if (i > 0) steps.add(const TextSpan(text: ' and '));
+        final says = _stepSays(row);
+        final problem = _actionProblemOf(row);
+        steps.add(
+          part(
+            row.type == null
+                ? 'choose what step ${i + 1} does'
+                : problem != null
+                ? (row.type == 'update_field' && row.field.text.trim().isEmpty
+                      ? 'pick which detail to update'
+                      : 'finish step ${i + 1}')
+                : _inSentence(says ?? _actionLabel(row.catalogueKey ?? '')),
+            3,
+            needed: row.type == null || problem != null,
+            key: i == 0 ? null : 'automation-sentence-then-$i',
+            action: i,
+          ),
+        );
+      }
+    }
 
     return Container(
       key: const ValueKey('automation-sentence'),
@@ -2235,78 +2506,444 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           style: base,
           children: [
             const TextSpan(text: 'When '),
-            part(_triggerWords, 1),
+            _trigger == null
+                ? part('choose what sets it off', 1, needed: true)
+                : part(_triggerWords, 1),
             const TextSpan(text: ', '),
-            part(_conditionWords, 2),
+            ...conditions,
             const TextSpan(text: ', then '),
-            part(_actionWords, 3),
-            const TextSpan(text: '. '),
-            part('$_placeWords.', 0),
+            ...steps,
+            const TextSpan(text: ', '),
+            part(_placeWords, 0),
+            const TextSpan(text: '.'),
           ],
         ),
       ),
     );
   }
 
-  Widget _tryCard(BuildContext context, VoidCallback tryIt) {
+  // ── the checklist (UI queue 132) ─────────────────────────────────
+
+  /// One line per step: ✓, ⚠ or ✕, a reason, and where to fix it. Message
+  /// steps are checked against where the rule applies (`readiness`).
+  List<({String step, String mark, String reason, int target, int? action})>
+  get _checks {
+    final checks =
+        <({String step, String mark, String reason, int target, int? action})>[];
+
+    void add(String step, String mark, String reason, int target, [int? action]) =>
+        checks.add((
+          step: step,
+          mark: mark,
+          reason: reason,
+          target: target,
+          action: action,
+        ));
+
+    final when = _whenProblem;
+    if (when != null) {
+      add('When', 'bad', when, 1);
+    } else if (!widget.catalogue.triggerIsRaised(_trigger)) {
+      add('When', 'warn', 'Nothing raises this event yet, so the rule will '
+          'not run until something does.', 1);
+    } else {
+      final count = _triggerStats?[_trigger];
+      add(
+        'When',
+        'ok',
+        'Reacts to ${widget.catalogue.describeTrigger(_trigger!)}'
+            '${count == null ? '' : ' · happened ${_timesInMonth(count).replaceFirst(' in the last 30 days', '')} in 30 days'}',
+        1,
+      );
+    }
+
+    final conditions = _conditionsProblem;
+    final rehearsal = _rehearsalFor == _rehearsalRequest ? _rehearsal : null;
+    if (conditions != null) {
+      add('Only if', 'bad', conditions, 2);
+    } else if (_hasOpaque) {
+      add('Only if', 'ok', 'Kept exactly as stored.', 2);
+    } else if (_conditions.isEmpty) {
+      add('Only if', 'ok', 'None, so it runs every time.', 2);
+    } else {
+      add(
+        'Only if',
+        'ok',
+        '${_conditions.length} ${_conditions.length == 1 ? 'condition' : 'conditions'}'
+            '${rehearsal == null ? '' : ' · would have passed ${rehearsal.wouldRun} of the last ${rehearsal.total}'}',
+        2,
+      );
+    }
+
+    if (_lockedBecause != null) {
+      add('Then', 'ok', 'Read-only: ${_loadedActions.length} steps.', 3);
+    } else if (_actions.isEmpty) {
+      add('Then', 'bad', 'Add at least one thing for it to do.', 3);
+    } else {
+      for (final (i, row) in _actions.indexed) {
+        final problem = _actionProblemOf(row);
+        final notReady = _notReady(row.type);
+        final refused = _stepErrors[i];
+        if (problem != null) {
+          add('Then · step ${i + 1}', 'bad', problem, 3, i);
+        } else if (refused != null) {
+          add('Then · step ${i + 1}', 'bad', refused, 3, i);
+        } else if (notReady != null) {
+          add('Then · step ${i + 1}', 'bad', notReady, 3, i);
+        } else {
+          add(
+            'Then · step ${i + 1}',
+            'ok',
+            _stepSays(row) ?? _actionLabel(row.catalogueKey ?? ''),
+            3,
+            i,
+          );
+        }
+      }
+    }
+
+    return checks;
+  }
+
+  /// The first ✕, which is what keeps Turn on greyed out.
+  String? get _turnOnBlocker {
+    if (_blocker case final blocker?) return blocker;
+    for (final check in _checks) {
+      if (check.mark == 'bad') return '${check.step}: ${check.reason}';
+    }
+    return null;
+  }
+
+  Widget _checklist(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final ok = ToneColours.of(context, Tone.ok);
+    final warn = ToneColours.of(context, Tone.caution);
+    final bad = ToneColours.of(context, Tone.bad);
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      key: const ValueKey('automation-checklist'),
       decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        border: Border.all(color: scheme.outlineVariant),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Try it', style: theme.textTheme.titleSmall),
-                const SizedBox(height: 2),
-                Text(
-                  'A rehearsal of the saved rule against the most recent real '
-                  'event. Nothing is actually done.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
+          for (final (i, check) in _checks.indexed) ...[
+            if (i > 0) const Divider(height: 1),
+            Padding(
+              key: ValueKey('automation-check-$i-${check.mark}'),
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: switch (check.mark) {
+                        'ok' => ok.fill,
+                        'warn' => warn.fill,
+                        _ => bad.fill,
+                      },
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      switch (check.mark) {
+                        'ok' => '✓',
+                        'warn' => '⚠',
+                        _ => '✕',
+                      },
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: switch (check.mark) {
+                          'ok' => ok.ink,
+                          'warn' => warn.ink,
+                          _ => bad.ink,
+                        },
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(check.step, style: theme.textTheme.titleSmall),
+                        Text(
+                          check.reason,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (check.mark != 'ok')
+                    TextButton(
+                      key: ValueKey('automation-check-fix-$i'),
+                      onPressed: _busy
+                          ? null
+                          : () {
+                              if (check.action != null) {
+                                _selectedAction = check.action!;
+                                _phoneStepOpen = true;
+                              }
+                              _goTo(check.target);
+                            },
+                      child: const Text('Fix ›'),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          OutlinedButton(
-            key: const Key('automation-builder-try'),
-            onPressed: _busy ? null : tryIt,
-            child: const Text('Try the saved rule'),
-          ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _whereLine(BuildContext context) {
-    final theme = Theme.of(context);
+  // ── Try it: a dry run of the draft (UI queue 132) ─────────────────
 
-    return Row(
-      children: [
-        const Icon(Icons.place_outlined, size: 18),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            // Not "Where it applies: In the view…", which says where twice.
-            _place == null
-                ? 'Where it applies: the view you are in now'
-                : 'Where it applies: $_placeWords',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ),
-        TextButton(
-          key: const ValueKey('automation-review-where'),
-          onPressed: _busy ? null : () => _goTo(0),
-          child: const Text('Change'),
-        ),
-      ],
+  /// `POST /automations/dry-run` for the form as it is now, or null when
+  /// there is nothing it could run: no trigger, a condition the save would
+  /// refuse, or no step chosen.
+  String? get _dryRunRequest {
+    if (_trigger == null || _conditionsProblem != null) return null;
+    if (_lockedBecause != null) return null;
+
+    final actions = <Map<String, dynamic>>[];
+    for (final row in _actions) {
+      if (row.type == null) continue;
+      try {
+        actions.add(row.toJson(widget.catalogue.actionType(row.type)));
+      } on StateError {
+        continue;
+      }
+    }
+    if (actions.isEmpty) return null;
+
+    return jsonEncode({
+      'trigger_key': _trigger,
+      'conditions': _conditionsPayload(),
+      'actions': actions,
+      'event_id': ?_dryEvent,
+    });
+  }
+
+  String? _dryRunFor;
+  Map<String, dynamic>? _dryRun;
+  String? _dryRunError;
+  bool _dryRunning = false;
+
+  Future<void> _runDry() async {
+    final request = _dryRunRequest;
+    if (request == null) return;
+
+    setState(() {
+      _dryRunning = true;
+      _dryRunError = null;
+    });
+
+    final response = await widget.api.post(
+      '/automations/dry-run',
+      jsonDecode(request) as Map<String, dynamic>,
     );
+    if (!mounted) return;
+
+    setState(() {
+      _dryRunning = false;
+      _dryRunFor = request;
+      _dryRun = response.ok && response.data is Map
+          ? Map<String, dynamic>.from(response.data as Map)
+          : null;
+      _dryRunError = response.ok ? null : response.message;
+    });
+  }
+
+  Widget _tryIt(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final request = _dryRunRequest;
+    final current = request != null && request == _dryRunFor;
+    final result = current ? _dryRun : null;
+    final error = current ? _dryRunError : null;
+    final occurred = result?['occurred_at'];
+
+    return Container(
+      key: const ValueKey('automation-try'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Try it', style: theme.textTheme.titleSmall),
+              if (_recentEvents.isEmpty)
+                Text(
+                  occurred == null
+                      ? 'On: the newest event of this kind here'
+                      : 'On: the newest event, ${_eventWhen('$occurred')}',
+                  style: theme.textTheme.bodyMedium,
+                )
+              else
+                // Which of the last three it runs on (UI queue 132).
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: SearchPickerField<String>(
+                    key: const ValueKey('automation-try-event'),
+                    value: _dryEvent ?? _recentEvents.first.id,
+                    label: 'On',
+                    isDense: true,
+                    options: [
+                      for (final event in _recentEvents)
+                        SearchOption<String>(
+                          value: event.id,
+                          label: _eventWhen(event.at),
+                          detail: _eventWords(event.values),
+                        ),
+                    ],
+                    onChanged: _busy || _dryRunning
+                        ? null
+                        : (chosen) => setState(() => _dryEvent = chosen),
+                  ),
+                ),
+              OutlinedButton(
+                key: const Key('automation-builder-try'),
+                onPressed: _busy || _dryRunning || request == null
+                    ? null
+                    : _runDry,
+                child: const Text('Run the test'),
+              ),
+              Text('Nothing is sent or changed.', style: muted),
+            ],
+          ),
+          if (request == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _trigger == null
+                    ? 'Choose what sets it off first.'
+                    : _conditionsProblem ??
+                          'Choose at least one step to try.',
+                style: muted,
+              ),
+            ),
+          if (_dryRunning)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: LinearProgressIndicator(),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(error, style: TextStyle(color: scheme.error)),
+            ),
+          if (result != null) ..._dryRunLines(context, result),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _dryRunLines(BuildContext context, Map<String, dynamic> result) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final ok = ToneColours.of(context, Tone.ok);
+    final lines = <Widget>[];
+
+    Widget line(String mark, Color colour, String text, {Key? key}) => Padding(
+      key: key,
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 24,
+            child: Text(
+              mark,
+              style: theme.textTheme.titleSmall?.copyWith(color: colour),
+            ),
+          ),
+          Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    );
+
+    void leaves(Object? node) {
+      if (node is! Map) return;
+      if (node['reason'] == 'no conditions') {
+        lines.add(
+          line('✓', ok.ink, 'No conditions, so it runs every time.'),
+        );
+        return;
+      }
+      if (node['type'] == 'condition') {
+        final field = '${node['field']}';
+        final matched = node['matched'] == true;
+        final expected = node['expected'];
+        final actual = node['actual'];
+        final said = switch (expected) {
+          null => '',
+          final List list => ' ${list.map((v) => _valueWords(field, '$v')).join(', ')}',
+          _ => ' ${_valueWords(field, '$expected')}',
+        };
+        lines.add(
+          line(
+            matched ? '✓' : '✕',
+            matched ? ok.ink : scheme.error,
+            'Only if: ${_labelOf(field).toLowerCase()} '
+            '${widget.catalogue.operatorLabel('${node['op']}')}$said '
+            '(it was ${actual == null || '$actual'.isEmpty ? 'empty' : _valueWords(field, '$actual')})',
+          ),
+        );
+        return;
+      }
+      for (final child in (node['children'] as List? ?? const [])) {
+        leaves(child);
+      }
+    }
+
+    leaves(result['condition_trace']);
+
+    if (result['matched'] != true) {
+      lines.add(
+        line('–', scheme.onSurfaceVariant,
+            'The conditions did not pass, so no step would run.'),
+      );
+      return lines;
+    }
+
+    for (final (i, step) in (result['would_do'] as List? ?? const []).indexed) {
+      if (step is! Map) continue;
+      final done = step['ok'] == true && step['skipped'] != true;
+      final skipped = step['skipped'] == true;
+      lines.add(
+        line(
+          '${i + 1}',
+          done
+              ? ok.ink
+              : skipped
+              ? scheme.onSurfaceVariant
+              : scheme.error,
+          '${skipped ? 'Skipped' : done ? 'Would' : 'Would fail'} · '
+          '${_actionTypeLabel('${step['type'] ?? ''}')}: ${step['detail'] ?? ''}',
+          key: ValueKey('automation-try-step-$i'),
+        ),
+      );
+    }
+
+    return lines;
   }
 
   Widget _editingBanner(BuildContext context) {
@@ -2594,8 +3231,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               places: _placesOf(),
               companies: widget.companies,
               branches: widget.branches,
-              fallbackLabel: _placeWords,
-              onChanged: _busy ? null : (value) => setState(() => _place = value),
+              fallbackLabel: _placeName,
+              onChanged: _busy
+                  ? null
+                  : (value) {
+                      setState(() => _place = value);
+                      _loadReadiness();
+                    },
             ),
           ],
         ],
@@ -2633,7 +3275,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
             if (chosen != null) ...[
               const SizedBox(height: 12),
-              _pickedTrigger(context, chosen, showChosen: false),
+              _whenDetails(context, chosen, showName: false),
             ],
             // THE WHEN STAYS EDITABLE. What a rule reacts to is fixed; when a
             // clock rule runs is not, and the save sends it on every edit.
@@ -2644,17 +3286,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       );
     }
 
-    final picker = CataloguePicker(
-      key: const ValueKey('tour-automations-trigger'),
-      groups: _triggerGroups,
-      selected: chosen,
-      searchHint: 'Search events',
-      height: narrow ? 380 : 460,
-      cards: true,
-      onSelected: _chooseTrigger,
-    );
-    final picked = chosen == null ? null : _pickedTrigger(context, chosen);
-    final beside = picked != null && !narrow && inner >= 900;
+    final compact = narrow || inner < 760;
 
     return _step(
       context,
@@ -2665,39 +3297,198 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (beside)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: picker),
-                const SizedBox(width: 16),
-                SizedBox(width: 300, child: picked),
-              ],
-            )
-          else ...[
-            picker,
-            if (picked != null) ...[const SizedBox(height: 12), picked],
-          ],
+          WhenPicker(
+            key: const ValueKey('tour-automations-trigger'),
+            categories: _whenCategories,
+            selected: chosen,
+            narrow: compact,
+            height: compact ? 460 : 520,
+            onSelected: _chooseTrigger,
+            details: (key) => _whenDetails(context, key),
+          ),
           if (_isScheduled) _scheduleEditor(context),
         ],
       ),
     );
   }
 
-  /// The chosen event: what it is, how often it happened, and what it carries
-  /// for the steps after it.
-  Widget _pickedTrigger(
+  /// The rail of the When step: one entry per top-level module, children
+  /// folded in, in the person's own sidebar order with its dividers, and the
+  /// sidebar's icon for each (UI queue 130).
+  List<WhenCategory> get _whenCategories {
+    final filed = <String, (CatalogueModule, List<WhenEvent>)>{};
+
+    for (final module in widget.catalogue.modules) {
+      if (module.triggers.isEmpty) continue;
+      final top = widget.catalogue.topLevelOf(module);
+      final events = filed.putIfAbsent(top.key, () => (top, <WhenEvent>[])).$2;
+
+      for (final trigger in module.triggers) {
+        events.add(
+          WhenEvent(
+            key: trigger.key,
+            label: _underChild(module, trigger.label),
+            description: trigger.description,
+            isRaised: trigger.isRaised,
+            count: _triggerStats?[trigger.key],
+            details:
+                _triggerDetails[trigger.key] ?? _detailCounts[trigger.key],
+            rules:
+                _triggerRules[trigger.key] ?? _rulesUsing(trigger.key)?.length,
+          ),
+        );
+      }
+    }
+
+    final arranged = arrangeSidebar(
+      filed.values.toList(),
+      widget.sidebarOrder,
+      (entry) => entry.$1.key,
+    );
+
+    return [
+      for (final (i, (top, events)) in arranged.rows.indexed)
+        WhenCategory(
+          key: top.key,
+          label: top.label,
+          icon: moduleScreens[top.key]?.icon ?? Icons.extension_outlined,
+          events: events,
+          ruleAbove: arranged.divideAfter.contains(i - 1),
+        ),
+    ];
+  }
+
+  /// The saved rules reacting to [trigger], or null when the list was not
+  /// handed in and only the server's count is known.
+  List<Map<String, dynamic>>? _rulesUsing(String trigger) => widget.rules.isEmpty
+      ? null
+      : [
+          for (final rule in widget.rules)
+            if (rule['trigger_key'] == trigger) rule,
+        ];
+
+  /// A grey bar where a line will be, so the panel keeps its shape while it
+  /// loads.
+  Widget _placeholder(BuildContext context, double width) => Container(
+    width: width,
+    height: 12,
+    margin: const EdgeInsets.only(top: 6),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(4),
+    ),
+  );
+
+  /// The chosen event: what the card does not already say (UI queue 130).
+  ///
+  /// Every section is drawn at once, with placeholder rows until what the
+  /// event carries has loaded, so nothing moves when it arrives.
+  Widget _whenDetails(
     BuildContext context,
-    String key, {
-    bool showChosen = true,
+    String? key, {
+    bool showName = true,
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final trigger = widget.catalogue.locate(key)?.$2;
-    final count = _triggerStats?[key];
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: scheme.onSurfaceVariant,
     );
+    final heading = theme.textTheme.labelLarge;
+    final trigger = key == null ? null : widget.catalogue.locate(key)?.$2;
+    // What this panel knows is the chosen trigger's; another key has nothing
+    // loaded yet.
+    final loaded = key != null && key == _trigger && _fieldsSampled != null;
+    final count = key == null ? null : _triggerStats?[key];
+
+    Widget section(String title, Widget body, Key sectionKey) => Padding(
+      key: sectionKey,
+      padding: const EdgeInsets.only(top: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: heading),
+          const SizedBox(height: 4),
+          body,
+        ],
+      ),
+    );
+
+    Widget loading(List<double> widths) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [for (final w in widths) _placeholder(context, w)],
+    );
+
+    final plain = loaded ? _plainFields : const <String>[];
+    final technical = loaded ? _triggerFields.length - plain.length : 0;
+    final last = [
+      for (final field in plain)
+        ?_sampleWords(field),
+    ].take(4).join(' · ');
+    final rules = key == null ? null : _rulesUsing(key);
+    final ruleCount = (key == null ? null : _triggerRules[key]) ?? rules?.length;
+    final paired = key == null
+        ? const <CatalogueActionType>[]
+        : [
+            for (final type in _triggerPaired[key] ?? const <String>[])
+              if (widget.catalogue.actionType(type) case final known?)
+                if (_ActionRow.canDraw(known) &&
+                    stepFits(
+                      widget.catalogue,
+                      type: type,
+                      triggerKey: key,
+                      definition: known,
+                    ))
+                  known,
+          ];
+
+    final Widget uses;
+    if (!loaded) {
+      uses = key == null || _fieldsSampled == null
+          ? loading(const [140, 100, 120])
+          : Text('Choose it to see what it carries.', style: muted);
+    } else if (plain.isEmpty) {
+      uses = Text(
+        'This has not happened here yet, so there is nothing to list.',
+        style: muted,
+      );
+    } else {
+      uses = Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final field in plain)
+            Chip(
+              label: Text(_labelOf(field)),
+              visualDensity: VisualDensity.compact,
+            ),
+        ],
+      );
+    }
+
+    final Widget used;
+    if (key == null) {
+      used = loading(const [120]);
+    } else if (rules == null || rules.isEmpty) {
+      used = Text(
+        rules == null && (ruleCount ?? 0) > 0
+            ? 'Open the Rules tab to see them.'
+            : 'None yet.',
+        style: muted,
+      );
+    } else {
+      used = Wrap(
+        spacing: 4,
+        children: [
+          for (final rule in rules.take(6))
+            TextButton(
+              onPressed: widget.onOpenRule == null || _busy
+                  ? null
+                  : () => widget.onOpenRule!(rule),
+              child: Text('${rule['name'] ?? 'A rule'} ›'),
+            ),
+        ],
+      );
+    }
 
     return Container(
       key: const ValueKey('automation-picked-trigger'),
@@ -2710,56 +3501,117 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (showChosen)
+          if (key == null) ...[
+            Text('Pick an event', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
             Text(
-              'Chosen: ${widget.catalogue.describeTrigger(key)}',
-              style: theme.textTheme.titleSmall,
+              'What it carries, the last time it happened and the rules '
+              'using it appear here.',
+              style: muted,
             ),
-          if (showChosen && trigger?.description != null)
-            const SizedBox(height: 6),
-          if (trigger?.description != null)
-            Text(trigger!.description!, style: muted),
-          if (count != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              _timesInMonth(count),
-              key: const ValueKey('automation-trigger-count'),
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: scheme.primary,
-              ),
-            ),
-          ],
-          if (_triggerFields.isNotEmpty || _fieldsSampled == 0) ...[
-            const SizedBox(height: 12),
-            Text('What this event carries', style: theme.textTheme.labelLarge),
-            const SizedBox(height: 6),
-            if (_triggerFields.isEmpty)
+          ] else ...[
+            if (showName)
               Text(
-                'This has not happened here yet, so there is nothing to list.',
-                style: muted,
-              )
-            else ...[
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final field in _triggerFields)
-                    Chip(
-                      label: Text(field),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                ],
+                widget.catalogue.describeTrigger(key),
+                style: theme.textTheme.titleSmall,
               ),
-              const SizedBox(height: 6),
+            if (trigger?.description != null) ...[
+              const SizedBox(height: 4),
+              Text(trigger!.description!, style: muted),
+            ],
+            if (count != null) ...[
+              const SizedBox(height: 8),
               Text(
-                'Test them in Only if, and drop them into a message in Then.',
-                style: muted,
+                _timesInMonth(count),
+                key: const ValueKey('automation-trigger-count'),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: scheme.primary,
+                ),
               ),
             ],
           ],
+          section(
+            technical > 0
+                ? 'What you can use · +$technical technical'
+                : 'What you can use',
+            uses,
+            const ValueKey('automation-when-uses'),
+          ),
+          section(
+            _recentEvents.isEmpty || !loaded ? 'Last time' : 'Last 3 times',
+            !loaded
+                ? loading(const [180, 160, 170])
+                : _recentEvents.isNotEmpty
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (i, event) in _recentEvents.indexed)
+                        Container(
+                          key: ValueKey('automation-when-event-$i'),
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border.all(color: scheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_eventWhen(event.at)} · '
+                            '${_eventWords(event.values)}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                    ],
+                  )
+                : last.isEmpty
+                ? Text('Nothing to show yet.', style: muted)
+                : Text(last, style: theme.textTheme.bodySmall),
+            const ValueKey('automation-when-last'),
+          ),
+          section(
+            ruleCount == null ? 'Rules using it' : 'Rules using it · $ruleCount',
+            used,
+            const ValueKey('automation-when-rules'),
+          ),
+          section(
+            'Often paired with',
+            key == null
+                ? loading(const [90, 110])
+                : paired.isEmpty
+                ? Text('Nothing yet.', style: muted)
+                : Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final type in paired)
+                        ActionChip(
+                          key: ValueKey('automation-when-pair-${type.key}'),
+                          label: Text('+ ${type.label}'),
+                          onPressed: _busy || key != _trigger
+                              ? null
+                              : () => _addStep(type.key),
+                        ),
+                    ],
+                  ),
+            const ValueKey('automation-when-paired'),
+          ),
         ],
       ),
     );
+  }
+
+  /// A Then step of [type], added from "Often paired with".
+  void _addStep(String type) {
+    setState(() {
+      final row = _ActionRow(
+        catalogueKey: type,
+        type: _payloadTypeFor(type),
+        picking: false,
+      );
+      _attach(row);
+      _actions.add(row);
+      _selectedAction = _actions.length - 1;
+    });
   }
 
   /// Read a stored schedule back into the form.
@@ -2971,13 +3823,16 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   'cannot draw. They are shown as stored and saved back exactly '
                   'as they are, rather than being flattened into something that '
                   'would mean something else.',
-        _withRehearsal(
-          !_hasOpaque
-            ? Text(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (!_hasOpaque)
+              Text(
                 'There are none, so it runs every time.',
                 style: Theme.of(context).textTheme.bodyMedium,
               )
-            : Container(
+            else
+              Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
@@ -2988,11 +3843,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
-          rehearsal,
-          beside: !narrow && inner >= 900,
+            if (rehearsal != null) ...[const SizedBox(height: 12), rehearsal],
+          ],
         ),
       );
     }
+
+    final technical = _triggerFields.where(_isTechnical).toList();
 
     return _step(
       context,
@@ -3001,124 +3858,138 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _conditions.isEmpty
           ? 'Optional. With nothing here it runs every time the event happens.'
           : 'Every one of these has to be true.',
-      _withRehearsal(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final row in _conditions)
-              Padding(
-                key: row.key,
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _conditionRow(context, row, narrow),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, row) in _conditions.indexed)
+            Padding(
+              key: row.key,
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _conditionRow(context, row, narrow, i),
+            ),
+          if (rehearsal != null) ...[rehearsal, const SizedBox(height: 12)],
+          _carriesTable(context, narrow),
+          if (technical.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const ValueKey('automation-show-technical'),
+                onPressed: () =>
+                    setState(() => _showTechnical = !_showTechnical),
+                child: Text(
+                  _showTechnical
+                      ? 'Hide technical details'
+                      : 'Show technical details (${technical.take(3).join(', ')}'
+                            '${technical.length > 3 ? '…' : ''})',
+                ),
               ),
-            _fieldCatalogue(context),
-          ],
-        ),
-        rehearsal,
-        beside: !narrow && inner >= 900,
+            ),
+        ],
       ),
       action: TextButton.icon(
         key: const ValueKey('tour-automations-add-condition'),
-        onPressed: _busy
-            ? null
-            : () => setState(() {
-                final row = _ConditionRow();
-                _attach(row);
-                _conditions.add(row);
-              }),
+        onPressed: _busy ? null : () => _addCondition(),
         icon: const Icon(Icons.add, size: 16),
         label: const Text('Add a condition'),
       ),
     );
   }
 
-  /// The conditions, and beside them (or under them) what recent events say
-  /// they would have done.
-  Widget _withRehearsal(Widget rows, Widget? card, {required bool beside}) {
-    if (card == null) return rows;
-
-    if (beside) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(child: rows),
-          const SizedBox(width: 16),
-          SizedBox(width: 280, child: card),
-        ],
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [rows, const SizedBox(height: 12), card],
-    );
+  /// A new clause, optionally already on [field] ("Use" in the table).
+  void _addCondition([String? field]) {
+    setState(() {
+      final row = _ConditionRow(field: field ?? '');
+      if (field != null && _fieldTypes[field] == 'boolean') row.value.text = 'true';
+      _attach(row);
+      _conditions.add(row);
+    });
   }
 
-  /// Everything this event carries, in one place, with the words that fit.
-  ///
-  /// Jose, 2026-09-17: *"i set website_chat manually cause i knew it, but i
-  /// dont know the rest ... i need to know which ones they are, make them
-  /// searchable, give me a catalog as well to see them all"*.
-  ///
-  /// The pickers answer it one field at a time, which is the right shape while
-  /// somebody is writing a clause. This answers the other question — what is
-  /// there AT ALL — which a picker cannot, because reading a picker means
-  /// first guessing which field to hang it off.
-  ///
-  /// THREE DIFFERENT THINGS, AND THEY ARE NOT INTERCHANGEABLE. A field with a
-  /// closed set lists every allowed value, because anything else matches
-  /// nothing for as long as the rule exists. A field without one shows a real
-  /// example, because the shape of a value is the only guide there is. A field
-  /// with neither is still named, because knowing it exists is what lets
-  /// somebody test it at all.
-  ///
-  /// Collapsed by default: a reference, not a step.
-  Widget _fieldCatalogue(BuildContext context) {
+  /// The type a detail's comparisons and value box follow. A closed set is
+  /// an enum whatever else the server called it.
+  String? _typeOf(String field) =>
+      _fieldValues[field] != null ? 'enum' : _fieldTypes[field];
+
+  /// A detail's last value, in words: the label of a closed set's value.
+  String? _sampleWords(String field) {
+    final sample = _fieldSamples[field];
+    if (sample == null) return null;
+    for (final option in _fieldValues[field] ?? const <({String value, String label})>[]) {
+      if (option.value == sample) return option.label;
+    }
+    return sample;
+  }
+
+  /// "What this event carries" as a compact table: the detail, its value the
+  /// last time, and Use, which adds a condition on it (UI queue 131).
+  Widget _carriesTable(BuildContext context, bool narrow) {
     if (_triggerFields.isEmpty) return const SizedBox.shrink();
 
-    final text = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final rows = _showTechnical ? _triggerFields : _plainFields;
+    final hidden = _triggerFields.length - _plainFields.length;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 8),
-        title: Text(
-          'What this event carries (${_triggerFields.length})',
-          style: text.titleSmall,
-        ),
-        subtitle: Text(
-          'Every field you can test above, or drop into a message below.',
-          style: text.bodySmall,
-        ),
+    Widget line(String detail, String last, Widget? use, {bool head = false}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: Text(
+                  detail,
+                  overflow: TextOverflow.ellipsis,
+                  style: head ? theme.textTheme.labelSmall : theme.textTheme.titleSmall,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  last,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: head ? theme.textTheme.labelSmall : muted,
+                ),
+              ),
+              SizedBox(width: 64, child: use),
+            ],
+          ),
+        );
+
+    return Container(
+      key: const ValueKey('automation-carries'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final field in _triggerFields)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SelectableText(field, style: text.titleSmall),
-                  if (_fieldValues[field] != null)
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final option in _fieldValues[field]!)
-                          Chip(
-                            label: Text('${option.label} - ${option.value}'),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                      ],
-                    )
-                  else if (_fieldSamples[field] != null)
-                    Text(
-                      'Anything. Last one seen: ${_fieldSamples[field]}',
-                      style: text.bodySmall,
-                    )
-                  else
-                    Text('Anything.', style: text.bodySmall),
-                ],
+          Text(
+            'What this event carries · ${_plainFields.length}'
+            '${hidden > 0 ? ' (+$hidden technical)' : ''}',
+            style: theme.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 6),
+          line('DETAIL', 'LAST TIME', null, head: true),
+          const Divider(height: 8),
+          for (final field in rows)
+            line(
+              _labelOf(field),
+              _sampleWords(field) ??
+                  (_fieldValues[field] == null
+                      ? '—'
+                      : _fieldValues[field]!.map((o) => o.label).join(', ')),
+              TextButton(
+                key: ValueKey('automation-use-$field'),
+                onPressed: _busy ? null : () => _addCondition(field),
+                child: const Text('Use'),
               ),
             ),
         ],
@@ -3126,38 +3997,27 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  /// Choosing a field, rather than guessing one.
+  /// Choosing a detail, by its plain name, with the last value as an example.
   ///
   /// ── What this replaced, and what it cost ─────────────────────
   ///
-  /// A free `TextField` with the hint "status". The vocabulary is fixed and the
-  /// form published none of it, so a customer building "tell me about missed
-  /// calls" wrote `from` and `Status` for an email whose payload carries
-  /// `from_address` and `subject`. Both clauses read null, the rule skipped
-  /// every run for a fortnight, and the trace said "the value at the time was
-  /// nothing" each time — which reads as missing data, not as a wrong name. No
-  /// error, nothing red; the rule simply never fired.
+  /// A free `TextField` with the hint "status". A customer building "tell me
+  /// about missed calls" wrote `from` and `Status` for an email whose payload
+  /// carries `from_address` and `subject`; both read null and the rule skipped
+  /// every run for a fortnight. A typo cannot be typed into a list.
   ///
-  /// A typo cannot be typed into a list. Search comes free with DropdownMenu
-  /// and matters at the wide end: a Task event carries a couple of dozen
-  /// fields, and scrolling a menu to find `due_on` is the same problem in a
-  /// shorter costume.
+  /// ── Why it still accepts a typed name ───────────────────────
   ///
-  /// ── Why it still accepts free text ───────────────────────────
-  ///
-  /// The list is what recent events CARRIED, so a real field that has not
+  /// The list is what recent events CARRIED, so a real detail that has not
   /// appeared lately is absent. Refusing anything off-list would make a
-  /// correct rule unsaveable because the office was quiet, so typing still
-  /// works and an off-list value is kept and marked rather than dropped —
-  /// the same idiom the settings selectors use for a stored value that is no
-  /// longer offered.
+  /// correct rule unsaveable because the office was quiet, so a typed name is
+  /// still taken, and an off-list one is kept and marked rather than dropped.
   Widget _fieldChooser(BuildContext context, _ConditionRow row) {
     final typed = row.field.text.trim();
     final known = _triggerFields.contains(typed);
 
     // Nothing to offer yet. Say WHICH kind of nothing: a trigger that has not
-    // fired here cannot be answered by waiting, and telling somebody to wait
-    // for a list that will never arrive is worse than the text box was.
+    // fired here cannot be answered by waiting.
     if (_triggerFields.isEmpty) {
       return TextField(
         controller: row.field,
@@ -3168,141 +4028,201 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           hintText: 'status',
           helperMaxLines: 3,
           helperText: _trigger == null
-              ? 'Choose what this reacts to first, and the fields it carries '
+              ? 'Choose what this reacts to first, and the details it carries '
                     'will be offered here.'
               : _fieldsSampled == 0
               ? 'This has not happened here yet, so there is nothing to list. '
-                    'Type the field name if you know it.'
+                    'Type the name if you know it.'
               : null,
         ),
       );
     }
 
-    return DropdownMenu<String>(
-      controller: row.field,
-      enabled: !_busy,
-      enableFilter: true,
-      requestFocusOnTap: true,
-      expandedInsets: EdgeInsets.zero,
-      label: const Text('Field'),
+    final offered = [
+      for (final field in _triggerFields)
+        if (_showTechnical || !_isTechnical(field) || field == typed) field,
+    ];
+
+    return SearchPickerField<String>(
+      key: ValueKey('condition-field-${row.key}'),
+      value: typed.isEmpty ? null : typed,
+      label: 'Field',
+      isDense: true,
       helperText: known || typed.isEmpty ? null : 'Not seen on this event lately',
-      inputDecorationTheme: const InputDecorationTheme(isDense: true),
-      dropdownMenuEntries: [
-        // The stored value first when it is not one of the offered ones, so
-        // opening an existing rule shows what it actually says instead of an
-        // empty box that looks like the rule lost its field.
+      // A typed name the list does not carry, kept (see above).
+      create: (name) => name.trim(),
+      options: [
         if (typed.isNotEmpty && !known)
-          DropdownMenuEntry(value: typed, label: '$typed — not seen lately'),
-        for (final field in _triggerFields)
-          DropdownMenuEntry(value: field, label: field),
+          SearchOption(value: typed, label: typed, detail: 'Not seen lately'),
+        for (final field in offered)
+          SearchOption(
+            value: field,
+            label: _labelOf(field),
+            detail: switch (_sampleWords(field)) {
+              final sample? => 'e.g. $sample',
+              null => null,
+            },
+          ),
       ],
-      onSelected: (picked) {
-        if (picked != null) _changed();
-      },
+      onChanged: _busy
+          ? null
+          : (picked) => setState(() {
+              if ((picked ?? '') == row.field.text) return;
+              row.field.text = picked ?? '';
+              final fits = operatorsFor(
+                widget.catalogue.operators,
+                type: _typeOf(row.field.text),
+                triggerKey: _trigger,
+              );
+              if (!fits.any((op) => op.key == row.op) && fits.isNotEmpty) {
+                row.op = fits.first.key;
+              }
+              row.value.text = _fieldTypes[row.field.text] == 'boolean'
+                  ? 'true'
+                  : '';
+            }),
     );
   }
 
-  Widget _conditionRow(BuildContext context, _ConditionRow row, bool narrow) {
+  /// "Only if [Role] [is one of] [Technician, Office]" — and "and …" after the
+  /// first (UI queue 131, Jose's 1 and 4).
+  Widget _conditionRow(
+    BuildContext context,
+    _ConditionRow row,
+    bool narrow,
+    int index,
+  ) {
+    final theme = Theme.of(context);
     final arity = arityOf(row.op);
+    final name = row.field.text.trim();
+    final type = name.isEmpty ? null : _typeOf(name);
+    final options = _fieldValues[name];
 
     final field = _fieldChooser(context, row);
     final operator = SearchPickerField<String>(
-                   value: row.op,
-                   label: 'Is',
-                   isDense: true,
-                   options: [
-              for (final operator in widget.catalogue.operators)
-                SearchOption(value: operator.key, label: operator.label),
-            ],
-                   onChanged: _busy
+      key: ValueKey('condition-op-${row.key}'),
+      value: row.op,
+      label: 'Is',
+      isDense: true,
+      // Only the comparisons that fit this detail, each with what it means
+      // here. "changed" only where the event carries what it was before.
+      options: [
+        for (final op in operatorsFor(
+          widget.catalogue.operators,
+          type: type,
+          triggerKey: _trigger,
+          current: row.op,
+        ))
+          SearchOption(
+            value: op.key,
+            label: op.label,
+            detail: name.isEmpty
                 ? null
-                : (value) => setState(() => row.op = value ?? row.op),
-                 );
-    final compared = arity == OperatorArity.none
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    'Nothing to compare against — the field itself is the whole '
-                    'test.',
-                    style: Theme.of(context).textTheme.bodySmall,
+                : operatorExample(
+                    op.key,
+                    label: _labelOf(name),
+                    sample: _sampleWords(name),
+                    type: type,
                   ),
-                )
-              : (arity == OperatorArity.one &&
-                        _fieldValues[row.field.text.trim()] != null)
-              // A CLOSED SET GETS A LIST, because nothing on this screen told
-              // anybody the value they had to type was `website_chat`. The
-              // field picker fixed half of "people cannot guess them around"
-              // and left the other half: knowing the field is `source` does not
-              // tell you what goes in the box beside it.
-              //
-              // Only for `is`. "is one of" takes several values separated by
-              // commas, and one dropdown cannot say two things - that case
-              // keeps the text box and lists the options underneath instead.
-              ? SearchPickerField<String>(
-                  value: row.value.text.trim().isEmpty
-                      ? null
-                      : row.value.text.trim(),
-                  label: 'Value',
-                  isDense: true,
-                  onChanged: _busy
-                      ? null
-                      : (chosen) => setState(
-                          () => row.value.text = chosen ?? '',
-                        ),
-                  options: [
-                    for (final option in _fieldValues[row.field.text.trim()]!)
-                      SearchOption<String>(
-                        value: option.value,
-                        // The wire name is shown as well as the plain one: a
-                        // rule saved before this existed reads back as the raw
-                        // value, and somebody comparing the two needs to see
-                        // they are the same thing.
-                        label: '${option.label}  (${option.value})',
-                      ),
-                  ],
-                )
-              : (arity == OperatorArity.many &&
-                    _fieldValues[row.field.text.trim()] != null)
-              // A CLOSED SET under "is one of" is ticked, not typed (Jose,
-              // 2026-10-20: email auto-replies set up in the builder by him —
-              // which inboxes, with nobody typing an address).
-              ? Wrap(
-                  key: ValueKey('values-${row.key}'),
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final option in _fieldValues[row.field.text.trim()]!)
-                      FilterChip(
-                        label: Text(option.label),
-                        selected: row.parsedValues.contains(option.value),
-                        onSelected: _busy
-                            ? null
-                            : (on) => setState(() {
-                                final picked = [...row.parsedValues]
-                                  ..remove(option.value);
-                                if (on) picked.add(option.value);
-                                row.value.text = picked.join(', ');
-                              }),
-                      ),
-                  ],
-                )
-              : TextField(
-                  controller: row.value,
-                  enabled: !_busy,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    labelText: arity == OperatorArity.many ? 'Values' : 'Value',
-                    // "is one of" could not be expressed at all before: the form
-                    // sent one string, the evaluator compares against a list, so
-                    // the clause never matched anything.
-                    helperText: arity == OperatorArity.many
-                        ? (_fieldValues[row.field.text.trim()] == null
-                              ? 'Separate them with commas'
-                              : 'Separate them with commas — '
-                                    '${_fieldValues[row.field.text.trim()]!.map((o) => o.value).join(', ')}')
-                        : null,
-                  ),
-                );
+          ),
+      ],
+      onChanged: _busy
+          ? null
+          : (value) => setState(() => row.op = value ?? row.op),
+    );
+
+    final Widget compared;
+    if (arity == OperatorArity.none) {
+      compared = Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(
+          'Nothing to compare against — the detail itself is the whole test.',
+          style: theme.textTheme.bodySmall,
+        ),
+      );
+    } else if (options != null && arity == OperatorArity.one) {
+      // A CLOSED SET GETS A LIST, in plain words; the value stays the wire one.
+      compared = SearchPickerField<String>(
+        value: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
+        label: 'Value',
+        isDense: true,
+        onChanged: _busy
+            ? null
+            : (chosen) => setState(() => row.value.text = chosen ?? ''),
+        options: [
+          for (final option in options)
+            SearchOption<String>(value: option.value, label: option.label),
+        ],
+      );
+    } else if (options != null) {
+      // A closed set under "is one of" is ticked, not typed (Jose, 2026-10-20).
+      compared = Wrap(
+        key: ValueKey('values-${row.key}'),
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final option in options)
+            FilterChip(
+              label: Text(option.label),
+              selected: row.parsedValues.contains(option.value),
+              onSelected: _busy
+                  ? null
+                  : (on) => setState(() {
+                      final picked = [...row.parsedValues]
+                        ..remove(option.value);
+                      if (on) picked.add(option.value);
+                      row.value.text = picked.join(', ');
+                    }),
+            ),
+        ],
+      );
+    } else if (type == 'boolean' && arity == OperatorArity.one) {
+      final on = row.value.text.trim() == 'true';
+      compared = Row(
+        children: [
+          Switch(
+            key: ValueKey('condition-switch-${row.key}'),
+            value: on,
+            onChanged: _busy
+                ? null
+                : (value) =>
+                      setState(() => row.value.text = value ? 'true' : 'false'),
+          ),
+          const SizedBox(width: 6),
+          Text(on ? 'Yes' : 'No', style: theme.textTheme.bodyMedium),
+        ],
+      );
+    } else if (type == 'date' && arity == OperatorArity.one) {
+      compared = CalendarDayField(
+        key: ValueKey('condition-date-${row.key}'),
+        controller: row.value,
+        formats: widget.formats,
+        label: 'Value',
+        dense: true,
+        enabled: !_busy,
+        onChanged: (_) => _changed(),
+      );
+    } else {
+      compared = TextField(
+        controller: row.value,
+        enabled: !_busy,
+        keyboardType: type == 'number'
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          isDense: true,
+          labelText: arity == OperatorArity.many ? 'Values' : 'Value',
+          helperText: arity == OperatorArity.many
+              ? 'Separate them with commas'
+              : null,
+        ),
+      );
+    }
+
+    final lead = Text(
+      index == 0 ? 'Only if' : 'and',
+      style: theme.textTheme.titleSmall,
+    );
     final remove = IconButton(
       icon: const Icon(Icons.close, size: 18),
       tooltip: 'Remove this condition',
@@ -3314,33 +4234,36 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             }),
     );
 
-    // On a phone the three boxes do not fit in one line, so the field gets a
-    // line of its own and the comparison sits under it.
+    // On a phone the sentence stacks: "Only if", then each part on its own
+    // line (Jose's 4).
     if (narrow) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [Expanded(child: field), remove],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 2, child: operator),
-              const SizedBox(width: 8),
-              Expanded(flex: 3, child: compared),
-              const SizedBox(width: 40),
-            ],
-          ),
-        ],
+      return Container(
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
+        decoration: BoxDecoration(
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [Expanded(child: lead), remove]),
+            Padding(padding: const EdgeInsets.only(right: 8), child: field),
+            const SizedBox(height: 8),
+            Padding(padding: const EdgeInsets.only(right: 8), child: operator),
+            const SizedBox(height: 8),
+            Padding(padding: const EdgeInsets.only(right: 8), child: compared),
+          ],
+        ),
       );
     }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: SizedBox(width: 56, child: lead),
+        ),
         Expanded(flex: 3, child: field),
         const SizedBox(width: 8),
         Expanded(flex: 3, child: operator),
@@ -3396,6 +4319,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               _attach(row);
               _actions.add(row);
               _selectedAction = _actions.length - 1;
+              _phoneStepOpen = true;
             }),
       icon: const Icon(Icons.add, size: 16),
       label: const Text('Add a step'),
@@ -3421,30 +4345,35 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     final Widget body;
 
     if (narrow) {
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              for (var i = 0; i < _actions.length; i++)
-                ChoiceChip(
-                  key: ValueKey('automation-then-step-$i'),
-                  label: Text(_stepListLabel(i)),
-                  selected: i == selected,
-                  onSelected: _busy
-                      ? null
-                      : (_) => setState(() => _selectedAction = i),
+      // On a phone the steps are a list, and each opens on its own with a way
+      // back (Jose's 4).
+      body = _phoneStepOpen && selected != null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('automation-then-back'),
+                    onPressed: () => setState(() => _phoneStepOpen = false),
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    label: const Text('All steps'),
+                  ),
                 ),
-              add,
-            ],
-          ),
-          const SizedBox(height: 12),
-          editor,
-        ],
-      );
+                editor,
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < _actions.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _phoneStepTile(context, i),
+                  ),
+                Align(alignment: Alignment.centerLeft, child: add),
+              ],
+            );
     } else {
       final details = _detailsPanel(
         context,
@@ -3502,6 +4431,56 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ],
           body,
         ],
+      ),
+    );
+  }
+
+  /// One step in the phone's list: what it is and what it will do.
+  Widget _phoneStepTile(BuildContext context, int index) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final says = _stepSays(_actions[index]);
+
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('automation-then-step-$index'),
+        onTap: _busy
+            ? null
+            : () => setState(() {
+                _selectedAction = index;
+                _phoneStepOpen = true;
+              }),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_stepListLabel(index), style: theme.textTheme.titleSmall),
+                    if (says != null)
+                      Text(
+                        says,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3634,12 +4613,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  Widget _variableChip(String field, VoidCallback? onPressed) => ActionChip(
-    label: Text(
-      _fieldSamples[field] == null ? field : '$field — ${_fieldSamples[field]}',
+  /// A placeholder, by its plain name; it drops in `{{key}}`, which the
+  /// preview fills from the last event (UI queue 133).
+  Widget _variableChip(String field, VoidCallback? onPressed) => Tooltip(
+    message: _fieldSamples[field] == null
+        ? 'Drops in $field'
+        : 'Last time: ${_fieldSamples[field]}',
+    child: ActionChip(
+      key: ValueKey('automation-placeholder-$field'),
+      label: Text('+ ${_labelOf(field)}'),
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
     ),
-    visualDensity: VisualDensity.compact,
-    onPressed: onPressed,
   );
 
   /// What the last trigger change took away.
@@ -3676,6 +4661,151 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             onPressed: () => setState(() => _triggerNotice = null),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── what each step does, in words (UI queue 133) ─────────────────
+
+  /// "the job's" — the record this rule is about, owned.
+  String get _recordOwned {
+    final subject = effectiveSubject(widget.catalogue, _trigger);
+    return subject == null ? "the record's" : "the ${subject.label.toLowerCase()}'s";
+  }
+
+  /// The words a stored value is chosen by: its option's label when it has
+  /// one.
+  String _valueWords(String field, String value, {CatalogueField? writable}) {
+    for (final option in writable?.options ??
+        _fieldValues[field] ??
+        const <({String value, String label})>[]) {
+      if (option.value == value) return option.label;
+    }
+    if (writable?.kind == 'money') {
+      final cents = int.tryParse(value);
+      if (cents != null) return '\$${(cents / 100).toStringAsFixed(2)}';
+    }
+    return value;
+  }
+
+  /// Who a recipient value names, the way the picker named it.
+  String _recipientWords(String value) {
+    if (value.isEmpty) return 'nobody yet';
+    if (value == 'customer:') return 'the customer it is about';
+    if (value == 'assignee:') return 'whoever the task is given to';
+    if (value.startsWith('user:')) {
+      final person = widget.catalogue.people
+          .where((p) => p.key == value)
+          .firstOrNull;
+      return person?.label.split(' — ').first ?? 'somebody who has left';
+    }
+    if (value.contains('@') || RegExp(r'^[+0-9][0-9 ()\-.]*$').hasMatch(value)) {
+      return value;
+    }
+    return 'the ${_labelOf(value).toLowerCase()} from the event';
+  }
+
+  /// A message as it would read with the last event's values, cut short.
+  String _quoted(String text) {
+    final filled = text
+        .replaceAllMapped(
+          RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false),
+          (m) => _fieldSamples[m.group(1)!] ?? _labelOf(m.group(1)!),
+        )
+        .trim();
+    final short = filled.length > 60 ? '${filled.substring(0, 57)}…' : filled;
+    return '“$short”';
+  }
+
+  /// One sentence saying what a step will do, built from plain labels, or
+  /// null while it is not chosen or not filled in enough to say.
+  String? _stepSays(_ActionRow row) {
+    final type = row.type;
+    if (type == null || row.picking) return null;
+
+    String param(String key) => row.parameter(key).text.trim();
+
+    switch (type) {
+      case 'update_field':
+        final field = row.field.text.trim();
+        if (field.isEmpty) return null;
+        final writable = _writableFields.where((f) => f.key == field).firstOrNull;
+        final label = (writable?.label ?? _labelOf(field)).toLowerCase();
+        final value = row.value.text.trim();
+        return value.isEmpty
+            ? 'Clears $_recordOwned $label.'
+            : 'Sets $_recordOwned $label to '
+                  '“${_valueWords(field, value, writable: writable)}”.';
+      case 'change_status':
+        final value = param('value');
+        if (value.isEmpty) return null;
+        final status = _writableFields.where((f) => f.key == 'status').firstOrNull;
+        return 'Moves ${_recordOwned.replaceAll("'s", '')} to '
+            '“${_valueWords('status', value, writable: status)}”.';
+      case 'notify':
+        final roles = [
+          for (final id in param('role_ids').split(','))
+            if (widget.catalogue.roles.where((r) => r.key == id.trim()).firstOrNull
+                case final role?)
+              role.label,
+        ];
+        final message = param('message');
+        return 'Sends a notification to '
+            '${roles.isEmpty ? 'everybody who can see it' : roles.join(', ')}'
+            '${message.isEmpty ? '' : ': ${_quoted(message)}'}.';
+      case 'email.send':
+        final subject = param('subject');
+        return 'Emails ${_recipientWords(param('to_field'))}'
+            '${subject.isEmpty ? '' : ': ${_quoted(subject)}'}.';
+      case 'sms.send':
+        final body = param('body');
+        return 'Texts ${_recipientWords(param('to'))}'
+            '${body.isEmpty ? '' : ': ${_quoted(body)}'}.';
+      case 'lead.text':
+        final body = param('body');
+        return 'Texts the customer on the enquiry'
+            '${body.isEmpty ? '' : ': ${_quoted(body)}'}.';
+      case 'whatsapp.send':
+        if (row.whatsAppTemplate.isEmpty) return null;
+        return 'Sends the WhatsApp message “${row.whatsAppTemplate}” to '
+            '${_recipientWords(param('to_field'))}.';
+      case 'webhook':
+        final url = row.url.text.trim();
+        return url.isEmpty ? null : 'Calls $url.';
+    }
+
+    final definition = widget.catalogue.actionType(type);
+    final label = row.catalogueKey == null
+        ? (definition?.label ?? type)
+        : _actionLabel(row.catalogueKey!).split(' › ').last;
+
+    if (definition == null || definition.parameters.isEmpty) {
+      final subject = effectiveSubject(widget.catalogue, _trigger);
+      return subject == null
+          ? '$label.'
+          : '$label, on the ${subject.label.toLowerCase()} this rule is about.';
+    }
+
+    return '$label.';
+  }
+
+  /// The green line under a step: what it will do.
+  Widget _stepSaysBox(BuildContext context, int index, _ActionRow row) {
+    final says = _stepSays(row);
+    if (says == null) return const SizedBox.shrink();
+    final ok = ToneColours.of(context, Tone.ok);
+
+    return Container(
+      key: ValueKey('automation-step-says-$index'),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        color: ok.fill,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        says,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: ok.ink),
       ),
     );
   }
@@ -3737,11 +4867,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
             if (row.picking) ...[
               const SizedBox(height: 12),
-              CataloguePicker(
+              StepCatalogue(
                 groups: _actionGroups,
                 selected: chosen,
-                searchHint: 'Search actions',
-                height: 260,
                 onSelected: (key) => setState(() {
                   row.catalogueKey = key;
                   row.type = _payloadTypeFor(key);
@@ -3753,7 +4881,24 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.only(left: 36, right: 8),
-                child: _actionFields(row),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _actionFields(row),
+                    _stepSaysBox(context, index, row),
+                    if (_stepErrors[index] case final refused?)
+                      Padding(
+                        key: ValueKey('automation-step-error-$index'),
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          refused,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ],
@@ -3837,6 +4982,53 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return null;
   }
 
+  /// A parameter that means something on this rule's record. "Also tell
+  /// whoever the task is given to" only on a task, "the job's technician"
+  /// only on a job.
+  bool _parameterShown(CatalogueActionParameter parameter) => parameterFits(
+    parameter.key,
+    widget.catalogue.publishesSubjects
+        ? (effectiveSubject(widget.catalogue, _trigger)?.key ?? '')
+        : null,
+  );
+
+  /// The status to move the record to: the record's own statuses where the
+  /// server lists them (a job's are the company's pipeline), typed where it
+  /// does not (a task's are per board).
+  Widget _statusPicker(_ActionRow row, CatalogueActionParameter parameter) {
+    final controller = row.parameter(parameter.key);
+    final options = _writableFields
+        .where((f) => f.key == 'status')
+        .firstOrNull
+        ?.options;
+
+    if (options == null) {
+      return TextField(
+        controller: controller,
+        enabled: !_busy,
+        decoration: InputDecoration(
+          labelText: parameter.label,
+          isDense: true,
+          helperText: 'Write the status exactly as the board names it.',
+        ),
+      );
+    }
+
+    return SearchPickerField<String>(
+      value: controller.text.isEmpty ? null : controller.text,
+      label: parameter.label,
+      isDense: true,
+      helperText: "Statuses come from your company's list.",
+      options: [
+        for (final option in options)
+          SearchOption<String>(value: option.value, label: option.label),
+      ],
+      onChanged: _busy
+          ? null
+          : (chosen) => setState(() => controller.text = chosen ?? ''),
+    );
+  }
+
   Widget _parameterForm(_ActionRow row, CatalogueActionType? definition) {
     if (definition == null) {
       return _note('This step needs a newer version of the app.');
@@ -3844,7 +5036,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
     return Column(
       children: [
-        for (var i = 0; i < definition.parameters.length; i++) ...[
+        for (var i = 0; i < definition.parameters.length; i++)
+          if (_parameterShown(definition.parameters[i])) ...[
           if (definition.parameters[i].kind == 'phone_number')
             // A line is picked from the ones this company holds. The value
             // stored is an id, and asking somebody to type one is asking them
@@ -3933,6 +5126,32 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   SearchOption<String>(value: audience.key, label: audience.label),
               ],
               onChanged: _busy || widget.catalogue.audiences.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
+          // WHICH STATUS, from the record's own list (the audit's problem 1:
+          // "Change the status" had no box and could never be saved).
+          else if (definition.parameters[i].kind == 'status')
+            _statusPicker(row, definition.parameters[i])
+          // Reports' daily texts, by name rather than by wire key.
+          else if (definition.parameters[i].kind == 'report_text_kind')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.reportTextKinds.isEmpty
+                  ? 'No report texts are offered yet.'
+                  : null,
+              options: [
+                for (final kind in widget.catalogue.reportTextKinds)
+                  SearchOption<String>(value: kind.key, label: kind.label),
+              ],
+              onChanged: _busy || widget.catalogue.reportTextKinds.isEmpty
                   ? null
                   : (chosen) => setState(
                       () => row.parameter(definition.parameters[i].key).text =
@@ -4582,12 +5801,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 'happened here yet, so there are no names to suggest.';
     }
 
-    final fields = _insertableFields;
+    final fields = [for (final f in _insertableFields) _labelOf(f)];
     final shown = fields.take(4).join(', ');
 
     return fields.length > 4
-        ? 'Drop in a detail with {{ }} — $shown and ${fields.length - 4} more.'
-        : 'Drop in a detail with {{ }} — $shown.';
+        ? 'Add a detail from the chips — $shown and ${fields.length - 4} more.'
+        : 'Add a detail from the chips — $shown.';
   }
 
   /// The catalogue and the preview that sit under a box taking `{{ }}`.
@@ -4653,7 +5872,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           if (canPreview) ...[
             const SizedBox(height: 6),
             Text(
-              'They will read: $preview',
+              'Preview with the last event: “${preview.trim()}”',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -4734,7 +5953,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           : (chosen) => setState(() => row.parameter(key).text = chosen ?? ''),
       dropdownMenuEntries: [
         for (final field in _triggerFields)
-          DropdownMenuEntry<String>(value: field, label: field),
+          DropdownMenuEntry<String>(value: field, label: _labelOf(field)),
       ],
     );
   }
@@ -4921,84 +6140,166 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     final current = row.field.text.trim();
     final known = fields.any((f) => f.key == current);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: SearchPickerField<String>(
-            // Null for anything the subject does not have, because the picker
-            // shows nothing for a value with no matching option — and a saved
-            // rule can legitimately carry one, from before any of this was
-            // checked.
-            value: known ? current : null,
-            label: 'Field',
-            isDense: true,
-            helperText: known || current.isEmpty
-                ? 'On ${_article(subject.label)} — whichever one the event '
-                      'was about.'
-                : null,
-            // Named, not silently dropped. Somebody chose that value, or the
-            // server stored it, and a box that just went blank is the thing
-            // people file bugs about.
-            errorText: known || current.isEmpty
-                ? null
-                : '“$current” is not something a rule may set on '
-                      '${_article(subject.label)}.',
-            options: [
-              for (final field in fields)
-                SearchOption(value: field.key, label: field.label),
-            ],
-            onChanged: _busy
-                ? null
-                : (value) => setState(() {
-                    if (value != null) row.field.text = value;
-                  }),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: _valueBox(row)),
+    final detail = SearchPickerField<String>(
+      // Null for anything the subject does not have, because the picker shows
+      // nothing for a value with no matching option — and a saved rule can
+      // legitimately carry one, from before any of this was checked.
+      value: known ? current : null,
+      label: 'Field',
+      isDense: true,
+      // Named, not silently dropped. Somebody chose that value, or the server
+      // stored it, and a box that just went blank is the thing people file
+      // bugs about.
+      errorText: known || current.isEmpty
+          ? null
+          : '“$current” is not something a rule may set on '
+                '${_article(subject.label)}.',
+      options: [
+        for (final field in fields)
+          SearchOption(value: field.key, label: field.label),
       ],
+      onChanged: _busy
+          ? null
+          : (value) => setState(() {
+              if (value == null || value == row.field.text) return;
+              row.field.text = value;
+              row.value.text = '';
+              row.money.text = '';
+            }),
+    );
+
+    final owned = "${_article(subject.label).split(' ').last}'s";
+
+    // "Set the job's [Status] to [Done, pending approval]" (Jose's 1), the
+    // two boxes stacked when there is not the width for one line.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final muted = Theme.of(context).textTheme.bodyMedium;
+        if (constraints.maxWidth < 520) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Set the $owned', style: muted),
+              const SizedBox(height: 6),
+              detail,
+              const SizedBox(height: 6),
+              Text('to', style: muted),
+              const SizedBox(height: 6),
+              _valueBox(row),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text('Set the $owned', style: muted),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: detail),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(8, 12, 8, 0),
+              child: Text('to'),
+            ),
+            Expanded(child: _valueBox(row)),
+          ],
+        );
+      },
     );
   }
 
-  /// What to set the field to — a list when the field HAS a list.
+  /// What to set the field to, with the control its kind needs (UI queue 133):
+  /// the record's own list, a dollars box sent as cents, a date and time, a
+  /// number, a switch, and a text box for anything open.
   ///
-  /// It was a text box for everything, including a status. The values have been
-  /// served since the condition dropdowns landed, keyed by field, and this side
-  /// never read them — so a rule could set a lead's status to "Booked" and skip
-  /// for ever because the stored value is `booked`. That is the exact complaint
-  /// that started the value pickers, surviving in the other half of the screen.
-  ///
-  /// Anything with an open set keeps its text box: a shorter list pretending to
-  /// be the whole one is worse than typing.
+  /// The list is the catalogue's (`writable_fields[].options`), else what the
+  /// event's values said, so a rule can no longer set a lead's status to
+  /// "Booked" and skip for ever because the stored value is `booked`.
   Widget _valueBox(_ActionRow row) {
-    final options = _fieldValues[row.field.text.trim()];
+    final field = row.field.text.trim();
+    final writable = _writableFields.where((f) => f.key == field).firstOrNull;
+    final options = writable?.options ?? _fieldValues[field];
+    final kind = writable?.kind;
 
-    if (options == null) {
-      return TextField(
-        controller: row.value,
-        enabled: !_busy,
-        decoration: const InputDecoration(labelText: 'Set to', isDense: true),
+    if (options != null) {
+      return SearchPickerField<String>(
+        value: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
+        label: 'Set to',
+        isDense: true,
+        onChanged: _busy
+            ? null
+            : (chosen) => setState(() => row.value.text = chosen ?? ''),
+        options: [
+          for (final option in options)
+            SearchOption<String>(value: option.value, label: option.label),
+        ],
       );
     }
 
-    return SearchPickerField<String>(
-      value: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
-      label: 'Set to',
-      isDense: true,
-      onChanged: _busy
-          ? null
-          : (chosen) => setState(() => row.value.text = chosen ?? ''),
-      options: [
-        for (final option in options)
-          SearchOption<String>(
-            value: option.value,
-            // The wire name is shown too: a rule saved before this reads back as
-            // the raw value, and somebody comparing the two needs to see they
-            // are the same thing.
-            label: '${option.label}  (${option.value})',
+    if (kind == 'money') {
+      final cents = int.tryParse(row.value.text.trim());
+      if (row.money.text.isEmpty && cents != null) {
+        row.money.text = (cents / 100).toStringAsFixed(2);
+      }
+
+      return TextField(
+        key: ValueKey('automation-set-money-${row.key}'),
+        controller: row.money,
+        enabled: !_busy,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(
+          labelText: 'Set to',
+          prefixText: r'$ ',
+          isDense: true,
+          helperText: 'In dollars.',
+        ),
+        onChanged: (typed) {
+          final dollars = double.tryParse(typed.replaceAll(',', '').trim());
+          row.value.text = dollars == null ? '' : '${(dollars * 100).round()}';
+        },
+      );
+    }
+
+    if (kind == 'datetime') {
+      return CalendarDayField(
+        key: ValueKey('automation-set-when-${row.key}'),
+        controller: row.value,
+        formats: widget.formats,
+        label: 'Set to',
+        withTime: true,
+        dense: true,
+        enabled: !_busy,
+        onChanged: (_) => _changed(),
+      );
+    }
+
+    if (_fieldTypes[field] == 'boolean') {
+      // '1' and '0', never 'true'/'false': the string 'false' casts to true.
+      final on = row.value.text.trim() == '1';
+      return Row(
+        children: [
+          Switch(
+            key: ValueKey('automation-set-switch-${row.key}'),
+            value: on,
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => row.value.text = value ? '1' : '0'),
           ),
-      ],
+          const SizedBox(width: 6),
+          Text(on ? 'Yes' : 'No'),
+        ],
+      );
+    }
+
+    return TextField(
+      controller: row.value,
+      enabled: !_busy,
+      keyboardType: kind == 'integer'
+          ? TextInputType.number
+          : TextInputType.text,
+      decoration: const InputDecoration(labelText: 'Set to', isDense: true),
     );
   }
 
@@ -5063,15 +6364,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   Widget _footer(BuildContext context, bool narrow) {
     final review = _stepIndex == 4;
     final blocker = _blocker;
+    final turnOnBlocker = review ? _turnOnBlocker : null;
     final problem = _problemOf(_stepIndex);
     final note = review
         // The button says no; this says why. A disabled control with no
         // explanation is the thing people file bugs about.
         ? (blocker ??
-              (_isEdit
+              (turnOnBlocker != null && !_isOn
+                  ? 'Turn on is greyed out until this is fixed: $turnOnBlocker'
+                  : _isOn
                   ? 'Saving makes this the live version straight away.'
-                  : 'It is saved switched off. Turn it on once you have read '
-                        'it back.'))
+                  : 'Turn it on now, or save it switched off and turn it on '
+                        'later.'))
         : problem;
     final style = Theme.of(context).textTheme.bodySmall;
 
@@ -5097,12 +6401,33 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             child: const Text('Skip, no conditions'),
           )
         : null;
-    final forward = review
-        ? FilledButton(
-            key: const ValueKey('tour-automations-save'),
-            onPressed: _busy || blocker != null ? null : _submit,
-            child: Text(_isEdit ? 'Save changes' : 'Save'),
-          )
+    final Widget forward = review
+        ? (_isOn
+              ? FilledButton(
+                  key: const ValueKey('tour-automations-save'),
+                  onPressed: _busy || blocker != null ? null : _submit,
+                  child: const Text('Save changes'),
+                )
+              // Save switched off, then Turn on (UI queue 132, Jose's 1). Turn
+              // on waits for every ✕ on the checklist; saving off does not.
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    FilledButton.tonal(
+                      key: const ValueKey('tour-automations-save'),
+                      onPressed: _busy || blocker != null ? null : _submit,
+                      child: const Text('Save switched off'),
+                    ),
+                    FilledButton(
+                      key: const ValueKey('tour-automations-turn-on'),
+                      onPressed: _busy || turnOnBlocker != null
+                          ? null
+                          : () => _submit(turnOn: true),
+                      child: const Text('Turn on'),
+                    ),
+                  ],
+                ))
         : FilledButton(
             key: const ValueKey('automation-builder-next'),
             onPressed: _busy || problem != null
@@ -5130,9 +6455,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               children: [
                 back,
                 Expanded(child: Center(child: count)),
-                forward,
+                if (!review) forward,
               ],
             ),
+            // Two buttons on Review, so they get a line of their own.
+            if (review) Align(alignment: Alignment.centerRight, child: forward),
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,

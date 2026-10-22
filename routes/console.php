@@ -289,6 +289,7 @@ Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping
 // It inserts outbox rows and dispatches nothing itself, for the reason set out
 // above the sweep it feeds.
 Schedule::command('ezbizi:watch-mailboxes')->everyMinute()->withoutOverlapping(5);
+Schedule::command('ezbizi:wake-snoozed-mail')->everyMinute()->withoutOverlapping(5);
 
 // Monitoring (2026-08-28-monitoring-pc-specs, task 6). Every five minutes so a
 // device that stops reporting is caught soon after the default 180-second

@@ -6,6 +6,7 @@ use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\Notification;
 use App\Support\Modules\ModuleRegistry;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Notifications\PushSender;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -242,6 +243,20 @@ class NotificationsController extends Controller
      *
      * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events  keyed by id
      */
+    /** @var array<string, string> */
+    private array $headers = [];
+
+    // ponytail: one subject lookup per distinct record on a page of 20; batch by type if pages grow.
+    private function headerFor(Notification $notification): string
+    {
+        $type = $notification->subject_type;
+        $id = $notification->subject_id;
+
+        return $this->headers[$type.'|'.$id] ??= app(NotificationDispatcher::class)->headerFor(
+            $type !== null && $id !== null && class_exists($type) ? $type::query()->find($id) : null,
+        );
+    }
+
     private function present(Notification $notification, $events): array
     {
         return [
@@ -255,6 +270,9 @@ class NotificationsController extends Controller
                 'id' => $notification->subject_id,
             ],
             'meta' => $this->destination($notification, $events),
+            // Jose, 2026-10-22: the panel and the desktop toast lead with the
+            // same "EzBizi - Company - Branch" as the push and the mail.
+            'header' => $this->headerFor($notification),
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
