@@ -149,6 +149,31 @@ class PtoPolicyTest extends TestCase
         $this->assertSame(1, count(array_keys($events, 'user.pto_balance_empty')));
     }
 
+    /** The days themselves, full or half, and never the same date twice (Jose, 2026-10-22). */
+    public function test_days_off_are_recorded_by_date_and_counted_in_the_period(): void
+    {
+        Carbon::setTestNow('2026-10-21 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 2, 'pto.allowance_period' => 'month', 'pto.reset' => 'anniversary']);
+        $this->started($t, '2025-04-01');
+        $url = "/api/v1/hr/people/{$t['admin']->id}/pto/days";
+
+        $this->signedInAs($t['admin'])->postJson($url, ['days' => [
+            ['date' => '2026-06-01', 'portion' => 1], ['date' => '2026-06-03', 'portion' => 0.5],
+        ], 'reason' => 'Family'])->assertCreated()->assertJsonPath('data.used', 1.5)
+            ->assertJsonPath('data.left', 10.5)->assertJsonPath('data.would_expire', 10.5);
+        $this->signedInAs($t['admin'])->postJson($url, ['days' => [['date' => '2026-06-03', 'portion' => 1]]])
+            ->assertStatus(422);
+
+        $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->json('data'))->firstWhere('id', $t['admin']->id);
+        $this->assertSame(['2026-06-01', '2026-06-03'], array_column($row['days_off'], 'date'));
+        $this->assertSame('2026-04-01', $row['period_start']);
+        $this->assertNotNull($row['role']);
+
+        $this->signedInAs($t['admin'])->deleteJson("{$url}/{$row['days_off'][0]['id']}")
+            ->assertOk()->assertJsonPath('data.used', 0.5);
+    }
+
     public function test_the_daily_run_raises_available_and_reset_soon_on_their_day(): void
     {
         Carbon::setTestNow('2026-10-21 12:00:00');

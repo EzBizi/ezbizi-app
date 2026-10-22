@@ -165,7 +165,7 @@ class PtoPolicy
         $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
         if ($startedOn === null || $startedOn->isFuture()) {
             return ['total' => null, 'used' => (float) $usedQuery()->sum('days'), 'left' => null,
-                'carried' => null, 'expired' => null, 'resets_on' => null, 'window_from' => null];
+                'carried' => null, 'expired' => null, 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
         }
 
         $step = fn (Carbon $at, int $n) => match ($period) {
@@ -217,6 +217,8 @@ class PtoPolicy
             'left' => round($total - $usedNow, 2),
             'carried' => round($carried, 2),
             'expired' => round($expired, 2),
+            // Lost at the next reset if nothing more is used (carryover off).
+            'would_expire' => $carryOver ? 0.0 : round(max(0.0, $total - $usedNow), 2),
             'resets_on' => $next->toDateString(),
             'window_from' => $from->toDateString(),
         ];

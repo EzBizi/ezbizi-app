@@ -418,6 +418,58 @@ class HrPeopleController extends Controller
     }
 
     /**
+     * Record the days somebody was off (Jose, 2026-10-22: "pick which days
+     * were used, remember that it can be different days"). Each a full or
+     * half day; a date already recorded is refused rather than counted twice.
+     */
+    public function addPtoDays(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('editPtoUsed', $user);
+        $input = $request->validate([
+            'days' => ['required', 'array', 'min:1', 'max:366'],
+            'days.*.date' => ['required', 'date_format:Y-m-d', 'distinct'],
+            'days.*.portion' => ['required', 'numeric', 'in:0.5,1'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $dates = array_column($input['days'], 'date');
+        $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+            ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
+        if ($taken !== []) {
+            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
+                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
+        }
+
+        DB::transaction(function () use ($user, $request, $input) {
+            foreach ($input['days'] as $day) {
+                PtoUsed::create([
+                    'organization_id' => $user->organization_id, 'user_id' => $user->getKey(),
+                    'days' => (float) $day['portion'], 'used_on' => $day['date'], 'note' => $input['reason'] ?? null,
+                    'created_by_user_id' => $request->user()->getKey(),
+                ]);
+            }
+            $this->audit->log('pto.days_added', $user, ['dates' => count($input['days'])]);
+            $after = app(PtoPolicy::class)->for($user);
+            $this->events->emit('user.pto_used_changed', $user, ['person' => ['id' => $user->getKey(), 'name' => $user->name],
+                'total' => $after['total'], 'used' => $after['used'], 'left' => $after['left'], 'reason' => $input['reason'] ?? null]);
+        });
+
+        return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
+            ->only(['total', 'used', 'left', 'would_expire'])->all()], 201);
+    }
+
+    public function removePtoDay(Request $request, User $user, string $day): JsonResponse
+    {
+        $this->authorize('editPtoUsed', $user);
+        $row = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+            ->whereNotNull('used_on')->whereKey($day)->firstOrFail();
+        $row->delete();
+        $this->audit->log('pto.day_removed', $user, ['id' => $day]);
+
+        return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
+            ->only(['total', 'used', 'left', 'would_expire'])->all()]);
+    }
+
+    /**
      * Set how many paid days off somebody has used in the current window
      * (Jose, 2026-10-21: "he types the number and Left recalculates"). Saved
      * as an adjustment row carrying before, after and the reason - never by
@@ -965,6 +1017,10 @@ class HrPeopleController extends Controller
             // answer by a reach rule that was never about them.
             : collect([$actor]);
 
+        $days = PtoUsed::query()->with('createdBy:id,name')
+            ->whereIn('user_id', $people->map->getKey()->all())->whereNull('set_to')->whereNotNull('used_on')
+            ->orderBy('used_on')->get()->groupBy('user_id');
+
         // Every change to Used, newest first, for the history under the row.
         $changes = PtoUsed::query()->with('createdBy:id,name')
             ->whereIn('user_id', $people->map->getKey()->all())->whereNotNull('set_to')
@@ -998,7 +1054,7 @@ class HrPeopleController extends Controller
             // instead of the client guessing from a name.
             'me' => $actor->getKey(),
 
-            'data' => $people->map(function (User $person) use ($policy, $actor, $changes) {
+            'data' => $people->map(function (User $person) use ($policy, $actor, $changes, $days) {
                 $answer = $policy->for($person);
 
                 return [
@@ -1011,6 +1067,15 @@ class HrPeopleController extends Controller
                     'left' => $answer['left'],
                     'carried' => $answer['carried'],
                     'expired' => $answer['expired'],
+                    'would_expire' => $answer['would_expire'],
+                    'period_start' => $answer['window_from'],
+                    'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
+                    // The dated days off in this period (Jose, 2026-10-22).
+                    'days_off' => $days->get($person->getKey(), collect())
+                        ->filter(fn ($d) => $answer['window_from'] === null || $d->used_on->toDateString() >= $answer['window_from'])
+                        ->map(fn ($d) => ['id' => $d->id, 'date' => $d->used_on->toDateString(), 'portion' => (float) $d->days,
+                            'reason' => $d->note, 'by_name' => $d->createdBy?->name, 'at' => $d->created_at?->toIso8601String()])
+                        ->values(),
                     'resets_on' => $answer['resets_on'],
                     'can_edit_used' => $actor->can('editPtoUsed', $person),
                     'used_changes' => $changes->get($person->getKey(), collect())->values(),
