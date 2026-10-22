@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 140 · Work Hours › Paid Time Off person panel overhaul — **sent 2026-10-22** (`docs/previews/pto-person-panel-layouts.html`)
+
+Jose: Expired always shown (no layout jump); "When they can be used"; a more colourful reset (bars/countdown); past resets; changes as a timeline; role filter; record which days were used with a date picker (scattered days). **1** (recommended) four fixed tiles (grey zeros, Left red at 0, Expired amber > 0); reset card with countdown ring + period bar (last reset → next, today, used blue, would-expire amber) + past resets chips; "When they can be used" beside; "Record days off" inline editor: month calendar multi-select (tap = day, again = half, again = clear), already-recorded days tinted, running total and what it leaves, reason, Save; "Correct the total instead" link; one timeline (days off with dates, corrections, resets with expired, start). List gains a Role picker. **2** year strip. **3** fixes only. Phone **4** (recommended) / **5** / **6**. Server needs: used days with dates (+ half days), past resets with expired counts, role on rows.
+
 ### 139 · Project Management › Logs — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/project-management-logs-layouts.html`)
 
 Jobs relayed Jose (84be725a0). **1** (recommended) range control as Dashboard, branch + rule pickers, outcome segment Changes (succeeded + manual, default) / Failed / Skipped / All with counts; rows when, job # (opens timeline), customer, what changed, by (rule link or person), outcome chip; failed rows show the error beneath; skipped folded into one grey line per rule "skipped N times · Why?" with reasons grouped and counted. **2** every run a row, skipped off by default. **3** grouped by rule. Phone **4** (recommended) / **5** / **6**.
