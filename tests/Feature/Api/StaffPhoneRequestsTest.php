@@ -174,4 +174,25 @@ class StaffPhoneRequestsTest extends TestCase
             ->getJson('/api/v1/staff/phone-requests')
             ->assertForbidden();
     }
+
+    /** The search bar: `q` narrows by purpose or company, across tenants; a blank `q` is no filter. */
+    public function test_q_narrows_the_queue_and_a_blank_q_changes_nothing(): void
+    {
+        $this->pendingRequest();
+        $beta = $this->provisionTenant('Beta', 'beta@example.test');
+        $this->inTenant($beta['org'], fn () => PhoneServiceRequest::create([
+            'status' => PhoneServiceRequest::STATUS_PENDING,
+            'expected_volume' => 'from_100',
+            'wants_sms' => true,
+            'purpose' => 'Text reminders the day before.',
+        ]));
+        $token = $this->staffToken();
+
+        $this->withToken($token)->getJson('/api/v1/staff/phone-requests?q=reminders')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization', 'Beta');
+        $this->withToken($token)->getJson('/api/v1/staff/phone-requests?q=alpha%20co')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization', 'Alpha');
+        $this->withToken($token)->getJson('/api/v1/staff/phone-requests?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->withToken($token)->getJson('/api/v1/staff/phone-requests')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

@@ -268,12 +268,38 @@ class CallsController extends Controller
             $this->withoutVoicemailTranscript($query);
         }
 
-        $perPage = (int) $request->query('per_page', 0);
-        if ($perPage > 0) {
-            $query->limit(min($perPage, 200));
+        // The search bar: either number on the call, a transcript, or the name
+        // of the customer whose phone it is (the same exact-phone match the
+        // rows below use to name the caller). After the tiles, like `dealt`.
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $digits = preg_replace('/\D/', '', $term);
+            $customerPhones = Customer::query()->where('name', 'like', $like)->whereNotNull('phone')->select('phone');
+
+            $query->where(function ($w) use ($like, $digits, $customerPhones) {
+                $w->where('from_e164', 'like', $like)
+                    ->orWhere('to_e164', 'like', $like)
+                    ->orWhere('transcript', 'like', $like)
+                    ->orWhere('voicemail_transcript', 'like', $like)
+                    ->orWhereIn('from_e164', $customerPhones)
+                    ->orWhereIn('to_e164', (clone $customerPhones));
+                // "(555) 123-4567" against +15551234567.
+                if (strlen($digits) >= 3) {
+                    $w->orWhere('from_e164', 'like', '%'.$digits.'%')
+                        ->orWhere('to_e164', 'like', '%'.$digits.'%');
+                }
+            });
         }
 
-        $calls = $query->get();
+        // Paged by default. With no per_page this returned every call the
+        // organization ever had; 50 is what the other paged lists default to.
+        // `page` is additive and the response shape is unchanged.
+        $perPage = (int) $request->query('per_page', 0);
+        $perPage = $perPage > 0 ? min($perPage, 200) : 50;
+        $page = max(1, (int) $request->query('page', 1));
+
+        $calls = $query->forPage($page, $perPage)->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
         $customerNames = $this->customerNamesById(array_values($customerIds));

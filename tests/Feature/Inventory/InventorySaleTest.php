@@ -363,4 +363,24 @@ class InventorySaleTest extends TestCase
             $this->assertSame($status, InventorySale::query()->find($id)?->status->value);
         });
     }
+
+    /** The search bar: `q` narrows by customer or number; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$customer, $item] = $this->customerItemLocation($t);
+        $other = $this->inTenant($t['org'], fn () => Customer::factory()->create([
+            'owning_franchise_id' => $t['franchise']->id,
+            'name' => 'Quinn Hearth',
+        ]));
+        $first = $this->openSale($t['admin'], $customer, $item, $t);
+        $this->openSale($t['admin'], $other, $item, $t);
+
+        $url = '/api/v1/inventory/sales';
+        $this->signedInAs($t['admin'])->getJson($url.'?q=quinn')->assertOk()->assertJsonCount(1, 'data');
+        $this->signedInAs($t['admin'])->getJson($url.'?q='.urlencode($first['number']))->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $first['id']);
+        $this->signedInAs($t['admin'])->getJson($url.'?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->signedInAs($t['admin'])->getJson($url)->assertOk()->assertJsonCount(2, 'data');
+    }
 }

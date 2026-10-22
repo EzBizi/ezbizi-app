@@ -391,6 +391,21 @@ class NewsletterApiTest extends TestCase
             ->assertOk()->assertJsonCount(2, 'data');
     }
 
+    /** The search bar: `q` narrows by subject or list; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Search');
+        $this->draft($t);
+        $winter = $this->signedInAs($t['admin'])->postJson(self::ENDPOINT, ['subject' => 'Winter chimney checklist'])
+            ->assertCreated()->json('data.id');
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=winter')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $winter)
+            ->assertJsonPath('stats.drafts', 2);
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)->assertOk()->assertJsonCount(2, 'data');
+    }
+
     public function test_a_row_carries_its_list_its_send_time_and_addresses_reached(): void
     {
         $t = $this->provisionTenant('Rows');

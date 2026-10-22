@@ -208,4 +208,25 @@ class CustomerDuplicateSweepTest extends TestCase
         $this->assertCount(1, $groups);
         $this->assertCount(2, $groups[0]['customers']);
     }
+
+    /**
+     * The search bar: `q` keeps a whole group when one member matches, so the
+     * group is not split into a "duplicate" of one. A blank `q` is no filter.
+     */
+    public function test_q_narrows_to_whole_groups_and_a_blank_q_changes_nothing(): void
+    {
+        $this->matchOn('phone');
+        $this->customer($this->alpha['franchise'], 'Philip Ash', ['phone' => '(555) 123-4567']);
+        $this->customer($this->alpha['franchise'], 'Phil Ash', ['phone' => '555-123-4567']);
+        $this->customer($this->alpha['franchise'], 'Rosa Vidal', ['phone' => '555-777-8888']);
+        $this->customer($this->alpha['franchise'], 'R. Vidal', ['phone' => '5557778888']);
+
+        $as = $this->signedInAs($this->alpha['admin']);
+        $found = $as->getJson('/api/v1/customers/duplicates?q=philip')->assertOk()->assertJsonPath('total', 1)->json('data');
+        $this->assertCount(1, $found);
+        $this->assertEqualsCanonicalizing(['Phil Ash', 'Philip Ash'], array_column($found[0]['customers'], 'name'));
+
+        $as->getJson('/api/v1/customers/duplicates?q=')->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('total', 2);
+        $as->getJson('/api/v1/customers/duplicates')->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('total', 2);
+    }
 }

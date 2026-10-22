@@ -503,4 +503,26 @@ class InventoryIssueTest extends TestCase
             $this->assertSame($qty, InventoryBalance::qtyOnHand($itemId, $locationId));
         });
     }
+
+    /** The search bar: `q` narrows by note, number or job; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        [$item, $location] = $this->itemAndLocation($tenant);
+
+        $this->signedInAs($admin)->postJson('/api/v1/inventory/adjustments', [
+            'location_id' => $location->id, 'item_id' => $item->id, 'counted_as' => 10, 'reason' => 'opening count',
+        ])->assertCreated();
+        foreach (['sold over the counter', 'used on the Hendricks flue'] as $note) {
+            $this->signedInAs($admin)->postJson('/api/v1/inventory/issues', [
+                'location_id' => $location->id, 'note' => $note, 'lines' => [['item_id' => $item->id, 'qty' => 1]],
+            ])->assertCreated();
+        }
+
+        $this->signedInAs($admin)->getJson('/api/v1/inventory/issues?q=hendricks')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.note', 'used on the Hendricks flue');
+        $this->signedInAs($admin)->getJson('/api/v1/inventory/issues?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->signedInAs($admin)->getJson('/api/v1/inventory/issues')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

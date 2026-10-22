@@ -103,8 +103,15 @@ class ApiKeysController
     {
         $user = $request->user();
         $admin = $this->seesEveryone($user);
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
 
         $events = $this->visible($user)
+            // Who, which key, what it did, and the path it called.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('actor_label', 'like', $like)
+                ->orWhere('target_label', 'like', $like)
+                ->orWhere('action', 'like', $like)
+                ->orWhere('metadata->path', 'like', $like)))
             ->when($admin && $request->filled('user_id'), fn ($q) => $q->where('actor_id', $request->string('user_id')))
             ->when($request->filled('key_id'), fn ($q) => $q->where('target_id', (string) $request->integer('key_id')))
             ->when($request->filled('before'), fn ($q) => $q->where('occurred_at', '<', $request->date('before')))

@@ -85,6 +85,11 @@ class TestsController extends Controller
         // a TrainingVisibility wrapper.
         $query = InventoryVisibility::constrain(TrainingTest::query(), $user, $scope);
 
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $query->where('title', 'like', '%'.addcslashes($term, '%_\\').'%');
+        }
+
         $tests = $query
             ->orderBy('title')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));

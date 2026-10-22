@@ -84,8 +84,11 @@ class InvoicesController extends Controller
     public function sheets(Request $request): JsonResponse
     {
         $this->may($request->user(), 'view');
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
 
-        return response()->json(['data' => FinancialChargeSheet::query()->withCount('rows')->orderByDesc('period_from')->limit(200)->get()
+        return response()->json(['data' => FinancialChargeSheet::query()->withCount('rows')
+            ->when($term !== '', fn ($q) => $q->where('title', 'like', '%'.addcslashes($term, '%_\\').'%'))
+            ->orderByDesc('period_from')->limit(200)->get()
             ->map(fn ($s) => $s->only('id', 'title', 'status', 'rows_count') + [
                 'period_from' => $s->period_from->toDateString(), 'period_to' => $s->period_to->toDateString()])->values()]);
     }
@@ -189,8 +192,16 @@ class InvoicesController extends Controller
             'franchise_id' => ['nullable', 'uuid'],
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d'],
+            'q' => ['nullable', 'string', 'max:200'],
         ]);
+        $term = trim((string) ($input['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
         $invoices = Invoice::query()->with('lines', 'payments')
+            // Before the 500 cap, so an old invoice is still findable by its number.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('number', 'like', $like)
+                ->orWhere('bill_to_name', 'like', $like)
+                ->orWhere('summary', 'like', $like)
+                ->orWhere('notes', 'like', $like)))
             ->when(($input['status'] ?? null) && $input['status'] !== 'overdue', fn ($q) => $q->where('status', $input['status']))
             // A branch: what it was billed (or, for its own invoices, what it issued).
             ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where(fn ($w) => $w->where(fn ($b) => $b->where('bill_to_type', 'franchise')->where('bill_to_id', $id))->orWhere('franchise_id', $id)))

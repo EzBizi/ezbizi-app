@@ -119,6 +119,15 @@ class ReviewsController extends Controller
             $query->where('status', $status);
         }
 
+        // The search bar: who wrote it, what they said, or the customer it matched.
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('reviewer_name', 'like', $like)
+                ->orWhere('comment', 'like', $like)
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)));
+        }
+
         $locations = $this->locations(clone $query);
 
         // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.

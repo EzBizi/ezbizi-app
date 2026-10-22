@@ -85,8 +85,14 @@ class NewslettersController extends Controller
             Newsletter::STATUS_DRAFT, Newsletter::STATUS_SCHEDULED, Newsletter::STATUS_SENT,
         ], true) ? $status : null;
 
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
         $rows = NewsletterAccess::visible(Newsletter::query(), $user)
             ->when($filter !== null, fn ($q) => $q->where('status', $filter))
+            // Same reason as `status`: the list is capped, so the search runs here.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('subject', 'like', $like)
+                ->orWhereHas('audience', fn ($a) => $a->where('name', 'like', $like))))
             ->with(['audience', 'author:id,name', 'sends'])
             ->latest()
             ->limit(50)

@@ -63,4 +63,24 @@ class FinancialBillsTest extends TestCase
         $this->signedInAs($t['admin'])->post('/api/v1/financials/bills/read', ['image' => UploadedFile::fake()->image('cat.jpg')], ['Accept' => 'application/json'])
             ->assertStatus(422)->assertJsonFragment(['image' => ['That photo does not look like a list of bills. Try a clearer photo, or type the lines in.']]);
     }
+
+    /** The search bar: `q` narrows by the place a bill is for; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $gables = \App\Models\Franchise::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'name' => 'Coral Gables']);
+            foreach ([$t['franchise']->id, $gables->id] as $franchiseId) {
+                (new FinancialBill)->forceFill([
+                    'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'franchise_id' => $franchiseId,
+                    'period_from' => '2026-09-01', 'period_to' => '2026-09-30', 'lines' => [], 'total_cents' => 100,
+                ])->save();
+            }
+        });
+        $as = $this->signedInAs($t['admin']);
+
+        $as->getJson('/api/v1/financials/bills?q=gables')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.place', 'Coral Gables');
+        $as->getJson('/api/v1/financials/bills?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/financials/bills')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

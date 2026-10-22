@@ -68,11 +68,25 @@ class InventoryPurchaseOrdersController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
-        $filter = $request->validate(['filter' => ['nullable', Rule::in(self::TILES)]])['filter'] ?? null;
+        $input = $request->validate([
+            'filter' => ['nullable', Rule::in(self::TILES)],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+        $filter = $input['filter'] ?? null;
 
         $query = InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope);
         if ($filter !== null) {
             $this->narrow($query, $filter);
+        }
+
+        // The search bar narrows the list only; the tiles below keep counting
+        // the whole view, as they do under a tapped tile.
+        $term = trim((string) ($input['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('number', 'like', $like)
+                ->orWhereHas('vendor', fn ($v) => $v->where('name', 'like', $like))
+                ->orWhereHas('lines.item', fn ($i) => $i->where('name', 'like', $like)->orWhere('sku', 'like', $like)));
         }
 
         $orders = $query

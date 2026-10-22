@@ -61,11 +61,27 @@ class InventorySalesController extends Controller
         $user = $request->user();
         $scope = ViewScope::forUser($user);
 
-        $filter = $request->validate(['filter' => ['nullable', Rule::in(self::TILES)]])['filter'] ?? null;
+        $input = $request->validate([
+            'filter' => ['nullable', Rule::in(self::TILES)],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+        $filter = $input['filter'] ?? null;
 
         $query = InventoryVisibility::constrain(InventorySale::query(), $user, $scope);
         if ($filter !== null) {
             $this->narrow($query, $filter);
+        }
+
+        // The search bar narrows the list only; the tiles below keep counting
+        // the whole view, as they do under a tapped tile.
+        $term = trim((string) ($input['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('number', 'like', $like)
+                ->orWhere('note', 'like', $like)
+                ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)
+                    ->orWhere('phone', 'like', $like)
+                    ->orWhere('email', 'like', $like)));
         }
 
         $sales = $query

@@ -284,8 +284,10 @@ class CustomersController extends Controller
         $groups = collect();
         $total = 0;
 
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+
         foreach ($this->duplicateKinds($mode) as $kind) {
-            $found = $this->duplicateGroups($kind, self::DUPLICATE_GROUP_LIMIT);
+            $found = $this->duplicateGroups($kind, self::DUPLICATE_GROUP_LIMIT, $term);
             $groups = $groups->concat($found['groups']);
             $total += $found['total'];
         }
@@ -713,7 +715,7 @@ class CustomersController extends Controller
      *
      * @return array{total: int, groups: Collection<int, array<string, mixed>>}
      */
-    private function duplicateGroups(string $kind, int $limit): array
+    private function duplicateGroups(string $kind, int $limit, string $term = ''): array
     {
         [$expression, $by] = match ($kind) {
             // Digits only, so (555) 123-4567 and 555-123-4567 are one key --
@@ -745,6 +747,18 @@ class CustomersController extends Controller
             // on it would group half the book. Same floor as one-record.
             ->when($kind === 'phone', fn ($q) => $q->whereRaw("CHAR_LENGTH({$expression}) >= 7"))
             ->when($kind === 'name_and_address', fn ($q) => $q->whereRaw("COALESCE(name, '') <> ''"))
+            // The search bar keeps a whole group when ANY of its members
+            // matches: narrowing the rows before grouping would split the
+            // group and leave a "duplicate" of one.
+            ->when($term !== '', function ($q) use ($expression, $term) {
+                $like = '%'.addcslashes($term, '%_\\').'%';
+                $q->whereIn(DB::raw($expression), Customer::query()
+                    ->selectRaw($expression)
+                    ->where(fn ($w) => $w->where('name', 'like', $like)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('phone', 'like', $like)
+                        ->orWhere('number', 'like', $like)));
+            })
             ->groupBy('dup_key')
             ->havingRaw('COUNT(*) > 1')
             // NOT limited here, on purpose. The limit bounds how many groups
