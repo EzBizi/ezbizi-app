@@ -595,6 +595,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'invitation.sent',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Invitation::class],
                         label: 'Invitation sent',
                         description: 'Somebody was invited to join. It carries the address, the '
                             .'role they were offered, the place they were offered it in and when '
@@ -602,6 +604,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'invitation.accepted',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Invitation::class],
                         label: 'Invitation accepted',
                         description: 'The person followed the link and created their account. '
                             .'It carries the role and the place, and by this point there is a '
@@ -609,6 +613,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'invitation.revoked',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Invitation::class],
                         label: 'Invitation withdrawn',
                         description: 'The organization changed its mind and took an invitation '
                             .'back before it was accepted. The link stops working immediately, '
@@ -636,6 +642,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'invitation.expired',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Invitation::class],
                         label: 'Invitation ran out',
                         description: 'A week passed and nobody accepted, so the link stopped '
                             .'working on its own.',
@@ -655,6 +663,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'onboarding.started',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Onboarding::class],
                         label: 'Onboarding started',
                         description: 'An employer picked a contract template for somebody who '
                             .'has been invited, and the form is now open. It carries the '
@@ -662,6 +672,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'onboarding.signed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Onboarding::class],
                         label: 'Somebody signed',
                         description: 'One party signed one line of the contract. It carries '
                             .'whether that was the employer or the employee, which line, and '
@@ -671,6 +683,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'onboarding.completed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Onboarding::class],
                         label: 'Onboarding fully signed',
                         description: 'Every signature the contract asks for has been given and '
                             .'the paperwork is finished. This is the one a payroll or IT handover '
@@ -678,6 +692,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'onboarding.amended',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Onboarding::class],
                         label: 'Signed contract amended',
                         description: 'A correction was made after signing. The original document '
                             .'stays and a new revision sits beside it; this carries the revision '
@@ -685,6 +701,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'onboarding.cancelled',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Onboarding::class],
                         label: 'Onboarding cancelled',
                         description: 'An onboarding was stopped before it was fully signed. The '
                             .'row stays. It carries the contract name and the status it left, so '
@@ -709,6 +727,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'contract.version_published',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\ContractVersion::class],
                         label: 'Contract version published',
                         description: 'A new version of a contract template went live, so every '
                             .'onboarding started from now on asks these questions. It carries the '
@@ -917,12 +937,16 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'time_clock.clocked_in',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\User::class],
                         label: 'Person clocked in',
                         description: 'Somebody started a shift. It carries who, and when they punched in.',
                         isRaised: true,
                     ),
                     new TriggerDefinition(
                         key: 'time_clock.clocked_out',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\User::class],
                         label: 'Person clocked out',
                         description: 'Somebody ended a shift. It carries who, when they punched in, and when they punched out, '
                             .'and ended_by: person, schedule (the server closed it at the scheduled end) or automation.',
@@ -933,6 +957,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // could observe. ended_by on clocked_out is the fact.
                     new TriggerDefinition(
                         key: 'time_clock.extended',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\User::class],
                         label: 'Shift extended',
                         description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
                             .'and how many times this shift has been extended.',
@@ -1453,6 +1479,8 @@ class ModuleServiceProvider extends ServiceProvider
                         'Fully booked for 10+ days',
                         'Each morning, when a service area has no spot left for the next 10 days or more (Shoval: time to pause its ads). Its summary lists them with their next opening.',
                         composedFields: ['summary'],
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [Organization::class],
                     ),
                 ],
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
@@ -1527,6 +1555,8 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'inspection.started',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\InspectionRun::class],
                         label: 'Inspection started',
                         description: 'Somebody started filling in a named inspection for a '
                             .'client or a job. The draft is personal to them until they submit it.',
@@ -1534,6 +1564,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'inspection.submitted',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\InspectionReport::class],
                         label: 'Inspection submitted',
                         description: 'A named inspection was finished and a report was written. '
                             .'The answers, photographs and signatures are frozen as they were '
@@ -1542,6 +1574,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'inspection.archived',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\InspectionReport::class],
                         label: 'Report archived',
                         description: 'A submitted inspection was hidden from the default list. '
                             .'Archive does not delete the report.',
@@ -1549,6 +1583,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'inspection.discarded',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\InspectionRun::class],
                         label: 'In-progress discarded',
                         description: 'Somebody threw away their own unfinished inspection and '
                             .'started again, or discarded it without submitting.',
@@ -1731,6 +1767,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'social.published',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\SocialPostTarget::class],
                         label: 'A post went out',
                         description: 'A post reached one connected social account. It carries '
                             .'which account and which network, and the id the network gave '
@@ -1739,6 +1777,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'social.publish_failed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\SocialPostTarget::class],
                         label: 'A post could not go out',
                         description: 'One account refused a post, or could not be reached. It '
                             .'carries which account and the reason in the words shown on the '
@@ -1818,6 +1858,8 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'newsletter.sent',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Newsletter::class],
                         label: 'Newsletter sent',
                         description: 'A newsletter went out to its audience. It carries which '
                             .'one, how many addresses it went to and the account it was sent '
@@ -1835,6 +1877,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'newsletter.unsubscribed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Newsletter::class],
                         label: 'Somebody unsubscribed',
                         description: 'A recipient asked to stop receiving marketing mail. It '
                             .'carries the address and which audience it was asked from, and it '
@@ -2082,6 +2126,8 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'phone.call.started',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneCall::class],
                         label: 'A call started',
                         description: 'A call began on one of the phone lines — inbound or '
                             .'outbound — and is ringing or connected.',
@@ -2089,6 +2135,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.call.ended',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneCall::class],
                         label: 'A call ended',
                         description: 'A call finished. It carries how long it lasted and which '
                             .'line it used.',
@@ -2096,6 +2144,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.call.missed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneCall::class],
                         label: 'A call was missed',
                         description: 'Nobody answered, and the caller either hung up or reached '
                             .'voicemail.',
@@ -2103,6 +2153,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.call.tagged',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneCall::class],
                         label: 'A call was tagged',
                         description: 'Somebody said what a call was about. It carries the tag '
                             .'name, so a rule can act on complaints without acting on '
@@ -2111,6 +2163,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.voicemail.left',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneCall::class],
                         label: 'A voicemail was left',
                         description: 'A caller left a voicemail on one of the phone lines. The '
                             .'recording stays on Twilio until it is erased.',
@@ -2118,6 +2172,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.sms.received',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneMessage::class],
                         label: 'A text arrived',
                         description: 'A text message reached one of the phone lines that can '
                             .'receive SMS.',
@@ -2125,6 +2181,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.sms.sent',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneMessage::class],
                         label: 'A text was sent',
                         description: 'Somebody sent a text from a line that is allowed to send '
                             .'SMS.',
@@ -2132,6 +2190,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'phone.number.broken',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\PhoneNumber::class, \App\Models\PhoneConnection::class],
                         label: 'A phone line stopped working',
                         description: 'EzBizi could no longer use one of the phone lines — the '
                             .'Twilio account refused it, the number was invalid, or the '
@@ -2877,6 +2937,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'lead.daily_digest',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Organization::class],
                         label: 'Daily leads digest',
                         description: 'Every morning, yesterday in numbers: how many leads by source, '
                             .'how many were answered and how fast, how many were booked, and each '
@@ -3233,6 +3295,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'business_location.daily_digest',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [],
                         label: 'Daily Business Profile summary',
                         description: 'Once a day at 7 AM Eastern, when anything happened in the last 24 hours: '
                             .'new reviews and how many had 2 stars or fewer, reviews Google removed, and '
@@ -3391,6 +3455,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'email.received',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Mailbox::class],
                         label: 'An email arrived',
                         description: 'A new message reached one of the shared inboxes. It '
                             .'carries which inbox it arrived at, who it is from, the subject, '
@@ -3420,6 +3486,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'email.replied',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Mailbox::class],
                         label: 'A reply was sent',
                         description: 'Somebody answered a message from a shared inbox. It '
                             .'carries which inbox it went out from and who typed it — the '
@@ -3445,6 +3513,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'email.sent',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Mailbox::class],
                         label: 'A new message was sent',
                         description: 'Somebody started a new conversation from a shared inbox, '
                             .'rather than answering one. It carries which inbox it went out '
@@ -3494,6 +3564,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'email.mailbox_broken',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Mailbox::class],
                         label: 'A shared inbox stopped working',
                         description: 'EzBizi could no longer open one of the shared inboxes — '
                             .'the sign-in was refused, the permission was narrowed, or the mail '
@@ -3759,6 +3831,8 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'training.assigned',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\TrainingAssignment::class],
                         /*
                          * "Somebody" was wrong for half the feature and this is
                          * a PUBLISHED sentence, so it is worth the words.
@@ -3780,6 +3854,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'training.completed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\TrainingProgress::class],
                         label: 'Guide finished',
                         description: 'Somebody reached the end of a guide. This is about reading '
                             .'it, not about passing anything — a guide with no test raises only '
@@ -3795,6 +3871,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'training.passed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\TrainingAttempt::class],
                         label: 'Test passed',
                         description: 'Somebody took a test and met its pass mark. It carries the '
                             .'score and, when the test expires, the date the pass runs out.',
@@ -3802,6 +3880,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'training.failed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\TrainingAttempt::class],
                         label: 'Test failed',
                         description: 'Somebody took a test and did not meet the pass mark. It carries '
                             .'the score. Whether they may try again is the test\'s own retake setting.',
@@ -3820,6 +3900,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'training.expired',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\TrainingAttempt::class],
                         label: 'Pass ran out',
                         description: 'A test pass reached the end of the period it was good for. '
                             .'The training reappears in that person\'s list as due for retaking.',
@@ -3918,6 +4000,8 @@ class ModuleServiceProvider extends ServiceProvider
                      */
                     new TriggerDefinition(
                         key: 'automation.schedule_reached',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [],
                         label: 'A time you chose comes round',
                         description: 'Runs on a clock rather than on something happening — every '
                             .'day, on chosen days of the week, or once a month. The time is read '
@@ -4161,6 +4245,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // missed call from the report". ezbizi:watch-missed-calls.
                     new TriggerDefinition(
                         key: 'reports.call.missed',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [],
                         label: 'A call in the call report was missed',
                         description: 'A call to one of the company\'s RingCentral lines reached nobody: '
                             .'missed, or left in voicemail. Spam that sat in the phone menu is not '
@@ -4171,6 +4257,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // with no Workiz job, daily for a manager. ezbizi:ai-booked-no-job.
                     new TriggerDefinition(
                         key: 'reports.ai_booked_no_job',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [],
                         label: 'Calls AI says were booked have no job',
                         description: 'Each morning, the calls from the day before that AI read as booked but that '
                             .'have no job in Workiz, so a manager can follow up. Raised only when there are any. '
@@ -4181,6 +4269,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // and email. ezbizi:ai-weekly-summary, Monday 7:00 New York.
                     new TriggerDefinition(
                         key: 'reports.ai_summary_ready',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [],
                         label: 'Weekly AI summary is ready',
                         description: 'Every Monday morning AI reads the figures for last week (jobs, '
                             .'sales, deposits, profit and call reasons, per branch) and writes a '
@@ -4345,6 +4435,8 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                     new TriggerDefinition(
                         key: 'ads.daily_review',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Organization::class],
                         label: 'Daily account review',
                         description: 'Every morning at 6:30 (New York): which Local Services accounts '
                             .'have ads not running or licence / insurance problems. Monday is the whole '
@@ -4435,30 +4527,40 @@ class ModuleServiceProvider extends ServiceProvider
                 triggers: [
                     new TriggerDefinition(
                         key: 'field.arrived_at_job',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Job::class],
                         label: 'Arrived at a job',
                         description: 'A tracked person came within the arrival distance of one of '
                             .'their jobs today. It is about the job, and carries who arrived.',
                     ),
                     new TriggerDefinition(
                         key: 'field.left_job',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\Job::class],
                         label: 'Left a job',
                         description: 'A tracked person who had arrived at a job moved away from it. '
                             .'It is about the job, and carries who left.',
                     ),
                     new TriggerDefinition(
                         key: 'field.stopped_too_long',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\FieldAlert::class],
                         label: 'Stopped too long',
                         description: 'A tracked person has not moved for the minutes set in Field › '
                             .'Settings, away from any of their jobs. Fires once until they move again.',
                     ),
                     new TriggerDefinition(
                         key: 'field.signal_lost',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\FieldAlert::class],
                         label: 'Lost signal',
                         description: 'A tracked person\'s phone has not reported for the minutes set in '
                             .'Field › Settings while they should be tracked. Fires once until it reports again.',
                     ),
                     new TriggerDefinition(
                         key: 'field.sos',
+                        // What the event is about (builder audit, 2026-10-22).
+                        subjects: [\App\Models\FieldAlert::class],
                         label: 'SOS pressed',
                         description: 'A tracked person pressed SOS. It carries where they were. '
                             .'Managers who can see them are told straight away, rule or no rule.',

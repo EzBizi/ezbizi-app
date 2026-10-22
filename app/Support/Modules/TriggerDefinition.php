@@ -46,6 +46,13 @@ final class TriggerDefinition extends AutomationDeclaration
          * @var list<string>
          */
         public readonly array $composedFields = [],
+        /*
+         * What the event is about, when it is not the module's own record
+         * (or the module has none). Class names; [] means about nothing in
+         * particular. Null takes the module's subject. A trigger in a module
+         * without a subject must say (AutomationTriggerSubjectsTest).
+         */
+        public readonly ?array $subjects = null,
     ) {
         parent::__construct(
             $key,
