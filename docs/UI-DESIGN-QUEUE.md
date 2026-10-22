@@ -2967,7 +2967,7 @@ up could only be answered — Phone's sentence: *a rule would have been argued w
 
 ### 143 · Project Management › Assignments board — **sent 2026-10-22** (`docs/previews/pm-assignments-layouts.html`)
 
-Shoval via Jose: a Task-Board-like tab where a job lands once its deposit is paid and gets assigned to a technician. **1** (recommended) columns: "Just paid · to assign" (auto, newest first, days since payment vs limit) then one per technician + External company with load (count, $ due); drag or Assign ▾ sets the technician (EzBizi + Workiz when connected), logged; card = job, customer, area, deposit, due, stage chip, flags; search, area picker, Jobs filters. **2** stage columns. **3** queue table. Phone **4** (recommended: one column at a time, Assign button) / **5** / **6**.
+Shoval via Jose: a Task-Board-like tab where a job lands once its deposit is paid and gets assigned to a technician. **1** (recommended) columns: "Just paid · to assign" (auto, newest first, days since payment vs limit) then one per technician + External company with load (count, $ due); drag or Assign ▾ sets the technician (EzBizi + Workiz when connected), logged; card = job, customer, area, deposit, due, stage chip, flags; search, area picker, Jobs filters. **2** stage columns. **3** queue table. Phone **4** (recommended: one column at a time, Assign button) / **5** / **6**. **Jose 2026-10-22 corrected:** it "refers to the action 1 stuff, when the job gets a payment and switches status tags" — the tab embeds the Task Board cards Action 1 creates (that board/group, Technician column), not a new assignment system.
 
 ### 142 · Project Management › Settings made orderly — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/pm-settings-layouts.html`)
 
