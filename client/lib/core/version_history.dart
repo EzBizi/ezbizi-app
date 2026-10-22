@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0473',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management dashboard: Today and Yesterday follow your own time zone instead of UTC, so Today no longer shows empty rows, and Yesterday no longer fails on a busy day.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0472',
       date: '21 Oct 2026',
       items: [
