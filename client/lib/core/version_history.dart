@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0484',
+      date: '22 Oct 2026',
+      items: [
+        'Human Resources: Download draft on every contract and on onboardings not yet fully signed, a PDF stamped as a draft on every page. The signed copy stays a separate download.',
+        'Task Board opens on the board you used last there, or on your own board, never on another person\'s.',
+        'Task Board: a card\'s Technician and its job\'s technician follow each other; changing it on the card assigns the job in Workiz first.',
+        'Project Management › Settings is laid out as cards with one inherit header each and the stages in an aligned table; a new card chooses which jobs Project Management includes (statuses, and only partly paid). The Completed and Cancelled tabs are gone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0483',
       date: '22 Oct 2026',
       items: [
