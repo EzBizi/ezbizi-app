@@ -454,13 +454,14 @@ class JobsProjectManagementController extends Controller
     {
         $user = $this->pmUser($request);
         $input = $request->validate($this->stageFilters() + [
-            'stage' => ['required', Rule::in(ProjectStages::KEYS)],
+            // Or every not-started stage at once, for the Dashboard's "See all" (UI/UX, 2026-10-22).
+            'stage' => ['required_without:waiting_to_start', 'nullable', Rule::in(ProjectStages::KEYS)],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
         $filtered = fn () => $this->stageFiltered($user, $settings, $input);
 
-        $page = ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null)
+        $page = (isset($input['stage']) ? ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null) : $filtered())
             ->with(['customer:id,name', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])
             ->orderByDesc('updated_at')->paginate(100, ['*'], 'page', (int) ($input['page'] ?? 1));
 
@@ -606,6 +607,9 @@ class JobsProjectManagementController extends Controller
             'stopped' => ['nullable', 'boolean'],
             'external' => ['nullable', 'boolean'],
             'second_visit' => ['nullable', 'boolean'],
+            // Paid, not started; over_limit: past the warning's days.
+            'waiting_to_start' => ['nullable', 'boolean'],
+            'over_limit' => ['nullable', 'boolean'],
         ];
     }
 
@@ -625,7 +629,14 @@ class JobsProjectManagementController extends Controller
             ->when($flag('dispute'), fn ($q) => ProjectStages::anyWord($q, (array) $settings->get('jobs.pm_dispute_words', $org)))
             ->when($flag('stopped'), fn ($q) => ProjectStages::stopped($q, (int) $settings->get('jobs.pm_stopped_days', $org)))
             ->when($flag('external') !== null, fn ($q) => $flag('external') ? $q->whereNotNull('external_company') : $q->whereNull('external_company'))
-            ->when($flag('second_visit') !== null, fn ($q) => $q->where('needs_second_visit', $flag('second_visit')));
+            ->when($flag('second_visit') !== null, fn ($q) => $q->where('needs_second_visit', $flag('second_visit')))
+            ->when($flag('waiting_to_start'), function ($q) use ($user, $settings, $flag, $org) {
+                $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
+                $q->where(fn ($any) => collect(ProjectStages::NOT_STARTED)->each(fn ($k) => $any->orWhere(fn ($one) => ProjectStages::scope($one, $rules[$k] ?? null))))
+                    ->whereIn('id', WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereNotNull('job_id')->groupBy('job_id')
+                        ->when($flag('over_limit'), fn ($p) => $p->havingRaw('MIN(starts_at) <= ?', [now()->subDays((int) $settings->get('jobs.pm_warn_days', $org))->endOfDay()]))
+                        ->select('job_id'));
+            });
     }
 
     /** Job and Workiz numbers, the customer's name, phone and address, the tech (Jose, 2026-10-21: "search bar"). */
