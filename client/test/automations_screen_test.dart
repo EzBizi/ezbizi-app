@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
+import 'package:ezbizi_client/widgets/scope_choice_field.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1213,7 +1214,7 @@ void main() {
     await _type(tester, 'Name', 'Only here');
     await _tap(
       tester,
-      find.widgetWithText(SearchPickerField<String>, 'Where it applies'),
+      find.widgetWithText(ScopeChoiceField, 'Where it applies'),
     );
     await _tap(tester, find.text('Connecticut').last);
 
@@ -2521,7 +2522,7 @@ void main() {
     expect(said('when'), 'Jobs › Status changed');
     expect(said('only-if'), 'only if status is one of completed, invoiced');
     expect(said('then'), 'Send a notification');
-    expect(said('name'), 'Everywhere in this business.');
+    expect(said('name'), 'Entire organization.');
 
     // The rehearsal of the saved rule sits here now, and so does History.
     expect(find.byKey(const Key('automation-builder-try')), findsOneWidget);
