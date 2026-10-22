@@ -3547,6 +3547,13 @@ class ActionRunner
         $group = trim((string) ($action['group'] ?? ''));
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
+            // A rule's group is made on the branch's board the first time it is
+            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // no board). By name, any case; a person's API call still refuses an unknown one.
+            if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
+                $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,
+                    'position' => (int) $board->groups()->max('position') + 1]);
+            }
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
                 'assignee_user_ids' => $owners->map->getKey()->all(),
