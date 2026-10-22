@@ -1,3 +1,4 @@
+import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/screens/jobs/project_management_assignments.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -226,4 +227,21 @@ void main() {
     await pickPat(tester);
     expect(server.get('/jobs/project-management').length, before + 1);
   });
+
+  test(
+    'a refused value reads errors["values.<column>"], as Task Board does',
+    () {
+      // Task Board's _setValue and its panel show ApiResponse.reason too.
+      const res = ApiResponse(
+        statusCode: 422,
+        body: {
+          'message': 'The given data was invalid.',
+          'errors': {
+            'values.c-tech': ['Pat Lin is not on this job branch.'],
+          },
+        },
+      );
+      expect(res.reason, 'Pat Lin is not on this job branch.');
+    },
+  );
 }

@@ -232,7 +232,7 @@ class _ProjectManagementAssignmentsState
     if (!res.ok) {
       setState(() {
         _tasks = before;
-        _cardError = (id, res.message);
+        _cardError = (id, res.reason);
       });
       return;
     }

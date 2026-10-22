@@ -192,7 +192,12 @@ class PmServer {
       }
       if (request.method == 'PATCH' && path.contains('/tasks/')) {
         if (taskRefusal != null) {
-          return _json({'message': taskRefusal}, 422);
+          return _json({
+            'message': 'The given data was invalid.',
+            'errors': {
+              'values.c-tech': [taskRefusal],
+            },
+          }, 422);
         }
         return _json({
           'data': {'id': path.split('/').last, ...(body as Map)},
