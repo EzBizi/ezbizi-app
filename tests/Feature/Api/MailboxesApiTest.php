@@ -660,7 +660,7 @@ class MailboxesApiTest extends TestCase
             'mark_read_at_source', 'can_mark_read_at_source',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
             'can_be_opened', 'unavailable_reason', 'mail_server',
-            'may_read', 'may_read_reason', 'may_manage',
+            'may_read', 'unread', 'may_read_reason', 'may_manage',
             'read_state_shared', 'read_state_note',
             'shared_read', 'can_reply', 'reply_refusal',
         ], array_keys($row));

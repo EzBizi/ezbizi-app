@@ -241,6 +241,7 @@ class MailboxMessagesController extends Controller
             'data' => [
                 ...$detail->toArray(),
                 'seen_by' => $seen[$detail->summary->id] ?? [],
+                'dealt'   => $this->dealtState->dealtWith($mailbox, [$detail->summary->id])[$detail->summary->id] ?? null,
                 /*
                  * The address a reply will go out AS, stated here so the client
                  * never has to guess. "info replies as info" is a property of

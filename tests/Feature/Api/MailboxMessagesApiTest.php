@@ -1208,6 +1208,27 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame('customer', $rows[0]['customer']['type']);
     }
 
+    /** Handled travels on inbox rows and the open message; unread per inbox comes from the cache. */
+    public function test_inbox_rows_and_detail_carry_dealt_and_inboxes_carry_unread(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t);
+        FakeMailboxReader::$page   = new MessagePage([$this->sameMail('m-1')]);
+        FakeMailboxReader::$detail = new MessageDetail(summary: $this->summary('m-1'), blocks: []);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1/dealt")->assertOk();
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')
+            ->assertJsonPath('data.0.dealt.by', $t['admin']->name)
+            ->assertJsonPath('data.0.inboxes.0.dealt.by', $t['admin']->name);
+        $this->signedInAs($t['admin'])->getJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1")
+            ->assertJsonPath('data.dealt.by', $t['admin']->name);
+
+        \Illuminate\Support\Facades\Cache::forever('dashboard.email.unread.'.$info->id, ['n' => 7, 'at' => now()->getTimestamp()]);
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes')->assertJsonPath('data.0.unread', 7);
+    }
+
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
     {
         $this->withFakeProvider();
