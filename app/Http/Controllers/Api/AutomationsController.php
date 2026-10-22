@@ -349,6 +349,8 @@ class AutomationsController extends Controller
                      * which is why this could ship without waiting for one.
                      */
                     'is_raised' => $t->isRaised,
+                    // What the event is about, when not the module's record; [] = nothing in particular (builder audit).
+                    'subjects' => $t->subjects === null ? null : array_map('class_basename', $t->subjects),
                 ], $module->triggers),
                 /*
                  * Marked, not merely listed.
@@ -694,6 +696,10 @@ class AutomationsController extends Controller
                 $rules = Automation::query()->with('activeVersion')->where('trigger_key', $key)->get();
                 $data[$key] = [
                     'last_30_days' => $this->recentInView($request, $key, ['scope_snapshot'])->count(),
+                    // How many details its events carry, before the fields load.
+                    'details' => AutomationEvent::query()->where('event_key', $key)->latest('occurred_at')->limit(20)->pluck('payload')
+                        ->flatMap(fn ($p) => array_keys(array_merge(is_array($p) ? $p : [], is_array($p['after'] ?? null) ? $p['after'] : [])))
+                        ->reject(fn ($f) => $f === 'before' || $f === 'after')->unique()->count(),
                     'rules' => $rules->count(),
                     // What rules on this trigger most often do, most used first.
                     'top_actions' => $rules->flatMap(fn ($r) => array_column($r->activeVersion?->actions ?? [], 'type'))
@@ -777,7 +783,7 @@ class AutomationsController extends Controller
             ->where('event_key', $key)
             ->latest('occurred_at')
             ->limit(self::FIELD_SAMPLE)
-            ->get(['payload', 'subject_type', 'subject_id']);
+            ->get(['id', 'occurred_at', 'payload', 'subject_type', 'subject_id']);
 
         $events = $recent->pluck('payload');
 
@@ -875,6 +881,13 @@ class AutomationsController extends Controller
             'message_fields' => $messageFields,
             'values' => $values,
             'samples' => $this->samplesFor($recent, $fields, $request->user(), $messageFields),
+            // Up to three whole recent events, each one record's values, for
+            // "Last 3 times" and for Try it on a chosen one (UI/UX, 2026-10-22).
+            'events' => $recent->map(fn (AutomationEvent $e) => [
+                'event_id' => $e->id,
+                'occurred_at' => $e->occurred_at?->toIso8601String(),
+                'values' => (object) $this->samplesFor(collect([$e]), $fields, $request->user(), $messageFields),
+            ])->filter(fn (array $e) => (array) $e['values'] !== [])->take(3)->values(),
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
@@ -2152,11 +2165,14 @@ class AutomationsController extends Controller
     private function assertSubjectFits(string $type, int $index, ?string $triggerKey): void
     {
         $allowed = self::ACTION_SUBJECTS[$type] ?? null;
-        $model = $triggerKey === null ? null : $this->registry->get((string) $this->registry->moduleKeyOfTrigger($triggerKey))?->subject?->model;
-        if ($allowed !== null && $model !== null && ! in_array($model, $allowed, true)) {
+        // The trigger's own record where it declares one, else its module's.
+        $declared = $triggerKey === null ? null : $this->registry->findTrigger($triggerKey)?->subjects;
+        $models = $declared ?? array_filter([$triggerKey === null ? null : $this->registry->get((string) $this->registry->moduleKeyOfTrigger($triggerKey))?->subject?->model]);
+        $model = $models[0] ?? 'nothing in particular';
+        if ($allowed !== null && ($declared !== null || $models !== []) && array_intersect($models, $allowed) === []) {
             throw ValidationException::withMessages([
                 "actions.{$index}.type" => 'This step works on '.implode(' or ', array_map(fn ($m) => strtolower(class_basename($m)), $allowed))
-                    .' records, and this trigger is about a '.strtolower(class_basename($model)).'.',
+                    .' records, and this trigger is about '.(class_exists($model) ? 'a '.strtolower(class_basename($model)) : $model).'.',
             ]);
         }
     }
