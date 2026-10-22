@@ -141,6 +141,16 @@ class Job extends Model implements StatesRetention
 
     /** The Workiz mirror row this job was projected from, if any -- where its money lives. */
     /** The company the job's franchise belongs to, by name: the export's `company`. */
+    protected static function booted(): void
+    {
+        // The job's technician changing, by a person or the Workiz sync, rewrites its cards' Technician (Jose, 2026-10-22).
+        static::updated(function (Job $job) {
+            if ($job->wasChanged('performed_by_user_id')) {
+                \App\Support\Jobs\JobTechnicianSync::toCards($job);
+            }
+        });
+    }
+
     public function getCompanyAttribute(): ?string
     {
         return $this->franchise?->company?->name;
