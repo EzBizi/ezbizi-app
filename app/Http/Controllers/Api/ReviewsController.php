@@ -60,23 +60,7 @@ class ReviewsController extends Controller
             ->with(['reply', 'company:id,name', 'franchise:id,name', 'customer', 'job.performedBy'])
             ->withCount('notes');
 
-        if (! $user->canActOnOrganization($user->organization)) {
-            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
-            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-
-            $query->where(function ($q) use ($companyIds, $franchiseIds) {
-                $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds)
-                    // A row filed at organization level - both columns null,
-                    // which is every row from an organization-scoped
-                    // connection - belongs to everybody who can see this tab.
-                    // Matching the two columns alone hid all of them from
-                    // every user below organization level, while the policy
-                    // still allowed each one by id. Business Profile carried
-                    // this clause from the start; Leads and Reviews did not.
-                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
-            });
-        }
+        \App\Support\CustomerExperience\Places::scope($query, $user);
 
         // The filter the work actually uses. Somebody opening this tab is
         // usually looking for the ones nobody has answered, not browsing.
@@ -521,23 +505,7 @@ class ReviewsController extends Controller
             fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED),
         );
 
-        if (! $user->canActOnOrganization($user->organization)) {
-            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
-            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-
-            $query->where(function ($q) use ($companyIds, $franchiseIds) {
-                $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds)
-                    // A row filed at organization level - both columns null,
-                    // which is every row from an organization-scoped
-                    // connection - belongs to everybody who can see this tab.
-                    // Matching the two columns alone hid all of them from
-                    // every user below organization level, while the policy
-                    // still allowed each one by id. Business Profile carried
-                    // this clause from the start; Leads and Reviews did not.
-                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
-            });
-        }
+        \App\Support\CustomerExperience\Places::scope($query, $user);
 
         return (int) $query->count();
     }

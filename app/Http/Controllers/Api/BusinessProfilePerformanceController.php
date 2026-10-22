@@ -77,12 +77,7 @@ class BusinessProfilePerformanceController extends Controller
     private function reachable(User $user): Builder
     {
         $query = BusinessLocation::query()->orderBy('title');
-        if (! $user->canActOnOrganization($user->organization)) {
-            $companyIds = $user->reachableCompanies()->pluck('id')->all();
-            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-            $query->where(fn ($q) => $q->whereIn('company_id', $companyIds)->orWhereIn('franchise_id', $franchiseIds)
-                ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id')));
-        }
+        \App\Support\CustomerExperience\Places::scope($query, $user);
 
         return $query;
     }
