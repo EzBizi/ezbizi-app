@@ -376,13 +376,6 @@ const Map<String, _Exemption> _exempt = {
     owner: 'UI/UX',
     host: null,
   ),
-
-  // OPEN GAP, not a reason: a real list with no search yet.
-  'lib/screens/training/dashboard_list.dart': (
-    why: 'GAP: Training Dashboard rows (one per guide or test) need a search',
-    owner: 'Training',
-    host: null,
-  ),
 };
 
 /// Server-search screen → the test that asserts it sends q. Pin C, plus the
