@@ -65,9 +65,15 @@ class BookingApprovedTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
         $lead = $this->inTenant($t['org'], fn () => Lead::create([
-            'organization_id' => $t['org']->id, 'source' => Lead::SOURCE_THUMBTACK,
+            'organization_id' => $t['org']->id, 'company_id' => $t['company']->id, 'source' => Lead::SOURCE_THUMBTACK,
             'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
         ]));
+        $this->inTenant($t['org'], function () use ($t) {
+            // Somewhere the booking page can offer a day (Bar, 2026-10-21: no link without one).
+            $area = \App\Models\ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Fairfield']);
+            \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
+            \App\Models\ServiceAreaZip::create(['franchise_id' => $t['franchise']->id, 'service_area_id' => $area->id, 'zip' => '06810']);
+        });
 
         $this->assertSame('', $this->inTenant($t['org'], fn () => $lead->fresh()->booking_link));
 
@@ -78,5 +84,31 @@ class BookingApprovedTest extends TestCase
         $this->assertMatchesRegularExpression('~^https://www\.a-1chimney\.com/b/[A-Za-z0-9]{7}$~', $link);
         $this->assertSame($lead->id, $this->inTenant($t['org'], fn () => BookingLink::leadId(basename($link))));
         $this->assertSame($link, $this->inTenant($t['org'], fn () => $lead->fresh()->booking_link), 'the same code is sent again');
+    }
+
+    /**
+     * Bar, 2026-10-21: garage-door customers were sent a booking link and found
+     * no availability. A company with nowhere bookable, or a ZIP no area covers,
+     * gets no link - the reply drops the line.
+     */
+    public function test_no_link_where_the_booking_page_could_offer_no_day(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->inTenant($t['org'], function () use ($t) {
+            app(SettingsResolver::class)->set('leads.booking_url', $t['org'], 'https://www.a-1chimney.com/booking/');
+            $lead = fn (?string $zip) => Lead::create(['organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
+                'source' => Lead::SOURCE_THUMBTACK, 'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(), 'postal_code' => $zip]);
+
+            $this->assertSame('', $lead(null)->booking_link, 'no service area at all');
+
+            $area = ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Fairfield']);
+            \App\Models\ServiceAreaZip::create(['franchise_id' => $t['franchise']->id, 'service_area_id' => $area->id, 'zip' => '06810']);
+            $this->assertSame('', $lead('06810')->booking_link, 'an area with no capacity set');
+
+            ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
+            $this->assertNotSame('', $lead('06810')->booking_link);
+            $this->assertNotSame('', $lead(null)->booking_link, 'no ZIP yet: the page asks for it');
+            $this->assertSame('', $lead('90210')->booking_link, 'a ZIP no area covers');
+        });
     }
 }
