@@ -979,6 +979,57 @@ class SettingRegistry
                     .'cancelling after 30 days with nothing paid.',
             ),
             /*
+             * Project Management's stages (Jose, 2026-10-22: "as you
+             * recommend"): each one statuses, plus whether it is scheduled
+             * and whether money is due. Unmapped stages hold nothing.
+             * [{key, statuses[], scheduled: bool|null, due: bool|null}].
+             */
+            new SettingDefinition(
+                key: 'jobs.pm_stages', label: 'Project Management stages',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Which statuses, scheduled or not, money due or not, make each stage.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Any case. A job with one of these as a tag or as its type is a redo.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_dispute_words', label: 'Tags that mean a dispute',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Any case. A job with one of these as a tag is in dispute.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_stopped_days', label: 'Payments count as stopped after (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'A partly paid job with money still due and no payment for this many days.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_warn_days', label: 'Warn when a paid job has not started after (days)',
+                type: SettingDefinition::TYPE_INT, default: 10,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'Counted from the first payment while the job is still waiting to start.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_warning_email', label: 'Send the paid-not-started warning to',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'One email address. Empty sends nothing.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_cost_alert_percent', label: 'Highlight cost from gross sales above (%)',
+                type: SettingDefinition::TYPE_INT, default: 15,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
+                help: 'The repair-team report shows the percentage in red above this.',
+            ),
+            /*
              * Why a job waits for review, for Project Management (Jose,
              * 2026-10-22: "need to order parts, need measurements, looking
              * for contractor"). The organization's own list.
@@ -1602,6 +1653,14 @@ class SettingRegistry
                 default: false,
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'When on, people whose role can "Approve daily hours" get yesterday\'s clock-ins each morning to approve or adjust.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.approval_roles',
+                label: 'Roles whose hours need daily approval',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Leave empty for everybody. The approver is never in their own list.',
             ),
             new SettingDefinition(
                 key: 'time_clock.approval_time',

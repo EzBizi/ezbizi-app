@@ -878,6 +878,8 @@ Route::prefix('v1')
         // Before the resource, or 'project-management' reads as a job id.
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
+        Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
+        Route::get('jobs/project-management/overview', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'overview']);
         Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
 

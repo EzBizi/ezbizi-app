@@ -7,6 +7,7 @@ use App\Models\AutomationRun;
 use App\Models\Job;
 use App\Models\WorkizRecord;
 use App\Support\Jobs\EstimateAging;
+use App\Support\Jobs\ProjectStages;
 use App\Support\Jobs\WorkizMoney;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -441,6 +442,180 @@ class JobsProjectManagementController extends Controller
         ]))->sortByDesc('at')->values();
 
         return response()->json(['data' => $rows, 'meta' => $meta]);
+    }
+
+    /**
+     * GET /api/v1/jobs/project-management/jobs?stage=&…filters&page=
+     *
+     * The Jobs tab (Jose's overhaul, 2026-10-22): one stage's jobs, a page at
+     * a time, with every stage's count under the same filters.
+     */
+    public function stageJobs(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $input = $request->validate($this->stageFilters() + [
+            'stage' => ['required', Rule::in(ProjectStages::KEYS)],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $rules = ProjectStages::rules($settings->get('jobs.pm_stages', $user->organization));
+        $filtered = fn () => $this->stageFiltered($user, $settings, $input);
+
+        $page = ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null)
+            ->with(['customer:id,name', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])
+            ->orderByDesc('updated_at')->paginate(100, ['*'], 'page', (int) ($input['page'] ?? 1));
+
+        $paidAt = WorkizRecord::query()->whereIn('job_id', $page->getCollection()->modelKeys())->where('type', 'payment')
+            ->where('status', 'succeeded')->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) first_paid, MAX(starts_at) last_paid')
+            ->get()->keyBy('job_id');
+        $money = $user->hasPermission('jobs.financials');
+
+        $rows = $page->getCollection()->map(function (Job $j) use ($paidAt, $money) {
+            $m = WorkizMoney::for($j);
+            $first = $paidAt[$j->id]->first_paid ?? null;
+
+            return [
+                'id' => $j->id, 'number' => $j->number, 'title' => $j->title, 'status' => $j->status, 'tags' => $j->tags ?? [],
+                'customer' => ['id' => $j->customer_id, 'name' => $j->customer?->name],
+                'franchise' => ['id' => $j->franchise_id, 'name' => $j->franchise?->name],
+                'service_area' => $j->serviceArea?->name,
+                'technician' => $j->performedBy?->name,
+                'scheduled_for' => $j->scheduled_for?->toIso8601String(),
+                'review_reason' => $j->review_reason,
+                'external_company' => $j->external_company,
+                'needs_second_visit' => (bool) $j->needs_second_visit,
+                'paid_at' => $first ? Carbon::parse($first)->toDateString() : null,
+                'days_since_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->last_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
+            ] + ($money && $m ? ['total_minor' => $m['total'], 'due_minor' => $m['due']] : []);
+        });
+
+        $counts = [];
+        foreach (ProjectStages::KEYS as $key) {
+            $counts[$key] = isset($rules[$key]) ? ProjectStages::scope($filtered(), $rules[$key])->count() : 0;
+        }
+
+        return response()->json(['data' => $rows, 'meta' => [
+            'counts' => $counts, 'mapped' => array_keys($rules),
+            'page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total(),
+        ]]);
+    }
+
+    /**
+     * GET /api/v1/jobs/project-management/overview?franchise_id=&service_area_id=&q=
+     *
+     * The Dashboard's numbers (Jose's overhaul, 2026-10-22), each divisible by
+     * service area. Production cost waits for Financials' per-job cost: null.
+     */
+    public function overview(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $input = $request->validate($this->stageFilters());
+        $rules = ProjectStages::rules($settings->get('jobs.pm_stages', $user->organization));
+        $in = fn (string $key) => ProjectStages::scope($this->stageFiltered($user, $settings, $input), $rules[$key] ?? null);
+        $money = $user->hasPermission('jobs.financials');
+        $sum = fn ($q, string $field) => (int) round(100 * (float) \App\Models\WorkizJob::query()->whereIn('job_id', $q->select('id'))
+            ->sum(\DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.{$field}')) AS DECIMAL(12,2))")));
+
+        $reasons = collect((array) $settings->get('jobs.review_reasons', $user->organization))->filter(fn ($r) => is_array($r) && isset($r['value']));
+        $review = $in('waiting_review')->with('serviceArea:id,name')->get(['id', 'review_reason', 'service_area_id']);
+        $byReason = fn ($jobs) => $reasons->map(fn ($r) => ['value' => $r['value'], 'label' => $r['label'] ?? $r['value'],
+            'count' => $jobs->where('review_reason', $r['value'])->count()])
+            ->push(['value' => null, 'label' => 'No reason', 'count' => $jobs->whereNull('review_reason')->count()])->values()->all();
+
+        $redo = (array) $settings->get('jobs.pm_redo_words', $user->organization);
+        $inProgress = $in('in_progress')->count();
+        $redoCount = ProjectStages::anyWord($in('in_progress'), $redo)->count();
+
+        $notStarted = collect(ProjectStages::NOT_STARTED)->flatMap(fn ($k) => isset($rules[$k]) ? $in($k)->pluck('id') : [])->unique();
+        $firstPaid = WorkizRecord::query()->whereIn('job_id', $notStarted)->where('type', 'payment')->where('status', 'succeeded')
+            ->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) paid_at')->pluck('paid_at', 'job_id');
+        $limit = (int) $settings->get('jobs.pm_warn_days', $user->organization);
+        $waitingJobs = Job::query()->whereIn('id', $firstPaid->keys())->with('customer:id,name')->get(['id', 'number', 'customer_id']);
+
+        $open = Job::query()->where(fn ($w) => collect(ProjectStages::OPEN)->filter(fn ($k) => isset($rules[$k]))
+            ->each(fn ($k) => $w->orWhereIn('id', $in($k)->select('id'))))->whereRaw(collect(ProjectStages::OPEN)->contains(fn ($k) => isset($rules[$k])) ? '1 = 1' : '1 = 0');
+
+        $doneWaiting = $in('done_waiting_payment');
+
+        return response()->json(['data' => [
+            'mapped' => array_keys($rules),
+            // Where the repair-team report turns cost from gross sales red.
+            'cost_alert_percent' => (int) $settings->get('jobs.pm_cost_alert_percent', $user->organization),
+            'waiting_review' => [
+                'count' => $review->count(),
+                'by_reason' => $byReason($review),
+                'by_location' => $review->groupBy(fn ($j) => $j->serviceArea?->name ?? 'No service area')
+                    ->map(fn ($jobs, $name) => ['name' => $name, 'count' => $jobs->count(), 'by_reason' => $byReason($jobs)])->sortByDesc('count')->values()->all(),
+            ],
+            'in_progress' => [
+                'count' => $inProgress,
+                'ours' => $in('in_progress')->whereNull('external_company')->count(),
+                'external' => $in('in_progress')->whereNotNull('external_company')->count(),
+                'second_visit' => $in('in_progress')->where('needs_second_visit', true)->count(),
+                'redo' => $redoCount,
+                'new' => $inProgress - $redoCount,
+            ],
+            'ready_to_schedule' => [
+                'count' => $in('ready_to_schedule')->count(),
+                'oldest_days' => ($oldest = $in('ready_to_schedule')->min('created_at')) ? (int) Carbon::parse($oldest)->diffInDays(now()) : null,
+            ],
+            'scheduled' => [
+                'count' => $in('scheduled')->count(),
+                'next_7_days' => $in('scheduled')->whereBetween('scheduled_for', [now()->startOfDay(), now()->addDays(7)->endOfDay()])->count(),
+            ],
+            'done_waiting_payment' => ['count' => $doneWaiting->count()]
+                + ($money ? ['total_minor' => $sum($in('done_waiting_payment'), 'JobTotalPrice'), 'due_minor' => $sum($in('done_waiting_payment'), 'JobAmountDue')] : []),
+            'stopped_payments' => ProjectStages::stopped($this->stageFiltered($user, $settings, $input), (int) $settings->get('jobs.pm_stopped_days', $user->organization))->count(),
+            'per_team' => (clone $open)->with('performedBy:id,name')->get(['id', 'performed_by_user_id'])
+                ->groupBy(fn ($j) => $j->performedBy?->name ?? 'Unassigned')->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count()])
+                ->sortByDesc('count')->values()->all(),
+            'waiting_to_start' => $waitingJobs->map(fn (Job $j) => [
+                'job' => ['id' => $j->id, 'number' => $j->number, 'customer' => $j->customer?->name],
+                'paid_at' => Carbon::parse($firstPaid[$j->id])->toDateString(),
+                'days' => (int) Carbon::parse($firstPaid[$j->id])->startOfDay()->diffInDays(now()->startOfDay()),
+                'limit' => $limit,
+            ])->sortByDesc('days')->values()->all(),
+        ] + ($money ? ['pipeline_minor' => $sum(clone $open, 'JobTotalPrice'), 'avg_production_cost_minor' => null] : [])]);
+    }
+
+    private function pmUser(Request $request)
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_management.view') && $user->hasPermission('jobs.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+
+        return $user;
+    }
+
+    private function stageFilters(): array
+    {
+        return [
+            'franchise_id' => ['nullable', 'uuid'],
+            'service_area_id' => ['nullable', 'uuid'],
+            'q' => ['nullable', 'string', 'max:100'],
+            'redo' => ['nullable', 'boolean'],
+            'dispute' => ['nullable', 'boolean'],
+            'stopped' => ['nullable', 'boolean'],
+            'external' => ['nullable', 'boolean'],
+            'second_visit' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /** The jobs in reach under the Jobs tab's filters. */
+    private function stageFiltered($user, SettingsResolver $settings, array $input): \Illuminate\Database\Eloquent\Builder
+    {
+        $flag = fn (string $k) => array_key_exists($k, $input) && $input[$k] !== null ? filter_var($input[$k], FILTER_VALIDATE_BOOL) : null;
+        $org = $user->organization;
+
+        return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
+            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
+            ->when($input['service_area_id'] ?? null, fn ($q, $id) => $q->where('service_area_id', $id))
+            ->when(filled($input['q'] ?? null), fn ($q) => $this->search($q, $input['q']))
+            ->when($flag('redo') !== null, fn ($q) => $flag('redo')
+                ? ProjectStages::anyWord($q, (array) $settings->get('jobs.pm_redo_words', $org))
+                : $q->whereNotIn('id', ProjectStages::anyWord(Job::query(), (array) $settings->get('jobs.pm_redo_words', $org))->select('id')))
+            ->when($flag('dispute'), fn ($q) => ProjectStages::anyWord($q, (array) $settings->get('jobs.pm_dispute_words', $org)))
+            ->when($flag('stopped'), fn ($q) => ProjectStages::stopped($q, (int) $settings->get('jobs.pm_stopped_days', $org)))
+            ->when($flag('external') !== null, fn ($q) => $flag('external') ? $q->whereNotNull('external_company') : $q->whereNull('external_company'))
+            ->when($flag('second_visit') !== null, fn ($q) => $q->where('needs_second_visit', $flag('second_visit')));
     }
 
     /** Job and Workiz numbers, the customer's name, phone and address, the tech (Jose, 2026-10-21: "search bar"). */
