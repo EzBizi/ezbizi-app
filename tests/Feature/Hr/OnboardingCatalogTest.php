@@ -301,6 +301,24 @@ class OnboardingCatalogTest extends TestCase
         $this->assertMatchesRegularExpression('/Hammer<\/td><td><\/td>.*Ladder<\/td><td>1<\/td>/s', $html);
     }
 
+    /** Any contract downloads as a draft PDF before anybody signs (Jose, 2026-10-22). */
+    public function test_a_contract_downloads_as_a_draft_pdf(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'Office Agreement', 'body' => "1. TERMS\n\nPaid \${{hourly_rate}} per hour.",
+            'fields' => [['key' => 'hourly_rate', 'label' => 'Hourly rate', 'type' => 'number', 'filled_by' => 'employer', 'required' => true]],
+        ])->assertCreated()->json('data.id');
+
+        $response = $this->signedInAs($alpha['admin'])->get("/api/v1/hr/contracts/{$id}/draft.pdf")->assertOk();
+        $this->assertSame('application/pdf', $response->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+        $this->assertStringContainsString('office-agreement-draft.pdf', (string) $response->headers->get('Content-Disposition'));
+
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view', 'hr.contracts.view']);
+        $this->signedInAs($reader)->get("/api/v1/hr/contracts/{$id}/draft.pdf")->assertForbidden();
+    }
+
     /** A1 Chimney's COO offer, made reusable (Jose, 2026-10-21). */
     public function test_the_coo_offer_asks_customer_relations_paperwork_without_its_pay_lines(): void
     {
