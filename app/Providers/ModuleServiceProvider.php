@@ -1299,7 +1299,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Update the job in Workiz',
                         description: 'Sets the status of the Workiz job (and sub-status) and/or replaces its tags '
                             .'with the ones listed, in the spelling of each Workiz account. Tags not '
-                            .'listed are removed. A job not linked to Workiz is left alone. If Workiz '
+                            .'listed are removed. It can also remove the job’s scheduled time. A job not linked to Workiz is left alone. If Workiz '
                             .'refuses, for example no technician on the job, its own words are shown.',
                         executionType: 'workiz.job_update',
                     ),

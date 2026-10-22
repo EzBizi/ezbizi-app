@@ -321,6 +321,19 @@ final class WorkizJobWriter
     }
 
     /**
+     * Take the job off Workiz's schedule (Jose's Project Management Action 1,
+     * 2026-10-22: payment in, time removed). Measured on NY's test job
+     * 900018655: PUT {isScheduled: false} clears date and endDate; a null or
+     * empty date is refused.
+     */
+    public function unschedule(WorkizJob $job): WorkizJob
+    {
+        [$connection, $id] = $this->v2Job($job);
+
+        return $this->put($connection, $job, $id, ['isScheduled' => false], 'workiz.job_unscheduled', []);
+    }
+
+    /**
      * Make the job's tags exactly these names (Jose, 2026-10-21: "existing
      * tags should be removed"). Each name is the account's own tag (GET
      * /tags), matched without case and spacing, or by one close spelling,
