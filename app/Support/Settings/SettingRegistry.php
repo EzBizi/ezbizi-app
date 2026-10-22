@@ -1577,6 +1577,25 @@ class SettingRegistry
              * the franchise (or higher, and it cascades). Off, or no centre,
              * and nothing is checked.
              */
+            // Daily approval (Shoval via Jose, 2026-10-22): off until a place
+            // asks for it. Who approves is whoever holds "Approve daily hours".
+            new SettingDefinition(
+                key: 'time_clock.approval_enabled',
+                label: 'Daily approval of hours',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'When on, people whose role can "Approve daily hours" get yesterday\'s clock-ins each morning to approve or adjust.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.approval_time',
+                label: 'Daily approval reminder time',
+                type: SettingDefinition::TYPE_ENUM,
+                default: '08:00',
+                options: ['06:00', '07:00', '08:00', '09:00', '10:00', '12:00'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'When the approver is told yesterday\'s hours are waiting, in the place\'s own time.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.geofence_enabled',
                 label: 'Clock-in zone',

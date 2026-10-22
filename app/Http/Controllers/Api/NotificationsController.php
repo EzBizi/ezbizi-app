@@ -297,6 +297,7 @@ class NotificationsController extends Controller
         \App\Models\Suggestion::class => 'suggestions',
         \App\Models\Lead::class => 'leads',
         \App\Models\TimeClockCorrectionRequest::class => 'work_hours',
+        \App\Models\TimeClockDayApproval::class => 'work_hours',
         \App\Models\Automation::class => self::AUTOMATIONS_MODULE,
         \App\Models\FieldAlert::class => 'field',
         \App\Models\Onboarding::class => 'hr',
