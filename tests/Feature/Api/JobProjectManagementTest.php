@@ -123,6 +123,19 @@ class JobProjectManagementTest extends TestCase
         $this->assertArrayHasKey('technician', $get('?event=tag_changes&from=2026-10-12&to=2026-10-12')[0]);
     }
 
+    /** 2026-10-22: with no watched statuses the stage lists are empty, but a stat's jobs and Recently Paid are not. */
+    public function test_drill_downs_stand_without_watched_statuses(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('jobs.estimate_aging_statuses', $alpha['org'], []));
+        $get = fn (string $q) => array_column($this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management?{$q}")->assertOk()->json('data'), 'id');
+
+        $this->assertSame([], $get(''));
+        $this->assertSame([$job], $get('event=payments&from=2026-10-10&to=2026-10-10'));
+        $this->assertSame([$job], $get('filter=recently_paid&from=2026-10-10&to=2026-10-10'));
+    }
+
     public function test_filters_by_stage_branch_and_days(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
