@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 135 · HR › Payroll tab + onboarding Employer/Employee tabs — **sent 2026-10-22** (`docs/previews/hr-payroll-layouts.html`)
+
+HR asked (server 3bd574538). **1** (recommended) Jose's columns (Employee, Salary amount+period+since, W2 Signed/Not signed + download, Start, Terminated, Role, Contract + status + download); filters W2 segment, Role, Contract, search, "Show people who left" (left ones last, dimmed); Salary opens a side pane: new amount, period, basis, effective date, note → adds to history (listed); no hr.pay.view = "—", no hr.pay.edit = read-only. **2** inline cell edit. **3** cards. Phone **4** (recommended: cards + filters, person full screen) / **5** / **6**. **7** onboarding form: Employer · N left | Employee · N left tabs, opens on the reader's side; "either" questions on the reader's own tab marked "either of you can answer"; the other side read-only with "Waiting on <name>".
+
 ### 134 · Email › Google Workspace tab (signatures) — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/email-google-workspace-layouts.html`)
 
 Email asked (API 84231a7b). **1** (recommended) Workspace cards (domain, where connected, people count, signature status; one Workspace opens directly); inside: signatures_reason banner, template editor with placeholder chips + live preview for a chosen person, people table (tick, name/address, title, EzBizi person picker with "Same email · Link", signature Template/Own/Not set, last set; suspended dimmed), bulk bar "N selected · Set signature" with per-address results; person side pane: in Gmail now vs will be, Use the template / Give them their own, Set it now. **2** stacked sections. **3** card then wizard. Phone **4** (recommended: people as cards, long-press select, panes full screen) / **5** / **6**.
