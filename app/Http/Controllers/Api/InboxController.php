@@ -45,6 +45,7 @@ class InboxController extends Controller
         private readonly MailboxReaders $readers,
         private readonly ReadState $readState,
         private readonly HeaderCache $cache,
+        private readonly \App\Support\Email\DealtState $dealtState,
     ) {}
 
     /** GET /api/v1/email/inbox */
@@ -259,6 +260,20 @@ class InboxController extends Controller
 
         $who = $this->whoSent(array_map(fn ($r) => mb_strtolower($r['summary']->fromAddress), $rows), $user);
 
+        // Handled, per inbox the mail is in: one query per inbox for the page.
+        $dealt = [];
+        foreach (collect($found)->groupBy(fn ($pair) => $pair[0]->id) as $pairs) {
+            $dealt[$pairs[0][0]->id] = $this->dealtState->dealtWith($pairs[0][0], $pairs->map(fn ($pair) => $pair[1]->id)->all());
+        }
+
+        foreach ($rows as &$r) {
+            foreach ($r['inboxes'] as &$where) {
+                $where['dealt'] = $dealt[$where['mailbox_id']][$where['message_id']] ?? null;
+            }
+            unset($where);
+        }
+        unset($r);
+
         return collect($rows)->map(function (array $r, string $key) use ($who) {
             $s        = $r['summary'];
             $customer = $who[mb_strtolower($s->fromAddress)] ?? null;
@@ -277,6 +292,8 @@ class InboxController extends Controller
                 // automated invoice reply is still them.
                 'category'        => $customer !== null ? 'people' : ($r['bulk'] ? 'notifications' : 'primary'),
                 'inboxes'         => $r['inboxes'],
+                // Handled if handled in any inbox it reached: {at, by} of the first.
+                'dealt'           => collect($r['inboxes'])->pluck('dealt')->filter()->first(),
                 'customer'        => $customer,
             ];
         })->sortByDesc('received_at')->values();

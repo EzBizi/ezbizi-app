@@ -982,6 +982,9 @@ class MailboxesController extends Controller
             'mail_server' => $mailbox->mail_server,
 
             'may_read'        => $readRefusal === null,
+            // Unread at the provider, served from cache and refreshed after the
+            // response; null until first counted. Only for inboxes this person reads.
+            'unread'          => $readRefusal === null ? app(\App\Support\Email\UnreadCounts::class)->cached($mailbox, $user->organization) : null,
             'may_read_reason' => $readRefusal,
             'may_manage'      => $this->access->mayManage($user, $mailbox),
 

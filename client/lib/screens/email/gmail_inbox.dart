@@ -14,6 +14,7 @@ import '../../widgets/open_destination.dart';
 import '../../widgets/side_panel.dart';
 import '../customers/customer_detail_panel.dart';
 import 'compose_panel.dart';
+import 'forward_panel.dart';
 import 'inbox_rows.dart';
 import 'mail_data.dart';
 import 'message_list.dart';
@@ -93,6 +94,15 @@ String inboxStamp(String? iso, DisplayFormats formats, {DateTime? now}) {
   return formats.formatDate(at);
 }
 
+/// "Handled by Dana · 9:12", "Handled · Oct 21" when an automation did it.
+String handledSentence(Dealt dealt, DisplayFormats formats) {
+  final when = inboxStamp(dealt.at, formats);
+  final who = dealt.by == null || dealt.by!.isEmpty
+      ? 'Handled'
+      : 'Handled by ${dealt.by}';
+  return when.isEmpty ? who : '$who · $when';
+}
+
 class _Folder {
   const _Folder(this.id, this.label, this.icon);
   final String id;
@@ -121,7 +131,12 @@ class _Group {
   final String id;
   final String name;
   final List<Mailbox> inboxes = [];
-  int get unread => inboxes.fold(0, (sum, m) => sum + m.unread);
+
+  /// The known counts summed; null when none of them is known yet.
+  int? get unread {
+    final known = [for (final m in inboxes) ?m.unread];
+    return known.isEmpty ? null : known.fold<int>(0, (sum, n) => sum + n);
+  }
 }
 
 class _GmailInboxState extends State<GmailInbox> {
@@ -177,7 +192,7 @@ class _GmailInboxState extends State<GmailInbox> {
   bool _loadingMessage = false;
   String? _messageError;
   int _messageRequest = 0;
-  bool _dealt = false;
+  Dealt? _dealt;
 
   ReadingPane _pane = ReadingPane.right;
 
@@ -434,7 +449,7 @@ class _GmailInboxState extends State<GmailInbox> {
       _open = null;
       _loadingMessage = true;
       _messageError = null;
-      _dealt = false;
+      _dealt = copy.dealt;
     });
 
     final response = await widget.api.get(
@@ -456,6 +471,8 @@ class _GmailInboxState extends State<GmailInbox> {
 
       if (data is Map<String, dynamic>) {
         _open = MessageDetail.fromJson(data);
+        // The message's own word on handled wins over the row's.
+        if (data.containsKey('dealt')) _dealt = _open!.dealt;
         _rows = [
           for (final r in _rows)
             r.key == row.key ? r.copyWith(unread: false) : r,
@@ -599,7 +616,11 @@ class _GmailInboxState extends State<GmailInbox> {
     return null;
   }
 
-  Future<void> _reply(Mailbox mailbox, MessageDetail message) async {
+  Future<void> _reply(
+    Mailbox mailbox,
+    MessageDetail message, {
+    bool all = false,
+  }) async {
     final sent = await showSidePanel<String>(
       context,
       builder: (_) => ReplyPanel(
@@ -607,6 +628,7 @@ class _GmailInboxState extends State<GmailInbox> {
         mailboxId: mailbox.id,
         message: message,
         replyAs: message.replyAs!,
+        all: all,
       ),
     );
 
@@ -619,6 +641,27 @@ class _GmailInboxState extends State<GmailInbox> {
 
     _loadList(cursor: _cursor);
   }
+
+  Future<void> _forward(Mailbox mailbox, MessageDetail message) async {
+    final said = await showSidePanel<String>(
+      context,
+      builder: (_) => ForwardPanel(
+        api: widget.api,
+        mailboxId: mailbox.id,
+        message: message,
+        sendAs: mailbox.address,
+      ),
+    );
+
+    if (said == null || !mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(said)));
+  }
+
+  /// "—" while the server has not counted an inbox yet, never 0; nothing
+  /// when it is known to be 0.
+  static String? _unreadBadge(int? unread) =>
+      unread == null ? '—' : (unread > 0 ? '$unread' : null);
 
   Future<void> _compose(Mailbox mailbox) async {
     final sent = await showSidePanel<String>(
@@ -768,7 +811,9 @@ class _GmailInboxState extends State<GmailInbox> {
               label: group.id == 'not-connected'
                   ? 'Not connected · ${group.inboxes.length}'
                   : group.name,
-              count: group.id == 'not-connected' ? null : group.unread,
+              badge: group.id == 'not-connected'
+                  ? null
+                  : _unreadBadge(group.unread),
               bold: true,
               onTap: () => setState(() {
                 if (!_openGroups.remove(group.id)) _openGroups.add(group.id);
@@ -782,7 +827,7 @@ class _GmailInboxState extends State<GmailInbox> {
                       ? Icons.inbox_outlined
                       : Icons.link_off,
                   label: mailbox.address,
-                  count: mailbox.unread,
+                  badge: _unreadBadge(mailbox.unread),
                   indent: 24,
                   selected: _mailboxFilter == mailbox.id,
                   onTap: () => _selectMailbox(mailbox.id),
@@ -799,6 +844,7 @@ class _GmailInboxState extends State<GmailInbox> {
     required String label,
     required VoidCallback onTap,
     int? count,
+    String? badge,
     bool selected = false,
     bool bold = false,
     double indent = 0,
@@ -806,7 +852,13 @@ class _GmailInboxState extends State<GmailInbox> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final style = theme.textTheme.bodyMedium?.copyWith(
-      fontWeight: selected || bold || (count ?? 0) > 0 ? FontWeight.w600 : null,
+      fontWeight:
+          selected ||
+              bold ||
+              (count ?? 0) > 0 ||
+              (badge != null && badge != '—')
+          ? FontWeight.w600
+          : null,
       color: selected ? scheme.onSecondaryContainer : null,
     );
 
@@ -833,7 +885,10 @@ class _GmailInboxState extends State<GmailInbox> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                if (count != null && count > 0) Text('$count', style: style),
+                if (badge != null)
+                  Text(badge, style: style)
+                else if (count != null && count > 0)
+                  Text('$count', style: style),
               ],
             ),
           ),
@@ -1403,6 +1458,7 @@ class _GmailInboxState extends State<GmailInbox> {
                           onArchive: () => _act('archive', [row]),
                           onToggleRead: () =>
                               _act(row.unread ? 'read' : 'unread', [row]),
+                          formats: formats,
                           snoozeMenu: (builder) =>
                               _snoozeMenu(() => [row], builder),
                         );
@@ -1504,6 +1560,10 @@ class _GmailInboxState extends State<GmailInbox> {
                       formats: widget.session.me!.display,
                       refusal: _replyRefusal(mailbox, open),
                       onReply: () => _reply(mailbox, open),
+                      onReplyAll: () => _reply(mailbox, open, all: true),
+                      onForward: mailbox.canReply && mailbox.connected
+                          ? () => _forward(mailbox, open)
+                          : null,
                       dealt: _dealt,
                       onToggleDealt: () => _toggleDealt(mailbox, open.id),
                       api: widget.api,
@@ -1531,10 +1591,10 @@ class _GmailInboxState extends State<GmailInbox> {
     return () => _openCustomer(who);
   }
 
-  /// Handled is not on the inbox rows or the message (server shape), so it
-  /// starts as not handled each time a conversation is opened.
+  /// Handled starts from the server's `dealt` (the message, else the copy
+  /// opened), and the row's tick follows a change made here.
   Future<void> _toggleDealt(Mailbox mailbox, String messageId) async {
-    final was = _dealt;
+    final was = _dealt != null;
     final path = '/email/mailboxes/${mailbox.id}/messages/$messageId/dealt';
     final response = was
         ? await widget.api.delete(path)
@@ -1549,7 +1609,33 @@ class _GmailInboxState extends State<GmailInbox> {
       return;
     }
 
-    setState(() => _dealt = !was);
+    final data = response.data;
+    final now = was
+        ? null
+        : Dealt.fromJson(data is Map ? data['dealt'] : null) ??
+              Dealt(
+                at: DateTime.now().toUtc().toIso8601String(),
+                by: widget.session.me?.name,
+              );
+
+    setState(() {
+      _dealt = now;
+      final key = _openRow?.key;
+      _rows = [
+        for (final r in _rows)
+          r.key != key
+              ? r
+              : (now == null
+                    ? r.copyWith(clearDealt: true)
+                    : r.copyWith(dealt: now)),
+      ];
+      final open = _openRow;
+      if (open != null && open.key == key) {
+        _openRow = now == null
+            ? open.copyWith(clearDealt: true)
+            : open.copyWith(dealt: now);
+      }
+    });
   }
 
   // ── the phone (option 4) ────────────────────────────────────────────
@@ -1688,8 +1774,10 @@ class _InboxLine extends StatefulWidget {
     required this.onArchive,
     required this.onToggleRead,
     required this.snoozeMenu,
+    required this.formats,
   });
 
+  final DisplayFormats formats;
   final InboxRow row;
   final String when;
   final String? tags;
@@ -1815,6 +1903,19 @@ class _InboxLineState extends State<_InboxLine> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (row.dealt != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Tooltip(
+                        message: handledSentence(row.dealt!, widget.formats),
+                        child: Icon(
+                          Icons.check_circle,
+                          key: ValueKey('email-handled-${row.key}'),
+                          size: 16,
+                          color: scheme.primary,
+                        ),
+                      ),
+                    ),
                   if (row.hasAttachments)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -1960,6 +2061,16 @@ class _PhoneLine extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (row.dealt != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 6),
+                              child: Icon(
+                                Icons.check_circle,
+                                key: ValueKey('email-handled-${row.key}'),
+                                size: 14,
+                                color: scheme.primary,
+                              ),
+                            ),
                           const SizedBox(width: 8),
                           Text(
                             when,

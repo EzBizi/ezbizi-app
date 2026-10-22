@@ -20,6 +20,8 @@ use App\Support\Email\MessageSummary;
 use App\Support\Email\PictureTokens;
 use App\Support\Email\PictureUnavailable;
 use App\Support\Email\ReadState;
+use App\Support\Email\RecordingMailboxReader;
+use App\Support\Email\RepliesWithCopies;
 use App\Support\Email\ReplyComposer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -239,6 +241,7 @@ class MailboxMessagesController extends Controller
             'data' => [
                 ...$detail->toArray(),
                 'seen_by' => $seen[$detail->summary->id] ?? [],
+                'dealt'   => $this->dealtState->dealtWith($mailbox, [$detail->summary->id])[$detail->summary->id] ?? null,
                 /*
                  * The address a reply will go out AS, stated here so the client
                  * never has to guess. "info replies as info" is a property of
@@ -296,10 +299,23 @@ class MailboxMessagesController extends Controller
 
         $input = $request->validate([
             'body' => ['required', 'string', 'max:50000'],
+            'cc'   => ['sometimes', 'array', 'max:25'],
+            'cc.*' => ['string', 'email', 'max:254'],
+            'all'  => ['sometimes', 'boolean'],
         ]);
 
+        $reader = $this->readers->for($mailbox);
+        $copies = ($input['cc'] ?? []) !== [] || $request->boolean('all');
+        $inner  = $reader instanceof RecordingMailboxReader ? $reader->inner : $reader;
+
+        if ($copies && ! $inner instanceof RepliesWithCopies) {
+            return response()->json(['message' => 'Reply all and copies work on Gmail inboxes. Reply to the sender instead.'], 422);
+        }
+
         try {
-            $this->readers->for($mailbox)->reply($mailbox, $message, $input['body']);
+            $copies
+                ? $inner->replyWith($mailbox, $message, $input['body'], array_values($input['cc'] ?? []), $request->boolean('all'))
+                : $reader->reply($mailbox, $message, $input['body']);
         } catch (CannotReadMailbox $e) {
             return $this->refused($e);
         } catch (CannotReachHost $e) {
@@ -331,6 +347,48 @@ class MailboxMessagesController extends Controller
                 $mailbox->address,
             ),
         ]);
+    }
+
+    /**
+     * POST /api/v1/email/mailboxes/{mailbox}/messages/{message}/forward  { to[], body? }
+     *
+     * Design 137. The person's note, then the original as text under a
+     * "Forwarded message" line, sent from the inbox like any new mail. The
+     * original's attachments do not travel; the note says so.
+     */
+    public function forward(Request $request, Mailbox $mailbox, string $message): JsonResponse
+    {
+        $this->assertMayRead($request->user(), $mailbox, 'forward from this inbox');
+
+        $input = $request->validate([
+            'to'   => ['required', 'array', 'min:1', 'max:25'],
+            'to.*' => ['required', 'string', 'email', 'max:254'],
+            'body' => ['nullable', 'string', 'max:50000'],
+        ]);
+
+        $reader = $this->readers->for($mailbox);
+
+        try {
+            $original = $reader->open($mailbox, $message);
+            $s        = $original->summary;
+            $quoted   = implode("\n\n", array_filter(array_map(fn ($block) => trim($block->text()), $original->blocks)));
+            $body     = trim((string) ($input['body'] ?? ''))."\n\n---------- Forwarded message ----------\n"
+                ."From: {$s->fromName} <{$s->fromAddress}>\n"
+                .'Date: '.($s->sentAt?->toDayDateTimeString() ?? '')."\n"
+                ."Subject: {$s->subject}\n\n".$quoted
+                .($original->attachments === [] ? '' : "\n\n(".count($original->attachments).' attachment(s) on the original were not forwarded.)');
+
+            $reader->send($mailbox, array_values($input['to']), 'Fwd: '.preg_replace('/^(fwd?:\s*)+/i', '', $s->subject), ltrim($body));
+        } catch (CannotReadMailbox $e) {
+            return $this->refused($e);
+        } catch (CannotReachHost $e) {
+            return response()->json(['message' => $e->getMessage()], $e->status());
+        }
+
+        $this->cache->forget($mailbox);
+        $this->audit->log('mailbox.forwarded', $mailbox, ['address' => $mailbox->address, 'message_id' => $message, 'recipients' => count($input['to'])]);
+
+        return response()->json(['message' => sprintf('Forwarded, from %s.', $mailbox->address)]);
     }
 
     /**

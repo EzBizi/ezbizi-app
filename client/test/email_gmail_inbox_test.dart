@@ -301,9 +301,9 @@ void main() {
       find.textContaining('Reply as info@brightside.example'),
       findsOneWidget,
     );
-    // No dead buttons for what the server cannot do yet.
-    expect(find.text('Reply all'), findsNothing);
-    expect(find.text('Forward'), findsNothing);
+    // Reply all and Forward reach the server (2026-10-22 server pin).
+    expect(find.byKey(const ValueKey('email-reply-all')), findsOneWidget);
+    expect(find.byKey(const ValueKey('email-forward')), findsOneWidget);
   });
 
   testWidgets('Older › asks for the server\'s cursor, and ‹ goes back', (
@@ -381,6 +381,162 @@ void main() {
     expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
   });
 
+  testWidgets('an inbox not counted yet shows a dash, never 0, and a company '
+      'sums only what is known', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    // Brightside Home: 9 + 12 known, billing@ not counted yet.
+    final home = find.byKey(const ValueKey('email-group-co-home'));
+    expect(
+      find.descendant(of: home, matching: find.text('21')),
+      findsOneWidget,
+    );
+
+    // Riverton Garage: nothing counted yet.
+    final garage = find.byKey(const ValueKey('email-group-co-garage'));
+    expect(
+      find.descendant(of: garage, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: garage, matching: find.text('0')), findsNothing);
+
+    await _tap(tester, home);
+    final billing = find.byKey(const ValueKey('email-inbox-mb-billing'));
+    expect(
+      find.descendant(of: billing, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: billing, matching: find.text('0')),
+      findsNothing,
+    );
+    final info = find.byKey(const ValueKey('email-inbox-mb-info'));
+    expect(
+      find.descendant(of: info, matching: find.text('12')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a handled mail has a tick on its row, and the reader says who '
+      'handled it', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    expect(find.byKey(const ValueKey('email-handled-m:dana')), findsOneWidget);
+    // The control: an unhandled row has none.
+    expect(find.byKey(const ValueKey('email-handled-m:sam')), findsNothing);
+
+    await _tap(tester, find.textContaining('Quote for the cap').first);
+    await _tap(
+      tester,
+      find.widgetWithText(ChoiceChip, 'info@brightside.example'),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('email-handled-toggle')),
+        matching: find.textContaining('Handled by Dana Reyes'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Reply all sends all, and Cc sends its addresses', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    await _tap(tester, find.textContaining('You received money').first);
+    await _tap(tester, find.byKey(const ValueKey('email-reply-all')));
+
+    expect(find.text('Reply all'), findsWidgets);
+    await tester.enterText(
+      find.byKey(const ValueKey('email-reply-cc')),
+      'pat@example.com, lee@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Your reply'),
+      'Thanks.',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.textContaining('Send as'));
+
+    final body = server
+        .replies['/api/v1/email/mailboxes/mb-info/messages/g-zelle/reply']!;
+    expect(body['all'], isTrue);
+    expect(body['cc'], ['pat@example.com', 'lee@example.com']);
+    expect(body['body'], 'Thanks.');
+    expect(find.text('Sent as info@brightside.example.'), findsOneWidget);
+  });
+
+  testWidgets('a plain reply sends no copies, and a refused copy shows the '
+      "server's sentence", (tester) async {
+    const refusal =
+        'Reply all and copies work on Gmail inboxes. Reply to the sender instead.';
+    final server = _Server(replyRefusal: refusal);
+    await _pump(tester, server);
+
+    await _tap(tester, find.textContaining('You received money').first);
+    await _tap(tester, find.textContaining('Reply as'));
+    await tester.enterText(
+      find.byKey(const ValueKey('email-reply-cc')),
+      'pat@example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Your reply'),
+      'Thanks.',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.textContaining('Send as'));
+
+    final body = server.replies.values.single;
+    expect(body.containsKey('all'), isFalse);
+    expect(body['cc'], ['pat@example.com']);
+    expect(find.text(refusal), findsOneWidget, reason: 'the 422 sentence');
+  });
+
+  testWidgets('Forward sends To and the note from the open inbox, and says '
+      'attachments are not forwarded', (tester) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    await _tap(tester, find.textContaining('You received money').first);
+    await _tap(tester, find.byKey(const ValueKey('email-forward')));
+
+    expect(find.text('Attachments are not forwarded yet.'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey('email-forward-send')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'nothing to send to yet',
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('email-forward-to')),
+      'books@example.com, pat@example.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('email-forward-body')),
+      'For the books.',
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const ValueKey('email-forward-send')));
+
+    final body = server
+        .forwards['/api/v1/email/mailboxes/mb-info/messages/g-zelle/forward']!;
+    expect(body['to'], ['books@example.com', 'pat@example.com']);
+    expect(body['body'], 'For the books.');
+    expect(
+      find.text('Forwarded, from info@brightside.example.'),
+      findsOneWidget,
+    );
+  });
+
   test('entities in a snippet become characters', () {
     expect(
       decodeEntities('a &lt;b&gt; &amp; it&#39;s &quot;x&quot; &#x2014;'),
@@ -396,7 +552,17 @@ const _airError =
     'office@brightsideair.example did not answer. Try again in a minute.';
 
 class _Server {
-  _Server({this.failMessage, this.failSentence, this.cursor});
+  _Server({
+    this.failMessage,
+    this.failSentence,
+    this.cursor,
+    this.replyRefusal,
+  });
+
+  /// When set, every reply is refused 422 with this sentence.
+  final String? replyRefusal;
+  final replies = <String, Map<String, dynamic>>{};
+  final forwards = <String, Map<String, dynamic>>{};
 
   final String? failMessage;
   final String? failSentence;
@@ -463,6 +629,25 @@ class _Server {
     }
 
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+
+    if (path.endsWith('/reply')) {
+      replies[path] = jsonDecode(request.body) as Map<String, dynamic>;
+      if (replyRefusal != null) return _json({'message': replyRefusal}, 422);
+      return _json({
+        'data': {
+          'sent_at': '2026-10-22T10:00:00Z',
+          'from': _mailboxes.firstWhere(
+            (m) => m['id'] == parts[parts.length - 4],
+          )['address'],
+        },
+      });
+    }
+
+    if (path.endsWith('/forward')) {
+      forwards[path] = jsonDecode(request.body) as Map<String, dynamic>;
+      return _json({'message': 'Forwarded, from info@brightside.example.'});
+    }
+
     if (parts.length > 3 && parts[parts.length - 2] == 'messages') {
       opened.add(request.url);
       final mailbox = parts[parts.length - 3];
@@ -486,6 +671,9 @@ class _Server {
             },
           ],
           'attachments': <Object>[],
+          'dealt': parts.last == 'g-info-dana'
+              ? {'at': '2026-10-21T13:12:00Z', 'by': 'Dana Reyes'}
+              : null,
           'reply': {
             'as': {'address': address, 'name': ''},
             'to': ['somebody@example.com'],
@@ -546,7 +734,7 @@ Map<String, Object?> _mailbox(
   String id,
   String address,
   String company, {
-  int unread = 0,
+  int? unread,
   String status = 'connected',
   String? reason,
 }) => {
@@ -569,6 +757,8 @@ final _mailboxes = [
   _mailbox('mb-admin', 'admin@brightside.example', 'co-home', unread: 9),
   _mailbox('mb-info', 'info@brightside.example', 'co-home', unread: 12),
   _mailbox('mb-air', 'office@brightsideair.example', 'co-air', unread: 4),
+  _mailbox('mb-billing', 'billing@brightside.example', 'co-home'),
+  _mailbox('mb-garage', 'hello@rivertongarage.example', 'co-garage'),
   _mailbox(
     'mb-careers',
     'careers@brightside.example',
@@ -630,8 +820,12 @@ final _rows = [
     'category': 'people',
     'inboxes': [
       _copy('mb-air', 'office@brightsideair.example', 'g-air-1'),
-      _copy('mb-info', 'info@brightside.example', 'g-info-dana'),
+      {
+        ..._copy('mb-info', 'info@brightside.example', 'g-info-dana'),
+        'dealt': {'at': '2026-10-21T13:12:00Z', 'by': 'Dana Reyes'},
+      },
     ],
+    'dealt': {'at': '2026-10-21T13:12:00Z', 'by': 'Dana Reyes'},
     'customer': {'type': 'customer', 'id': 'cust-dana', 'name': 'Dana Reyes'},
   },
   {
@@ -676,6 +870,7 @@ const _me = {
   'companies': [
     {'id': 'co-home', 'name': 'Brightside Home', 'parent_company_id': null},
     {'id': 'co-air', 'name': 'Brightside Air', 'parent_company_id': null},
+    {'id': 'co-garage', 'name': 'Riverton Garage', 'parent_company_id': null},
   ],
   'franchises': <Map<String, Object?>>[],
 };

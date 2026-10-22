@@ -108,7 +108,7 @@ use Illuminate\Support\Facades\Http;
  * rather than from invented error bodies: a fake `invalid_grant` proves the
  * `match` arm reads the string it was handed and nothing more.
  */
-final class GmailMailboxReader implements LabelsThreads, MailboxReader
+final class GmailMailboxReader implements LabelsThreads, MailboxReader, RepliesWithCopies
 {
     private const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -1297,6 +1297,41 @@ final class GmailMailboxReader implements LabelsThreads, MailboxReader
      *
      * @param  array<string, mixed>  $payload
      */
+    /**
+     * Reply with copies, or to everyone (design 137). Reply-all is the sender
+     * plus every To and Cc on the original, less this inbox itself.
+     */
+    public function replyWith(Mailbox $mailbox, string $messageId, string $body, array $cc, bool $all): void
+    {
+        $original = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
+            'format'          => 'metadata',
+            'metadataHeaders' => ['From', 'To', 'Cc', 'Subject', 'Message-ID', 'References'],
+        ]);
+
+        $summary = $this->mapper->summary($original);
+        $headers = $this->headerMap($original);
+        $self    = mb_strtolower($mailbox->address);
+        $list    = fn (string $raw) => array_map('mb_strtolower', array_filter(array_map(
+            fn (string $part) => preg_match('/<([^>]+)>/', $part, $m) ? trim($m[1]) : trim($part),
+            explode(',', $raw),
+        )));
+
+        $to = [mb_strtolower($summary->fromAddress)];
+
+        if ($all) {
+            $to = [...$to, ...$list($headers['to'] ?? '')];
+            $cc = [...$list($headers['cc'] ?? ''), ...$cc];
+        }
+
+        $to = array_values(array_unique(array_diff($to, [$self])));
+        $cc = array_values(array_diff(array_unique(array_map('mb_strtolower', $cc)), [$self], $to));
+
+        $this->post($mailbox, self::API.'/messages/send', [
+            'threadId' => $summary->threadId,
+            'raw'      => $this->composer->composeForGmail($mailbox, $summary, $headers, $body, $to, $cc),
+        ]);
+    }
+
     /**
      * Add and remove labels on the conversation a message is in: star,
      * archive (remove INBOX), move, return from snooze (add INBOX).

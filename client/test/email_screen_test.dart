@@ -533,8 +533,9 @@ void main() {
           'that records it.',
     );
 
-    // And the control flips, so somebody can see it took.
-    expect(find.text('Handled'), findsOneWidget);
+    // And the control flips, so somebody can see it took -- now naming who
+    // (the server's data.dealt, 2026-10-22).
+    expect(find.textContaining('Handled by Jose Silva'), findsOneWidget);
     expect(find.text('Mark handled'), findsNothing);
   });
 
@@ -580,7 +581,8 @@ void main() {
 
     // The control stays on screen with the reason attached, rather than
     // disappearing and leaving somebody to conclude the app is broken.
-    expect(find.byTooltip(refusal), findsOneWidget);
+    // Two since Reply all: both reply controls carry the sentence.
+    expect(find.byTooltip(refusal), findsNWidgets(2));
   });
 
   // ── the two states that must never read as "nothing here" ────────

@@ -96,7 +96,10 @@ class Mailbox {
   /// does not have to answer twice in two dialects.
   final String label;
 
-  final int unread;
+  /// Unread at the provider, or null while the server has not counted it
+  /// yet (`GET email/mailboxes` serves the last count and refreshes after).
+  /// Drawn as "—", never as 0.
+  final int? unread;
 
   /// Whether reads are shared, as the §6 cascade resolved it for this mailbox.
   ///
@@ -146,7 +149,7 @@ class Mailbox {
     id: '${json['id']}',
     address: json['address'] as String? ?? '',
     label: json['label'] as String? ?? json['display_name'] as String? ?? '',
-    unread: json['unread'] as int? ?? 0,
+    unread: json['unread'] as int?,
     // Absent means the server did not resolve the setting, and the safe
     // direction is private: drawing "Seen by Marta" in an organization that
     // asked for private read state would leak what somebody read, and not
@@ -251,6 +254,7 @@ class MessageDetail {
     required this.replyTo,
     required this.replySubject,
     this.thread = const [],
+    this.dealt,
   });
 
   final String id;
@@ -288,6 +292,9 @@ class MessageDetail {
   /// this is the only one.
   final List<MessageDetail> thread;
 
+  /// Marked handled here, or null (`data.dealt`).
+  final Dealt? dealt;
+
   String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
 
   factory MessageDetail.fromJson(Map<String, dynamic> json) {
@@ -318,7 +325,22 @@ class MessageDetail {
         for (final entry in (json['thread'] as List? ?? const []))
           if (entry is Map<String, dynamic>) MessageDetail.fromJson(entry),
       ],
+      dealt: Dealt.fromJson(json['dealt']),
     );
+  }
+}
+
+/// Somebody here marked it handled: when, and who (null for an automation).
+@immutable
+class Dealt {
+  const Dealt({required this.at, required this.by});
+
+  final String? at;
+  final String? by;
+
+  static Dealt? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return Dealt(at: json['at'] as String?, by: json['by'] as String?);
   }
 }
 

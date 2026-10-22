@@ -22,6 +22,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'mail_data.dart';
+
 /// Where one copy of a row's mail lives.
 @immutable
 class InboxCopy {
@@ -30,12 +32,16 @@ class InboxCopy {
     required this.address,
     required this.messageId,
     required this.threadId,
+    this.dealt,
   });
 
   final String mailboxId;
   final String address;
   final String messageId;
   final String threadId;
+
+  /// Handled in this inbox, or null.
+  final Dealt? dealt;
 
   /// `admin@`, the local part a row tag shows.
   String get short {
@@ -53,6 +59,7 @@ class InboxCopy {
     address: json['address'] as String? ?? '',
     messageId: '${json['message_id'] ?? ''}',
     threadId: '${json['thread_id'] ?? ''}',
+    dealt: Dealt.fromJson(json['dealt']),
   );
 }
 
@@ -97,6 +104,7 @@ class InboxRow {
     required this.inboxes,
     this.customer,
     this.snoozedUntil,
+    this.dealt,
   });
 
   final String key;
@@ -116,12 +124,20 @@ class InboxRow {
   final InboxSender? customer;
   final String? snoozedUntil;
 
+  /// Handled in any inbox it reached, or null.
+  final Dealt? dealt;
+
   String get sender => fromName.isNotEmpty ? fromName : fromAddress;
 
   /// Every copy as an action item — what a star or an archive sends.
   List<Map<String, String>> get items => [for (final c in inboxes) c.item];
 
-  InboxRow copyWith({bool? unread, bool? starred}) => InboxRow(
+  InboxRow copyWith({
+    bool? unread,
+    bool? starred,
+    Dealt? dealt,
+    bool clearDealt = false,
+  }) => InboxRow(
     key: key,
     subject: subject,
     snippet: snippet,
@@ -136,6 +152,7 @@ class InboxRow {
     inboxes: inboxes,
     customer: customer,
     snoozedUntil: snoozedUntil,
+    dealt: clearDealt ? null : (dealt ?? this.dealt),
   );
 
   factory InboxRow.fromJson(Map<String, dynamic> json) {
@@ -161,6 +178,7 @@ class InboxRow {
       ],
       customer: InboxSender.fromJson(json['customer']),
       snoozedUntil: json['snoozed_until'] as String?,
+      dealt: Dealt.fromJson(json['dealt']),
     );
   }
 }
