@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 134 · Email › Google Workspace tab (signatures) — **sent 2026-10-22** (`docs/previews/email-google-workspace-layouts.html`)
+
+Email asked (API 84231a7b). **1** (recommended) Workspace cards (domain, where connected, people count, signature status; one Workspace opens directly); inside: signatures_reason banner, template editor with placeholder chips + live preview for a chosen person, people table (tick, name/address, title, EzBizi person picker with "Same email · Link", signature Template/Own/Not set, last set; suspended dimmed), bulk bar "N selected · Set signature" with per-address results; person side pane: in Gmail now vs will be, Use the template / Give them their own, Set it now. **2** stacked sections. **3** card then wizard. Phone **4** (recommended: people as cards, long-press select, panes full screen) / **5** / **6**.
+
 ### 133 · Automations › Then step — **sent 2026-10-22** (`docs/previews/automations-then-step-layouts.html`)
 
 Jose: "how is the user supposed to even know the fields at all"; audit of every action × trigger in scratchpad/automation_actions_audit.md (forwarded to Automations). **1** (recommended) step catalogue grouped For this <record> / Send a message / Tell the team / Elsewhere, only steps that fit the trigger, not-ready ones dimmed with the reason + Set it up; Update a detail = detail picker in plain words then a value control by kind (org statuses, date, dollars, switch, tag chips); Change the status gets its status picker; message placeholders as plain-named chips with a live preview from the last event; a green "what this step does" sentence per step; subject-less triggers get their own fitting steps and no Update a detail. **2** recipes per event. **3** boxes only. Phone **4** (recommended) / **5** / **6**.
