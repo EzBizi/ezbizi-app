@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0476',
+      date: '22 Oct 2026',
+      items: [
+        'Automations: a new step-by-step builder: When (the trigger, with its last three real events to look at), Only if (conditions in plain words), Then (only the steps that fit the trigger), and a Review that shows what the rule would send before you save it.',
+        'Email › Google Workspace: a tab per Workspace to set each person\'s email signature. When Google has not given EzBizi permission yet, Update permissions opens Google Admin\'s page already filled in.',
+        'Human Resources › Payroll: a table of salaries, tax forms, dates, roles and contracts, with filters; a salary change adds to the person\'s pay history. The onboarding form is split into Employer and Employee tabs and opens on your side. Commission can have several rates, such as 15% when weekly sales are above an amount.',
+        'Paid time off: days lost at a reset when carryover is off now show as expired on the person\'s Time off card.',
+        'Leads: an automatic reply leaves out the booking link when no service area covers the customer\'s ZIP code, instead of sending a link with no days to book.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0475',
       date: '22 Oct 2026',
       items: [
