@@ -14,6 +14,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0481',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management is rebuilt as Dashboard, Reports, Table, Jobs, Logs and Settings. The Dashboard counts jobs per team and stage, waiting review by location and reason, us vs external companies, second visits, redos, money in the pipeline and done-waiting-payment (total vs due), with a countdown for jobs paid but not started. Everything can be split by service area.',
+        'Project Management › Jobs: stage tabs (In progress, Waiting review, Ready to schedule, Scheduled, Done waiting payment, Completed, Cancelled) with counts, filters for service area, redo, dispute, stopped payments, external company and second visit, and a job\'s review reason, external company and second visit can be set from the list.',
+        'Project Management › Reports and Table: the weekly Repair Team report per company (hours, paycheck, helper, operation, gas, parts, shares, jobs and cost from gross sales per technician and combined), approved by someone with Approve financials, with missing fields highlighted and editable in the table.',
+        'Project Management: a daily email warns when a paid job has not started after a set number of days; the address and the days are set per company or branch.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0480',
       date: '22 Oct 2026',
       items: [
