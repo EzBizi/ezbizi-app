@@ -5,6 +5,7 @@ import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/refused.dart';
+import 'gmail_inbox.dart' show handledSentence;
 import 'inbox_rows.dart';
 import 'mail_data.dart';
 import 'message_body.dart';
@@ -19,11 +20,9 @@ import 'message_list.dart';
 /// so the from-inbox is a picker over the copies: replying from admin@ is
 /// answering admin@'s copy, which is a different message id at the provider.
 ///
-/// ── Not here yet: Cc, Reply all, Forward ────────────────────────────
-///
-/// The reply endpoint takes a body and nothing else, and compose takes
-/// to / subject / body. Buttons for the other three would be dead ones, so they
-/// are left out until the server grows them (design 137 lists them).
+/// Reply (with Cc), Reply all and Forward go to the server's reply and
+/// forward endpoints; copies work on Gmail inboxes, and elsewhere the
+/// server's 422 sentence is shown in the panel.
 class MailMessageView extends StatelessWidget {
   const MailMessageView({
     super.key,
@@ -33,6 +32,8 @@ class MailMessageView extends StatelessWidget {
     required this.formats,
     required this.refusal,
     required this.onReply,
+    this.onReplyAll,
+    this.onForward,
     required this.dealt,
     required this.onToggleDealt,
     required this.api,
@@ -50,9 +51,13 @@ class MailMessageView extends StatelessWidget {
   final DisplayFormats formats;
   final String? refusal;
   final VoidCallback onReply;
+  final VoidCallback? onReplyAll;
 
-  /// Is this message already marked handled?
-  final bool dealt;
+  /// Null when this inbox may not send.
+  final VoidCallback? onForward;
+
+  /// Who marked it handled and when, or null.
+  final Dealt? dealt;
 
   /// Toggle it. The screen owns the state, so the pane only reports the press.
   final VoidCallback onToggleDealt;
@@ -185,6 +190,23 @@ class MailMessageView extends StatelessWidget {
                           label: Text('Reply as ${mailbox.address}'),
                         ),
                       ),
+                      if (onReplyAll != null)
+                        Refused(
+                          reason: refusal,
+                          child: OutlinedButton.icon(
+                            key: const ValueKey('email-reply-all'),
+                            onPressed: refusal == null ? onReplyAll : null,
+                            icon: const Icon(Icons.reply_all, size: 18),
+                            label: const Text('Reply all'),
+                          ),
+                        ),
+                      if (onForward != null)
+                        OutlinedButton.icon(
+                          key: const ValueKey('email-forward'),
+                          onPressed: onForward,
+                          icon: const Icon(Icons.forward, size: 18),
+                          label: const Text('Forward'),
+                        ),
                       if (onCompose != null)
                         OutlinedButton.icon(
                           key: const ValueKey('email-reader-compose'),
@@ -195,14 +217,19 @@ class MailMessageView extends StatelessWidget {
                       // Handled, which is NOT the same as read: the inbox's
                       // fact that the customer has been answered.
                       OutlinedButton.icon(
+                        key: const ValueKey('email-handled-toggle'),
                         onPressed: onToggleDealt,
                         icon: Icon(
-                          dealt
+                          dealt != null
                               ? Icons.check_circle
                               : Icons.check_circle_outline,
                           size: 18,
                         ),
-                        label: Text(dealt ? 'Handled' : 'Mark handled'),
+                        label: Text(
+                          dealt != null
+                              ? handledSentence(dealt!, formats)
+                              : 'Mark handled',
+                        ),
                       ),
                     ],
                   ),
