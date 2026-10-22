@@ -71,7 +71,7 @@ class JobsProjectManagementController extends Controller
             ->whereIn(\DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status'))"), $watched)
             ->pluck('subject_id');
 
-        $jobs = Job::query()
+        $base = fn () => Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
             // Jose, 2026-10-21: "search bar ... to find specific stuff". Job and
@@ -85,11 +85,14 @@ class JobsProjectManagementController extends Controller
                     ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)
                         ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
                         ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
-            })
+            });
+        $unwatched = fn ($q) => $q->where(fn ($w) => $w->whereIn('status', $watched)->orWhereIn('id', $left));
+
+        $jobs = $base()
             // Recently Paid is every job paid in the window, watched or not.
             ->when(isset($input['ids']) || ($input['filter'] ?? null) === 'recently_paid',
                 fn ($q) => $q->when(isset($input['ids']), fn ($i) => $i->whereIn('id', $input['ids'])),
-                fn ($q) => $q->where(fn ($w) => $w->whereIn('status', $watched)->orWhereIn('id', $left)))
+                $unwatched)
             ->when(($input['filter'] ?? null) === 'recently_paid', fn ($q) => $q->whereIn('id',
                 $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id')))
             ->with(['franchise:id,name,timezone', 'customer:id,name', 'workizJob', 'performedBy:id,name'])
@@ -120,7 +123,24 @@ class JobsProjectManagementController extends Controller
                 fn ($rows) => $rows->sortBy(fn (array $r) => $r['waiting']['deadline_at'] ?? '9999'))
             ->values();
 
-        return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS]]);
+        // Every chip's count, whichever is selected (UI/UX, 2026-10-22): same branch and search.
+        $watchedJobs = $watched === [] ? new \Illuminate\Database\Eloquent\Collection : $unwatched($base())->with('workizJob')->get();
+        $paidAll = EstimateAging::paidCents($watchedJobs->modelKeys());
+        $counts = ['waiting' => 0, 'partial' => 0, 'full' => 0, 'closed' => 0];
+        foreach ($watchedJobs as $j) {
+            $counts[$this->stage($j, $watched, $paidAll[$j->id] ?? 0)]++;
+        }
+        $counts = ['recently_paid' => filled($input['from'] ?? null) && filled($input['to'] ?? null)
+            ? $base()->whereIn('id', $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id'))->count() : null] + $counts;
+
+        return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS, 'counts' => $counts]]);
+    }
+
+    private function stage(Job $job, array $watched, int $paid): string
+    {
+        $total = WorkizMoney::for($job)['total'] ?? ($job->amount_minor ?? 0);
+
+        return ! in_array($job->status, $watched, true) ? 'closed' : ($paid <= 0 ? 'waiting' : ($total > 0 && $paid >= $total ? 'full' : 'partial'));
     }
 
     /**
@@ -245,7 +265,7 @@ class JobsProjectManagementController extends Controller
     {
         $total = WorkizMoney::for($job)['total'] ?? ($job->amount_minor ?? 0);
         $open = in_array($job->status, $watched, true);
-        $stage = ! $open ? 'closed' : ($paid <= 0 ? 'waiting' : ($total > 0 && $paid >= $total ? 'full' : 'partial'));
+        $stage = $this->stage($job, $watched, $paid);
 
         $entered = $events->last(fn (AutomationEvent $e) => $e->event_key === 'job.status_changed'
             && in_array($e->payload['after']['status'] ?? null, $watched, true)
@@ -339,17 +359,31 @@ class JobsProjectManagementController extends Controller
         $reach = $this->reach($user, $input);
         $this->labels = $this->statusLabels($settings, $user);
 
-        $runs = ($input['outcome'] ?? null) === 'manual' ? collect() : $this->runsFor($reach)
+        $all = $this->runsFor($reach)
             ->whereBetween('automation_runs.started_at', [$from, $to])
             ->when($input['automation_id'] ?? null, fn ($q, $id) => $q->where('automation_runs.automation_id', $id))
-            ->when($input['outcome'] ?? null, fn ($q, $o) => $q->where('automation_runs.status', $o))
             ->get();
+        $runs = $all->when($input['outcome'] ?? null, fn ($c, $o) => $c->where('status', $o));
 
-        $edits = in_array($input['outcome'] ?? 'manual', ['manual'], true) && empty($input['automation_id'])
+        $allEdits = empty($input['automation_id'])
             ? AutomationEvent::query()->where('subject_type', Job::class)->whereIn('subject_id', $reach)
                 ->whereIn('event_key', ['job.updated', 'job.status_changed', 'job.created'])->whereNotNull('actor_id')
                 ->whereBetween('occurred_at', [$from, $to])->get()
             : collect();
+        $edits = in_array($input['outcome'] ?? 'manual', ['manual'], true) ? $allEdits : collect();
+
+        // Counts for every outcome, and skipped runs folded per rule (UI/UX, 2026-10-22: 128 skips).
+        $meta = ['counts' => [
+            'succeeded' => $all->where('status', 'succeeded')->count(),
+            'failed' => $all->where('status', 'failed')->count(),
+            'skipped' => $all->where('status', 'skipped')->count(),
+            'manual' => $allEdits->count(),
+        ], 'skipped_by_rule' => $all->where('status', 'skipped')->groupBy('automation_id')->map(fn ($g) => [
+            'rule' => ['id' => $g->first()->automation_id, 'name' => $g->first()->automation?->name],
+            'count' => $g->count(),
+            'reasons' => $g->groupBy(fn (AutomationRun $r) => $this->skipReason((array) $r->condition_trace))
+                ->map(fn ($rs, $reason) => ['reason' => $reason, 'count' => $rs->count()])->sortByDesc('count')->values()->all(),
+        ])->sortByDesc('count')->values()->all()];
 
         $jobs = Job::query()->whereIn('id', $runs->pluck('job_id')->merge($edits->pluck('subject_id'))->unique())
             ->with(['customer:id,name', 'franchise:id,name'])->get()->keyBy('id');
@@ -375,7 +409,7 @@ class JobsProjectManagementController extends Controller
             'changes' => [['type' => $e->event_key, 'state' => 'succeeded', 'detail' => $this->editDetail($e)]],
         ]))->sortByDesc('at')->values();
 
-        return response()->json(['data' => $rows]);
+        return response()->json(['data' => $rows, 'meta' => $meta]);
     }
 
     /** Runs about jobs, each with job_id, newest first; tests and other subjects left out. */
