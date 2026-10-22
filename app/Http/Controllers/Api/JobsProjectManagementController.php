@@ -588,6 +588,51 @@ class JobsProjectManagementController extends Controller
         return ViewScope::forUser($user)->settingsScope();
     }
 
+    /**
+     * GET /api/v1/jobs/project-management/cards?franchise_id=&q=
+     *
+     * The cards Project Management's rules leave (Jose, 2026-10-22: the tab
+     * "refers to the action 1 stuff"): every task in the group named by each
+     * branch's jobs.pm_task_group, across the branch boards in reach, in the
+     * Task Board's own shapes, so its widget draws them and its endpoints edit them.
+     */
+    public function cards(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $input = $request->validate(['franchise_id' => ['nullable', 'uuid'], 'q' => ['nullable', 'string', 'max:100']]);
+        $boards = app(\App\Support\Tasks\TaskBoards::class)->visibleTo($user)
+            ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
+            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
+            ->with(['franchise', 'groups', 'columns', 'statuses'])->get();
+
+        $groupIds = $boards->flatMap(function ($b) use ($settings) {
+            $name = mb_strtolower(trim((string) $settings->get('jobs.pm_task_group', $b->franchise)));
+
+            return $b->groups->filter(fn ($g) => mb_strtolower(trim($g->name)) === $name)->pluck('id');
+        });
+        $text = trim((string) ($input['q'] ?? ''));
+
+        $tasks = \App\Models\Task::query()->whereIn('group_id', $groupIds)
+            ->when($text !== '', fn ($q) => $q->where(fn ($w) => $w->where('title', 'like', '%'.$text.'%')
+                ->orWhere(fn ($a) => $a->where('about_type', 'job')->whereIn('about_id', $this->search(Job::query(), $text)->select('id')))))
+            ->with(\App\Http\Controllers\Api\TasksController::WITH)->withCount(\App\Http\Controllers\Api\TasksController::counts())
+            ->orderByDesc('created_at')->get();
+        $used = $tasks->pluck('board_id')->unique();
+        $tb = app(\App\Support\Tasks\TaskBoards::class);
+
+        return response()->json(['data' => [
+            'boards' => $boards->whereIn('id', $used)->map(fn ($b) => [
+                'id' => $b->id, 'name' => $b->name, 'franchise_id' => $b->franchise_id,
+                'can_edit' => $tb->canEdit($user, $b),
+                'statuses' => $b->statuses->map(fn ($x) => TaskBoardSettingsController::presentStatus($x))->all(),
+                'columns' => $b->columns->map(fn ($x) => TaskBoardSettingsController::presentColumn($x))->all(),
+                'builtin_columns' => $b->resolvedBuiltinColumns(),
+                'assignable' => $tb->assignable($b)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
+            ])->values()->all(),
+            'tasks' => $tasks->map(fn ($t) => \App\Http\Controllers\Api\TasksController::present($t))->all(),
+        ]]);
+    }
+
     private function pmUser(Request $request)
     {
         $user = $request->user();
