@@ -47,14 +47,30 @@ void main() {
     return server;
   }
 
-  for (final size in const [Size(1440, 1000), Size(390, 1000)]) {
-    for (final tab in const ['Dashboard', 'Jobs', 'Reports', 'Table', 'Logs']) {
+  for (final size in const [
+    Size(1440, 1000),
+    Size(1024, 1000),
+    Size(390, 1000),
+  ]) {
+    for (final tab in const [
+      'Dashboard',
+      'Reports',
+      'Table',
+      'Jobs',
+      'Assignments',
+      'Logs',
+      'Settings',
+    ]) {
       testWidgets('$tab at ${size.width.toInt()} wide does not overflow', (
         tester,
       ) async {
         await open(tester, size, tab);
         // A RenderFlex overflow is reported as an exception.
         expect(tester.takeException(), isNull);
+        if (const ['Dashboard', 'Jobs', 'Assignments'].contains(tab)) {
+          // The scope line, linking to Settings (design 142's scope card).
+          expect(find.byKey(const ValueKey('pm-scope-line')), findsOneWidget);
+        }
         if (tab == 'Dashboard' || tab == 'Jobs') {
           expect(find.byKey(const ValueKey('pm-area-picker')), findsOneWidget);
           expect(find.byKey(const ValueKey('pm-area-sa-1')), findsNothing);
@@ -105,4 +121,22 @@ void main() {
       findsNothing,
     );
   });
+
+  for (final tab in const ['Dashboard', 'Jobs', 'Assignments']) {
+    testWidgets('$tab: the scope line says which jobs and opens Settings', (
+      tester,
+    ) async {
+      await open(tester, const Size(1440, 1000), tab);
+      expect(
+        find.text('Showing jobs in every status · Brightway'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('pm-scope-change')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('tour-pm-settings-scope')),
+        findsOneWidget,
+      );
+    });
+  }
 }

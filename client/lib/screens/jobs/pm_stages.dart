@@ -481,3 +481,139 @@ class PmFlagChips extends StatelessWidget {
     );
   }
 }
+
+/// Which jobs Project Management is about, for the place being viewed
+/// (`jobs.pm_scope_statuses`, empty: any; `jobs.pm_partly_paid_only`).
+@immutable
+class PmScope {
+  const PmScope({
+    this.statuses = const [],
+    this.partlyPaidOnly = false,
+    this.place = '',
+  });
+
+  /// The statuses' own words, as Settings names them.
+  final List<String> statuses;
+  final bool partlyPaidOnly;
+
+  /// The top-bar place these settings are read for: "Company · Branch".
+  final String place;
+}
+
+/// "Showing partly paid jobs in Open, Scheduled": what [PmScope] keeps in.
+String pmScopeSentence(PmScope scope) {
+  final s = scope.statuses;
+  final which = s.isEmpty
+      ? 'in every status'
+      : s.length > 3
+      ? 'in ${s.length} statuses'
+      : 'in ${s.join(', ')}';
+  return 'Showing ${scope.partlyPaidOnly ? 'partly paid ' : ''}jobs $which';
+}
+
+/// The scope as one line, with the place and the way to its Settings card.
+/// Dashboard, Jobs and Assignments draw it above their toolbar.
+class PmScopeLine extends StatelessWidget {
+  const PmScopeLine({super.key, required this.scope, this.onChange});
+
+  final PmScope scope;
+  final VoidCallback? onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Wrap(
+      key: const ValueKey('pm-scope-line'),
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          [
+            pmScopeSentence(scope),
+            if (scope.place.isNotEmpty) scope.place,
+          ].join(' · '),
+          key: const ValueKey('pm-scope-text'),
+          style: muted,
+        ),
+        if (onChange != null) ...[
+          Text(' · ', style: muted),
+          InkWell(
+            key: const ValueKey('pm-scope-change'),
+            borderRadius: BorderRadius.circular(4),
+            onTap: onChange,
+            child: Text(
+              'Change',
+              style: muted?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The toolbar every Project Management list tab draws, in one order:
+/// search first, the service area beside it, the filter chips under them.
+/// Under 600 wide each takes its own line.
+class PmToolbar extends StatelessWidget {
+  const PmToolbar({
+    super.key,
+    required this.search,
+    this.areas,
+    this.filters,
+    this.above,
+  });
+
+  final Widget search;
+  final Widget? areas;
+  final Widget? filters;
+
+  /// Drawn first, on its own line: the scope line.
+  final Widget? above;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final phone = constraints.maxWidth < 600;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (above != null) ...[above!, const SizedBox(height: 8)],
+            if (phone) ...[
+              search,
+              if (areas != null) ...[const SizedBox(height: 8), areas!],
+            ] else
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(width: 300, child: search),
+                  if (areas != null)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: (constraints.maxWidth - 312).clamp(
+                          120.0,
+                          double.infinity,
+                        ),
+                      ),
+                      child: areas!,
+                    ),
+                ],
+              ),
+            if (filters != null) ...[const SizedBox(height: 8), filters!],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The one search hint Dashboard, Jobs and Assignments share.
+const pmJobSearchHint = 'Job, customer, address, phone or tech';

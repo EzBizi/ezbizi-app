@@ -49,7 +49,11 @@ class ProjectManagementJobs extends StatefulWidget {
     this.onOpenSettings,
     this.now,
     this.zone = deviceZone,
+    this.scope = const PmScope(),
   });
+
+  /// Which jobs these are, as the scope line says.
+  final PmScope scope;
 
   final ApiClient api;
   final Session session;
@@ -319,6 +323,18 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 12),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  wide ? 24 : 16,
+                  0,
+                  wide ? 24 : 16,
+                  8,
+                ),
+                child: PmScopeLine(
+                  scope: widget.scope,
+                  onChange: widget.onOpenSettings,
+                ),
+              ),
               _stages(context, wide: wide),
               _filtersRow(context, wide: wide),
             ],
@@ -409,60 +425,56 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
   }
 
   Widget _filtersRow(BuildContext context, {required bool wide}) {
-    final search = SizedBox(
-      width: wide ? 300 : double.infinity,
-      child: TextField(
-        key: const ValueKey('pm-jobs-search'),
-        controller: _search,
-        onChanged: _typed,
-        decoration: const InputDecoration(
-          isDense: true,
-          prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Job, customer, address, phone or tech',
-        ),
-      ),
-    );
     return Padding(
       key: const ValueKey('tour-pm-jobs-filters'),
       padding: EdgeInsets.fromLTRB(wide ? 24 : 16, 0, wide ? 24 : 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.areas.isNotEmpty) ...[
-            PmAreaChips(
-              areas: widget.areas,
-              selected: _filters.areaId,
-              allLabel: 'All areas',
-              franchiseName: _franchise,
-              onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (_filters.waitingToStart) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: InputChip(
-                key: const ValueKey('pm-jobs-waiting-to-start'),
-                label: const Text('Paid, not started'),
-                deleteButtonTooltipMessage: 'Remove',
-                onDeleted: () {
-                  // No stage to fall back on: the first one.
-                  _anyStage = false;
-                  _rows = const [];
-                  _refilter(_filters.copyWith(waitingToStart: false));
-                },
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          PmFlagChips(
-            filters: _filters,
-            secondVisit: _secondVisit,
-            onChanged: _refilter,
+      child: PmToolbar(
+        search: TextField(
+          key: const ValueKey('pm-jobs-search'),
+          controller: _search,
+          onChanged: _typed,
+          decoration: const InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search, size: 18),
+            hintText: pmJobSearchHint,
           ),
-          const SizedBox(height: 8),
-          Align(alignment: Alignment.centerLeft, child: search),
-        ],
+        ),
+        areas: widget.areas.isEmpty
+            ? null
+            : PmAreaChips(
+                areas: widget.areas,
+                selected: _filters.areaId,
+                allLabel: 'All areas',
+                franchiseName: _franchise,
+                onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
+              ),
+        filters: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_filters.waitingToStart) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InputChip(
+                  key: const ValueKey('pm-jobs-waiting-to-start'),
+                  label: const Text('Paid, not started'),
+                  deleteButtonTooltipMessage: 'Remove',
+                  onDeleted: () {
+                    // No stage to fall back on: the first one.
+                    _anyStage = false;
+                    _rows = const [];
+                    _refilter(_filters.copyWith(waitingToStart: false));
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            PmFlagChips(
+              filters: _filters,
+              secondVisit: _secondVisit,
+              onChanged: _refilter,
+            ),
+          ],
+        ),
       ),
     );
   }

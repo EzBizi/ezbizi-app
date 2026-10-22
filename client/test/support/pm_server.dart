@@ -101,6 +101,12 @@ class PmServer {
       if (r.method != 'GET') r,
   ];
 
+  /// GET /jobs/project-management/cards' answer; null: not served (404).
+  Map<String, dynamic>? cards;
+
+  /// PATCH /tasks/{id} answers 422 with this sentence when set.
+  String? taskRefusal;
+
   /// The repair report's answer; null: [pmRepairWeek].
   Map<String, dynamic>? report;
 
@@ -183,6 +189,17 @@ class PmServer {
             },
           ],
         });
+      }
+      if (request.method == 'PATCH' && path.contains('/tasks/')) {
+        if (taskRefusal != null) {
+          return _json({'message': taskRefusal}, 422);
+        }
+        return _json({
+          'data': {'id': path.split('/').last, ...(body as Map)},
+        });
+      }
+      if (path.endsWith('/jobs/project-management/cards') && cards != null) {
+        return _json(cards!);
       }
       if (path.endsWith('/financials/repair-report')) {
         return _json({

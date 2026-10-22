@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/pm_server.dart';
 
 /// Project Management's screen and its Dashboard (design 141, option 1 and
-/// phone 4): the six tabs, the tiles from the overview, a tile's way into
+/// phone 4): the seven tabs, the tiles from the overview, a tile's way into
 /// Jobs, the countdown bars and the phone. Every name invented.
 void main() {
   List<String> tabs(WidgetTester tester) => [
@@ -19,13 +19,14 @@ void main() {
   String text(WidgetTester tester, String key) =>
       tester.widget<Text>(find.byKey(ValueKey(key))).data ?? '';
 
-  testWidgets('six tabs, opening on Dashboard', (tester) async {
+  testWidgets('seven tabs, opening on Dashboard', (tester) async {
     await PmServer().pump(tester);
     expect(tabs(tester), [
       'Dashboard',
       'Reports',
       'Table',
       'Jobs',
+      'Assignments',
       'Logs',
       'Settings',
     ]);
@@ -38,7 +39,13 @@ void main() {
     await PmServer(
       permissions: const ['jobs.view', 'project_management.view'],
     ).pump(tester);
-    expect(tabs(tester), ['Dashboard', 'Jobs', 'Logs', 'Settings']);
+    expect(tabs(tester), [
+      'Dashboard',
+      'Jobs',
+      'Assignments',
+      'Logs',
+      'Settings',
+    ]);
   });
 
   testWidgets('the tiles come from the overview, in pipeline order', (

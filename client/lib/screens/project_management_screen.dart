@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/branch_options.dart';
 import '../core/device_zone.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'jobs/pm_stages.dart';
+import 'jobs/project_management_assignments.dart';
 import 'jobs/project_management_dashboard.dart';
 import 'jobs/project_management_jobs.dart';
 import 'jobs/project_management_logs.dart';
@@ -15,10 +17,11 @@ import 'jobs/project_management_settings.dart';
 /// Project Management, its own sidebar module since 2026-10-21 (Jose: "This
 /// Project Management should be its own tab, not a sub tab of Jobs").
 ///
-/// Six tabs since design 141 (option 1, phone 4): Dashboard, where every job
-/// stands; Reports and Table, Financials' weekly Repair Team report; Jobs
-/// (which was Pending Jobs, key `pending`), one stage at a time; Logs (UI
-/// queue 139); Settings, for the place being viewed.
+/// Seven tabs: Dashboard, where every job stands; Reports and Table,
+/// Financials' weekly Repair Team report; Jobs (which was Pending Jobs, key
+/// `pending`), one stage at a time; Assignments (design 143), Action 1's
+/// Task Board cards by technician; Logs (UI queue 139); Settings, for the
+/// place being viewed.
 ///
 /// The module's reach is its gate: the sidebar draws it only for somebody
 /// holding `project_management.view`, and every tab is that one grant.
@@ -60,6 +63,8 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   List<(String, String)> _reasons = const [];
   List<String> _redo = const [];
   List<String> _dispute = const [];
+  List<String> _scopeStatuses = const [];
+  bool _partlyPaidOnly = false;
 
   /// Bumped after a save, so the other tabs read again.
   int _generation = 0;
@@ -106,6 +111,8 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
       ];
       _redo = strings(rows[pmRedoKey]);
       _dispute = strings(rows[pmDisputeKey]);
+      _scopeStatuses = strings(rows[pmScopeStatusesKey]);
+      _partlyPaidOnly = rows[pmPartlyPaidKey] == true;
     });
   }
 
@@ -130,6 +137,20 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
     _go('pending');
   }
 
+  /// The scope line's words: the statuses by their own names, and the place
+  /// as "Company · Branch".
+  PmScope get _scope {
+    final names = {for (final st in _statuses) st.value: st.label};
+    final place = _me.scope;
+    return PmScope(
+      statuses: [for (final v in _scopeStatuses) names[v] ?? v],
+      partlyPaidOnly: _partlyPaidOnly,
+      place: place.type == 'franchise' && place.id != null
+          ? branchLabelOf(_me, place.id!, place.label)
+          : place.label,
+    );
+  }
+
   bool get _financials => _me.can('financials.bases.view');
 
   List<(String, String, IconData, Widget Function())> get _tabs => [
@@ -145,6 +166,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         generation: _generation,
         onOpenJobs: _openJobs,
         onOpenSettings: () => _go('settings'),
+        scope: _scope,
       ),
     ),
     if (_financials) ...[
@@ -185,6 +207,23 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         intent: _intent,
         generation: _generation,
         onOpenSettings: () => _go('settings'),
+        now: widget.now,
+        zone: widget.zone,
+        scope: _scope,
+      ),
+    ),
+    (
+      'assignments',
+      'Assignments',
+      Icons.assignment_ind_outlined,
+      () => ProjectManagementAssignments(
+        api: widget.api,
+        session: widget.session,
+        areas: _areas,
+        generation: _generation,
+        onOpenSettings: () => _go('settings'),
+        scope: _scope,
+        statuses: _statuses,
         now: widget.now,
         zone: widget.zone,
       ),
