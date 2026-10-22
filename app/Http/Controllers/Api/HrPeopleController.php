@@ -1068,6 +1068,7 @@ class HrPeopleController extends Controller
                     'carried' => $answer['carried'],
                     'expired' => $answer['expired'],
                     'would_expire' => $answer['would_expire'],
+                    'resets' => $answer['resets'],
                     'period_start' => $answer['window_from'],
                     'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
                     // The dated days off in this period (Jose, 2026-10-22).

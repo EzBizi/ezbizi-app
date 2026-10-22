@@ -165,7 +165,7 @@ class PtoPolicy
         $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
         if ($startedOn === null || $startedOn->isFuture()) {
             return ['total' => null, 'used' => (float) $usedQuery()->sum('days'), 'left' => null,
-                'carried' => null, 'expired' => null, 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
+                'carried' => null, 'expired' => null, 'resets' => [], 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
         }
 
         $step = fn (Carbon $at, int $n) => match ($period) {
@@ -201,14 +201,39 @@ class PtoPolicy
 
         // Reset every period: that period's days are there from its first day.
         $earnedNow = $reset === 'period' ? $allowance : ($periods($today) - $periods($from)) * $allowance;
-        $earnedBefore = $periods($from) * $allowance;
+        // Every past reset, played forward from the start date: what was left
+        // at each either carried into the next window or expired (Jose,
+        // 2026-10-22: "show when past resets happened").
+        $bounds = [$startedOn->copy()];
+        $at = $startedOn->copy();
+        for ($i = 0; $i < 600; $i++) {
+            $at = match ($reset) {
+                'anniversary' => $startedOn->copy()->addYearsNoOverflow($i + 1),
+                'period' => $step($startedOn, $i + 1),
+                default => $at->copy()->startOfYear()->addYear(),
+            };
+            if ($at->gt($from)) {
+                break;
+            }
+            $bounds[] = $at->copy();
+        }
+        $usedRows = $usedQuery()->whereNotNull('used_on')->where('used_on', '<', $from->toDateString())
+            ->get(['used_on', 'days']);
+        $carriedIn = 0.0;
+        $resets = [];
+        for ($i = 1; $i < count($bounds); $i++) {
+            [$a, $b] = [$bounds[$i - 1], $bounds[$i]];
+            $earned = $reset === 'period' ? $allowance : ($periods($b) - $periods($a)) * $allowance;
+            $spent = (float) $usedRows->filter(fn ($r) => $r->used_on->gte($a) && $r->used_on->lt($b))->sum('days');
+            $leftover = max(0.0, $earned + $carriedIn - $spent);
+            $carriedIn = $carryOver ? $leftover : 0.0;
+            $resets[] = ['on' => $b->toDateString(), 'expired' => round($carryOver ? 0.0 : $leftover, 2),
+                'carried' => round($carriedIn, 2)];
+        }
+        $carried = $carriedIn;
+        $expired = (float) array_sum(array_column($resets, 'expired'));
         $usedNow = (float) $usedQuery()->where(fn ($q) => $q->whereNull('used_on')
             ->orWhere('used_on', '>=', $from->toDateString()))->sum('days');
-        $usedBefore = (float) $usedQuery()->where('used_on', '<', $from->toDateString())->sum('days');
-        $carried = $carryOver ? max(0.0, $earnedBefore - $usedBefore) : 0.0;
-        // What was lost at past resets, shown even with carryover off (Jose,
-        // 2026-10-22: "if it's off i would like to see the expired PTO's").
-        $expired = $carryOver ? 0.0 : max(0.0, $earnedBefore - $usedBefore);
         $total = $earnedNow + $carried;
 
         return [
@@ -217,6 +242,8 @@ class PtoPolicy
             'left' => round($total - $usedNow, 2),
             'carried' => round($carried, 2),
             'expired' => round($expired, 2),
+            // Newest first, the last 24.
+            'resets' => array_slice(array_reverse($resets), 0, 24),
             // Lost at the next reset if nothing more is used (carryover off).
             'would_expire' => $carryOver ? 0.0 : round(max(0.0, $total - $usedNow), 2),
             'resets_on' => $next->toDateString(),
