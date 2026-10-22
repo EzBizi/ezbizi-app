@@ -59,7 +59,9 @@ class JobsProjectManagementController extends Controller
 
         $money = $user->hasPermission('jobs.financials');
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
-        if ($watched === []) {
+        // Only the stage lists need watched statuses; a stat's jobs and Recently Paid
+        // stand without them (2026-10-22: a cleared setting emptied every drill-down).
+        if ($watched === [] && ! isset($input['ids']) && ($input['filter'] ?? null) !== 'recently_paid') {
             return response()->json(['data' => [], 'meta' => ['watched' => [], 'deadline_days' => EstimateAging::DAYS]]);
         }
 
@@ -83,8 +85,9 @@ class JobsProjectManagementController extends Controller
                         ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
                         ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
             })
-            ->when(isset($input['ids']),
-                fn ($q) => $q->whereIn('id', $input['ids']),
+            // Recently Paid is every job paid in the window, watched or not.
+            ->when(isset($input['ids']) || ($input['filter'] ?? null) === 'recently_paid',
+                fn ($q) => $q->when(isset($input['ids']), fn ($i) => $i->whereIn('id', $input['ids'])),
                 fn ($q) => $q->where(fn ($w) => $w->whereIn('status', $watched)->orWhereIn('id', $left)))
             ->when(($input['filter'] ?? null) === 'recently_paid', fn ($q) => $q->whereIn('id',
                 $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id')))
