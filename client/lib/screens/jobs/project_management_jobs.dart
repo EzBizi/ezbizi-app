@@ -85,6 +85,9 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
   static const _tableFrom = 760.0;
 
   String _stage = pmStageKeys.first;
+
+  /// Every stage at once: the Dashboard's waiting-to-start "See all".
+  bool _anyStage = false;
   PmFilters _filters = const PmFilters();
   int _page = 1;
 
@@ -131,7 +134,8 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
 
   void _adopt(PmJobsIntent? intent) {
     if (intent == null) return;
-    _stage = intent.stage;
+    _anyStage = intent.stage == null;
+    _stage = intent.stage ?? _stage;
     _filters = intent.filters;
     _search.text = intent.filters.q;
     _page = 1;
@@ -167,9 +171,9 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       _error = null;
     });
     final response = await widget.api.get('/jobs/project-management/jobs', {
-      'stage': _stage,
+      if (!_anyStage) 'stage': _stage,
       if (_page > 1) 'page': '$_page',
-      ..._filters.query(withSecondVisit: _stage == 'in_progress'),
+      ..._filters.query(withSecondVisit: _secondVisit),
     });
     if (!mounted || request != _request) return;
     setState(() {
@@ -206,9 +210,12 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     });
   }
 
+  bool get _secondVisit => !_anyStage && _stage == 'in_progress';
+
   void _choose(String stage) {
-    if (stage == _stage) return;
+    if (stage == _stage && !_anyStage) return;
     setState(() {
+      _anyStage = false;
       _stage = stage;
       _page = 1;
       _rows = const [];
@@ -328,26 +335,28 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     );
   }
 
-  bool get _unmapped => _mapped != null && !_mapped!.contains(_stage);
+  bool get _unmapped =>
+      !_anyStage && _mapped != null && !_mapped!.contains(_stage);
 
   Widget _stages(BuildContext context, {required bool wide}) {
     final scheme = Theme.of(context).colorScheme;
 
     Widget chip(String key) {
-      final closed = pmClosedStages.contains(key);
       final count = _counts[key];
       final mapped = _mapped == null || _mapped!.contains(key);
-      final colour = closed ? scheme.onSurfaceVariant : null;
+      final selected = !_anyStage && _stage == key;
       return Padding(
         padding: const EdgeInsets.only(right: 6),
         child: ChoiceChip(
           key: ValueKey('pm-stage-$key'),
           showCheckmark: false,
-          selected: _stage == key,
+          selected: selected,
+          // The stage's colour, shared with Settings and the Dashboard.
+          avatar: PmStageDot(key, key: ValueKey('pm-stage-$key-dot')),
           label: Text.rich(
             TextSpan(
               text: pmStageName(key),
-              style: TextStyle(color: _stage == key ? null : colour),
+
               children: [
                 if (mapped && count != null)
                   TextSpan(
@@ -366,21 +375,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       );
     }
 
-    final children = [
-      for (final key in pmStageKeys)
-        if (!pmClosedStages.contains(key)) chip(key),
-      SizedBox(
-        height: 28,
-        child: VerticalDivider(
-          key: const ValueKey('pm-stage-divider'),
-          width: 14,
-          thickness: 2,
-          color: scheme.outlineVariant,
-        ),
-      ),
-      for (final key in pmStageKeys)
-        if (pmClosedStages.contains(key)) chip(key),
-    ];
+    final children = [for (final key in pmStageKeys) chip(key)];
 
     return Padding(
       key: const ValueKey('tour-pm-jobs-stages'),
@@ -443,9 +438,26 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
             ),
             const SizedBox(height: 8),
           ],
+          if (_filters.waitingToStart) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: InputChip(
+                key: const ValueKey('pm-jobs-waiting-to-start'),
+                label: const Text('Paid, not started'),
+                deleteButtonTooltipMessage: 'Remove',
+                onDeleted: () {
+                  // No stage to fall back on: the first one.
+                  _anyStage = false;
+                  _rows = const [];
+                  _refilter(_filters.copyWith(waitingToStart: false));
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           PmFlagChips(
             filters: _filters,
-            secondVisit: _stage == 'in_progress',
+            secondVisit: _secondVisit,
             onChanged: _refilter,
           ),
           const SizedBox(height: 8),
@@ -471,6 +483,8 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
           child: Text(
             _filters.q.trim().isNotEmpty
                 ? 'No jobs here match “${_filters.q.trim()}”.'
+                : _anyStage
+                ? 'No paid job is waiting to start.'
                 : 'No jobs are ${pmStageName(_stage).toLowerCase()}.',
             key: const ValueKey('pm-jobs-none'),
             textAlign: TextAlign.center,

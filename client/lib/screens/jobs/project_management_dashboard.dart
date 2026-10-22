@@ -54,8 +54,9 @@ class ProjectManagementDashboard extends StatefulWidget {
   /// Bumped by the screen when Settings changes: count again.
   final int generation;
 
-  /// A tile's tap: Jobs on that stage, under these filters.
-  final void Function(String stage, PmFilters filters)? onOpenJobs;
+  /// A tile's tap: Jobs on that stage, under these filters. No stage: every
+  /// stage (Waiting to start's "See all").
+  final void Function(String? stage, PmFilters filters)? onOpenJobs;
   final VoidCallback? onOpenSettings;
 
   @override
@@ -337,7 +338,11 @@ class _ProjectManagementDashboardState
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(
-                color: tone == null
+                // A stage's tile wears its stage colour, as the Jobs tab's
+                // chips and the Settings table do (design 142).
+                color: pmStageKeys.contains(key)
+                    ? pmStageColour(context, key)
+                    : tone == null
                     ? scheme.outlineVariant
                     : ToneColours.of(context, tone).ink,
                 width: 4,
@@ -803,6 +808,26 @@ class _ProjectManagementDashboardState
             ? 'and $n more over the $limit-day limit · See all'
             : 'and $n more, $hidden over the $limit-day limit · See all';
       },
+      footer: [
+        if (widget.onOpenJobs != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('pm-start-see-all'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('See all in Jobs'),
+              // Paid and past the limit, every not-started stage (0f181d521).
+              onPressed: () => widget.onOpenJobs!(
+                null,
+                _filters.copyWith(waitingToStart: true),
+              ),
+            ),
+          ),
+      ],
       rows: [
         for (final r in rows)
           Builder(
