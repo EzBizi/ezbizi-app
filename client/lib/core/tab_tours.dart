@@ -418,7 +418,8 @@ const Map<String, Tour> tabTours = {
     ],
   ),
   'email': Tour(
-    version: 1,
+    // 2: the inbox laid out like Gmail (design 137).
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-email-tabs',
@@ -426,36 +427,41 @@ const Map<String, Tour> tabTours = {
         body: 'The inbox, and its settings.',
       ),
       TourStep(
-        anchor: 'tour-email-inboxes',
-        title: 'Your inboxes',
-        body:
-            'All inboxes together, or one at a time, with how many are unread, '
-            'then its folders.',
+        anchor: 'tour-email-compose',
+        title: 'Compose',
+        body: 'Writes from the inbox you have open, or asks which one.',
       ),
       TourStep(
-        anchor: 'tour-email-inbox-bar',
-        title: 'Where you are',
-        body: 'The inbox you are reading, by its address.',
+        anchor: 'tour-email-inboxes',
+        title: 'Folders and inboxes',
+        body:
+            'Inbox, Starred, Snoozed and the rest, then your inboxes grouped '
+            'by company with how many are unread.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-email-search',
         title: 'Search mail',
-        body: 'Press Enter to search; the × clears it.',
+        body: 'Type to search; the × clears it.',
       ),
       TourStep(
-        anchor: 'tour-email-compose',
-        title: 'New message',
-        body: 'Writes from the inbox you have open.',
+        anchor: 'tour-email-categories',
+        title: 'Primary, Leads & customers, Notifications',
+        body: 'Mail from your customers and leads has its own tab.',
+        since: 2,
       ),
       TourStep(
-        anchor: 'tour-email-unread',
-        title: 'Unread',
-        body: 'Shows only what has not been read.',
+        anchor: 'tour-email-toolbar',
+        title: 'Select and act',
+        body: 'Tick rows to archive, mark read, snooze or delete them.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-email-list',
         title: 'The messages',
-        body: 'Click one to read it. Older messages load at the end.',
+        body:
+            'One line per conversation, tagged with the inboxes it reached. '
+            'Click one to read it; Older › pages back.',
       ),
     ],
   ),
