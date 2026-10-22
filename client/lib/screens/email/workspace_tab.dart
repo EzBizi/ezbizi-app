@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
@@ -28,7 +29,16 @@ import '../../widgets/tag.dart';
 ///
 /// Every edit control needs `email.edit`; without it they are not drawn.
 class WorkspaceTab extends StatefulWidget {
-  const WorkspaceTab({super.key, required this.api, required this.session});
+  const WorkspaceTab({
+    super.key,
+    required this.api,
+    required this.session,
+    this.openUrl = openExternally,
+  });
+
+  /// How Google Admin is opened: a new tab on the web, the browser elsewhere.
+  /// A seam so a test can see the address without a browser.
+  final OpenUrl openUrl;
 
   final ApiClient api;
   final Session session;
@@ -91,6 +101,7 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
         key: ValueKey('workspace-view-$open'),
         api: widget.api,
         session: widget.session,
+        openUrl: widget.openUrl,
         card: card,
         onBack: _cards.length > 1
             ? () {
@@ -168,6 +179,8 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
               ),
               const SizedBox(height: 10),
               statusChip(card),
+              if (updatePermissions(card, widget.openUrl) case final button?)
+                Padding(padding: const EdgeInsets.only(top: 6), child: button),
               const SizedBox(height: 6),
               Text(
                 count is int
@@ -181,6 +194,32 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
       ),
     );
   }
+}
+
+typedef OpenUrl = Future<void> Function(Uri url);
+
+Future<void> openExternally(Uri url) async {
+  await launchUrl(
+    url,
+    mode: LaunchMode.externalApplication,
+    webOnlyWindowName: '_blank',
+  );
+}
+
+/// "Update permissions": Google Admin's delegation page with every scope
+/// filled in, so the admin only clicks Authorize. Drawn whenever signatures
+/// cannot be set and the server sent the page.
+Widget? updatePermissions(Map<String, dynamic> card, OpenUrl openUrl) {
+  final url = '${card['authorize_url'] ?? ''}';
+  if (card['signatures_ready'] != false || url.isEmpty) return null;
+  final uri = Uri.tryParse(url);
+  if (uri == null) return null;
+  return OutlinedButton.icon(
+    key: ValueKey('workspace-update-permissions-${card['id']}'),
+    onPressed: () => openUrl(uri),
+    icon: const Icon(Icons.open_in_new, size: 18),
+    label: const Text('Update permissions'),
+  );
 }
 
 /// The one status a Workspace card carries.
@@ -205,7 +244,10 @@ class WorkspaceView extends StatefulWidget {
     required this.session,
     required this.card,
     this.onBack,
+    this.openUrl = openExternally,
   });
+
+  final OpenUrl openUrl;
 
   final ApiClient api;
   final Session session;
@@ -243,7 +285,11 @@ class _WorkspaceViewState extends State<WorkspaceView> {
   String get _id => '${widget.card['id']}';
   String get _base => '/email/workspaces/$_id';
 
-  bool get _mayEdit => widget.session.me?.can('email.edit') ?? false;
+  /// Both must say yes: the role's `email.edit`, and the card's own
+  /// `may_edit`, which is the server's answer for this Workspace.
+  bool get _mayEdit =>
+      (widget.session.me?.can('email.edit') ?? false) &&
+      ({...widget.card, ..._data}['may_edit'] != false);
 
   List<Map<String, dynamic>> get _people => _maps(_data['people']);
 
@@ -506,13 +552,17 @@ class _WorkspaceViewState extends State<WorkspaceView> {
         if (card['signatures_ready'] == false &&
             card['signatures_reason'] != null) ...[
           const SizedBox(height: 10),
-          _banner(context, '${card['signatures_reason']}'),
+          _banner(
+            context,
+            '${card['signatures_reason']}',
+            updatePermissions(card, widget.openUrl),
+          ),
         ],
       ],
     );
   }
 
-  Widget _banner(BuildContext context, String sentence) {
+  Widget _banner(BuildContext context, String sentence, Widget? action) {
     final caution = StateColour.of(context).caution;
     return Container(
       key: const ValueKey('workspace-not-ready'),
@@ -528,7 +578,15 @@ class _WorkspaceViewState extends State<WorkspaceView> {
         children: [
           Icon(Icons.info_outline, color: caution, size: 20),
           const SizedBox(width: 10),
-          Expanded(child: Text(sentence)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(sentence),
+                if (action != null) ...[const SizedBox(height: 8), action],
+              ],
+            ),
+          ),
         ],
       ),
     );
