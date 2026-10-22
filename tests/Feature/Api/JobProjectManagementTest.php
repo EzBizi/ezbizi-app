@@ -104,6 +104,25 @@ class JobProjectManagementTest extends TestCase
         $this->assertSame('Entered Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
     }
 
+    /**
+     * Jose, 2026-10-22: "Today" showed jobs with nothing today (the window was
+     * UTC days, last evening's Eastern changes), and Yesterday failed (514 ids).
+     */
+    public function test_the_window_is_the_viewers_days_and_a_stat_opens_by_name(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+        $get = fn (string $q) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management{$q}")->assertOk()->json('data');
+
+        // The tag change is 09:00 UTC on the 12th: the 12th in New York, the 11th in Pago Pago.
+        $this->assertSame(1, $get('/stats?from=2026-10-12&to=2026-10-12&timezone=America/New_York')['tag_changes']['count']);
+        $this->assertSame(0, $get('/stats?from=2026-10-12&to=2026-10-12&timezone=Pacific/Pago_Pago')['tag_changes']['count']);
+
+        $this->assertSame([$job], array_column($get('?event=tag_changes&from=2026-10-12&to=2026-10-12&timezone=America/New_York'), 'id'));
+        $this->assertSame([], $get('?event=tag_changes&from=2026-10-12&to=2026-10-12&timezone=Pacific/Pago_Pago'));
+        $this->assertArrayHasKey('technician', $get('?event=tag_changes&from=2026-10-12&to=2026-10-12')[0]);
+    }
+
     public function test_filters_by_stage_branch_and_days(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
