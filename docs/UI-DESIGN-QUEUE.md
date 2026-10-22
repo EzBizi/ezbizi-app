@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 132 · Automations › Review step — **sent 2026-10-22** (`docs/previews/automations-review-step-layouts.html`)
+
+Jose: "could definitely use some better ui-ux" (one sentence with "not chosen yet" gaps, "Where you are now" twice, no test, no clear Turn on). **1** (recommended) plain sentence with missing parts in red as what is needed, each part a link to its step, the real place named once; a checklist per step (✓/⚠/✕, reason, Fix) that blocks Turn on while any ✕; Try it: dry-run on a chosen recent event (or an example) showing conditions and each step's would-do with real values, nothing sent; Save switched off / Turn on. **2** receipt cards per step. **3** today's sentence + Try it. Phone **4** (recommended) / **5** / **6**. Server needs: dry-run endpoint over a chosen past event, per-step readiness reasons.
+
 ### 131 · Automations › Only if step — **sent 2026-10-22** (`docs/previews/automations-only-if-layouts.html`)
 
 Jose: "What this event carries" wastes space, show an example; the "Is" list is confusing. **1** (recommended) a condition is a sentence ("Only if [Role] [is one of] [Technician, Office]", then "and …"); field menu with plain labels + last-event example, *_id fields under "Show technical details"; operator menu filtered by field type ("changed" only on change events), each with a one-line example on this field; value is a picker for closed sets; carries = compact table Detail | Last time | Use (adds a condition); "Tested on the last 20 events: would have run N". **2** ready-made phrase chips. **3** today's boxes with help text. Phone **4** (recommended: stacked sentence) / **5** / **6**. Server needs: field labels + type + options, last-event example values, dry-run over recent events.
