@@ -415,6 +415,7 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financials.approve",
         "financials.bases.view",
         "financials.bills.view",
         "financials.create",

@@ -333,7 +333,7 @@ final class SourceFigures
     }
 
     /** @return Collection<int, FinancialSource> */
-    private static function sources(string $role, string $from, string $to, ?string $franchiseId): Collection
+    public static function sources(string $role, string $from, string $to, ?string $franchiseId): Collection
     {
         return FinancialSource::query()->with('franchise:id,name', 'company:id,name')
             ->where('role', $role)->whereNotNull('franchise_id')
@@ -342,7 +342,7 @@ final class SourceFigures
     }
 
     /** The source's live copied rows that are its place's and dated inside both the period and its validity. */
-    private static function rows(FinancialSource $source, string $from, string $to): \Generator
+    public static function rows(FinancialSource $source, string $from, string $to): \Generator
     {
         $records = AirtableRecord::query()->where('base_id', $source->base_id)->where('table_id', $source->table_id)
             ->whereNull('gone_at')->get(['fields']);
@@ -356,7 +356,7 @@ final class SourceFigures
         }
     }
 
-    private static function value(FinancialSource $source, array $fields, string $key): mixed
+    public static function value(FinancialSource $source, array $fields, string $key): mixed
     {
         foreach (array_filter([$source->field($key), ...(self::DEFAULTS[$key] ?? [])]) as $name) {
             if (array_key_exists($name, $fields)) {

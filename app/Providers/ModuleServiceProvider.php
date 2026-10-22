@@ -2423,6 +2423,8 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'financials',
                 label: 'Financials',
+                // approve: sign off a week of the Repair Team report.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve'],
                 // Bases is the work; Settings is which Airtable table is which
                 // part of the books (organization configuration).
                 tabs: [
