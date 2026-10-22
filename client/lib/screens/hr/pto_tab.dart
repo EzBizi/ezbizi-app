@@ -324,12 +324,19 @@ class _PtoTabState extends State<PtoTab> {
 
     final left = _num(person['left']);
     if (left == null) return null;
+    final expired = _num(person['expired']) ?? 0;
 
-    return Text(
-      '${_days(left)} left',
-      style: theme.textTheme.bodyMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: left <= 0 ? theme.colorScheme.error : null,
+    // Bounded for the same reason as the chip above.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 150),
+      child: Text(
+        '${_days(left)} left'
+        '${expired > 0 ? ' · ${_days(expired)} expired' : ''}',
+        textAlign: TextAlign.end,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: left <= 0 ? theme.colorScheme.error : null,
+        ),
       ),
     );
   }
@@ -553,12 +560,17 @@ class _PtoTabState extends State<PtoTab> {
     );
   }
 
-  /// Total, Used and Left, three equal tiles, and the bar under them.
+  /// Total, Used and Left — and Expired when days were lost — as equal tiles,
+  /// and the bar under them.
   Widget _tiles(BuildContext context, Map<String, dynamic> person) {
     final total = _num(person['total']);
     final used = _num(person['used']);
     final left = _num(person['left']);
     final carried = _num(person['carried']) ?? 0;
+    // Days lost at past resets — Jose, 2026-10-22: with carry-over off he
+    // wants to see them. HR sends 0 when carry-over is on and null with no
+    // start date; neither is a loss, so neither gets a tile.
+    final expired = _num(person['expired']) ?? 0;
 
     return Column(
       key: const ValueKey('tour-work_hours-pto-allowance'),
@@ -613,6 +625,18 @@ class _PtoTabState extends State<PtoTab> {
                   alarm: left != null && left <= 0,
                 ),
               ),
+              if (expired > 0) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _tile(
+                    context,
+                    key: const Key('pto-tile-expired'),
+                    label: 'Expired',
+                    value: expired,
+                    note: 'lost at past resets',
+                  ),
+                ),
+              ],
             ],
           ),
         ),
