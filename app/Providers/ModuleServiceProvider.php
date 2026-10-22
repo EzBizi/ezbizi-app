@@ -569,6 +569,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('contracts', 'Contracts'),
                     new TabDefinition('invitations', 'Invitations'),
                     new TabDefinition('onboarding', 'Onboarding'),
+                    // Jose, 2026-10-22: everyone with salary, W-4, dates, role
+                    // and contract in one table. New, so held by no role until
+                    // ticked; administrators by identity.
+                    new TabDefinition('payroll', 'Payroll'),
                 ],
                 triggers: [
                     /*

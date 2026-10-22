@@ -9,6 +9,8 @@ use App\Models\EmploymentEvent;
 use App\Models\Franchise;
 use App\Models\HeldEquipment;
 use App\Models\HrNote;
+use App\Models\Onboarding;
+use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
 use App\Models\PtoUsed;
 use App\Models\Role;
@@ -33,6 +35,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -325,6 +328,93 @@ class HrPeopleController extends Controller
             ? 'They are the only administrator of this organization, so deleting them would leave it '
                 .'with nobody able to run it. Make somebody else an administrator first.'
             : null;
+    }
+
+    /**
+     * Everyone, one row each, for the Payroll tab (Jose, 2026-10-22: "Employee
+     * - Salary - W2 (checkbox if signed + download) - Start Date - Date of
+     * Termination - Role - Contract (+ download)", filtered by signed W-4,
+     * role or contract).
+     *
+     * Salary is the current pay rate, and only for `hr.pay.view`; changing it
+     * adds a rate to the history (POST details/pay-rates), so a raise keeps
+     * the old one. The tax form is the signed W-4 (or W-9 for a contractor)
+     * from their onboarding, downloaded as its attachment; the contract is
+     * their latest onboarding, downloaded as its PDF.
+     */
+    public function payroll(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $seesPay = $actor->hasPermission('hr.pay.view');
+        $today = now()->toDateString();
+
+        $people = User::query()->with('role:id,name')
+            ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            ->orderBy('name')->get();
+        $ids = $people->map->getKey()->all();
+
+        $rates = $seesPay ? PayRate::query()->whereIn('user_id', $ids)->where('effective_on', '<=', $today)
+            ->orderByDesc('effective_on')->get()->unique('user_id')->keyBy('user_id') : collect();
+        $events = EmploymentEvent::query()->whereIn('user_id', $ids)
+            ->whereIn('kind', [EmploymentEvent::STARTED, EmploymentEvent::LEFT])->orderBy('occurred_on')->get()
+            ->groupBy('user_id');
+        $onboardings = Onboarding::query()->with('contractVersion.contract:id,name')
+            ->whereIn('user_id', $ids)->where('status', '!=', Onboarding::CANCELLED)
+            ->orderByDesc('started_at')->get()->unique('user_id')->keyBy('user_id');
+        $taxForms = OnboardingAnswer::query()
+            ->whereIn('onboarding_id', $onboardings->map->getKey()->all())->where('field_key', 'tax_form')
+            ->get()->keyBy('onboarding_id');
+
+        $rows = $people->map(function (User $person) use ($rates, $events, $onboardings, $taxForms, $seesPay) {
+            $mine = $events->get($person->getKey(), collect());
+            $left = $mine->where('kind', EmploymentEvent::LEFT)->last();
+            $started = $mine->where('kind', EmploymentEvent::STARTED)->first();
+            $lastStart = $mine->where('kind', EmploymentEvent::STARTED)->last();
+            $onboarding = $onboardings->get($person->getKey());
+            $taxForm = $onboarding === null ? null : $taxForms->get($onboarding->getKey());
+            $attachment = $taxForm === null ? null : (string) $taxForm->value;
+            $rate = $rates->get($person->getKey());
+
+            return [
+                'id' => $person->getKey(),
+                'name' => $person->name,
+                'is_active' => (bool) $person->is_active,
+                'salary' => ! $seesPay ? null : ($rate === null ? null : [
+                    'amount' => $rate->amount, 'period' => $rate->period, 'basis' => $rate->basis,
+                    'effective_on' => $rate->effective_on?->toDateString(),
+                ]),
+                'w2' => [
+                    'signed' => $attachment !== null && $attachment !== '' && $attachment !== 'N/A',
+                    'attachment_id' => $attachment !== null && Str::isUuid($attachment) ? $attachment : null,
+                ],
+                'started_on' => $started?->occurred_on?->toDateString(),
+                // The last time they left, unless they started again after it.
+                'terminated_on' => $left !== null && ($lastStart === null || $left->occurred_on->gte($lastStart->occurred_on))
+                    ? $left->occurred_on->toDateString() : null,
+                'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
+                'contract' => $onboarding === null ? null : [
+                    'id' => $onboarding->contractVersion?->contract?->getKey(),
+                    'name' => $onboarding->contractVersion?->contract?->name,
+                    'onboarding_id' => $onboarding->getKey(),
+                    'status' => $onboarding->status,
+                ],
+            ];
+        });
+
+        $rows = $rows
+            ->when($request->query('w2') === 'signed', fn ($c) => $c->where('w2.signed', true))
+            ->when($request->query('w2') === 'unsigned', fn ($c) => $c->where('w2.signed', false))
+            ->when($request->query('contract_id'), fn ($c, $id) => $c->where('contract.id', $id))
+            ->values();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'can_see_salary' => $seesPay,
+                'can_edit_salary' => $actor->hasPermission('hr.pay.edit'),
+            ],
+        ]);
     }
 
     /**
