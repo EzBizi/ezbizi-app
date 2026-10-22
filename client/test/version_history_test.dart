@@ -68,6 +68,8 @@ void main() {
       for (final v in versions) int.parse(v.split('.').last),
     ]..sort();
     const neverBuilt = <int>{
+      473, // pinned at ebd660b8 and stopped in its backend gate: InvoicesTest ordered
+      // three same-second events by occurred_at. Its note shipped in 0.0.0474.
       457, // pinned at 7e4d9aee and stopped in its backend gate: two merges each
       // counted RetentionPolicy's tables as 38. Its notes shipped in 0.0.0459.
       458, // pinned at 51854ac7 behind 457 and stopped with it; notes in 0.0.0459.

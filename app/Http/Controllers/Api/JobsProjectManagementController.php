@@ -47,8 +47,15 @@ class JobsProjectManagementController extends Controller
             // Jose, 2026-10-22: "Recently Paid", jobs with a payment in the window.
             'filter' => ['nullable', Rule::in(['pending', 'recently_paid'])],
             'from' => ['nullable', 'required_if:filter,recently_paid', 'date_format:Y-m-d'],
-            'to' => ['nullable', 'required_if:filter,recently_paid', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'required_if:filter,recently_paid', 'required_with:event', 'date_format:Y-m-d'],
+            // A stat's drill-down by name, so 514 jobs need no 514 ids in the URL (Jose, 2026-10-22).
+            'event' => ['nullable', Rule::in(['payments', 'status_changes', 'tag_changes', 'cancellations', 'deadlines_due'])],
+            'timezone' => ['nullable', 'timezone'],
         ]);
+        if (filled($input['event'] ?? null)) {
+            $request->validate(['from' => ['required']]);
+            $input['ids'] = $this->buckets($user, $settings, $input)[$input['event']] ?: ['00000000-0000-0000-0000-000000000000'];
+        }
 
         $money = $user->hasPermission('jobs.financials');
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
@@ -76,12 +83,12 @@ class JobsProjectManagementController extends Controller
                         ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
                         ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
             })
-            ->when(filled($input['ids'] ?? null),
+            ->when(isset($input['ids']),
                 fn ($q) => $q->whereIn('id', $input['ids']),
                 fn ($q) => $q->where(fn ($w) => $w->whereIn('status', $watched)->orWhereIn('id', $left)))
             ->when(($input['filter'] ?? null) === 'recently_paid', fn ($q) => $q->whereIn('id',
-                $this->paymentsIn($input['from'], $input['to'])->select('job_id')))
-            ->with(['franchise:id,name,timezone', 'customer:id,name', 'workizJob'])
+                $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id')))
+            ->with(['franchise:id,name,timezone', 'customer:id,name', 'workizJob', 'performedBy:id,name'])
             ->get();
 
         $ids = $jobs->modelKeys();
@@ -126,62 +133,83 @@ class JobsProjectManagementController extends Controller
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
             'franchise_id' => ['nullable', 'uuid'],
+            'timezone' => ['nullable', 'timezone'],
         ]);
 
-        $jobs = Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
-            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
-            ->select('id');
-        [$from, $to] = [$input['from'].' 00:00:00', $input['to'].' 23:59:59'];
+        $buckets = $this->buckets($user, $settings, $input);
+        $out = ['from' => $input['from'], 'to' => $input['to']];
+        foreach ($buckets as $key => $ids) {
+            $out[$key] = ['count' => count($ids), 'job_ids' => $ids];
+        }
+        if ($user->hasPermission('jobs.financials')) {
+            [$from, $to] = $this->window($input, $user, $settings);
+            $out['payments']['amount_minor'] = (int) $this->paymentsIn($from, $to)->whereIn('job_id', $this->reach($user, $input))
+                ->get(['amount', 'payload'])->sum(fn (WorkizRecord $p) => round(((float) $p->amount) * 100) * (($p->payload['type'] ?? '') === 'refund' ? -1 : 1));
+        }
 
-        $bucket = fn ($ids) => ['count' => count($ids), 'job_ids' => array_values(array_unique($ids))];
+        return response()->json(['data' => $out]);
+    }
+
+    /**
+     * The jobs behind each dashboard stat, distinct, in the window. The window's
+     * days are the viewer's (`timezone`, else the organization's default zone):
+     * Jose, 2026-10-22, "Today" counted last evening's Eastern changes, which
+     * are already tomorrow in UTC, and the list then showed them as yesterday.
+     *
+     * @return array<string, list<string>>
+     */
+    private function buckets($user, SettingsResolver $settings, array $input): array
+    {
+        $jobs = $this->reach($user, $input);
+        [$from, $to] = $this->window($input, $user, $settings);
+        $distinct = fn ($q) => $q->distinct()->pluck('subject_id')->all();
         $changes = fn (string $key) => AutomationEvent::query()->where('event_key', $key)->where('subject_type', Job::class)
             ->whereIn('subject_id', $jobs)->whereBetween('occurred_at', [$from, $to]);
 
-        $payments = $this->paymentsIn($input['from'], $input['to'])->whereIn('job_id', $jobs)->get(['job_id', 'amount', 'payload']);
-        $paymentBucket = $bucket($payments->pluck('job_id')->all());
-        $paymentBucket['count'] = count($paymentBucket['job_ids']);
-        if ($user->hasPermission('jobs.financials')) {
-            $paymentBucket['amount_minor'] = (int) $payments->sum(fn (WorkizRecord $p) => round(((float) $p->amount) * 100)
-                * (($p->payload['type'] ?? '') === 'refund' ? -1 : 1));
-        }
-
-        $statusIds = $changes('job.status_changed')
-            ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')) <> JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status'))")
-            ->pluck('subject_id')->all();
-        $tagIds = $changes('job.updated')->whereRaw("JSON_CONTAINS_PATH(payload, 'one', '$.after.tags')")->pluck('subject_id')->all();
-
         // "Cancelled" is the organization's word (jobs.cancelled_statuses); none named, none counted.
         $cancelled = (array) $settings->get('jobs.cancelled_statuses', $user->organization);
-        $cancelIds = $cancelled === [] ? [] : $changes('job.status_changed')
-            ->whereIn(\DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status'))"), $cancelled)->pluck('subject_id')->all();
 
         // Waiting jobs, nothing paid, whose cancel day falls in the window.
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
         $waitingIds = $watched === [] ? [] : (clone $jobs)->whereIn('status', $watched)->pluck('id')->all();
-        $dates = EstimateAging::latestEstimateDates($waitingIds);
         $paid = EstimateAging::paidCents($waitingIds);
-        $dueIds = array_keys(array_filter($dates, function (string $d, string $id) use ($paid, $input) {
+        $due = array_keys(array_filter(EstimateAging::latestEstimateDates($waitingIds), function (string $d, string $id) use ($paid, $input) {
             $deadline = Carbon::parse($d)->addDays(EstimateAging::DAYS)->toDateString();
 
             return ($paid[$id] ?? 0) <= 0 && $deadline >= $input['from'] && $deadline <= $input['to'];
         }, ARRAY_FILTER_USE_BOTH));
 
-        return response()->json(['data' => [
-            'from' => $input['from'],
-            'to' => $input['to'],
-            'payments' => $paymentBucket,
-            'status_changes' => $bucket($statusIds),
-            'tag_changes' => $bucket($tagIds),
-            'cancellations' => $bucket($cancelIds),
-            'deadlines_due' => $bucket($dueIds),
-        ]]);
+        return [
+            'payments' => $this->paymentsIn($from, $to)->whereIn('job_id', $jobs)->distinct()->pluck('job_id')->all(),
+            'status_changes' => $distinct($changes('job.status_changed')
+                ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')) <> JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status'))")),
+            'tag_changes' => $distinct($changes('job.updated')->whereRaw("JSON_CONTAINS_PATH(payload, 'one', '$.after.tags')")),
+            'cancellations' => $cancelled === [] ? [] : $distinct($changes('job.status_changed')
+                ->whereIn(\DB::raw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status'))"), $cancelled)),
+            'deadlines_due' => $due,
+        ];
+    }
+
+    private function reach($user, array $input): \Illuminate\Database\Eloquent\Builder
+    {
+        return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
+            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
+            ->select('id');
+    }
+
+    /** @return array{0: Carbon, 1: Carbon} the window's first and last instant, in UTC */
+    private function window(array $input, $user, SettingsResolver $settings): array
+    {
+        $zone = $input['timezone'] ?? null;
+        $zone = is_string($zone) && $zone !== '' ? $zone : ((string) ($settings->get('timezone', $user->organization) ?: config('app.timezone')));
+
+        return [Carbon::parse($input['from'], $zone)->startOfDay()->utc(), Carbon::parse($input['to'], $zone)->endOfDay()->utc()];
     }
 
     /** Succeeded Workiz payments dated in the window, until EzBizi records its own. */
-    private function paymentsIn(string $from, string $to): \Illuminate\Database\Eloquent\Builder
+    private function paymentsIn(Carbon $from, Carbon $to): \Illuminate\Database\Eloquent\Builder
     {
-        return WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')
-            ->whereBetween('starts_at', [$from.' 00:00:00', $to.' 23:59:59']);
+        return WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereBetween('starts_at', [$from, $to]);
     }
 
     /** @var array<string, string> status key => the organization's label */
@@ -257,6 +285,8 @@ class JobsProjectManagementController extends Controller
             'title' => $job->title,
             'status' => $job->status,
             'tags' => $job->tags ?? [],
+            // Jose, 2026-10-22: the tech on the job, if any.
+            'technician' => $job->performedBy?->name,
             'franchise' => ['id' => $job->franchise_id, 'name' => $job->franchise?->name],
             'customer' => ['id' => $job->customer_id, 'name' => $job->customer?->name],
             'stage' => $stage,

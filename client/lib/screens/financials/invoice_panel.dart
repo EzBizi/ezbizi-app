@@ -65,6 +65,14 @@ class _InvoicePanelState extends State<InvoicePanel> {
   final _ticked = <String, bool>{};
   final _address = TextEditingController();
 
+  /// Phones a text or WhatsApp goes to, ticked.
+  final _tickedPhones = <String, bool>{};
+  final _phone = TextEditingController();
+
+  // Who it bills, editable until it is sent.
+  final _newEmail = TextEditingController();
+  final _newPhone = TextEditingController();
+
   // Payment.
   late final _paidOn = TextEditingController(text: isoDay(DateTime.now()));
   final _amount = TextEditingController();
@@ -102,6 +110,9 @@ class _InvoicePanelState extends State<InvoicePanel> {
       b.dispose();
     }
     _address.dispose();
+    _phone.dispose();
+    _newEmail.dispose();
+    _newPhone.dispose();
     _paidOn.dispose();
     _amount.dispose();
     _reference.dispose();
@@ -159,8 +170,12 @@ class _InvoicePanelState extends State<InvoicePanel> {
       final errors = r.body['errors'];
       setState(() {
         _error = r.reason;
+        // Only a refusal about mail points at the sending server.
         _needsMailServer =
-            sending && errors is Map && errors.containsKey('send');
+            sending &&
+            errors is Map &&
+            errors.containsKey('send') &&
+            RegExp('mail server|mailbox').hasMatch(r.reason);
       });
       return;
     }
@@ -213,19 +228,55 @@ class _InvoicePanelState extends State<InvoicePanel> {
       return;
     }
     final preview = r.body['data'] as Map;
+    final channels = _channelsOf(preview);
+    final billTo = (_invoice?['bill_to'] as Map?) ?? const {};
     setState(() {
       _preview = preview;
       _ticked
         ..clear()
         ..addAll({
+          for (final c in channels)
+            if (c['channel'] == 'email')
+              for (final a in (c['to'] as List? ?? const [])) '$a': true,
           for (final a in (preview['to'] as List? ?? const [])) '$a': true,
-          for (final a
-              in ((_invoice?['bill_to'] as Map?)?['emails'] as List? ??
-                  const []))
-            '$a': true,
+          for (final a in (billTo['emails'] as List? ?? const [])) '$a': true,
+        });
+      _tickedPhones
+        ..clear()
+        ..addAll({
+          for (final c in channels)
+            if (c['channel'] != 'email')
+              for (final p in (c['to'] as List? ?? const [])) '$p': true,
+          for (final p in (billTo['phones'] as List? ?? const [])) '$p': true,
         });
     });
   }
+
+  /// The channels a send would use. A server that does not say sends by
+  /// email alone.
+  static List<Map> _channelsOf(Map preview) {
+    final listed = (preview['channels'] as List?)?.cast<Map>();
+    if (listed != null && listed.isNotEmpty) return listed;
+    return [
+      {'channel': 'email', 'ready': true, 'to': preview['to'] ?? const []},
+    ];
+  }
+
+  bool get _sendBlocked =>
+      _preview == null || _channelsOf(_preview!).any((c) => c['ready'] != true);
+
+  void _addPhone() {
+    final p = _phone.text.trim();
+    if (p.isEmpty) return;
+    setState(() {
+      _tickedPhones[p] = true;
+      _phone.clear();
+    });
+  }
+
+  /// PATCHes who it bills: `bill_to_emails` or `bill_to_phones`.
+  Future<void> _saveContacts(String field, List<String> values) =>
+      _act(() => widget.api.patch('/invoices/$_id', {field: values}));
 
   void _addAddress() {
     final a = _address.text.trim();
@@ -237,14 +288,24 @@ class _InvoicePanelState extends State<InvoicePanel> {
   }
 
   Future<void> _send() {
+    final channels = {
+      for (final c in _channelsOf(_preview ?? const {})) '${c['channel']}',
+    };
     final to = [
-      for (final e in _ticked.entries)
-        if (e.value) e.key,
+      if (channels.contains('email'))
+        for (final e in _ticked.entries)
+          if (e.value) e.key,
+    ];
+    final phones = [
+      if (channels.contains('sms') || channels.contains('whatsapp'))
+        for (final e in _tickedPhones.entries)
+          if (e.value) e.key,
     ];
     return _act(
       () => widget.api.post('/invoices/send', {
         'ids': [_id],
         if (to.isNotEmpty) 'to': to,
+        if (phones.isNotEmpty) 'phones': phones,
       }),
       sending: true,
     );
@@ -349,7 +410,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
           back,
           FilledButton(
             key: const ValueKey('invoice-send-confirm'),
-            onPressed: _busy || _preview == null ? null : _send,
+            onPressed: _busy || _sendBlocked ? null : _send,
             child: const Text('Send'),
           ),
         ];
@@ -544,6 +605,7 @@ class _InvoicePanelState extends State<InvoicePanel> {
           ),
         const SizedBox(height: 12),
         _document(context, invoice),
+        _contacts(context, invoice),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -788,66 +850,239 @@ class _InvoicePanelState extends State<InvoicePanel> {
         ],
       );
     }
-    return Column(
+    final channels = _channelsOf(preview);
+    final names = {'email': 'Email', 'sms': 'Text', 'whatsapp': 'WhatsApp'};
+    final email = channels.where((c) => c['channel'] == 'email').firstOrNull;
+    final texting = channels.where((c) => c['channel'] != 'email').toList();
+
+    Widget why(Map c) => c['ready'] == true
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '${c['why_not'] ?? 'Not set up yet.'}',
+              key: ValueKey('invoice-send-why-${c['channel']}'),
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          );
+
+    Widget ticks(Map<String, bool> ticked, String prefix) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          preview['mode'] == 'summary'
-              ? 'One summary email, with every PDF attached'
-              : 'One email, with its PDF attached',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        Text('To', style: theme.textTheme.titleSmall),
-        for (final e in _ticked.entries)
+        for (final e in ticked.entries)
           CheckboxListTile(
-            key: ValueKey('invoice-to-${e.key}'),
+            key: ValueKey('$prefix-${e.key}'),
             contentPadding: EdgeInsets.zero,
             dense: true,
             controlAffinity: ListTileControlAffinity.leading,
             value: e.value,
             title: Text(e.key),
-            onChanged: (v) => setState(() => _ticked[e.key] = v ?? false),
+            onChanged: (v) => setState(() => ticked[e.key] = v ?? false),
           ),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const ValueKey('invoice-to-add'),
-                controller: _address,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  hintText: 'Add an address',
-                ),
-                onSubmitted: (_) => _addAddress(),
-              ),
-            ),
-            TextButton(onPressed: _addAddress, child: const Text('Add')),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text('Subject', style: theme.textTheme.titleSmall),
-        Text(
-          '${preview['subject'] ?? ''}',
-          key: const ValueKey('invoice-send-subject'),
-        ),
-        const SizedBox(height: 12),
-        Text('The email', style: theme.textTheme.titleSmall),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(8),
+      ],
+    );
+
+    Widget adder(
+      String key,
+      TextEditingController controller,
+      String hint,
+      VoidCallback add,
+      TextInputType type,
+    ) => Row(
+      children: [
+        Expanded(
+          child: TextField(
+            key: ValueKey(key),
+            controller: controller,
+            keyboardType: type,
+            decoration: InputDecoration(isDense: true, hintText: hint),
+            onSubmitted: (_) => add(),
           ),
-          child: Text(
-            _plainText('${preview['html'] ?? ''}'),
-            key: const ValueKey('invoice-send-body'),
+        ),
+        TextButton(onPressed: add, child: const Text('Add')),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (email != null) ...[
+          Text(
+            'Email to',
+            key: const ValueKey('invoice-send-group-email'),
+            style: theme.textTheme.titleSmall,
+          ),
+          why(email),
+          Text(
+            preview['mode'] == 'summary'
+                ? 'One summary email, with every PDF attached'
+                : 'One email, with its PDF attached',
             style: theme.textTheme.bodySmall,
           ),
-        ),
+          ticks(_ticked, 'invoice-to'),
+          adder(
+            'invoice-to-add',
+            _address,
+            'Add an address',
+            _addAddress,
+            TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 12),
+          Text('Subject', style: theme.textTheme.titleSmall),
+          Text(
+            '${preview['subject'] ?? ''}',
+            key: const ValueKey('invoice-send-subject'),
+          ),
+          const SizedBox(height: 12),
+          Text('The email', style: theme.textTheme.titleSmall),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _plainText('${preview['html'] ?? ''}'),
+              key: const ValueKey('invoice-send-body'),
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+        if (texting.isNotEmpty) ...[
+          if (email != null) const SizedBox(height: 16),
+          // Texts and WhatsApp go to the same phones.
+          Text(
+            '${texting.map((c) => names[c['channel']] ?? '${c['channel']}').join(' and ')} to',
+            key: const ValueKey('invoice-send-group-phones'),
+            style: theme.textTheme.titleSmall,
+          ),
+          for (final c in texting) why(c),
+          ticks(_tickedPhones, 'invoice-phone-to'),
+          adder(
+            'invoice-phone-to-add',
+            _phone,
+            'Add a phone',
+            _addPhone,
+            TextInputType.phone,
+          ),
+          if (texting.any((c) => c['channel'] == 'sms') &&
+              preview['text'] != null) ...[
+            const SizedBox(height: 12),
+            Text('The text', style: theme.textTheme.titleSmall),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${preview['text']}',
+                key: const ValueKey('invoice-send-text'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ],
         _errorNote(context),
       ],
+    );
+  }
+
+  /// Who it bills by email and phone, editable until it is sent.
+  Widget _contacts(BuildContext context, Map invoice) {
+    final theme = Theme.of(context);
+    final billTo = (invoice['bill_to'] as Map?) ?? const {};
+    final emails = [
+      for (final e in (billTo['emails'] as List? ?? const [])) '$e',
+    ];
+    final phones = [
+      for (final p in (billTo['phones'] as List? ?? const [])) '$p',
+    ];
+    final editable =
+        ['draft', 'approved'].contains(invoice['status']) &&
+        widget.me.can('invoices.edit');
+
+    Widget row(
+      String label,
+      String field,
+      List<String> values,
+      String prefix,
+      TextEditingController controller,
+      String hint,
+      TextInputType type,
+    ) {
+      void add() {
+        final v = controller.text.trim();
+        if (v.isEmpty || values.contains(v)) return;
+        controller.clear();
+        _saveContacts(field, [...values, v]);
+      }
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(label, style: theme.textTheme.labelLarge),
+            if (values.isEmpty && !editable) const Text('—'),
+            for (final v in values)
+              editable
+                  ? InputChip(
+                      key: ValueKey('$prefix-$v'),
+                      label: Text(v),
+                      onDeleted: _busy
+                          ? null
+                          : () => _saveContacts(field, [
+                              for (final o in values)
+                                if (o != v) o,
+                            ]),
+                    )
+                  : Chip(key: ValueKey('$prefix-$v'), label: Text(v)),
+            if (editable)
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  key: ValueKey('$prefix-add'),
+                  controller: controller,
+                  keyboardType: type,
+                  decoration: InputDecoration(isDense: true, hintText: hint),
+                  onSubmitted: (_) => add(),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      key: const ValueKey('invoice-contacts'),
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Sends to', style: theme.textTheme.titleSmall),
+          row(
+            'Emails',
+            'bill_to_emails',
+            emails,
+            'invoice-email',
+            _newEmail,
+            'Add an address',
+            TextInputType.emailAddress,
+          ),
+          row(
+            'Phones',
+            'bill_to_phones',
+            phones,
+            'invoice-phone',
+            _newPhone,
+            'Add a phone',
+            TextInputType.phone,
+          ),
+        ],
+      ),
     );
   }
 

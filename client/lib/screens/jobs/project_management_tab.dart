@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
+import '../../core/device_zone.dart';
 import '../../core/job_money.dart';
 import '../../core/job_status.dart';
 import '../../core/numbers.dart';
@@ -38,6 +39,7 @@ class ProjectManagementTab extends StatefulWidget {
     this.labels,
     this.now,
     this.generation = 0,
+    this.zone = deviceZone,
   });
 
   final ApiClient api;
@@ -54,6 +56,9 @@ class ProjectManagementTab extends StatefulWidget {
 
   /// Bumped by the screen when Settings changes what is watched: read again.
   final int generation;
+
+  /// The device's IANA zone, sent so the server's days are the viewer's.
+  final String? Function() zone;
 
   @override
   State<ProjectManagementTab> createState() => _ProjectManagementTabState();
@@ -76,6 +81,7 @@ String pmStageLabel(String? stage) => switch (stage) {
 };
 
 Tone pmStageTone(String? stage) => switch (stage) {
+  pmRecentlyPaid => Tone.review,
   'waiting' => Tone.caution,
   'partial' => Tone.info,
   'full' => Tone.ok,
@@ -197,6 +203,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
 
     final response = await widget.api.get('/jobs/project-management', {
       if (_paidMode) ...{'filter': pmRecentlyPaid, ..._range.query(_now())},
+      'timezone': ?widget.zone(),
       'franchise_id': ?_branch,
       if (_minDays != null) 'min_days': '$_minDays',
       if (_search.text.trim().isNotEmpty) 'q': _search.text.trim(),
@@ -362,6 +369,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
         pmRecentlyPaid,
         pmStageLabel(pmRecentlyPaid),
         count: _paidMode && !_loading ? _rows.length : null,
+        tone: pmStageTone(pmRecentlyPaid),
       ),
       for (final s in pmStages)
         chip(
@@ -583,7 +591,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     );
   }
 
-  static const _flex = [5, 3, 3, 2, 2, 3];
+  static const _flex = [5, 3, 3, 3, 2, 2, 3];
 
   Widget _cells(List<Widget> cells) => Row(
     children: [
@@ -611,6 +619,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
         for (final h in const [
           'JOB',
           'CUSTOMER',
+          'TECHNICIAN',
           'BRANCH',
           'STAGE',
           'WAITING',
@@ -641,20 +650,30 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
           child: _cells([
-            Text.rich(
-              TextSpan(
-                children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
                   TextSpan(
-                    text: '${r['number'] ?? ''}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    children: [
+                      TextSpan(
+                        text: '${r['number'] ?? ''}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: '  ${r['title'] ?? ''}'),
+                    ],
                   ),
-                  TextSpan(text: '  ${r['title'] ?? ''}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (pmTags(r).isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
                 ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              ],
             ),
             _one(_name(r['customer'])),
+            _one(pmTechnician(r) ?? '—'),
             _one(_name(r['franchise'])),
             StatusPill(
               pmStageLabel(r['stage'] as String?),
@@ -719,6 +738,7 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
                     '${r['title'] ?? ''}',
                     pmStageLabel(r['stage'] as String?),
                     _waited(r['waiting']),
+                    ?pmTechnician(r),
                   ].where((s) => s.isNotEmpty && s != '—').join(' · '),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -726,6 +746,10 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
+                if (pmTags(r).isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
+                ],
               ],
             ),
           ),
@@ -748,6 +772,39 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
       ),
     );
     if (changed == true && mounted) _load();
+  }
+}
+
+/// The job's technician, or null when it has none.
+String? pmTechnician(Map<String, dynamic> row) {
+  final t = row['technician'];
+  return t is String && t.trim().isNotEmpty ? t.trim() : null;
+}
+
+/// The job's current tags.
+List<String> pmTags(Map<String, dynamic> row) => [
+  for (final t in (row['tags'] as List?) ?? const [])
+    if ('$t'.trim().isNotEmpty) '$t'.trim(),
+];
+
+/// A job's tags as small chips: three at most, then "+N".
+class PmTags extends StatelessWidget {
+  const PmTags(this.tags, {super.key});
+
+  static const shown = 3;
+
+  final List<String> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final t in tags.take(shown)) StatusPill(t),
+        if (tags.length > shown) StatusPill('+${tags.length - shown}'),
+      ],
+    );
   }
 }
 

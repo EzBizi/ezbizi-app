@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/open_destination.dart';
 import '../../widgets/search_picker.dart';
 
 /// Financials › Invoices › Settings, written as sentences: the charge lines
@@ -55,20 +56,47 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
 
   final _summaryTo = TextEditingController();
   final _prefix = TextEditingController();
+  final _whatsappFrom = TextEditingController();
+  final _whatsappTemplate = TextEditingController();
+
+  /// What GET /invoices/settings answered for the place chosen: each
+  /// channel's readiness, the numbers that can text, the mailbox.
+  Map _extras = const {};
+
+  /// The company these settings are for, or null for the organization.
+  /// A company view starts on its company and cannot reach the
+  /// organization's settings (authority does not flow up).
+  late String? _company = widget.me.scope.type == 'organization'
+      ? null
+      : widget.me.filingCompanyId ?? widget.me.companiesInView.firstOrNull?.id;
 
   static const _keys = [
     'invoicing.email_mode',
     'invoicing.summary_to',
+    'invoicing.channels',
+    'invoicing.sms_from',
+    'invoicing.whatsapp_from',
+    'invoicing.whatsapp_template',
     'money.payment_terms_days',
     'numbering.invoice_prefix',
   ];
 
+  static const _channelNames = {
+    'email': 'Email',
+    'sms': 'Text',
+    'whatsapp': 'WhatsApp',
+  };
+
   bool get _canEdit => widget.me.can('invoices.edit');
 
-  Map<String, String> get _scope => {
-    'scope_type': 'organization',
-    'scope_id': widget.me.organization.id,
-  };
+  Map<String, String> get _scope => _company == null
+      ? {'scope_type': 'organization', 'scope_id': widget.me.organization.id}
+      : {'scope_type': 'company', 'scope_id': _company!};
+
+  Future<ApiResponse> _getExtras() => widget.api.get(
+    '/invoices/settings',
+    _company == null ? null : {'company_id': _company!},
+  );
 
   @override
   void initState() {
@@ -83,6 +111,8 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
     }
     _summaryTo.dispose();
     _prefix.dispose();
+    _whatsappFrom.dispose();
+    _whatsappTemplate.dispose();
     super.dispose();
   }
 
@@ -90,7 +120,7 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
     final results = await Future.wait([
       widget.api.get('/invoices/charge-columns'),
       widget.api.get('/settings', _scope),
-      widget.api.get('/invoices/settings'),
+      _getExtras(),
     ]);
     if (!mounted) return;
     final [columns, settings, extras] = results;
@@ -108,10 +138,50 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
             '${_settings['invoicing.summary_to']?['value'] ?? ''}';
         _prefix.text =
             '${_settings['numbering.invoice_prefix']?['value'] ?? ''}';
+        _whatsappFrom.text =
+            '${_settings['invoicing.whatsapp_from']?['value'] ?? ''}';
+        _whatsappTemplate.text =
+            '${_settings['invoicing.whatsapp_template']?['value'] ?? ''}';
       }
-      _nextNumber = extras.ok
-          ? ((extras.body['data'] as Map?)?['next_number'] as String?)
-          : null;
+      _adoptExtras(extras);
+    });
+  }
+
+  void _adoptExtras(ApiResponse extras) {
+    _extras = extras.ok ? (extras.body['data'] as Map? ?? const {}) : const {};
+    _nextNumber = _extras['next_number'] as String?;
+  }
+
+  Future<void> _reloadExtras() async {
+    final extras = await _getExtras();
+    if (mounted) setState(() => _adoptExtras(extras));
+  }
+
+  /// Another place: its own settings, read again.
+  Future<void> _choosePlace(String? company) async {
+    setState(() => _company = company);
+    final results = await Future.wait([
+      widget.api.get('/settings', _scope),
+      _getExtras(),
+    ]);
+    if (!mounted) return;
+    final [settings, extras] = results;
+    setState(() {
+      if (settings.ok && settings.data is List) {
+        _settings = {
+          for (final s in (settings.data as List).cast<Map>())
+            if (_keys.contains(s['key'])) '${s['key']}': s,
+        };
+        _summaryTo.text =
+            '${_settings['invoicing.summary_to']?['value'] ?? ''}';
+        _prefix.text =
+            '${_settings['numbering.invoice_prefix']?['value'] ?? ''}';
+        _whatsappFrom.text =
+            '${_settings['invoicing.whatsapp_from']?['value'] ?? ''}';
+        _whatsappTemplate.text =
+            '${_settings['invoicing.whatsapp_template']?['value'] ?? ''}';
+      }
+      _adoptExtras(extras);
     });
   }
 
@@ -174,16 +244,26 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
       return;
     }
     setState(() => _settings[key] = {...?_settings[key], 'value': value});
-    if (key == 'numbering.invoice_prefix') {
-      final extras = await widget.api.get('/invoices/settings');
-      if (mounted && extras.ok) {
-        setState(
-          () => _nextNumber =
-              (extras.body['data'] as Map?)?['next_number'] as String?,
-        );
-      }
+    // Readiness and the next number follow these.
+    if (key == 'numbering.invoice_prefix' || key.startsWith('invoicing.')) {
+      await _reloadExtras();
     }
   }
+
+  List<String> get _chosen {
+    final value = _settings['invoicing.channels']?['value'];
+    final chosen = [
+      for (final c in (value is List ? value : const ['email']))
+        if (_channelNames.containsKey('$c')) '$c',
+    ];
+    return chosen.isEmpty ? const ['email'] : chosen;
+  }
+
+  Map? _readiness(String channel) =>
+      ((_extras['channels'] as List?) ?? const []).cast<Map>().firstWhere(
+        (c) => c['channel'] == channel,
+        orElse: () => const {},
+      );
 
   bool _mayEdit(String key) => _settings[key]?['may_edit'] == true;
 
@@ -247,7 +327,13 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
           children: [
             Text('Invoicing', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            if (_settings.containsKey('invoicing.email_mode'))
+            _placePicker(context),
+            if (_settings.containsKey('invoicing.channels')) ...[
+              _channelsSentence(context),
+              const SizedBox(height: 12),
+            ],
+            if (_settings.containsKey('invoicing.email_mode') &&
+                _chosen.contains('email'))
               _emailSentence(context),
             if (_settings.containsKey('money.payment_terms_days')) ...[
               const SizedBox(height: 12),
@@ -492,4 +578,236 @@ class _InvoiceSettingsTabState extends State<InvoiceSettingsTab> {
         ),
     ],
   );
+
+  /// Which place these settings are for: the organization (from an
+  /// organization view) or one of the companies in view.
+  Widget _placePicker(BuildContext context) {
+    final me = widget.me;
+    final companies = me.companiesInView;
+    final orgView = me.scope.type == 'organization';
+    if (companies.isEmpty || (!orgView && companies.length < 2)) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('For'),
+          _inline(
+            SearchPickerField<String>(
+              key: const ValueKey('invoice-setting-place'),
+              isDense: true,
+              value: _company,
+              options: [
+                if (orgView)
+                  SearchOption(
+                    value: null,
+                    label: '${me.organization.name} (every company)',
+                  ),
+                for (final c in companies)
+                  SearchOption(value: c.id, label: c.name),
+              ],
+              onChanged: (c) {
+                if (c != _company) _choosePlace(c);
+              },
+            ),
+            300,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _channelsSentence(BuildContext context) {
+    final theme = Theme.of(context);
+    final chosen = _chosen;
+    final mayEdit = _mayEdit('invoicing.channels');
+    return Column(
+      key: const ValueKey('invoice-setting-channels'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Text('Send invoices by'),
+            for (final MapEntry(key: c, value: label) in _channelNames.entries)
+              FilterChip(
+                key: ValueKey('invoice-channel-$c'),
+                label: Text(label),
+                selected: chosen.contains(c),
+                onSelected: !mayEdit
+                    ? null
+                    : (on) {
+                        final next = [
+                          for (final k in _channelNames.keys)
+                            if (k == c ? on : chosen.contains(k)) k,
+                        ];
+                        if (next.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Invoices need at least one way to be sent.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        _set('invoicing.channels', next);
+                      },
+              ),
+          ],
+        ),
+        for (final c in _channelNames.keys)
+          if (chosen.contains(c))
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_channelNames[c]!, style: theme.textTheme.labelLarge),
+                  _readinessLine(context, c),
+                  if (c == 'sms') _smsPicker(context),
+                  if (c == 'whatsapp') _whatsappFields(context),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+
+  Widget _readinessLine(BuildContext context, String channel) {
+    final theme = Theme.of(context);
+    final r = _readiness(channel) ?? const {};
+    if (r.isEmpty) return const SizedBox.shrink();
+    if (r['ready'] == true) {
+      final from = r['from'] as String?;
+      final mailbox = _extras['mailbox'] as Map?;
+      final text = channel == 'email' && mailbox == null
+          ? 'from ${from == null || from.isEmpty ? 'your' : from} own mail server'
+          : 'from ${from ?? ''}';
+      return Text(
+        text,
+        key: ValueKey('invoice-channel-$channel-ready'),
+        style: theme.textTheme.bodySmall,
+      );
+    }
+    final why = '${r['why_not'] ?? 'Not set up yet.'}';
+    final open = OpenDestination.of(context);
+    final where = why.contains('Integrations')
+        ? ('settings', 'Open Settings › Integrations')
+        : why.contains('in Phone')
+        ? ('phone', 'Open Phone')
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          why,
+          key: ValueKey('invoice-channel-$channel-why'),
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
+        if (open != null && where != null)
+          TextButton(
+            key: ValueKey('invoice-channel-$channel-open'),
+            onPressed: () => open(where.$1),
+            child: Text(where.$2),
+          ),
+      ],
+    );
+  }
+
+  Widget _smsPicker(BuildContext context) {
+    final numbers = ((_extras['sms_numbers'] as List?) ?? const []).cast<Map>();
+    final value = '${_settings['invoicing.sms_from']?['value'] ?? ''}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('Texted from'),
+          _inline(
+            SearchPickerField<String>(
+              key: const ValueKey('invoice-setting-sms-from'),
+              isDense: true,
+              hint: numbers.isEmpty ? 'No number can text' : 'Choose a number',
+              value: numbers.any((n) => '${n['id']}' == value) ? value : null,
+              options: [
+                for (final n in numbers)
+                  SearchOption(
+                    value: '${n['id']}',
+                    label: '${n['e164']}',
+                    detail: n['label'] as String?,
+                  ),
+              ],
+              onChanged: _mayEdit('invoicing.sms_from') && numbers.isNotEmpty
+                  ? (id) {
+                      if (id != null) _set('invoicing.sms_from', id);
+                    }
+                  : null,
+            ),
+            260,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _whatsappFields(BuildContext context) {
+    Widget field(
+      String key,
+      String label,
+      TextEditingController controller,
+      String hint,
+    ) => Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(label),
+          _inline(
+            TextField(
+              key: ValueKey('invoice-setting-$key'),
+              controller: controller,
+              enabled: _mayEdit('invoicing.$key'),
+              decoration: InputDecoration(isDense: true, hintText: hint),
+              onSubmitted: (v) => _set('invoicing.$key', v.trim()),
+            ),
+            260,
+          ),
+          if (_mayEdit('invoicing.$key'))
+            TextButton(
+              key: ValueKey('invoice-setting-$key-save'),
+              onPressed: () => _set('invoicing.$key', controller.text.trim()),
+              child: const Text('Save'),
+            ),
+        ],
+      ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_settings.containsKey('invoicing.whatsapp_from'))
+          field(
+            'whatsapp_from',
+            'From',
+            _whatsappFrom,
+            'Only if you have more than one number',
+          ),
+        if (_settings.containsKey('invoicing.whatsapp_template'))
+          field(
+            'whatsapp_template',
+            'Template',
+            _whatsappTemplate,
+            'The approved template name',
+          ),
+      ],
+    );
+  }
 }

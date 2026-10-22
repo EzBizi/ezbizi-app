@@ -662,6 +662,12 @@ Route::get('v1/phone/audio/{name}', [\App\Http\Controllers\Api\Phone\AudioContro
     ->middleware('signed')
     ->name('phone.audio');
 
+// An invoice's PDF behind the link a text or WhatsApp carries (Jose, 2026-10-22).
+Route::get('v1/invoices/shared/{invoice}', [\App\Http\Controllers\Api\InvoicesController::class, 'shared'])
+    ->middleware(['signed', 'throttle:60,1'])
+    ->whereUuid('invoice')
+    ->name('invoice.shared');
+
 // An inspection report's PDF for places that cannot sign in (a Workiz job);
 // the signed link is the permission. See InspectionReport::shareUrl.
 Route::get('v1/inspections/shared/{report}', [InspectionReportsController::class, 'shared'])
