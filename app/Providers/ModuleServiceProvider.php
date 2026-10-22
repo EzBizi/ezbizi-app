@@ -812,16 +812,20 @@ class ModuleServiceProvider extends ServiceProvider
                 // `pto.edit` (Jose, 2026-10-21): changing somebody's used paid
                 // days is its own grant, not general HR or hours editing.
                 // Seeing balances is the Paid Time Off tab's own key.
-                actions: ['view', 'all', 'manage', 'pto.edit'],
+                // `approve` (Daily approval, 2026-10-22): sign off a day of the
+                // people one reaches. Implies seeing them.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
+                    'approve' => ['work_hours.all'],
                     'pto.edit' => ['work_hours.pto.view'],
                 ],
                 actionLabels: [
                     'all' => "See everyone's hours",
                     'manage' => 'Edit hours and schedules',
                     'pto.edit' => 'Edit used paid time off',
+                    'approve' => 'Approve daily hours',
                 ],
                 tabs: [
                     new TabDefinition('general', 'General'),
@@ -829,6 +833,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // Saved weekly hours reports (2026-09-28): sent by hand here,
                     // or on a schedule by the action below.
                     new TabDefinition('reports', 'Reports'),
+                    // Daily approval (design 136, 2026-10-22): a day of the
+                    // people one reaches, approved or adjusted. Approving and
+                    // adjusting are `work_hours.approve`; without it the tab
+                    // reads only.
+                    new TabDefinition('approval', 'Daily approval'),
                     // Registry order is the roles editor's order: keep it the
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),
@@ -966,6 +975,28 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Shift extended',
                         description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
                             .'and how many times this shift has been extended.',
+                        isRaised: true,
+                    ),
+                    // Daily approval (2026-10-22).
+                    new TriggerDefinition(
+                        key: 'time_clock.day_awaiting_approval',
+                        subjects: [\App\Models\User::class],
+                        label: 'Day of hours waiting for approval',
+                        description: 'A person\'s clocked day went to their approver. It carries who and the day.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'time_clock.day_approved',
+                        subjects: [\App\Models\User::class],
+                        label: 'Day of hours approved',
+                        description: 'A manager approved a person\'s clocked day. It carries who, the day and the approver.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'time_clock.shift_adjusted',
+                        subjects: [\App\Models\User::class],
+                        label: 'Shift adjusted',
+                        description: 'A manager changed a shift\'s times with a reason. It carries the times before and after, and the reason.',
                         isRaised: true,
                     ),
                 ],

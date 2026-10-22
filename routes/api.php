@@ -1895,6 +1895,14 @@ Route::prefix('v1')
             Route::delete('ai-assistance/staff-bot/items/{item}', [StaffBotMenusController::class, 'destroyItem']);
         });
 
+        // Work Hours › Daily approval (2026-10-22).
+        Route::middleware('permission:work_hours.approve')->group(function () {
+            Route::get('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'index']);
+            Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
+            Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
+            Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);
+        });
+
         Route::middleware('permission:work_hours.manage')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
             Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);

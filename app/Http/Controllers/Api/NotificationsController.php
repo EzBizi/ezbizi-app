@@ -297,6 +297,7 @@ class NotificationsController extends Controller
         \App\Models\Suggestion::class => 'suggestions',
         \App\Models\Lead::class => 'leads',
         \App\Models\TimeClockCorrectionRequest::class => 'work_hours',
+        \App\Models\TimeClockDayApproval::class => 'work_hours',
         \App\Models\Automation::class => self::AUTOMATIONS_MODULE,
         \App\Models\FieldAlert::class => 'field',
         \App\Models\Onboarding::class => 'hr',
@@ -341,6 +342,17 @@ class NotificationsController extends Controller
 
         if ($notification->subject_type === null || $notification->subject_id === null) {
             return null;
+        }
+
+        // Daily approval (design 136): the reminder opens Work Hours › Daily
+        // approval on the day it is about, and the approval row's id alone
+        // cannot tell the client which day that is.
+        if ($notification->subject_type === \App\Models\TimeClockDayApproval::class) {
+            return [
+                'type' => 'time_clock_day_approval',
+                'id' => (string) $notification->subject_id,
+                'date' => \App\Models\TimeClockDayApproval::query()->whereKey($notification->subject_id)->first()?->date?->toDateString(),
+            ];
         }
 
         return [

@@ -350,6 +350,7 @@
                 "General",
                 "Paid Time Off",
                 "Reports",
+                "Daily approval",
                 "Settings"
             ]
         }
@@ -615,6 +616,8 @@
         "web_management.view",
         "web_management.widgets.view",
         "work_hours.all",
+        "work_hours.approval.view",
+        "work_hours.approve",
         "work_hours.general.view",
         "work_hours.manage",
         "work_hours.pto.edit",

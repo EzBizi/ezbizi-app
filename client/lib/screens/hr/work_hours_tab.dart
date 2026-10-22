@@ -143,8 +143,12 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   /// whoever asked finds it among their own. Gone or decided elsewhere: the
   /// tab just stays where it is.
   void _takeLink() {
+    // Peek before taking: a Daily approval link is that tab's, not ours.
+    if (DeepLinks.pending.value?.type != 'time_clock_correction_request') {
+      return;
+    }
     final link = DeepLinks.take('work_hours');
-    if (link == null || link.type != 'time_clock_correction_request') return;
+    if (link == null) return;
     unawaited(_openRequest(link.id));
   }
 

@@ -19,6 +19,7 @@ import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/pto_tab.dart';
+import 'hr/work_hours_approval_tab.dart';
 import 'hr/work_hours_reports_tab.dart';
 import 'hr/work_hours_tab.dart';
 import 'settings_screen.dart';
@@ -40,24 +41,32 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   @override
   void initState() {
     super.initState();
-    // Before General's own listener: a tapped correction notification
-    // brings General to the front, and General then takes the link.
-    DeepLinks.pending.addListener(_toGeneral);
+    // A Daily approval reminder tapped before this screen existed.
+    final waiting = DeepLinks.pending.value;
+    if (waiting?.module == 'work_hours' && waiting?.type == approvalLinkType) {
+      _tab = 'approval';
+      _shown.add('approval');
+    }
+    // Before the tabs' own listeners: a tapped notification brings its tab
+    // to the front (a correction is General's, a day to approve is Daily
+    // approval's), and that tab then takes the link.
+    DeepLinks.pending.addListener(_toLinkedTab);
   }
 
   @override
   void dispose() {
-    DeepLinks.pending.removeListener(_toGeneral);
+    DeepLinks.pending.removeListener(_toLinkedTab);
     super.dispose();
   }
 
-  void _toGeneral() {
-    if (DeepLinks.pending.value?.module != 'work_hours' || _tab == 'general') {
-      return;
-    }
+  void _toLinkedTab() {
+    final link = DeepLinks.pending.value;
+    if (link?.module != 'work_hours') return;
+    final tab = link?.type == approvalLinkType ? 'approval' : 'general';
+    if (_tab == tab) return;
     setState(() {
-      _tab = 'general';
-      _shown.add('general');
+      _tab = tab;
+      _shown.add(tab);
     });
   }
 
@@ -94,6 +103,15 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
           api: widget.api,
           canManage: _may('work_hours.manage'),
         ),
+      ),
+    // Daily approval (design 136, 2026-10-22). Approving and adjusting need
+    // `work_hours.approve`; without it the tab only reads.
+    if (_may('work_hours.approval.view'))
+      (
+        'approval',
+        'Daily approval',
+        Icons.fact_check_outlined,
+        () => WorkHoursApprovalTab(api: widget.api, session: widget.session),
       ),
     if (_may('work_hours.settings.view'))
       (

@@ -24,6 +24,7 @@ class DeepLink {
     required this.type,
     required this.id,
     this.mailbox,
+    this.date,
   });
 
   /// The module key that should open it, e.g. `email`.
@@ -37,6 +38,9 @@ class DeepLink {
 
   /// For an `email_message`: the address of the mailbox it arrived in.
   final String? mailbox;
+
+  /// For a `time_clock_day_approval`: the day it is about, `YYYY-MM-DD`.
+  final String? date;
 
   @override
   String toString() => 'DeepLink($module, $type, $id)';
