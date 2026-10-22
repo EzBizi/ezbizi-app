@@ -76,8 +76,9 @@ void main() {
     await _pump(tester, _handler());
 
     // The Inbox tab is what the module opens on, and it is what was there
-    // before there were two of them.
-    expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+    // before there were two of them. (Design 137: its search bar stands for
+    // it; the old inbox bar is gone.)
+    expect(find.byKey(const ValueKey('tour-email-search')), findsOneWidget);
     expect(find.byType(MailboxSettingsTab), findsNothing);
 
     await _openSettings(tester);
@@ -85,7 +86,7 @@ void main() {
     expect(find.byType(MailboxSettingsTab), findsOneWidget);
     expect(find.text('Connected inboxes'), findsOneWidget);
     expect(
-      find.text('THE INBOX YOU ARE IN'),
+      find.byKey(const ValueKey('tour-email-search')),
       findsNothing,
       reason:
           'The inbox is still being drawn under the Settings tab, so both '
@@ -94,7 +95,7 @@ void main() {
 
     await _tap(tester, find.widgetWithText(ChoiceChip, 'Inbox'));
 
-    expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
+    expect(find.byKey(const ValueKey('tour-email-search')), findsOneWidget);
   });
 
   // ── marking read at the mail service ─────────────────────────────

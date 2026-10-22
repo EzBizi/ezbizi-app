@@ -84,6 +84,12 @@ final class MessageSummary
          * provider gave nothing to judge by. See GmailMessageMapper::isBulk.
          */
         public readonly bool $isBulk = false,
+
+        /** The RFC 5322 Message-ID: the same mail reaching two inboxes has one. */
+        public readonly string $rfcId = '',
+
+        /** The provider's labels (Gmail: STARRED, CATEGORY_*, INBOX...). */
+        public readonly array $labels = [],
     ) {}
 
     /**
@@ -95,7 +101,7 @@ final class MessageSummary
             $this->id, $this->threadId, $this->subject, $this->fromName, $this->fromAddress,
             $this->to, $this->sentAt, $this->snippet, $this->hasAttachments,
             $this->unreadAtProvider, $seenBy, $this->messageCount,
-            $this->fromAuthenticated, $this->isBulk,
+            $this->fromAuthenticated, $this->isBulk, $this->rfcId, $this->labels,
         );
     }
 

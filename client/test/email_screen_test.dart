@@ -3,11 +3,11 @@ import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/deep_links.dart';
+import 'package:ezbizi_client/core/device_key_store_io.dart' as local_store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/email/compose_panel.dart';
 import 'package:ezbizi_client/screens/email/email_screen.dart';
-import 'package:ezbizi_client/screens/email/mailbox_rail.dart';
 import 'package:ezbizi_client/screens/email/message_body.dart';
 import 'package:ezbizi_client/screens/email/message_list.dart';
 import 'package:ezbizi_client/screens/email/reply_panel.dart';
@@ -47,6 +47,14 @@ import 'package:http/testing.dart';
 /// vector, and the answer is a sentence where the picture was — not a silent
 /// gap, and not a button offering to go and get it.
 void main() {
+  // The reading-pane setting is remembered on the device (gmail_inbox.dart).
+  // Each test gets an empty store of its own, never the real config folder.
+  setUp(() {
+    local_store.debugStoreDirOverride =
+        Directory.systemTemp.createTempSync('email_screen_test');
+  });
+  tearDown(() => local_store.debugStoreDirOverride = null);
+
   /// R7, and the requirement with the sharpest edge: at no width may somebody
   /// be looking at mail without being told whose mail it is.
   ///
@@ -59,20 +67,19 @@ void main() {
         'list and on the message', (tester) async {
       await _pump(tester, _handler(), size: Size(width, 900));
 
-      expect(find.text('ALL INBOXES'), findsWidgets);
-      expect(find.text('info@a-1chimney.com'), findsWidgets);
-      expect(find.text('bookings@a-1chimney.com'), findsWidgets);
-
-      await _tap(tester, find.text('Chimney sweep quote').first);
+      // Updated for design 137: the old "THE INBOX YOU ARE IN" bar is gone;
+      // the open mail names its inbox ("to ...") and the reply its address.
+      await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
       expect(
-        find.text('THE INBOX YOU ARE IN'),
+        find.textContaining('to info@a-1chimney.com'),
         findsOneWidget,
         reason:
             'The message is open and nothing on screen says which inbox it '
             'arrived in. That is how a reply goes out as the wrong address.',
       );
-      expect(find.text('info@a-1chimney.com'), findsWidgets);
+      expect(find.textContaining('Reply as info@a-1chimney.com'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -86,18 +93,18 @@ void main() {
     await _pump(tester, _handler(), size: const Size(375, 900));
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(MessageListPane), findsOneWidget);
+    expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
     expect(
-      find.byType(MailboxRail),
+      find.byKey(const ValueKey('tour-email-inboxes')),
       findsNothing,
-      reason: 'The inbox rail is a desktop column. At 375px it is a pane of '
-          'its own, reached from the bar, not a strip beside the list.',
+      reason: 'The inbox rail is a desktop column. At 375px it opens from the '
+          'menu button, not as a strip beside the list.',
     );
 
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(tester.takeException(), isNull);
-    expect(find.byType(MessageListPane), findsNothing);
+    expect(find.byKey(const ValueKey('tour-email-list')), findsNothing);
     expect(find.byType(MessageBody), findsOneWidget);
 
     // Not merely "no exception": the one pane on screen has the whole width.
@@ -105,12 +112,12 @@ void main() {
     // failure that produces the overflow, and it shows up here first.
     expect(tester.getRect(find.byType(MessageBody)).width, greaterThan(300));
 
-    // Back to the list, and back again to the inboxes.
+    // Back to the list, and the menu button to the inboxes.
     await _tap(tester, find.byTooltip('Back to the messages'));
-    expect(find.byType(MessageListPane), findsOneWidget);
+    expect(find.byKey(const ValueKey('tour-email-list')), findsOneWidget);
 
-    await _tap(tester, find.byTooltip('Back to the inboxes'));
-    expect(find.byType(MailboxRail), findsOneWidget);
+    await _tap(tester, find.byTooltip('Folders and inboxes'));
+    expect(find.byKey(const ValueKey('tour-email-inboxes')), findsOneWidget);
     expect(find.text('bookings@a-1chimney.com'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -121,15 +128,14 @@ void main() {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     expect(find.text('All inboxes'), findsOneWidget);
-    expect(find.text('Chimney sweep quote'), findsOneWidget);
-    expect(find.text('Booking for Friday'), findsOneWidget);
+    expect(find.textContaining('Chimney sweep quote'), findsOneWidget);
+    expect(find.textContaining('Booking for Friday'), findsOneWidget);
 
-    await _tap(tester, find.text('Booking for Friday').first);
+    await _tap(tester, find.textContaining('Booking for Friday').first);
 
-    expect(find.text('THE INBOX YOU ARE IN'), findsOneWidget);
     expect(
-      find.text('bookings@a-1chimney.com'),
-      findsWidgets,
+      find.textContaining('to bookings@a-1chimney.com'),
+      findsOneWidget,
       reason:
           'A combined list that opens a mail without naming its inbox is '
           'how a reply goes out as the wrong address.',
@@ -137,52 +143,65 @@ void main() {
     expect(find.textContaining('Reply as bookings@a-1chimney.com'), findsOneWidget);
   });
 
-  testWidgets('ticking a sender mark selects the row for bulk actions', (
+  testWidgets('ticking a row selects it for bulk actions', (
     tester,
   ) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
-    expect(find.byType(SenderAvatar), findsWidgets);
+    // Design 137: a tick box on the row, not a tap on the sender mark.
+    await _tap(tester, find.byKey(const ValueKey('email-tick-m:m-1')));
 
-    await tester.tap(find.byType(SenderAvatar).first);
-    await tester.pumpAndSettle();
-
-    expect(find.text('1 selected'), findsOneWidget);
     expect(find.byTooltip('Delete'), findsOneWidget);
     expect(find.byTooltip('Mark as read'), findsOneWidget);
+    expect(find.byTooltip('Archive'), findsOneWidget);
   });
 
   testWidgets('the list has a search bar and Gmail labels', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     expect(find.text('Search mail'), findsOneWidget);
-    expect(find.text('Unread'), findsOneWidget);
-    expect(find.text('LABELS'), findsOneWidget);
-    expect(find.text('Starred'), findsOneWidget);
-    expect(find.text('Sent'), findsOneWidget);
+    // Design 137: Gmail's folders in the rail, and its category tabs.
+    for (final folder in ['Inbox', 'Starred', 'Snoozed', 'Sent', 'Drafts', 'All mail']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('tour-email-inboxes')),
+          matching: find.text(folder),
+        ),
+        findsOneWidget,
+        reason: folder,
+      );
+    }
+    expect(find.text('Primary'), findsOneWidget);
+    expect(find.text('Leads & customers'), findsOneWidget);
+    expect(find.text('Notifications'), findsOneWidget);
   });
 
-  testWidgets('at 1400px opening a message replaces the list', (tester) async {
+  // Design 137: the reading pane sits to the right by default, and "No
+  // reading pane" is the old behaviour -- the mail replaces the list.
+  testWidgets('at 1400px with no reading pane opening a message replaces the '
+      'list', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
-    expect(find.byType(MailboxRail), findsOneWidget);
-    expect(find.byType(MessageListPane), findsOneWidget);
-    expect(find.text('Search mail'), findsOneWidget);
+    final list = find.byKey(const ValueKey('tour-email-list'));
+    final rail = find.byKey(const ValueKey('tour-email-inboxes'));
 
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    expect(rail, findsOneWidget);
+    expect(list, findsOneWidget);
 
-    expect(
-      find.byType(MessageListPane),
-      findsNothing,
-      reason: 'Gmail does not keep the list beside the mail. The list has to '
-          'go so the message can use the space.',
-    );
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+    expect(list, findsOneWidget, reason: 'The pane on the right keeps the list.');
     expect(find.byType(MessageBody), findsOneWidget);
-    expect(find.byType(MailboxRail), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('email-pane-setting')));
+    await _tap(tester, find.byKey(const ValueKey('email-pane-off')));
+
+    expect(list, findsNothing);
+    expect(find.byType(MessageBody), findsOneWidget);
+    expect(rail, findsOneWidget);
     expect(find.byTooltip('Back to the messages'), findsOneWidget);
 
     await _tap(tester, find.byTooltip('Back to the messages'));
-    expect(find.byType(MessageListPane), findsOneWidget);
+    expect(list, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -194,15 +213,15 @@ void main() {
       'on the message', (tester) async {
     await _pump(tester, _handler());
 
-    expect(find.text('Seen by Marta Vieira'), findsOneWidget);
-
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    // Updated for design 137: GET email/inbox rows carry no seen_by, so the
+    // line is on the open message only.
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(
       find.text('Seen by Marta Vieira'),
       findsOneWidget,
-      reason: 'The row said somebody was on this and the open message did '
-          'not, which is where the second reply gets written.',
+      reason: 'Somebody else is on this and the open message does not say '
+          'so, which is where the second reply gets written.',
     );
   });
 
@@ -219,19 +238,17 @@ void main() {
 
     // The CONTROL. Without it this assertion would pass on a screen that
     // failed to load anything at all.
-    expect(find.text('Chimney sweep quote'), findsWidgets);
+    expect(find.textContaining('Chimney sweep quote'), findsWidgets);
 
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
+
+    expect(find.byType(MessageBody), findsOneWidget);
     expect(
-      find.text('Seen by Marta Vieira'),
+      find.textContaining('Seen by'),
       findsNothing,
       reason: 'The organization chose private read state and the screen is '
           'still reporting who opened what.',
     );
-
-    await _tap(tester, find.text('Chimney sweep quote').first);
-
-    expect(find.byType(MessageBody), findsOneWidget);
-    expect(find.textContaining('Seen by'), findsNothing);
   });
 
   /// "Seen by" answers "is somebody ELSE on this". The reader's own read is in
@@ -244,12 +261,16 @@ void main() {
     await _pump(tester, _handler());
 
     // Invoice 4471 has been read by exactly one person: the reader.
-    expect(find.text('Seen by Jose Silva'), findsNothing);
+    await _tap(tester, find.textContaining('Invoice 4471').first);
+    expect(find.byType(MessageBody), findsOneWidget);
+    expect(find.textContaining('Seen by'), findsNothing);
 
-    // The CONTROL, on the row beside it: the indicator does appear when it is
-    // somebody else, so the assertion above is about the filter and not about
-    // the line being broken.
+    // The CONTROL, on the mail beside it: the indicator does appear when it
+    // is somebody else, so the assertion above is about the filter and not
+    // about the line being broken.
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
     expect(find.text('Seen by Marta Vieira'), findsOneWidget);
+    expect(find.text('Seen by Jose Silva'), findsNothing);
   });
 
   // ── the reply, and the address it goes out as ────────────────────
@@ -259,7 +280,7 @@ void main() {
   testWidgets('the reply says it goes out as the inbox, not as the person '
       'typing', (tester) async {
     await _pump(tester, _handler());
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
     await _tap(tester, find.textContaining('Reply as'));
 
     expect(find.byType(ReplyPanel), findsOneWidget);
@@ -283,8 +304,8 @@ void main() {
 
     await _pump(tester, _handler(onReply: (path, body) => posted[path] = body));
 
-    await _tap(tester, find.text('bookings@a-1chimney.com').first);
-    await _tap(tester, find.text('Booking for Friday').first);
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-mb-2')));
+    await _tap(tester, find.textContaining('Booking for Friday').first);
     await _tap(tester, find.textContaining('Reply as'));
 
     expect(find.text('Replying as bookings@a-1chimney.com'), findsOneWidget);
@@ -326,17 +347,9 @@ void main() {
 
     await _pump(tester, _handler(onSend: (path, body) => posted[path] = body));
 
-    // The RAIL entry specifically. `find.text(...).first` can land on a row
-    // label in the combined list, which leaves the screen in All inboxes and
-    // makes this test pass for the wrong reason.
-    await _tap(
-      tester,
-      find.descendant(
-        of: find.byType(MailboxRail),
-        matching: find.text('bookings@a-1chimney.com'),
-      ),
-    );
-    await _tap(tester, find.text('New message'));
+    // The RAIL entry specifically, then the rail's Compose (design 137).
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-mb-2')));
+    await _tap(tester, find.byKey(const ValueKey('tour-email-compose')));
 
     expect(find.byType(ComposePanel), findsOneWidget);
     expect(find.text('Sending as bookings@a-1chimney.com'), findsOneWidget);
@@ -391,32 +404,31 @@ void main() {
   /// everything at once, having chosen nothing. It is the same wrong-inbox
   /// failure as the reply path's, arriving through a screen state rather than
   /// through a mis-click, and it cannot be undone once the message has left.
-  testWidgets('All inboxes offers no New message button, because it has no '
-      'inbox to send as', (tester) async {
+  // Updated for design 137: All inboxes has Compose, and it asks which inbox
+  // to send from rather than picking one.
+  testWidgets('Compose on All inboxes asks which inbox it sends from', (
+    tester,
+  ) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
     // The control: this IS the combined list, and it is working.
     expect(find.text('All inboxes'), findsOneWidget);
-    expect(find.text('Chimney sweep quote'), findsOneWidget);
-    expect(find.text('Booking for Friday'), findsOneWidget);
+    expect(find.textContaining('Chimney sweep quote'), findsOneWidget);
+    expect(find.textContaining('Booking for Friday'), findsOneWidget);
+
+    await _tap(tester, find.byKey(const ValueKey('tour-email-compose')));
 
     expect(
-      find.text('New message'),
+      find.byType(ComposePanel),
       findsNothing,
-      reason: 'The combined list is offering to send, and the only address it '
+      reason: 'The combined list opened a composer, and the only address it '
           'could pick is one the reader never chose.',
     );
+    expect(find.text('From info@a-1chimney.com'), findsOneWidget);
 
-    // Standing in one inbox, it appears.
-    await _tap(
-      tester,
-      find.descendant(
-        of: find.byType(MailboxRail),
-        matching: find.text('bookings@a-1chimney.com'),
-      ),
-    );
+    await _tap(tester, find.text('From bookings@a-1chimney.com'));
 
-    expect(find.text('New message'), findsOneWidget);
+    expect(find.text('Sending as bookings@a-1chimney.com'), findsOneWidget);
   });
 
   /// With nothing attached the message travels as JSON, not as a form.
@@ -429,14 +441,8 @@ void main() {
 
     await _pump(tester, _handler(onSendRequest: (r) => contentType = r.headers['content-type']));
 
-    await _tap(
-      tester,
-      find.descendant(
-        of: find.byType(MailboxRail),
-        matching: find.text('info@a-1chimney.com'),
-      ).first,
-    );
-    await _tap(tester, find.text('New message'));
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-mb-1')));
+    await _tap(tester, find.byKey(const ValueKey('tour-email-compose')));
 
     await tester.enterText(find.widgetWithText(TextField, 'To'), 'bob@example.com');
     await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Morning.');
@@ -458,14 +464,8 @@ void main() {
 
     await _pump(tester, _handler(onSendRequest: (r) => sent = r));
 
-    await _tap(
-      tester,
-      find.descendant(
-        of: find.byType(MailboxRail),
-        matching: find.text('info@a-1chimney.com'),
-      ).first,
-    );
-    await _tap(tester, find.text('New message'));
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-mb-1')));
+    await _tap(tester, find.byKey(const ValueKey('tour-email-compose')));
 
     expect(find.text('Attach a file'), findsOneWidget);
 
@@ -501,131 +501,12 @@ void main() {
     expect(body, contains('Attached.'));
   });
 
-  /// A folder list is what the SERVER said, not a table this client keeps.
-  ///
-  /// Outlook has no Starred — Graph offers a flag filter over the inbox, which
-  /// is a different query rather than a folder — and it does have Archive,
-  /// which Gmail does not. The screen does not know that and must not: it
-  /// draws what came back from `/folders`, which is the only arrangement that
-  /// can also be right for an IMAP server nobody has seen.
-  testWidgets('an Outlook inbox offers Archive and not Starred', (tester) async {
-    await _pump(
-      tester,
-      _handler(
-        mailboxes: [
-          {
-            'id': 'mb-1',
-            'address': 'info@a-1chimney.com',
-            'display_name': 'Info',
-            'provider': 'microsoft_oauth',
-            'unread': 0,
-            'can_reply': true,
-            'shared_read': true,
-          },
-        ],
-        // What MicrosoftMailboxReader::availableFolders answers.
-        folders: const ['INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'],
-      ),
-      size: const Size(1400, 900),
-    );
-
-    expect(find.text('Archive'), findsOneWidget);
-    expect(
-      find.text('Starred'),
-      findsNothing,
-      reason: 'Outlook is offered a folder Graph cannot address, so picking it '
-          'returns a refusal instead of mail.',
-    );
-
-    // The control: the folder list is drawn at all, so this is "Starred is
-    // absent" rather than "no folders were rendered".
-    expect(find.text('Sent'), findsOneWidget);
-    expect(find.text('LABELS'), findsOneWidget);
-  });
-
-  /// IMAP opens only the Inbox, so it is offered no folder list at all.
-  ///
-  /// The server refuses anything else — folder names differ per server and
-  /// discovering them is real work — so drawing the list would be offering
-  /// six refusals.
-  testWidgets('an IMAP inbox is offered no folder list', (tester) async {
-    await _pump(
-      tester,
-      _handler(mailboxes: [
-        {
-          'id': 'mb-1',
-          'address': 'info@a-1chimney.com',
-          'display_name': 'Info',
-          'provider': 'imap',
-          'unread': 0,
-          'can_reply': true,
-          'shared_read': true,
-        },
-      ]),
-      size: const Size(1400, 900),
-    );
-
-    expect(find.text('LABELS'), findsNothing);
-    expect(find.text('Sent'), findsNothing);
-    expect(find.text('Starred'), findsNothing);
-
-    // The control: the mailbox itself is on screen.
-    expect(find.text('info@a-1chimney.com'), findsWidgets);
-  });
-
-  /// An IMAP mailbox draws the folders THAT SERVER has — no more, no fewer.
-  ///
-  /// The guess for IMAP is the Inbox alone, because nothing else is knowable
-  /// without asking. Once asked, the answer replaces the guess: this server
-  /// has Sent and Trash and no Archive, so Archive is not offered. Offering it
-  /// and refusing on the click is the broken promise this module keeps
-  /// declining to make.
-  testWidgets('an IMAP inbox draws the folders its own server reported',
-      (tester) async {
-    await _pump(
-      tester,
-      _handler(
-        mailboxes: [
-          {
-            'id': 'mb-1',
-            'address': 'info@a-1chimney.com',
-            'display_name': 'Info',
-            'provider': 'imap',
-            'unread': 0,
-            'can_reply': true,
-            'shared_read': true,
-          },
-        ],
-        folders: const ['INBOX', 'SENT', 'TRASH'],
-      ),
-      size: const Size(1400, 900),
-    );
-
-    // Before it is asked, the guess is the Inbox alone — so nothing here can
-    // be coming from a provider table.
-    await _tap(
-      tester,
-      find.descendant(
-        of: find.byType(MailboxRail),
-        matching: find.text('info@a-1chimney.com'),
-      ).first,
-    );
-
-    expect(find.text('Sent'), findsOneWidget);
-    expect(find.text('Trash'), findsOneWidget);
-
-    expect(
-      find.text('Archive'),
-      findsNothing,
-      reason: 'A folder this server did not report is on screen, so picking it '
-          'would come back refused.',
-    );
-    expect(
-      find.text('Starred'),
-      findsNothing,
-      reason: 'Starred is a Gmail idea and this is an IMAP mailbox.',
-    );
-  });
+  // Removed with design 137: "an Outlook inbox offers Archive and not
+  // Starred", "an IMAP inbox is offered no folder list" and "an IMAP inbox
+  // draws the folders its own server reported". The rail now draws the
+  // folders GET email/inbox takes (inbox, starred, snoozed, sent, drafts,
+  // all) for every inbox together; the per-inbox folder list they asserted is
+  // gone. Folder params are tested in email_gmail_inbox_test.dart.
 
   /// "Handled" is a different button from "Reply", and a different fact.
   ///
@@ -639,7 +520,7 @@ void main() {
 
     await _pump(tester, _handler(onDealt: posted.add));
 
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(find.text('Mark handled'), findsOneWidget);
 
@@ -663,7 +544,7 @@ void main() {
     await _pump(tester, _handler(canReply: false, replyRefusal: 'Not yours.'));
 
     expect(
-      find.text('New message'),
+      find.byKey(const ValueKey('tour-email-compose')),
       findsNothing,
       reason: 'A button the server would refuse is drawn, which is the shape '
           'the house rule forbids.',
@@ -671,7 +552,7 @@ void main() {
 
     // The control: the inbox itself is on screen, so this is "the button is
     // absent" rather than "the screen failed to load".
-    expect(find.text('Chimney sweep quote'), findsWidgets);
+    expect(find.textContaining('Chimney sweep quote'), findsWidgets);
   });
 
   /// R8: a refusal is a sentence saying what to do. The server writes it,
@@ -683,7 +564,7 @@ void main() {
         'Ask whoever looks after this inbox to add replying to your role.';
 
     await _pump(tester, _handler(canReply: false, replyRefusal: refusal));
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(
       tester
@@ -740,7 +621,7 @@ void main() {
 
   testWidgets('the open message sits on a white page', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(
       find.byWidgetPredicate(
@@ -758,10 +639,10 @@ void main() {
   ) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
 
-    expect(find.textContaining('WhatsApp Business Team'), findsOneWidget);
-    expect(find.text('5'), findsOneWidget);
+    // Design 137: the count sits after the sender on the one-line row.
+    expect(find.textContaining('WhatsApp Business Team 5'), findsOneWidget);
     expect(
-      find.text('Your WhatsApp message template state has been changed'),
+      find.textContaining('Your WhatsApp message template state has been changed'),
       findsOneWidget,
     );
   });
@@ -771,7 +652,7 @@ void main() {
   testWidgets('a picture in the message is drawn, and nothing offers a '
       'separate fetch', (tester) async {
     await _pump(tester, _handler());
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(find.byType(Image), findsOneWidget);
     expect(find.textContaining('look at'), findsWidgets);
@@ -792,9 +673,9 @@ void main() {
   /// this module is a window onto mail from strangers.
   testWidgets('the open message shows the sender icon', (tester) async {
     await _pump(tester, _handler(), size: const Size(1400, 900));
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
-    expect(find.byType(MessageListPane), findsNothing);
+    // Desktop rows draw no avatar (design 137), so the one is the reader's.
     expect(
       find.byType(SenderAvatar),
       findsOneWidget,
@@ -810,7 +691,7 @@ void main() {
       _handler(onFile: (url) => fileUrl = url),
       size: const Size(1400, 900),
     );
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(find.text('ATTACHMENTS'), findsOneWidget);
     expect(find.textContaining('flue.jpg'), findsOneWidget);
@@ -827,7 +708,7 @@ void main() {
 
   testWidgets('a link shows where it goes', (tester) async {
     await _pump(tester, _handler());
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(
       find.textContaining('not-your-bank.example.com'),
@@ -842,16 +723,16 @@ void main() {
   /// confusion the whole screen is arranged against.
   testWidgets('changing inbox takes the open message with it', (tester) async {
     await _pump(tester, _handler());
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(find.byType(MessageBody), findsOneWidget);
 
-    await _tap(tester, find.text('bookings@a-1chimney.com').first);
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-mb-2')));
 
     expect(find.byType(MessageBody), findsNothing);
-    expect(find.text('Booking for Friday'), findsOneWidget);
+    expect(find.textContaining('Booking for Friday'), findsOneWidget);
     expect(
-      find.text('Chimney sweep quote'),
+      find.textContaining('Chimney sweep quote'),
       findsNothing,
       reason: 'A message from the last inbox is still on screen under this '
           'one’s name.',
@@ -861,10 +742,9 @@ void main() {
   testWidgets('the live API envelope is mail, not an empty inbox', (
     tester,
   ) async {
-    // Production answers `{ data: { messages, next_cursor } }` with
-    // from_name / snippet / sent_at, not the list-plus-page the first
-    // screen assumed. Reading that as "not a list" drew "Nothing in
-    // development@ezbizi.com right now" over 201 real messages.
+    // Updated for design 137: the list is GET email/inbox, whose rows carry
+    // `inboxes` and whose meta errors are objects. Reading that as "not a
+    // list" would draw "Nothing in Inbox" over real mail.
     await _pump(tester, (request) async {
       final path = request.url.path;
 
@@ -877,31 +757,47 @@ void main() {
               'display_name': 'Info',
               'may_read': true,
               'read_state_shared': true,
+              'status': 'connected',
+              'can_be_opened': true,
             },
           ],
         });
       }
 
-      if (path.endsWith('/messages')) {
+      if (path.endsWith('/email/inbox')) {
         return _json({
-          'data': {
-            'messages': [
-              {
-                'id': 'm-1',
-                'from_name': 'Ana Reis',
-                'from_address': 'ana@example.com',
-                'subject': 'Chimney sweep quote',
-                'snippet': 'Could somebody look at the flue this week?',
-                'sent_at': '2026-08-11T09:14:00Z',
-                'unread_at_provider': true,
-                'has_attachments': true,
-                'seen_by': ['Front desk'],
-              },
-            ],
-            'next_cursor': null,
-            'approximate_total': 1,
+          'data': [
+            {
+              'key': 'm:<abc@example.com>',
+              'subject': 'Chimney sweep quote',
+              'snippet': 'Could somebody look at the flue this week?',
+              'from': {'name': 'Ana Reis', 'address': 'ana@example.com'},
+              'received_at': '2026-08-11T09:14:00+00:00',
+              'unread': true,
+              'starred': false,
+              'has_attachments': true,
+              'message_count': 1,
+              'category': 'primary',
+              'inboxes': [
+                {
+                  'mailbox_id': 'mb-1',
+                  'address': 'info@a-1chimney.com',
+                  'message_id': 'm-1',
+                  'thread_id': 't-1',
+                },
+              ],
+              'customer': null,
+            },
+          ],
+          'meta': {
+            'cursor': null,
+            'errors': <Object>[],
+            'counts': {
+              'categories': {'primary': 1, 'people': 0, 'notifications': 0},
+              'unread_loaded': 1,
+              'snoozed': 0,
+            },
           },
-          'meta': {'cache_seconds': 60},
         });
       }
 
@@ -914,10 +810,9 @@ void main() {
       return _json({'message': 'Unexpected ${request.method} $path'}, 500);
     });
 
-    expect(find.text('Nothing in info@a-1chimney.com right now.'), findsNothing);
-    expect(find.text('Chimney sweep quote'), findsOneWidget);
-    expect(find.text('Ana Reis'), findsOneWidget);
-    expect(find.text('Info'), findsWidgets);
+    expect(find.textContaining('Nothing in'), findsNothing);
+    expect(find.textContaining('Chimney sweep quote'), findsOneWidget);
+    expect(find.textContaining('Ana Reis'), findsOneWidget);
   });
   /// A tab nobody granted is not drawn, and the OTHER one still opens.
   ///
@@ -969,7 +864,7 @@ void main() {
     final opened = <Uri>[];
 
     await _pump(tester, _handler(onOpen: opened.add));
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     expect(opened, isNotEmpty);
     expect(opened.last.queryParameters['thread'], 'thread-of-m-1');
@@ -1051,7 +946,7 @@ void main() {
     );
 
     await _pump(tester, _handler(detail: thread));
-    await _tap(tester, find.text('Chimney sweep quote').first);
+    await _tap(tester, find.textContaining('Chimney sweep quote').first);
 
     // The report is that it appears and then goes, so the frames AFTER the
     // first are the ones that matter.
@@ -1153,6 +1048,43 @@ MockClientHandler _handler({
     // What folders this mailbox actually has, asked when it is opened.
     if (path.endsWith('/folders')) {
       return _json({'data': folders ?? const ['INBOX']});
+    }
+
+    // GET email/inbox (design 137): one row per message here, each in the
+    // inbox it came from, filtered by `mailbox` as the server does.
+    if (path.endsWith('/email/inbox')) {
+      if (listStatus != 200) return _json({'message': listMessage}, listStatus);
+      final only = request.url.queryParameters['mailbox'];
+
+      return _json({
+        'data': [
+          for (final entry in _messages.entries)
+            if (only == null || only == entry.key)
+              for (final row in entry.value)
+                {
+                  'key': 'm:${row['id']}',
+                  'subject': row['subject'],
+                  'snippet': row['preview'],
+                  'from': row['from'],
+                  'received_at': row['received_at'],
+                  'unread': row['unread'],
+                  'starred': false,
+                  'has_attachments': row['has_attachments'],
+                  'message_count': row['message_count'] ?? 1,
+                  'category': 'primary',
+                  'inboxes': [
+                    {
+                      'mailbox_id': entry.key,
+                      'address': _addressOf(entry.key),
+                      'message_id': row['id'],
+                      'thread_id': row['thread_id'] ?? '',
+                    },
+                  ],
+                  'customer': null,
+                },
+        ],
+        'meta': {'cursor': null, 'errors': <Object>[]},
+      });
     }
 
     if (path.endsWith('/email/mailboxes')) {

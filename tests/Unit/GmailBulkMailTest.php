@@ -64,4 +64,12 @@ class GmailBulkMailTest extends TestCase
 
         $this->assertTrue($summary->withSeenBy([])->isBulk);
     }
+
+    /** Gmail escapes the snippet; the row shows it as text (Jose's screenshot: &lt; and &#39;). */
+    public function test_the_snippet_is_entity_decoded_once(): void
+    {
+        $message = [...$this->message([]), 'snippet' => 'It&#39;s 2 &lt; 3 &amp;amp; done'];
+
+        $this->assertSame("It's 2 < 3 &amp; done", app(GmailMessageMapper::class)->summary($message)->snippet);
+    }
 }
