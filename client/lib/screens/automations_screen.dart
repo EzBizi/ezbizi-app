@@ -905,10 +905,15 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       canEditHoursReports: widget.session.me?.can('work_hours.manage') ?? false,
       companies: widget.session.me?.companies ?? const [],
       branches: widget.session.me?.franchises ?? const [],
-      onTry: switch (_editing) {
-        final saved? => () => _test(saved),
-        null => null,
+      rules: _automations,
+      onOpenRule: _open,
+      sidebarOrder: widget.session.me?.navigationOrder ?? const [],
+      viewPlace: switch (widget.session.me?.scope) {
+        final scope? when scope.type != 'organization' && scope.id != null =>
+          '${scope.type}:${scope.id}',
+        _ => 'organization',
       },
+      viewLabel: widget.session.me?.scope.shortPath,
       onCancel: () => setState(() {
         _editing = null;
         _tab = 'rules';

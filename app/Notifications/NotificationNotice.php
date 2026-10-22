@@ -52,6 +52,8 @@ class NotificationNotice extends Notification implements ShouldQueue
          * which is minutes after the decision it belongs to.
          */
         private readonly ?string $replyTo = null,
+        /** "EzBizi - Company - Branch", leading the subject like every push. */
+        private readonly ?string $header = null,
     ) {}
 
     public function via(object $notifiable): array
@@ -62,7 +64,7 @@ class NotificationNotice extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject($this->title)
+            ->subject($this->header === null ? $this->title : "{$this->header}: {$this->title}")
             ->greeting("Hello {$notifiable->name},")
             ->line($this->title);
 

@@ -26,6 +26,10 @@ class SubCompanyBrandTest extends TestCase
             $settings->set('leads.booking_url', $parent, 'https://www.a-1chimney.com/booking/');
             $settings->set('leads.office_phone', $parent, '(800) 111-1111');
             $settings->set('leads.photos_email', $parent, 'office@a-1chimney.com');
+            // Somewhere the booking page can offer a day (Bar, 2026-10-21: no link without one).
+            $area = \App\Models\ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Fairfield']);
+            \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 1]);
+            \App\Models\ServiceAreaZip::create(['franchise_id' => $t['franchise']->id, 'service_area_id' => $area->id, 'zip' => '06810']);
             $sub = Company::create(['organization_id' => $t['org']->id, 'parent_company_id' => $parent->id, 'name' => 'AngiSweep']);
             $lead = fn (Company $c) => Lead::create(['organization_id' => $t['org']->id, 'company_id' => $c->id,
                 'source' => Lead::SOURCE_WEBSITE_CHAT, 'remote_id' => uniqid(), 'status' => Lead::STATUS_NEW, 'received_at' => now()]);

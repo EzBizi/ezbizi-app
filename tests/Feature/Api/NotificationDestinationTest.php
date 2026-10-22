@@ -92,6 +92,20 @@ class NotificationDestinationTest extends TestCase
         $this->assertSame(['type' => 'review', 'id' => $id], $meta['record']);
     }
 
+    public function test_each_row_carries_the_same_header_as_its_push(): void
+    {
+        // Jose, 2026-10-22: the panel and the desktop toast lead with
+        // "EzBizi - Company - Branch", like the push.
+        $tenant = $this->provisionTenant('Epsilon');
+        $this->metaFor($tenant, [
+            'source' => 'system',
+            'subject_type' => \App\Models\Franchise::class, 'subject_id' => $tenant['franchise']->id,
+        ]);
+
+        $this->signedInAs($tenant['admin'])->getJson('/api/v1/notifications')
+            ->assertJsonPath('data.0.header', 'EzBizi - '.$tenant['company']->name.' - '.$tenant['franchise']->name);
+    }
+
     public function test_every_subject_module_is_a_real_module(): void
     {
         $map = (new ReflectionClassConstant(NotificationsController::class, 'SUBJECT_MODULES'))->getValue();

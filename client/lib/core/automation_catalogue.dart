@@ -99,10 +99,26 @@ class CatalogueActionType extends CatalogueChoice {
     required super.label,
     required this.moduleOnly,
     required this.parameters,
+    this.subjects,
   });
 
   final bool moduleOnly;
   final List<CatalogueActionParameter> parameters;
+
+  /// The records this step works on, as model names ("Job", "PhoneCall"), or
+  /// null for any record. A server older than the list sends nothing, which
+  /// reads as null: "any", the answer it gave before.
+  final List<String>? subjects;
+
+  /// Does this step work on the record a subject key names?
+  ///
+  /// Model names and subject keys are spelled differently ("PhoneCall" and
+  /// `phone_call`), so both are compared without case or underscores.
+  bool worksOn(String subjectKey) {
+    final allowed = subjects;
+    if (allowed == null) return true;
+    return allowed.any((model) => sameRecord(model, subjectKey));
+  }
 
   static CatalogueActionType? tryFrom(Object? json) {
     if (json is! Map || json['key'] is! String) return null;
@@ -114,6 +130,9 @@ class CatalogueActionType extends CatalogueChoice {
       label: json['label'] as String? ?? key,
       moduleOnly: json['module_only'] == true,
       parameters: _list(json['parameters'], CatalogueActionParameter.tryFrom),
+      subjects: json['subjects'] is List
+          ? [for (final one in json['subjects'] as List) '$one']
+          : null,
     );
   }
 }
@@ -125,7 +144,13 @@ class CatalogueTrigger {
     required this.label,
     this.description,
     this.isRaised = true,
+    this.subjects,
   });
+
+  /// The records THIS trigger is about, as model names ("Invitation"), when
+  /// they are not its module's. Empty means no record in particular; null
+  /// means the module's subject, which is also what an older server meant.
+  final List<String>? subjects;
 
   /// What gets stored on the automation — `customer.owner_reassigned`.
   final String key;
@@ -175,6 +200,9 @@ class CatalogueTrigger {
       // server, which is not the same claim as `false`. Only an explicit false
       // marks the row.
       isRaised: json['is_raised'] != false,
+      subjects: json['subjects'] is List
+          ? [for (final one in json['subjects'] as List) '$one']
+          : null,
     );
   }
 }
@@ -187,10 +215,22 @@ class CatalogueTrigger {
 /// dictionary, and the field list is a security invariant, so the copy that
 /// drifts would be the one deciding what the form offers.
 class CatalogueField {
-  const CatalogueField({required this.key, required this.label});
+  const CatalogueField({
+    required this.key,
+    required this.label,
+    this.kind,
+    this.options,
+  });
 
   final String key;
   final String label;
+
+  /// text, enum, money, datetime or integer: which "Set to" control fits.
+  /// Null on a server older than kinds, which keeps the text box.
+  final String? kind;
+
+  /// The closed list the field takes, or null where any value goes.
+  final List<({String value, String label})>? options;
 
   static CatalogueField? tryFrom(Object? json) {
     if (json is! Map) return null;
@@ -199,7 +239,23 @@ class CatalogueField {
 
     if (key is! String || key.isEmpty) return null;
 
-    return CatalogueField(key: key, label: json['label'] as String? ?? key);
+    final options = json['options'];
+
+    return CatalogueField(
+      key: key,
+      label: json['label'] as String? ?? key,
+      kind: json['kind'] as String?,
+      options: options is List
+          ? [
+              for (final one in options)
+                if (one is Map)
+                  (
+                    value: '${one['value'] ?? ''}',
+                    label: '${one['label'] ?? one['value'] ?? ''}',
+                  ),
+            ]
+          : null,
+    );
   }
 }
 
@@ -356,6 +412,7 @@ class AutomationCatalogue {
     this.trainings = const [],
     this.contracts = const [],
     this.audiences = const [],
+    this.reportTextKinds = const [],
     this.actionBudget,
   });
 
@@ -383,6 +440,10 @@ class AutomationCatalogue {
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
       contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
       audiences: _list(json['audiences'], CatalogueChoice.tryFromIdLabel),
+      reportTextKinds: _list(
+        json['report_text_kinds'],
+        CatalogueChoice.tryFromIdLabel,
+      ),
       templates: [
         for (final one in (json['templates'] as List? ?? const []))
           if (one is Map) Map<String, dynamic>.from(one),
@@ -451,6 +512,16 @@ class AutomationCatalogue {
   /// Mailchimp lists a rule can add somebody who agreed to. Never the
   /// customer book: that audience has no members to add.
   final List<CatalogueChoice> audiences;
+
+  /// Reports' daily texts a "WhatsApp a report text" step can send.
+  final List<CatalogueChoice> reportTextKinds;
+
+  /// Whether this server says which record any module is about.
+  ///
+  /// False only on a server older than subjects, where every module's is null.
+  /// Then "no subject" means "cannot tell" everywhere, and nothing may be
+  /// hidden for want of one.
+  bool get publishesSubjects => modules.any((m) => m.subject != null);
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still
@@ -560,8 +631,32 @@ class AutomationCatalogue {
   /// The record a rule on [triggerKey] is about, or null when nothing here
   /// declares that trigger — a module removed, or a server older than this
   /// build.
-  CatalogueSubject? subjectOf(String? triggerKey) =>
-      triggerKey == null ? null : locate(triggerKey)?.$1.subject;
+  ///
+  /// The module's subject, unless the trigger names its own records and the
+  /// module's is not among them: then the event is about something the
+  /// module's fields do not describe, and null says so.
+  CatalogueSubject? subjectOf(String? triggerKey) {
+    if (triggerKey == null) return null;
+    final found = locate(triggerKey);
+    if (found == null) return null;
+    final (module, trigger) = found;
+    final own = module.subject;
+    final named = trigger.subjects;
+    if (named == null || own == null) return named == null ? own : null;
+    return named.any((model) => sameRecord(model, own.key)) ? own : null;
+  }
+
+  /// The records a rule on [triggerKey] acts on, as plain names to compare
+  /// ("phonecall", "job"): the trigger's own list, else its module's subject.
+  List<String> recordsOf(String? triggerKey) {
+    if (triggerKey == null) return const [];
+    final found = locate(triggerKey);
+    if (found == null) return const [];
+    final named = found.$2.subjects;
+    if (named != null) return [for (final model in named) plainRecord(model)];
+    final own = found.$1.subject?.key;
+    return own == null ? const [] : [plainRecord(own)];
+  }
 
   /// Does anything emit [triggerKey] yet?
   ///
@@ -681,6 +776,12 @@ OperatorArity arityOf(String operatorKey) => switch (operatorKey) {
   'in' || 'not_in' => OperatorArity.many,
   _ => OperatorArity.one,
 };
+
+/// A model name ("PhoneCall") or a subject key (`phone_call`), spelled the
+/// same way so the two can be compared.
+String plainRecord(String name) => name.replaceAll('_', '').toLowerCase();
+
+bool sameRecord(String a, String b) => plainRecord(a) == plainRecord(b);
 
 List<T> _list<T>(Object? json, T? Function(Object?) parse) {
   if (json is! List) return const [];

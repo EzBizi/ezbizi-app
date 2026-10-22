@@ -147,7 +147,7 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'automations/Build': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-automations-name',
@@ -182,17 +182,25 @@ const Map<String, Tour> assistTours = {
       ),
       TourStep(
         anchor: 'automation-builder-try',
-        title: 'Try the saved rule',
+        title: 'Try it',
         body:
-            'A rehearsal against the most recent real event. Nothing is '
-            'actually done.',
+            'Runs the rule as it is now on the newest real event and shows '
+            'what each step would do. Nothing is sent or changed.',
       ),
       TourStep(
         anchor: 'tour-automations-save',
-        title: 'Save',
+        title: 'Save switched off',
         body:
-            'A new rule is saved switched off, to turn on once you have read '
-            'it back. Saving an edit makes it the live version.',
+            'Keeps the rule without it running yet. Saving an edit to a rule '
+            'that is on makes it the live version.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-turn-on',
+        title: 'Turn on',
+        body:
+            'Saves it and starts it on new events. It stays greyed out while '
+            'the checklist above has anything marked ✕.',
+        since: 2,
       ),
     ],
   ),
@@ -219,6 +227,39 @@ const Map<String, Tour> assistTours = {
         body:
             'Add the address people already write to, then give the roles '
             'that answer it access under Roles & permissions.',
+      ),
+    ],
+  ),
+  'email/Google Workspace': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-email-workspace-cards',
+        title: 'Your Workspaces',
+        body:
+            'One card for each connected Google Workspace, with whether its '
+            'signatures can be set. With only one, it opens straight away.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-template',
+        title: 'Signature template',
+        body:
+            'Everyone without their own signature gets this. The chips put in '
+            "each person's name, title or phone, and the preview shows it for "
+            'the person you pick.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-search',
+        title: 'Find a person',
+        body: 'Type a name, address or title to narrow the people.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-people',
+        title: 'People',
+        body:
+            'Who each address is in EzBizi and which signature they get. Tick '
+            'people to set theirs together, or click one to see what Gmail '
+            'has now.',
       ),
     ],
   ),
