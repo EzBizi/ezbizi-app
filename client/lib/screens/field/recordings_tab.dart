@@ -49,6 +49,10 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
   String? _person;
   DateTime? _day;
 
+  /// What is typed in the search box, sent as `q` 400 ms after the last key.
+  String _query = '';
+  Timer? _searchDebounce;
+
   Map<String, dynamic>? _open;
   late final RecordingPlayer _player = widget.player ?? createRecordingPlayer();
   StreamSubscription<RecordingPlayback>? _sub;
@@ -69,6 +73,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
   @override
   void dispose() {
     _sub?.cancel();
+    _searchDebounce?.cancel();
     _player.dispose();
     _reason.dispose();
     super.dispose();
@@ -85,6 +90,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     final response = await widget.api.get('/field/recordings', {
       'user_id': ?_person,
       if (_day != null) 'date': _ymd(_day!),
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
     });
     if (!mounted) return;
     setState(() {
@@ -229,6 +235,33 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
     return [for (final e in seen.entries) (id: e.key, name: e.value)];
   }
 
+  void _search(String value) {
+    setState(() => _query = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  /// The loaded rows, narrowed by the search box as well.
+  ///
+  /// FieldRecordingsController@index (GET /field/recordings) does not read
+  /// `q` yet, so the server returns the same newest 200 whatever is typed;
+  /// this narrows them until it does. Once the server honours `q` it is a
+  /// no-op.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return [
+      for (final r in _rows)
+        if ([
+          (r['user'] as Map?)?['name'],
+          if (r['job'] is Map) 'JOB-${(r['job'] as Map)['number']}',
+          (r['job'] as Map?)?['title'],
+          r['flag_reason'],
+        ].any((v) => v != null && '$v'.toLowerCase().contains(q)))
+          r,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -292,6 +325,23 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                       },
                       child: const Text('Any day'),
                     ),
+                  SizedBox(
+                    width: 260,
+                    height: 40,
+                    child: TextField(
+                      key: const ValueKey('field-recordings-search'),
+                      onChanged: _search,
+                      textAlignVertical: TextAlignVertical.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: 'Search person, job or reason',
+                        prefixIcon: Icon(Icons.search, size: 18),
+                        prefixIconConstraints: BoxConstraints(minWidth: 36),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -301,7 +351,14 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                 loading: _loading,
                 error: _error,
                 onRetry: _load,
-                child: _rows.isEmpty
+                child: _query.trim().isNotEmpty && _shown.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Nothing matches "${_query.trim()}".',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      )
+                    : _rows.isEmpty
                     ? Center(
                         key: const ValueKey('field-recordings-empty'),
                         child: Text(
@@ -339,9 +396,10 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
       child: Padding(padding: const EdgeInsets.only(right: 10), child: child),
     );
 
+    final rows = _shown;
     return ListView.separated(
       key: const ValueKey('tour-field-recordings'),
-      itemCount: _rows.length + 1,
+      itemCount: rows.length + 1,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
         if (i == 0) {
@@ -359,7 +417,7 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
             ),
           );
         }
-        final r = _rows[i - 1];
+        final r = rows[i - 1];
         final job = r['job'] as Map?;
         return InkWell(
           key: ValueKey('field-recording-${r['id']}'),

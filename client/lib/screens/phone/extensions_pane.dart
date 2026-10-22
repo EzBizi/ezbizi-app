@@ -48,6 +48,10 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
   /// The tile picked: `user`, `ring_group`, or null for every extension. The
   /// directory comes back whole, so the tiles count it here (Mia, 2026-10-02).
   String? _kindShown;
+
+  /// What is typed in the search box. /phone/extensions/directory returns
+  /// every extension, so the filter runs here.
+  String _query = '';
   List<_Target> _people = const [];
   List<_Target> _groups = const [];
 
@@ -178,6 +182,16 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
           'with 0, which is what tells an extension apart from a menu key.',
       error: _error,
       onRetry: _load,
+      trailing: _rows.isEmpty
+          ? null
+          : Align(
+              alignment: Alignment.centerRight,
+              child: _searchBox(
+                key: const ValueKey('comm-extensions-search'),
+                hint: 'Search extension or who',
+                onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
         children: [
@@ -242,14 +256,22 @@ class _ExtensionsPaneState extends State<ExtensionsPane> {
   }
 
   Widget _table(ThemeData theme) {
-    final shown = _kindShown == null
-        ? _rows
-        : _rows.where((r) => r.kind == _kindShown).toList();
+    final shown = [
+      for (final row in _rows)
+        if ((_kindShown == null || row.kind == _kindShown) &&
+            _searchHit(_query, [row.extension, row.targetName, row.kindLabel]))
+          row,
+    ];
 
     if (shown.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text('No extensions of this kind.', textAlign: TextAlign.center),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _query.trim().isNotEmpty
+              ? 'Nothing matches "${_query.trim()}".'
+              : 'No extensions of this kind.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -420,4 +442,47 @@ class _Target {
 
   final String id;
   final String name;
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

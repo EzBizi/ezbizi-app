@@ -258,6 +258,13 @@ void main() {
 
     await _tap(tester, find.text('Connection'));
 
+    // The pane's search box sits beside its title, so at 375 the heading wraps
+    // taller and the account rows start below the fold of a lazy list.
+    await _scrollTo(
+      tester,
+      find.text('Activate phone service'),
+      within: find.byType(ListView).last,
+    );
     expect(find.text('Activate phone service'), findsWidgets);
     expect(find.byTooltip('Back to the list'), findsOneWidget);
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
@@ -72,11 +74,40 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   /// all, missed or voicemail.
   String _filter = 'all';
 
+  /// What is typed in the search box, sent as `q` 400 ms after the last key.
+  String _query = '';
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _search(String value) {
+    setState(() => _query = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  /// Whether a call is one the search box asks for.
+  ///
+  /// CallsController@index (GET /phone/calls) does not read `q` yet, so the
+  /// server returns the same newest 40 whatever is typed; this narrows them
+  /// until it does. Once the server honours `q` it is a no-op.
+  bool _hit(CallRow row) => _searchHit(_query, [
+    row.customerName,
+    row.callerName,
+    row.peerName,
+    row.answeredByName,
+    row.peer,
+  ]);
 
   @override
   void didUpdateWidget(CallHistoryPane old) {
@@ -85,7 +116,11 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   }
 
   Future<void> _load() async {
-    final response = await widget.api.get('/phone/calls', {'per_page': '40'});
+    final query = _query.trim();
+    final response = await widget.api.get('/phone/calls', {
+      'per_page': '40',
+      if (query.isNotEmpty) 'q': query,
+    });
     if (!mounted) return;
 
     setState(() {
@@ -98,7 +133,9 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ]
           : const [];
     });
-    widget.onRows?.call(_rows);
+    // Only an unsearched load feeds the person panel: a searched one is a
+    // subset, and its timeline would lose every call the search left out.
+    if (query.isEmpty) widget.onRows?.call(_rows);
   }
 
   @override
@@ -119,7 +156,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
           'voicemail' => r.voicemail,
           _ => true,
         })
-          r,
+          if (_hit(r)) r,
     ];
 
     Widget chip(String value, String label, [int? count]) => Padding(
@@ -153,6 +190,27 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
             ],
           ),
         ),
+        // Its own row under the heading: this column is about 210 wide
+        // beside the pad, too narrow to share a line with the title.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: SizedBox(
+            height: 40,
+            child: TextField(
+              key: const ValueKey('comm-call-history-search'),
+              onChanged: _search,
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Search name or number',
+                prefixIcon: Icon(Icons.search, size: 18),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ),
         if (missed > 0 || voicemail > 0)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -180,7 +238,17 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
               ? Padding(
                   padding: const EdgeInsets.all(14),
                   child: Text(
-                    'No calls yet. Ones you make and take show up here.',
+                    _query.trim().isNotEmpty
+                        ? 'Nothing matches "${_query.trim()}".'
+                        : 'No calls yet. Ones you make and take show up here.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                )
+              : shown.isEmpty && _query.trim().isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(
+                    'Nothing matches "${_query.trim()}".',
                     style: theme.textTheme.bodySmall,
                   ),
                 )
@@ -496,4 +564,23 @@ class CallRow {
     createdAt: (json['created_at'] ?? '').toString(),
     errorCode: json['error_code'] as String?,
   );
+}
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

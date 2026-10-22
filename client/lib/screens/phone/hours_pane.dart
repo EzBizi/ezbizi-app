@@ -56,6 +56,10 @@ class _HoursPaneState extends State<HoursPane> {
   String? _error;
 
   List<_Schedule> _schedules = const [];
+
+  /// What is typed in the search box. /phone/hours returns every schedule, so
+  /// the filter runs here.
+  String _query = '';
   List<_Conn> _connections = const [];
 
   _Draft? _draft;
@@ -209,20 +213,33 @@ class _HoursPaneState extends State<HoursPane> {
         ),
         const SizedBox(height: 16),
 
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Refused(
-            reason: _canEdit ? null : _editRefusal,
-            child: FilledButton(
-              onPressed: _canEdit
-                  ? () => setState(() {
-                      _draft = _Draft.blank(_connections.first.id);
-                      _formError = null;
-                    })
-                  : null,
-              child: const Text('Add hours'),
+        Row(
+          children: [
+            Refused(
+              reason: _canEdit ? null : _editRefusal,
+              child: FilledButton(
+                onPressed: _canEdit
+                    ? () => setState(() {
+                        _draft = _Draft.blank(_connections.first.id);
+                        _formError = null;
+                      })
+                    : null,
+                child: const Text('Add hours'),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            if (_schedules.isNotEmpty)
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _searchBox(
+                    key: const ValueKey('comm-hours-search'),
+                    hint: 'Search name or timezone',
+                    onChanged: (value) => setState(() => _query = value),
+                  ),
+                ),
+              ),
+          ],
         ),
 
         const SizedBox(height: 20),
@@ -249,6 +266,25 @@ class _HoursPaneState extends State<HoursPane> {
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
+    final shown = [
+      for (final schedule in _schedules)
+        if (_searchHit(_query, [
+          schedule.name,
+          schedule.timezone,
+          _zoneLabel(schedule.timezone),
+        ]))
+          schedule,
+    ];
+
+    if (shown.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'Nothing matches "${_query.trim()}".',
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
 
     return ListTable(
       columns: const [
@@ -258,9 +294,9 @@ class _HoursPaneState extends State<HoursPane> {
         ListColumn('Closed next', flex: 2),
         ListColumn('', flex: 3, end: true),
       ],
-      rowKey: (i) => ValueKey('hours:${_schedules[i].id}'),
+      rowKey: (i) => ValueKey('hours:${shown[i].id}'),
       rows: [
-        for (final schedule in _schedules)
+        for (final schedule in shown)
           [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -876,4 +912,48 @@ class _Conn {
         )
         .toList(growable: false);
   }
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

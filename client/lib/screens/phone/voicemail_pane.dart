@@ -106,6 +106,10 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   /// every mailbox in one answer.
   String? _tile;
 
+  /// What is typed in the search box. /phone/voicemail-boxes returns every
+  /// mailbox, so the filter runs here.
+  String _query = '';
+
   /// The boxes an account sends voicemail to when a line names none
   /// (`default_voicemail_box_id`). Such a box with no line of its own is not
   /// unused: every line without a box lands in it.
@@ -326,13 +330,26 @@ class _VoicemailPaneState extends State<VoicemailPane> {
           'mailbox use the built-in sentence.',
       error: _error,
       onRetry: _load,
-      trailing: _canEdit && _connections.isNotEmpty
-          ? OutlinedButton.icon(
+      trailing: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          if (_boxes.isNotEmpty)
+            _searchBox(
+              key: const ValueKey('comm-voicemail-boxes-search'),
+              hint: 'Search mailbox or owner',
+              onChanged: (value) => setState(() => _query = value),
+            ),
+          if (_canEdit && _connections.isNotEmpty)
+            OutlinedButton.icon(
               icon: const Icon(Icons.add, size: 18),
               label: const Text('New mailbox'),
               onPressed: () => _open(null),
-            )
-          : null,
+            ),
+        ],
+      ),
 
       // No footer, on purpose. Nothing in this list is edited in place, so a
       // Save here would say the opposite of what is true — and the footer's
@@ -388,19 +405,28 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   }
 
   Widget _table(ThemeData theme) {
-    final shown = switch (_tile) {
-      'unused' => _boxes.where(_unused).toList(),
-      'transcribed' => _boxes.where((b) => b.transcribe).toList(),
-      _ => _boxes,
-    };
+    final shown = [
+      for (final box in switch (_tile) {
+        'unused' => _boxes.where(_unused),
+        'transcribed' => _boxes.where((b) => b.transcribe),
+        _ => _boxes,
+      })
+        if (_searchHit(_query, [box.name, box.belongsTo, box.greetingText]))
+          box,
+    ];
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
 
     if (shown.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text('No mailboxes like that.', textAlign: TextAlign.center),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _query.trim().isNotEmpty
+              ? 'Nothing matches "${_query.trim()}".'
+              : 'No mailboxes like that.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -878,4 +904,48 @@ class _Box {
         ),
     ];
   }
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }
