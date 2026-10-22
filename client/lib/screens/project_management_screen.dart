@@ -48,8 +48,8 @@ class ProjectManagementScreen extends StatefulWidget {
       _ProjectManagementScreenState();
 }
 
-const _watchedKey = 'jobs.estimate_aging_statuses';
-const _cancelledKey = 'jobs.cancelled_statuses';
+const _watchedKey = watchedKey;
+const _cancelledKey = cancelledKey;
 
 class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   List<JobStatus> _statuses = const [];
@@ -113,6 +113,8 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   }
 
   Future<void> _save(String key, List<String> value) async {
+    // An empty watched list empties every Project Management list (0.0.0474).
+    if (key == _watchedKey && value.isEmpty) return;
     setState(() {
       _saving.add(key);
       _errors.remove(key);
