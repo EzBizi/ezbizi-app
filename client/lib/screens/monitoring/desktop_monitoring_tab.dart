@@ -1164,6 +1164,7 @@ class _PeopleRailState extends State<_PeopleRail> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
+          key: const Key('desktop-monitoring-people-search'),
           decoration: const InputDecoration(
             hintText: 'Search people',
             prefixIcon: Icon(Icons.search),

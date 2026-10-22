@@ -467,6 +467,7 @@ class _SchedulePaneState extends State<SchedulePane> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: TextField(
+            key: const Key('schedule-unassigned-search'),
             controller: _unassignedSearch,
             decoration: const InputDecoration(
               isDense: true,
