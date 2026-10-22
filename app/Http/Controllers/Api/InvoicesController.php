@@ -11,6 +11,7 @@ use App\Models\InvoicePayment;
 use App\Models\Organization;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
+use App\Support\Invoices\InvoiceChannels;
 use App\Support\Invoices\InvoicePdf;
 use App\Support\Invoices\Invoicing;
 use App\Support\Numbering\RecordNumberGenerator;
@@ -229,6 +230,8 @@ class InvoicesController extends Controller
             'bill_to_address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'bill_to_emails' => ['sometimes', 'array', 'max:20'],
             'bill_to_emails.*' => ['email'],
+            'bill_to_phones' => ['sometimes', 'array', 'max:20'],
+            'bill_to_phones.*' => ['string', 'regex:/^\+?[0-9 ().-]{7,20}$/'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'due_on' => ['sometimes', 'date_format:Y-m-d'],
         ]);
@@ -263,6 +266,8 @@ class InvoicesController extends Controller
             'ids.*' => ['uuid'],
             'to' => ['sometimes', 'array', 'max:20'],
             'to.*' => ['email'],
+            'phones' => ['sometimes', 'array', 'max:20'],
+            'phones.*' => ['string', 'regex:/^\+?[0-9 ().-]{7,20}$/'],
         ]);
         $invoices = Invoice::query()->with('lines', 'company')->whereIn('id', $input['ids'])->get();
         if ($invoices->count() !== count(array_unique($input['ids']))) {
@@ -271,7 +276,7 @@ class InvoicesController extends Controller
         foreach ($invoices as $invoice) {
             $this->may($user, 'send', $invoice);
         }
-        $this->invoicing->send($user, $invoices->all(), $input['to'] ?? []);
+        $this->invoicing->send($user, $invoices->all(), $input['to'] ?? [], $input['phones'] ?? []);
 
         return response()->json(['data' => $invoices->map(fn ($i) => $this->invoiceShape($i->fresh(['lines', 'payments']), $request->user()))->values()]);
     }
@@ -328,9 +333,30 @@ class InvoicesController extends Controller
         $user = $request->user();
         $this->may($user, 'view');
         $scope = Organization::find($this->tenant->idOrFail());
+        $issuer = $request->filled('company_id') ? Company::query()->findOrFail($request->string('company_id')) : $scope;
+        $channels = app(InvoiceChannels::class);
 
-        return response()->json(['data' => ['next_number' => app(RecordNumberGenerator::class)
-            ->peek(RecordNumberGenerator::INVOICES, $scope)]]);
+        return response()->json(['data' => [
+            'next_number' => app(RecordNumberGenerator::class)->peek(RecordNumberGenerator::INVOICES, $scope),
+            'channels' => array_map(fn ($c) => $channels->readiness($c, $issuer) + ['chosen' => in_array($c, $channels->chosen($issuer), true)], InvoiceChannels::ALL),
+            'sms_numbers' => $channels->textingNumbers($issuer)->map(fn ($n) => ['id' => $n->id, 'e164' => $n->e164, 'label' => $n->label])->values(),
+            'mailbox' => ($m = $channels->mailbox($issuer)) ? ['id' => $m->id, 'address' => $m->address] : null,
+        ]]);
+    }
+
+    /** The PDF behind a texted or WhatsApp'd link: the signature is the permission. */
+    public function shared(string $invoice)
+    {
+        $found = $this->tenant->runWithoutTenant(fn () => Invoice::query()->find($invoice));
+        abort_if($found === null || $found->status === 'void' || $found->pdf_path === null, Response::HTTP_NOT_FOUND);
+        $organization = $this->tenant->runWithoutTenant(fn () => Organization::query()->find($found->organization_id));
+
+        return $this->tenant->run($organization, function () use ($found) {
+            $this->audit->log('invoice.downloaded', $found, metadata: ['by' => 'link']);
+
+            return Storage::disk($found->pdf_disk)->response($found->pdf_path, $found->number.'.pdf',
+                ['Content-Type' => 'application/pdf', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']);
+        });
     }
 
     public function pdf(Request $request, Invoice $invoice)
@@ -425,7 +451,7 @@ class InvoicesController extends Controller
             'id' => $i->id, 'number' => $i->number, 'status' => $i->status, 'overdue' => $i->isOverdue(),
             'issued_on' => $i->issued_on?->toDateString(), 'due_on' => $i->due_on?->toDateString(),
             'bill_to' => ['type' => $i->bill_to_type, 'id' => $i->bill_to_id, 'name' => $i->bill_to_name,
-                'address' => $i->bill_to_address, 'emails' => $i->bill_to_emails ?? []],
+                'address' => $i->bill_to_address, 'emails' => $i->bill_to_emails ?? [], 'phones' => $i->bill_to_phones ?? []],
             'summary' => $i->summary, 'notes' => $i->notes,
             'lines' => $i->lines->map(fn ($l) => ['id' => $l->id, 'description' => $l->description, 'quantity' => $l->quantity,
                 'unit_cents' => $l->unit_cents, 'amount_cents' => $l->amount_cents, 'taxable' => $l->taxable, 'tax_cents' => $l->tax_cents])->values(),

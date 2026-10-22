@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'company_id', 'franchise_id', 'number', 'issued_on', 'due_on', 'status', 'currency',
-    'bill_to_type', 'bill_to_id', 'bill_to_name', 'bill_to_address', 'bill_to_emails',
+    'bill_to_type', 'bill_to_id', 'bill_to_name', 'bill_to_address', 'bill_to_emails', 'bill_to_phones',
     'source_type', 'source_id', 'summary', 'subtotal_cents', 'tax_cents', 'total_cents', 'notes',
     'pdf_disk', 'pdf_path', 'created_by_user_id', 'approved_by_user_id', 'approved_at',
     'sent_by_user_id', 'sent_at', 'paid_at', 'voided_at', 'void_reason', 'overdue_announced_at',
@@ -34,7 +34,7 @@ class Invoice extends Model implements CarriesAutomationScope, StatesRetention
     protected function casts(): array
     {
         return [
-            'issued_on' => 'date:Y-m-d', 'due_on' => 'date:Y-m-d', 'bill_to_emails' => 'array',
+            'issued_on' => 'date:Y-m-d', 'due_on' => 'date:Y-m-d', 'bill_to_emails' => 'array', 'bill_to_phones' => 'array',
             'subtotal_cents' => 'integer', 'tax_cents' => 'integer', 'total_cents' => 'integer',
             'approved_at' => 'datetime', 'sent_at' => 'datetime', 'paid_at' => 'datetime',
             'voided_at' => 'datetime', 'overdue_announced_at' => 'datetime',

@@ -15,13 +15,13 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 /**
  * The life of a charge sheet and its invoices (Jose, 2026-10-20/21):
@@ -40,6 +40,7 @@ final class Invoicing
         private readonly InvoicePdf $pdf,
         private readonly MailDispatcher $mail,
         private readonly SettingsResolver $settings,
+        private readonly InvoiceChannels $channels,
     ) {}
 
     // ── Charge sheets ─────────────────────────────────────────
@@ -214,54 +215,82 @@ final class Invoicing
     }
 
     /**
-     * Emails approved invoices from the issuer's own sending server: one per
-     * invoice to whoever it bills, or one summary with all of them attached,
-     * as Settings › Invoicing says.
+     * Sends approved invoices by every channel the issuer chose (Settings ›
+     * Invoicing): email one per invoice or as one summary, texts and WhatsApp
+     * one per invoice to the phones it bills, each carrying a link to the PDF.
+     * A chosen channel that is not set up refuses the whole send with why.
      *
      * @param  list<Invoice>  $invoices
      * @param  list<string>  $to  addresses for a single invoice, or the summary's
+     * @param  list<string>  $phones  phones for a single invoice
      */
-    public function send(User $user, array $invoices, array $to = []): void
+    public function send(User $user, array $invoices, array $to = [], array $phones = []): void
     {
         foreach ($invoices as $invoice) {
             $this->mustBe($invoice, ['approved', 'sent'], 'Approve an invoice before sending it.');
         }
         $first = $invoices[0];
         $issuer = $first->company ?? Organization::find($first->organization_id);
-        // From the business's own mail server (Jose: "from the org's own
-        // inbox"); without one, nothing is sent and the sentence says why.
-        try {
-            $this->mail->smtpConfigFor($issuer);
-        } catch (CannotSendMail $e) {
-            throw ValidationException::withMessages(['send' => $e->getMessage()]);
+        $chosen = $this->channels->chosen($issuer);
+        foreach ($chosen as $channel) {
+            $ready = $this->channels->readiness($channel, $issuer);
+            if (! $ready['ready']) {
+                throw ValidationException::withMessages(['send' => $ready['why_not']]);
+            }
         }
         $mode = (string) $this->settings->get('invoicing.email_mode', $issuer);
         $columns = collect($invoices)->flatMap(fn ($i) => $i->lines->pluck('description'))->unique()->values()->all();
+        $single = count($invoices) === 1;
 
-        $batches = $mode === 'summary'
+        $batches = ! in_array('email', $chosen, true) ? [] : ($mode === 'summary'
             ? [[$invoices, $to !== [] ? $to : $this->addresses((string) $this->settings->get('invoicing.summary_to', $issuer))]]
-            : array_map(fn (Invoice $i) => [[$i], $to !== [] && count($invoices) === 1 ? $to : (array) ($i->bill_to_emails ?? [])], $invoices);
-
+            : array_map(fn (Invoice $i) => [[$i], $to !== [] && $single ? $to : (array) ($i->bill_to_emails ?? [])], $invoices));
         foreach ($batches as [$group, $addresses]) {
             if ($addresses === []) {
                 throw ValidationException::withMessages(['to' => 'Say who '.($mode === 'summary' ? 'the summary' : $group[0]->number).' goes to.']);
             }
         }
+        $texting = array_values(array_intersect(['sms', 'whatsapp'], $chosen));
+        $phonesFor = fn (Invoice $i) => $phones !== [] && $single ? $phones : (array) ($i->bill_to_phones ?? []);
+        if ($texting !== []) {
+            foreach ($invoices as $invoice) {
+                if ($phonesFor($invoice) === []) {
+                    throw ValidationException::withMessages(['phones' => "Say which phone {$invoice->number} is texted to."]);
+                }
+            }
+        }
+
+        $sent = [];
         foreach ($batches as [$group, $addresses]) {
-            $subject = count($group) === 1
-                ? "Invoice {$group[0]->number} from {$issuer->name}"
-                : "Invoices from {$issuer->name}";
+            $subject = count($group) === 1 ? "Invoice {$group[0]->number} from {$issuer->name}" : "Invoices from {$issuer->name}";
+            $mail = new InvoiceMail($group, $columns, (string) $issuer->name, $subject);
             try {
-                $this->mail->throughTenantProvider($issuer, new InvoiceMail($group, $columns, (string) $issuer->name, $subject), $addresses);
-            } catch (CannotSendMail $e) {
-                throw ValidationException::withMessages(['send' => $e->getMessage()]);
+                $this->channels->email($issuer, $addresses, $subject, $mail->content()->htmlString, $group, $mail);
+            } catch (Throwable $e) {
+                throw ValidationException::withMessages(['send' => $e->getMessage() ?: 'The email could not be sent.']);
             }
             foreach ($group as $invoice) {
-                $invoice->forceFill(['status' => 'sent', 'sent_by_user_id' => $user->id, 'sent_at' => now(),
-                    'bill_to_emails' => $invoice->bill_to_emails ?: $addresses])->save();
-                $this->audit->log('invoice.sent', $invoice, metadata: ['to' => $addresses], actor: $user);
-                $this->events->emit('invoice.sent', $invoice, ['number' => $invoice->number], $user);
+                $sent[$invoice->id]['email'] = $addresses;
             }
+        }
+        foreach ($invoices as $invoice) {
+            foreach ($texting as $channel) {
+                try {
+                    $this->channels->{$channel}($issuer, $invoice, $phonesFor($invoice));
+                } catch (Throwable $e) {
+                    throw ValidationException::withMessages(['send' => $e->getMessage() ?: 'The message could not be sent.']);
+                }
+                $sent[$invoice->id][$channel] = $phonesFor($invoice);
+            }
+        }
+
+        foreach ($invoices as $invoice) {
+            $by = $sent[$invoice->id] ?? [];
+            $invoice->forceFill(['status' => 'sent', 'sent_by_user_id' => $user->id, 'sent_at' => now(),
+                'bill_to_emails' => $invoice->bill_to_emails ?: ($by['email'] ?? null),
+                'bill_to_phones' => $invoice->bill_to_phones ?: ($by['sms'] ?? $by['whatsapp'] ?? null)])->save();
+            $this->audit->log('invoice.sent', $invoice, metadata: ['to' => $by['email'] ?? [], 'channels' => $by], actor: $user);
+            $this->events->emit('invoice.sent', $invoice, ['number' => $invoice->number, 'channels' => array_keys($by)], $user);
         }
     }
 
@@ -283,7 +312,12 @@ final class Invoicing
             : (array) ($first->bill_to_emails ?? []);
         $subject = count($group) === 1 ? "Invoice {$first->number} from {$issuer->name}" : "Invoices from {$issuer->name}";
 
-        return ['to' => $to, 'subject' => $subject, 'mode' => $mode,
+        $phones = (array) ($first->bill_to_phones ?? []);
+        $channels = array_map(fn (string $c) => $this->channels->readiness($c, $issuer) + ['to' => $c === 'email' ? $to : $phones],
+            $this->channels->chosen($issuer));
+
+        return ['to' => $to, 'subject' => $subject, 'mode' => $mode, 'channels' => $channels,
+            'text' => $this->channels->shortText($issuer, $first),
             'html' => (new InvoiceMail($group, $columns, (string) $issuer->name, $subject))->content()->htmlString];
     }
 
