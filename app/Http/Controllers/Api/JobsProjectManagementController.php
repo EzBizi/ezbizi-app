@@ -123,15 +123,31 @@ class JobsProjectManagementController extends Controller
                 fn ($rows) => $rows->sortBy(fn (array $r) => $r['waiting']['deadline_at'] ?? '9999'))
             ->values();
 
-        // Every chip's count, whichever is selected (UI/UX, 2026-10-22): same branch and search.
-        $watchedJobs = $watched === [] ? new \Illuminate\Database\Eloquent\Collection : $unwatched($base())->with('workizJob')->get();
+        // Every chip's count, whichever is selected (UI/UX, 2026-10-22), under the
+        // same branch, search and min_days as its list, so a chip's number is its list's length.
+        $daysOk = function ($jobs) use ($input) {
+            if (($input['min_days'] ?? null) === null) {
+                return $jobs;
+            }
+            $dates = EstimateAging::latestEstimateDates($jobs->modelKeys());
+
+            return $jobs->filter(function (Job $j) use ($dates, $input) {
+                $today = now($j->franchise?->timezone ?: 'UTC')->startOfDay();
+
+                return isset($dates[$j->id]) && Carbon::parse($dates[$j->id], $today->timezone)->diffInDays($today) >= (int) $input['min_days'];
+            });
+        };
+        $watchedJobs = $watched === [] ? new \Illuminate\Database\Eloquent\Collection
+            : $daysOk($unwatched($base())->with(['workizJob', 'franchise:id,timezone'])->get());
         $paidAll = EstimateAging::paidCents($watchedJobs->modelKeys());
         $counts = ['waiting' => 0, 'partial' => 0, 'full' => 0, 'closed' => 0];
         foreach ($watchedJobs as $j) {
             $counts[$this->stage($j, $watched, $paidAll[$j->id] ?? 0)]++;
         }
+        // Recently Paid counts what its list shows: every job paid in the window, watched or not.
         $counts = ['recently_paid' => filled($input['from'] ?? null) && filled($input['to'] ?? null)
-            ? $base()->whereIn('id', $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id'))->count() : null] + $counts;
+            ? $daysOk($base()->whereIn('id', $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id'))
+                ->with('franchise:id,timezone')->get())->count() : null] + $counts;
 
         return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS, 'counts' => $counts]]);
     }
