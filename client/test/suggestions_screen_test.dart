@@ -303,7 +303,7 @@ void main() {
     expect(find.text('Tell EzBizi what to do differently'), findsOneWidget);
 
     await tester.enterText(
-      find.byType(TextField),
+      find.byType(TextField).last,
       'A brand new idea.',
     );
     await tester.pumpAndSettle();
@@ -346,7 +346,7 @@ void main() {
       },
     );
 
-    await tester.enterText(find.byType(TextField), 'x');
+    await tester.enterText(find.byType(TextField).last, 'x');
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(FilledButton, 'Send it'));
@@ -388,7 +388,7 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Edit'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Changed my mind.');
+    await tester.enterText(find.byType(TextField).last, 'Changed my mind.');
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));

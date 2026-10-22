@@ -23,6 +23,23 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _organizations = [];
+  String _query = '';
+
+  /// The organizations whose visible text contains the search,
+  /// case-insensitively.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _organizations;
+    return _organizations.where((org) {
+      final text = [
+        org['name'],
+        org['franchise_label'],
+        if (org['is_demo'] == true) 'Demo',
+        if (org['is_read_only'] == true) 'Read only',
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -67,10 +84,35 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
               ? 'Opening a client\'s records needs an impersonation session.'
               : '${_organizations.length} on the platform. '
                     'Opening a client\'s records needs an impersonation session.',
-          action: IconButton(
-            tooltip: 'Refresh',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('organizations-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find an organization',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -80,12 +122,19 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             onRetry: _load,
             child: _organizations.isEmpty
                 ? const Center(child: Text('No organizations yet.'))
+                : _shown.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No organizations match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _organizations.length,
+                    itemCount: _shown.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) =>
-                        _row(context, _organizations[i]),
+                    itemBuilder: (context, i) => _row(context, _shown[i]),
                   ),
           ),
         ),

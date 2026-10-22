@@ -155,6 +155,16 @@ class _ScoringReportState extends State<ScoringReport> {
   _Sort _sort = _Sort.score;
   String? _open;
 
+  /// The controller keeps the typed words when a person opens and closes.
+  String _query = '';
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -301,9 +311,17 @@ class _ScoringReportState extends State<ScoringReport> {
                   ),
           );
         } else {
+          final people = _sorted(team);
+          final query = _query.trim().toLowerCase();
           body = _Overview(
             team: team,
-            people: _sorted(team),
+            people: people,
+            // The tiles stay the team's; the search narrows the people.
+            shown: [
+              for (final p in people)
+                if (p.name.toLowerCase().contains(query)) p,
+            ],
+            query: _query.trim(),
             phone: phone,
             onOpen: (p) => setState(() => _open = p.name),
           );
@@ -319,6 +337,26 @@ class _ScoringReportState extends State<ScoringReport> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 dates,
+                if (open == null && team != null && team.people.isNotEmpty)
+                  // As tall as the buttons beside it (Jose, 2026-10-20).
+                  SizedBox(
+                    width: 240,
+                    height: 40,
+                    child: TextField(
+                      key: const Key('scoring-report-search'),
+                      controller: _search,
+                      textAlignVertical: TextAlignVertical.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        prefixIconConstraints: BoxConstraints(minWidth: 36),
+                        prefixIcon: Icon(Icons.search, size: 18),
+                        hintText: 'Find a person',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (v) => setState(() => _query = v),
+                    ),
+                  ),
                 if (open == null && team != null && team.people.isNotEmpty)
                   SegmentedButton<_Sort>(
                     key: const Key('scoring-sort'),
@@ -560,12 +598,18 @@ class _Overview extends StatelessWidget {
   const _Overview({
     required this.team,
     required this.people,
+    required this.shown,
+    required this.query,
     required this.phone,
     required this.onOpen,
   });
 
   final _Team team;
   final List<_Person> people;
+
+  /// [people] narrowed by the search; the tiles still count everyone.
+  final List<_Person> shown;
+  final String query;
   final bool phone;
   final ValueChanged<_Person> onOpen;
 
@@ -624,7 +668,7 @@ class _Overview extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
-            for (final p in people)
+            for (final p in shown)
               SizedBox(
                 width: width,
                 child: _Card(person: p, team: team, onTap: () => onOpen(p)),
@@ -644,7 +688,9 @@ class _Overview extends StatelessWidget {
                     _equalTiles(tiles, box.maxWidth >= 900 ? 4 : 2),
               ),
         const SizedBox(height: 12),
-        if (phone)
+        if (shown.isEmpty)
+          Text('No people match "$query".', style: theme.textTheme.bodyMedium)
+        else if (phone)
           cards
         else
           Row(
@@ -652,7 +698,7 @@ class _Overview extends StatelessWidget {
             children: [
               SizedBox(
                 width: 320,
-                child: _Ranking(people: people, team: team, onOpen: onOpen),
+                child: _Ranking(people: shown, team: team, onOpen: onOpen),
               ),
               const SizedBox(width: 12),
               Expanded(child: cards),

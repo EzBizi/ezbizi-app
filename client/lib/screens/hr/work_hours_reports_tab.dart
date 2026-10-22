@@ -46,6 +46,25 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
   /// The report whose Delete has been pressed once and awaits the second.
   String? _confirmingDelete;
 
+  /// What the search bar holds; matched against what each row shows.
+  String _query = '';
+
+  /// The reports whose name, who is in it or who receives it hold the term.
+  List<Map<String, dynamic>> get _shown {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return _reports;
+    return [
+      for (final report in _reports)
+        if ([
+          '${report['name'] ?? ''}',
+          _scope(report),
+          for (final r in (report['recipients'] as List? ?? const []))
+            _recipientLabel('$r'),
+        ].any((text) => text.toLowerCase().contains(needle)))
+          report,
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -136,6 +155,25 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    // As tall as the buttons beside it (Jose, 2026-10-20).
+    final search = SizedBox(
+      width: 240,
+      height: 40,
+      child: TextField(
+        key: const Key('work-hours-reports-search'),
+        textAlignVertical: TextAlignVertical.center,
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+          prefixIconConstraints: BoxConstraints(minWidth: 36),
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'Find a report',
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (v) => setState(() => _query = v),
+      ),
+    );
 
     return AsyncBody(
       loading: _loading,
@@ -157,6 +195,7 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
                   ),
                 ),
               ),
+              if (!narrow) ...[const SizedBox(width: 12), search],
               if (widget.canManage) ...[
                 const SizedBox(width: 12),
                 FilledButton.icon(
@@ -168,6 +207,10 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
               ],
             ],
           ),
+          if (narrow) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: search),
+          ],
           const SizedBox(height: 16),
           if (_reports.isEmpty)
             Padding(
@@ -183,7 +226,12 @@ class _WorkHoursReportsTabState extends State<WorkHoursReportsTab> {
                 ),
               ),
             ),
-          for (final report in _reports)
+          if (_reports.isNotEmpty && _shown.isEmpty)
+            Text(
+              'No reports match "${_query.trim()}".',
+              style: theme.textTheme.bodyMedium,
+            ),
+          for (final report in _shown)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),

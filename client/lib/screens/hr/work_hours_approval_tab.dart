@@ -51,6 +51,9 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
   bool _calendarOpen = false;
   String? _scopeKey;
 
+  /// What the search bar holds; matched against each person's name and role.
+  String _query = '';
+
   bool get _canApprove =>
       widget.session.me?.permissions.contains('work_hours.approve') ?? false;
 
@@ -203,10 +206,34 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
       key: const ValueKey('tour-work_hours-approval'),
       builder: (context, constraints) {
         final phone = constraints.maxWidth < 600;
-        final rows = _rows;
-        final axis = _Axis.of(rows);
+        final all = _rows;
+        // The bar's scale stays the whole day's, so a search does not move it.
+        final axis = _Axis.of(all);
+        final needle = _query.trim().toLowerCase();
+        final rows = needle.isEmpty
+            ? all
+            : [
+                for (final r in all)
+                  if ([
+                    (r['person'] as Map?)?['name'],
+                    (r['person'] as Map?)?['role'],
+                    r['status'],
+                    if (r['no_show'] == true) 'no-show',
+                  ].any(
+                    (v) => v != null && '$v'.toLowerCase().contains(needle),
+                  ))
+                    r,
+              ];
 
-        final list = rows.isEmpty
+        final list = all.isNotEmpty && rows.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Text(
+                  'No people match "${_query.trim()}".',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              )
+            : rows.isEmpty
             ? const EmptyState(
                 icon: Icons.fact_check_outlined,
                 title: 'Nobody to approve on this day',
@@ -412,6 +439,25 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
       ],
     );
 
+    // As tall as the buttons beside it (Jose, 2026-10-20).
+    final search = SizedBox(
+      width: 240,
+      height: 40,
+      child: TextField(
+        key: const Key('work-hours-approval-search'),
+        textAlignVertical: TextAlignVertical.center,
+        decoration: const InputDecoration(
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+          prefixIconConstraints: BoxConstraints(minWidth: 36),
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'Find a person',
+          border: OutlineInputBorder(),
+        ),
+        onChanged: (v) => setState(() => _query = v),
+      ),
+    );
+
     if (phone) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(4, 4, 12, 0),
@@ -434,6 +480,10 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
               ],
             ),
             Padding(padding: const EdgeInsets.only(left: 12), child: viewName),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 0, 0),
+              child: search,
+            ),
             calendar,
           ],
         ),
@@ -461,6 +511,7 @@ class _WorkHoursApprovalTabState extends State<WorkHoursApprovalTab> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 summary,
+                search,
                 if (_canApprove && waiting > 0)
                   FilledButton.icon(
                     key: const ValueKey('tour-work_hours-approval-all'),

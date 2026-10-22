@@ -141,6 +141,30 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
   /// Narrow layout only: which band the rail's segmented control is showing.
   String _narrowSegment = 'waiting';
 
+  String _query = '';
+
+  /// Case-insensitive over what a row shows: the text, its status, the answer.
+  bool _matches(Map<String, dynamic> row) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final status = switch (row['status']) {
+      'reviewing' => 'In review',
+      'approved' => 'Approved',
+      'denied' => 'Denied',
+      _ => 'New',
+    };
+    return [row['body'], row['decision_note'], status]
+        .any((v) => (v?.toString() ?? '').toLowerCase().contains(q));
+  }
+
+  Widget _noMatch(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Text(
+      'No suggestions match "${_query.trim()}".',
+      style: Theme.of(context).textTheme.bodyMedium,
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -380,11 +404,29 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
       children: [
         // The title is the page header now (UI queue 99); the privacy line
         // stays here, where the writing happens.
-        const PanelHeader(
+        PanelHeader(
           note:
               'Tell EzBizi what the software should do differently. Only you '
               'and EzBizi staff can read what you write here — nobody at '
               'your own organization can, not even an administrator.',
+          // As tall as the buttons beside it (Jose, 2026-10-20).
+          action: SizedBox(
+            width: 240,
+            height: 40,
+            child: TextField(
+              key: const Key('suggestions-search'),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a suggestion',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
         ),
         Expanded(
           child: AsyncBody(
@@ -463,11 +505,14 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           )
+        else if (!_rows.any(_matches))
+          _noMatch(context)
         else ...[
+          // The bands keep their totals; the search narrows the rows under them.
           suggestionBand(context, 'Waiting on EzBizi', waiting.length),
-          for (final row in waiting) _railRow(context, row),
+          for (final row in waiting.where(_matches)) _railRow(context, row),
           suggestionBand(context, 'Answered', answered.length),
-          for (final row in answered) _railRow(context, row),
+          for (final row in answered.where(_matches)) _railRow(context, row),
         ],
       ],
     );
@@ -571,7 +616,9 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     final answered = _rows
         .where((r) => r['status'] == 'approved' || r['status'] == 'denied')
         .toList();
-    final shown = _narrowSegment == 'waiting' ? waiting : answered;
+    final shown = (_narrowSegment == 'waiting' ? waiting : answered)
+        .where(_matches)
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -611,6 +658,8 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 )
+              : shown.isEmpty && _query.trim().isNotEmpty
+              ? _noMatch(context)
               : shown.isEmpty
               ? Padding(
                   padding: const EdgeInsets.all(16),

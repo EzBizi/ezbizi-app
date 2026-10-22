@@ -43,7 +43,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(InputChip, 'screen.png'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'See the picture.');
+    await tester.enterText(find.byType(TextField).last, 'See the picture.');
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Send it'));
     await tester.pumpAndSettle();
@@ -70,7 +70,7 @@ void main() {
         });
       });
 
-      await tester.enterText(find.byType(TextField), 'An idea.');
+      await tester.enterText(find.byType(TextField).last, 'An idea.');
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Send it'));
       await tester.pumpAndSettle();
