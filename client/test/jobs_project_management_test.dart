@@ -163,22 +163,54 @@ void main() {
     expect(find.text('No jobs are paid in full.'), findsOneWidget);
   });
 
+  // UI/UX, 2026-10-22: one meta counts every chip, so each shows a number
+  // whichever is chosen, and the range always goes.
+  testWidgets('every chip shows its count on Recently paid and on Waiting', (
+    tester,
+  ) async {
+    final seen = <Uri>[];
+    await _pump(tester, rows: rows(), now: now, seen: seen);
+
+    void allCounted() {
+      for (final text in [
+        'Recently paid · 1',
+        'Waiting · 2',
+        'Partly paid · 1',
+        'Paid in full · 0',
+        'Closed · 1',
+        'All · 4',
+      ]) {
+        expect(find.textContaining(text), findsOneWidget, reason: text);
+      }
+    }
+
+    // Waiting chosen.
+    allCounted();
+    expect(seen.last.queryParameters, containsPair('from', '2026-10-21'));
+
+    await tester.tap(find.byKey(const ValueKey('pm-stage-recently_paid')));
+    await tester.pumpAndSettle();
+    allCounted();
+    expect(seen.last.queryParameters, {..._today, 'filter': 'recently_paid'});
+  });
+
   testWidgets('the branch and days pickers send their filters', (tester) async {
     final seen = <Uri>[];
     await _pump(tester, rows: rows(), now: now, seen: seen);
-    expect(seen.single.queryParameters, isEmpty);
+    expect(seen.single.queryParameters, _today);
 
     await tester.tap(find.byKey(const ValueKey('pm-min-days')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('At least 14 days'));
     await tester.pumpAndSettle();
-    expect(seen.last.queryParameters, {'min_days': '14'});
+    expect(seen.last.queryParameters, {..._today, 'min_days': '14'});
 
     await tester.tap(find.byKey(const ValueKey('pm-branch')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Brightway · Lakeside'));
     await tester.pumpAndSettle();
     expect(seen.last.queryParameters, {
+      ..._today,
       'min_days': '14',
       'franchise_id': 'fr-2',
     });
@@ -194,7 +226,7 @@ void main() {
     expect(seen, hasLength(1), reason: 'still typing');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
-    expect(seen.last.queryParameters, {'q': '4417'});
+    expect(seen.last.queryParameters, {..._today, 'q': '4417'});
   });
 
   testWidgets('a row opens its timeline beside the table, with money', (
@@ -379,7 +411,16 @@ Future<void> _pump(
         _forward?.call(request.url);
         return _json({
           'data': rows,
-          'meta': {'watched': watched, 'deadline_days': 30},
+          'meta': {
+            'watched': watched,
+            'deadline_days': 30,
+            // As the server counts: every chip, whichever is chosen.
+            'counts': {
+              'recently_paid': 1,
+              for (final s in pmStages)
+                s: rows.where((r) => r['stage'] == s).length,
+            },
+          },
         });
       }
       if (path.endsWith('/settings')) {
@@ -431,6 +472,9 @@ Future<void> _pump(
   // Pending Jobs, then Waiting: the table these tests were written for.
   await tester.tap(find.text('Pending Jobs'));
   await tester.pumpAndSettle();
+  // With every chip counted, Waiting can sit past a phone's edge.
+  await tester.ensureVisible(find.byKey(const ValueKey('pm-stage-waiting')));
+  await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
   await tester.pumpAndSettle();
   expect(requests.last.queryParameters.containsKey('filter'), isFalse);
@@ -441,6 +485,9 @@ Future<void> _pump(
     addTearDown(() => _forward = null);
   }
 }
+
+/// The dates every list call carries, for Recently paid's count: Today.
+const _today = {'from': '2026-10-21', 'to': '2026-10-21'};
 
 /// Where the stub sends requests after setup.
 void Function(Uri)? _forward;

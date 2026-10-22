@@ -258,6 +258,7 @@
             "tabs": [
                 "Dashboard",
                 "Pending Jobs",
+                "Logs",
                 "Settings"
             ]
         },

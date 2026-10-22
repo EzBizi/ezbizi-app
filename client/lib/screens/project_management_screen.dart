@@ -6,19 +6,22 @@ import '../core/job_status.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'jobs/project_management_dashboard.dart';
+import 'jobs/project_management_logs.dart';
 import 'jobs/project_management_settings.dart';
 import 'jobs/project_management_tab.dart';
 
 /// Project Management, its own sidebar module since 2026-10-21 (Jose: "This
 /// Project Management should be its own tab, not a sub tab of Jobs").
 ///
-/// Three tabs since UI queue 127 (option 1, phone 4): Dashboard, what
+/// Four tabs: since UI queue 127 (option 1, phone 4), Dashboard, what
 /// happened in a date range; Pending Jobs, the table it used to be, opening
 /// on Recently paid; Settings, which statuses it watches and which mean
-/// cancelled.
+/// cancelled. Since UI queue 139 (option 1, phone 4), Logs between Pending
+/// Jobs and Settings: what rules and people changed on jobs, and why a rule
+/// skipped.
 ///
 /// The module's reach is its gate: the sidebar draws it only for somebody
-/// holding `project_management.view`, and all three tabs are that one grant,
+/// holding `project_management.view`, and all four tabs are that one grant,
 /// so nothing here checks a permission. Settings writes are the server's to
 /// refuse, and each row says whether this person may change it.
 ///
@@ -173,6 +176,19 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
       'Pending Jobs',
       Icons.pending_actions_outlined,
       () => ProjectManagementTab(
+        api: widget.api,
+        session: widget.session,
+        statuses: _statuses,
+        now: widget.now,
+        zone: widget.zone,
+        generation: _generation,
+      ),
+    ),
+    (
+      'logs',
+      'Logs',
+      Icons.receipt_long_outlined,
+      () => ProjectManagementLogs(
         api: widget.api,
         session: widget.session,
         statuses: _statuses,

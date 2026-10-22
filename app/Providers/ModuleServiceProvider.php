@@ -1427,6 +1427,8 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard', action: 'view'),
                     new TabDefinition('pending', 'Pending Jobs', action: 'view'),
+                    // Logs (UI queue 139): what rules and people changed, the same grant.
+                    new TabDefinition('logs', 'Logs', action: 'view'),
                     new TabDefinition('settings', 'Settings', action: 'view'),
                 ],
                 automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',

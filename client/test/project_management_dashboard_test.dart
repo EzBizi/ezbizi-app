@@ -17,7 +17,7 @@ void main() {
   // A fixed local noon on a Wednesday: "Today" is 2026-10-21.
   final now = DateTime(2026, 10, 21, 12);
 
-  testWidgets('three tabs, opening on Dashboard', (tester) async {
+  testWidgets('four tabs, opening on Dashboard', (tester) async {
     final stub = _Stub();
     await _pump(tester, stub, now: now);
 
@@ -26,7 +26,7 @@ void main() {
           in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
         l.$1,
     ];
-    expect(labels, ['Dashboard', 'Pending Jobs', 'Settings']);
+    expect(labels, ['Dashboard', 'Pending Jobs', 'Logs', 'Settings']);
     expect(stub.stats.single.queryParameters, {
       'from': '2026-10-21',
       'to': '2026-10-21',
@@ -95,6 +95,78 @@ void main() {
     expect(
       find.byKey(const ValueKey('pm-tile-cancellations-hint')),
       findsNothing,
+    );
+  });
+
+  // Jose: every list gets a search; the drill-down sends it as q.
+  testWidgets("a tile's list searches on the server after 400 ms", (
+    tester,
+  ) async {
+    final stub = _Stub();
+    await _pump(tester, stub, now: now);
+    await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
+    await tester.pumpAndSettle();
+    expect(stub.lists, hasLength(1));
+
+    await tester.enterText(
+      find.byKey(const ValueKey('pm-dash-search')),
+      'Vroom',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(stub.lists, hasLength(1), reason: 'still typing');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(stub.lists.last.queryParameters, {
+      'event': 'payments',
+      'q': 'Vroom',
+      'from': '2026-10-21',
+      'to': '2026-10-21',
+      'timezone': 'America/New_York',
+    });
+  });
+
+  // 2026-10-22: a job whose only change today was entering a watched status
+  // read "—" in Status changes.
+  testWidgets('Status changes lists an entry by its what, when and by', (
+    tester,
+  ) async {
+    final stub = _Stub(enteredOnly: true);
+    await _pump(tester, stub, now: now);
+    await tester.tap(find.byKey(const ValueKey('pm-tile-status_changes')));
+    await tester.pumpAndSettle();
+
+    Finder inRow(String text) => find.descendant(
+      of: find.byKey(const ValueKey('pm-dash-row-j-1')),
+      matching: find.text(text),
+    );
+    expect(inRow('Status Submitted → Done pending approval'), findsOneWidget);
+    expect(inRow('EzBizi · Close-out'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pm-dash-row-j-1')),
+        matching: find.textContaining('8:30'),
+      ),
+      findsOneWidget,
+    );
+    expect(inRow('—'), findsNothing);
+
+    // The timeline draws it by its what, with the rule as a link.
+    await tester.tap(find.byKey(const ValueKey('pm-dash-row-j-1')));
+    await tester.pumpAndSettle();
+    final pane = find.byKey(const ValueKey('pm-timeline'));
+    expect(
+      find.descendant(
+        of: pane,
+        matching: find.text('Status Submitted → Done pending approval'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: pane,
+        matching: find.byKey(const ValueKey('pm-timeline-rule-r-9')),
+      ),
+      findsOneWidget,
     );
   });
 
@@ -244,10 +316,15 @@ void main() {
       'timezone': 'America/New_York',
     });
 
-    // Another stage is the watched list, without the filter.
+    // Another stage is the watched list, without the filter; the dates still
+    // go, for Recently paid's count.
     await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
     await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, {'timezone': 'America/New_York'});
+    expect(stub.lists.last.queryParameters, {
+      'from': '2026-10-20',
+      'to': '2026-10-20',
+      'timezone': 'America/New_York',
+    });
     expect(find.byKey(const ValueKey('pm-range')), findsNothing);
   });
 
@@ -456,9 +533,17 @@ const _tiles = [
 
 /// The server, and what was asked of it.
 class _Stub {
-  _Stub({this.money = true, this.empty = false, this.cancelled = const []});
+  _Stub({
+    this.money = true,
+    this.empty = false,
+    this.cancelled = const [],
+    this.enteredOnly = false,
+  });
 
   final bool money;
+
+  /// The listed job's only change today is entering a watched status.
+  final bool enteredOnly;
   final bool empty;
   final List<String> cancelled;
 
@@ -504,7 +589,31 @@ class _Stub {
     if (path.endsWith('/jobs/project-management')) {
       lists.add(request.url);
       return _json({
-        'data': [_row('j-1', 'JOB-601', 'Lena Vroom', money: money)],
+        'data': [
+          enteredOnly
+              ? {
+                  ..._row('j-1', 'JOB-601', 'Lena Vroom', money: money),
+                  'timeline': [
+                    {
+                      'kind': 'entered',
+                      'at': DateTime(
+                        2026,
+                        10,
+                        21,
+                        8,
+                        30,
+                      ).toUtc().toIso8601String(),
+                      'status': 'approved',
+                      'from': 'estimate_sent',
+                      'to': 'approved',
+                      'what': 'Status Submitted → Done pending approval',
+                      'by': 'EzBizi · Close-out',
+                      'rule': {'id': 'r-9', 'name': 'Close-out'},
+                    },
+                  ],
+                }
+              : _row('j-1', 'JOB-601', 'Lena Vroom', money: money),
+        ],
         'meta': {
           'watched': ['estimate_sent'],
           'deadline_days': 30,

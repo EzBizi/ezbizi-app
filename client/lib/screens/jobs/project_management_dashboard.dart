@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -96,6 +98,11 @@ class _ProjectManagementDashboardState
   int _listRequest = 0;
   String? _openId;
 
+  /// Search in a tile's jobs (Jose: every list gets one), sent as `q` 400 ms
+  /// after typing. The server matches it as Pending Jobs' search does.
+  final _search = TextEditingController();
+  Timer? _typing;
+
   Me get _me => widget.session.me!;
   DateTime _now() => (widget.now ?? DateTime.now)();
 
@@ -104,6 +111,40 @@ class _ProjectManagementDashboardState
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _typing?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _typed(String _) {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 400), () {
+      if (_tile != null) _list(_tile!);
+    });
+  }
+
+  Widget _searchField({required EdgeInsets padding}) => Padding(
+    padding: padding,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: SizedBox(
+        width: 300,
+        child: TextField(
+          key: const ValueKey('pm-dash-search'),
+          controller: _search,
+          onChanged: _typed,
+          decoration: const InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search, size: 18),
+            hintText: 'Job, customer, address, phone or tech',
+          ),
+        ),
+      ),
+    ),
+  );
 
   @override
   void didUpdateWidget(ProjectManagementDashboard old) {
@@ -181,6 +222,7 @@ class _ProjectManagementDashboardState
 
     final response = await widget.api.get('/jobs/project-management', {
       'event': key,
+      if (_search.text.trim().isNotEmpty) 'q': _search.text.trim(),
       ..._range.query(_now()),
       'timezone': ?widget.zone(),
       'franchise_id': ?_branch,
@@ -479,6 +521,9 @@ class _ProjectManagementDashboardState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _searchField(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  ),
                   _headerRow(context),
                   Divider(height: 1, color: scheme.outlineVariant),
                   Expanded(child: _listBody(context, table: true)),
@@ -541,6 +586,7 @@ class _ProjectManagementDashboardState
             ],
           ),
         ),
+        _searchField(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8)),
         Divider(height: 1, color: theme.colorScheme.outlineVariant),
         Expanded(child: _listBody(context, table: false)),
       ],
@@ -561,7 +607,9 @@ class _ProjectManagementDashboardState
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'No jobs for ${_tileLabel(_tile!).toLowerCase()} in these dates.',
+          _search.text.trim().isNotEmpty
+              ? 'No jobs here match “${_search.text.trim()}”.'
+              : 'No jobs for ${_tileLabel(_tile!).toLowerCase()} in these dates.',
           key: const ValueKey('pm-dash-none'),
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyMedium?.copyWith(
@@ -601,15 +649,17 @@ class _ProjectManagementDashboardState
       );
     }
 
-    final kind = switch (_tile) {
-      'payments' => 'payment',
-      'tag_changes' => 'tags',
-      _ => 'status',
+    // Entering a watched status is a status change too, with from, to and
+    // `what` since 2026-10-22 (a job whose only change was its entry read "—").
+    final kinds = switch (_tile) {
+      'payments' => const {'payment'},
+      'tag_changes' => const {'tags'},
+      _ => const {'status', 'entered'},
     };
     final span = _range.span(now);
     final steps = [
       for (final e in (r['timeline'] as List?) ?? const [])
-        if (e is Map && e['kind'] == kind && _inside(e['at'], span))
+        if (e is Map && kinds.contains(e['kind']) && _inside(e['at'], span))
           if (_tile != 'cancellations' ||
               (widget.cancelled ?? const []).contains('${e['to']}'))
             e.cast<String, dynamic>(),
