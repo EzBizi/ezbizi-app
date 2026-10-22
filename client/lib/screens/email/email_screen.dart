@@ -18,6 +18,7 @@ import 'message_html.dart';
 import 'message_list.dart';
 import 'reply_panel.dart';
 import 'settings_tab.dart';
+import 'workspace_tab.dart';
 
 /// Email — a window onto the addresses an organization shares.
 ///
@@ -191,6 +192,8 @@ class _EmailScreenState extends State<EmailScreen> {
   static const _declaredTabs = <(String, String, IconData)>[
     (_inboxTab, 'Inbox', Icons.inbox_outlined),
     ('settings', 'Settings', Icons.settings_outlined),
+    // UI queue 134: each connected Workspace's people and their signatures.
+    ('workspace', 'Google Workspace', Icons.badge_outlined),
   ];
 
   /// Absent `/me` answers NO, not yes — HrScreen's rule. A null here is a load
@@ -1000,6 +1003,13 @@ class _EmailScreenState extends State<EmailScreen> {
                       )
                     : const SizedBox.shrink(),
               ),
+              if (_mayOpen('workspace'))
+                Offstage(
+                  offstage: _tab != 'workspace',
+                  child: _shown.contains('workspace')
+                    ? WorkspaceTab(api: widget.api, session: widget.session)
+                    : const SizedBox.shrink(),
+                ),
             ],
           ),
         ),
