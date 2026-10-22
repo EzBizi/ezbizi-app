@@ -1712,6 +1712,16 @@ class _OnboardingFormState extends State<OnboardingForm> {
     switch (field.key) {
       case 'state':
         return _statePicker(question, enabled: enabled);
+      // Several rates by weekly sales (the accountant via Jose, 2026-10-22:
+      // "15% when above X, 30% when above X"). Saved as the sentence the
+      // contract prints, so nothing downstream changes.
+      case 'commission_stages':
+        return CommissionTiers(
+          key: answerKey(field.key),
+          value: _answerOf(question.key),
+          enabled: enabled,
+          onChanged: (v) => _answer(question.key, v),
+        );
       // Eve was unsure what it means (Jose, 2026-10-06): the usual answers
       // to tap, and the box still takes any words.
       case 'comp_method':
@@ -3245,4 +3255,163 @@ Future<String?> downloadSignedPdf(ApiClient api, OnboardingSummary row) async {
   ].join(' - ');
   Files.download('${name.isEmpty ? 'Signed contract' : name}.pdf', bytes);
   return null;
+}
+
+/// Commission rates by weekly sales, one row each: "15% above $5,000; 30%
+/// above $10,000". Text that does not read as tiers (typed before this
+/// existed) starts as one row holding it, so nothing is lost.
+class CommissionTiers extends StatefulWidget {
+  const CommissionTiers({
+    super.key,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  static final _tier = RegExp(
+    r'^\s*([\d.]+)\s*%\s*above\s*\$?\s*([\d,.]+)\s*$',
+  );
+
+  /// "15% above $5,000; 30% above $10,000" → [(15, 5,000), (30, 10,000)],
+  /// or null when the text is something else.
+  static List<(String, String)>? parse(String text) {
+    if (text.trim().isEmpty) return [];
+    final out = <(String, String)>[];
+    for (final part in text.split(';')) {
+      final m = _tier.firstMatch(part);
+      if (m == null) return null;
+      out.add((m.group(1)!, m.group(2)!));
+    }
+    return out;
+  }
+
+  static String format(List<(String, String)> tiers) => [
+    for (final (pct, above) in tiers)
+      if (pct.trim().isNotEmpty && above.trim().isNotEmpty)
+        '${pct.trim()}% above \$${above.trim()}',
+  ].join('; ');
+
+  @override
+  State<CommissionTiers> createState() => _CommissionTiersState();
+}
+
+class _CommissionTiersState extends State<CommissionTiers> {
+  late final List<(TextEditingController, TextEditingController)> _rows;
+  String? _legacy;
+
+  @override
+  void initState() {
+    super.initState();
+    final parsed = CommissionTiers.parse(widget.value);
+    if (parsed == null) _legacy = widget.value;
+    _rows = [
+      for (final (pct, above) in parsed ?? const <(String, String)>[])
+        (TextEditingController(text: pct), TextEditingController(text: above)),
+    ];
+    if (_rows.isEmpty) {
+      _rows.add((TextEditingController(), TextEditingController()));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final (a, b) in _rows) {
+      a.dispose();
+      b.dispose();
+    }
+    super.dispose();
+  }
+
+  void _changed() => widget.onChanged(
+    CommissionTiers.format([for (final (a, b) in _rows) (a.text, b.text)]),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_legacy != null && _legacy!.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Saved before tiers: "$_legacy". Enter it as tiers below to replace it.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        for (final (i, (pct, above)) in _rows.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 110,
+                  child: TextField(
+                    key: Key('tier-pct-$i'),
+                    controller: pct,
+                    enabled: widget.enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      suffixText: '%',
+                      labelText: 'Commission',
+                    ),
+                    onChanged: (_) => _changed(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Flexible(child: Text('when weekly sales are above')),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    key: Key('tier-above-$i'),
+                    controller: above,
+                    enabled: widget.enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      prefixText: '\$',
+                      labelText: 'Sales',
+                    ),
+                    onChanged: (_) => _changed(),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove this rate',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: !widget.enabled || _rows.length == 1
+                      ? null
+                      : () {
+                          setState(() => _rows.removeAt(i));
+                          _changed();
+                        },
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          key: const Key('tier-add'),
+          onPressed: widget.enabled
+              ? () => setState(
+                  () => _rows.add((
+                    TextEditingController(),
+                    TextEditingController(),
+                  )),
+                )
+              : null,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add a commission rate'),
+        ),
+      ],
+    );
+  }
 }
