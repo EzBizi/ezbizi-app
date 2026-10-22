@@ -1208,6 +1208,27 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame('customer', $rows[0]['customer']['type']);
     }
 
+    /** Handled travels on inbox rows and the open message; unread per inbox comes from the cache. */
+    public function test_inbox_rows_and_detail_carry_dealt_and_inboxes_carry_unread(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t);
+        FakeMailboxReader::$page   = new MessagePage([$this->sameMail('m-1')]);
+        FakeMailboxReader::$detail = new MessageDetail(summary: $this->summary('m-1'), blocks: []);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1/dealt")->assertOk();
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')
+            ->assertJsonPath('data.0.dealt.by', $t['admin']->name)
+            ->assertJsonPath('data.0.inboxes.0.dealt.by', $t['admin']->name);
+        $this->signedInAs($t['admin'])->getJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1")
+            ->assertJsonPath('data.dealt.by', $t['admin']->name);
+
+        \Illuminate\Support\Facades\Cache::forever('dashboard.email.unread.'.$info->id, ['n' => 7, 'at' => now()->getTimestamp()]);
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes')->assertJsonPath('data.0.unread', 7);
+    }
+
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
     {
         $this->withFakeProvider();
@@ -1246,6 +1267,42 @@ class MailboxMessagesApiTest extends TestCase
 
         $this->assertSame(['info@a-1chimney.com m-1', ['INBOX'], []], FakeMailboxReader::$modified[1]);
         $this->assertSame(0, $this->inTenant($t['org'], fn () => \App\Models\EmailSnooze::query()->count()));
+    }
+
+    /** Forward: the note, then the original as text, sent from the inbox. */
+    public function test_forward_sends_the_original_under_the_note(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t);
+        FakeMailboxReader::$detail = new MessageDetail(
+            summary: $this->summary(),
+            blocks: (new BodySanitiser)->sanitise('<p>Please quote two flues.</p>'),
+        );
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1/forward", ['to' => ['tech@a-1chimney.com'], 'body' => 'Can you take this?'])
+            ->assertOk();
+
+        $sent = FakeMailboxReader::$sent[0];
+        $this->assertSame(['tech@a-1chimney.com'], $sent['to']);
+        $this->assertSame('Fwd: Quote for a sweep', $sent['subject']);
+        $this->assertStringStartsWith('Can you take this?', $sent['body']);
+        $this->assertStringContainsString('Please quote two flues.', $sent['body']);
+        $this->assertStringContainsString('From: Bob Smith <bob@example.com>', $sent['body']);
+    }
+
+    /** Copies on a provider without them are refused in words, not silently dropped. */
+    public function test_reply_with_copies_is_refused_where_the_provider_has_none(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t);
+
+        $this->signedInAs($t['admin'])
+            ->postJson("/api/v1/email/mailboxes/{$info->id}/messages/m-1/reply", ['body' => 'Hi', 'all' => true])
+            ->assertStatus(422);
+        $this->assertSame([], FakeMailboxReader::$replies);
     }
 
     public function test_the_mark_as_read_button_also_reaches_the_service(): void

@@ -46,13 +46,17 @@ final class ReplyComposer
      * @param  array<string, string>  $headers  the original's headers, lower-cased,
      *                                          for threading
      */
-    public function compose(Mailbox $mailbox, MessageSummary $original, array $headers, string $body): string
+    public function compose(Mailbox $mailbox, MessageSummary $original, array $headers, string $body, array $to = [], array $cc = []): string
     {
+        // Each address through the guard on its own, so one cannot smuggle a header past the join.
+        $to = $to === [] ? [$original->fromAddress] : $to;
+
         $lines = [
             // The inbox. Composed from the record, every time, with no
             // alternative path and no parameter that could override it.
             'From: '.$this->headerValue(sprintf('%s <%s>', $mailbox->display_name, $mailbox->address)),
-            'To: '.$this->headerValue($original->fromAddress),
+            'To: '.implode(', ', array_map(fn (string $a) => $this->headerValue($a), $to)),
+            ...($cc === [] ? [] : ['Cc: '.implode(', ', array_map(fn (string $a) => $this->headerValue($a), $cc))]),
             'Subject: '.$this->headerValue($this->subject($original->subject)),
             'MIME-Version: 1.0',
             'Content-Type: text/plain; charset=utf-8',
@@ -86,9 +90,9 @@ final class ReplyComposer
     }
 
     /** The same message, base64url and unpadded, as Gmail's `messages.send` wants it. */
-    public function composeForGmail(Mailbox $mailbox, MessageSummary $original, array $headers, string $body): string
+    public function composeForGmail(Mailbox $mailbox, MessageSummary $original, array $headers, string $body, array $to = [], array $cc = []): string
     {
-        return rtrim(strtr(base64_encode($this->compose($mailbox, $original, $headers, $body)), '+/', '-_'), '=');
+        return rtrim(strtr(base64_encode($this->compose($mailbox, $original, $headers, $body, $to, $cc)), '+/', '-_'), '=');
     }
 
     /**
