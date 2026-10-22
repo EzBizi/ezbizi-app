@@ -37,6 +37,31 @@ class _ModulesScreenState extends State<ModulesScreen> {
   int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _modules = [];
+  String _query = '';
+
+  /// The modules whose visible text contains the search, case-insensitively.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _modules;
+    return _modules.where((module) {
+      final state = module['state'] as String?;
+      final text = [
+        module['label'],
+        module['key'],
+        state,
+        switch (state) {
+          'enabled' => 'On',
+          'disabled' => 'Off',
+          'beta' => 'Beta',
+          _ => null,
+        },
+        module['reason'],
+        module['changed_by'],
+        ...(module['permissions'] as List? ?? const []),
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -203,10 +228,35 @@ class _ModulesScreenState extends State<ModulesScreen> {
           note:
               'Platform-wide availability. This is the gate above every '
               'organization\'s own permissions — disabled beats everything.',
-          action: IconButton(
-            tooltip: 'Refresh',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('modules-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a module',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -225,11 +275,19 @@ class _ModulesScreenState extends State<ModulesScreen> {
                       ),
                     ),
                   )
+                : _shown.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No modules match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _modules.length,
+                    itemCount: _shown.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _modules[i]),
+                    itemBuilder: (context, i) => _row(context, _shown[i]),
                   ),
           ),
         ),

@@ -74,6 +74,24 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
   String? _error;
   List<Map<String, dynamic>> _cameras = [];
 
+  String _query = '';
+
+  /// The cameras the search keeps: case-insensitive over the tile's label and
+  /// protocol.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _cameras;
+    return [
+      for (final c in _cameras)
+        if ([
+          c['label'],
+          c['protocol'],
+          _protocolLabel(c['protocol'] as String? ?? ''),
+        ].any((v) => (v?.toString() ?? '').toLowerCase().contains(q)))
+          c,
+    ];
+  }
+
   bool get _canView =>
       widget.session.me?.can('monitoring.cameras.view') ?? false;
 
@@ -194,51 +212,80 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
       return _EmptyState(canManage: _canManage, onAdd: _addCamera);
     }
 
+    final shown = _shown;
+
     return SingleChildScrollView(
       key: const Key('camera-monitoring-grid'),
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_canManage) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                key: const Key('camera-monitoring-add-button'),
-                onPressed: _addCamera,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add camera'),
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            // 360 + the 12px spacing below never fits two columns inside the
-            // 343px a 375px-wide screen leaves after this column's own 16px
-            // padding on each side (R7) — one column there, more as the
-            // screen widens, with no breakpoint math to keep in sync by hand.
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 360,
-              mainAxisExtent: 360,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: _cameras.length,
-            itemBuilder: (context, i) {
-              final camera = _cameras[i];
-              return _CameraTile(
-                api: widget.api,
-                camera: camera,
-                canManage: _canManage,
-                onDelete: () => _deleteCamera(
-                  camera['id'] as String,
-                  camera['label'] as String? ?? 'this camera',
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('cameras-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a camera',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
                 ),
-              );
-            },
+              ),
+              if (_canManage)
+                OutlinedButton.icon(
+                  key: const Key('camera-monitoring-add-button'),
+                  onPressed: _addCamera,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add camera'),
+                ),
+            ],
           ),
+          const SizedBox(height: 14),
+          if (shown.isEmpty)
+            Text(
+              'No cameras match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              // 360 + the 12px spacing below never fits two columns inside the
+              // 343px a 375px-wide screen leaves after this column's own 16px
+              // padding on each side (R7) — one column there, more as the
+              // screen widens, with no breakpoint math to keep in sync by hand.
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 360,
+                mainAxisExtent: 360,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemCount: shown.length,
+              itemBuilder: (context, i) {
+                final camera = shown[i];
+                return _CameraTile(
+                  api: widget.api,
+                  camera: camera,
+                  canManage: _canManage,
+                  onDelete: () => _deleteCamera(
+                    camera['id'] as String,
+                    camera['label'] as String? ?? 'this camera',
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );

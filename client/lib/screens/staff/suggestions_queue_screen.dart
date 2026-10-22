@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/staff_session.dart';
@@ -79,6 +81,35 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
   /// the layout is wide enough to show both at once.
   bool _openNarrow = false;
 
+  final _search = TextEditingController();
+  String _query = '';
+  Timer? _debounce;
+
+  /// The suggestions whose visible text contains the search,
+  /// case-insensitively.
+  ///
+  /// Until StaffSuggestionsController@index reads q, the loaded rows are
+  /// filtered here too.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((row) {
+      final text = [
+        row['organization']?.toString(),
+        row['author']?.toString(),
+        row['body']?.toString(),
+        row['decision_note']?.toString(),
+        switch (row['status']) {
+          'reviewing' => 'In review',
+          'approved' => 'Approved',
+          'denied' => 'Denied',
+          _ => 'New',
+        },
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +118,8 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -96,11 +129,15 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
 
     setState(() {
       // A spinner only when there is nothing on screen yet — see AsyncBody.
-      _loading = _rows.isEmpty;
+      // Not while searching: a spinner would tear the search field down
+      // mid-typing when a search comes back empty.
+      _loading = _rows.isEmpty && _query.trim().isEmpty;
       _error = null;
     });
 
-    final response = await widget.staff.api.get('/staff/suggestions');
+    final response = await widget.staff.api.get('/staff/suggestions', {
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
+    });
 
     // Superseded by a newer load.
     if (!mounted || request != _request) return;
@@ -208,7 +245,7 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
       loading: _loading,
       error: _error,
       onRetry: _load,
-      child: _rows.isEmpty
+      child: _rows.isEmpty && _query.trim().isEmpty
           ? _empty(context)
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -276,23 +313,65 @@ class _SuggestionsQueueScreenState extends State<SuggestionsQueueScreen> {
   }
 
   Widget _rail(BuildContext context) {
-    final newRows = _rows.where((r) => r['status'] == 'new').toList();
-    final reviewingRows = _rows
-        .where((r) => r['status'] == 'reviewing')
-        .toList();
-    final decidedRows = _rows
-        .where((r) => r['status'] == 'approved' || r['status'] == 'denied')
-        .toList();
+    bool isNew(Map<String, dynamic> r) => r['status'] == 'new';
+    bool isReviewing(Map<String, dynamic> r) => r['status'] == 'reviewing';
+    bool isDecided(Map<String, dynamic> r) =>
+        r['status'] == 'approved' || r['status'] == 'denied';
+
+    // The bands count the whole queue; the rows under them follow the search.
+    final shown = _shown;
 
     return ListView(
       key: const Key('suggestions-rail'),
       children: [
-        suggestionBand(context, 'Waiting', newRows.length),
-        for (final row in newRows) _railRow(context, row),
-        suggestionBand(context, 'Being read', reviewingRows.length),
-        for (final row in reviewingRows) _railRow(context, row),
-        suggestionBand(context, 'Answered', decidedRows.length),
-        for (final row in decidedRows) _railRow(context, row),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('suggestions-queue-search'),
+                controller: _search,
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a suggestion',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) {
+                  setState(() => _query = v);
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 400), _load);
+                },
+              ),
+            ),
+          ),
+        ),
+        if (shown.isEmpty && _query.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(
+              'No suggestions match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          )
+        else ...[
+          suggestionBand(context, 'Waiting', _rows.where(isNew).length),
+          for (final row in shown.where(isNew)) _railRow(context, row),
+          suggestionBand(
+            context,
+            'Being read',
+            _rows.where(isReviewing).length,
+          ),
+          for (final row in shown.where(isReviewing)) _railRow(context, row),
+          suggestionBand(context, 'Answered', _rows.where(isDecided).length),
+          for (final row in shown.where(isDecided)) _railRow(context, row),
+        ],
       ],
     );
   }

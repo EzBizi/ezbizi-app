@@ -89,6 +89,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// Every report, the Builder's, or Work Hours'.
   String? _kind;
 
+  /// The library's search, over what a row shows. The controller keeps the
+  /// typed words in the field when a report opens and the library returns.
+  String _query = '';
+  final _search = TextEditingController();
+
   /// The Work Hours report open beside the list, or in place on a phone.
   String? _openHours;
 
@@ -125,6 +130,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   void dispose() {
     DeepLinks.pending.removeListener(_linkArrived);
+    _search.dispose();
     super.dispose();
   }
 
@@ -668,6 +674,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
         for (final report in scheduling) _LibraryRow.scheduling(report),
     ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
+    final query = _query.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? rows
+        : [
+            for (final row in rows)
+              if ([
+                row.name,
+                _kindPill(row).label,
+                _about(row),
+                _covers(row),
+              ].any((text) => text.toLowerCase().contains(query)))
+                row,
+          ];
+
     final kinds = [
       reports.isNotEmpty,
       hours.isNotEmpty,
@@ -679,8 +699,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (kinds > 1)
-          _kinds(context, reports.length, hours.length, scheduling.length),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('reports-library-search'),
+                  controller: _search,
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a report',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              if (kinds > 1)
+                _kinds(
+                  context,
+                  reports.length,
+                  hours.length,
+                  scheduling.length,
+                ),
+            ],
+          ),
+        ),
         for (final error in [_error, _hoursError, _schedulingError])
           if (error != null)
             Padding(
@@ -688,13 +742,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
               child: ErrorNote(error),
             ),
         Expanded(
-          child: !wide
-              ? _tiles(context, rows)
+          child: shown.isEmpty && query.isNotEmpty
+              ? Text(
+                  'No reports match "${_query.trim()}".',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                )
+              : !wide
+              ? _tiles(context, shown)
               // The report docks beside the table, level with it.
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: _table(context, rows)),
+                    Expanded(child: _table(context, shown)),
                     if (docked != null) ...[
                       const SizedBox(width: 16),
                       Container(
@@ -773,18 +832,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
       onSelected: (_) => setState(() => _kind = value),
     );
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          chip(null, 'All', built + hours + scheduling),
-          if (built > 0) chip('built', 'Built here', built),
-          if (hours > 0) chip('hours', 'Work Hours', hours),
-          if (scheduling > 0) chip('scheduling', 'Scheduling', scheduling),
-        ],
-      ),
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        chip(null, 'All', built + hours + scheduling),
+        if (built > 0) chip('built', 'Built here', built),
+        if (hours > 0) chip('hours', 'Work Hours', hours),
+        if (scheduling > 0) chip('scheduling', 'Scheduling', scheduling),
+      ],
     );
   }
 

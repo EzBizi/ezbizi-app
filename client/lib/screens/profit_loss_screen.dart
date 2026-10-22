@@ -59,6 +59,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
   String? _error;
   bool _loadingSources = true;
   bool _loadingWeek = false;
+  String _query = '';
 
   @override
   void initState() {
@@ -376,6 +377,11 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     final net = (figures['net'] as num?)?.toDouble() ?? 0;
 
     final income = (figures['income'] as num?)?.toDouble();
+    final query = _query.trim().toLowerCase();
+    final shown = [
+      for (final entry in categories.entries)
+        if (query.isEmpty || entry.key.toLowerCase().contains(query)) entry,
+    ];
 
     // UI queue 87, desktop 1: equal figure tiles, then the one table.
     return [
@@ -411,32 +417,64 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
         _disagreements(context, disagreements),
         const SizedBox(height: 20),
       ],
-      Text('Categories', style: theme.textTheme.titleMedium),
-      const SizedBox(height: 8),
-      ReportGrid(
-        key: const ValueKey('pl-categories'),
-        columns: const [
-          GridColumn('Category', pinned: true),
-          GridColumn('Lines', numeric: true, main: true),
-          GridColumn('Total', numeric: true, headline: true),
-        ],
-        rows: [
-          for (final MapEntry(key: name, value: detail) in categories.entries)
-            switch ((detail as Map<String, dynamic>?) ?? const {}) {
-              final row => [
-                GridCell(name),
-                GridCell(
-                  (row['lines'] as num?)?.toInt() == 1
-                      ? '1 line'
-                      : '${(row['lines'] as num?)?.toInt() ?? 0} lines',
-                ),
-                row['total'] is num
-                    ? GridCell(_money(row['total'] as num))
-                    : const GridCell.none(),
-              ],
-            },
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
+        children: [
+          Text('Categories', style: theme.textTheme.titleMedium),
+          // As tall as the buttons beside it (Jose, 2026-10-20).
+          SizedBox(
+            width: 240,
+            height: 40,
+            child: TextField(
+              key: const Key('profit-loss-search'),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a category',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
         ],
       ),
+      const SizedBox(height: 8),
+      if (shown.isEmpty && query.isNotEmpty)
+        Text(
+          'No categories match "${_query.trim()}".',
+          style: theme.textTheme.bodyMedium,
+        )
+      else
+        ReportGrid(
+          key: const ValueKey('pl-categories'),
+          columns: const [
+            GridColumn('Category', pinned: true),
+            GridColumn('Lines', numeric: true, main: true),
+            GridColumn('Total', numeric: true, headline: true),
+          ],
+          rows: [
+            for (final MapEntry(key: name, value: detail) in shown)
+              switch ((detail as Map<String, dynamic>?) ?? const {}) {
+                final row => [
+                  GridCell(name),
+                  GridCell(
+                    (row['lines'] as num?)?.toInt() == 1
+                        ? '1 line'
+                        : '${(row['lines'] as num?)?.toInt() ?? 0} lines',
+                  ),
+                  row['total'] is num
+                      ? GridCell(_money(row['total'] as num))
+                      : const GridCell.none(),
+                ],
+              },
+          ],
+        ),
     ];
   }
 

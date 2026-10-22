@@ -117,7 +117,13 @@ void main() {
             'not the sentence.',
       );
 
-      await tester.enterText(find.byType(TextField), 'Say why, in a sentence.');
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('suggestion-detail')),
+          matching: find.byType(TextField),
+        ),
+        'Say why, in a sentence.',
+      );
       await tester.pumpAndSettle();
 
       final denyAfter = tester.widget<OutlinedButton>(
@@ -146,7 +152,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byType(TextField),
+      find.descendant(
+        of: find.byKey(const Key('suggestion-detail')),
+        matching: find.byType(TextField),
+      ),
       'Not in that shape, and here is why.',
     );
     await tester.pumpAndSettle();
@@ -197,7 +206,10 @@ void main() {
       // the sentence with no message; now the action is simply not available
       // while there is something to drop, and says so.
       await tester.enterText(
-        find.byType(TextField),
+        find.descendant(
+          of: find.byKey(const Key('suggestion-detail')),
+          matching: find.byType(TextField),
+        ),
         'Good idea, scoping it for October.',
       );
       await tester.pumpAndSettle();
@@ -226,7 +238,13 @@ void main() {
       expect(sent, isNull, reason: 'A disabled control sent a decision.');
 
       // Clearing the box makes it available again, and it still sends nothing.
-      await tester.enterText(find.byType(TextField), '');
+      await tester.enterText(
+        find.descendant(
+          of: find.byKey(const Key('suggestion-detail')),
+          matching: find.byType(TextField),
+        ),
+        '',
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Mark in review'));
@@ -250,7 +268,13 @@ void main() {
     await tester.tap(_inRail('A-1 Chimney'));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'x');
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const Key('suggestion-detail')),
+        matching: find.byType(TextField),
+      ),
+      'x',
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Deny'));
@@ -293,7 +317,12 @@ void main() {
       // Nothing left to mark in review once it has been decided.
       expect(find.text('Mark in review'), findsNothing);
 
-      final field = tester.widget<TextField>(find.byType(TextField));
+      final field = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const Key('suggestion-detail')),
+          matching: find.byType(TextField),
+        ),
+      );
       expect(
         field.controller?.text,
         'Approved — it ships with the next build.',

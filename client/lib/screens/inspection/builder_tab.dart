@@ -268,6 +268,9 @@ class _BuilderTabState extends State<BuilderTab> {
       context,
       title: 'Inspections',
       value: _selectedId,
+      // Searchable however few there are (Jose, 2026-10-22: every list gets a
+      // search bar); the picker's own default waits for eight.
+      searchFrom: 1,
       options: [
         for (final row in _definitions)
           SearchOption(

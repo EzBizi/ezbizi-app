@@ -37,6 +37,7 @@ class _MarketingReportState extends State<MarketingReport> {
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = true;
   String? _error;
+  String _query = '';
 
   /// Monday-start weeks, as the P&L's are.
   static DateSpan _lastWeek(DateTime today) {
@@ -185,6 +186,17 @@ class _MarketingReportState extends State<MarketingReport> {
     final net = t['net_profit_minor'];
     final leads = t['leads'];
     final jobs = t['jobs_created'];
+    // The Total row stays the whole report's; the search narrows the rows.
+    final query = _query.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? _rows
+        : [
+            for (final row in _rows)
+              if ('${row['branch'] ?? ''} ${row['source'] ?? ''}'
+                  .toLowerCase()
+                  .contains(query))
+                row,
+          ];
     return [
       OverviewFigures(
         figures: [
@@ -212,40 +224,68 @@ class _MarketingReportState extends State<MarketingReport> {
         ],
       ),
       const SizedBox(height: 12),
-      ReportGrid(
-        key: const Key('marketing-table'),
-        columns: [
-          for (final (key, label) in _columns)
-            GridColumn(
-              label,
-              numeric: key != 'branch' && key != 'source',
-              pinned: key == 'branch' || key == 'source',
-              // A phone's card: cost, leads and jobs, net profit beside
-              // the name.
-              main:
-                  key == 'cost_minor' ||
-                  key == 'leads' ||
-                  key == 'jobs_created',
-              headline: key == 'net_profit_minor',
+      // As tall as the buttons beside it (Jose, 2026-10-20).
+      Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: 240,
+          height: 40,
+          child: TextField(
+            key: const Key('marketing-report-search'),
+            textAlignVertical: TextAlignVertical.center,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12),
+              prefixIconConstraints: BoxConstraints(minWidth: 36),
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Find a branch or source',
+              border: OutlineInputBorder(),
             ),
-        ],
-        rows: [
-          for (final row in _rows)
-            [for (final (key, _) in _columns) _gridCell(row, key)],
-        ],
-        total: [
-          for (final (key, _) in _columns)
-            switch (_cell(t.cast<String, dynamic>(), key)) {
-              '—' => const GridCell.none(),
-              final text => GridCell(
-                text,
-                tone: key == 'net_profit_minor' && net is num && net < 0
-                    ? Tone.bad
-                    : null,
-              ),
-            },
-        ],
+            onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
       ),
+      const SizedBox(height: 12),
+      if (shown.isEmpty)
+        Text(
+          'No rows match "${_query.trim()}".',
+          style: Theme.of(context).textTheme.bodyMedium,
+        )
+      else
+        ReportGrid(
+          key: const Key('marketing-table'),
+          columns: [
+            for (final (key, label) in _columns)
+              GridColumn(
+                label,
+                numeric: key != 'branch' && key != 'source',
+                pinned: key == 'branch' || key == 'source',
+                // A phone's card: cost, leads and jobs, net profit beside
+                // the name.
+                main:
+                    key == 'cost_minor' ||
+                    key == 'leads' ||
+                    key == 'jobs_created',
+                headline: key == 'net_profit_minor',
+              ),
+          ],
+          rows: [
+            for (final row in shown)
+              [for (final (key, _) in _columns) _gridCell(row, key)],
+          ],
+          total: [
+            for (final (key, _) in _columns)
+              switch (_cell(t.cast<String, dynamic>(), key)) {
+                '—' => const GridCell.none(),
+                final text => GridCell(
+                  text,
+                  tone: key == 'net_profit_minor' && net is num && net < 0
+                      ? Tone.bad
+                      : null,
+                ),
+              },
+          ],
+        ),
     ];
   }
 

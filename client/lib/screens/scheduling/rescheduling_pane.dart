@@ -47,6 +47,9 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
   /// all-areas answer is one call and already holds every row.
   String? _area;
 
+  /// What the search bar holds; matched against the job's visible words.
+  String _query = '';
+
   /// The open row, by its job; on a phone the list gives way to it.
   String? _open;
   bool _confirming = false;
@@ -207,6 +210,23 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     if (response.ok) await _load();
   }
 
+  /// The row's number, service, customer, address and area hold the term.
+  bool _matches(Map<String, dynamic> row) {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return true;
+    final job = _map(row['job']);
+    final customer = _map(job['customer']);
+    return [
+      job['number'],
+      job['service'],
+      job['status'],
+      customer['name'],
+      customer['phone'],
+      customer['address'],
+      row['area_name'],
+    ].any((v) => v != null && '$v'.toLowerCase().contains(needle));
+  }
+
   void _select(Map<String, dynamic> row) => setState(() {
     _open = _id(row);
     _confirming = false;
@@ -220,9 +240,13 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
       for (final r in _rows)
         if (r['area_id'] is String) r['area_id'] as String: '${r['area_name']}',
     };
-    final rows = [
+    final inArea = [
       for (final r in _rows)
         if (_area == null || r['area_id'] == _area) r,
+    ];
+    final rows = [
+      for (final r in inArea)
+        if (_matches(r)) r,
     ];
 
     return AsyncBody(
@@ -288,6 +312,27 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                     }),
                   ),
                 ),
+                // As tall as the buttons beside it (Jose, 2026-10-20).
+                SizedBox(
+                  width: 240,
+                  height: 40,
+                  child: TextField(
+                    key: const Key('rescheduling-search'),
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                      prefixIconConstraints: BoxConstraints(minWidth: 36),
+                      prefixIcon: Icon(Icons.search, size: 18),
+                      hintText: 'Find a job',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() {
+                      _query = v;
+                      _open = null;
+                    }),
+                  ),
+                ),
                 Text(
                   rows.isEmpty ? '' : 'Biggest saving first',
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -316,6 +361,23 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                     ),
                   ),
                 );
+
+          if (inArea.isNotEmpty && rows.isEmpty) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                bar,
+                ?moved,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Text(
+                    'No jobs match "${_query.trim()}".',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            );
+          }
 
           if (rows.isEmpty) {
             return Column(

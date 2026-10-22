@@ -313,6 +313,11 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(DateRangePanel), findsOneWidget);
 
+    // The search field's row pushes the card below a phone's fold.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('scoring-card-Maya Ortiz')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('scoring-card-Maya Ortiz')));
     await tester.pumpAndSettle();
     expect(

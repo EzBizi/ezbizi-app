@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/staff_session.dart';
 import '../../core/timestamps.dart';
@@ -21,11 +23,42 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
   bool _activeOnly = false;
   String? _error;
   List<Map<String, dynamic>> _sessions = [];
+  String _query = '';
+  Timer? _debounce;
+
+  /// The sessions whose visible text contains the search, case-insensitively.
+  ///
+  /// Until StaffController@impersonations reads q, the loaded rows are
+  /// filtered here too.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _sessions;
+    return _sessions.where((session) {
+      final org = session['organization'] as Map? ?? const {};
+      final who = session['staff'] as Map? ?? const {};
+      final text = [
+        org['name'],
+        who['name'],
+        who['email'],
+        session['reason'],
+        session['client_approved'] == true
+            ? 'Client approved'
+            : 'No client approval',
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -39,10 +72,10 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
       _error = null;
     });
 
-    final response = await widget.staff.api.get(
-      '/staff/impersonations',
-      _activeOnly ? {'active': '1'} : null,
-    );
+    final response = await widget.staff.api.get('/staff/impersonations', {
+      if (_activeOnly) 'active': '1',
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
+    });
 
     if (!mounted) return;
 
@@ -83,9 +116,33 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
           note:
               'Every time EzBizi staff opened a client\'s data. Written for '
               'every tier, including Lead Developer.',
-          action: Row(
-            mainAxisSize: MainAxisSize.min,
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('impersonations-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a session',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) {
+                    setState(() => _query = v);
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 400), _load);
+                  },
+                ),
+              ),
               FilterChip(
                 label: const Text('Active only'),
                 selected: _activeOnly,
@@ -107,13 +164,21 @@ class _ImpersonationsScreenState extends State<ImpersonationsScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _sessions.isEmpty
+            child: _shown.isEmpty && _query.trim().isNotEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No sessions match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                : _sessions.isEmpty
                 ? const Center(child: Text('Nothing recorded yet.'))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _sessions.length,
+                    itemCount: _shown.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => _row(context, _sessions[i]),
+                    itemBuilder: (context, i) => _row(context, _shown[i]),
                   ),
           ),
         ),

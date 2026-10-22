@@ -46,6 +46,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
   List<Map<String, dynamic>> _campaigns = const [];
   bool _editing = false;
   String? _error;
+  String _query = '';
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
@@ -148,6 +149,21 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     };
     num total(String key) =>
         rows.fold<num>(0, (sum, r) => sum + ((r[key] as num?) ?? 0));
+    // The figures and the Total row stay the whole report's; the search
+    // narrows the rows.
+    final query = _query.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? rows
+        : [
+            for (final r in rows)
+              if ([
+                r['name'],
+                r['state'],
+                r['category'] ?? 'Uncategorised',
+                r['branch'],
+              ].any((v) => '${v ?? ''}'.toLowerCase().contains(query)))
+                r,
+          ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -166,7 +182,26 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
         Wrap(
           spacing: 12,
           runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            // As tall as the buttons beside it (Jose, 2026-10-20).
+            SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('meta-ads-report-search'),
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a campaign',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
             _filter(
               'State',
               _state,
@@ -229,53 +264,59 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
             ],
           ),
           const SizedBox(height: 12),
-          ReportGrid(
-            key: const ValueKey('meta-table'),
-            columns: const [
-              GridColumn('Campaign', pinned: true),
-              GridColumn('State'),
-              GridColumn('Category'),
-              GridColumn('Branch'),
-              GridColumn('Spend', numeric: true, main: true),
-              GridColumn('Leads', numeric: true, main: true),
-              GridColumn('Cost per lead', numeric: true, main: true),
-              GridColumn('Clicks', numeric: true),
-              GridColumn('Impressions', numeric: true),
-            ],
-            rows: [
-              for (final r in rows)
-                [
-                  GridCell('${r['name']}'),
-                  r['state'] == null
-                      ? const GridCell.none()
-                      : GridCell('${r['state']}'),
-                  GridCell('${r['category'] ?? 'Uncategorised'}'),
-                  r['branch'] == null
-                      ? const GridCell.none()
-                      : GridCell('${r['branch']}'),
-                  GridCell(_money(r['spend_minor'])),
-                  GridCell(_count(r['leads'])),
-                  r['cost_per_lead_minor'] == null
-                      ? const GridCell.none()
-                      : GridCell(_money(r['cost_per_lead_minor'])),
-                  GridCell(_count(r['clicks'])),
-                  GridCell(_count(r['impressions'])),
-                ],
-            ],
-            total: [
-              const GridCell('Total'),
-              const GridCell(''),
-              const GridCell(''),
-              const GridCell(''),
-              GridCell(_money(total('spend_minor'))),
-              GridCell(_count(total('leads'))),
-              total('leads') > 0
-                  ? GridCell(_money(total('spend_minor') ~/ total('leads')))
-                  : const GridCell.none(),
-              GridCell(_count(total('clicks'))),
-              GridCell(_count(total('impressions'))),
-            ],
-          ),
+          if (shown.isEmpty)
+            Text(
+              'No campaigns match "${_query.trim()}".',
+              style: theme.textTheme.bodyMedium,
+            )
+          else
+            ReportGrid(
+              key: const ValueKey('meta-table'),
+              columns: const [
+                GridColumn('Campaign', pinned: true),
+                GridColumn('State'),
+                GridColumn('Category'),
+                GridColumn('Branch'),
+                GridColumn('Spend', numeric: true, main: true),
+                GridColumn('Leads', numeric: true, main: true),
+                GridColumn('Cost per lead', numeric: true, main: true),
+                GridColumn('Clicks', numeric: true),
+                GridColumn('Impressions', numeric: true),
+              ],
+              rows: [
+                for (final r in shown)
+                  [
+                    GridCell('${r['name']}'),
+                    r['state'] == null
+                        ? const GridCell.none()
+                        : GridCell('${r['state']}'),
+                    GridCell('${r['category'] ?? 'Uncategorised'}'),
+                    r['branch'] == null
+                        ? const GridCell.none()
+                        : GridCell('${r['branch']}'),
+                    GridCell(_money(r['spend_minor'])),
+                    GridCell(_count(r['leads'])),
+                    r['cost_per_lead_minor'] == null
+                        ? const GridCell.none()
+                        : GridCell(_money(r['cost_per_lead_minor'])),
+                    GridCell(_count(r['clicks'])),
+                    GridCell(_count(r['impressions'])),
+                  ],
+              ],
+              total: [
+                const GridCell('Total'),
+                const GridCell(''),
+                const GridCell(''),
+                const GridCell(''),
+                GridCell(_money(total('spend_minor'))),
+                GridCell(_count(total('leads'))),
+                total('leads') > 0
+                    ? GridCell(_money(total('spend_minor') ~/ total('leads')))
+                    : const GridCell.none(),
+                GridCell(_count(total('clicks'))),
+                GridCell(_count(total('impressions'))),
+              ],
+            ),
         ],
         const SizedBox(height: 12),
         Text(

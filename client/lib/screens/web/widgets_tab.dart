@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -38,6 +40,24 @@ class _WidgetsTabState extends State<WidgetsTab> {
   String? _error;
   List<Map<String, dynamic>> _sites = const [];
   String? _selected;
+
+  /// What the search bar over the site list holds; matched against what each
+  /// row shows.
+  String _query = '';
+
+  List<Map<String, dynamic>> get _shownSites {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return _sites;
+    return [
+      for (final site in _sites)
+        if ([
+          site['host'],
+          if (site['is_primary'] == true) 'Primary',
+          (site['franchise'] as Map?)?['name'],
+        ].any((v) => v != null && '$v'.toLowerCase().contains(needle)))
+          site,
+    ];
+  }
 
   /// Pane widths, held HERE rather than in the editor.
   ///
@@ -140,10 +160,46 @@ class _WidgetsTabState extends State<WidgetsTab> {
   Widget _split(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
+    final shown = _shownSites;
     final list = ListView(
       key: const ValueKey('tour-widgets-sites'),
       children: [
-        for (final site in _sites)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+          child: LayoutBuilder(
+            // As tall as the buttons beside it (Jose, 2026-10-20); no wider
+            // than the list, which can be dragged down to 180.
+            builder: (context, box) => Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: math.min(240, box.maxWidth),
+                height: 40,
+                child: TextField(
+                  key: const Key('web-widgets-sites-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a website',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (shown.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              'No websites match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        for (final site in shown)
           ListTile(
             selected: site['id'] == _selected,
             title: Text('${site['host']}'),

@@ -120,6 +120,23 @@ class _SeoTabState extends State<SeoTab> {
   String? _error;
   List<Map<String, dynamic>> _sites = [];
 
+  /// What the search bar over the site list holds; matched against what each
+  /// tile shows.
+  String _query = '';
+
+  List<Map<String, dynamic>> get _shownSites {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return _sites;
+    return [
+      for (final site in _sites)
+        if ([
+          '${site['host'] ?? ''}',
+          site['connected_at'] != null ? 'Connected' : 'Waiting for the plugin',
+        ].any((text) => text.toLowerCase().contains(needle)))
+          site,
+    ];
+  }
+
   bool _adding = false;
 
   /// Tokens issued in this session, by site — shown in the card they belong to
@@ -397,14 +414,38 @@ class _SeoTabState extends State<SeoTab> {
               'Every website and subdomain this company runs. Each one keeps '
               'its own details, so a branch site can answer its own phone '
               'number.',
-          action: _canEdit && !_adding
-              ? FilledButton.icon(
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('web-seo-sites-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a website',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              if (_canEdit && !_adding)
+                FilledButton.icon(
                   key: const ValueKey('tour-web_management-add-site'),
                   onPressed: () => setState(() => _adding = true),
                   icon: const Icon(Icons.add),
                   label: const Text('Add a website'),
-                )
-              : null,
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         if (_adding)
@@ -430,7 +471,15 @@ class _SeoTabState extends State<SeoTab> {
               ),
             ),
           ),
-        for (final site in _sites)
+        if (_sites.isNotEmpty && _shownSites.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No websites match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        for (final site in _shownSites)
           _SiteTile(
             key: ValueKey('tile-${site['id']}'),
             site: site,
