@@ -34,6 +34,24 @@ class SettingRegistryTest extends TestCase
 
     // ── invariants across the whole catalogue ────────────────────
 
+    public function test_every_work_hours_setting_has_a_section(): void
+    {
+        $seen = [];
+        foreach ($this->registry->all() as $key => $definition) {
+            if ($this->registry->groupOf($key)['key'] !== 'work_hours') {
+                continue;
+            }
+            $this->assertNotNull($definition->section, "{$key} has no section on Work Hours › Settings.");
+            $seen[] = $definition->section;
+        }
+
+        $this->assertSame(
+            ['Clock in and lock screen', 'Shift timing', 'Daily approval', 'Clock-in zone', 'Paid time off'],
+            array_values(array_unique($seen)),
+        );
+        $this->assertSame('Clock-in zone', $this->registry->get('time_clock.geofence_radius_m')->section);
+    }
+
     public function test_every_security_setting_is_organization_only(): void
     {
         foreach ($this->registry->all() as $key => $definition) {

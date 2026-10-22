@@ -1571,6 +1571,7 @@ class SettingRegistry
         return [
             new SettingDefinition(
                 key: 'time_clock.enabled',
+                section: 'Clock in and lock screen',
                 label: 'Clock in',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1579,6 +1580,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.lock_screen',
+                section: 'Clock in and lock screen',
                 label: 'Lock screen',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1591,6 +1593,7 @@ class SettingRegistry
             // 0-minute warning or a 9-hour extension is a support ticket.
             new SettingDefinition(
                 key: 'time_clock.warning_minutes',
+                section: 'Shift timing',
                 label: 'Minutes of warning before a shift ends',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 5,
@@ -1600,6 +1603,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.extension_minutes',
+                section: 'Shift timing',
                 label: 'Extension length, minutes',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 30,
@@ -1612,6 +1616,7 @@ class SettingRegistry
             // clock-out may be and not count as leaving early.
             new SettingDefinition(
                 key: 'time_clock.grace_minutes',
+                section: 'Shift timing',
                 label: 'Grace period, minutes',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 5,
@@ -1648,6 +1653,7 @@ class SettingRegistry
             // asks for it. Who approves is whoever holds "Approve daily hours".
             new SettingDefinition(
                 key: 'time_clock.approval_enabled',
+                section: 'Daily approval',
                 label: 'Daily approval of hours',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1656,6 +1662,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.approval_roles',
+                section: 'Daily approval',
                 label: 'Roles whose hours need daily approval',
                 type: SettingDefinition::TYPE_ROLES,
                 default: [],
@@ -1664,6 +1671,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.approval_time',
+                section: 'Daily approval',
                 label: 'Daily approval reminder time',
                 type: SettingDefinition::TYPE_ENUM,
                 default: '08:00',
@@ -1673,6 +1681,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.geofence_enabled',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1681,6 +1690,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.geofence_center',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone centre',
                 type: SettingDefinition::TYPE_LOCATION,
                 default: '',
@@ -1689,6 +1699,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.geofence_radius_m',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone size, metres',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 100,
@@ -1698,6 +1709,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.max_hours',
+                section: 'Shift timing',
                 label: 'Longest a shift may run, hours',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 16,
@@ -1709,6 +1721,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.week_starts_on',
+                section: 'Shift timing',
                 label: 'Week starts on',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'sunday',
@@ -1731,6 +1744,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.self_schedule',
+                section: 'Clock in and lock screen',
                 label: 'People can edit their own schedule',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1758,6 +1772,7 @@ class SettingRegistry
              */
             new SettingDefinition(
                 key: 'pto.enabled',
+                section: 'Paid time off',
                 label: 'Paid time off',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1766,6 +1781,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.allowance',
+                section: 'Paid time off',
                 label: 'Paid days off',
                 type: SettingDefinition::TYPE_INT,
                 default: 0,
@@ -1774,6 +1790,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.allowance_period',
+                section: 'Paid time off',
                 label: 'Earned per',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'year',
@@ -1788,6 +1805,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.waiting',
+                section: 'Paid time off',
                 // The number only: 90 here with Months below is seven and a half
                 // years (Jose's screenshot, 2026-10-21), so both labels say so.
                 label: 'Can be used after (number — its unit is the next setting)',
@@ -1798,6 +1816,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.waiting_unit',
+                section: 'Paid time off',
                 label: 'UNIT of "Can be used after": days, weeks, months or years',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'day',
@@ -1819,6 +1838,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.carry_over',
+                section: 'Paid time off',
                 label: 'Unused days carry over',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1830,6 +1850,7 @@ class SettingRegistry
             // days"). 1 January is what this did before the setting existed.
             new SettingDefinition(
                 key: 'pto.reset',
+                section: 'Paid time off',
                 label: 'Use by / resets every',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'jan_1',

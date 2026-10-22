@@ -99,6 +99,30 @@ class _Group {
   final String key;
   final String? label;
   final List<Map<String, dynamic>> rows = [];
+
+  /// The rows split by their `section`, in first-seen order, with the rows
+  /// that name none last under "Other". One unlabelled section when no row
+  /// names one, so a group without sections draws exactly as before.
+  List<(String?, List<Map<String, dynamic>>)> get sections {
+    final named = <String, List<Map<String, dynamic>>>{};
+    final other = <Map<String, dynamic>>[];
+
+    for (final row in rows) {
+      final section = row['section'] as String?;
+      if (section == null || section.isEmpty) {
+        other.add(row);
+      } else {
+        named.putIfAbsent(section, () => []).add(row);
+      }
+    }
+
+    if (named.isEmpty) return [(null, other)];
+
+    return [
+      for (final entry in named.entries) (entry.key, entry.value),
+      if (other.isNotEmpty) ('Other', other),
+    ];
+  }
 }
 
 /// What this setting is waiting for, when it is waiting for something.
@@ -511,6 +535,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setting['key'],
       setting['help'],
       setting['group_label'],
+      setting['section'],
     ].whereType<String>().any((text) => text.toLowerCase().contains(query));
   }
 
@@ -699,28 +724,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
             )
           else
             const SizedBox(height: 12),
-          Card(
-            child: Column(
-              children: [
-                for (var i = 0; i < group.rows.length; i++) ...[
-                  if (i > 0) const Divider(height: 1),
-                  _SettingRow(
-                    setting: group.rows[i],
-                    scopeType: _scopeType,
-                    franchiseWord:
-                        widget.session.me!.organization.franchiseLabel,
-                    // Resolved by /me against this same scope (§6), so the
-                    // times inside Business hours are written the way the
-                    // Time format row three lines up says they should be.
-                    formats: widget.session.me!.display,
-                    onChanged: _update,
-                    onReset: _reset,
-                    api: widget.api,
+          for (final section in group.sections) ...[
+            if (section.$1 != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+                child: Text(
+                  section.$1!,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
+                ),
+              ),
+            Card(
+              child: Column(
+                children: [
+                  for (var i = 0; i < section.$2.length; i++) ...[
+                    if (i > 0) const Divider(height: 1),
+                    _SettingRow(
+                      setting: section.$2[i],
+                      scopeType: _scopeType,
+                      franchiseWord:
+                          widget.session.me!.organization.franchiseLabel,
+                      // Resolved by /me against this same scope (§6), so the
+                      // times inside Business hours are written the way the
+                      // Time format row three lines up says they should be.
+                      formats: widget.session.me!.display,
+                      onChanged: _update,
+                      onReset: _reset,
+                      api: widget.api,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
+          ],
         ],
         // The organization's own cards belong to Settings, not to a module's
         // Settings tab showing one group.
