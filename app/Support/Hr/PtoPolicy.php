@@ -158,14 +158,14 @@ class PtoPolicy
      * the last reset comes along as `carried`. Undated used days ("before
      * EzBizi") count in the current window.
      *
-     * @return array{total: ?float, used: float, left: ?float, carried: ?float, resets_on: ?string, window_from: ?string}
+     * @return array{total: ?float, used: float, left: ?float, carried: ?float, expired: ?float, resets_on: ?string, window_from: ?string}
      */
     private function balance(User $user, ?Carbon $startedOn, int $allowance, string $period, string $reset, bool $carryOver): array
     {
         $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
         if ($startedOn === null || $startedOn->isFuture()) {
             return ['total' => null, 'used' => (float) $usedQuery()->sum('days'), 'left' => null,
-                'carried' => null, 'resets_on' => null, 'window_from' => null];
+                'carried' => null, 'expired' => null, 'resets_on' => null, 'window_from' => null];
         }
 
         $step = fn (Carbon $at, int $n) => match ($period) {
@@ -206,6 +206,9 @@ class PtoPolicy
             ->orWhere('used_on', '>=', $from->toDateString()))->sum('days');
         $usedBefore = (float) $usedQuery()->where('used_on', '<', $from->toDateString())->sum('days');
         $carried = $carryOver ? max(0.0, $earnedBefore - $usedBefore) : 0.0;
+        // What was lost at past resets, shown even with carryover off (Jose,
+        // 2026-10-22: "if it's off i would like to see the expired PTO's").
+        $expired = $carryOver ? 0.0 : max(0.0, $earnedBefore - $usedBefore);
         $total = $earnedNow + $carried;
 
         return [
@@ -213,6 +216,7 @@ class PtoPolicy
             'used' => round($usedNow, 2),
             'left' => round($total - $usedNow, 2),
             'carried' => round($carried, 2),
+            'expired' => round($expired, 2),
             'resets_on' => $next->toDateString(),
             'window_from' => $from->toDateString(),
         ];

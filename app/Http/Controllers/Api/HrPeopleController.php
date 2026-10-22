@@ -857,7 +857,7 @@ class HrPeopleController extends Controller
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
                     'allowance', 'allowance_period', 'eligible_from', 'eligible',
-                    'total', 'used', 'left', 'carried', 'resets_on',
+                    'total', 'used', 'left', 'carried', 'expired', 'resets_on',
                 ])->all()
                 : null,
         ]]);
@@ -1010,6 +1010,7 @@ class HrPeopleController extends Controller
                     'used' => $answer['used'],
                     'left' => $answer['left'],
                     'carried' => $answer['carried'],
+                    'expired' => $answer['expired'],
                     'resets_on' => $answer['resets_on'],
                     'can_edit_used' => $actor->can('editPtoUsed', $person),
                     'used_changes' => $changes->get($person->getKey(), collect())->values(),

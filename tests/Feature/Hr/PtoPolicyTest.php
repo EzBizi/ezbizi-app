@@ -108,11 +108,14 @@ class PtoPolicyTest extends TestCase
         $this->assertSame(12.0, $answer['total']);
         $this->assertSame(0.0, $answer['used']);
         $this->assertSame('2027-04-01', $answer['resets_on']);
+        // Carryover off: last year's 24 earned less 5 used expired at the reset.
+        $this->assertSame(19.0, $answer['expired']);
 
         // With carryover, last year's 24 earned less 5 used comes along.
         $this->set($t, ['pto.carry_over' => true]);
         $answer = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
         $this->assertSame(19.0, $answer['carried']);
+        $this->assertSame(0.0, $answer['expired']);
         $this->assertSame(31.0, $answer['left']);
     }
 
