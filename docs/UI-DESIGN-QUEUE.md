@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 133 · Automations › Then step — **sent 2026-10-22** (`docs/previews/automations-then-step-layouts.html`)
+
+Jose: "how is the user supposed to even know the fields at all"; audit of every action × trigger in scratchpad/automation_actions_audit.md (forwarded to Automations). **1** (recommended) step catalogue grouped For this <record> / Send a message / Tell the team / Elsewhere, only steps that fit the trigger, not-ready ones dimmed with the reason + Set it up; Update a detail = detail picker in plain words then a value control by kind (org statuses, date, dollars, switch, tag chips); Change the status gets its status picker; message placeholders as plain-named chips with a live preview from the last event; a green "what this step does" sentence per step; subject-less triggers get their own fitting steps and no Update a detail. **2** recipes per event. **3** boxes only. Phone **4** (recommended) / **5** / **6**.
+
 ### 132 · Automations › Review step — **sent 2026-10-22 — Jose: "go ahead with all your recommendations" (1 and 4)** (`docs/previews/automations-review-step-layouts.html`)
 
 Jose: "could definitely use some better ui-ux" (one sentence with "not chosen yet" gaps, "Where you are now" twice, no test, no clear Turn on). **1** (recommended) plain sentence with missing parts in red as what is needed, each part a link to its step, the real place named once; a checklist per step (✓/⚠/✕, reason, Fix) that blocks Turn on while any ✕; Try it: dry-run on a chosen recent event (or an example) showing conditions and each step's would-do with real values, nothing sent; Save switched off / Turn on. **2** receipt cards per step. **3** today's sentence + Try it. Phone **4** (recommended) / **5** / **6**. Server needs: dry-run endpoint over a chosen past event, per-step readiness reasons.
