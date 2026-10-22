@@ -451,6 +451,182 @@ void main() {
     });
   });
 
+  group('channels', () {
+    testWidgets('Settings: send by chips, each with its readiness', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoices(tester, sub: 'Settings');
+      expect(
+        _textOf(tester, 'invoice-channel-email-ready'),
+        'from billing@brightside.example',
+      );
+      expect(
+        find.byKey(const ValueKey('invoice-setting-sms-from')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('invoice-channel-sms')));
+      await tester.pumpAndSettle();
+      expect(api.sent('PATCH', '/settings/invoicing.channels').single, {
+        'value': ['email', 'sms'],
+      });
+      expect(
+        _textOf(tester, 'invoice-channel-sms-why'),
+        'Choose the number invoices are texted from.',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('invoice-setting-sms-from')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('+15555550101').last);
+      await tester.pumpAndSettle();
+      expect(api.sent('PATCH', '/settings/invoicing.sms_from').single, {
+        'value': 'pn1',
+      });
+      expect(_textOf(tester, 'invoice-channel-sms-ready'), 'from +15555550101');
+
+      await tester.tap(find.byKey(const ValueKey('invoice-channel-whatsapp')));
+      await tester.pumpAndSettle();
+      expect(_textOf(tester, 'invoice-channel-whatsapp-why'), _noWhatsApp);
+      expect(
+        find.byKey(const ValueKey('invoice-setting-whatsapp_template')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Settings: the last channel cannot be switched off', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoices(tester, sub: 'Settings');
+      await tester.tap(find.byKey(const ValueKey('invoice-channel-email')));
+      await tester.pumpAndSettle();
+      expect(api.sent('PATCH', '/settings/invoicing.channels'), isEmpty);
+      expect(
+        find.text('Invoices need at least one way to be sent.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Settings: a company has its own, read and written there', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoices(tester, sub: 'Settings');
+      await tester.tap(find.byKey(const ValueKey('invoice-setting-place')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Springfield Gutters').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        api.queries.any(
+          (q) =>
+              q.$2.endsWith('/invoices/settings') &&
+              q.$3['company_id'] == 'co-2',
+        ),
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey('invoice-channel-sms')));
+      await tester.pumpAndSettle();
+      final patch = api.queries.lastWhere(
+        (q) => q.$1 == 'PATCH' && q.$2.endsWith('/invoicing.channels'),
+      );
+      expect(patch.$3, {'scope_type': 'company', 'scope_id': 'co-2'});
+    });
+
+    testWidgets('the pane: phones are editable beside the emails until sent', (
+      tester,
+    ) async {
+      final api = await _pump(tester);
+      await _openInvoice(tester, 'INV-0142');
+      expect(
+        find.byKey(const ValueKey('invoice-email-billing@springfield.example')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('invoice-phone-+15555550123')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('invoice-phone-add')),
+        '+15555550188',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(api.sent('PATCH', '/invoices/i2').single, {
+        'bill_to_phones': ['+15555550123', '+15555550188'],
+      });
+      expect(
+        find.byKey(const ValueKey('invoice-phone-+15555550188')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('invoice-card-i3')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('invoice-phone-add')), findsNothing);
+    });
+
+    testWidgets('Send…: grouped by channel; a channel not ready blocks it', (
+      tester,
+    ) async {
+      final api = await _pump(
+        tester,
+        channels: const ['email', 'sms', 'whatsapp'],
+        smsFrom: 'pn1',
+      );
+      await _openInvoice(tester, 'INV-0142');
+      await tester.tap(find.byKey(const ValueKey('invoice-send')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('invoice-send-group-email')),
+        findsOneWidget,
+      );
+      expect(
+        _textOf(tester, 'invoice-send-group-phones'),
+        'Text and WhatsApp to',
+      );
+      expect(_textOf(tester, 'invoice-send-why-whatsapp'), _noWhatsApp);
+      expect(
+        find.byKey(const ValueKey('invoice-phone-to-+15555550123')),
+        findsOneWidget,
+      );
+      expect(_textOf(tester, 'invoice-send-text'), contains('View it:'));
+      final send = tester.widget<FilledButton>(
+        find.byKey(const ValueKey('invoice-send-confirm')),
+      );
+      expect(send.onPressed, isNull);
+      expect(api.sent('POST', '/invoices/send'), isEmpty);
+    });
+
+    testWidgets('Send…: email and text go with to[] and phones[]', (
+      tester,
+    ) async {
+      final api = await _pump(
+        tester,
+        channels: const ['email', 'sms'],
+        smsFrom: 'pn1',
+      );
+      await _openInvoice(tester, 'INV-0142');
+      await tester.tap(find.byKey(const ValueKey('invoice-send')));
+      await tester.pumpAndSettle();
+      expect(_textOf(tester, 'invoice-send-group-phones'), 'Text to');
+      await tester.enterText(
+        find.byKey(const ValueKey('invoice-phone-to-add')),
+        '+15555550199',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('invoice-send-confirm')));
+      await tester.pumpAndSettle();
+      expect(api.sent('POST', '/invoices/send').single, {
+        'ids': ['i2'],
+        'to': ['billing@springfield.example'],
+        'phones': ['+15555550123', '+15555550199'],
+      });
+    });
+  });
+
   group('on a phone (390 × 844)', () {
     testWidgets(
       'the sheet is a list of branches; tap one to edit it in place',
@@ -514,6 +690,8 @@ final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
 );
 
+const _noWhatsApp = 'Connect a WhatsApp number in Integrations.';
+
 const _noMailServer =
     'This business has not connected its own mail server yet, so invoices cannot be sent.';
 
@@ -547,6 +725,9 @@ Future<void> _openInvoice(WidgetTester tester, String number) async {
 
 class _Api {
   final requests = <(String, String, Object?)>[];
+
+  /// Every request's query, beside its method and path.
+  final queries = <(String, String, Map<String, String>)>[];
 
   /// The query of the last GET /invoices.
   Map<String, String> lastQuery = const {};
@@ -586,6 +767,7 @@ Map<String, dynamic> _invoice(
       'name': branch,
       'address': '12 Elm St, Springfield',
       'emails': ['billing@springfield.example'],
+      'phones': ['+15555550123'],
     },
     'summary': 'Total jobs: 142',
     'notes': null,
@@ -624,6 +806,8 @@ Future<_Api> _pump(
   bool viewerOnly = false,
   bool refuseSend = false,
   String? refuseRows,
+  List<String> channels = const ['email'],
+  String smsFrom = '',
   Size size = const Size(1400, 900),
   Map<String, dynamic> scope = const {
     'type': 'organization',
@@ -750,12 +934,19 @@ Future<_Api> _pump(
     'total_cents': 1023000,
   };
 
+  // The settings this business has, as PATCH /settings leaves them.
+  final store = <String, Object?>{
+    'invoicing.channels': channels,
+    'invoicing.sms_from': smsFrom,
+  };
+
   final client = MockClient((request) async {
     final path = request.url.path;
     final method = request.method;
     Object? body;
     if (request.body.isNotEmpty) body = jsonDecode(request.body);
     api.requests.add((method, path, body));
+    api.queries.add((method, path, request.url.queryParameters));
 
     if (path.endsWith('/me')) {
       return json({
@@ -922,8 +1113,41 @@ Future<_Api> _pump(
       });
     }
     if (path.endsWith('/invoices/settings')) {
+      final chosen = (store['invoicing.channels'] as List).cast<String>();
+      final smsReady = store['invoicing.sms_from'] != '';
       return json({
-        'data': {'next_number': 'INV-0146'},
+        'data': {
+          'next_number': 'INV-0146',
+          'channels': [
+            {
+              'channel': 'email',
+              'ready': true,
+              'why_not': null,
+              'from': 'billing@brightside.example',
+              'chosen': chosen.contains('email'),
+            },
+            {
+              'channel': 'sms',
+              'ready': smsReady,
+              'why_not': smsReady
+                  ? null
+                  : 'Choose the number invoices are texted from.',
+              'from': smsReady ? '+15555550101' : null,
+              'chosen': chosen.contains('sms'),
+            },
+            {
+              'channel': 'whatsapp',
+              'ready': false,
+              'why_not': _noWhatsApp,
+              'from': null,
+              'chosen': chosen.contains('whatsapp'),
+            },
+          ],
+          'sms_numbers': [
+            {'id': 'pn1', 'e164': '+15555550101', 'label': 'Main line'},
+          ],
+          'mailbox': {'id': 'mb1', 'address': 'billing@brightside.example'},
+        },
       });
     }
     if (path.endsWith('/api/v1/settings')) {
@@ -953,15 +1177,41 @@ Future<_Api> _pump(
             ],
           ),
           s('numbering.invoice_prefix', 'INV-'),
+          s('invoicing.channels', store['invoicing.channels']),
+          s('invoicing.sms_from', store['invoicing.sms_from']),
+          s('invoicing.whatsapp_from', ''),
+          s('invoicing.whatsapp_template', ''),
         ],
       });
     }
     if (path.contains('/api/v1/settings/') && method == 'PATCH') {
+      store[path.split('/').last] = (body as Map)['value'];
       return json({'data': body});
     }
     if (path.endsWith('/invoices/send-preview')) {
+      final chosen = (store['invoicing.channels'] as List).cast<String>();
+      final phones = (invoices['i2']!['bill_to'] as Map)['phones'];
       return json({
         'data': {
+          'channels': [
+            for (final c in chosen)
+              {
+                'channel': c,
+                'ready':
+                    c == 'email' ||
+                    (c == 'sms' && store['invoicing.sms_from'] != ''),
+                'why_not': c == 'whatsapp'
+                    ? _noWhatsApp
+                    : c == 'sms' && store['invoicing.sms_from'] == ''
+                    ? 'Choose the number invoices are texted from.'
+                    : null,
+                'from': null,
+                'to': c == 'email' ? ['billing@springfield.example'] : phones,
+              },
+          ],
+          'text':
+              'Brightside Home Services: invoice INV-0142 for \$3,880.00, '
+              'due 10/31/2026. View it: https://ezbizi.example/i/abc',
           'to': ['billing@springfield.example'],
           'subject': 'Invoice INV-0142 from Brightside Home Services',
           'mode': 'per_branch',
@@ -1031,7 +1281,16 @@ Future<_Api> _pump(
           'can_record_payment': false,
         },
         ('POST', '/payments') => {...current, 'amount_due_cents': 40950},
-        ('PATCH', null) => current,
+        ('PATCH', null) => {
+          ...current,
+          'bill_to': {
+            ...(current['bill_to'] as Map),
+            if ((body as Map).containsKey('bill_to_phones'))
+              'phones': body['bill_to_phones'],
+            if (body.containsKey('bill_to_emails'))
+              'emails': body['bill_to_emails'],
+          },
+        },
         _ => current,
       };
       invoices[id] = next;
