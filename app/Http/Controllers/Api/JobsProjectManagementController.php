@@ -618,6 +618,7 @@ class JobsProjectManagementController extends Controller
             ->with(\App\Http\Controllers\Api\TasksController::WITH)->withCount(\App\Http\Controllers\Api\TasksController::counts())
             ->orderByDesc('created_at')->get();
         $used = $tasks->pluck('board_id')->unique();
+        $jobs = Job::query()->whereIn('id', $tasks->where('about_type', 'job')->pluck('about_id'))->get(['id', 'number'])->keyBy('id');
         $tb = app(\App\Support\Tasks\TaskBoards::class);
 
         return response()->json(['data' => [
@@ -629,7 +630,11 @@ class JobsProjectManagementController extends Controller
                 'builtin_columns' => $b->resolvedBuiltinColumns(),
                 'assignable' => $tb->assignable($b)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
             ])->values()->all(),
-            'tasks' => $tasks->map(fn ($t) => \App\Http\Controllers\Api\TasksController::present($t))->all(),
+            // The job each card is about and its branch, for grouping and the link (UI/UX, 2026-10-22).
+            'tasks' => $tasks->map(fn ($t) => \App\Http\Controllers\Api\TasksController::present($t) + [
+                'job' => isset($jobs[$t->about_id]) && $t->about_type === 'job' ? ['id' => $t->about_id, 'number' => $jobs[$t->about_id]->number] : null,
+                'franchise' => ($f = $boards->firstWhere('id', $t->board_id)?->franchise) ? ['id' => $f->id, 'name' => $f->name] : null,
+            ])->all(),
         ]]);
     }
 
