@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 142 · Project Management › Settings made orderly — **sent 2026-10-22** (`docs/previews/pm-settings-layouts.html`)
+### 142 · Project Management › Settings made orderly — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/pm-settings-layouts.html`)
 
 Jose: "this is a mess, like, be orderly please, we need alignments, formatting, colors". **1** (recommended) cards per topic with the inherit state once in each card header; Stages as an aligned table (Stage with colour dot shared with Dashboard/Jobs | Statuses chips + Add | Scheduled Any/Yes/No | Money due Any/Yes/No); then two-column cards: Review reasons, Redo and dispute words, Alerts (label column + fixed narrow number fields with units), Estimate clock. **2** stage list + detail. **3** grid rows only. Phone **4** (recommended: stage cards) / **5** / **6**.
 
