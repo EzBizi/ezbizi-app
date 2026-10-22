@@ -820,6 +820,31 @@ final class GoogleWorkspace
         return [...$install, ...$fallback];
     }
 
+    /**
+     * One click for a Workspace admin: Google Admin's domain-wide delegation
+     * page with EzBizi's client and EVERY scope it needs already filled in, so
+     * they only press Authorize (Jose, 2026-10-22: a company must not have to
+     * type scopes by hand when EzBizi needs a new one). Null without a client.
+     *
+     * @param  list<string>  $extra  scopes beyond the inbox catalogue
+     */
+    public function delegationUrl(array $extra = []): ?string
+    {
+        $client = $this->clientIdForAdminConsole();
+
+        if ($client === null) {
+            return null;
+        }
+
+        $scopes = array_values(array_unique([...array_column($this->requiredScopes(), 'scope'), ...$extra]));
+
+        return 'https://admin.google.com/ac/owl/domainwidedelegation?'.http_build_query([
+            'clientIdToAdd'     => $client,
+            'clientScopeToAdd'  => implode(',', $scopes),
+            'overwriteClientId' => 'true',
+        ]);
+    }
+
     public function clientIdForAdminConsole(): ?string
     {
         $id = config('services.google_mail.workspace_client_id');

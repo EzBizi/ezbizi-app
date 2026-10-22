@@ -36,7 +36,7 @@ class GoogleWorkspaceManagementController extends Controller
     /** GET /api/v1/email/workspaces */
     public function index(Request $request): JsonResponse
     {
-        $this->assertMayManage($request);
+        $this->assertMayManage($request, null, write: false);
 
         return response()->json(['data' => $this->workspace->connectionsVisibleTo($request->user())
             ->map(function (GoogleWorkspaceConnection $c) {
@@ -54,7 +54,7 @@ class GoogleWorkspaceManagementController extends Controller
     /** GET /api/v1/email/workspaces/{connection}/people */
     public function people(Request $request, GoogleWorkspaceConnection $connection): JsonResponse
     {
-        $this->assertMayManage($request, $connection);
+        $this->assertMayManage($request, $connection, write: false);
 
         try {
             $people = $this->signatures->people($connection);
@@ -118,7 +118,7 @@ class GoogleWorkspaceManagementController extends Controller
     /** GET /api/v1/email/workspaces/{connection}/people/{address}/signature -- what Gmail has now, and what EzBizi would set */
     public function showSignature(Request $request, GoogleWorkspaceConnection $connection, string $address): JsonResponse
     {
-        $this->assertMayManage($request, $connection);
+        $this->assertMayManage($request, $connection, write: false);
         $address = $this->addressOn($connection, $address);
 
         try {
@@ -139,7 +139,7 @@ class GoogleWorkspaceManagementController extends Controller
     /** POST /api/v1/email/workspaces/{connection}/signatures/preview  { address, html? } */
     public function preview(Request $request, GoogleWorkspaceConnection $connection): JsonResponse
     {
-        $this->assertMayManage($request, $connection);
+        $this->assertMayManage($request, $connection, write: false);
 
         $input   = $request->validate([
             'address' => ['required', 'string', 'max:254'],
@@ -215,7 +215,11 @@ class GoogleWorkspaceManagementController extends Controller
             'status'            => $connection->status,
             'signatures_ready'  => $why === null,
             'signatures_reason' => $why,
+            // Shown as "Update permissions" while something is missing: Google
+            // Admin, pre-filled, so the company's admin only clicks Authorize.
+            'authorize_url'     => $this->workspace->delegationUrl([WorkspaceSignatures::SCOPE_SETTINGS]),
             'has_template'      => $connection->signature_template !== null,
+            'may_edit'          => request()->user()?->hasPermission('email.edit') ?? false,
         ];
     }
 
@@ -247,12 +251,16 @@ class GoogleWorkspaceManagementController extends Controller
         return $address;
     }
 
-    private function assertMayManage(Request $request, ?GoogleWorkspaceConnection $connection = null): void
+    /**
+     * The tab (email.workspace.view, on the route) is enough to READ; changing
+     * anything also takes `email.edit`, as managing Workspace does in Settings.
+     */
+    private function assertMayManage(Request $request, ?GoogleWorkspaceConnection $connection = null, bool $write = true): void
     {
         $user = $request->user();
 
         abort_unless(
-            $user->hasPermission('email.edit'),
+            ! $write || $user->hasPermission('email.edit'),
             Response::HTTP_FORBIDDEN,
             Refusal::permission('manage Google Workspace')->message(),
         );
