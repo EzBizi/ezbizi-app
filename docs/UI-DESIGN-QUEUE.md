@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 131 · Automations › Only if step — **sent 2026-10-22** (`docs/previews/automations-only-if-layouts.html`)
+
+Jose: "What this event carries" wastes space, show an example; the "Is" list is confusing. **1** (recommended) a condition is a sentence ("Only if [Role] [is one of] [Technician, Office]", then "and …"); field menu with plain labels + last-event example, *_id fields under "Show technical details"; operator menu filtered by field type ("changed" only on change events), each with a one-line example on this field; value is a picker for closed sets; carries = compact table Detail | Last time | Use (adds a condition); "Tested on the last 20 events: would have run N". **2** ready-made phrase chips. **3** today's boxes with help text. Phone **4** (recommended: stacked sentence) / **5** / **6**. Server needs: field labels + type + options, last-event example values, dry-run over recent events.
+
 ### 130 · Automations › When step — **sent 2026-10-22** (`docs/previews/automations-when-step-layouts.html`)
 
 Jose: the right panel repeats the card and changes when trigger-fields load; use the sidebar icons; add more. **1** (recommended) category rail with sidebar icons and groups, "Most used" first, empty categories hidden; compact cards (name, one line, "N in 30 days · N details · N rules"), never-raised sorted last and dimmed; right panel drawn at once with placeholders, adds what the card lacks: full description, details in plain words, last 3 occurrences, rules using it (links), often-paired Then steps. **2** chosen card expands in place. **3** one grouped searchable list. Phone **4** (recommended: icon chips, ⓘ opens details) / **5** / **6**. Server needs: per-event recent examples, rules count, often-paired actions, field labels.
