@@ -44,6 +44,44 @@ import 'package:http/testing.dart';
 /// The fourth is that publishing shows what it is about to do, and does nothing
 /// until somebody has read it.
 void main() {
+  // Jose via HR: a DRAFT copy of the current version, from the list.
+  testWidgets('Download draft GETs the draft PDF and saves it as -draft.pdf', (
+    tester,
+  ) async {
+    http.Request? seen;
+    String? saved;
+    Files.debugOnDownload = (name, _) => saved = name;
+    addTearDown(() => Files.debugOnDownload = null);
+    await _pump(tester, _handler(onDraft: (r) => seen = r));
+
+    await tester.tap(find.byKey(const ValueKey('contract-draft-c-1')));
+    await tester.pumpAndSettle();
+
+    expect(seen?.method, 'GET');
+    expect(seen?.url.path, endsWith('/hr/contracts/c-1/draft.pdf'));
+    expect(saved, 'Technician, full time-draft.pdf');
+    expect(
+      find.byTooltip('A copy marked DRAFT, nothing is signed'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('a refused draft shows the server sentence', (tester) async {
+    String? saved;
+    Files.debugOnDownload = (name, _) => saved = name;
+    addTearDown(() => Files.debugOnDownload = null);
+    await _pump(tester, _handler(draftStatus: 403));
+
+    await tester.tap(find.byKey(const ValueKey('contract-draft-c-1')));
+    await tester.pumpAndSettle();
+
+    expect(saved, isNull);
+    expect(
+      find.text('You may not download a draft of this contract.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('the list says what each contract is and what it asks', (
     tester,
   ) async {
@@ -1849,9 +1887,24 @@ MockClientHandler _handler({
   Map<String, Object?> catalogue = _catalogue,
   String? previewRefusal,
   List<Map<String, Object?>> templates = _templates,
+  int draftStatus = 200,
+  void Function(http.Request request)? onDraft,
 }) {
   return (request) async {
     final path = request.url.path;
+
+    if (path.endsWith('/draft.pdf')) {
+      onDraft?.call(request);
+      return draftStatus == 200
+          ? http.Response.bytes(
+              utf8.encode('%PDF-1.7 draft'),
+              200,
+              headers: {'content-type': 'application/pdf'},
+            )
+          : _json({
+              'message': 'You may not download a draft of this contract.',
+            }, draftStatus);
+    }
 
     // The document, rendered. Ahead of the `/hr/contracts/` catch-all below,
     // and ahead of `/versions`, because it is a different act: `/versions`
