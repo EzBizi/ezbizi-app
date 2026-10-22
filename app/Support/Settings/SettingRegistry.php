@@ -1009,6 +1009,12 @@ class SettingRegistry
                 help: 'Something paid and money still due: a deposit.',
             ),
             new SettingDefinition(
+                key: 'jobs.pm_task_group', label: 'Task Board group Project Management shows',
+                type: SettingDefinition::TYPE_STRING, default: 'Project Management',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'The group, by name, on each branch board where rules leave project cards.',
+            ),
+            new SettingDefinition(
                 key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
                 type: SettingDefinition::TYPE_JSON,
                 default: [],
