@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/camera_view.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -628,6 +629,277 @@ void main() {
       },
     );
   });
+
+  // Jose, 2026-10-22: "also if we can add full screen mode". The live panel's
+  // Full screen draws the same feed over the whole app as an overlay, never a
+  // pushed route (the containment rule).
+  group('full screen', () {
+    const liveUrl = 'http://10.0.0.20/mjpeg?live=1';
+    final view = find.byKey(const Key('camera-fullscreen-view'));
+
+    Finder feedIn(Finder scope) => find.descendant(
+      of: scope,
+      matching: find.byWidgetPredicate(
+        (w) => w is CameraImageView && w.url == liveUrl,
+      ),
+    );
+
+    Future<_PushCounter> openPanel(
+      WidgetTester tester, {
+      Size size = const Size(1280, 900),
+    }) async {
+      final pushes = _PushCounter();
+      await _pumpTab(
+        tester,
+        cameras: [_mjpegCamera],
+        size: size,
+        navigatorObservers: [pushes],
+      );
+      await tester.tap(
+        find.byKey(ValueKey('camera-inline-${_mjpegCamera['id']}')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Live — full motion while this is open.'),
+        findsOneWidget,
+      );
+      return pushes;
+    }
+
+    Future<void> openFullScreen(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('camera-fullscreen')));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('the button opens an overlay playing the same URL, with no '
+        'route pushed', (tester) async {
+      final pushes = await openPanel(tester);
+      final before = pushes.count;
+      expect(view, findsNothing);
+      expect(
+        find.byWidgetPredicate((w) => w is CameraImageView && w.url == liveUrl),
+        findsOneWidget,
+        reason: 'The panel plays the ?live=1 URL before full screen.',
+      );
+
+      await openFullScreen(tester);
+
+      expect(view, findsOneWidget);
+      expect(feedIn(view), findsOneWidget);
+      expect(
+        find.byWidgetPredicate((w) => w is CameraImageView && w.url == liveUrl),
+        findsOneWidget,
+        reason:
+            'One stream at a time: the panel stops while the overlay '
+            'plays.',
+      );
+      expect(
+        pushes.count,
+        before,
+        reason: 'Full screen is an overlay, not a Navigator route.',
+      );
+      // It covers the whole window.
+      expect(tester.getSize(view), const Size(1280, 900));
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+    });
+
+    testWidgets('close leaves full screen and keeps the panel open', (
+      tester,
+    ) async {
+      await openPanel(tester);
+      await openFullScreen(tester);
+      expect(view, findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+
+      expect(view, findsNothing);
+      expect(
+        find.text('Live — full motion while this is open.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate((w) => w is CameraImageView && w.url == liveUrl),
+        findsOneWidget,
+        reason: 'The panel plays again once full screen closes.',
+      );
+    });
+
+    testWidgets('Esc leaves full screen, not the panel', (tester) async {
+      await openPanel(tester);
+      await openFullScreen(tester);
+      expect(view, findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+
+      expect(view, findsNothing);
+      expect(
+        find.text('Live — full motion while this is open.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Fit/Fill switches the BoxFit; Fill is the default', (
+      tester,
+    ) async {
+      await openPanel(tester);
+      await openFullScreen(tester);
+
+      BoxFit fit() => tester.widget<CameraImageView>(feedIn(view)).fit;
+
+      expect(fit(), BoxFit.cover);
+      await tester.tap(find.byKey(const Key('camera-fullscreen-fit')));
+      await tester.pump();
+      expect(fit(), BoxFit.contain);
+      await tester.tap(find.byKey(const Key('camera-fullscreen-fit')));
+      await tester.pump();
+      expect(fit(), BoxFit.cover);
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+    });
+
+    testWidgets('the bar fades after 3 s still and returns on movement', (
+      tester,
+    ) async {
+      await openPanel(tester);
+      await openFullScreen(tester);
+
+      double opacity() => tester
+          .widget<AnimatedOpacity>(
+            find.ancestor(
+              of: find.byKey(const Key('camera-fullscreen-close')),
+              matching: find.byType(AnimatedOpacity),
+            ),
+          )
+          .opacity;
+
+      expect(opacity(), 1);
+      await tester.pump(const Duration(seconds: 3));
+      expect(opacity(), 0);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: const Offset(400, 400));
+      await mouse.moveTo(const Offset(420, 420));
+      await tester.pump();
+      expect(opacity(), 1);
+      await mouse.removePointer();
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+    });
+
+    testWidgets('the panel Fit/Fill switches the panel feed', (tester) async {
+      await openPanel(tester);
+
+      BoxFit fit() => tester
+          .widget<CameraImageView>(
+            find.byWidgetPredicate(
+              (w) => w is CameraImageView && w.url == liveUrl,
+            ),
+          )
+          .fit;
+
+      expect(fit(), BoxFit.contain);
+      await tester.tap(find.byKey(const Key('camera-panel-fit')));
+      await tester.pump();
+      expect(fit(), BoxFit.cover);
+    });
+
+    testWidgets('a wide feed gets a panel box at its own aspect', (
+      tester,
+    ) async {
+      await openPanel(tester);
+
+      final box = tester.getSize(
+        find
+            .ancestor(
+              of: find.byWidgetPredicate(
+                (w) => w is CameraImageView && w.url == liveUrl,
+              ),
+              matching: find.byType(SizedBox),
+            )
+            .first,
+      );
+      expect(box.width / box.height, closeTo(16 / 9, 0.01));
+    });
+
+    testWidgets('on a phone at 390x844 full screen opens with no overflow', (
+      tester,
+    ) async {
+      await openPanel(tester, size: const Size(390, 844));
+      expect(tester.takeException(), isNull);
+
+      await openFullScreen(tester);
+      expect(view, findsOneWidget);
+      expect(tester.getSize(view), const Size(390, 844));
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+      expect(view, findsNothing);
+    });
+
+    testWidgets('a bridge camera panel opens full screen on its main stream', (
+      tester,
+    ) async {
+      const bridge = {
+        'id': 'cam-b',
+        'label': 'Downstairs',
+        'protocol': 'mjpeg',
+        'url': '',
+        'source': 'bridge',
+        'enabled': true,
+        'created_at': '2026-10-20T12:00:00Z',
+      };
+      const relay = 'http://relay.test/api/stream.mjpeg?src=cam-b-main';
+      await _pumpTab(
+        tester,
+        cameras: [bridge],
+        onRequest: (r) {
+          if (!r.url.path.endsWith('/monitoring/cameras/cam-b/watch')) {
+            return null;
+          }
+          final q = (jsonDecode(r.body) as Map)['quality'];
+          return _json({
+            'play': {
+              'url': q == 'main'
+                  ? relay
+                  : 'http://relay.test/api/stream.mjpeg?src=cam-b-sub',
+              'expires_at': '2099-01-01T00:00:00Z',
+            },
+          });
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('camera-inline-cam-b')));
+      await tester.pumpAndSettle();
+
+      await openFullScreen(tester);
+
+      expect(view, findsOneWidget);
+      expect(
+        find.descendant(
+          of: view,
+          matching: find.byWidgetPredicate(
+            (w) => w is CameraImageView && w.url == relay,
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: view, matching: find.text('Downstairs')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('camera-fullscreen-close')));
+      await tester.pump();
+      expect(view, findsNothing);
+    });
+  });
 }
 
 const _mjpegCamera = {
@@ -675,6 +947,7 @@ Future<void> _pumpTab(
   http.Response? Function(http.Request request)? onRequest,
   List<Map<String, dynamic>> Function()? camerasProvider,
   Size size = const Size(1280, 900),
+  List<NavigatorObserver> navigatorObservers = const [],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -717,6 +990,7 @@ Future<void> _pumpTab(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
+      navigatorObservers: navigatorObservers,
       home: Scaffold(
         body: CameraMonitoringTab(api: api, session: session),
       ),
@@ -828,4 +1102,12 @@ class _FrameResponse extends Stream<List<int>> implements HttpClientResponse {
   );
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Counts routes pushed, so a test can prove full screen pushed none.
+class _PushCounter extends NavigatorObserver {
+  int count = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => count++;
 }

@@ -56,6 +56,7 @@ class SidePanel extends StatefulWidget {
     required this.child,
     this.subtitle,
     this.actions = const [],
+    this.headerActions = const [],
     this.width = 440,
     this.scrollable = true,
     this.docked = false,
@@ -87,6 +88,11 @@ class SidePanel extends StatefulWidget {
   /// The panel's footer. Kept out of the body so the primary action stays
   /// visible no matter how far the form scrolls.
   final List<Widget> actions;
+
+  /// Small icon buttons drawn in the header, just before the close button —
+  /// controls for the body itself (a camera's Full screen), not the form's
+  /// primary action, which belongs in [actions].
+  final List<Widget> headerActions;
 
   final double width;
 
@@ -263,6 +269,7 @@ class _SidePanelState extends State<SidePanel> {
                   ],
                 ),
               ),
+              ...widget.headerActions,
               if (widget.onBack == null)
                 IconButton(
                   icon: const Icon(Icons.close),

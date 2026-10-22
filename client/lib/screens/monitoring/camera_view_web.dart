@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
 
@@ -6,7 +7,13 @@ import 'package:web/web.dart' as web;
 
 int _seq = 0;
 
-Widget buildCameraImage(String url) => _CameraImage(url: url);
+Widget buildCameraImage(
+  String url, {
+  BoxFit fit = BoxFit.contain,
+  ValueChanged<double>? onAspect,
+}) => _CameraImage(url: url, fit: fit, onAspect: onAspect);
+
+String _objectFit(BoxFit fit) => fit == BoxFit.cover ? 'cover' : 'contain';
 
 /// A live camera frame, inline — a DOM `<img>` pointed at the camera's own
 /// URL.
@@ -21,9 +28,11 @@ Widget buildCameraImage(String url) => _CameraImage(url: url);
 /// needs the `<video>` element `hls`/`rtsp` will eventually want once a
 /// player script exists (see camera_monitoring_tab.dart's ponytail note).
 class _CameraImage extends StatefulWidget {
-  const _CameraImage({required this.url});
+  const _CameraImage({required this.url, required this.fit, this.onAspect});
 
   final String url;
+  final BoxFit fit;
+  final ValueChanged<double>? onAspect;
 
   @override
   State<_CameraImage> createState() => _CameraImageState();
@@ -31,6 +40,12 @@ class _CameraImage extends StatefulWidget {
 
 class _CameraImageState extends State<_CameraImage> {
   late String _viewType;
+  web.HTMLImageElement? _img;
+
+  /// Watches for the first frame's size: an mjpeg `<img>` does not reliably
+  /// fire `load`, so this also polls `naturalWidth` for a while.
+  Timer? _sizePoll;
+  bool _aspectSent = false;
 
   @override
   void initState() {
@@ -43,23 +58,49 @@ class _CameraImageState extends State<_CameraImage> {
     super.didUpdateWidget(old);
     if (old.url != widget.url) {
       setState(() => _register(widget.url));
+    } else if (old.fit != widget.fit) {
+      // Restyled in place: re-registering would reconnect the stream.
+      _img?.style.setProperty('object-fit', _objectFit(widget.fit));
     }
+  }
+
+  @override
+  void dispose() {
+    _sizePoll?.cancel();
+    super.dispose();
+  }
+
+  void _reportAspect() {
+    final img = _img;
+    if (_aspectSent || img == null || !mounted) return;
+    if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+    _aspectSent = true;
+    _sizePoll?.cancel();
+    widget.onAspect?.call(img.naturalWidth / img.naturalHeight);
   }
 
   void _register(String url) {
     _viewType = 'ezbizi-camera-img-${_seq++}';
+    _sizePoll?.cancel();
+    var polls = 0;
+    _sizePoll = Timer.periodic(const Duration(milliseconds: 500), (t) {
+      if (++polls > 40) t.cancel();
+      _reportAspect();
+    });
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int _) {
       final img = web.HTMLImageElement();
+      _img = img;
+      img.addEventListener('load', ((web.Event _) => _reportAspect()).toJS);
       img.src = url;
       img.alt = 'Camera live view';
       img.referrerPolicy = 'no-referrer';
       img.style
         ..setProperty('width', '100%')
         ..setProperty('height', '100%')
-        // contain, not cover: these are wide cameras, and cover crops a wide
-        // frame to fill a taller box — the whole feed must show. Jose,
-        // 2026-10-07.
-        ..setProperty('object-fit', 'contain');
+        // contain by default, not cover: these are wide cameras, and cover
+        // crops a wide frame to fill a taller box — the whole feed must show
+        // (Jose, 2026-10-07). Fill asks for cover on purpose.
+        ..setProperty('object-fit', _objectFit(widget.fit));
       return img;
     });
   }
