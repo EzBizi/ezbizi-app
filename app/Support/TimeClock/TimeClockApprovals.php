@@ -192,6 +192,7 @@ class TimeClockApprovals
                 'shift_id' => $e->target_id,
                 'was_in' => $at($e->changes['before']['clocked_in_at'] ?? null),
                 'was_out' => $at($e->changes['before']['clocked_out_at'] ?? null),
+                'was_ended_by' => $e->changes['before']['ended_by'] ?? null,
                 'now_in' => $at($e->changes['after']['clocked_in_at'] ?? null),
                 'now_out' => $at($e->changes['after']['clocked_out_at'] ?? null),
                 'reason' => $reason,

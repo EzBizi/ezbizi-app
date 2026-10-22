@@ -418,6 +418,9 @@ final class TimeClock
             $before = [
                 'clocked_in_at' => $this->instant($shift->clocked_in_at),
                 'clocked_out_at' => $this->instant($shift->clocked_out_at),
+                // Who ended it before the edit: "Was 4:05 PM (Auto)" stays
+                // true after ended_by becomes correction (UI/UX, 2026-10-22).
+                'ended_by' => $shift->ended_by,
             ];
 
             $shift->clocked_in_at = $in;
