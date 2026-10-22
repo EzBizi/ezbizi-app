@@ -89,5 +89,18 @@ class JobProjectStagesTest extends TestCase
 
         Mail::fake();
         $this->artisan('jobs:warn-paid-not-started')->expectsOutputToContain('Sent 1 warning')->assertSuccessful();
+
+        // Only the jobs PM is about (Shoval, 2026-10-22): statuses, then partly paid, set on the company.
+        $scope = function (array $statuses, bool $partly) use ($alpha) {
+            $this->inTenant($alpha['org'], function () use ($alpha, $statuses, $partly) {
+                app(SettingsResolver::class)->set('jobs.pm_scope_statuses', $alpha['company'], $statuses);
+                app(SettingsResolver::class)->set('jobs.pm_partly_paid_only', $alpha['company'], $partly);
+            });
+
+            return array_filter($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management/jobs?stage=scheduled')->json('meta.counts'));
+        };
+        $this->assertSame(['ready_to_schedule' => 1, 'scheduled' => 1], $scope(['submitted'], false));
+        $this->assertSame([], $scope(['submitted'], true), 'C is paid but owes nothing; D is unpaid');
+        $this->assertSame(['done_waiting_payment' => 1], $scope([], true), 'E: a deposit paid, money still due');
     }
 }
