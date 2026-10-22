@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 138 · Leads › Manage › Office hours — **sent 2026-10-22** (`docs/previews/leads-office-hours-layouts.html`)
+### 138 · Leads › Manage › Office hours — **sent 2026-10-22 — Jose: "better, go ahead, and places that do not have time set up should be highlighted" (1 and 4)** (`docs/previews/leads-office-hours-layouts.html`)
 
 Google API session asked (9f578924e; nobody had set hours, every place ran Mon–Fri 8–5 ET). **1** (recommended) a table of places (org, companies, branches indented) with an hours summary, time zone, inherited values in grey italic "from X", an "own" chip; a yellow banner counting places on the default; Edit opens the week inline under its row (Jose: "not sure i like the sidepart", redrawn 2026-10-22): seven day boxes with open/close or Closed, Copy Monday to weekdays, time zone picker, "Use X's hours/zone again"; "Used by N auto-replies" with rule links. **2** week grid. **3** cards. Phone **4** (recommended: nested cards, edit full screen) / **5** / **6**.
 
