@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\AutomationEvent;
+use App\Models\AutomationRun;
 use App\Models\Job;
 use App\Models\WorkizRecord;
 use App\Support\Jobs\EstimateAging;
@@ -101,6 +102,8 @@ class JobsProjectManagementController extends Controller
             ->orderBy('starts_at')->get()->groupBy('job_id');
         $events = AutomationEvent::query()->whereIn('subject_id', $ids)->where('subject_type', Job::class)
             ->whereIn('event_key', ['job.status_changed', 'job.updated'])->orderBy('occurred_at')->get()->groupBy('subject_id');
+
+        $this->runs = $this->runsFor($ids)->where('automation_runs.status', 'succeeded')->get()->groupBy('job_id');
 
         // The organization's words for its statuses, for each step's sentence (UI/UX, 2026-10-21).
         $this->labels = collect((array) $settings->get('jobs.statuses', $user->organization))
@@ -271,12 +274,13 @@ class JobsProjectManagementController extends Controller
             }
             if ($e->event_key === 'job.status_changed') {
                 $timeline->push(['kind' => 'status', 'at' => $e->occurred_at->toIso8601String(), 'from' => $e->payload['before']['status'] ?? null,
-                    'to' => $e->payload['after']['status'] ?? null, 'by' => $this->by($e)]);
+                    'to' => $e->payload['after']['status'] ?? null] + $this->attribute($e, $job));
             } elseif (array_key_exists('tags', $e->payload['after'] ?? [])) {
                 $before = (array) ($e->payload['before']['tags'] ?? []);
                 $after = (array) $e->payload['after']['tags'];
-                $timeline->push(['kind' => 'tags', 'at' => $e->occurred_at->toIso8601String(), 'by' => $this->by($e),
-                    'tags' => ['added' => array_values(array_diff($after, $before)), 'removed' => array_values(array_diff($before, $after))]]);
+                $timeline->push(['kind' => 'tags', 'at' => $e->occurred_at->toIso8601String(),
+                    'tags' => ['added' => array_values(array_diff($after, $before)), 'removed' => array_values(array_diff($before, $after))]]
+                    + $this->attribute($e, $job));
             }
         }
 
@@ -308,6 +312,165 @@ class JobsProjectManagementController extends Controller
             ],
             'timeline' => $timeline->sortBy('at')->map(fn (array $s) => $s + ['what' => $this->what($s)])->values()->all(),
         ];
+    }
+
+    /**
+     * GET /api/v1/jobs/project-management/logs?from=&to=&timezone=&franchise_id=&automation_id=&outcome=
+     *
+     * Everything EzBizi did to a job in the window (Jose, 2026-10-22: "every
+     * step says Workiz, I can't tell whether Action 1 ever ran"): each rule's
+     * run on a job, with what its actions did or why it skipped, and each edit
+     * a person made in EzBizi. Newest first.
+     */
+    public function logs(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->hasPermission('project_management.view') && $user->hasPermission('jobs.view'), Response::HTTP_FORBIDDEN, 'Project Management is not in your role.');
+
+        $input = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid'],
+            'timezone' => ['nullable', 'timezone'],
+            'automation_id' => ['nullable', 'uuid'],
+            'outcome' => ['nullable', Rule::in(['succeeded', 'failed', 'skipped', 'manual'])],
+        ]);
+        [$from, $to] = $this->window($input, $user, $settings);
+        $reach = $this->reach($user, $input);
+        $this->labels = $this->statusLabels($settings, $user);
+
+        $runs = ($input['outcome'] ?? null) === 'manual' ? collect() : $this->runsFor($reach)
+            ->whereBetween('automation_runs.started_at', [$from, $to])
+            ->when($input['automation_id'] ?? null, fn ($q, $id) => $q->where('automation_runs.automation_id', $id))
+            ->when($input['outcome'] ?? null, fn ($q, $o) => $q->where('automation_runs.status', $o))
+            ->get();
+
+        $edits = in_array($input['outcome'] ?? 'manual', ['manual'], true) && empty($input['automation_id'])
+            ? AutomationEvent::query()->where('subject_type', Job::class)->whereIn('subject_id', $reach)
+                ->whereIn('event_key', ['job.updated', 'job.status_changed', 'job.created'])->whereNotNull('actor_id')
+                ->whereBetween('occurred_at', [$from, $to])->get()
+            : collect();
+
+        $jobs = Job::query()->whereIn('id', $runs->pluck('job_id')->merge($edits->pluck('subject_id'))->unique())
+            ->with(['customer:id,name', 'franchise:id,name'])->get()->keyBy('id');
+        $job = fn (string $id) => ['id' => $id, 'number' => $jobs[$id]?->number, 'title' => $jobs[$id]?->title,
+            'customer' => $jobs[$id]?->customer?->name, 'franchise' => $jobs[$id]?->franchise?->name];
+
+        $rows = $runs->map(fn (AutomationRun $r) => [
+            'kind' => 'automation',
+            'at' => $r->started_at?->toIso8601String(),
+            'job' => $job($r->job_id),
+            'rule' => ['id' => $r->automation_id, 'name' => $r->automation?->name],
+            'outcome' => $r->status,
+            'changes' => collect((array) $r->action_results)->map(fn ($a) => [
+                'type' => $a['type'] ?? null, 'state' => $a['state'] ?? null, 'detail' => $a['detail'] ?? null,
+            ])->values()->all(),
+            'reason' => $r->status === 'skipped' ? $this->skipReason((array) $r->condition_trace) : $r->error,
+        ])->concat($edits->map(fn (AutomationEvent $e) => [
+            'kind' => 'manual',
+            'at' => $e->occurred_at->toIso8601String(),
+            'job' => $job($e->subject_id),
+            'by' => $this->by($e),
+            'outcome' => 'manual',
+            'changes' => [['type' => $e->event_key, 'state' => 'succeeded', 'detail' => $this->editDetail($e)]],
+        ]))->sortByDesc('at')->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** Runs about jobs, each with job_id, newest first; tests and other subjects left out. */
+    private function runsFor($jobIds): \Illuminate\Database\Eloquent\Builder
+    {
+        return AutomationRun::query()->join('automation_events', 'automation_events.id', '=', 'automation_runs.event_id')
+            ->where('automation_events.subject_type', Job::class)->whereIn('automation_events.subject_id', $jobIds)
+            ->where('automation_runs.is_test', false)
+            ->select('automation_runs.*', 'automation_events.subject_id as job_id')
+            ->with('automation:id,name')->orderByDesc('automation_runs.started_at');
+    }
+
+    /** "Status was Pending; the rule wants Done pending approval", from the first unmatched condition. */
+    private function skipReason(array $trace): string
+    {
+        $stack = [$trace];
+        while ($node = array_shift($stack)) {
+            if (($node['type'] ?? null) === 'condition' && ($node['matched'] ?? true) === false) {
+                $field = str_replace('_', ' ', (string) ($node['field'] ?? 'value'));
+                $show = fn ($v) => is_array($v) ? implode(', ', array_map(fn ($x) => $this->label((string) $x), $v))
+                    : ($v === null || $v === '' ? 'empty' : ($field === 'status' ? $this->label((string) $v) : (string) $v));
+
+                return ucfirst($field).' was '.$show($node['actual'] ?? null).'; the rule wants '.$show($node['expected'] ?? null).'.';
+            }
+            array_push($stack, ...(array) ($node['children'] ?? []));
+        }
+
+        return 'The rule did not match.';
+    }
+
+    private function editDetail(AutomationEvent $e): string
+    {
+        $before = (array) ($e->payload['before'] ?? []);
+        $after = (array) ($e->payload['after'] ?? []);
+        if ($e->event_key === 'job.created') {
+            return 'Created the job';
+        }
+        $parts = [];
+        foreach ($after as $field => $value) {
+            $old = $before[$field] ?? null;
+            $parts[] = $field === 'status'
+                ? 'Status '.$this->label(is_string($old) ? $old : null).' → '.$this->label(is_string($value) ? $value : null)
+                : str_replace('_', ' ', ucfirst((string) $field)).': '.(is_array($value) ? implode(', ', $value) : json_encode($value));
+        }
+
+        return implode('; ', $parts) ?: 'Edited the job';
+    }
+
+    /** @var Collection<string, Collection<int, AutomationRun>> succeeded runs by job id */
+    private Collection $runs;
+
+    /**
+     * Who made a step. Workiz's sync reports a change EzBizi asked Workiz for
+     * as Workiz's own; it is EzBizi's when a rule's run on this job, finished
+     * shortly before, set that status or those tags (Jose, 2026-10-22).
+     */
+    private function attribute(AutomationEvent $e, Job $job): array
+    {
+        $by = $this->by($e);
+        if ($by !== 'Workiz') {
+            return ['by' => $by];
+        }
+
+        $after = $e->payload['after'] ?? [];
+        $norm = fn ($v) => mb_strtolower(trim((string) $v));
+        $run = ($this->runs[$job->id] ?? collect())->first(function (AutomationRun $r) use ($e, $after, $norm) {
+            // ponytail: 30 minutes covers the Workiz sync's lag; widen if a sync runs slower.
+            if (! $r->finished_at || $r->finished_at->gt($e->occurred_at) || $r->finished_at->lt($e->occurred_at->copy()->subMinutes(30))) {
+                return false;
+            }
+            foreach ((array) $r->actions_snapshot as $a) {
+                if (($a['type'] ?? null) !== 'workiz.job_update') {
+                    continue;
+                }
+                if (isset($after['status']) && filled($a['status'] ?? null) && $norm($a['status']) === $norm($after['status'])) {
+                    return true;
+                }
+                $set = array_filter(array_map($norm, explode(',', (string) ($a['tags'] ?? ''))));
+                if (isset($after['tags']) && $set !== [] && array_diff($set, array_map($norm, (array) $after['tags'])) === []) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        return $run === null ? ['by' => $by]
+            : ['by' => 'EzBizi · '.$run->automation?->name, 'rule' => ['id' => $run->automation_id, 'name' => $run->automation?->name]];
+    }
+
+    /** @return array<string, string> */
+    private function statusLabels(SettingsResolver $settings, $user): array
+    {
+        return collect((array) $settings->get('jobs.statuses', $user->organization))
+            ->filter(fn ($s) => is_array($s) && isset($s['value']))->mapWithKeys(fn ($s) => [$s['value'] => $s['label'] ?? $s['value']])->all();
     }
 
     /** A person by name, a rule, or Workiz's sync. */
