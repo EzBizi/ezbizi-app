@@ -346,14 +346,20 @@ class BusinessProfileReviews
             ];
 
             if ($created) {
+                // Where its listing sits, once somebody gave the listing a branch;
+                // else where the connection sits (2026-10-22).
+                $tail = \App\Support\CustomerExperience\Places::tail($location);
+                $listing = $tail === null ? null : \App\Models\BusinessLocation::query()->whereNotNull('franchise_id')
+                    ->where(fn ($q) => $q->where('remote_name', $tail)->orWhere('remote_name', 'like', '%/'.addcslashes($tail, '%_')))
+                    ->first(['company_id', 'franchise_id']);
                 $review = new Review([
                     'organization_id' => $connection->organization_id,
-                    'company_id'      => $connection->scope_type === SocialConnection::SCOPE_COMPANY
+                    'company_id'      => $listing?->company_id ?? ($connection->scope_type === SocialConnection::SCOPE_COMPANY
                         ? $connection->scope_id
-                        : null,
-                    'franchise_id'    => $connection->scope_type === SocialConnection::SCOPE_FRANCHISE
+                        : null),
+                    'franchise_id'    => $listing?->franchise_id ?? ($connection->scope_type === SocialConnection::SCOPE_FRANCHISE
                         ? $connection->scope_id
-                        : null,
+                        : null),
                     'connection_id'   => $connection->getKey(),
                     'remote_name'     => $name,
                     ...$fromGoogle,
