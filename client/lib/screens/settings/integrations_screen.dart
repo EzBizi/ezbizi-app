@@ -97,6 +97,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// read it. An empty map is "none set up".
   Map<String, dynamic>? _sending;
 
+  /// Why the server would not answer for the sending server here, when it
+  /// would not. The card is still drawn, carrying this instead of Connect:
+  /// a card that vanishes on a refusal is how Triplex Group (2026-10-22) had
+  /// no way to connect its own mail server and no word on why.
+  String? _sendingRefusal;
+
   /// The server's `can_connect`: false once this view has a domain.
   bool _workspaceCanConnect = false;
 
@@ -145,7 +151,14 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     final numbers = widget.session.me?.module('phone')?.reachable == true
         ? await widget.api.get('/phone/numbers')
         : null;
-    final sending = await widget.api.get('/mail/sending-server');
+    // AT this scope, the same pair the panel and `/settings` send. The
+    // controller REQUIRES both: without them every answer was a 422, `_sending`
+    // stayed null, and the card was never offered (Jose, 2026-10-22).
+    final me = widget.session.me;
+    final sending = await widget.api.get('/mail/sending-server', {
+      'scope_type': me?.scope.type ?? 'organization',
+      'scope_id': me?.scope.id ?? me?.organization.id ?? '',
+    });
 
     if (!mounted) return;
 
@@ -175,6 +188,12 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       _sending = server == null
           ? null
           : (server['in_effect'] as Map<String, dynamic>?) ?? const {};
+      // A 4xx is the server answering "not here", with its reason; a 5xx or
+      // no answer at all says nothing about this scope, so it offers nothing.
+      _sendingRefusal =
+          !sending.ok && sending.statusCode >= 400 && sending.statusCode < 500
+          ? sending.reason
+          : null;
 
       final data = workspace != null && workspace.ok
           ? workspace.body['data'] as Map<String, dynamic>?
@@ -304,7 +323,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ..._catalogue.keys.where((p) => p != 'workiz_web'),
       if (_mayManageWorkspace) 'google_workspace',
       if (_numbers != null) 'phone_numbers',
-      if (_sending != null) 'sending_server',
+      if (_sending != null || _sendingRefusal != null) 'sending_server',
     };
 
     // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
@@ -480,7 +499,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               'sent through the company\'s own account, so one has to be '
               'connected before anything can go out.',
         ),
-        if (_mayManageWorkspace || _sending != null) ...[
+        if (_mayManageWorkspace ||
+            _sending != null ||
+            _sendingRefusal != null) ...[
           const SizedBox(height: 12),
           _family(
             context,
@@ -879,6 +900,18 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       fontWeight: FontWeight.w600,
     );
 
+    // Refused here: say why, where Connect would be.
+    final refusal = _sendingRefusal;
+    if (provider == 'sending_server' && refusal != null) {
+      return Text(
+        refusal,
+        key: const ValueKey('refused:sending_server'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: note,
+      );
+    }
+
     if (entry?['usable'] == false) {
       return Text(
         why == null || why.isEmpty ? 'Not available on EzBizi yet.' : why,
@@ -980,7 +1013,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                  * was the number Jose's screenshot made useless. The detail
                  * screen behind this card names the companies and branches.
                  */
-                none ? (_purpose[provider] ?? '') : _beneath(rows),
+                none ? (_purpose[provider] ?? '') : _beneathFor(provider, rows),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -1032,7 +1065,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     // What it is for, as the card says (UI queue 110).
                     none
                         ? (_purpose[provider] ?? 'Not connected')
-                        : _beneath(rows),
+                        : _beneathFor(provider, rows),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -1053,6 +1086,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         ),
       ),
     );
+  }
+
+  /// The line under a connected card. The sending server says what it sends
+  /// as and through which host — one server per scope, so a count is noise.
+  String _beneathFor(String provider, List<IntegrationConnection> rows) {
+    if (provider == 'sending_server' && rows.isNotEmpty) {
+      final row = rows.first;
+      final from = row.label;
+
+      return from == null || from.isEmpty
+          ? 'Connected · ${row.displayName}'
+          : 'Connected · $from\n${row.displayName}';
+    }
+
+    return _beneath(rows);
   }
 
   String _beneath(List<IntegrationConnection> rows) {
