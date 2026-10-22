@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0479',
+      date: '22 Oct 2026',
+      items: [
+        'Every list in EzBizi has a search bar: 57 more screens, including Communication, Reports, Monitoring, Inventory, Financials, Marketing, Training, Work Hours and Suggestions. Long lists such as calls, invoices, reviews and field recordings search on the server, so results include rows not yet loaded.',
+        'Automations: the Workiz job update step can also remove a job\'s scheduled time.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0478',
       date: '22 Oct 2026',
       items: [
