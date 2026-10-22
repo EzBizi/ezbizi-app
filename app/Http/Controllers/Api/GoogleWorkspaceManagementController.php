@@ -215,6 +215,9 @@ class GoogleWorkspaceManagementController extends Controller
             'status'            => $connection->status,
             'signatures_ready'  => $why === null,
             'signatures_reason' => $why,
+            // Shown as "Update permissions" while something is missing: Google
+            // Admin, pre-filled, so the company's admin only clicks Authorize.
+            'authorize_url'     => $this->workspace->delegationUrl([WorkspaceSignatures::SCOPE_SETTINGS]),
             'has_template'      => $connection->signature_template !== null,
             'may_edit'          => request()->user()?->hasPermission('email.edit') ?? false,
         ];
