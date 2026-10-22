@@ -21,6 +21,9 @@ class VersionHistory {
         'Leads › Manage › Office hours: every company and branch in one table, with the hours it uses, where they come from, its time zone, and the automatic replies that read them. Places with no hours at all are highlighted and counted.',
         'Project Management: a job\'s timeline says "EzBizi" and the rule\'s name for a status or tag change one of your rules made, instead of "Workiz". Settings no longer lets you remove the last watched status by accident.',
         'Project Management: a job that moved into a watched status shows the move in the Dashboard\'s Status changes list ("Status Submitted → Done pending approval") instead of empty columns.',
+        'Project Management › Logs: every change EzBizi\'s rules made to jobs (status, tags, Task Board cards, notifications), with the rule, the outcome and the reason for anything skipped or failed, searchable and filtered by dates, branch and rule. A job\'s timeline shows each of those steps too.',
+        'Project Management: Recently paid, Waiting, Partly paid, Paid in full and Closed always show their counts, and the Dashboard\'s lists have a search bar.',
+        'Email inbox: unread counts per inbox and company, who handled an email and when, Reply all with Cc, and Forward.',
       ],
     ),
     VersionRelease(
