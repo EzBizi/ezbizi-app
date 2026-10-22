@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0480',
+      date: '22 Oct 2026',
+      items: [
+        'Work Hours › Paid Time Off: a new person panel with Total, Used, Left and Expired always shown, a countdown to the next reset with past resets, when the days can be used, and the days off picked on a calendar (half days and scattered days). Days off, corrections and resets read as one timeline, and the list filters by role.',
+        'Work Hours › Daily approval: choose which roles\' hours need approval (Settings › Work Hours); the approver is never on their own list.',
+        'Monitoring: a camera opens full screen with Fit or Fill, Esc to close, and a bar that hides itself; the panel takes the camera\'s shape, so there are no grey bands.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0479',
       date: '22 Oct 2026',
       items: [
