@@ -19,13 +19,8 @@ class VersionHistory {
       items: [
         'Integrations › Email: the Sending server card shows again, connected or not, so a company can connect the mail server its invoices and messages go out from. If it cannot be shown, it says why.',
         'Project Management dashboard: a busy day opens from its tile instead of failing, both lists show the technician and the job\'s tags, and Recently paid has its own colour. On web, Linux and Mac, Today follows your computer\'s time zone; elsewhere it follows the company\'s.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0473',
-      date: '22 Oct 2026',
-      items: [
         'Project Management dashboard: Today and Yesterday follow your own time zone instead of UTC, so Today no longer shows empty rows, and Yesterday no longer fails on a busy day.',
+        'Financials › Invoices: each company chooses whether invoices go by email, text or WhatsApp (one or more), with the texting number picked in Settings. Email goes through a connected Google Workspace or Microsoft mailbox first, then your own mail server. Send shows who gets what by channel and will not send through a channel that is not ready.',
       ],
     ),
     VersionRelease(
