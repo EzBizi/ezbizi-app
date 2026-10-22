@@ -403,11 +403,16 @@ class ActionRunner
         // is the only way to try a rule against real data without sending a
         // customer an email about a job from last March.
         if ($isTest) {
+            // What it WOULD say, with this event's real values (UI/UX, 2026-10-22).
+            $words = collect(['message', 'title', 'body', 'details', 'subject'])
+                ->map(fn ($k) => is_string($action[$k] ?? null) && $action[$k] !== '' ? trim($this->interpolate($action[$k], $event, $subject)) : null)
+                ->filter()->implode(' | ');
+
             return [
                 'type' => $type,
                 'ok' => true,
                 'skipped' => true,
-                'detail' => 'Test run — not performed.',
+                'detail' => 'Test run — not performed.'.($words === '' ? '' : ' Would use: '.$words),
             ];
         }
 
