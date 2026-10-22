@@ -100,6 +100,54 @@ class RepairReportTest extends TestCase
         $as->getJson('/api/v1/financials/repair-report')->assertStatus(422);
     }
 
+    public function test_a_week_is_approved_reopens_on_a_typed_in_value_and_feeds_the_table_text_and_production_cost(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $row = fn (string $id, array $f) => AirtableRecord::query()->create(['organization_id' => $t['org']->id, 'base_id' => 'appA', 'table_id' => 'tblRep',
+                'table_name' => 'NJ', 'record_id' => $id, 'fields' => $f, 'fields_hash' => md5(json_encode($f)), 'fetched_at' => now()]);
+            $row('j1', ['Date' => '2026-10-13', 'Team' => 'Darren', 'Record type' => 'Job', 'Job Number' => 1, 'Job Amount' => 2000, 'Parts Cost' => 100, 'Tech Share' => 125]);
+            $row('s1', ['Date' => '2026-10-18', 'Team' => 'Darren', 'Record type' => 'Weekly Summary', 'Total Hours ' => 40, 'Employee Cost' => 1200, 'Ave Operation Cost' => 375]);
+            // Kris has a job and no Weekly Summary row yet.
+            $row('j2', ['Date' => '2026-10-14', 'Team' => 'Kris', 'Record type' => 'Job', 'Job Number' => 2, 'Job Amount' => 500]);
+            FinancialSource::create(['base_id' => 'appA', 'table_id' => 'tblRep', 'role' => 'repair', 'franchise_id' => $t['franchise']->id, 'company_id' => $t['company']->id]);
+        });
+        $as = $this->signedInAs($t['admin']);
+        $week = ['franchise_id' => $t['franchise']->id, 'week_start' => '2026-10-12'];
+
+        $place = $as->getJson('/api/v1/financials/repair-report?week_start=2026-10-12')->assertOk()->json('data.0');
+        $this->assertSame(['draft', null], [$place['week_status'], $place['approved_by']]);
+        $cards = collect($place['technicians'])->keyBy('technician');
+        $this->assertSame([[], ['hours', 'paycheck', 'operation']], [$cards['Darren']['missing'], $cards['Kris']['missing']]);
+        $this->assertStringContainsString('Weekly 2026-10-12 to 2026-10-18* · UNAPPROVED DRAFT', $place['text']);
+        $this->assertStringContainsString('Missing: hours, paycheck, operation', $place['text']);
+
+        $as->postJson('/api/v1/financials/repair-report/approve', $week)->assertOk()
+            ->assertJsonPath('data.week_status', 'approved')->assertJsonPath('data.approved_by', 'Alpha Admin');
+        $this->assertStringNotContainsString('UNAPPROVED', $as->getJson('/api/v1/financials/repair-report?week_start=2026-10-12')->json('data.0.text'));
+
+        // A typed-in paycheck fills the gap, counts in the total, and reopens the week.
+        $after = $as->patchJson('/api/v1/financials/repair-report/value', $week + ['team' => 'Kris', 'field' => 'paycheck', 'value' => 400])->assertOk()->json('data');
+        $kris = collect($after['technicians'])->firstWhere('technician', 'Kris');
+        $this->assertSame(['draft', 40000, 40000, ['hours', 'operation']], [$after['week_status'], $kris['paycheck_cents'], $kris['total_cost_cents'], $kris['missing']]);
+        // Only a whole Monday-to-Sunday week carries it.
+        $this->assertArrayNotHasKey('Kris', collect($as->getJson('/api/v1/financials/repair-report?from=2026-10-12&to=2026-10-17')->json('data.0.technicians'))->keyBy('technician')->filter(fn ($c) => $c['paycheck_cents'] === 40000)->all());
+
+        $table = $as->getJson("/api/v1/financials/repair-report/table?franchise_id={$t['franchise']->id}&from=2026-10-05&to=2026-10-18")->assertOk()->json('data');
+        $this->assertSame([['2026-10-12', 'Darren'], ['2026-10-12', 'Kris']], array_map(fn ($x) => [$x['week_start'], $x['technician']], $table));
+
+        $cost = collect($as->getJson('/api/v1/financials/production-cost?from=2026-10-12&to=2026-10-18')->assertOk()->json('data'))->keyBy('team');
+        // Darren: 1200 + 375 + 100 over one job.
+        $this->assertSame(['2026-10', 1, 167500, 167500], [$cost['Darren']['month'], $cost['Darren']['jobs'], $cost['Darren']['cost_cents'], $cost['Darren']['avg_cents']]);
+
+        // Seeing is not approving or typing in; another tenant does not find the place.
+        $viewer = $this->userWithRole($t, 'Viewer', ['financials.view', 'financials.bases.view']);
+        $this->signedInAs($viewer)->postJson('/api/v1/financials/repair-report/approve', $week)->assertForbidden();
+        $this->signedInAs($viewer)->patchJson('/api/v1/financials/repair-report/value', $week + ['team' => 'Kris', 'field' => 'paycheck', 'value' => 1])->assertForbidden();
+        $beta = $this->provisionTenant('Beta');
+        $this->signedInAs($beta['admin'])->postJson('/api/v1/financials/repair-report/approve', $week)->assertNotFound();
+    }
+
     public function test_the_gate_is_the_repair_splits(): void
     {
         $t = $this->provisionTenant('Alpha');
