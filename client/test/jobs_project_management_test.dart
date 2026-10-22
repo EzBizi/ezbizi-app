@@ -50,14 +50,17 @@ void main() {
     // Scheduled is not mapped: no count.
     expect(label(tester, 'scheduled'), 'Scheduled');
 
-    final xs = [
-      for (final s in pmStageKeys)
-        tester.getTopLeft(find.byKey(ValueKey('pm-stage-$s'))).dx,
-    ];
+    // Reading order: line by line, then left to right. The chips wrap onto
+    // a second line on a wide screen (2026-10-22, nothing past the edge).
+    double at(Key key) {
+      // Centres share a line (the Wrap centres each run); left edges order it.
+      final line = tester.getCenter(find.byKey(key)).dy.round();
+      return line * 100000 + tester.getTopLeft(find.byKey(key)).dx;
+    }
+
+    final xs = [for (final s in pmStageKeys) at(ValueKey('pm-stage-$s'))];
     expect([...xs]..sort(), xs);
-    final divider = tester
-        .getTopLeft(find.byKey(const ValueKey('pm-stage-divider')))
-        .dx;
+    final divider = at(const ValueKey('pm-stage-divider'));
     expect(divider, greaterThan(xs[4]));
     expect(divider, lessThan(xs[5]));
   });

@@ -278,6 +278,8 @@ class SettingsController extends Controller
             // that actually knows it, in registration order.
             'group'          => $group['key'],
             'group_label'    => $group['label'],
+            // A sub-heading inside the group, or null (see SettingDefinition::$section).
+            'section'        => $definition->section,
             'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
             'is_sensitive'   => $definition->isSensitive,
             'options'        => $this->optionsOf($definition, $scope),

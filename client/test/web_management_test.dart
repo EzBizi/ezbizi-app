@@ -440,7 +440,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Everdoors North'), findsNothing);
-    await tester.tap(find.text('A1 - Chimney MA').last);
+    // "Company · Branch", like every branch picker.
+    await tester.tap(find.text('A-1 Chimney · A1 - Chimney MA').last);
     await tester.pumpAndSettle();
 
     expect(_patches.last, {'franchise_id': 'fr-ma'});

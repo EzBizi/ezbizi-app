@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0482',
+      date: '22 Oct 2026',
+      items: [
+        'Email inbox: a category tab keeps reading older mail until it has a page of conversations, instead of looking empty.',
+        'Work Hours › Settings is split into sections: Clock in and lock screen, Shift timing, Daily approval, Clock-in zone and Paid time off.',
+        'Automations: a Task Board card made by a rule can carry the job\'s customer name, phone, address and technician, and the columns it needs are added to the board.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0481',
       date: '22 Oct 2026',
       items: [

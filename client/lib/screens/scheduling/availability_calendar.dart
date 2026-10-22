@@ -162,7 +162,10 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
             ),
             for (final f in widget.franchises)
               ChoiceChip(
-                label: Text(f['name'] as String? ?? ''),
+                // "Company · Branch", labelled by the pane from /me.
+                label: Text(
+                  f['label'] as String? ?? f['name'] as String? ?? '',
+                ),
                 selected: _franchiseId == f['id'],
                 onSelected: (_) {
                   setState(() {

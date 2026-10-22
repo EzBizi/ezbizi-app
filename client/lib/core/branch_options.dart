@@ -327,3 +327,10 @@ String? scopeLabel(
 
   return null;
 }
+
+/// "Company · Branch" for a branch the server named by id, as every picker
+/// labels it; [fallback] (the server's own name) when `/me` does not reach it.
+String branchLabelOf(Me? me, String? id, String fallback) {
+  if (me == null || id == null) return fallback;
+  return scopeLabel('franchise:$id', me.companies, me.franchises) ?? fallback;
+}

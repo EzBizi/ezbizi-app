@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/branch_options.dart';
 import '../../core/api_client.dart';
 import '../../core/device_zone.dart';
 import '../../core/job_money.dart';
@@ -365,36 +366,49 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       );
     }
 
+    final children = [
+      for (final key in pmStageKeys)
+        if (!pmClosedStages.contains(key)) chip(key),
+      SizedBox(
+        height: 28,
+        child: VerticalDivider(
+          key: const ValueKey('pm-stage-divider'),
+          width: 14,
+          thickness: 2,
+          color: scheme.outlineVariant,
+        ),
+      ),
+      for (final key in pmStageKeys)
+        if (pmClosedStages.contains(key)) chip(key),
+    ];
+
     return Padding(
       key: const ValueKey('tour-pm-jobs-stages'),
       padding: const EdgeInsets.only(bottom: 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.symmetric(horizontal: wide ? 24 : 16),
-        child: Row(
-          children: [
-            for (final key in pmStageKeys)
-              if (!pmClosedStages.contains(key)) chip(key),
-            SizedBox(
-              height: 28,
-              child: VerticalDivider(
-                key: const ValueKey('pm-stage-divider'),
-                width: 14,
-                thickness: 2,
-                color: scheme.outlineVariant,
+      // Wide: wrapped onto lines, nothing past the edge. Phone: one strip
+      // that scrolls sideways, like the tabs above it; wrapped, eight stage
+      // chips took 380 of 844 points and pushed the jobs off the screen.
+      child: wide
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Wrap(
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: children,
               ),
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(children: children),
             ),
-            for (final key in pmStageKeys)
-              if (pmClosedStages.contains(key)) chip(key),
-          ],
-        ),
-      ),
     );
   }
 
   String _franchise(String id) {
+    // "Company · Branch" (branch_options.dart): two companies' "Main".
     for (final f in _me.franchises) {
-      if (f.id == id) return f.name;
+      if (f.id == id) return branchLabelOf(_me, id, f.name);
     }
     return '';
   }

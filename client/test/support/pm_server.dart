@@ -23,6 +23,8 @@ class PmServer {
     ],
     Map<String, dynamic>? overview,
     this.jobs,
+    this.serviceAreas,
+    this.meOverride = const {},
     this.scope = const {
       'type': 'organization',
       'id': 'org-1',
@@ -32,6 +34,12 @@ class PmServer {
   }) : overview = overview ?? pmOverview();
 
   final List<String> permissions;
+
+  /// `/jobs` meta.service_areas; null: Columbus and Cleveland.
+  final List<Map<String, dynamic>>? serviceAreas;
+
+  /// Keys laid over the signed-in `/me` (companies, franchises).
+  final Map<String, dynamic> meOverride;
   Map<String, dynamic> overview;
   final Map<String, dynamic> scope;
 
@@ -141,7 +149,12 @@ class PmServer {
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'scope': scope, 'permissions': permissions},
+          'data': {
+            ..._me,
+            ...meOverride,
+            'scope': scope,
+            'permissions': permissions,
+          },
         });
       }
       if (path.endsWith('/jobs/project-management/overview')) {
@@ -232,10 +245,12 @@ class PmServer {
           'meta': {
             'total': 0,
             'last_page': 1,
-            'service_areas': [
-              {'id': 'sa-1', 'name': 'Columbus', 'franchise_id': 'fr-1'},
-              {'id': 'sa-2', 'name': 'Cleveland', 'franchise_id': 'fr-1'},
-            ],
+            'service_areas':
+                serviceAreas ??
+                [
+                  {'id': 'sa-1', 'name': 'Columbus', 'franchise_id': 'fr-1'},
+                  {'id': 'sa-2', 'name': 'Cleveland', 'franchise_id': 'fr-1'},
+                ],
           },
         });
       }

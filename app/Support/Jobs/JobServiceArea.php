@@ -78,7 +78,10 @@ final class JobServiceArea
         return $own ?? ServiceArea::query()
             ->where('franchise_id', $franchise->getKey())
             ->whereIn('shares_with_id', ServiceAreaZip::query()->where('zip', $zip5)->select('service_area_id'))
-            ->value('id');
+            ->value('id')
+            // A branch's catch-all area takes any ZIP none of its areas lists.
+            ?? ServiceArea::query()->where('franchise_id', $franchise->getKey())
+                ->where('covers_all_zips', true)->orderBy('created_at')->value('id');
     }
 
     /**

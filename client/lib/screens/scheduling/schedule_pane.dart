@@ -1,3 +1,4 @@
+import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -239,7 +240,11 @@ class _SchedulePaneState extends State<SchedulePane> {
                   for (final f in franchises)
                     SearchOption(
                       value: f['id'] as String,
-                      label: f['name'] as String? ?? '',
+                      label: branchLabelOf(
+                        widget.session.me,
+                        f['id'] as String?,
+                        f['name'] as String? ?? '',
+                      ),
                     ),
                 ],
                 onChanged: (v) {

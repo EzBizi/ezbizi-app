@@ -116,6 +116,7 @@ class NotificationDispatcher
         );
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
+        $recipients = $this->onlyThoseFollowing($recipients, $subject);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -498,6 +499,51 @@ class NotificationDispatcher
     private const FLOOD_CAP = 20;
 
     private const FLOOD_WINDOW_MINUTES = 10;
+
+    /**
+     * Drop people who chose other companies (`notifications.companies`).
+     *
+     * Bar, 2026-10-22: "only Everdoors" means Everdoors, its sub companies
+     * and their branches — so a record counts when ANY company above it is
+     * chosen. A record in no company is organization-wide and reaches all.
+     */
+    private function onlyThoseFollowing(Collection $recipients, ?Model $subject): Collection
+    {
+        $choosers = $recipients->filter(fn (User $user) => ($user->preferences['notifications.companies'] ?? []) !== []);
+        if ($choosers->isEmpty()) {
+            return $recipients;
+        }
+
+        $chain = $this->companyChain($subject);
+        if ($chain === []) {
+            return $recipients;
+        }
+
+        return $recipients->filter(fn (User $user) => ($chosen = $user->preferences['notifications.companies'] ?? []) === []
+            || array_intersect($chosen, $chain) !== [])->values();
+    }
+
+    /** The record's company and every company above it, nearest first. */
+    private function companyChain(?Model $subject): array
+    {
+        $companyId = match (true) {
+            $subject instanceof Company => $subject->getKey(),
+            $subject === null => null,
+            default => $subject->getAttribute('company_id')
+                ?? (($franchiseId = $this->franchiseIdFor($subject)) === null
+                    ? null
+                    : Franchise::query()->whereKey($franchiseId)->value('company_id')),
+        };
+
+        $chain = [];
+        // ponytail: one query per level; company trees are a few levels deep.
+        while (is_string($companyId) && ! in_array($companyId, $chain, true)) {
+            $chain[] = $companyId;
+            $companyId = Company::query()->whereKey($companyId)->value('parent_company_id');
+        }
+
+        return $chain;
+    }
 
     private function withoutFlooded(Collection $recipients, ?string $automationId): Collection
     {

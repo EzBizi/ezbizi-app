@@ -503,11 +503,7 @@ class SchedulingAvailabilityController extends Controller
      */
     private function areaForZip(string $zip, array $franchiseIds): ?ServiceArea
     {
-        $held = ServiceAreaZip::whereIn('franchise_id', $franchiseIds)
-            ->where('zip', $zip)
-            ->first();
-
-        return $held?->serviceArea;
+        return ServiceArea::forZip($zip, $franchiseIds);
     }
 
     /**
