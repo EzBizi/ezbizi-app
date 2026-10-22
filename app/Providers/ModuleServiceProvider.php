@@ -1419,14 +1419,20 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 /*
-                 * Dashboard | Pending Jobs | Settings (UI queue 127). All three
-                 * are the one grant the module always was: naming `view`
-                 * mints no permission, so no role gains or loses a tab, and
-                 * Settings' writes stay the settings API's to refuse.
+                 * Dashboard | Reports | Table | Jobs | Logs | Settings (UI
+                 * queue 127, 139, 141). All are the one grant the module
+                 * always was: naming `view` mints no permission, so no role
+                 * gains or loses a tab, and Settings' writes stay the settings
+                 * API's to refuse. Reports and Table read Financials' repair
+                 * report, so the client also hides them without
+                 * financials.bases.view. Jobs was "Pending Jobs" (design 141);
+                 * its key stays `pending`, so nothing stored moves.
                  */
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard', action: 'view'),
-                    new TabDefinition('pending', 'Pending Jobs', action: 'view'),
+                    new TabDefinition('reports', 'Reports', action: 'view'),
+                    new TabDefinition('table', 'Table', action: 'view'),
+                    new TabDefinition('pending', 'Jobs', action: 'view'),
                     // Logs (UI queue 139): what rules and people changed, the same grant.
                     new TabDefinition('logs', 'Logs', action: 'view'),
                     new TabDefinition('settings', 'Settings', action: 'view'),

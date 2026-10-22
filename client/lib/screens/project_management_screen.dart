@@ -5,29 +5,30 @@ import '../core/device_zone.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'jobs/pm_stages.dart';
 import 'jobs/project_management_dashboard.dart';
+import 'jobs/project_management_jobs.dart';
 import 'jobs/project_management_logs.dart';
+import 'jobs/project_management_reports.dart';
 import 'jobs/project_management_settings.dart';
-import 'jobs/project_management_tab.dart';
 
 /// Project Management, its own sidebar module since 2026-10-21 (Jose: "This
 /// Project Management should be its own tab, not a sub tab of Jobs").
 ///
-/// Four tabs: since UI queue 127 (option 1, phone 4), Dashboard, what
-/// happened in a date range; Pending Jobs, the table it used to be, opening
-/// on Recently paid; Settings, which statuses it watches and which mean
-/// cancelled. Since UI queue 139 (option 1, phone 4), Logs between Pending
-/// Jobs and Settings: what rules and people changed on jobs, and why a rule
-/// skipped.
+/// Six tabs since design 141 (option 1, phone 4): Dashboard, where every job
+/// stands; Reports and Table, Financials' weekly Repair Team report; Jobs
+/// (which was Pending Jobs, key `pending`), one stage at a time; Logs (UI
+/// queue 139); Settings, for the place being viewed.
 ///
 /// The module's reach is its gate: the sidebar draws it only for somebody
-/// holding `project_management.view`, and all four tabs are that one grant,
-/// so nothing here checks a permission. Settings writes are the server's to
-/// refuse, and each row says whether this person may change it.
+/// holding `project_management.view`, and every tab is that one grant.
+/// Reports and Table also need `financials.bases.view`, which their endpoint
+/// requires, so they are not drawn without it.
 ///
-/// It fetches the organization's settings once: the status words for the
-/// timelines, and the two lists Settings edits. Until they arrive, or if they
-/// cannot be read, the timelines show humanized keys.
+/// It reads the place's settings once, and again after Settings saves: the
+/// status words, the warning days, the review reasons and the redo and
+/// dispute words the other tabs draw with. And the service areas in reach,
+/// from GET /jobs's meta (Scheduling's own list needs scheduling.view).
 class ProjectManagementScreen extends StatefulWidget {
   const ProjectManagementScreen({
     super.key,
@@ -40,7 +41,7 @@ class ProjectManagementScreen extends StatefulWidget {
   final ApiClient api;
   final Session session;
 
-  /// The countdown's clock, passed through for tests.
+  /// The clock, passed through for tests.
   final DateTime Function()? now;
 
   /// The device's IANA zone, passed through for tests.
@@ -51,110 +52,85 @@ class ProjectManagementScreen extends StatefulWidget {
       _ProjectManagementScreenState();
 }
 
-const _watchedKey = watchedKey;
-const _cancelledKey = cancelledKey;
-
 class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   List<JobStatus> _statuses = const [];
-  PmStatusSetting? _watched;
-  PmStatusSetting? _cancelled;
-
-  final Set<String> _saving = {};
-  final Map<String, String> _errors = {};
+  List<PmArea> _areas = const [];
+  int? _warnDays;
+  int? _stoppedDays;
+  List<(String, String)> _reasons = const [];
+  List<String> _redo = const [];
+  List<String> _dispute = const [];
 
   /// Bumped after a save, so the other tabs read again.
   int _generation = 0;
 
+  PmJobsIntent? _intent;
+  int _serial = 0;
+
   String _tab = 'dashboard';
   final Set<String> _shown = {'dashboard'};
 
-  String get _orgId => widget.session.me!.organization.id;
+  Me get _me => widget.session.me!;
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadAreas();
   }
 
   Future<void> _loadSettings() async {
-    final settings = await widget.api.get('/settings', {
-      'scope_type': 'organization',
-      'scope_id': _orgId,
-    });
+    final settings = await widget.api.get('/settings', pmPlaceScope(_me));
     if (!mounted || !settings.ok) return;
 
     final all = settings.data;
-    final rows = <String, Map<String, dynamic>>{
+    final rows = <String, Object?>{
       if (all is List)
-        for (final s in all.whereType<Map<String, dynamic>>()) '${s['key']}': s,
+        for (final s in all.whereType<Map>()) '${s['key']}': s['value'],
     };
-    final parsed = parseJobStatuses(rows['jobs.statuses']?['value']);
+    List<String> strings(Object? v) => [
+      for (final s in v is List ? v : const [])
+        if ('$s'.trim().isNotEmpty) '$s',
+    ];
+    final parsed = parseJobStatuses(rows['jobs.statuses']);
     setState(() {
       if (parsed.isNotEmpty) _statuses = parsed;
-      _watched = _setting(_watchedKey, rows[_watchedKey]);
-      _cancelled = _setting(_cancelledKey, rows[_cancelledKey]);
+      final warn = rows[pmWarnDaysKey];
+      _warnDays = warn is int ? warn : null;
+      final stopped = rows[pmStoppedKey];
+      _stoppedDays = stopped is int ? stopped : null;
+      _reasons = [
+        for (final r in (rows[pmReasonsKey] as List?) ?? const [])
+          if (r is Map && r['value'] != null)
+            ('${r['value']}', '${r['label'] ?? r['value']}'),
+      ];
+      _redo = strings(rows[pmRedoKey]);
+      _dispute = strings(rows[pmDisputeKey]);
     });
   }
 
-  /// A row as the settings API sends it; the job statuses stand in for its
-  /// options when it has none.
-  PmStatusSetting _setting(String key, Map<String, dynamic>? row) {
-    final raw = row?['value'];
-    final options = row?['options'];
-    return PmStatusSetting(
-      key: key,
-      value: raw is List ? [for (final v in raw) '$v'] : const [],
-      options: options is List && options.isNotEmpty
-          ? [
-              for (final o in options)
-                if (o is Map) ('${o['value']}', '${o['label'] ?? o['value']}'),
-            ]
-          : [for (final s in _statuses) (s.value, s.label)],
-      mayEdit: row == null || row['may_edit'] != false,
-      reason: row?['may_edit_reason'] as String?,
-    );
+  Future<void> _loadAreas() async {
+    final response = await widget.api.get('/jobs', {'per_page': '1'});
+    if (!mounted || !response.ok) return;
+    setState(() => _areas = pmAreas(response.body['meta']));
   }
 
-  Future<void> _save(String key, List<String> value) async {
-    // An empty watched list empties every Project Management list (0.0.0474).
-    if (key == _watchedKey && value.isEmpty) return;
-    setState(() {
-      _saving.add(key);
-      _errors.remove(key);
-    });
-
-    final response = await widget.api.patch(
-      '/settings/$key',
-      {'value': value},
-      {'scope_type': 'organization', 'scope_id': _orgId},
-    );
-    if (!mounted) return;
-
-    setState(() {
-      _saving.remove(key);
-      if (!response.ok) {
-        // Nothing on screen moves: a chip showing a refused value looks saved.
-        _errors[key] = response.message;
-        return;
-      }
-      final saved = response.data is Map
-          ? (response.data as Map)['value']
-          : null;
-      final list = saved is List ? [for (final v in saved) '$v'] : value;
-      PmStatusSetting update(PmStatusSetting s) => PmStatusSetting(
-        key: s.key,
-        value: list,
-        options: s.options,
-        mayEdit: s.mayEdit,
-        reason: s.reason,
-      );
-      if (key == _watchedKey && _watched != null) _watched = update(_watched!);
-      if (key == _cancelledKey && _cancelled != null) {
-        _cancelled = update(_cancelled!);
-      }
-      _generation++;
-    });
+  void _saved() {
+    _loadSettings();
+    setState(() => _generation++);
   }
+
+  void _go(String tab) => setState(() {
+    _tab = tab;
+    _shown.add(tab);
+  });
+
+  void _openJobs(String stage, PmFilters filters) {
+    _intent = PmJobsIntent(stage, filters, ++_serial);
+    _go('pending');
+  }
+
+  bool get _financials => _me.can('financials.bases.view');
 
   List<(String, String, IconData, Widget Function())> get _tabs => [
     (
@@ -164,24 +140,53 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
       () => ProjectManagementDashboard(
         api: widget.api,
         session: widget.session,
-        statuses: _statuses,
-        cancelled: _cancelled?.value,
-        now: widget.now,
-        zone: widget.zone,
+        areas: _areas,
+        stoppedDays: _stoppedDays,
         generation: _generation,
+        onOpenJobs: _openJobs,
+        onOpenSettings: () => _go('settings'),
       ),
     ),
+    if (_financials) ...[
+      (
+        'reports',
+        'Reports',
+        Icons.summarize_outlined,
+        () => ProjectManagementReports(
+          api: widget.api,
+          session: widget.session,
+          now: widget.now,
+        ),
+      ),
+      (
+        'table',
+        'Table',
+        Icons.table_chart_outlined,
+        () => ProjectManagementReportTable(
+          api: widget.api,
+          session: widget.session,
+          now: widget.now,
+        ),
+      ),
+    ],
     (
       'pending',
-      'Pending Jobs',
+      'Jobs',
       Icons.pending_actions_outlined,
-      () => ProjectManagementTab(
+      () => ProjectManagementJobs(
         api: widget.api,
         session: widget.session,
+        areas: _areas,
+        warnDays: _warnDays,
+        reviewReasons: _reasons,
+        redoWords: _redo,
+        disputeWords: _dispute,
         statuses: _statuses,
+        intent: _intent,
+        generation: _generation,
+        onOpenSettings: () => _go('settings'),
         now: widget.now,
         zone: widget.zone,
-        generation: _generation,
       ),
     ),
     (
@@ -202,11 +207,10 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
       'Settings',
       Icons.tune,
       () => ProjectManagementSettings(
-        watched: _watched,
-        cancelled: _cancelled,
-        saving: _saving,
-        errors: _errors,
-        onSave: _save,
+        api: widget.api,
+        session: widget.session,
+        statuses: _statuses,
+        onSaved: _saved,
       ),
     ),
   ];
@@ -226,10 +230,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
             key: const ValueKey('tour-pm-tabs'),
             labels: [for (final tab in tabs) (tab.$2, tab.$3)],
             selected: index < 0 ? 0 : index,
-            onSelected: (i) => setState(() {
-              _tab = tabs[i].$1;
-              _shown.add(_tab);
-            }),
+            onSelected: (i) => _go(tabs[i].$1),
           ),
         ),
         const Divider(height: 1),
@@ -240,7 +241,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
               for (final tab in tabs)
                 Offstage(
                   key: ValueKey('pm-pane-${tab.$1}'),
-                  offstage: tab.$1 != _tab,
+                  offstage: tab.$1 != (index < 0 ? tabs.first.$1 : _tab),
                   child: _shown.contains(tab.$1)
                       ? tab.$4()
                       : const SizedBox.shrink(),

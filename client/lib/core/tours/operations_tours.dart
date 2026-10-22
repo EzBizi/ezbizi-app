@@ -839,39 +839,119 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management ───────────────────────────────────────────────
-  // Its own module since 2026-10-21; Dashboard, Pending Jobs and Settings
-  // since UI queue 127. Pending Jobs' anchors kept their Jobs names.
+  // Its own module since 2026-10-21. Design 141: Dashboard, Reports, Table,
+  // Jobs (which was Pending Jobs), Logs and Settings.
   'project_management': Tour(
-    version: 2,
+    version: 3,
     steps: [
       TourStep(
-        anchor: 'tour-pm-dash-range',
-        title: 'Dates',
-        body: 'Today, Yesterday, This week, This month, or dates you choose.',
-        since: 2,
+        anchor: 'tour-pm-dash-areas',
+        title: 'Service areas',
+        body: 'All, or one service area. Every number below follows it.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-flags',
+        title: 'Filters',
+        body:
+            'Redo or one go, disputes, stopped payments, external companies '
+            'and jobs that need a second visit.',
+        since: 3,
       ),
       TourStep(
         anchor: 'tour-pm-dash-tiles',
-        title: 'What happened',
+        title: 'The pipeline',
         body:
-            'Payments, status changes, tag changes, cancellations and '
-            'deadlines due in those dates. Click a number for its jobs.',
-        since: 2,
+            'Each stage, in order, with money where you can see it. Click one '
+            'to open its jobs.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-review',
+        title: 'Waiting review',
+        body: 'Each location, split by why its jobs wait.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-start',
+        title: 'Waiting to start',
+        body:
+            'Paid jobs that have not started. Red at the limit, when the '
+            'daily warning email goes.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-teams',
+        title: 'Per team',
+        body: 'How many open jobs each team has.',
+        since: 3,
+      ),
+    ],
+  ),
+  'project_management/Reports': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-report-week',
+        title: 'The week',
+        body: 'Monday to Sunday. The arrows go a week back or forward.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-report-cards',
+        title: 'The Repair Team report',
+        body:
+            'A card per technician and the teams combined. Cost from gross '
+            'is red above the limit in Settings. Copy for WhatsApp copies it '
+            'as text.',
+      ),
+    ],
+  ),
+  'project_management/Table': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-report-week',
+        title: 'The week',
+        body: 'Monday to Sunday. The arrows go a week back or forward.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-table-grid',
+        title: 'Every field',
+        body:
+            'One row per technician. A missing value is amber; "Show only '
+            'rows with gaps" leaves just those.',
       ),
     ],
   ),
   'project_management/Settings': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
-        anchor: 'tour-pm-settings-watched',
-        title: 'Watched statuses',
-        body: 'Jobs in these statuses show in Pending Jobs.',
+        anchor: 'tour-pm-settings-stages',
+        title: 'Stages',
+        body:
+            'The statuses that put a job in each stage, and whether it must be '
+            'scheduled or have money due.',
+        since: 2,
       ),
       TourStep(
-        anchor: 'tour-pm-settings-cancelled',
-        title: 'Cancelled',
-        body: 'A job moving into one of these counts as cancelled.',
+        anchor: 'tour-pm-settings-reasons',
+        title: 'Review reasons',
+        body: 'Why a job waits for review.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-settings-warn',
+        title: 'Paid but not started',
+        body:
+            'After how many days, and to which address, the daily warning goes.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-settings-watched',
+        title: 'Estimate clock',
+        body:
+            'Jobs in these statuses are checked daily for how long their estimate waited.',
       ),
     ],
   ),
@@ -900,28 +980,29 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
-  'project_management/Pending Jobs': Tour(
+  'project_management/Jobs': Tour(
     version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-jobs-pm-stages',
+        anchor: 'tour-pm-jobs-stages',
         title: 'Stage',
         body:
-            'Recently paid, the jobs with a payment in the dates you choose. '
-            'Then Waiting, Partly paid, Paid in full or Closed, each with how '
-            'many jobs are in it.',
+            'In progress to Done, waiting payment, then Completed and '
+            'Cancelled, each with how many jobs are in it.',
       ),
       TourStep(
-        anchor: 'tour-jobs-pm-filters',
-        title: 'Branch and days',
-        body: 'One branch, and only the jobs waiting at least so many days.',
+        anchor: 'tour-pm-jobs-filters',
+        title: 'Filters and search',
+        body:
+            'A service area, redo or one go, disputes, stopped payments, '
+            'external companies and, in progress, a second visit.',
       ),
       TourStep(
-        anchor: 'tour-jobs-pm-list',
+        anchor: 'tour-pm-jobs-list',
         title: 'The jobs',
         body:
-            'Closest to cancelling first. Click one for its timeline, and Open '
-            'the job from there.',
+            'Newest change first, 100 to a page. Click one for its timeline, '
+            'its review reason, external company and second visit.',
       ),
     ],
   ),

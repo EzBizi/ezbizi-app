@@ -257,7 +257,9 @@
             "parent": null,
             "tabs": [
                 "Dashboard",
-                "Pending Jobs",
+                "Reports",
+                "Table",
+                "Jobs",
                 "Logs",
                 "Settings"
             ]
