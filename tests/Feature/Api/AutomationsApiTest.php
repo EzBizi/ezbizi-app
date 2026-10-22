@@ -181,7 +181,7 @@ class AutomationsApiTest extends TestCase
 
             foreach ($module['triggers'] as $trigger) {
                 $this->assertSame(
-                    ['key', 'label', 'description', 'is_raised'],
+                    ['key', 'label', 'description', 'is_raised', 'subjects'],
                     array_keys($trigger)
                 );
             }
