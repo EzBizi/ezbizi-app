@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0485',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management › Assignments: the paid jobs Action 1 put on the Task Board, across every branch board, grouped by technician. Drag a card to another technician to reassign the job in Workiz; if Workiz refuses, the card goes back and says why.',
+        'Project Management: Dashboard, Jobs and Assignments share one toolbar and say which jobs they cover; Reports, Table, Logs and Settings read the same way.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0484',
       date: '22 Oct 2026',
       items: [
