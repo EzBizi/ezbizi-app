@@ -6,10 +6,11 @@
 // side panel that stacked every provider in one scroll, with three text
 // buttons on every account row and certification problems as loose red lines.
 //
-// Manage has three tabs (Jose, 2026-09-30: "inside manage and we can make a
+// Manage's tabs (Jose, 2026-09-30: "inside manage and we can make a
 // connection sub tab and templates sub tab", then a Dashboard "sub tab for
-// leads"): Connections, described below; Templates, ReplyTemplatesManager; and
-// Dashboard, LeadsDashboard. UI queue 38 drew the last two.
+// leads"): Connections, described below; Templates, ReplyTemplatesManager;
+// Dashboard, LeadsDashboard (UI queue 38 drew those two); Stats, LeadsStats;
+// and Office hours, LeadsOfficeHours (UI queue 138).
 //
 // The page takes the place of the leads, with ← back (containment): the
 // providers down the left with how many need attention, the chosen provider's
@@ -37,6 +38,7 @@ import 'connect_account.dart';
 import 'error_note.dart';
 import 'grouped_rows.dart';
 import 'leads_dashboard.dart';
+import 'leads_office_hours.dart';
 import 'leads_stats.dart';
 import 'reply_templates_manager.dart';
 import 'search_picker.dart';
@@ -191,6 +193,10 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   /// The dashboard, like Templates, is built on first open and kept after.
   bool _dashboardOpened = false;
   bool _statsOpened = false;
+  bool _officeHoursOpened = false;
+
+  /// A phone's office hours editor takes the page, as a template does.
+  bool _officeHoursDeep = false;
 
   /// A phone's template steps past the first take the page, header and tabs
   /// included, the way the connections' steps do.
@@ -316,6 +322,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               Offstage(offstage: _tab != 'templates', child: _templates()),
               Offstage(offstage: _tab != 'dashboard', child: _dashboard()),
               Offstage(offstage: _tab != 'stats', child: _stats()),
+              Offstage(offstage: _tab != 'office_hours', child: _officeHours()),
             ],
           ),
         ),
@@ -386,6 +393,29 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               _tabStrip(context),
               const Divider(height: 1),
               Expanded(child: _stats()),
+            ],
+          ),
+        ),
+        Offstage(
+          offstage: _tab != 'office_hours',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!_officeHoursDeep) ...[
+                _header(
+                  context,
+                  title: 'Manage',
+                  backTooltip: 'Back to the leads',
+                  onBack: widget.onBack,
+                ),
+                _tabStrip(context),
+                const Divider(height: 1),
+              ],
+              // Keyed, so hiding the header above keeps the editor's State.
+              Expanded(
+                key: const ValueKey('office-hours-body'),
+                child: _officeHours(),
+              ),
             ],
           ),
         ),
@@ -485,6 +515,8 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     ('dashboard', 'Dashboard', Icons.insights_outlined),
     // A1 takeover's Stats (UI queue 107).
     ('stats', 'Stats', Icons.bar_chart),
+    // When each company and branch answers leads (UI queue 138).
+    ('office_hours', 'Office hours', Icons.schedule_outlined),
   ];
 
   Widget _tabStrip(BuildContext context) => Material(
@@ -498,6 +530,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         if (_tab == 'templates') _templatesOpened = true;
         if (_tab == 'dashboard') _dashboardOpened = true;
         if (_tab == 'stats') _statsOpened = true;
+        if (_tab == 'office_hours') _officeHoursOpened = true;
       }),
     ),
   );
@@ -515,6 +548,14 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   /// 38's 7 and 10).
   Widget _stats() => _statsOpened
       ? LeadsStats(api: widget.api, session: widget.session)
+      : const SizedBox.shrink();
+
+  /// Office hours and time zone per place (UI queue 138's 1 and 4).
+  Widget _officeHours() => _officeHoursOpened
+      ? LeadsOfficeHours(
+          api: widget.api,
+          onDeeper: (deep) => setState(() => _officeHoursDeep = deep),
+        )
       : const SizedBox.shrink();
 
   Widget _dashboard() => _dashboardOpened
