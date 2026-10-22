@@ -300,6 +300,74 @@ void main() {
     );
   });
 
+  testWidgets('the last watched status cannot be removed', (tester) async {
+    final stub = _Stub();
+    await _pump(tester, stub, now: now);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    const approved = ValueKey(
+      'pm-settings-jobs.estimate_aging_statuses-approved',
+    );
+    const sent = ValueKey(
+      'pm-settings-jobs.estimate_aging_statuses-estimate_sent',
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(approved),
+        matching: find.byTooltip('Remove'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(stub.patchLog, ['jobs.estimate_aging_statuses ["estimate_sent"]']);
+
+    // One left: no X, and a line saying why.
+    expect(
+      find.descendant(of: find.byKey(sent), matching: find.byTooltip('Remove')),
+      findsNothing,
+    );
+    expect(tester.widget<InputChip>(find.byKey(sent)).onDeleted, isNull);
+    expect(
+      find.text(
+        'Keep at least one status; add another before removing this one.',
+      ),
+      findsOneWidget,
+    );
+
+    // Even a direct call on the chip sends nothing empty.
+    tester.widget<InputChip>(find.byKey(sent)).onDeleted?.call();
+    await tester.pumpAndSettle();
+    expect(stub.patchLog.where((p) => p.endsWith(' []')), isEmpty);
+    expect(stub.patchLog, hasLength(1));
+    expect(find.byKey(sent), findsOneWidget);
+  });
+
+  testWidgets('removing the last cancelled status saves [] and offers Undo', (
+    tester,
+  ) async {
+    final stub = _Stub(cancelled: const ['lost']);
+    await _pump(tester, stub, now: now);
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    const lost = ValueKey('pm-settings-jobs.cancelled_statuses-lost');
+    await tester.tap(
+      find.descendant(of: find.byKey(lost), matching: find.byTooltip('Remove')),
+    );
+    await tester.pumpAndSettle();
+    expect(stub.patchLog, ['jobs.cancelled_statuses []']);
+    expect(find.byKey(lost), findsNothing);
+    expect(find.text('Nothing counts as cancelled now'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pumpAndSettle();
+    expect(stub.patchLog, [
+      'jobs.cancelled_statuses []',
+      'jobs.cancelled_statuses ["lost"]',
+    ]);
+    expect(find.byKey(lost), findsOneWidget);
+  });
+
   testWidgets('phone: two tiles a row, the list and timeline full screen', (
     tester,
   ) async {
@@ -399,6 +467,9 @@ class _Stub {
   final patches = <String, Object?>{};
   final patchQueries = <Map<String, String>>[];
 
+  /// Every PATCH in order, as `key value-json`.
+  final patchLog = <String>[];
+
   Map<String, dynamic> bucket(List<String> ids) => {
     'count': empty ? 0 : ids.length,
     'job_ids': empty ? const <String>[] : ids,
@@ -445,6 +516,7 @@ class _Stub {
       final key = path.split('/').last;
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       patches[key] = body;
+      patchLog.add('$key ${jsonEncode(body['value'])}');
       patchQueries.add(request.url.queryParameters);
       return _json({
         'data': {'key': key, 'value': body['value']},

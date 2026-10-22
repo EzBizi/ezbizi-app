@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/search_picker.dart';
 
+/// The statuses Project Management watches; never saved empty.
+const watchedKey = 'jobs.estimate_aging_statuses';
+
+/// The statuses that mean cancelled; empty is a valid choice.
+const cancelledKey = 'jobs.cancelled_statuses';
+
 /// One organization setting Project Management reads: a list of job statuses.
 class PmStatusSetting {
   const PmStatusSetting({
@@ -88,6 +94,30 @@ class ProjectManagementSettings extends StatelessWidget {
     );
   }
 
+  /// Saves [setting] without [v]. The watched list never goes empty; the
+  /// cancelled list may, and says so with Undo rather than a question.
+  void _remove(BuildContext context, PmStatusSetting setting, String v) {
+    final previous = setting.value;
+    final next = [
+      for (final x in previous)
+        if (x != v) x,
+    ];
+    if (next.isEmpty && setting.key == watchedKey) return;
+    onSave(setting.key, next);
+    if (next.isEmpty && setting.key == cancelledKey) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          key: const ValueKey('pm-settings-cancelled-undo'),
+          content: const Text('Nothing counts as cancelled now'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => onSave(setting.key, previous),
+          ),
+        ),
+      );
+    }
+  }
+
   Widget _list(
     BuildContext context, {
     required Key anchor,
@@ -120,6 +150,8 @@ class ProjectManagementSettings extends StatelessWidget {
         if (!setting.value.contains(o.$1)) o,
     ];
     final error = errors[setting.key];
+    // An empty watched list empties every Project Management list.
+    final keepsLast = setting.key == watchedKey && setting.value.length == 1;
 
     return Column(
       key: anchor,
@@ -148,11 +180,8 @@ class ProjectManagementSettings extends StatelessWidget {
               InputChip(
                 key: ValueKey('pm-settings-${setting.key}-$v'),
                 label: Text(label(v)),
-                onDeleted: editable
-                    ? () => onSave(setting.key, [
-                        for (final x in setting.value)
-                          if (x != v) x,
-                      ])
+                onDeleted: editable && !keepsLast
+                    ? () => _remove(context, setting, v)
                     : null,
                 deleteButtonTooltipMessage: 'Remove',
               ),
@@ -179,6 +208,16 @@ class ProjectManagementSettings extends StatelessWidget {
               ),
           ],
         ),
+        if (keepsLast && setting.mayEdit) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Keep at least one status; add another before removing this one.',
+            key: ValueKey('pm-settings-${setting.key}-keep-one'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
         if (!setting.mayEdit && setting.reason != null) ...[
           const SizedBox(height: 6),
           Text(
