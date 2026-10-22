@@ -710,7 +710,7 @@ class JobsController extends Controller
             // Project Management (Jose, 2026-10-22). A reason from the
             // organization's own list; the outside company's name, null for us.
             'review_reason' => ['nullable', 'string', Rule::in(array_column(
-                (array) app(\App\Support\Settings\SettingsResolver::class)->get('jobs.review_reasons', request()->user()?->organization), 'value'))],
+                (array) app(\App\Support\Settings\SettingsResolver::class)->get('jobs.review_reasons', \App\Support\Scoping\ViewScope::forUser(request()->user())->settingsScope()), 'value'))],
             'external_company' => ['nullable', 'string', 'max:150'],
             'needs_second_visit' => ['sometimes', 'boolean'],
         ];

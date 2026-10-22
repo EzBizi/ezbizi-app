@@ -45,16 +45,44 @@ final class ProjectStages
         return $out;
     }
 
-    /** Narrow a job query to one stage; an unmapped stage holds nothing. */
-    public static function scope(Builder $q, ?array $rule): Builder
+    /**
+     * Each stage's rule for these branches, read where each branch's settings
+     * resolve (branch, then company, then organization: Jose, 2026-10-22, "it's
+     * an ezbizi system ... needs to respect organization - company - franchise
+     * levels"). Branches sharing a rule share a group.
+     *
+     * @param  iterable<\App\Models\Franchise>  $franchises
+     * @return array<string, list<array{ids: list<string>, rule: array}>>
+     */
+    public static function forFranchises(iterable $franchises, \App\Support\Settings\SettingsResolver $settings): array
     {
-        if ($rule === null) {
+        $groups = [];
+        foreach ($franchises as $f) {
+            foreach (self::rules($settings->get('jobs.pm_stages', $f)) as $key => $rule) {
+                $sig = $key.json_encode($rule);
+                $groups[$key][$sig] ??= ['ids' => [], 'rule' => $rule];
+                $groups[$key][$sig]['ids'][] = $f->getKey();
+            }
+        }
+
+        return array_map('array_values', $groups);
+    }
+
+    /** Narrow a job query to one stage, each branch by its own rule; an unmapped stage holds nothing. */
+    public static function scope(Builder $q, ?array $groups): Builder
+    {
+        if (empty($groups)) {
             return $q->whereRaw('1 = 0');
         }
 
-        return $q->whereIn('status', $rule['statuses'])
-            ->when($rule['scheduled'] !== null, fn ($q) => $rule['scheduled'] ? $q->whereNotNull('scheduled_for') : $q->whereNull('scheduled_for'))
-            ->when($rule['due'] !== null, fn ($q) => $rule['due'] ? self::due($q) : $q->whereNotIn('id', self::due(Job::query())->select('id')));
+        return $q->where(function ($any) use ($groups) {
+            foreach ($groups as $g) {
+                $rule = $g['rule'];
+                $any->orWhere(fn ($one) => $one->whereIn('franchise_id', $g['ids'])->whereIn('status', $rule['statuses'])
+                    ->when($rule['scheduled'] !== null, fn ($q) => $rule['scheduled'] ? $q->whereNotNull('scheduled_for') : $q->whereNull('scheduled_for'))
+                    ->when($rule['due'] !== null, fn ($q) => $rule['due'] ? self::due($q) : $q->whereNotIn('id', self::due(Job::query())->select('id'))));
+            }
+        });
     }
 
     /** Jobs with money still due (Workiz's amount due, until EzBizi invoices its own). */
