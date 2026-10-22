@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'work_hours_reports', 'whatsapp_groups', 'report_text_kinds', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -175,7 +175,7 @@ class AutomationsApiTest extends TestCase
                 );
 
                 foreach ($module['subject']['writable_fields'] as $field) {
-                    $this->assertSame(['key', 'label'], array_keys($field));
+                    $this->assertSame(['key', 'label', 'kind', 'options'], array_keys($field));
                 }
             }
 
@@ -202,7 +202,7 @@ class AutomationsApiTest extends TestCase
         }
 
         foreach ($data['action_types'] as $entry) {
-            $this->assertSame(['key', 'label', 'module_only', 'parameters'], array_keys($entry));
+            $this->assertSame(['key', 'label', 'module_only', 'parameters', 'subjects'], array_keys($entry));
             $this->assertIsBool($entry['module_only']);
             foreach ($entry['parameters'] as $parameter) {
                 $this->assertSame(
