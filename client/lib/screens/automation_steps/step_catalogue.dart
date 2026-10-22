@@ -86,25 +86,30 @@ class _StepCatalogueState extends State<StepCatalogue> {
                       ),
                     ),
                   )
-                : ListView(
+                // Every row built, not lazily: a few dozen at most, and one
+                // scrolled out of view must still be there to reach.
+                : SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    children: [
-                      for (final (group, items) in groups) ...[
-                        Padding(
-                          key: ValueKey('automation-step-group-${group.key}'),
-                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-                          child: Text(
-                            group.label.toUpperCase(),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (group, items) in groups) ...[
+                          Padding(
+                            key: ValueKey('automation-step-group-${group.key}'),
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                            child: Text(
+                              group.label.toUpperCase(),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.6,
+                              ),
                             ),
                           ),
-                        ),
-                        for (final item in items) _row(context, item),
+                          for (final item in items) _row(context, item),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
           ),
         ),
