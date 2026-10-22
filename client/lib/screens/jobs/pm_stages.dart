@@ -4,7 +4,8 @@ import '../../core/theme.dart';
 import '../../widgets/search_picker.dart';
 
 /// Project Management's stages (design 141, option 1), in the Jobs tab's
-/// order: the five open ones, then Completed and Cancelled. The keys are the
+/// order. Open jobs only: Completed and Cancelled came out (Jose,
+/// 2026-10-22: Project Management is about open, partly paid jobs). The keys are the
 /// server's (`ProjectStages::KEYS`); `jobs.pm_stages` maps each to statuses.
 const pmStageKeys = [
   'in_progress',
@@ -12,12 +13,7 @@ const pmStageKeys = [
   'ready_to_schedule',
   'scheduled',
   'done_waiting_payment',
-  'completed',
-  'cancelled',
 ];
-
-/// Drawn after the divider, muted: work that is over.
-const pmClosedStages = {'completed', 'cancelled'};
 
 String pmStageName(String key) => switch (key) {
   'in_progress' => 'In progress',
@@ -29,6 +25,38 @@ String pmStageName(String key) => switch (key) {
   'cancelled' => 'Cancelled',
   _ => key,
 };
+
+/// Each stage's colour, one map for the Settings table's dots, the Jobs
+/// tab's stage chips and the Dashboard's stage tiles (design 142): the
+/// palette's hues, so it reads in light and dark.
+const pmStageHues = {
+  'in_progress': 0, // blue
+  'waiting_review': 5, // orange
+  'ready_to_schedule': 1, // teal
+  'scheduled': 10, // sky
+  'done_waiting_payment': 4, // gold
+};
+
+Color pmStageColour(BuildContext context, String key) =>
+    PersonColours.hue(context, pmStageHues[key] ?? 9).ink;
+
+/// A stage's colour as a small dot.
+class PmStageDot extends StatelessWidget {
+  const PmStageDot(this.stage, {super.key, this.size = 10});
+
+  final String stage;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: pmStageColour(context, stage),
+      shape: BoxShape.circle,
+    ),
+  );
+}
 
 /// The filters the Dashboard and Jobs share, sent as the server names them
 /// (`stageFilters()` on JobsProjectManagementController).
@@ -42,6 +70,7 @@ class PmFilters {
     this.stopped = false,
     this.external = false,
     this.secondVisit = false,
+    this.waitingToStart = false,
   });
 
   /// A service area's id, or null for All.
@@ -55,6 +84,10 @@ class PmFilters {
   final bool external;
   final bool secondVisit;
 
+  /// Paid, not started, past the warning's days: the Dashboard's "See all"
+  /// (`waiting_to_start=1&over_limit=1`, 0f181d521).
+  final bool waitingToStart;
+
   PmFilters copyWith({
     Object? areaId = _keep,
     String? q,
@@ -63,6 +96,7 @@ class PmFilters {
     bool? stopped,
     bool? external,
     bool? secondVisit,
+    bool? waitingToStart,
   }) => PmFilters(
     areaId: areaId == _keep ? this.areaId : areaId as String?,
     q: q ?? this.q,
@@ -71,6 +105,7 @@ class PmFilters {
     stopped: stopped ?? this.stopped,
     external: external ?? this.external,
     secondVisit: secondVisit ?? this.secondVisit,
+    waitingToStart: waitingToStart ?? this.waitingToStart,
   );
 
   /// The query. [secondVisit] goes only where it is offered.
@@ -82,6 +117,7 @@ class PmFilters {
     if (stopped) 'stopped': '1',
     if (external) 'external': '1',
     if (secondVisit && withSecondVisit) 'second_visit': '1',
+    if (waitingToStart) ...{'waiting_to_start': '1', 'over_limit': '1'},
   };
 
   @override
@@ -93,22 +129,32 @@ class PmFilters {
       other.dispute == dispute &&
       other.stopped == stopped &&
       other.external == external &&
-      other.secondVisit == secondVisit;
+      other.secondVisit == secondVisit &&
+      other.waitingToStart == waitingToStart;
 
   @override
-  int get hashCode =>
-      Object.hash(areaId, q, redo, dispute, stopped, external, secondVisit);
+  int get hashCode => Object.hash(
+    areaId,
+    q,
+    redo,
+    dispute,
+    stopped,
+    external,
+    secondVisit,
+    waitingToStart,
+  );
 }
 
 const _keep = Object();
 
 /// Where a Dashboard tile sends Jobs: a stage and the filters it counted
-/// under. [serial] tells two taps on the same tile apart.
+/// under; no stage is every stage (the waiting-to-start "See all"). [serial]
+/// tells two taps on the same tile apart.
 @immutable
 class PmJobsIntent {
   const PmJobsIntent(this.stage, this.filters, this.serial);
 
-  final String stage;
+  final String? stage;
   final PmFilters filters;
   final int serial;
 }

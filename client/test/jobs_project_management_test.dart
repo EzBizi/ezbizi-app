@@ -45,8 +45,9 @@ void main() {
     });
     expect(label(tester, 'in_progress'), 'In progress · 41');
     expect(label(tester, 'done_waiting_payment'), 'Done, waiting payment · 19');
-    expect(label(tester, 'completed'), 'Completed · 812');
-    expect(label(tester, 'cancelled'), 'Cancelled · 64');
+    // Open jobs only (Jose, 2026-10-22): no Completed or Cancelled tab.
+    expect(find.byKey(const ValueKey('pm-stage-completed')), findsNothing);
+    expect(find.byKey(const ValueKey('pm-stage-cancelled')), findsNothing);
     // Scheduled is not mapped: no count.
     expect(label(tester, 'scheduled'), 'Scheduled');
 
@@ -60,9 +61,6 @@ void main() {
 
     final xs = [for (final s in pmStageKeys) at(ValueKey('pm-stage-$s'))];
     expect([...xs]..sort(), xs);
-    final divider = at(const ValueKey('pm-stage-divider'));
-    expect(divider, greaterThan(xs[4]));
-    expect(divider, lessThan(xs[5]));
   });
 
   testWidgets('an unmapped stage says not set up, with the way to Settings', (

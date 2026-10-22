@@ -19,6 +19,11 @@ const pmWarnEmailKey = 'jobs.pm_warning_email';
 const pmStoppedKey = 'jobs.pm_stopped_days';
 const pmCostKey = 'jobs.pm_cost_alert_percent';
 
+/// Which jobs Project Management includes (eb2f82f36): statuses (empty:
+/// any) and partly paid only.
+const pmScopeStatusesKey = 'jobs.pm_scope_statuses';
+const pmPartlyPaidKey = 'jobs.pm_partly_paid_only';
+
 const pmSettingKeys = [
   pmStagesKey,
   pmReasonsKey,
@@ -29,6 +34,8 @@ const pmSettingKeys = [
   pmStoppedKey,
   pmCostKey,
   watchedKey,
+  pmScopeStatusesKey,
+  pmPartlyPaidKey,
 ];
 
 /// The settings scope of the place being viewed: what the switcher is on.
@@ -66,7 +73,8 @@ class PmStageRule {
   };
 }
 
-/// Project Management › Settings (design 141), written as sentences, for the
+/// Project Management › Settings (design 141; cards per topic, design
+/// 142), for the
 /// place being viewed (Jose, 2026-10-22: Project Management resolves branch,
 /// then company, then organization). Every write goes to that place's own
 /// scope; a value inherited says where from, and a value set here can go
@@ -222,10 +230,24 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
       if ('$s'.trim().isNotEmpty) '$s',
   ];
 
+  /// Two cards a row from here; one column below (design 142).
+  static const _twoColumnsFrom = 900.0;
+
+  /// The stage table's columns from here; stage cards below (phone 4).
+  static const _tableFrom = 760.0;
+
+  static const _stageColumn = 210.0;
+  static const _ruleColumn = 196.0;
+
+  /// The label column of Alerts and the words card.
+  static const _labelColumn = 230.0;
+
+  /// Every number field the same narrow width, its unit after it.
+  static const _numberWidth = 76.0;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final narrow = MediaQuery.sizeOf(context).width < 600;
     if (_loadError != null) {
       return Center(
         child: Text(_loadError!, key: const ValueKey('pm-set-error')),
@@ -233,29 +255,13 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
     }
     if (_rows == null) return const Center(child: CircularProgressIndicator());
 
-    return ListView(
-      key: const ValueKey('pm-settings'),
-      padding: EdgeInsets.symmetric(horizontal: narrow ? 16 : 24, vertical: 16),
-      children: [
-        Text(
-          'Set for ${_me.scope.label}',
-          key: const ValueKey('pm-set-place'),
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _section(
-          context,
-          anchor: const ValueKey('tour-pm-settings-stages'),
-          title: 'Stages',
-          note:
-              'Each stage is the statuses that put a job there, plus a rule '
-              'on schedule and money due.',
-          keys: const [pmStagesKey],
-          child: _stages(context, narrow: narrow),
-        ),
-        _section(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 600;
+        final gutter = narrow ? 16.0 : 24.0;
+        final two = constraints.maxWidth - 2 * gutter >= _twoColumnsFrom;
+
+        final reasons = _card(
           context,
           anchor: const ValueKey('tour-pm-settings-reasons'),
           title: 'Review reasons',
@@ -264,74 +270,50 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
               'Dashboard.',
           keys: const [pmReasonsKey],
           child: _reasons(context),
-        ),
-        _section(
+        );
+        final words = _card(
           context,
           anchor: const ValueKey('tour-pm-settings-words'),
           title: 'Redo and dispute words',
           note: 'Tags or job types, any case.',
           keys: const [pmRedoKey, pmDisputeKey],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _words(context, pmRedoKey, 'A job is a redo when it has'),
-              const SizedBox(height: 12),
-              _words(context, pmDisputeKey, 'A job is in dispute when it has'),
-            ],
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final side = c.maxWidth >= 460;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _labelled(
+                    context,
+                    side: side,
+                    keys: const [pmRedoKey, pmDisputeKey],
+                    own: pmRedoKey,
+                    label: 'A job is a redo when it has',
+                    child: _words(context, pmRedoKey),
+                  ),
+                  const SizedBox(height: 12),
+                  _labelled(
+                    context,
+                    side: side,
+                    keys: const [pmRedoKey, pmDisputeKey],
+                    own: pmDisputeKey,
+                    label: 'A job is in dispute when it has',
+                    child: _words(context, pmDisputeKey),
+                  ),
+                ],
+              );
+            },
           ),
-        ),
-        _section(
+        );
+        final alerts = _card(
           context,
           anchor: const ValueKey('tour-pm-settings-warn'),
-          title: 'Paid but not started',
-          keys: const [pmWarnDaysKey, pmWarnEmailKey],
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Text('Warn when a paid job hasn’t started after'),
-              _number(pmWarnDaysKey),
-              const Text('days, daily, to'),
-              SizedBox(
-                width: narrow ? double.infinity : 260,
-                child: _PmTextSetting(
-                  key: const ValueKey('pm-set-$pmWarnEmailKey'),
-                  value: '${_value(pmWarnEmailKey) ?? ''}',
-                  enabled: _mayEdit(pmWarnEmailKey),
-                  hint: 'Email address (empty sends nothing)',
-                  keyboard: TextInputType.emailAddress,
-                  validate: (t) =>
-                      t.isEmpty || RegExp(r'^\S+@\S+\.\S+$').hasMatch(t)
-                      ? null
-                      : 'That is not an email address.',
-                  onSave: (t) => _write(pmWarnEmailKey, t),
-                ),
-              ),
-            ],
-          ),
-        ),
-        _section(
-          context,
-          anchor: const ValueKey('tour-pm-settings-stopped'),
-          title: 'Stopped payments and cost',
-          keys: const [pmStoppedKey, pmCostKey],
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              const Text('A partly paid job counts as stopped after'),
-              _number(pmStoppedKey),
-              const Text(
-                'days without a payment · cost from gross is red above',
-              ),
-              _number(pmCostKey),
-              const Text('%'),
-            ],
-          ),
-        ),
-        _section(
+          title: 'Alerts',
+          note: 'Paid but not started, stopped payments and cost.',
+          keys: const [pmWarnDaysKey, pmWarnEmailKey, pmStoppedKey, pmCostKey],
+          child: _alerts(context),
+        );
+        final watched = _card(
           context,
           anchor: const ValueKey('tour-pm-settings-watched'),
           title: 'Estimate clock',
@@ -340,12 +322,75 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
               'their estimate has waited.',
           keys: const [watchedKey],
           child: _watched(context),
-        ),
-      ],
+        );
+
+        Widget pair(Widget a, Widget b) => two
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: a),
+                  const SizedBox(width: 16),
+                  Expanded(child: b),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [a, const SizedBox(height: 16), b],
+              );
+
+        return ListView(
+          key: const ValueKey('pm-settings'),
+          padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 16),
+          children: [
+            Text(
+              'Set for ${_me.scope.label}',
+              key: const ValueKey('pm-set-place'),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _me.scope.type == 'franchise'
+                  ? 'This branch only.'
+                  : 'Its branches use these unless they set their own.',
+              key: const ValueKey('pm-set-place-note'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _card(
+              context,
+              anchor: const ValueKey('tour-pm-settings-scope'),
+              title: 'Which jobs Project Management includes',
+              note: 'Every tab counts and lists only these jobs.',
+              keys: const [pmScopeStatusesKey, pmPartlyPaidKey],
+              child: _included(context),
+            ),
+            const SizedBox(height: 16),
+            _card(
+              context,
+              anchor: const ValueKey('tour-pm-settings-stages'),
+              title: 'Stages',
+              note: 'Which statuses put a job in each stage.',
+              keys: const [pmStagesKey],
+              child: _stages(context),
+            ),
+            const SizedBox(height: 16),
+            pair(reasons, words),
+            const SizedBox(height: 16),
+            pair(alerts, watched),
+          ],
+        );
+      },
     );
   }
 
-  Widget _section(
+  /// A card per topic. Its header says once whether the card's settings are
+  /// this place's own ("Own settings · Use (the parent)'s again") or come
+  /// from the parent ("From (the parent)").
+  Widget _card(
     BuildContext context, {
     required Key anchor,
     required String title,
@@ -368,59 +413,200 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
           _rows![k]!['may_edit_reason'] as String,
     };
 
-    return Padding(
+    final Widget? state = own.isNotEmpty
+        ? Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Own settings ·',
+                key: ValueKey('pm-set-own-${keys.first}'),
+                style: muted,
+              ),
+              TextButton(
+                key: ValueKey('pm-set-inherit-${keys.first}'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                ),
+                onPressed: own.any(_saving.contains)
+                    ? null
+                    : () => _inherit(own),
+                child: Text('Use $_parentName’s again'),
+              ),
+            ],
+          )
+        : from.isNotEmpty
+        ? Text(
+            'From ${from.join(', ')}',
+            key: ValueKey('pm-set-from-${keys.first}'),
+            style: muted,
+          )
+        : null;
+
+    return DecoratedBox(
       key: anchor,
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          if (note != null) ...[
-            const SizedBox(height: 2),
-            Text(note, style: muted),
-          ],
-          const SizedBox(height: 8),
-          child,
-          if (from.isNotEmpty || own.isNotEmpty)
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Wrap(
-              spacing: 8,
+              key: ValueKey('pm-set-head-${keys.first}'),
+              alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
               children: [
-                if (from.isNotEmpty)
-                  Text(
-                    'From ${from.join(', ')}',
-                    key: ValueKey('pm-set-from-${keys.first}'),
-                    style: muted,
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                if (own.isNotEmpty)
-                  TextButton(
-                    key: ValueKey('pm-set-inherit-${keys.first}'),
-                    onPressed: own.any(_saving.contains)
-                        ? null
-                        : () => _inherit(own),
-                    child: Text('Use $_parentName’s again'),
-                  ),
+                ),
+                ?state,
               ],
             ),
-          for (final r in reasons) Text(r, style: muted),
-          for (final e in errors)
-            Text(
-              e,
-              key: ValueKey('pm-set-error-${keys.first}'),
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
-            ),
-        ],
+            if (note != null) ...[
+              const SizedBox(height: 2),
+              Text(note, style: muted),
+            ],
+            const SizedBox(height: 12),
+            child,
+            for (final r in reasons) ...[
+              const SizedBox(height: 6),
+              Text(r, style: muted),
+            ],
+            for (final e in errors) ...[
+              const SizedBox(height: 6),
+              Text(
+                e,
+                key: ValueKey('pm-set-error-${keys.first}'),
+                style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
+  /// A label in the fixed left column and its field beside it; on a narrow
+  /// card, the label above. In a card that is partly this place's own, a
+  /// setting still inherited says where from under its label.
+  Widget _labelled(
+    BuildContext context, {
+    required bool side,
+    required List<String> keys,
+    required String own,
+    required String label,
+    required Widget child,
+  }) {
+    final theme = Theme.of(context);
+    final from = keys.any(_own) ? _from(own) : null;
+    final head = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: theme.textTheme.bodyMedium),
+        if (from != null && from.isNotEmpty)
+          Text(
+            'From $from',
+            key: ValueKey('pm-set-from-$own'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
+    if (!side) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [head, const SizedBox(height: 6), child],
+      );
+    }
+    return Row(
+      children: [
+        SizedBox(width: _labelColumn, child: head),
+        const SizedBox(width: 12),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  Widget _alerts(BuildContext context) {
+    const keys = [pmWarnDaysKey, pmWarnEmailKey, pmStoppedKey, pmCostKey];
+    return LayoutBuilder(
+      builder: (context, c) {
+        final side = c.maxWidth >= 460;
+        Widget unit(String key, String text) => Row(
+          children: [
+            _number(key),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text)),
+          ],
+        );
+        Widget row(String key, String label, Widget child) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _labelled(
+            context,
+            side: side,
+            keys: keys,
+            own: key,
+            label: label,
+            child: child,
+          ),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            row(
+              pmWarnDaysKey,
+              'Warn when a paid job hasn’t started after',
+              unit(pmWarnDaysKey, 'days, then daily'),
+            ),
+            row(
+              pmWarnEmailKey,
+              'Send the warning to',
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 280),
+                  child: _PmTextSetting(
+                    key: const ValueKey('pm-set-$pmWarnEmailKey'),
+                    value: '${_value(pmWarnEmailKey) ?? ''}',
+                    enabled: _mayEdit(pmWarnEmailKey),
+                    hint: 'Email address (empty sends nothing)',
+                    keyboard: TextInputType.emailAddress,
+                    validate: (t) =>
+                        t.isEmpty || RegExp(r'^\S+@\S+\.\S+$').hasMatch(t)
+                        ? null
+                        : 'That is not an email address.',
+                    onSave: (t) => _write(pmWarnEmailKey, t),
+                  ),
+                ),
+              ),
+            ),
+            row(
+              pmStoppedKey,
+              'A partly paid job counts as stopped after',
+              unit(pmStoppedKey, 'days without a payment'),
+            ),
+            row(
+              pmCostKey,
+              'Cost from gross is red above',
+              unit(pmCostKey, '%'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _number(String key) => SizedBox(
-    width: 76,
+    width: _numberWidth,
     child: _PmTextSetting(
       key: ValueKey('pm-set-$key'),
       value: '${_value(key) ?? ''}',
@@ -452,73 +638,165 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
     return jobStatusLabel(null, value);
   }
 
-  Widget _stages(BuildContext context, {required bool narrow}) {
+  /// An aligned table: Stage | Statuses | Scheduled | Money due, every
+  /// control at the same x on every row. Narrow: a small card per stage.
+  Widget _stages(BuildContext context) {
+    final theme = Theme.of(context);
     final rules = _rules;
     final editable = _mayEdit(pmStagesKey);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final key in pmStageKeys)
-          _stageRow(context, key, rules, editable, narrow: narrow),
-      ],
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < _tableFrom) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (i, key) in pmStageKeys.indexed) ...[
+                if (i > 0) const SizedBox(height: 8),
+                _stageCard(context, key, rules, editable),
+              ],
+            ],
+          );
+        }
+        final head = theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.onSurfaceVariant,
+          letterSpacing: 0.4,
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              key: const ValueKey('pm-set-stage-head'),
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: _stageColumn,
+                    child: Text('STAGE', style: head),
+                  ),
+                  Expanded(child: Text('STATUSES', style: head)),
+                  SizedBox(
+                    width: _ruleColumn,
+                    child: Text('SCHEDULED', style: head),
+                  ),
+                  SizedBox(
+                    width: _ruleColumn,
+                    child: Text('MONEY DUE', style: head),
+                  ),
+                ],
+              ),
+            ),
+            for (final key in pmStageKeys)
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                ),
+                child: Padding(
+                  key: ValueKey('pm-set-stage-$key'),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: _stageColumn,
+                        child: _stageName(context, key),
+                      ),
+                      Expanded(child: _statuses(context, key, rules, editable)),
+                      SizedBox(
+                        width: _ruleColumn,
+                        child: _tri(key, rules, editable, 'scheduled'),
+                      ),
+                      SizedBox(
+                        width: _ruleColumn,
+                        child: _tri(key, rules, editable, 'due'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _stageRow(
+  /// Phone 4: one stage as a small card.
+  Widget _stageCard(
     BuildContext context,
     String key,
     Map<String, PmStageRule> rules,
-    bool editable, {
-    required bool narrow,
-  }) {
+    bool editable,
+  ) {
+    final theme = Theme.of(context);
+    Widget rule(String label, String what) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 84,
+            child: Text(label, style: theme.textTheme.bodySmall),
+          ),
+          Expanded(child: _tri(key, rules, editable, what)),
+        ],
+      ),
+    );
+    return DecoratedBox(
+      key: ValueKey('pm-set-stage-$key'),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _stageName(context, key),
+            const SizedBox(height: 8),
+            _statuses(context, key, rules, editable),
+            rule('Scheduled', 'scheduled'),
+            rule('Money due', 'due'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stageName(BuildContext context, String key) => Row(
+    children: [
+      PmStageDot(key, key: ValueKey('pm-set-stage-$key-dot')),
+      const SizedBox(width: 8),
+      Flexible(
+        child: Text(
+          pmStageName(key),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+    ],
+  );
+
+  Widget _statuses(
+    BuildContext context,
+    String key,
+    Map<String, PmStageRule> rules,
+    bool editable,
+  ) {
     final theme = Theme.of(context);
     final rule = rules[key] ?? PmStageRule(key, const [], null, null);
     final left = [
       for (final s in widget.statuses)
         if (!rule.statuses.contains(s.value)) s,
     ];
-
     void put(PmStageRule next) => _saveRules({...rules, key: next});
 
-    Widget tri(String what, bool? value, void Function(bool?) set) => Wrap(
-      spacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(what, style: theme.textTheme.bodySmall),
-        for (final (v, label) in const [
-          (null, 'Any'),
-          (true, 'Yes'),
-          (false, 'No'),
-        ])
-          ChoiceChip(
-            key: ValueKey('pm-set-stage-$key-$what-${v ?? 'any'}'),
-            showCheckmark: false,
-            selected: value == v,
-            label: Text(label),
-            onSelected: editable && rule.statuses.isNotEmpty
-                ? (_) {
-                    if (value != v) set(v);
-                  }
-                : null,
-          ),
-      ],
-    );
-
     return Padding(
-      key: ValueKey('pm-set-stage-$key'),
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(right: 12),
       child: Wrap(
-        spacing: 8,
+        spacing: 6,
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: narrow ? double.infinity : 170,
-            child: Text(
-              '${pmStageName(key)} =',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
           if (rule.statuses.isEmpty)
             Text(
               'not set up',
@@ -548,11 +826,11 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
             ),
           if (editable && left.isNotEmpty)
             SizedBox(
-              width: 190,
+              width: 170,
               child: SearchPickerField<String>(
                 key: ValueKey('pm-set-stage-$key-add'),
                 value: null,
-                hint: '+ Add a status',
+                hint: '+ Add',
                 isDense: true,
                 options: [
                   for (final s in left)
@@ -571,17 +849,60 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
                 },
               ),
             ),
-          tri(
-            'scheduled',
-            rule.scheduled,
-            (v) => put(PmStageRule(key, rule.statuses, v, rule.due)),
-          ),
-          tri(
-            'due',
-            rule.due,
-            (v) => put(PmStageRule(key, rule.statuses, rule.scheduled, v)),
-          ),
         ],
+      ),
+    );
+  }
+
+  /// Any / Yes / No for scheduled or money due. Each segment's label keeps
+  /// the key the chips had: `pm-set-stage-<stage>-<what>-<any|true|false>`.
+  Widget _tri(
+    String key,
+    Map<String, PmStageRule> rules,
+    bool editable,
+    String what,
+  ) {
+    final rule = rules[key] ?? PmStageRule(key, const [], null, null);
+    final value = what == 'scheduled' ? rule.scheduled : rule.due;
+    String id(bool? v) => '${v ?? 'any'}';
+    void set(bool? v) => _saveRules({
+      ...rules,
+      key: what == 'scheduled'
+          ? PmStageRule(key, rule.statuses, v, rule.due)
+          : PmStageRule(key, rule.statuses, rule.scheduled, v),
+    });
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<String>(
+        key: ValueKey('pm-set-stage-$key-$what'),
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        segments: [
+          for (final (v, label) in const [
+            (null, 'Any'),
+            (true, 'Yes'),
+            (false, 'No'),
+          ])
+            ButtonSegment(
+              value: id(v),
+              label: Text(
+                label,
+                key: ValueKey('pm-set-stage-$key-$what-${id(v)}'),
+              ),
+            ),
+        ],
+        selected: {id(value)},
+        onSelectionChanged: editable && rule.statuses.isNotEmpty
+            ? (picked) {
+                final v = switch (picked.first) {
+                  'true' => true,
+                  'false' => false,
+                  _ => null,
+                };
+                if (v != value) set(v);
+              }
+            : null,
       ),
     );
   }
@@ -631,33 +952,120 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
     );
   }
 
-  Widget _words(BuildContext context, String key, String sentence) {
+  Widget _words(BuildContext context, String key) {
     final list = _strings(_value(key));
+    return _ChipList(
+      keyName: key,
+      chips: [for (final w in list) (w, w)],
+      editable: _mayEdit(key),
+      addHint: '+ Add a word',
+      onRemove: (w) => _write(key, [
+        for (final x in list)
+          if (x != w) x,
+      ]),
+      onAdd: (w) {
+        final word = w.trim();
+        if (word.isEmpty ||
+            list.any((x) => x.toLowerCase() == word.toLowerCase())) {
+          return;
+        }
+        _write(key, [...list, word]);
+      },
+    );
+  }
+
+  // ── scope ──────────────────────────────────────────────────────
+
+  Widget _included(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('$sentence:', style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 6),
-        _ChipList(
-          keyName: key,
-          chips: [for (final w in list) (w, w)],
-          editable: _mayEdit(key),
-          addHint: '+ Add a word',
-          onRemove: (w) => _write(key, [
-            for (final x in list)
-              if (x != w) x,
-          ]),
-          onAdd: (w) {
-            final word = w.trim();
-            if (word.isEmpty ||
-                list.any((x) => x.toLowerCase() == word.toLowerCase())) {
-              return;
-            }
-            _write(key, [...list, word]);
-          },
-        ),
-      ],
+    const keys = [pmScopeStatusesKey, pmPartlyPaidKey];
+    final value = _strings(_value(pmScopeStatusesKey));
+    final editable = _mayEdit(pmScopeStatusesKey);
+    final left = [
+      for (final s in widget.statuses)
+        if (!value.contains(s.value)) s,
+    ];
+    return LayoutBuilder(
+      builder: (context, c) {
+        final side = c.maxWidth >= 460;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _labelled(
+              context,
+              side: side,
+              keys: keys,
+              own: pmScopeStatusesKey,
+              label: 'Jobs in these statuses',
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // Empty is any status, the server's reading.
+                  if (value.isEmpty)
+                    Text(
+                      'Any status',
+                      key: const ValueKey('pm-set-$pmScopeStatusesKey-any'),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  for (final v in value)
+                    InputChip(
+                      key: ValueKey('pm-set-$pmScopeStatusesKey-$v'),
+                      label: Text(_statusLabel(v)),
+                      deleteButtonTooltipMessage: 'Remove',
+                      onDeleted: editable
+                          ? () => _write(pmScopeStatusesKey, [
+                              for (final x in value)
+                                if (x != v) x,
+                            ])
+                          : null,
+                    ),
+                  if (editable && left.isNotEmpty)
+                    SizedBox(
+                      width: 170,
+                      child: SearchPickerField<String>(
+                        key: const ValueKey('pm-set-$pmScopeStatusesKey-add'),
+                        value: null,
+                        hint: '+ Add',
+                        isDense: true,
+                        options: [
+                          for (final s in left)
+                            SearchOption(value: s.value, label: s.label),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            _write(pmScopeStatusesKey, [...value, v]);
+                          }
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            _labelled(
+              context,
+              side: side,
+              keys: keys,
+              own: pmPartlyPaidKey,
+              label: 'Only partly paid jobs (a deposit paid, money still due)',
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Switch(
+                  key: const ValueKey('pm-set-$pmPartlyPaidKey'),
+                  value: _value(pmPartlyPaidKey) == true,
+                  onChanged: _mayEdit(pmPartlyPaidKey)
+                      ? (v) => _write(pmPartlyPaidKey, v)
+                      : null,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

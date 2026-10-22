@@ -125,7 +125,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
     _shown.add(tab);
   });
 
-  void _openJobs(String stage, PmFilters filters) {
+  void _openJobs(String? stage, PmFilters filters) {
     _intent = PmJobsIntent(stage, filters, ++_serial);
     _go('pending');
   }
