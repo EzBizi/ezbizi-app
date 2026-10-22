@@ -588,6 +588,113 @@ class JobsProjectManagementController extends Controller
         return ViewScope::forUser($user)->settingsScope();
     }
 
+    /**
+     * GET /api/v1/jobs/project-management/assignments?…filters
+     *
+     * Shoval via Jose, 2026-10-22: "a new tab ... like the task board, so there
+     * it assigns the project once the payment is received to the technician".
+     * Paid jobs in Project Management's scope: those with nobody yet, then one
+     * column per technician, then the outside companies'.
+     */
+    public function assignments(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $input = $request->validate($this->stageFilters());
+        $paid = WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereNotNull('job_id')
+            ->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) first_paid, MAX(starts_at) last_paid');
+        $jobs = $this->stageFiltered($user, $settings, $input)->whereIn('id', (clone $paid)->select('job_id'))
+            ->with(['customer:id,name,phone', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])->get();
+        $paidAt = $paid->whereIn('job_id', $jobs->modelKeys())->get()->keyBy('job_id');
+        $money = $user->hasPermission('jobs.financials');
+
+        $rows = $jobs->map(fn (Job $j) => $this->assignmentRow($j, $paidAt[$j->id] ?? null, $money))->sortByDesc('last_paid_at')->values();
+        $techs = $rows->filter(fn ($r) => $r['technician'] !== null && $r['external_company'] === null)->groupBy(fn ($r) => $r['technician']['key'])
+            ->map(fn ($g) => ['id' => $g->first()['technician']['id'], 'name' => $g->first()['technician']['name'], 'count' => $g->count()]
+                + ($money ? ['due_minor' => $g->sum('due_minor')] : []) + ['jobs' => $g->values()->all()])
+            ->sortBy('name')->values();
+        $external = $rows->filter(fn ($r) => $r['external_company'] !== null)->values();
+
+        return response()->json(['data' => [
+            'unassigned' => $rows->filter(fn ($r) => $r['technician'] === null && $r['external_company'] === null)->values()->all(),
+            'technicians' => $techs->all(),
+            'external' => ['count' => $external->count(), 'jobs' => $external->all()],
+        ]]);
+    }
+
+    /**
+     * POST /api/v1/jobs/project-management/jobs/{job}/assign {technician_id | external_company}
+     *
+     * Sets who does the job. With Workiz connected the technician goes to
+     * Workiz first, through their linked Workiz member; Workiz's refusal comes
+     * back verbatim as a 422 and nothing changes here.
+     */
+    public function assign(Request $request, SettingsResolver $settings, string $job): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $data = $request->validate([
+            'technician_id' => ['nullable', 'uuid', 'required_without:external_company'],
+            'external_company' => ['nullable', 'string', 'max:150', 'required_without:technician_id'],
+        ]);
+        $row = Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())->with(['franchise', 'workizJob'])->findOrFail($job);
+        $this->authorize('update', $row);
+
+        $workiz = null;
+        if (filled($data['technician_id'] ?? null)) {
+            $tech = \App\Models\User::query()->where('is_active', true)->find($data['technician_id']);
+            if ($tech === null || ! $tech->canActOnFranchise($row->franchise)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['technician_id' => 'That person does not work at this job\'s branch.']);
+            }
+            if ($row->workizJob) {
+                $member = \App\Models\WorkizTeamMember::query()->where('franchise_id', $row->franchise_id)->where('user_id', $tech->id)->first();
+                if ($member === null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['technician_id' => "{$tech->name} is not linked to anyone on this branch's Workiz, so Workiz cannot be told."]);
+                }
+                $sent = app(\App\Support\Workiz\WorkizJobWriter::class)->assign($row->workizJob, $member);
+                if ($sent['refused'] !== null) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['technician_id' => $sent['refused']]);
+                }
+                $workiz = 'assigned';
+            }
+            $change = ['performed_by_user_id' => $tech->id, 'external_company' => null];
+        } else {
+            $change = ['external_company' => trim($data['external_company'])];
+        }
+
+        $before = $row->only(array_keys($change));
+        $row->forceFill($change)->save();
+        app(\App\Support\Audit\AuditLogger::class)->log('job.assigned', $row, ['before' => $before, 'after' => $change], ['source' => 'project_management', 'workiz' => $workiz]);
+
+        $paid = WorkizRecord::query()->where('job_id', $row->id)->where('type', 'payment')->where('status', 'succeeded')
+            ->selectRaw('job_id, MIN(starts_at) first_paid, MAX(starts_at) last_paid')->groupBy('job_id')->first();
+
+        return response()->json(['data' => $this->assignmentRow($row->fresh(['customer', 'franchise', 'serviceArea', 'performedBy', 'workizJob']), $paid, $user->hasPermission('jobs.financials'))]);
+    }
+
+    private function assignmentRow(Job $j, $paid, bool $money): array
+    {
+        $m = WorkizMoney::for($j);
+        $team = collect($j->workizJob?->payload['Team'] ?? [])->first();
+        $tech = match (true) {
+            $j->performedBy !== null => ['key' => 'user:'.$j->performed_by_user_id, 'id' => $j->performed_by_user_id, 'name' => $j->performedBy->name],
+            is_array($team) && filled($team['name'] ?? null) => ['key' => 'workiz:'.($team['id'] ?? $team['name']), 'id' => $j->technician_user_id, 'name' => $team['name']],
+            default => null,
+        };
+
+        return [
+            'id' => $j->id, 'number' => $j->number, 'title' => $j->title, 'status' => $j->status, 'tags' => $j->tags ?? [],
+            'customer' => ['id' => $j->customer_id, 'name' => $j->customer?->name],
+            'franchise' => ['id' => $j->franchise_id, 'name' => $j->franchise?->name],
+            'service_area' => $j->serviceArea?->name,
+            'technician' => $tech,
+            'external_company' => $j->external_company,
+            'review_reason' => $j->review_reason,
+            'needs_second_visit' => (bool) $j->needs_second_visit,
+            'scheduled_for' => $j->scheduled_for?->toIso8601String(),
+            'paid_at' => $paid ? Carbon::parse($paid->first_paid)->toDateString() : null,
+            'last_paid_at' => $paid ? Carbon::parse($paid->last_paid)->toIso8601String() : null,
+        ] + ($money && $m ? ['total_minor' => $m['total'], 'due_minor' => $m['due'], 'deposit_minor' => $m['paid']] : []);
+    }
+
     private function pmUser(Request $request)
     {
         $user = $request->user();
