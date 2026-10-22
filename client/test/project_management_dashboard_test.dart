@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/project_management_screen.dart';
+import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,7 @@ void main() {
     expect(stub.stats.single.queryParameters, {
       'from': '2026-10-21',
       'to': '2026-10-21',
+      'timezone': 'America/New_York',
     });
   });
 
@@ -96,7 +98,7 @@ void main() {
     );
   });
 
-  testWidgets('a tile asks for its jobs by id and lists what happened', (
+  testWidgets('a tile asks for its jobs by name and lists what happened', (
     tester,
   ) async {
     final stub = _Stub();
@@ -106,11 +108,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
     await tester.pumpAndSettle();
 
+    // By the stat's name, never its ids: Yesterday's 514 broke the 500 cap.
     final asked = stub.lists.single;
-    expect(asked.queryParametersAll['ids[]'], ['j-1', 'j-2']);
-    expect(asked.queryParameters.containsKey('filter'), isFalse);
+    expect(asked.queryParameters, {
+      'event': 'payments',
+      'from': '2026-10-21',
+      'to': '2026-10-21',
+      'timezone': 'America/New_York',
+    });
+    expect(asked.queryParametersAll.containsKey('ids[]'), isFalse);
 
-    for (final h in ['JOB', 'CUSTOMER', 'WHAT', 'WHEN', 'BY']) {
+    for (final h in ['JOB', 'CUSTOMER', 'TECHNICIAN', 'WHAT', 'WHEN', 'BY']) {
       expect(find.text(h), findsOneWidget);
     }
     Finder inRow(String id, String text) => find.descendant(
@@ -123,6 +131,13 @@ void main() {
     );
     expect(inRow('j-1', 'Workiz'), findsOneWidget);
     expect(inRow('j-1', 'Lena Vroom'), findsOneWidget);
+    expect(inRow('j-1', 'Omar Pell'), findsOneWidget);
+    // Three tags, then the count of the rest.
+    final tags = find.byKey(const ValueKey('pm-tags-j-1'));
+    for (final t in ['Follow up', 'VIP', 'Rush', '+1']) {
+      expect(find.descendant(of: tags, matching: find.text(t)), findsOneWidget);
+    }
+    expect(find.text('Warranty'), findsNothing);
     // Today's step is a time; the older payment is outside the dates.
     expect(inRow('j-1', '9:42'), findsOneWidget);
     expect(inRow('j-1', r'$300.00'), findsNothing);
@@ -137,9 +152,7 @@ void main() {
     );
   });
 
-  testWidgets('status changes are worded with the status names', (
-    tester,
-  ) async {
+  testWidgets("status changes use the server's sentence", (tester) async {
     final stub = _Stub();
     await _pump(tester, stub, now: now);
 
@@ -149,7 +162,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pm-dash-row-j-1')),
-        matching: find.text('Status Estimate sent → Approved'),
+        matching: find.text('Status Quote out → Booked'),
       ),
       findsOneWidget,
     );
@@ -175,6 +188,7 @@ void main() {
     expect(stub.stats.last.queryParameters, {
       'from': '2026-10-19',
       'to': '2026-10-21',
+      'timezone': 'America/New_York',
     });
 
     await tester.tap(find.byKey(const ValueKey('pm-range-custom')));
@@ -195,11 +209,30 @@ void main() {
       'filter': 'recently_paid',
       'from': '2026-10-21',
       'to': '2026-10-21',
+      'timezone': 'America/New_York',
     });
     final chip = tester.widget<ChoiceChip>(
       find.byKey(const ValueKey('pm-stage-recently_paid')),
     );
     expect(chip.selected, isTrue);
+    // A colour of its own, as each stage has.
+    expect((chip.avatar! as ToneDot).tone, Tone.review);
+    expect({
+      for (final st in ['recently_paid', 'waiting', 'partial', 'full'])
+        (tester.widget<ChoiceChip>(find.byKey(ValueKey('pm-stage-$st'))).avatar!
+                as ToneDot)
+            .tone,
+    }, hasLength(4));
+    // The row's technician and tags, on Pending Jobs too.
+    expect(find.text('TECHNICIAN'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pm-row-j-1')),
+        matching: find.text('Omar Pell'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('pm-tags-j-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('pm-stage-waiting')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('pm-range-yesterday')));
@@ -208,12 +241,13 @@ void main() {
       'filter': 'recently_paid',
       'from': '2026-10-20',
       'to': '2026-10-20',
+      'timezone': 'America/New_York',
     });
 
     // Another stage is the watched list, without the filter.
     await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
     await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, isEmpty);
+    expect(stub.lists.last.queryParameters, {'timezone': 'America/New_York'});
     expect(find.byKey(const ValueKey('pm-range')), findsNothing);
   });
 
@@ -303,6 +337,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-tile-payments')), findsNothing);
     expect(find.byKey(const ValueKey('pm-dash-card-j-1')), findsOneWidget);
+    // The card's second line: the technician and the tags.
+    final card = find.byKey(const ValueKey('pm-dash-card-j-1'));
+    final tech = find.byKey(const ValueKey('pm-dash-tech-j-1'));
+    expect(find.descendant(of: card, matching: tech), findsOneWidget);
+    expect(
+      find.descendant(
+        of: card,
+        matching: find.byKey(const ValueKey('pm-tags-j-1')),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const ValueKey('pm-dash-card-j-1')));
     await tester.pumpAndSettle();
@@ -445,7 +490,8 @@ Map<String, dynamic> _row(
   'number': number,
   'title': 'Flue reline',
   'status': 'approved',
-  'tags': const <String>[],
+  'tags': const ['Follow up', 'VIP', 'Rush', 'Warranty'],
+  'technician': 'Omar Pell',
   'franchise': {'id': 'fr-1', 'name': 'Northgate'},
   'customer': {'id': 'c-$id', 'name': customer},
   'stage': 'partial',
@@ -478,7 +524,8 @@ Map<String, dynamic> _row(
       'from': 'estimate_sent',
       'to': 'approved',
       'by': 'Dara Quill',
-      'what': 'Status estimate_sent → approved',
+      // Not the client's own status words: the sentence is the server's.
+      'what': 'Status Quote out → Booked',
     },
     {
       'kind': 'payment',
@@ -515,6 +562,7 @@ Future<void> _pump(
           api: api,
           session: session,
           now: () => now,
+          zone: () => 'America/New_York',
         ),
       ),
     ),

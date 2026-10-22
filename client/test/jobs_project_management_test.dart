@@ -419,6 +419,8 @@ Future<void> _pump(
                 api: api,
                 session: session,
                 now: () => now,
+                // No zone: the queries below are only the filters.
+                zone: () => null,
               ),
       ),
     ),
