@@ -3,6 +3,7 @@
 namespace App\Support\Preferences;
 
 use App\Support\Modules\ModuleRegistry;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -121,6 +122,21 @@ class PreferenceRegistry
                 'default' => true,
                 'help' => 'Off stops pop-ups, phone pushes and emails for you. '
                     .'Notifications still collect in the bell.',
+            ],
+
+            /*
+             * Which companies one person hears from. Bar, 2026-10-22 (via
+             * Jose): assigned to the whole group, he wants only Everdoors —
+             * "everything under everdoors": its sub companies and branches.
+             * Empty means everything, which is what everybody has today. A
+             * record that sits in no company (an organization-wide alert)
+             * reaches everyone regardless. NotificationDispatcher reads it.
+             */
+            'notifications.companies' => [
+                'label' => 'Notify me about',
+                'type' => 'ids',
+                'default' => [],
+                'help' => 'Only these companies, their sub companies and branches. Empty means all.',
             ],
 
             /*
@@ -381,6 +397,10 @@ class PreferenceRegistry
                     implode(', ', $definition['options']),
                 )),
             'order' => $this->cleanOrder($value),
+            // ponytail: not checked against the companies table; an id that matches nothing simply never matches.
+            'ids' => is_array($value)
+                ? array_values(array_unique(array_filter($value, fn ($id) => is_string($id) && Str::isUuid($id))))
+                : [],
             'versions' => $this->cleanVersions($value),
             'widths' => $this->cleanWidths($value),
             default => (string) $value,

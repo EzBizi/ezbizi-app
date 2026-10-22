@@ -856,6 +856,11 @@ class Me {
   /// reading NotificationDispatcher uses on the server.
   bool get notificationAlerts => preferences['notifications.alerts'] != false;
 
+  /// The companies this person hears from; empty means all of them. Each
+  /// covers its sub companies and branches (Bar, 2026-10-22).
+  List<String> get notificationCompanies =>
+      (preferences['notifications.companies'] as List? ?? const []).whereType<String>().toList();
+
   /// How wide the expanded sidebar is. Clamped on read as well as on write:
   /// a stored value from an older build, or one the server has since tightened
   /// the bounds on, must not be able to render an unusable shell.

@@ -514,6 +514,7 @@ class _NotificationBellState extends State<NotificationBell>
                     if (context.mounted) repaint(() {});
                   },
                 ),
+                CompanyFocus(api: widget.api, session: session),
                 const Divider(height: 1),
               ],
               _items.isEmpty
@@ -687,6 +688,85 @@ class _NotificationBellState extends State<NotificationBell>
         label: Text('$_unread'),
         child: const Icon(Icons.notifications_none),
       ),
+    );
+  }
+}
+
+/// "Notify me about": which companies this person hears from.
+///
+/// Bar, 2026-10-22 (via Jose): assigned to the whole group, he only wants
+/// Everdoors — "everything under everdoors". Ticking a company covers its sub
+/// companies and branches; none ticked means all, which is everybody's
+/// default. Hidden for a person who cannot list companies, or when there is
+/// only one, since there is nothing to choose between.
+class CompanyFocus extends StatefulWidget {
+  const CompanyFocus({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  @override
+  State<CompanyFocus> createState() => _CompanyFocusState();
+}
+
+class _CompanyFocusState extends State<CompanyFocus> {
+  /// (id, name, depth) — a company then its sub companies, indented.
+  List<(String, String, int)> _companies = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.api.get('/companies');
+    if (!mounted || !response.ok) return;
+    final rows = <(String, String, int)>[];
+    for (final c in (response.body['companies'] as List? ?? const [])) {
+      rows.add((c['id'] as String, c['name'] as String, 0));
+      for (final s in (c['sub_companies'] as List? ?? const [])) {
+        rows.add((s['id'] as String, s['name'] as String, 1));
+      }
+    }
+    setState(() => _companies = rows);
+  }
+
+  Future<void> _toggle(String id, bool on) async {
+    final chosen = widget.session.me?.notificationCompanies ?? const <String>[];
+    final next = on ? [...chosen, id] : chosen.where((c) => c != id).toList();
+    final saving = widget.session.setPreference('notifications.companies', next);
+    setState(() {});
+    await saving;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_companies.length < 2) return const SizedBox.shrink();
+    final chosen = widget.session.me?.notificationCompanies ?? const <String>[];
+
+    return ExpansionTile(
+      key: const ValueKey('notification-company-focus'),
+      tilePadding: EdgeInsets.zero,
+      dense: true,
+      title: const Text('Notify me about'),
+      subtitle: Text(
+        chosen.isEmpty
+            ? 'All companies'
+            : _companies.where((c) => chosen.contains(c.$1)).map((c) => c.$2).join(', '),
+      ),
+      children: [
+        for (final (id, name, depth) in _companies)
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.only(left: 16.0 * depth),
+            controlAffinity: ListTileControlAffinity.leading,
+            value: chosen.contains(id),
+            title: Text(name),
+            onChanged: (on) => _toggle(id, on ?? false),
+          ),
+      ],
     );
   }
 }
