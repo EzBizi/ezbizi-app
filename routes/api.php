@@ -1024,8 +1024,9 @@ Route::prefix('v1')
         // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
         Route::middleware('permission:leads.manage')->group(function () {
             Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);
-            Route::put('leads/office-hours/{scope}/{id}', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'update'])
-                ->whereIn('scope', ['organization', 'company', 'franchise']);
+            // No whereIn on {scope}: the controller's match() refuses any other scope, and a
+            // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
+            Route::put('leads/office-hours/{scope}/{id}', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'update']);
         });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
