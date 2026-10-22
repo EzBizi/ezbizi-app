@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0474',
+      date: '22 Oct 2026',
+      items: [
+        'Integrations › Email: the Sending server card shows again, connected or not, so a company can connect the mail server its invoices and messages go out from. If it cannot be shown, it says why.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0473',
       date: '22 Oct 2026',
       items: [
