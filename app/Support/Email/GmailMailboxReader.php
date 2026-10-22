@@ -108,7 +108,7 @@ use Illuminate\Support\Facades\Http;
  * rather than from invented error bodies: a fake `invalid_grant` proves the
  * `match` arm reads the string it was handed and nothing more.
  */
-final class GmailMailboxReader implements MailboxReader
+final class GmailMailboxReader implements LabelsThreads, MailboxReader
 {
     private const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -205,7 +205,7 @@ final class GmailMailboxReader implements MailboxReader
 
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, ['labelIds' => $this->folder($mailbox, $label)], $cursor, $limit);
+        return $this->page($mailbox, $this->labelFilter($mailbox, $label), $cursor, $limit);
     }
 
     /**
@@ -223,10 +223,7 @@ final class GmailMailboxReader implements MailboxReader
      */
     public function search(Mailbox $mailbox, string $query, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
-        return $this->page($mailbox, [
-            'q' => $query,
-            'labelIds' => $this->folder($mailbox, $label),
-        ], $cursor, $limit);
+        return $this->page($mailbox, ['q' => $query, ...$this->labelFilter($mailbox, $label)], $cursor, $limit);
     }
 
     /**
@@ -248,6 +245,12 @@ final class GmailMailboxReader implements MailboxReader
      *
      * @throws CannotReadMailbox
      */
+    /** `ALL` is every conversation outside Spam and Trash: no label at all. */
+    private function labelFilter(Mailbox $mailbox, string $label): array
+    {
+        return strtoupper($label) === 'ALL' ? [] : ['labelIds' => $this->folder($mailbox, $label)];
+    }
+
     private function folder(Mailbox $mailbox, string $label): string
     {
         $name = strtoupper($label);
@@ -723,7 +726,7 @@ final class GmailMailboxReader implements MailboxReader
                 // Headers only -- still no body.
                 'metadataHeaders' => [
                     'From', 'To', 'Subject', 'Date', 'Authentication-Results',
-                    'List-Unsubscribe', 'Precedence', 'Auto-Submitted',
+                    'List-Unsubscribe', 'Precedence', 'Auto-Submitted', 'Message-ID',
                 ],
             ]));
         }
@@ -1244,7 +1247,10 @@ final class GmailMailboxReader implements MailboxReader
                         ->timeout(self::TIMEOUT)
                         ->get(self::API.'/threads/'.rawurlencode($id), [
                             'format'          => 'metadata',
-                            'metadataHeaders' => ['From', 'To', 'Subject', 'Date', 'Authentication-Results'],
+                            'metadataHeaders' => [
+                                'From', 'To', 'Subject', 'Date', 'Authentication-Results', 'Message-ID',
+                                'List-Unsubscribe', 'Precedence', 'Auto-Submitted',
+                            ],
                         ]);
                 }
 
@@ -1291,6 +1297,30 @@ final class GmailMailboxReader implements MailboxReader
      *
      * @param  array<string, mixed>  $payload
      */
+    /**
+     * Add and remove labels on the conversation a message is in: star,
+     * archive (remove INBOX), move, return from snooze (add INBOX).
+     *
+     * @param  list<string>  $add
+     * @param  list<string>  $remove
+     */
+    public function modifyThread(Mailbox $mailbox, string $messageId, array $add, array $remove): void
+    {
+        try {
+            $meta = $this->get($mailbox, self::API.'/messages/'.rawurlencode($messageId), [
+                'format' => 'metadata', 'metadataHeaders' => ['From'],
+            ]);
+
+            $this->postModify(
+                $mailbox,
+                self::API.'/threads/'.rawurlencode((string) ($meta['threadId'] ?? $messageId)).'/modify',
+                array_filter(['addLabelIds' => $add, 'removeLabelIds' => $remove]),
+            );
+        } catch (CannotReadMailbox) {
+            throw new CannotChangeMail('Google would not change that conversation. Nothing has changed.');
+        }
+    }
+
     private function postModify(Mailbox $mailbox, string $url, array $payload): array
     {
         $token = $this->accessToken($mailbox, modify: true);

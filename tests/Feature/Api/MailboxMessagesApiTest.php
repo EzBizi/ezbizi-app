@@ -73,6 +73,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$unmarkedAtSource = [];
         FakeMailboxReader::$canMarkAtSource = true;
         FakeMailboxReader::$sourceRefuses   = false;
+        FakeMailboxReader::$modified = [];
     }
 
     /** @param array{org: \App\Models\Organization} $tenant */
@@ -1174,6 +1175,79 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame($t['org']->id, FakeMailboxReader::$tenantWhenAsked);
     }
 
+    // ══ Design 137: one inbox across inboxes ═══════════════════════
+
+    private function sameMail(string $id): MessageSummary
+    {
+        return new MessageSummary(
+            id: $id, threadId: 't-'.$id, subject: 'Quote', fromName: 'Bob Smith', fromAddress: 'bob@example.com',
+            to: ['admin@a-1chimney.com', 'info@a-1chimney.com'], sentAt: Carbon::parse('2026-10-22 09:00:00'),
+            snippet: 'Two flues', unreadAtProvider: true, rfcId: '<one@example.com>', labels: ['INBOX', 'STARRED'],
+        );
+    }
+
+    /** The same mail at admin@ and info@ is one row naming both (Jose: it showed twice). */
+    public function test_the_inbox_merges_the_same_mail_across_inboxes_and_names_the_customer(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t, 'info@a-1chimney.com');
+        $this->inbox($t, 'admin@a-1chimney.com');
+        $this->inTenant($t['org'], fn () => \App\Models\Customer::factory()->create([
+            'owning_franchise_id' => $t['franchise']->id, 'name' => 'Bob Smith', 'email' => 'bob@example.com',
+        ]));
+
+        FakeMailboxReader::$page = new MessagePage([$this->sameMail('m-1')]);
+
+        $rows = $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk()->json('data');
+
+        $this->assertCount(1, $rows, 'The same mail showed once per inbox.');
+        $this->assertEqualsCanonicalizing(['admin@a-1chimney.com', 'info@a-1chimney.com'], array_column($rows[0]['inboxes'], 'address'));
+        $this->assertTrue($rows[0]['starred']);
+        $this->assertSame('people', $rows[0]['category']);
+        $this->assertSame('customer', $rows[0]['customer']['type']);
+    }
+
+    public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t, 'info@a-1chimney.com');
+
+        $results = $this->signedInAs($t['admin'])->postJson('/api/v1/email/inbox/actions', [
+            'action' => 'star',
+            'items'  => [['mailbox_id' => $info->id, 'message_id' => 'm-1'], ['mailbox_id' => 'not-mine', 'message_id' => 'm-2']],
+        ])->assertOk()->json('data.results');
+
+        $this->assertTrue($results[0]['ok']);
+        $this->assertFalse($results[1]['ok']);
+        $this->assertSame([['info@a-1chimney.com m-1', ['STARRED'], []]], FakeMailboxReader::$modified);
+    }
+
+    /** Snooze archives at Gmail, lists under Snoozed, and the minute job puts it back. */
+    public function test_snooze_puts_mail_away_and_wakes_it_when_due(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t, 'info@a-1chimney.com');
+        FakeMailboxReader::$page = new MessagePage([$this->summary('m-1')]);
+
+        $this->signedInAs($t['admin'])->postJson('/api/v1/email/inbox/actions', [
+            'action' => 'snooze', 'until' => now()->addHour()->toIso8601String(),
+            'items'  => [['mailbox_id' => $info->id, 'message_id' => 'm-1']],
+        ])->assertOk()->assertJsonPath('data.results.0.ok', true);
+
+        $this->assertSame([['info@a-1chimney.com m-1', [], ['INBOX']]], FakeMailboxReader::$modified);
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?folder=snoozed')
+            ->assertOk()->assertJsonPath('data.0.subject', 'Quote for a sweep')->assertJsonPath('meta.counts.snoozed', 1);
+
+        $this->travel(2)->hours();
+        $this->artisan('ezbizi:wake-snoozed-mail')->assertSuccessful();
+
+        $this->assertSame(['info@a-1chimney.com m-1', ['INBOX'], []], FakeMailboxReader::$modified[1]);
+        $this->assertSame(0, $this->inTenant($t['org'], fn () => \App\Models\EmailSnooze::query()->count()));
+    }
+
     public function test_the_mark_as_read_button_also_reaches_the_service(): void
     {
         $this->withFakeProvider();
@@ -2117,8 +2191,16 @@ class MailboxMessagesApiTest extends TestCase
  * request is made. It is reset in setUp, which is what stops one test's page
  * leaking into the next.
  */
-class FakeMailboxReader implements MailboxReader
+class FakeMailboxReader implements \App\Support\Email\LabelsThreads, MailboxReader
 {
+    /** @var list<array{0: string, 1: list<string>, 2: list<string>}> */
+    public static array $modified = [];
+
+    public function modifyThread(Mailbox $mailbox, string $messageId, array $add, array $remove): void
+    {
+        self::$modified[] = [$mailbox->address.' '.$messageId, $add, $remove];
+    }
+
     public static ?string $tenantWhenAsked = null;
 
     public static ?MessagePage $page = null;

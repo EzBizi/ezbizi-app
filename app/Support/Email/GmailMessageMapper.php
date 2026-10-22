@@ -74,6 +74,8 @@ final class GmailMessageMapper
             unreadAtProvider: in_array('UNREAD', (array) ($payload['labelIds'] ?? []), strict: true),
             fromAuthenticated: $this->dmarcPassed($headers['authentication-results'] ?? ''),
             isBulk: $this->isBulk($payload, $headers),
+            rfcId: trim((string) ($headers['message-id'] ?? '')),
+            labels: array_values(array_filter((array) ($payload['labelIds'] ?? []), 'is_string')),
         );
     }
 
@@ -164,8 +166,13 @@ final class GmailMessageMapper
 
         $unread = false;
         $attached = false;
+        $labels = [];
+        $bulk = false;
 
         foreach ($messages as $one) {
+            $labels = [...$labels, ...array_filter((array) ($one['labelIds'] ?? []), 'is_string')];
+            $bulk = $bulk || $this->isBulk($one, $this->headers($one));
+
             if (in_array('UNREAD', (array) ($one['labelIds'] ?? []), true)) {
                 $unread = true;
             }
@@ -188,6 +195,9 @@ final class GmailMessageMapper
             unreadAtProvider: $unread,
             messageCount: count($messages),
             fromAuthenticated: $row->fromAuthenticated,
+            isBulk: $bulk,
+            rfcId: $row->rfcId,
+            labels: array_values(array_unique($labels)),
         );
     }
 
