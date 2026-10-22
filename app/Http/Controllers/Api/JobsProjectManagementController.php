@@ -201,7 +201,7 @@ class JobsProjectManagementController extends Controller
             ->whereIn('subject_id', $jobs)->whereBetween('occurred_at', [$from, $to]);
 
         // "Cancelled" is the organization's word (jobs.cancelled_statuses); none named, none counted.
-        $cancelled = (array) $settings->get('jobs.cancelled_statuses', $user->organization);
+        $cancelled = (array) $settings->get('jobs.cancelled_statuses', $this->pmScope($user));
 
         // Waiting jobs, nothing paid, whose cancel day falls in the window.
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
@@ -457,7 +457,7 @@ class JobsProjectManagementController extends Controller
             'stage' => ['required', Rule::in(ProjectStages::KEYS)],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
-        $rules = ProjectStages::rules($settings->get('jobs.pm_stages', $user->organization));
+        $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
         $filtered = fn () => $this->stageFiltered($user, $settings, $input);
 
         $page = ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null)
@@ -509,26 +509,26 @@ class JobsProjectManagementController extends Controller
     {
         $user = $this->pmUser($request);
         $input = $request->validate($this->stageFilters());
-        $rules = ProjectStages::rules($settings->get('jobs.pm_stages', $user->organization));
+        $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
         $in = fn (string $key) => ProjectStages::scope($this->stageFiltered($user, $settings, $input), $rules[$key] ?? null);
         $money = $user->hasPermission('jobs.financials');
         $sum = fn ($q, string $field) => (int) round(100 * (float) \App\Models\WorkizJob::query()->whereIn('job_id', $q->select('id'))
             ->sum(\DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.{$field}')) AS DECIMAL(12,2))")));
 
-        $reasons = collect((array) $settings->get('jobs.review_reasons', $user->organization))->filter(fn ($r) => is_array($r) && isset($r['value']));
+        $reasons = collect((array) $settings->get('jobs.review_reasons', $this->pmScope($user)))->filter(fn ($r) => is_array($r) && isset($r['value']));
         $review = $in('waiting_review')->with('serviceArea:id,name')->get(['id', 'review_reason', 'service_area_id']);
         $byReason = fn ($jobs) => $reasons->map(fn ($r) => ['value' => $r['value'], 'label' => $r['label'] ?? $r['value'],
             'count' => $jobs->where('review_reason', $r['value'])->count()])
             ->push(['value' => null, 'label' => 'No reason', 'count' => $jobs->whereNull('review_reason')->count()])->values()->all();
 
-        $redo = (array) $settings->get('jobs.pm_redo_words', $user->organization);
+        $redo = (array) $settings->get('jobs.pm_redo_words', $this->pmScope($user));
         $inProgress = $in('in_progress')->count();
         $redoCount = ProjectStages::anyWord($in('in_progress'), $redo)->count();
 
         $notStarted = collect(ProjectStages::NOT_STARTED)->flatMap(fn ($k) => isset($rules[$k]) ? $in($k)->pluck('id') : [])->unique();
         $firstPaid = WorkizRecord::query()->whereIn('job_id', $notStarted)->where('type', 'payment')->where('status', 'succeeded')
             ->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) paid_at')->pluck('paid_at', 'job_id');
-        $limit = (int) $settings->get('jobs.pm_warn_days', $user->organization);
+        $limit = (int) $settings->get('jobs.pm_warn_days', $this->pmScope($user));
         $waitingJobs = Job::query()->whereIn('id', $firstPaid->keys())->with('customer:id,name')->get(['id', 'number', 'customer_id']);
 
         $open = Job::query()->where(fn ($w) => collect(ProjectStages::OPEN)->filter(fn ($k) => isset($rules[$k]))
@@ -539,7 +539,7 @@ class JobsProjectManagementController extends Controller
         return response()->json(['data' => [
             'mapped' => array_keys($rules),
             // Where the repair-team report turns cost from gross sales red.
-            'cost_alert_percent' => (int) $settings->get('jobs.pm_cost_alert_percent', $user->organization),
+            'cost_alert_percent' => (int) $settings->get('jobs.pm_cost_alert_percent', $this->pmScope($user)),
             'waiting_review' => [
                 'count' => $review->count(),
                 'by_reason' => $byReason($review),
@@ -564,7 +564,7 @@ class JobsProjectManagementController extends Controller
             ],
             'done_waiting_payment' => ['count' => $doneWaiting->count()]
                 + ($money ? ['total_minor' => $sum($in('done_waiting_payment'), 'JobTotalPrice'), 'due_minor' => $sum($in('done_waiting_payment'), 'JobAmountDue')] : []),
-            'stopped_payments' => ProjectStages::stopped($this->stageFiltered($user, $settings, $input), (int) $settings->get('jobs.pm_stopped_days', $user->organization))->count(),
+            'stopped_payments' => ProjectStages::stopped($this->stageFiltered($user, $settings, $input), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
             'per_team' => (clone $open)->with('performedBy:id,name')->get(['id', 'performed_by_user_id'])
                 ->groupBy(fn ($j) => $j->performedBy?->name ?? 'Unassigned')->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count()])
                 ->sortByDesc('count')->values()->all(),
@@ -575,6 +575,16 @@ class JobsProjectManagementController extends Controller
                 'limit' => $limit,
             ])->sortByDesc('days')->values()->all(),
         ] + ($money ? ['pipeline_minor' => $sum(clone $open, 'JobTotalPrice'), 'avg_production_cost_minor' => null] : [])]);
+    }
+
+    /**
+     * Where Project Management's settings are read: the place being viewed
+     * (Jose, 2026-10-22: "this belongs in A-1 Chimney, not triplex"), a
+     * company's own over the organization's.
+     */
+    private function pmScope($user): \Illuminate\Database\Eloquent\Model
+    {
+        return ViewScope::forUser($user)->settingsScope();
     }
 
     private function pmUser(Request $request)
@@ -603,7 +613,7 @@ class JobsProjectManagementController extends Controller
     private function stageFiltered($user, SettingsResolver $settings, array $input): \Illuminate\Database\Eloquent\Builder
     {
         $flag = fn (string $k) => array_key_exists($k, $input) && $input[$k] !== null ? filter_var($input[$k], FILTER_VALIDATE_BOOL) : null;
-        $org = $user->organization;
+        $org = $this->pmScope($user);
 
         return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))

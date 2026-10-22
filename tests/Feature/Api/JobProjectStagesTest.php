@@ -27,7 +27,8 @@ class JobProjectStagesTest extends TestCase
             $s = app(SettingsResolver::class);
             $s->set('jobs.statuses', $alpha['org'], array_map(fn ($v) => ['value' => $v, 'label' => ucfirst($v)],
                 ['in progress', 'pending', 'submitted', 'dpa', 'done', 'canceled']));
-            $s->set('jobs.pm_stages', $alpha['org'], [
+            // Set on the company, not the organization: each company maps its own (Jose, 2026-10-22).
+            $s->set('jobs.pm_stages', $alpha['company'], [
                 ['key' => 'in_progress', 'statuses' => ['in progress']],
                 ['key' => 'waiting_review', 'statuses' => ['pending']],
                 ['key' => 'ready_to_schedule', 'statuses' => ['submitted'], 'scheduled' => false],
@@ -36,7 +37,7 @@ class JobProjectStagesTest extends TestCase
                 ['key' => 'completed', 'statuses' => ['done']],
             ]);
             $s->set('jobs.pm_redo_words', $alpha['org'], ['Redo']);
-            $s->set('jobs.pm_warning_email', $alpha['org'], 'info@alpha.test');
+            $s->set('jobs.pm_warning_email', $alpha['company'], 'info@alpha.test');
 
             $f = $alpha['franchise']->id;
             $customer = Customer::create(['owning_franchise_id' => $f, 'number' => 'C-1', 'name' => 'A Customer']);

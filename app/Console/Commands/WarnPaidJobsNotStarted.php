@@ -29,7 +29,8 @@ class WarnPaidJobsNotStarted extends Command
         $sent = 0;
         foreach (Organization::query()->get() as $org) {
             $tenant->run($org, function () use ($org, $settings, &$sent) {
-                $rules = ProjectStages::rules($settings->get('jobs.pm_stages', $org));
+                // Each branch by its own company's stages: a company maps its own (Jose, 2026-10-22).
+                $rules = ProjectStages::forFranchises(Franchise::query()->get(), $settings);
                 $waiting = collect(ProjectStages::NOT_STARTED)->filter(fn ($k) => isset($rules[$k]))
                     ->flatMap(fn ($k) => ProjectStages::scope(Job::query(), $rules[$k])->pluck('id'))->unique();
                 if ($waiting->isEmpty()) {
