@@ -117,8 +117,7 @@ class CatalogueActionType extends CatalogueChoice {
   bool worksOn(String subjectKey) {
     final allowed = subjects;
     if (allowed == null) return true;
-    String plain(String s) => s.replaceAll('_', '').toLowerCase();
-    return allowed.any((model) => plain(model) == plain(subjectKey));
+    return allowed.any((model) => sameRecord(model, subjectKey));
   }
 
   static CatalogueActionType? tryFrom(Object? json) {
@@ -145,17 +144,13 @@ class CatalogueTrigger {
     required this.label,
     this.description,
     this.isRaised = true,
-    this.declaresSubject = false,
-    this.subject,
+    this.subjects,
   });
 
-  /// Whether the server said which record THIS trigger is about. False on a
-  /// server that only says it per module, and then the module's answer holds.
-  final bool declaresSubject;
-
-  /// The record this trigger is about, when [declaresSubject]. Null (or
-  /// `none` on the wire) then means it is about no record at all.
-  final CatalogueSubject? subject;
+  /// The records THIS trigger is about, as model names ("Invitation"), when
+  /// they are not its module's. Empty means no record in particular; null
+  /// means the module's subject, which is also what an older server meant.
+  final List<String>? subjects;
 
   /// What gets stored on the automation — `customer.owner_reassigned`.
   final String key;
@@ -205,11 +200,9 @@ class CatalogueTrigger {
       // server, which is not the same claim as `false`. Only an explicit false
       // marks the row.
       isRaised: json['is_raised'] != false,
-      declaresSubject: json.containsKey('subject'),
-      subject: switch (json['subject']) {
-        final Map one when one['key'] != 'none' => CatalogueSubject.tryFrom(one),
-        _ => null,
-      },
+      subjects: json['subjects'] is List
+          ? [for (final one in json['subjects'] as List) '$one']
+          : null,
     );
   }
 }
@@ -639,14 +632,30 @@ class AutomationCatalogue {
   /// declares that trigger — a module removed, or a server older than this
   /// build.
   ///
-  /// The trigger's own answer wins when the server gives one; otherwise the
-  /// module's.
+  /// The module's subject, unless the trigger names its own records and the
+  /// module's is not among them: then the event is about something the
+  /// module's fields do not describe, and null says so.
   CatalogueSubject? subjectOf(String? triggerKey) {
     if (triggerKey == null) return null;
     final found = locate(triggerKey);
     if (found == null) return null;
     final (module, trigger) = found;
-    return trigger.declaresSubject ? trigger.subject : module.subject;
+    final own = module.subject;
+    final named = trigger.subjects;
+    if (named == null || own == null) return named == null ? own : null;
+    return named.any((model) => sameRecord(model, own.key)) ? own : null;
+  }
+
+  /// The records a rule on [triggerKey] acts on, as plain names to compare
+  /// ("phonecall", "job"): the trigger's own list, else its module's subject.
+  List<String> recordsOf(String? triggerKey) {
+    if (triggerKey == null) return const [];
+    final found = locate(triggerKey);
+    if (found == null) return const [];
+    final named = found.$2.subjects;
+    if (named != null) return [for (final model in named) plainRecord(model)];
+    final own = found.$1.subject?.key;
+    return own == null ? const [] : [plainRecord(own)];
   }
 
   /// Does anything emit [triggerKey] yet?
@@ -767,6 +776,12 @@ OperatorArity arityOf(String operatorKey) => switch (operatorKey) {
   'in' || 'not_in' => OperatorArity.many,
   _ => OperatorArity.one,
 };
+
+/// A model name ("PhoneCall") or a subject key (`phone_call`), spelled the
+/// same way so the two can be compared.
+String plainRecord(String name) => name.replaceAll('_', '').toLowerCase();
+
+bool sameRecord(String a, String b) => plainRecord(a) == plainRecord(b);
 
 List<T> _list<T>(Object? json, T? Function(Object?) parse) {
   if (json is! List) return const [];

@@ -117,37 +117,34 @@ StepGroup groupOf(String type) => switch (type) {
   _ => StepGroup.record,
 };
 
-/// Triggers whose module names a record the event does not carry (the audit,
-/// §2): their record steps would save and then fail every run.
-const _declaredButNotEmitted = {
-  'lead.daily_digest',
-  'ads.daily_review',
-  'business_location.daily_digest',
-};
-
-/// The record a rule on [triggerKey] can act on, for choosing steps.
-///
-/// The catalogue's answer, except for the three digests the audit measured
-/// emitting something else — unless the server now says per trigger.
+//// The record a rule on [triggerKey] can set fields on and name, or null when
+/// the event is about something its module's fields do not describe.
 CatalogueSubject? effectiveSubject(
   AutomationCatalogue catalogue,
   String? triggerKey,
-) {
-  if (triggerKey == null) return null;
-  final found = catalogue.locate(triggerKey);
-  if (found == null) return null;
-  if (!found.$2.declaresSubject &&
-      _declaredButNotEmitted.contains(triggerKey)) {
-    return null;
-  }
-  return catalogue.subjectOf(triggerKey);
+) => catalogue.subjectOf(triggerKey);
+
+/// What a rule on [triggerKey] is about, in words: "job", "phone call".
+/// Null when it is about nothing in particular.
+String? recordWords(AutomationCatalogue catalogue, String? triggerKey) {
+  final subject = effectiveSubject(catalogue, triggerKey);
+  if (subject != null) return subject.label.toLowerCase();
+  final named = triggerKey == null
+      ? null
+      : catalogue.locate(triggerKey)?.$2.subjects;
+  if (named == null || named.isEmpty) return null;
+  // "PhoneCall" -> "phone call".
+  return named.first
+      .replaceAllMapped(RegExp(r'(?<=[a-z])([A-Z])'), (m) => ' ${m[1]}')
+      .toLowerCase();
 }
 
 /// Does a step of payload [type] work on a rule reacting to [triggerKey]?
 ///
-/// The server's `subjects` list decides where it has one and the trigger's
-/// record is known. Where it is not, the audit's measurements stand in (each
-/// arm's own check in ActionRunner) until the server says per trigger.
+/// Read from the server: the step's `subjects` against the trigger's records
+/// (`triggers[].subjects`, else its module's subject). A step that names no
+/// records works on any. Setting a field needs the module's record, with
+/// something on it a rule may set, and changing the status needs a status.
 bool stepFits(
   AutomationCatalogue catalogue, {
   required String type,
@@ -157,37 +154,18 @@ bool stepFits(
   // A server older than subjects cannot say, so nothing is hidden.
   if (!catalogue.publishesSubjects || triggerKey == null) return true;
 
-  final subject = effectiveSubject(catalogue, triggerKey);
-  final record = subject?.key;
+  final records = catalogue.recordsOf(triggerKey);
   final listed = definition?.subjects;
-
-  if (listed != null && record != null) {
-    return definition!.worksOn(record);
+  if (listed != null) {
+    return records.any((record) => definition!.worksOn(record));
   }
 
-  bool onCalls() =>
-      triggerKey.startsWith('phone.call.') ||
-      triggerKey == 'phone.voicemail.left';
-  bool onPeople() =>
-      (record == 'user' && triggerKey != 'user.invited') ||
-      triggerKey.startsWith('time_clock.');
+  final subject = effectiveSubject(catalogue, triggerKey);
 
   return switch (type) {
     'update_field' => subject != null && subject.writableFields.isNotEmpty,
-    'change_status' => const {'job', 'vehicle', 'task'}.contains(record),
-    'voicemail.mark_dealt' || 'missed.create_job' => onCalls(),
-    'message.mark_dealt' || 'message.reply' => triggerKey == 'email.received',
-    'lead.text' || 'reply' || 'add_to_audience' => record == 'lead',
-    'resend' ||
-    'revoke' ||
-    'onboarding.start' => triggerKey.startsWith('invitation.'),
-    'time_clock.clock_in' ||
-    'time_clock.clock_out' ||
-    'training.assign' => onPeople(),
-    'inspection_report.email' || 'inspection_report.workiz' =>
-      triggerKey == 'inspection.submitted' ||
-          triggerKey == 'inspection.archived',
-    _ when listed != null => false,
+    'change_status' =>
+      subject != null && subject.writableFields.any((f) => f.key == 'status'),
     _ => true,
   };
 }
@@ -204,8 +182,10 @@ bool moduleActionFits(
   if (!catalogue.publishesSubjects || triggerKey == null) return true;
 
   final mine = module.subject?.key;
-  if (action.subjectBound && mine != null) {
-    if (effectiveSubject(catalogue, triggerKey)?.key != mine) return false;
+  if (action.subjectBound &&
+      mine != null &&
+      !catalogue.recordsOf(triggerKey).contains(plainRecord(mine))) {
+    return false;
   }
 
   return stepFits(

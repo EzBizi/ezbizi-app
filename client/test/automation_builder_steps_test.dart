@@ -94,6 +94,16 @@ void main() {
         find.descendant(of: sent, matching: find.text('2 rules')),
         findsOneWidget,
       );
+      // The details count, from trigger-stats, before any fields are read.
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('automation-when-card-invitation.accepted'),
+          ),
+          matching: find.text('6 details'),
+        ),
+        findsOneWidget,
+      );
       final expired = find.byKey(
         const ValueKey('automation-when-card-invitation.expired'),
       );
@@ -172,12 +182,22 @@ void main() {
         findsNothing,
       );
       expect(
-        find.descendant(
-          of: panel,
-          matching: find.textContaining('dana@brightside.example'),
-        ),
+        find.descendant(of: panel, matching: find.text('Last 3 times')),
         findsOneWidget,
       );
+      for (final (i, who) in [
+        'dana@brightside.example · Technician',
+        'pat@brightside.example · Office',
+        'lee@brightside.example · Technician',
+      ].indexed) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey('automation-when-event-$i')),
+            matching: find.textContaining(who),
+          ),
+          findsOneWidget,
+        );
+      }
       expect(
         find.descendant(of: panel, matching: find.text('Rules using it · 1')),
         findsOneWidget,
@@ -570,9 +590,16 @@ void main() {
       await _goTo(tester, 'review');
 
       expect(find.text('Nothing is sent or changed.'), findsOneWidget);
+      final on = find.byKey(const ValueKey('automation-try-event'));
+      expect(tester.widget<SearchPickerField<String>>(on).options.length, 3);
+      tester.widget<SearchPickerField<String>>(on).onChanged!(
+        '0b6c8f2e-0000-4000-8000-00000000000b',
+      );
+      await tester.pumpAndSettle();
       await _tap(tester, find.byKey(const Key('automation-builder-try')));
 
       expect(asked, {
+        'event_id': '0b6c8f2e-0000-4000-8000-00000000000b',
         'trigger_key': 'invitation.accepted',
         'conditions': {
           'all': [
@@ -685,7 +712,7 @@ void main() {
       // A trigger about no record: its own steps, and no Update a field.
       await _chooseTrigger(tester, 'hr', 'invitation.accepted');
       await _goTo(tester, 'then');
-      expect(find.text('FOR THIS EVENT'), findsOneWidget);
+      expect(find.text('FOR THIS INVITATION'), findsOneWidget);
       expect(find.text('Send the invitation again'), findsOneWidget);
       expect(find.text('Update a field'), findsNothing);
       expect(find.text('Change the status'), findsNothing);
@@ -1011,6 +1038,7 @@ class _Server {
           'invitation.accepted': {
             'last_30_days': 40,
             'rules': 1,
+            'details': 6,
             'top_actions': ['email.send', 'voicemail.mark_dealt'],
           },
           'job.status_changed': {
@@ -1148,6 +1176,35 @@ const _invitationFields = {
   },
   'message_fields': [],
   'sampled': 12,
+  'events': [
+    {
+      'event_id': '0b6c8f2e-0000-4000-8000-00000000000a',
+      'occurred_at': '2026-10-22T13:12:00Z',
+      'values': {
+        'email': 'dana@brightside.example',
+        'role': 'tech',
+        'scope': 'Springfield',
+      },
+    },
+    {
+      'event_id': '0b6c8f2e-0000-4000-8000-00000000000b',
+      'occurred_at': '2026-10-21T09:40:00Z',
+      'values': {
+        'email': 'pat@brightside.example',
+        'role': 'office',
+        'scope': 'Riverton',
+      },
+    },
+    {
+      'event_id': '0b6c8f2e-0000-4000-8000-00000000000c',
+      'occurred_at': '2026-10-19T16:05:00Z',
+      'values': {
+        'email': 'lee@brightside.example',
+        'role': 'tech',
+        'scope': 'Springfield',
+      },
+    },
+  ],
 };
 
 const _jobFields = {
@@ -1180,16 +1237,19 @@ const _catalogue = <String, dynamic>{
       'triggers': [
         {
           'key': 'invitation.sent',
+          'subjects': ['Invitation'],
           'label': 'Invitation sent',
           'description': 'Somebody was invited to join.',
         },
         {
           'key': 'invitation.accepted',
+          'subjects': ['Invitation'],
           'label': 'Invitation accepted',
           'description': 'The person made their account.',
         },
         {
           'key': 'invitation.expired',
+          'subjects': ['Invitation'],
           'label': 'Invitation ran out',
           'description': 'Nobody accepted within a week.',
           'is_raised': false,
@@ -1364,6 +1424,7 @@ const _catalogue = <String, dynamic>{
       'label': 'Send the invitation again',
       'module_only': true,
       'parameters': [],
+      'subjects': ['Invitation'],
     },
   ],
   'roles': [],

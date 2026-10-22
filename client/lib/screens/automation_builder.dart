@@ -850,6 +850,23 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 entry.key.toString(): entry.value.toString(),
             }
           : const {};
+      _recentEvents = response.ok
+          ? [
+              for (final event
+                  in (response.data?['events'] as List? ?? const []))
+                if (event is Map && event['event_id'] != null)
+                  (
+                    id: '${event['event_id']}',
+                    at: event['occurred_at'] as String?,
+                    values: {
+                      for (final entry
+                          in (event['values'] as Map? ?? const {}).entries)
+                        '${entry.key}': '${entry.value}',
+                    },
+                  ),
+            ]
+          : const [];
+      _dryEvent = null;
       if (response.ok) {
         _detailCounts[key] = _plainFields.length;
       }
@@ -879,6 +896,25 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// How many plain details each trigger carried, for the When cards, once
   /// read. Only the chosen trigger's are read, so the others say nothing.
   final Map<String, int> _detailCounts = {};
+
+  /// Up to three recent events of the chosen trigger, each one record's
+  /// values (`trigger-fields.events`): "Last 3 times", and what Try it can be
+  /// run on.
+  List<({String id, String? at, Map<String, String> values})> _recentEvents =
+      const [];
+
+  /// The event Try it runs on; null is the newest.
+  String? _dryEvent;
+
+  /// One event's values in words, plain details only, in the event's order.
+  String _eventWords(Map<String, String> values) => [
+    for (final field in _plainFields)
+      if (values[field] case final value?) _valueWords(field, value),
+  ].take(4).join(' · ');
+
+  /// When an event happened, as this organization writes a date and time.
+  String _eventWhen(String? at) =>
+      formatStamp(at, 'date unknown', formats: widget.formats);
 
   /// Whether the condition menus and the details table show technical ids.
   bool _showTechnical = false;
@@ -1252,9 +1288,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       }
     }
 
-    final record = subject == null
-        ? 'For this event'
-        : 'For this ${subject.label.toLowerCase()}';
+    final words =
+        recordWords(widget.catalogue, _trigger) ?? subject?.label.toLowerCase();
+    final record = words == null ? 'For this event' : 'For this $words';
     final names = {
       StepGroup.record: record,
       StepGroup.message: 'Send a message',
@@ -1436,6 +1472,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _fieldSamples = const {};
       _fieldLabels = const {};
       _fieldTypes = const {};
+      _recentEvents = const [];
+      _dryEvent = null;
     });
 
     _loadTriggerFields();
@@ -2101,6 +2139,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     final counts = <String, int>{};
     final rules = <String, int>{};
     final paired = <String, List<String>>{};
+    final details = <String, int>{};
 
     if (data is Map) {
       for (final entry in data.entries) {
@@ -2111,6 +2150,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           counts[key] = count.toInt();
         }
         if (row['rules'] case final num count) rules[key] = count.toInt();
+        if (row['details'] case final num count) {
+          details[key] = count.toInt();
+        }
         if (row['top_actions'] case final List types) {
           paired[key] = [for (final type in types) '$type'];
         }
@@ -2122,6 +2164,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _triggerStats = counts;
       _triggerRules = rules;
       _triggerPaired = paired;
+      _triggerDetails = details;
     });
   }
 
@@ -2129,6 +2172,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// take, from the same `trigger-stats` answer (UI queue 130).
   Map<String, int> _triggerRules = const {};
   Map<String, List<String>> _triggerPaired = const {};
+
+  /// How many details each trigger's recent events carry, from the same
+  /// answer, so every card can say it before any fields load.
+  Map<String, int> _triggerDetails = const {};
 
   /// The conditions as `POST /automations/would-have-run` is asked about
   /// them, or null when there is nothing honest to ask: no trigger, a clause
@@ -2681,6 +2728,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'trigger_key': _trigger,
       'conditions': _conditionsPayload(),
       'actions': actions,
+      'event_id': ?_dryEvent,
     });
   }
 
@@ -2742,12 +2790,35 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text('Try it', style: theme.textTheme.titleSmall),
-              Text(
-                occurred == null
-                    ? 'On: the newest event of this kind here'
-                    : 'On: the newest event, ${formatStamp(occurred, 'date unknown', formats: widget.formats)}',
-                style: theme.textTheme.bodyMedium,
-              ),
+              if (_recentEvents.isEmpty)
+                Text(
+                  occurred == null
+                      ? 'On: the newest event of this kind here'
+                      : 'On: the newest event, ${_eventWhen('$occurred')}',
+                  style: theme.textTheme.bodyMedium,
+                )
+              else
+                // Which of the last three it runs on (UI queue 132).
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: SearchPickerField<String>(
+                    key: const ValueKey('automation-try-event'),
+                    value: _dryEvent ?? _recentEvents.first.id,
+                    label: 'On',
+                    isDense: true,
+                    options: [
+                      for (final event in _recentEvents)
+                        SearchOption<String>(
+                          value: event.id,
+                          label: _eventWhen(event.at),
+                          detail: _eventWords(event.values),
+                        ),
+                    ],
+                    onChanged: _busy || _dryRunning
+                        ? null
+                        : (chosen) => setState(() => _dryEvent = chosen),
+                  ),
+                ),
               OutlinedButton(
                 key: const Key('automation-builder-try'),
                 onPressed: _busy || _dryRunning || request == null
@@ -3260,7 +3331,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             description: trigger.description,
             isRaised: trigger.isRaised,
             count: _triggerStats?[trigger.key],
-            details: _detailCounts[trigger.key],
+            details:
+                _triggerDetails[trigger.key] ?? _detailCounts[trigger.key],
             rules:
                 _triggerRules[trigger.key] ?? _rulesUsing(trigger.key)?.length,
           ),
@@ -3466,9 +3538,31 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             const ValueKey('automation-when-uses'),
           ),
           section(
-            'Last time',
+            _recentEvents.isEmpty || !loaded ? 'Last time' : 'Last 3 times',
             !loaded
-                ? loading(const [180])
+                ? loading(const [180, 160, 170])
+                : _recentEvents.isNotEmpty
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (i, event) in _recentEvents.indexed)
+                        Container(
+                          key: ValueKey('automation-when-event-$i'),
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            border: Border.all(color: scheme.outlineVariant),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_eventWhen(event.at)} · '
+                            '${_eventWords(event.values)}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                    ],
+                  )
                 : last.isEmpty
                 ? Text('Nothing to show yet.', style: muted)
                 : Text(last, style: theme.textTheme.bodySmall),
