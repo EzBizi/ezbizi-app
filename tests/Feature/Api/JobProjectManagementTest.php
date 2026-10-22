@@ -101,7 +101,8 @@ class JobProjectManagementTest extends TestCase
         $row = $get('ids[]='.$job)[0];
         $this->assertSame('Payment received, partly paid', $row['timeline'][1]['what']);
         $this->assertSame('+DEPOSIT RECEIVED', $row['timeline'][2]['what']);
-        $this->assertSame('Entered Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
+        // The entry is the status change it was (2026-10-22: a drill-down showed "—" for it), in labels.
+        $this->assertSame('Status Scheduled → Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
     }
 
     /**
@@ -170,13 +171,23 @@ class JobProjectManagementTest extends TestCase
                 ->forceFill(['actor_id' => $alpha['admin']->id, 'actor_label' => 'Ada Admin <ada@example.test>'])->save();
         });
 
-        $row = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?ids[]='.$job)->assertOk()->json('data.0.timeline'))
-            ->firstWhere('to', 'submitted');
-        $this->assertSame('EzBizi · Payment on DPA', $row['by']);
+        $timeline = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?ids[]='.$job)->assertOk()->json('data.0.timeline'));
+        $this->assertSame('EzBizi · Payment on DPA', $timeline->firstWhere('to', 'submitted')['by']);
+        // Every step a rule took, skips with their reason (Jose, 2026-10-22).
+        $actions = $timeline->where('kind', 'action')->values();
+        $this->assertSame(['succeeded', 'skipped'], $actions->pluck('outcome')->all());
+        $this->assertSame('Workiz: Set status Submitted; tags Deposit Received in Workiz.', $actions[0]['what']);
+        $this->assertSame(['EzBizi · Payment on DPA', 'Status was Scheduled; the rule wants Done, pending approval.'], [$actions[1]['by'], $actions[1]['reason']]);
 
         $logs = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC')
             ->assertOk()->json('data');
         $this->assertSame(['manual', 'skipped', 'succeeded'], array_column($logs, 'outcome'));
+        // Search: by the rule's name, by the job; a miss finds nothing.
+        $find = fn (string $q) => array_column($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&q='.urlencode($q))->json('data'), 'outcome');
+        $this->assertSame(['skipped', 'succeeded'], $find('Payment on'));
+        $this->assertSame(['manual', 'skipped', 'succeeded'], $find('J-1'));
+        $this->assertSame([], $find('nobody'));
         $this->assertSame('Ada Admin', $logs[0]['by']);
         $this->assertSame('Title: "Renamed"', $logs[0]['changes'][0]['detail']);
         $this->assertSame('Status was Scheduled; the rule wants Done, pending approval.', $logs[1]['reason']);

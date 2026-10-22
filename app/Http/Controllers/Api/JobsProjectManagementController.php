@@ -76,16 +76,7 @@ class JobsProjectManagementController extends Controller
             ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
             // Jose, 2026-10-21: "search bar ... to find specific stuff". Job and
             // Workiz numbers, the customer's name, phone and address, the tech.
-            ->when(filled($input['q'] ?? null), function ($q) use ($input) {
-                $like = '%'.trim($input['q']).'%';
-                $digits = preg_replace('/\D/', '', $input['q']);
-                $q->where(fn ($w) => $w->where('number', 'like', $like)
-                    ->orWhereHas('workizJob', fn ($z) => $z->where('serial_id', 'like', $like))
-                    ->orWhereHas('performedBy', fn ($u) => $u->where('name', 'like', $like))
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)
-                        ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
-                        ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
-            });
+            ->when(filled($input['q'] ?? null), fn ($q) => $this->search($q, $input['q']));
         $unwatched = fn ($q) => $q->where(fn ($w) => $w->whereIn('status', $watched)->orWhereIn('id', $left));
 
         $jobs = $base()
@@ -106,7 +97,7 @@ class JobsProjectManagementController extends Controller
         $events = AutomationEvent::query()->whereIn('subject_id', $ids)->where('subject_type', Job::class)
             ->whereIn('event_key', ['job.status_changed', 'job.updated'])->orderBy('occurred_at')->get()->groupBy('subject_id');
 
-        $this->runs = $this->runsFor($ids)->where('automation_runs.status', 'succeeded')->get()->groupBy('job_id');
+        $this->runs = $this->runsFor($ids)->get()->groupBy('job_id');
 
         // The organization's words for its statuses, for each step's sentence (UI/UX, 2026-10-21).
         $this->labels = collect((array) $settings->get('jobs.statuses', $user->organization))
@@ -266,7 +257,8 @@ class JobsProjectManagementController extends Controller
     private function what(array $step): string
     {
         return match ($step['kind']) {
-            'entered' => 'Entered '.$this->label($step['status']),
+            'entered' => 'Status '.$this->label($step['from'] ?? null).' → '.$this->label($step['to'] ?? null),
+            'action' => $step['what'],
             'payment' => $step['marks'] === 'full' ? 'Payment received, paid in full' : 'Payment received, partly paid',
             'status' => 'Status '.$this->label($step['from'] ?? null).' → '.$this->label($step['to'] ?? null),
             'tags' => trim(implode(' ', [
@@ -290,8 +282,23 @@ class JobsProjectManagementController extends Controller
 
         $timeline = collect();
         if ($entered) {
+            // The status change it was, too: a drill-down of today's changes showed "—"
+            // for jobs whose only change today was this entry (2026-10-22).
             $timeline->push(['kind' => 'entered', 'at' => $entered->occurred_at->toIso8601String(), 'status' => $entered->payload['after']['status'],
-                'by' => $this->by($entered)] + ($money ? ['total_minor' => $total] : []));
+                'from' => $entered->payload['before']['status'] ?? null, 'to' => $entered->payload['after']['status']]
+                + $this->attribute($entered, $job) + ($money ? ['total_minor' => $total] : []));
+        }
+
+        // Every step EzBizi's rules took on the job, one line each, skips and failures with their reason (Jose, 2026-10-22).
+        foreach ($this->runs[$job->id] ?? [] as $r) {
+            if ($r->started_at === null || $r->started_at->lt($since)) {
+                continue;
+            }
+            $rule = ['id' => $r->automation_id, 'name' => $r->automation?->name];
+            foreach ($this->runLines($r) as $line) {
+                $timeline->push(['kind' => 'action', 'at' => ($r->finished_at ?? $r->started_at)->toIso8601String(),
+                    'by' => 'EzBizi · '.$rule['name'], 'rule' => $rule] + $line);
+            }
         }
 
         $running = 0;
@@ -369,20 +376,26 @@ class JobsProjectManagementController extends Controller
             'franchise_id' => ['nullable', 'uuid'],
             'timezone' => ['nullable', 'timezone'],
             'automation_id' => ['nullable', 'uuid'],
+            // Jose, 2026-10-22: "i want search bars". Job, customer, address, phone, tech, or the rule's name.
+            'q' => ['nullable', 'string', 'max:100'],
             'outcome' => ['nullable', Rule::in(['succeeded', 'failed', 'skipped', 'manual'])],
         ]);
         [$from, $to] = $this->window($input, $user, $settings);
         $reach = $this->reach($user, $input);
         $this->labels = $this->statusLabels($settings, $user);
 
+        $text = trim((string) ($input['q'] ?? ''));
+        $matching = $text === '' ? $reach : $this->search(clone $reach, $text);
         $all = $this->runsFor($reach)
+            ->when($text !== '', fn ($q) => $q->where(fn ($w) => $w->whereIn('automation_events.subject_id', $matching)
+                ->orWhereHas('automation', fn ($a) => $a->where('name', 'like', '%'.$text.'%'))))
             ->whereBetween('automation_runs.started_at', [$from, $to])
             ->when($input['automation_id'] ?? null, fn ($q, $id) => $q->where('automation_runs.automation_id', $id))
             ->get();
         $runs = $all->when($input['outcome'] ?? null, fn ($c, $o) => $c->where('status', $o));
 
         $allEdits = empty($input['automation_id'])
-            ? AutomationEvent::query()->where('subject_type', Job::class)->whereIn('subject_id', $reach)
+            ? AutomationEvent::query()->where('subject_type', Job::class)->whereIn('subject_id', $matching)
                 ->whereIn('event_key', ['job.updated', 'job.status_changed', 'job.created'])->whereNotNull('actor_id')
                 ->whereBetween('occurred_at', [$from, $to])->get()
             : collect();
@@ -415,6 +428,8 @@ class JobsProjectManagementController extends Controller
             'changes' => collect((array) $r->action_results)->map(fn ($a) => [
                 'type' => $a['type'] ?? null, 'state' => $a['state'] ?? null, 'detail' => $a['detail'] ?? null,
             ])->values()->all(),
+            // The same lines the job's timeline shows.
+            'lines' => $this->runLines($r),
             'reason' => $r->status === 'skipped' ? $this->skipReason((array) $r->condition_trace) : $r->error,
         ])->concat($edits->map(fn (AutomationEvent $e) => [
             'kind' => 'manual',
@@ -426,6 +441,48 @@ class JobsProjectManagementController extends Controller
         ]))->sortByDesc('at')->values();
 
         return response()->json(['data' => $rows, 'meta' => $meta]);
+    }
+
+    /** Job and Workiz numbers, the customer's name, phone and address, the tech (Jose, 2026-10-21: "search bar"). */
+    private function search($q, string $text)
+    {
+        $like = '%'.trim($text).'%';
+        $digits = preg_replace('/\D/', '', $text);
+
+        return $q->where(fn ($w) => $w->where('number', 'like', $like)
+            ->orWhereHas('workizJob', fn ($z) => $z->where('serial_id', 'like', $like))
+            ->orWhereHas('performedBy', fn ($u) => $u->where('name', 'like', $like))
+            ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)
+                ->orWhere('address_line1', 'like', $like)->orWhere('city', 'like', $like)->orWhere('postal_code', 'like', $like)
+                ->when(strlen($digits) >= 4, fn ($p) => $p->orWhere('phone', 'like', '%'.$digits.'%'))));
+    }
+
+    /**
+     * One line per step a run took: {outcome, type, what, reason?}. A skipped
+     * run is one line with the reason the rule did not match.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function runLines(AutomationRun $r): array
+    {
+        if ($r->status === 'skipped') {
+            return [['outcome' => 'skipped', 'type' => null, 'what' => 'Skipped', 'reason' => $this->skipReason((array) $r->condition_trace)]];
+        }
+        $lines = [];
+        foreach ((array) $r->action_results as $a) {
+            $outcome = ! empty($a['skipped']) ? 'skipped' : ($a['state'] ?? (($a['ok'] ?? false) ? 'succeeded' : 'failed'));
+            $label = match (true) {
+                str_starts_with((string) ($a['type'] ?? ''), 'workiz.') => 'Workiz',
+                ($a['type'] ?? null) === 'notify' => 'Notification',
+                str_starts_with((string) ($a['type'] ?? ''), 'task.') => 'Task Board',
+                in_array($a['type'] ?? null, ['sms.send', 'phone.sms.send', 'email.send', 'whatsapp.send'], true) => 'Message to customer',
+                default => ucfirst(str_replace(['.', '_'], ' ', (string) ($a['type'] ?? 'Step'))),
+            };
+            $lines[] = ['outcome' => $outcome, 'type' => $a['type'] ?? null, 'what' => $label.': '.($a['detail'] ?? $outcome)]
+                + ($outcome === 'succeeded' ? [] : ['reason' => $a['detail'] ?? $r->error]);
+        }
+
+        return $lines !== [] ? $lines : [['outcome' => $r->status, 'type' => null, 'what' => 'Ran, no steps', 'reason' => $r->error]];
     }
 
     /** Runs about jobs, each with job_id, newest first; tests and other subjects left out. */
@@ -491,7 +548,7 @@ class JobsProjectManagementController extends Controller
 
         $after = $e->payload['after'] ?? [];
         $norm = fn ($v) => mb_strtolower(trim((string) $v));
-        $run = ($this->runs[$job->id] ?? collect())->first(function (AutomationRun $r) use ($e, $after, $norm) {
+        $run = ($this->runs[$job->id] ?? collect())->where('status', 'succeeded')->first(function (AutomationRun $r) use ($e, $after, $norm) {
             // ponytail: 30 minutes covers the Workiz sync's lag; widen if a sync runs slower.
             if (! $r->finished_at || $r->finished_at->gt($e->occurred_at) || $r->finished_at->lt($e->occurred_at->copy()->subMinutes(30))) {
                 return false;
