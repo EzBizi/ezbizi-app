@@ -61,6 +61,11 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
   /// The row a phone is editing, drawn in place of the list.
   String? _editingRowId;
 
+  /// The search box over the sheets, sent as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _q = '';
+
   DisplayFormats get _formats => widget.me.display;
   bool get _canEdit => widget.me.can('invoices.edit');
   bool get _canCreate => widget.me.can('invoices.create');
@@ -74,14 +79,45 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchDebounce?.cancel();
+    _search.dispose();
     for (final c in _controllers.values) {
       c.dispose();
     }
     super.dispose();
   }
 
+  void _searched(String text) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _loadSheets();
+    });
+  }
+
+  /// InvoicesController@sheets does not read `q` yet (it returns the newest
+  /// 200), so the loaded sheets are also narrowed here, by title, period and
+  /// status. Once the server honours `q` this is a no-op.
+  List<Map> _matching(List<Map> sheets) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return sheets;
+    return [
+      for (final s in sheets)
+        if ([
+          s['title'],
+          s['status'],
+          _sheetName(s),
+        ].whereType<Object>().join(' ').toLowerCase().contains(q))
+          s,
+    ];
+  }
+
   Future<void> _loadSheets({String? select}) async {
-    final r = await widget.api.get('/invoices/sheets');
+    final r = await widget.api.get(
+      '/invoices/sheets',
+      _q.isEmpty ? null : {'q': _q},
+    );
     if (!mounted) return;
     if (!r.ok) {
       setState(() {
@@ -90,14 +126,26 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
       });
       return;
     }
-    final sheets = (r.body['data'] as List).cast<Map>();
+    final sheets = _matching((r.body['data'] as List).cast<Map>());
     setState(() {
       _sheets = sheets;
       _error = null;
     });
+    // A search that leaves the open sheet out opens the first that matches.
+    final current = sheets.any((s) => '${s['id']}' == _sheetId)
+        ? _sheetId
+        : null;
     final id =
-        select ?? _sheetId ?? (sheets.isEmpty ? null : '${sheets.first['id']}');
-    if (id != null) await _loadSheet(id);
+        select ?? current ?? (sheets.isEmpty ? null : '${sheets.first['id']}');
+    if (id != null) {
+      await _loadSheet(id);
+    } else if (_q.isNotEmpty) {
+      setState(() {
+        _sheet = null;
+        _sheetId = null;
+        _rows = [];
+      });
+    }
   }
 
   Future<void> _loadSheet(String id) async {
@@ -303,10 +351,12 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
                 ),
               ),
             if (sheets.isEmpty && _error == null)
-              const Padding(
-                padding: EdgeInsets.only(top: 24),
+              Padding(
+                padding: const EdgeInsets.only(top: 24),
                 child: Text(
-                  'No charge sheets yet. A sheet is what each branch owes for a period.',
+                  _q.isNotEmpty
+                      ? 'No charge sheet matches "$_q".'
+                      : 'No charge sheets yet. A sheet is what each branch owes for a period.',
                 ),
               ),
             if (_sheet != null) ...[
@@ -336,6 +386,25 @@ class _ChargeSheetsTabState extends State<ChargeSheetsTab> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        SizedBox(
+          width: phone ? double.infinity : 240,
+          child: TextField(
+            key: const Key('charge-sheets-search'),
+            controller: _search,
+            onChanged: _searched,
+            // bodyMedium for the text and the hint, as the dense pickers draw:
+            // 53 points tall, as they are; the theme's 16-point hint makes 56.
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: 'Sheet title or period',
+              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+              ),
+            ),
+          ),
+        ),
         if (sheets.isNotEmpty)
           SizedBox(
             width: phone ? double.infinity : 320,

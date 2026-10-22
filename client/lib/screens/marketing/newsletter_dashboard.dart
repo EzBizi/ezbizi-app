@@ -42,7 +42,14 @@ class NewsletterDashboard extends StatelessWidget {
     required this.onStatus,
     required this.onOpen,
     required this.onNew,
+    this.search,
+    this.query = '',
   });
+
+  /// The table's search box, drawn in the bar beside New newsletter, and
+  /// what it last searched for.
+  final Widget? search;
+  final String query;
 
   final NewsletterStats stats;
 
@@ -124,6 +131,15 @@ class NewsletterDashboard extends StatelessWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
+        if (search case final search?) ...[
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: search,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         Refused(
           reason: session.me?.refusal('newsletter.create', 'write a newsletter'),
           child: FilledButton.icon(
@@ -232,7 +248,9 @@ class NewsletterDashboard extends StatelessWidget {
     if (rows.isEmpty) {
       return DashboardNote(
         key: const ValueKey('tour-newsletter-empty'),
-        status == null
+        query.isNotEmpty
+            ? 'No newsletter matches "$query".'
+            : status == null
             ? 'No newsletters in $viewName yet. New newsletter starts one.'
             : 'None of the newsletters in $viewName are ${_tileWord(status!)}.',
       );

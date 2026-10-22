@@ -103,7 +103,10 @@ void main() {
     expect(find.widgetWithText(TextField, 'Thank you, Dana!'), findsOneWidget);
     expect(find.text('Draft by AI'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'Thank you so much, Dana!');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Thank you, Dana!'),
+      'Thank you so much, Dana!',
+    );
     await tester.pumpAndSettle();
     expect(find.text('Draft by AI'), findsNothing);
   });

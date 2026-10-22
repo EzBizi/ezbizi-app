@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -60,7 +62,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   String? _error;
   String? _notice;
 
-  List<Map<String, dynamic>> _reviews = [];
+  /// The rows GET /reviews returned for the current filters.
+  List<Map<String, dynamic>> _loaded = [];
   List<Map<String, dynamic>> _connections = [];
   List<Map<String, dynamic>> _locations = [];
   int _total = 0;
@@ -75,6 +78,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   String _matched = 'any';
   String? _status;
   bool _board = false;
+
+  /// The search box. It is sent to the server as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
 
   int _request = 0;
 
@@ -117,6 +125,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     _note.dispose();
     _reason.dispose();
     _match.dispose();
+    _search.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -124,7 +134,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final request = ++_request;
 
     setState(() {
-      _loading = _reviews.isEmpty;
+      _loading = _loaded.isEmpty;
       _error = null;
     });
 
@@ -141,6 +151,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       'location': ?_location,
       if (_matched != 'any') 'matched': _matched,
       'status': ?_status,
+      if (_q.isNotEmpty) 'q': _q,
     });
 
     if (!mounted || request != _request) return;
@@ -153,11 +164,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         return;
       }
 
-      _reviews = List<Map<String, dynamic>>.from(
+      _loaded = List<Map<String, dynamic>>.from(
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
-      _total = (meta['total'] as num?)?.toInt() ?? _reviews.length;
+      _total = (meta['total'] as num?)?.toInt() ?? _loaded.length;
       _unanswered = (meta['unanswered'] as num?)?.toInt() ?? 0;
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
@@ -168,9 +179,35 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       // Keep the open one current with what the list now says.
       final open = _open;
       if (open != null) {
-        final fresh = _reviews.where((r) => r['id'] == open['id']);
+        final fresh = _loaded.where((r) => r['id'] == open['id']);
         if (fresh.isNotEmpty) _open = {...open, ...fresh.first};
       }
+    });
+  }
+
+  /// The loaded rows the search box allows.
+  ///
+  /// ReviewsController@index does not read `q` yet, so the loaded page is
+  /// also narrowed here. Once the server honours `q` this filter is a no-op.
+  List<Map<String, dynamic>> get _reviews {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return _loaded;
+    return _loaded.where((r) {
+      final text = [
+        r['reviewer_name'],
+        r['comment'],
+        (r['customer'] as Map?)?['name'],
+        (r['reply'] as Map?)?['body'],
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      _refilter(() => _q = text.trim());
     });
   }
 
@@ -424,6 +461,27 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          SizedBox(
+            width: 240,
+            child: TextField(
+              key: const Key('reviews-search'),
+              controller: _search,
+              onChanged: _searched,
+              // bodyMedium for the text and the hint, as the dense pickers draw:
+              // 53 points tall, as they are; the theme's 16-point hint makes 56.
+              style: Theme.of(context).textTheme.bodyMedium,
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                hintText: 'Name or what they said',
+                hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).inputDecorationTheme.hintStyle?.color,
+                ),
+              ),
+            ),
+          ),
           FilterChip(
             key: const ValueKey('tour-customer_experience-unanswered'),
             label: Text(
@@ -544,6 +602,16 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     final String title;
     final String body;
 
+    if (_connected && _q.isNotEmpty) {
+      return Center(
+        key: const ValueKey('reviews-search-empty'),
+        child: Text(
+          'No review matches "$_q".',
+          style: theme.textTheme.bodyMedium,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
     if (!_connected) {
       title = 'No Business Profile connected';
       body =
