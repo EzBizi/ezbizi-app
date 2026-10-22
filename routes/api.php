@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
+use App\Http\Controllers\Api\GoogleWorkspaceManagementController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
 use App\Http\Controllers\Api\HrDashboardController;
@@ -2711,6 +2712,19 @@ Route::prefix('v1')
             Route::delete('email/workspace', [GoogleWorkspaceAuthController::class, 'destroy']);
             Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
             Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
+        });
+
+        // Email → Google Workspace (2026-10-22): each Workspace's people, who
+        // they are in EzBizi, and their Gmail signatures.
+        Route::middleware('permission:email.settings.view')->group(function () {
+            Route::get('email/workspaces', [GoogleWorkspaceManagementController::class, 'index']);
+            Route::get('email/workspaces/{connection}/people', [GoogleWorkspaceManagementController::class, 'people']);
+            Route::put('email/workspaces/{connection}/people/{address}/link', [GoogleWorkspaceManagementController::class, 'link']);
+            Route::get('email/workspaces/{connection}/people/{address}/signature', [GoogleWorkspaceManagementController::class, 'showSignature']);
+            Route::put('email/workspaces/{connection}/people/{address}/signature', [GoogleWorkspaceManagementController::class, 'setOwn']);
+            Route::put('email/workspaces/{connection}/signature-template', [GoogleWorkspaceManagementController::class, 'setTemplate']);
+            Route::post('email/workspaces/{connection}/signatures/preview', [GoogleWorkspaceManagementController::class, 'preview']);
+            Route::post('email/workspaces/{connection}/signatures/apply', [GoogleWorkspaceManagementController::class, 'apply']);
         });
 
         /*

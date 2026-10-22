@@ -461,7 +461,7 @@ final class GoogleWorkspace
      * account, and this is what stops that becoming a wider grant than the
      * domain somebody connected.
      */
-    private function onWorkspace(string $address, string $domain): bool
+    public function onWorkspace(string $address, string $domain): bool
     {
         $host = strtolower((string) substr(strrchr($address, '@') ?: '', 1));
         $domain = strtolower($domain);
@@ -475,7 +475,7 @@ final class GoogleWorkspace
      * inboxes a business can use, they double the directory, and they
      * must not be pickable as a shared address.
      */
-    private function isGoogleTestAlias(string $address): bool
+    public function isGoogleTestAlias(string $address): bool
     {
         $host = strtolower((string) substr(strrchr($address, '@') ?: '', 1));
 

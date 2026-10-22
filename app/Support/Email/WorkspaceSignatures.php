@@ -1,0 +1,275 @@
+<?php
+
+namespace App\Support\Email;
+
+use App\Models\GoogleWorkspaceConnection;
+use App\Models\GoogleWorkspacePerson;
+use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+
+/**
+ * Google Workspace management (Jose, 2026-10-22): the people on a connected
+ * Workspace, which EzBizi person each address is, and their Gmail signatures.
+ *
+ * Signatures are written with Gmail's settings API, impersonating each
+ * address. That needs `gmail.settings.basic` on the domain-wide delegation in
+ * Google Admin -- a scope the inbox features never needed, so a Workspace
+ * connected before this existed has to add it. {@see ready()} says so.
+ */
+final class WorkspaceSignatures
+{
+    public const SCOPE_SETTINGS = 'https://www.googleapis.com/auth/gmail.settings.basic';
+
+    /** What a template may say, filled per person. */
+    public const PLACEHOLDERS = ['name', 'first_name', 'last_name', 'email', 'phone', 'title', 'company'];
+
+    /** Gmail refuses a signature longer than this. */
+    public const MAX_LENGTH = 10000;
+
+    private const DIRECTORY = 'https://admin.googleapis.com/admin/directory/v1/users';
+
+    private const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/';
+
+    private const MAX_PEOPLE = 500;
+
+    public function __construct(private readonly GoogleWorkspace $workspace) {}
+
+    /** Null when signatures can be written; otherwise why not, for a person. */
+    public function notReadyBecause(GoogleWorkspaceConnection $connection): ?string
+    {
+        if ($connection->status !== GoogleWorkspaceConnection::STATUS_CONNECTED) {
+            return 'This Workspace is not connected yet. Finish connecting it under Email → Settings.';
+        }
+
+        try {
+            $this->workspace->impersonate($connection->admin_email, [self::SCOPE_SETTINGS]);
+
+            return null;
+        } catch (\Throwable) {
+            return 'Google Admin has not allowed EzBizi to change Gmail settings yet. In Google Admin, '
+                .'open Security → API controls → Domain-wide delegation, edit EzBizi\'s client and add '
+                .self::SCOPE_SETTINGS.' to its scopes.';
+        }
+    }
+
+    /**
+     * Every user on the Workspace (primary addresses -- an alias has no
+     * signature of its own), with who they are in EzBizi.
+     *
+     * @return list<array<string, mixed>>
+     *
+     * @throws GoogleWorkspaceRefused
+     */
+    public function people(GoogleWorkspaceConnection $connection): array
+    {
+        $links = GoogleWorkspacePerson::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->with('user:id,name,email')
+            ->get()
+            ->keyBy('address');
+
+        $byEmail = User::query()
+            ->where('is_active', true)
+            ->get(['id', 'name', 'email'])
+            ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
+
+        return array_map(function (array $person) use ($links, $byEmail) {
+            $row  = $links->get($person['address']);
+            $user = $row?->user;
+            $how  = $user !== null ? 'linked' : null;
+
+            if ($row?->user_id === null && ($match = $byEmail->get($person['address'])) !== null) {
+                // Same address in EzBizi: that is the person, until somebody says otherwise.
+                $user = $match;
+                $how  = 'same_email';
+            }
+
+            return [
+                ...$person,
+                'user'                  => $user ? ['id' => $user->id, 'name' => $user->name] : null,
+                'link'                  => $how,
+                'has_own_signature'     => $row?->signature_html !== null,
+                'signature_applied_at'  => $row?->signature_applied_at?->toIso8601String(),
+            ];
+        }, $this->directory($connection));
+    }
+
+    /** The EzBizi person behind an address, or null. */
+    public function userFor(GoogleWorkspaceConnection $connection, string $address): ?User
+    {
+        $row = $this->row($connection, $address);
+
+        if ($row?->user_id !== null) {
+            return $row->user;
+        }
+
+        return User::query()->where('is_active', true)->whereRaw('LOWER(email) = ?', [$address])->first();
+    }
+
+    public function link(GoogleWorkspaceConnection $connection, string $address, ?User $user): void
+    {
+        $this->rowFor($connection, $address)->forceFill(['user_id' => $user?->getKey()])->save();
+    }
+
+    /** A signature for this one person instead of the template; null clears it. */
+    public function setOwnSignature(GoogleWorkspaceConnection $connection, string $address, ?string $html): void
+    {
+        $this->rowFor($connection, $address)->forceFill(['signature_html' => $html])->save();
+    }
+
+    /** The signature this address gets: its own, else the Workspace template. */
+    public function sourceFor(GoogleWorkspaceConnection $connection, string $address): ?string
+    {
+        return $this->row($connection, $address)?->signature_html ?? $connection->signature_template;
+    }
+
+    /**
+     * Fill a template for one person. Values are escaped: a name is text, and
+     * the template is the only HTML.
+     *
+     * @param  array<string, mixed>  $person  a row from {@see people()}
+     */
+    public function render(string $template, array $person, ?User $user, string $company): string
+    {
+        $name  = (string) ($user?->name ?: ($person['name'] ?? ''));
+        $parts = preg_split('/\s+/', trim($name), 2) ?: [];
+
+        $values = [
+            'name'       => $name,
+            'first_name' => (string) ($user?->first_name ?: ($person['first_name'] ?? $parts[0] ?? '')),
+            'last_name'  => (string) ($user?->last_name ?: ($person['last_name'] ?? $parts[1] ?? '')),
+            'email'      => (string) ($person['address'] ?? ''),
+            'phone'      => (string) ($user?->phone ?: ($person['phone'] ?? '')),
+            'title'      => (string) ($person['title'] ?? ''),
+            'company'    => $company,
+        ];
+
+        return preg_replace_callback(
+            '/\{\{\s*([a-z_]+)\s*\}\}/',
+            fn (array $m) => array_key_exists($m[1], $values)
+                ? htmlspecialchars($values[$m[1]], ENT_QUOTES | ENT_HTML5, 'UTF-8')
+                : $m[0],
+            $template,
+        ) ?? $template;
+    }
+
+    /** @throws GoogleWorkspaceRefused */
+    public function current(string $address): string
+    {
+        $response = $this->gmail($address)->get(self::GMAIL.rawurlencode($address).'/settings/sendAs/'.rawurlencode($address));
+
+        if ($response->failed()) {
+            throw GoogleWorkspaceRefused::impersonationFailed($address);
+        }
+
+        return (string) $response->json('signature', '');
+    }
+
+    /** @throws GoogleWorkspaceRefused */
+    public function apply(GoogleWorkspaceConnection $connection, string $address, string $html): void
+    {
+        $response = $this->gmail($address)->patch(
+            self::GMAIL.rawurlencode($address).'/settings/sendAs/'.rawurlencode($address),
+            ['signature' => $html],
+        );
+
+        if ($response->failed()) {
+            throw GoogleWorkspaceRefused::impersonationFailed($address);
+        }
+
+        $this->rowFor($connection, $address)->forceFill(['signature_applied_at' => now()])->save();
+    }
+
+    private function gmail(string $address): \Illuminate\Http\Client\PendingRequest
+    {
+        try {
+            $token = $this->workspace->impersonate($address, [self::SCOPE_SETTINGS]);
+        } catch (\Throwable) {
+            throw GoogleWorkspaceRefused::impersonationFailed($address);
+        }
+
+        return Http::withToken($token)->timeout(15);
+    }
+
+    /**
+     * @return list<array{address: string, name: string, first_name: string, last_name: string, title: string, phone: string, suspended: bool, last_login_at: ?string, aliases: list<string>}>
+     *
+     * @throws GoogleWorkspaceRefused
+     */
+    private function directory(GoogleWorkspaceConnection $connection): array
+    {
+        try {
+            $token = $this->workspace->impersonate($connection->admin_email, [GoogleWorkspace::SCOPE_DIRECTORY]);
+        } catch (\Throwable) {
+            throw GoogleWorkspaceRefused::directoryFailed();
+        }
+
+        $people = [];
+        $page   = null;
+
+        do {
+            $query = ['customer' => 'my_customer', 'maxResults' => 100, 'orderBy' => 'email', 'projection' => 'full'];
+
+            if (is_string($page) && $page !== '') {
+                $query['pageToken'] = $page;
+            }
+
+            try {
+                $response = Http::withToken($token)->timeout(15)->get(self::DIRECTORY, $query);
+            } catch (ConnectionException) {
+                throw GoogleWorkspaceRefused::directoryFailed();
+            }
+
+            if ($response->failed()) {
+                throw GoogleWorkspaceRefused::directoryFailed();
+            }
+
+            foreach ($response->json('users') ?? [] as $user) {
+                $address = mb_strtolower((string) ($user['primaryEmail'] ?? ''));
+
+                if ($address === '' || ($user['isMailboxSetup'] ?? true) === false
+                    || $this->workspace->isGoogleTestAlias($address)
+                    || ! $this->workspace->onWorkspace($address, $connection->domain)) {
+                    continue;
+                }
+
+                $organization = collect($user['organizations'] ?? [])->firstWhere('primary', true)
+                    ?? ($user['organizations'][0] ?? []);
+                $phone = collect($user['phones'] ?? [])->firstWhere('primary', true) ?? ($user['phones'][0] ?? []);
+
+                $people[] = [
+                    'address'       => $address,
+                    'name'          => (string) (data_get($user, 'name.fullName') ?: $address),
+                    'first_name'    => (string) data_get($user, 'name.givenName', ''),
+                    'last_name'     => (string) data_get($user, 'name.familyName', ''),
+                    'title'         => (string) ($organization['title'] ?? ''),
+                    'phone'         => (string) ($phone['value'] ?? ''),
+                    'suspended'     => (bool) ($user['suspended'] ?? false),
+                    'last_login_at' => str_starts_with((string) ($user['lastLoginTime'] ?? ''), '1970') ? null : ($user['lastLoginTime'] ?? null),
+                    'aliases'       => array_values(array_map('strtolower', array_filter($user['aliases'] ?? [], 'is_string'))),
+                ];
+            }
+
+            $page = $response->json('nextPageToken');
+        } while (is_string($page) && $page !== '' && count($people) < self::MAX_PEOPLE);
+
+        return $people;
+    }
+
+    private function row(GoogleWorkspaceConnection $connection, string $address): ?GoogleWorkspacePerson
+    {
+        return GoogleWorkspacePerson::query()
+            ->where('google_workspace_connection_id', $connection->getKey())
+            ->where('address', $address)
+            ->first();
+    }
+
+    private function rowFor(GoogleWorkspaceConnection $connection, string $address): GoogleWorkspacePerson
+    {
+        return $this->row($connection, $address) ?? new GoogleWorkspacePerson([
+            'google_workspace_connection_id' => $connection->getKey(),
+            'address'                        => $address,
+        ]);
+    }
+}
