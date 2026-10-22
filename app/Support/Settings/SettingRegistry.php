@@ -979,6 +979,22 @@ class SettingRegistry
                     .'cancelling after 30 days with nothing paid.',
             ),
             /*
+             * Why a job waits for review, for Project Management (Jose,
+             * 2026-10-22: "need to order parts, need measurements, looking
+             * for contractor"). The organization's own list.
+             */
+            new SettingDefinition(
+                key: 'jobs.review_reasons', label: 'Reasons a job waits for review',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'order_parts', 'label' => 'Need to order parts'],
+                    ['value' => 'measurements', 'label' => 'Need measurements'],
+                    ['value' => 'contractor', 'label' => 'Looking for a contractor'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                help: 'Shown on a job in Project Management, and a filter there.',
+            ),
+            /*
              * Which statuses mean cancelled, for Project Management's
              * "Cancellations" (2026-10-22). Empty: none counted, nothing guessed.
              */

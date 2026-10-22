@@ -102,6 +102,11 @@ class JobsController extends Controller
             'tag.*' => ['string', 'max:100'],
             'job_type' => ['nullable', 'max:30'],
             'job_type.*' => ['string', 'max:100'],
+            // Project Management's facts (2026-10-22).
+            'review_reason' => ['nullable', 'max:30'],
+            'review_reason.*' => ['string', 'max:100'],
+            'external' => ['nullable', 'boolean'],
+            'needs_second_visit' => ['nullable', 'boolean'],
         ]);
 
         abort_if($request->filled('money') && ! $money, Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
@@ -175,6 +180,9 @@ class JobsController extends Controller
                     }
                 }))
                 ->when((array) $request->query('job_type', []), fn ($q, $types) => $q->whereIn('job_type', $types))
+                ->when((array) $request->query('review_reason', []), fn ($q, $reasons) => $q->whereIn('review_reason', $reasons))
+                ->when($request->has('external'), fn ($q) => $request->boolean('external') ? $q->whereNotNull('external_company') : $q->whereNull('external_company'))
+                ->when($request->has('needs_second_visit'), fn ($q) => $q->where('needs_second_visit', $request->boolean('needs_second_visit')))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
                 // `none`: the jobs no area holds, the picker's "Not placed".
                 ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'
@@ -698,6 +706,13 @@ class JobsController extends Controller
             'sub_status' => ['nullable', 'string', 'max:100'],
             'tags'       => ['nullable', 'array', 'max:30'],
             'tags.*'     => ['nullable', 'string', 'max:100'],
+
+            // Project Management (Jose, 2026-10-22). A reason from the
+            // organization's own list; the outside company's name, null for us.
+            'review_reason' => ['nullable', 'string', Rule::in(array_column(
+                (array) app(\App\Support\Settings\SettingsResolver::class)->get('jobs.review_reasons', request()->user()?->organization), 'value'))],
+            'external_company' => ['nullable', 'string', 'max:150'],
+            'needs_second_visit' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -798,6 +813,9 @@ class JobsController extends Controller
             'job_type'   => $job->job_type,
             'sub_status' => $job->sub_status,
             'tags'       => $job->tags ?? [],
+            'review_reason' => $job->review_reason,
+            'external_company' => $job->external_company,
+            'needs_second_visit' => (bool) $job->needs_second_visit,
         ];
 
         if (! $detailed) {
