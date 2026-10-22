@@ -159,7 +159,7 @@ void main() {
     expect(find.byKey(const ValueKey('pm-timeline')), findsOneWidget);
     // The timeline's "EzBizi · <rule>" opens the rule too.
     DeepLinks.pending.value = null;
-    await tester.tap(find.byKey(const ValueKey('pm-timeline-rule-r-1')));
+    await tester.tap(find.byKey(const ValueKey('pm-timeline-rule-r-1')).first);
     await tester.pumpAndSettle();
     expect(opened, ['automations', 'automations']);
     expect(DeepLinks.pending.value?.id, 'r-1');
@@ -176,6 +176,111 @@ void main() {
     await tester.tap(find.text('Quote signed → book').last);
     await tester.pumpAndSettle();
     expect(stub.logs.last.queryParameters['automation_id'], 'r-2');
+  });
+
+  // Jose: every list gets a search, matched on the server (9967b050d).
+  testWidgets('search sends q after 400 ms and shows what the server found', (
+    tester,
+  ) async {
+    final stub = _Stub();
+    await _pump(tester, stub, now: now);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('pm-logs-search')),
+      'corin',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(stub.logs, hasLength(1), reason: 'still typing');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(stub.logs.last.queryParameters['q'], 'corin');
+    expect(stub.logs.last.queryParameters['from'], '2026-10-21');
+
+    expect(find.text('#7103'), findsOneWidget);
+    expect(find.text('#7101'), findsNothing);
+    expect(find.text('#7102'), findsNothing);
+    // A rule's name matches too, and its folded line stays.
+    await tester.enterText(
+      find.byKey(const ValueKey('pm-logs-search')),
+      'deposit',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('#7101'), findsOneWidget);
+    expect(find.text('#7103'), findsNothing);
+    expect(find.byKey(const ValueKey('pm-logs-fold-r-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pm-logs-fold-r-2')), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('pm-logs-search')), 'zz');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing here matches “zz”.'), findsOneWidget);
+
+    // A phone number the row does not show: the server's match stands, as
+    // the client filters nothing itself.
+    await tester.enterText(
+      find.byKey(const ValueKey('pm-logs-search')),
+      '0199',
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('#7103'), findsOneWidget);
+  });
+
+  testWidgets("a run's steps show under what changed, a failed one in red", (
+    tester,
+  ) async {
+    await _pump(tester, _Stub(), now: now);
+
+    final row = find.byKey(const ValueKey('pm-logs-row-2'));
+    final failed = tester.widget<Text>(
+      find.descendant(
+        of: row,
+        matching: find.text('Workiz: Status → Booked refused'),
+      ),
+    );
+    final context = tester.element(row);
+    expect(failed.style?.color, Theme.of(context).colorScheme.error);
+    expect(
+      find.descendant(
+        of: row,
+        matching: find.text('Notification: told the office'),
+      ),
+      findsOneWidget,
+    );
+    // In place of changes[].detail.
+    expect(
+      find.descendant(of: row, matching: find.text('Status → Booked')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the timeline draws each rule step with its outcome and why', (
+    tester,
+  ) async {
+    await _pump(tester, _Stub(), now: now);
+    await tester.tap(find.byKey(const ValueKey('pm-logs-job-0')));
+    await tester.pumpAndSettle();
+
+    final pane = find.byKey(const ValueKey('pm-timeline'));
+    Finder inPane(String text) =>
+        find.descendant(of: pane, matching: find.text(text));
+    expect(inPane('Workiz: Status → Ready to invoice'), findsOneWidget);
+    expect(inPane('Message to customer: not sent'), findsOneWidget);
+    expect(inPane('Done'), findsOneWidget);
+    expect(inPane('Failed'), findsOneWidget);
+    expect(inPane('Skipped'), findsNWidgets(2), reason: 'its title and chip');
+    final why = tester.widget<Text>(inPane('No mobile number.'));
+    expect(why.style?.color, Theme.of(tester.element(pane)).colorScheme.error);
+    expect(inPane('Tags was empty; the rule wants Paid.'), findsOneWidget);
+    // The rule links on every step, and on the status change.
+    expect(
+      find.descendant(
+        of: pane,
+        matching: find.byKey(const ValueKey('pm-timeline-rule-r-1')),
+      ),
+      findsNWidgets(4),
+    );
   });
 
   testWidgets('an empty window is one sentence', (tester) async {
@@ -203,7 +308,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('pm-logs-why-r-1')),
       200,
+      scrollable: _page,
     );
+    await tester.ensureVisible(find.byKey(const ValueKey('pm-logs-why-r-1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pm-logs-why-r-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-logs-reasons-r-1')), findsOneWidget);
@@ -213,6 +321,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('pm-logs-job-0')),
       -200,
+      scrollable: _page,
     );
     await tester.tap(find.byKey(const ValueKey('pm-logs-job-0')));
     await tester.pumpAndSettle();
@@ -224,6 +333,14 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+/// The page's own scroll view; the search field has one of its own.
+final _page = find
+    .descendant(
+      of: find.byKey(const ValueKey('pm-logs')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 class _Stub {
   _Stub({this.empty = false});
@@ -288,6 +405,19 @@ class _Stub {
           'detail': 'Status → Booked',
         },
       ],
+      'lines': [
+        {
+          'outcome': 'failed',
+          'type': 'workiz.job_update',
+          'what': 'Workiz: Status → Booked refused',
+          'reason': 'Workiz refused the change: the job is locked.',
+        },
+        {
+          'outcome': 'succeeded',
+          'type': 'notify',
+          'what': 'Notification: told the office',
+        },
+      ],
       'reason': 'Workiz refused the change: the job is locked.',
     },
     {
@@ -308,11 +438,24 @@ class _Stub {
     if (path.endsWith('/jobs/project-management/logs')) {
       logs.add(request.url);
       final outcome = request.url.queryParameters['outcome'];
+      final q = request.url.queryParameters['q']?.toLowerCase();
+      // As the server searches: the job, its customer and phone, the rule.
+      bool hit(Object? v) => v != null && '$v'.toLowerCase().contains(q!);
+      bool matches(Map<String, dynamic> r) {
+        if (q == null) return true;
+        final job = r['job'] as Map;
+        return hit(job['number']) ||
+            hit(job['customer']) ||
+            hit(_phones[job['id']]) ||
+            hit((r['rule'] as Map?)?['name']);
+      }
+
       final rows = empty
           ? const <Map<String, dynamic>>[]
           : [
               for (final r in _all)
-                if (outcome == null || r['outcome'] == outcome) r,
+                if ((outcome == null || r['outcome'] == outcome) && matches(r))
+                  r,
             ];
       return _json({
         'data': rows,
@@ -323,36 +466,42 @@ class _Stub {
           'skipped_by_rule': empty
               ? const <Object>[]
               : [
-                  {
-                    'rule': {
-                      'id': 'r-1',
-                      'name': 'Deposit taken → mark settled',
-                    },
-                    'count': 40,
-                    'reasons': [
-                      {
-                        'reason': 'Status was Booked; the rule wants Invoiced.',
-                        'count': 37,
-                      },
-                      {
-                        'reason': 'Tags was empty; the rule wants Paid.',
-                        'count': 3,
-                      },
-                    ],
-                  },
-                  {
-                    'rule': {'id': 'r-2', 'name': 'Quote signed → book'},
-                    'count': 2,
-                    'reasons': [
-                      {'reason': 'The rule did not match.', 'count': 2},
-                    ],
-                  },
+                  for (final s in _folds)
+                    if (q == null || hit((s['rule'] as Map)['name'])) s,
                 ],
         },
       });
     }
 
     if (path.endsWith('/jobs/project-management')) {
+      return _timeline(request);
+    }
+
+    return _json({'message': 'Nothing stubbed for $path.'}, 404);
+  }
+
+  static const _phones = {'j-3': '555-0199'};
+
+  static final _folds = <Map<String, dynamic>>[
+    {
+      'rule': {'id': 'r-1', 'name': 'Deposit taken → mark settled'},
+      'count': 40,
+      'reasons': [
+        {'reason': 'Status was Booked; the rule wants Invoiced.', 'count': 37},
+        {'reason': 'Tags was empty; the rule wants Paid.', 'count': 3},
+      ],
+    },
+    {
+      'rule': {'id': 'r-2', 'name': 'Quote signed → book'},
+      'count': 2,
+      'reasons': [
+        {'reason': 'The rule did not match.', 'count': 2},
+      ],
+    },
+  ];
+
+  Future<http.Response> _timeline(http.Request request) async {
+    {
       timelines.add(request.url);
       return _json({
         'data': [
@@ -373,14 +522,38 @@ class _Stub {
                 'by': 'EzBizi · Deposit taken → mark settled',
                 'rule': {'id': 'r-1', 'name': 'Deposit taken → mark settled'},
               },
+              // One line per step the rule took (2026-10-22).
+              for (final (outcome, what, reason) in const [
+                ('succeeded', 'Workiz: Status → Ready to invoice', null),
+                (
+                  'failed',
+                  'Message to customer: not sent',
+                  'No mobile number.',
+                ),
+                ('skipped', 'Skipped', 'Tags was empty; the rule wants Paid.'),
+              ])
+                {
+                  'kind': 'action',
+                  'at': DateTime(
+                    2026,
+                    10,
+                    21,
+                    10,
+                    43,
+                  ).toUtc().toIso8601String(),
+                  'by': 'EzBizi · Deposit taken → mark settled',
+                  'rule': {'id': 'r-1', 'name': 'Deposit taken → mark settled'},
+                  'outcome': outcome,
+                  'type': 'workiz.job_update',
+                  'what': what,
+                  'reason': ?reason,
+                },
             ],
           },
         ],
         'meta': {'watched': <String>[], 'deadline_days': 30},
       });
     }
-
-    return _json({'message': 'Nothing stubbed for $path.'}, 404);
   }
 }
 

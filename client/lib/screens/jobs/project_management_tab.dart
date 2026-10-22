@@ -786,6 +786,16 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   }
 }
 
+/// An outcome as its chip says it: a Logs row, or a rule's step in a
+/// timeline.
+({String label, Tone tone}) pmLogOutcome(Object? outcome) => switch (outcome) {
+  'succeeded' => (label: 'Done', tone: Tone.ok),
+  'manual' => (label: 'By hand', tone: Tone.info),
+  'failed' => (label: 'Failed', tone: Tone.bad),
+  'skipped' => (label: 'Skipped', tone: Tone.neutral),
+  _ => (label: '${outcome ?? '—'}', tone: Tone.neutral),
+};
+
 /// Opens a rule in Automations, the way a notification about a rule does:
 /// the link for Automations to take, then the module. Null when there is no
 /// rule, no shell to switch modules, or Automations is not this person's.
@@ -1066,8 +1076,19 @@ class PmTimeline extends StatelessWidget {
       color: scheme.onSurfaceVariant,
     );
 
+    final what = e['what'] is String && (e['what'] as String).isNotEmpty
+        ? e['what'] as String
+        : null;
     final (title, tone) = switch (e['kind']) {
+      // The status change it was, since 2026-10-22: from and to, and `what`.
+      'entered' when what != null => (what, Tone.info),
+      'entered' when e['to'] != null => (
+        'Status ${status(e['from'])} → ${status(e['to'])}',
+        Tone.info,
+      ),
       'entered' => ('Entered “${status(e['status'])}”', Tone.info),
+      // One step a rule took: its outcome chip, the rule, and why not.
+      'action' => (what ?? 'A rule ran', pmLogOutcome(e['outcome']).tone),
       'payment' => (
         e['marks'] == 'full' ? 'Payment · paid in full' : 'Payment · partial',
         Tone.ok,
@@ -1124,10 +1145,39 @@ class PmTimeline extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
+                  if (e['kind'] == 'action')
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        StatusPill(
+                          pmLogOutcome(e['outcome']).label,
+                          tone: pmLogOutcome(e['outcome']).tone,
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  if (e['kind'] == 'action' &&
+                      e['reason'] is String &&
+                      (e['reason'] as String).isNotEmpty &&
+                      e['outcome'] != 'succeeded')
+                    Text(
+                      e['reason'] as String,
+                      style: e['outcome'] == 'failed'
+                          ? theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.error,
+                            )
+                          : muted,
+                    ),
                   if (detail.isNotEmpty) Text(detail, style: muted),
                   if (by != null && rule != null)
                     PmRuleLink(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -6,7 +8,6 @@ import '../../core/device_zone.dart';
 import '../../core/job_status.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
-import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
@@ -15,7 +16,7 @@ import '../../widgets/status_pill.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
 import 'pm_range.dart';
-import 'project_management_tab.dart' show PmRuleLink, PmTimeline;
+import 'project_management_tab.dart' show PmRuleLink, PmTimeline, pmLogOutcome;
 
 /// Project Management › Logs (UI queue 139, option 1 and phone 4): what
 /// EzBizi and people changed on jobs in a date range, and why a rule did not.
@@ -69,15 +70,6 @@ const pmLogViews = [
   ('all', 'All'),
 ];
 
-/// A row's outcome as its chip says it.
-({String label, Tone tone}) pmLogOutcome(Object? outcome) => switch (outcome) {
-  'succeeded' => (label: 'Done', tone: Tone.ok),
-  'manual' => (label: 'By hand', tone: Tone.info),
-  'failed' => (label: 'Failed', tone: Tone.bad),
-  'skipped' => (label: 'Skipped', tone: Tone.neutral),
-  _ => (label: '${outcome ?? '—'}', tone: Tone.neutral),
-};
-
 class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
   static const _phoneBelow = 600.0;
 
@@ -85,6 +77,11 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
   String? _branch;
   String? _rule;
   String _view = 'changes';
+
+  /// Search (Jose: every list gets one), sent as `q` 400 ms after typing.
+  final _search = TextEditingController();
+  Timer? _typing;
+  String get _q => _search.text.trim();
 
   bool _loading = true;
   String? _error;
@@ -116,6 +113,18 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
   }
 
   @override
+  void dispose() {
+    _typing?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _typed(String _) {
+    _typing?.cancel();
+    _typing = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  @override
   void didUpdateWidget(ProjectManagementLogs old) {
     super.didUpdateWidget(old);
     if (old.generation != widget.generation) _load();
@@ -133,6 +142,7 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       'timezone': ?widget.zone(),
       'franchise_id': ?_branch,
       'automation_id': ?_rule,
+      if (_q.isNotEmpty) 'q': _q,
       // Changes and All are one call: every row, skipped hidden here.
       if (_view == 'failed' || _view == 'skipped') 'outcome': _view,
     });
@@ -195,7 +205,13 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
         ]
       : _rows;
 
+  /// The folded skipped lines, under Changes only. The server's search
+  /// narrows them with the rows.
+  List<Map<String, dynamic>> get _folded =>
+      _view == 'changes' ? _skipped : const [];
+
   bool get _nothing =>
+      _q.isEmpty &&
       !_loading &&
       _error == null &&
       _rows.isEmpty &&
@@ -403,6 +419,17 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       onChanged: (r) => _refilter(() => _range = r),
     );
 
+    final search = TextField(
+      key: const ValueKey('pm-logs-search'),
+      controller: _search,
+      onChanged: _typed,
+      decoration: const InputDecoration(
+        isDense: true,
+        prefixIcon: Icon(Icons.search, size: 18),
+        hintText: 'Job, customer, rule or person',
+      ),
+    );
+
     final pickers = [
       if (branches.isNotEmpty)
         SearchPickerField<String?>(
@@ -471,6 +498,8 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           range,
+          const SizedBox(height: 8),
+          search,
           for (final p in pickers) ...[const SizedBox(height: 8), p],
           const SizedBox(height: 8),
           KeyedSubtree(
@@ -490,6 +519,7 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            SizedBox(width: 300, child: search),
             for (final p in pickers) SizedBox(width: 240, child: p),
             KeyedSubtree(
               key: const ValueKey('tour-pm-logs-outcome'),
@@ -512,12 +542,11 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       ];
     }
     final rows = _shown;
-    final folded = _view == 'changes'
-        ? _skipped
-        : const <Map<String, dynamic>>[];
+    final folded = _folded;
     if (rows.isEmpty && folded.isEmpty) {
       return [
         _sentence(context, switch (_view) {
+          _ when _q.isNotEmpty => 'Nothing here matches “$_q”.',
           'failed' => 'Nothing failed in these dates.',
           'skipped' => 'Nothing was skipped in these dates.',
           _ => 'Nothing changed in these dates.',
@@ -588,11 +617,33 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
   Map<String, dynamic> _job(Map<String, dynamic> r) =>
       r['job'] is Map ? (r['job'] as Map).cast<String, dynamic>() : const {};
 
-  List<String> _what(Map<String, dynamic> r) => [
-    for (final c in (r['changes'] as List?) ?? const [])
-      if (c is Map && c['detail'] is String && '${c['detail']}'.isNotEmpty)
-        '${c['detail']}',
-  ];
+  /// What changed: the run's steps (`lines`) when the server sends them, a
+  /// failed or skipped step in its tone; otherwise each change's sentence.
+  List<({String text, String? outcome})> _what(Map<String, dynamic> r) {
+    final lines = r['lines'];
+    if (lines is List && lines.isNotEmpty) {
+      return [
+        for (final l in lines)
+          if (l is Map && l['what'] is String && '${l['what']}'.isNotEmpty)
+            (text: '${l['what']}', outcome: l['outcome'] as String?),
+      ];
+    }
+    return [
+      for (final c in (r['changes'] as List?) ?? const [])
+        if (c is Map && c['detail'] is String && '${c['detail']}'.isNotEmpty)
+          (text: '${c['detail']}', outcome: null),
+    ];
+  }
+
+  Widget _line(BuildContext context, ({String text, String? outcome}) w) {
+    final theme = Theme.of(context);
+    final color = switch (w.outcome) {
+      'failed' => theme.colorScheme.error,
+      'skipped' => theme.colorScheme.onSurfaceVariant,
+      _ => null,
+    };
+    return Text(w.text, style: color == null ? null : TextStyle(color: color));
+  }
 
   String _when(Map<String, dynamic> r) =>
       formatListStamp(r['at'], '—', formats: _me.display, now: _now());
@@ -701,7 +752,7 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (what.isEmpty) const Text('—'),
-                for (final w in what) Text(w),
+                for (final w in what) _line(context, w),
               ],
             ),
             _by(context, i, r),
@@ -753,7 +804,10 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
                   _chip(i, r),
                 ],
               ),
-              for (final w in what) ...[const SizedBox(height: 2), Text(w)],
+              for (final w in what) ...[
+                const SizedBox(height: 2),
+                _line(context, w),
+              ],
               if (reason != null) ...[const SizedBox(height: 2), reason],
               const SizedBox(height: 4),
               Wrap(
