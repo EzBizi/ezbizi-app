@@ -1100,6 +1100,7 @@ Route::prefix('v1')
             Route::post('bases/{base}/tables', 'storeTable');
             Route::get('airtable-tables', 'airtableTables');
             Route::get('repair-split', 'repairSplit');
+            Route::get('repair-report', 'repairReport');
             Route::get('refunds', 'refunds');
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('airtable-links', 'mirrorAirtable');
