@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0478',
+      date: '22 Oct 2026',
+      items: [
+        'Email › Inbox looks like Gmail: folders and each company\'s inboxes on the left, category tabs, one row per conversation across all inboxes, and a reading pane. All inboxes no longer says an inbox is not connected when it is.',
+        'Leads › Manage › Office hours: every company and branch in one table, with the hours it uses, where they come from, its time zone, and the automatic replies that read them. Places with no hours at all are highlighted and counted.',
+        'Project Management: a job\'s timeline says "EzBizi" and the rule\'s name for a status or tag change one of your rules made, instead of "Workiz". Settings no longer lets you remove the last watched status by accident.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0477',
       date: '22 Oct 2026',
       items: [
