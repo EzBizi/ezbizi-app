@@ -74,6 +74,8 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$canMarkAtSource = true;
         FakeMailboxReader::$sourceRefuses   = false;
         FakeMailboxReader::$modified = [];
+        FakeMailboxReader::$listedCursors = [];
+        FakeMailboxReader::$pages = null;
     }
 
     /** @param array{org: \App\Models\Organization} $tenant */
@@ -1229,6 +1231,34 @@ class MailboxMessagesApiTest extends TestCase
         $this->signedInAs($t['admin'])->getJson('/api/v1/email/mailboxes')->assertJsonPath('data.0.unread', 7);
     }
 
+    /** A tab reads on through Gmail's pages until it has a page's worth (Jose: inboxes looked empty). */
+    public function test_a_tab_reads_further_pages_until_it_has_mail(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t);
+
+        $mail = fn (string $id, bool $bulk) => new MessageSummary(
+            id: $id, threadId: 't-'.$id, subject: $id, fromName: 'X', fromAddress: 'x@example.com',
+            to: [], sentAt: Carbon::parse('2026-10-22 09:00:00'), snippet: '', isBulk: $bulk,
+        );
+        FakeMailboxReader::$pages = [
+            new MessagePage([$mail('n1', true), $mail('p1', false)], 'p1'),
+            new MessagePage([$mail('n2', true), $mail('p2', false)], 'p2'),
+            new MessagePage([$mail('p3', false)]),
+        ];
+
+        $rows = $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?category=primary')->assertOk()->json('data');
+
+        $this->assertSame(['p1', 'p2', 'p3'], collect($rows)->pluck('subject')->sort()->values()->all());
+        $this->assertSame([null, 'p1', 'p2'], FakeMailboxReader::$listedCursors);
+
+        // Without a tab, one page as before.
+        FakeMailboxReader::$listedCursors = [];
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk();
+        $this->assertSame([null], FakeMailboxReader::$listedCursors);
+    }
+
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
     {
         $this->withFakeProvider();
@@ -2270,8 +2300,20 @@ class FakeMailboxReader implements \App\Support\Email\LabelsThreads, MailboxRead
     /** @var string[] */
     public static array $searches = [];
 
+    /** @var list<?string> cursors list() was asked for */
+    public static array $listedCursors = [];
+
+    /** When set, list() answers page N by cursor (null, 'p1', 'p2', ...). */
+    public static ?array $pages = null;
+
     public function list(Mailbox $mailbox, ?string $cursor = null, int $limit = 25, string $label = 'INBOX'): MessagePage
     {
+        self::$listedCursors[] = $cursor;
+
+        if (self::$pages !== null) {
+            return self::$pages[$cursor === null ? 0 : (int) substr($cursor, 1)] ?? new MessagePage([]);
+        }
+
         return self::$page ?? new MessagePage([]);
     }
 
