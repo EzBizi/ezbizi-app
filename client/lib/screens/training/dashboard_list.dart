@@ -46,6 +46,19 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
   Map<String, dynamic> _summary = const {};
   String? _selectedId;
 
+  /// What the search field holds. The endpoint answers every row at once
+  /// (no paging), so the filter runs here, over title and kind.
+  String _query = '';
+
+  List<Map<String, dynamic>> get _visibleRows {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return [
+      for (final row in _rows)
+        if ('${row['title'] ?? ''} ${row['kind'] ?? ''}'.toLowerCase().contains(q)) row,
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -97,9 +110,41 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
       header: PanelHeader(
         key: const ValueKey('tour-training-dashboard-summary'),
         note: 'How training is going, guide by guide and test by test.',
-        action: (_loading || _error != null) ? null : _SummaryStats(summary: _summary),
+        action: (_loading || _error != null)
+            ? null
+            : Wrap(
+                spacing: 18,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // As tall as the controls beside it (Jose, 2026-10-20).
+                  SizedBox(
+                    width: 240,
+                    height: 40,
+                    child: TextField(
+                      key: const Key('training-dashboard-list-search'),
+                      textAlignVertical: TextAlignVertical.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                        prefixIconConstraints: BoxConstraints(minWidth: 36),
+                        prefixIcon: Icon(Icons.search, size: 18),
+                        hintText: 'Find a guide or test',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setState(() => _query = value),
+                    ),
+                  ),
+                  _SummaryStats(summary: _summary),
+                ],
+              ),
       ),
-      list: _RowList(rows: _rows, selectedId: _selectedId, onSelect: _select),
+      list: _RowList(
+        rows: _visibleRows,
+        query: _query.trim(),
+        selectedId: _selectedId,
+        onSelect: _select,
+      ),
       pane: ({required showBack}) {
         final row = _selectedRow;
         if (row == null) return const SizedBox.shrink();
@@ -172,14 +217,24 @@ class _SummaryStats extends StatelessWidget {
 }
 
 class _RowList extends StatelessWidget {
-  const _RowList({required this.rows, required this.selectedId, required this.onSelect});
+  const _RowList({
+    required this.rows,
+    required this.query,
+    required this.selectedId,
+    required this.onSelect,
+  });
 
   final List<Map<String, dynamic>> rows;
+  final String query;
   final String? selectedId;
   final ValueChanged<String> onSelect;
 
   @override
   Widget build(BuildContext context) {
+    if (rows.isEmpty && query.isNotEmpty) {
+      return Center(child: Text('No guide or test matches "$query".'));
+    }
+
     if (rows.isEmpty) {
       // Scope-filtered, so it says what showed up rather than what exists:
       // "nothing to watch YET" would tell a franchise manager the
