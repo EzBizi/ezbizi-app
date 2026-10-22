@@ -2159,6 +2159,15 @@ class AutomationsController extends Controller
         'workiz.job_update' => [\App\Models\Job::class],
         'task.assign' => [\App\Models\Task::class],
         'task.move_group' => [\App\Models\Task::class],
+        'resend' => [\App\Models\Invitation::class],
+        'revoke' => [\App\Models\Invitation::class],
+        'onboarding.start' => [\App\Models\Invitation::class],
+        'time_clock.clock_in' => [\App\Models\User::class],
+        'time_clock.clock_out' => [\App\Models\User::class],
+        'inspection_report.email' => [\App\Models\InspectionReport::class],
+        'inspection_report.workiz' => [\App\Models\InspectionReport::class],
+        'add_to_audience' => [\App\Models\Lead::class],
+        'reply' => [\App\Models\Lead::class],
     ];
 
     /** Refused at save when the trigger is about a record this step does not work on. */
