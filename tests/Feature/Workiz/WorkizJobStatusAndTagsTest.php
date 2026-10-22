@@ -95,4 +95,15 @@ class WorkizJobStatusAndTagsTest extends TestCase
         $this->expectExceptionMessage('Workiz has no tag "VIP" in this account.');
         $this->inTenant($this->t['org'], fn () => $this->writer()->setTags($this->job, ['VIP']));
     }
+
+    /** Jose's Action 1, 2026-10-22: payment in, time off the schedule. isScheduled:false is what Workiz takes (measured on 900018655). */
+    public function test_unschedule_clears_the_jobs_time_in_workiz(): void
+    {
+        $job = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'isScheduled' => false, 'date' => null, 'endDate' => null]);
+        Http::fake(['api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::response($job)]);
+
+        $this->inTenant($this->t['org'], fn () => $this->writer()->unschedule($this->job));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r->data() === ['isScheduled' => false]);
+    }
 }

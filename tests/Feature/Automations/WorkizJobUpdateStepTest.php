@@ -40,7 +40,7 @@ class WorkizJobUpdateStepTest extends TestCase
         $workizJob = array_replace(require base_path('tests/Fixtures/workiz/v2_job.php'), ['id' => 'JOB-1', 'status' => 'Canceled']);
         Http::fake([
             'api.workiz.com/crm/api/v2/jobSubStatus*' => Http::response(['data' => [['id' => 'JSS-9', 'name' => 'Estimate Declined']]]),
-            'api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::sequence()->push($workizJob)->push(['message' => 'Must assign technician to perform this action'], 400),
+            'api.workiz.com/crm/api/v2/jobs/JOB-1' => Http::sequence()->push($workizJob)->push(['message' => 'Must assign technician to perform this action'], 400)->push($workizJob),
         ]);
 
         $this->inTenant($t['org'], function () use ($t) {
@@ -64,6 +64,10 @@ class WorkizJobUpdateStepTest extends TestCase
             $refused = app(ActionRunner::class)->run($step, $event, $job);
             $this->assertFalse($refused['ok']);
             $this->assertStringContainsString('Must assign technician', $refused['detail']);
+
+            $off = app(ActionRunner::class)->run(['type' => 'workiz.job_update', 'unschedule' => true], $event, $job);
+            $this->assertTrue($off['ok'], $off['detail']);
+            Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && ($r->data()['isScheduled'] ?? null) === false);
         });
     }
 }

@@ -715,8 +715,9 @@ class ActionRunner
         $status = trim((string) ($action['status'] ?? ''));
         $sub = trim((string) ($action['sub_status'] ?? ''));
         $tags = array_values(array_filter(array_map('trim', is_array($action['tags'] ?? null) ? $action['tags'] : explode(',', (string) ($action['tags'] ?? '')))));
-        if ($status === '' && $tags === []) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status or tags to set.'];
+        $unschedule = filter_var($action['unschedule'] ?? false, FILTER_VALIDATE_BOOL);
+        if ($status === '' && $tags === [] && ! $unschedule) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status, tags to set, or to remove the scheduled time.'];
         }
 
         $done = [];
@@ -727,8 +728,12 @@ class ActionRunner
                 $done[] = 'status '.$status.($sub === '' ? '' : ' / '.$sub);
             }
             if ($tags !== []) {
-                $writer->setTags($mirror, $tags);
+                $mirror = $writer->setTags($mirror, $tags);
                 $done[] = 'tags '.implode(', ', $tags);
+            }
+            if ($unschedule) {
+                $writer->unschedule($mirror);
+                $done[] = 'no scheduled time';
             }
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => ($done === [] ? '' : 'Set '.implode('; ', $done).', then: ').$refusal->getMessage()];
