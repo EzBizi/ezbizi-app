@@ -504,7 +504,7 @@ class PmScope {
 String pmScopeSentence(PmScope scope) {
   final s = scope.statuses;
   final which = s.isEmpty
-      ? 'in every status'
+      ? 'in any status'
       : s.length > 3
       ? 'in ${s.length} statuses'
       : 'in ${s.join(', ')}';

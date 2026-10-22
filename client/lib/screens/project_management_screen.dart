@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
-import '../core/branch_options.dart';
 import '../core/device_zone.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
@@ -141,13 +140,10 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   /// as "Company · Branch".
   PmScope get _scope {
     final names = {for (final st in _statuses) st.value: st.label};
-    final place = _me.scope;
     return PmScope(
       statuses: [for (final v in _scopeStatuses) names[v] ?? v],
       partlyPaidOnly: _partlyPaidOnly,
-      place: place.type == 'franchise' && place.id != null
-          ? branchLabelOf(_me, place.id!, place.label)
-          : place.label,
+      place: pmPlaceLabel(_me),
     );
   }
 

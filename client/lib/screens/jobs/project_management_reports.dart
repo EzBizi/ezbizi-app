@@ -308,10 +308,9 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            ?picker,
-            _weekPicker(context),
+            // Search first, as on every Project Management tab.
             SizedBox(
-              width: phone ? double.infinity : 240,
+              width: phone ? double.infinity : 300,
               child: TextField(
                 key: const ValueKey('pm-reports-search'),
                 controller: _search,
@@ -323,6 +322,8 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
                 ),
               ),
             ),
+            ?picker,
+            _weekPicker(context),
           ],
         ),
         const SizedBox(height: 12),
@@ -335,7 +336,7 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
             onRetry: _load,
             child: _report == null
                 ? Text(
-                    _empty ? 'No repair report for this place this week.' : '',
+                    _empty ? 'No repair report for this branch this week.' : '',
                     key: const ValueKey('pm-reports-empty'),
                   )
                 : _body(context, phone: phone),
@@ -860,6 +861,20 @@ class _ProjectManagementReportTableState
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            // Search first, as on every Project Management tab.
+            SizedBox(
+              width: phone ? double.infinity : 300,
+              child: TextField(
+                key: const ValueKey('pm-table-search'),
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Search technicians',
+                ),
+              ),
+            ),
             ?picker,
             Row(
               key: const ValueKey('tour-pm-report-week'),
@@ -907,19 +922,6 @@ class _ProjectManagementReportTableState
               label: const Text('Show only rows with gaps'),
               onSelected: (v) => setState(() => _gapsOnly = v),
             ),
-            SizedBox(
-              width: phone ? double.infinity : 240,
-              child: TextField(
-                key: const ValueKey('pm-table-search'),
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search technicians',
-                ),
-              ),
-            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -940,7 +942,7 @@ class _ProjectManagementReportTableState
                     child: Text(
                       _rows.isEmpty
                           ? 'No repair report in these weeks.'
-                          : 'No rows match.',
+                          : 'No technicians match “${_search.text.trim()}”.',
                       key: const ValueKey('pm-table-none'),
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,

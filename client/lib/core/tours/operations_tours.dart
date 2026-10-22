@@ -996,7 +996,8 @@ const Map<String, Tour> operationsTours = {
         title: 'By technician',
         body:
             'Task Board cards the payment rule made on every branch board, '
-            'grouped by their Technician column, To assign first.',
+            'grouped by their Technician column, To assign first. Drag a card '
+            'to a technician, or set Technician on the card.',
       ),
     ],
   ),

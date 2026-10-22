@@ -244,4 +244,65 @@ void main() {
       expect(res.reason, 'Pat Lin is not on this job branch.');
     },
   );
+
+  Future<void> dragTo(WidgetTester tester, String id, String column) async {
+    final from = tester.getCenter(card(id));
+    final to = tester.getCenter(col(column));
+    final gesture = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 50));
+    await gesture.moveTo(Offset((from.dx + to.dx) / 2, from.dy));
+    await tester.pump();
+    await gesture.moveTo(to);
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('dragging a card onto a technician sets its Technician', (
+    tester,
+  ) async {
+    final server = await open(tester, const Size(1440, 1000));
+    await dragTo(tester, 't-1', 'Sam Ortiz');
+    final write = server.writes().single;
+    expect(write.uri.path, endsWith('/tasks/t-1'));
+    expect(write.body, {
+      'values': {'c-tech': 'o-sam'},
+    });
+    expect(
+      find.descendant(of: col('Sam Ortiz'), matching: card('t-1')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a refused drop goes back, with the server sentence', (
+    tester,
+  ) async {
+    final server = await open(tester, const Size(1440, 1000));
+    server.taskRefusal = 'Sam Ortiz does not work at this branch.';
+    await dragTo(tester, 't-1', 'Sam Ortiz');
+    expect(server.writes(), hasLength(1));
+    expect(
+      find.descendant(of: col('To assign'), matching: card('t-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Sam Ortiz does not work at this branch.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('dragging back to To assign clears the Technician', (
+    tester,
+  ) async {
+    final server = await open(tester, const Size(1440, 1000));
+    await dragTo(tester, 't-2', 'To assign');
+    expect(server.writes().single.body, {
+      'values': {'c-tech': null},
+    });
+  });
+
+  testWidgets('a view-only board cannot be dragged', (tester) async {
+    await open(tester, const Size(1440, 1000), canEdit: false);
+    expect(find.byKey(const ValueKey('pm-assign-drag-t-1')), findsNothing);
+  });
 }
