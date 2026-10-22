@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -13,6 +15,12 @@ import 'package:http/testing.dart';
 /// Task Board (UI queue 80): the boards as tabs, a board's groups as a table
 /// or kanban, a task in the side panel, and cards on a phone.
 void main() {
+  // The board last opened is remembered on disk: keep it out of the real one.
+  setUp(() {
+    store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tb');
+  });
+  tearDown(() => store.debugStoreDirOverride = null);
+
   http.Response json(Object body, [int status = 200]) => http.Response(
     jsonEncode(body),
     status,

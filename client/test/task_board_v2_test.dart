@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -15,6 +17,12 @@ import 'package:http/testing.dart';
 /// {id, name, colour, is_done}, a task's `status_id`, `parent_task_id`,
 /// columns {id, name, type, position, hidden, settings}, `values`.
 void main() {
+  // The board last opened is remembered on disk: keep it out of the real one.
+  setUp(() {
+    store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tb');
+  });
+  tearDown(() => store.debugStoreDirOverride = null);
+
   late List<(String, String, Object?)> log;
   late List<Map<String, dynamic>> tasks;
 
