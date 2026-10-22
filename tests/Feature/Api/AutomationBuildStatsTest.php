@@ -25,7 +25,7 @@ class AutomationBuildStatsTest extends TestCase
         $mail('notify@ringcentral.com', now()->subDays(40)); // too old
 
         $this->signedInAs($t['admin'])->getJson('/api/v1/automations/trigger-stats?triggers=email.received,nope')
-            ->assertOk()->assertExactJson(['data' => ['email.received' => ['last_30_days' => 2]]]);
+            ->assertOk()->assertExactJson(['data' => ['email.received' => ['last_30_days' => 2, 'rules' => 0, 'top_actions' => []]]]);
 
         $run = $this->signedInAs($t['admin'])->postJson('/api/v1/automations/would-have-run', [
             'trigger' => 'email.received',
@@ -34,7 +34,35 @@ class AutomationBuildStatsTest extends TestCase
         $this->assertSame([2, 1], [$run['total'], $run['matched']]);
         $this->assertSame([true, false], array_column($run['examples'], 'matched'));
 
+        // Plain words and kinds, and a draft tried on the newest event.
+        $fields = $this->signedInAs($t['admin'])->getJson('/api/v1/automations/trigger-fields?trigger=email.received')->assertOk()->json('data');
+        $this->assertSame('From address', $fields['labels']['from_address']);
+        $this->assertSame('text', $fields['types']['from_address']);
+        $dry = $this->signedInAs($t['admin'])->postJson('/api/v1/automations/dry-run', [
+            'trigger_key' => 'email.received',
+            'conditions' => ['all' => [['field' => 'from_address', 'op' => 'contains', 'value' => 'ringcentral']]],
+            'actions' => [['type' => 'notify', 'message' => 'Mail from {{from_address}}']],
+        ])->assertOk()->json('data');
+        $this->assertTrue($dry['matched']);
+        $this->assertStringContainsString('Would use: Mail from notify@ringcentral.com', $dry['would_do'][0]['detail']);
+        $this->assertSame(0, \App\Models\Notification::withoutGlobalScopes()->count(), 'a dry run sends nothing');
+
         $viewer = $this->userWithRole($t, 'Nobody', []);
         $this->signedInAs($viewer)->getJson('/api/v1/automations/trigger-stats?triggers=email.received')->assertForbidden();
+    }
+    public function test_readiness_says_why_a_step_cannot_send_here(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $url = '/api/v1/automations/readiness?scope_type=franchise&scope_id='.$t['franchise']->id;
+        $before = $this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data');
+        $this->assertSame(['ready' => false, 'why_not' => 'No number here can send texts yet.'], $before['sms.send']);
+        $this->assertTrue($before['notify']['ready']);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => 'organization', 'scope_id' => $t['org']->id]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'e164' => '+12035551004', 'sms_outbound_allowed' => true]);
+        });
+        $this->assertTrue($this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data')['sms.send']['ready']);
     }
 }

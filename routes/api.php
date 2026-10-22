@@ -2860,6 +2860,8 @@ Route::prefix('v1')
             // Build's step screens (UI/UX, 2026-10-20). Before the resource, same trap.
             Route::get('automations/trigger-stats', [AutomationsController::class, 'triggerStats']);
             Route::post('automations/would-have-run', [AutomationsController::class, 'wouldHaveRun']);
+            Route::post('automations/dry-run', [AutomationsController::class, 'dryRun']);
+            Route::get('automations/readiness', [AutomationsController::class, 'readiness']);
             // Before the resource for the third time, same trap.
             Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
         });

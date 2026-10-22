@@ -499,6 +499,23 @@ class AutomationEngine
         });
     }
 
+    /** rehearse() for a rule not saved yet: the same verdict and would-do, from its draft conditions and steps. */
+    public function rehearseDraft(Automation $draft, ?array $conditions, array $actions, AutomationEvent $event): array
+    {
+        return $this->tenant->run($event->organization, function () use ($draft, $conditions, $actions, $event) {
+            $subject = $this->subjectOf($event);
+            $verdict = $this->conditions->evaluate($conditions, $event, $subject);
+
+            return [
+                'matched' => $verdict['matched'],
+                'condition_trace' => $verdict['trace'],
+                'would_do' => $verdict['matched']
+                    ? array_map(fn ($a) => $this->actions->run($a, $event, $subject, isTest: true, automation: $draft), array_values($actions))
+                    : [],
+            ];
+        });
+    }
+
     public function rehearse(Automation $automation, AutomationEvent $event): array
     {
         return $this->tenant->run($event->organization, function () use ($automation, $event) {

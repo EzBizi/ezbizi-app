@@ -685,7 +685,14 @@ class AutomationsController extends Controller
         $data = [];
         foreach (array_filter(array_map('trim', explode(',', (string) $request->query('triggers', '')))) as $key) {
             if ($this->registry->findTrigger($key) !== null && in_array($this->registry->moduleKeyOfTrigger($key), $reach, true)) {
-                $data[$key] = ['last_30_days' => $this->recentInView($request, $key, ['scope_snapshot'])->count()];
+                $rules = Automation::query()->with('activeVersion')->where('trigger_key', $key)->get();
+                $data[$key] = [
+                    'last_30_days' => $this->recentInView($request, $key, ['scope_snapshot'])->count(),
+                    'rules' => $rules->count(),
+                    // What rules on this trigger most often do, most used first.
+                    'top_actions' => $rules->flatMap(fn ($r) => array_column($r->activeVersion?->actions ?? [], 'type'))
+                        ->countBy()->sortDesc()->keys()->take(5)->values()->all(),
+                ];
             }
         }
 
@@ -854,6 +861,11 @@ class AutomationsController extends Controller
         return response()->json(['data' => [
             'trigger' => $key,
             'fields' => $fields,
+            // Plain words and a kind per field (Jose, 2026-10-22: "regular users
+            // will have no knowledge of how status or fields are named").
+            'labels' => (object) collect($fields)->mapWithKeys(fn ($f) => [$f => self::fieldLabel($f)])->all(),
+            'types' => (object) collect($fields)->mapWithKeys(fn ($f) => [$f => self::fieldType($f, $values[$f] ?? null,
+                $recent->map(fn ($e) => data_get($e->payload, 'after.'.$f) ?? data_get($e->payload, $f))->filter(fn ($v) => $v !== null)->first())])->all(),
             'message_fields' => $messageFields,
             'values' => $values,
             'samples' => $this->samplesFor($recent, $fields, $request->user(), $messageFields),
@@ -1417,6 +1429,98 @@ class AutomationsController extends Controller
      * evaluated for real — that is the part people get wrong — and the actions
      * report what they WOULD do without doing it.
      */
+    /**
+     * POST /automations/dry-run {trigger_key, conditions, actions, event_id?}
+     *
+     * A draft, tried on a real past event before it is saved (UI/UX's Review
+     * step, 2026-10-22): did the conditions pass, and what each step would do
+     * with that event's real values. Nothing is performed or stored.
+     */
+    public function dryRun(Request $request): JsonResponse
+    {
+        $this->authorize('create', Automation::class);
+        $input = $request->validate([
+            'trigger_key' => ['required', 'string'], 'conditions' => ['nullable', 'array'],
+            'actions' => ['required', 'array'], 'event_id' => ['nullable', 'uuid'],
+        ]);
+        abort_unless(in_array($this->registry->moduleKeyOfTrigger($input['trigger_key']), $this->modulesInReach($request), true), 403,
+            Refusal::permission('see what this event carries')->message());
+        if (! empty($input['conditions'])) {
+            $this->assertConditionsUsable($input['conditions']);
+        }
+        $event = ($input['event_id'] ?? null)
+            ? AutomationEvent::query()->where('event_key', $input['trigger_key'])->findOrFail($input['event_id'])
+            : $this->recentInView($request, $input['trigger_key'])->first();
+        if ($event === null) {
+            return response()->json(['message' => 'This has not happened yet here, so there is nothing to try the rule on.',
+                'code' => 'no_event_to_test'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $draft = new Automation(['name' => 'Draft', 'trigger_key' => $input['trigger_key'], 'created_by' => $request->user()->getKey()]);
+
+        return response()->json(['data' => ['event_id' => $event->id, 'occurred_at' => $event->occurred_at?->toIso8601String()]
+            + $this->engine->rehearseDraft($draft, $input['conditions'] ?? null, $input['actions'], $event)]);
+    }
+
+    /**
+     * GET /automations/readiness?scope_type&scope_id - can each sending step
+     * actually send from this place (UI/UX, 2026-10-22), so the builder says
+     * why before a rule is saved rather than after it fails.
+     */
+    public function readiness(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Automation::class);
+        $input = $request->validate(['scope_type' => ['nullable', 'in:company,franchise'], 'scope_id' => ['nullable', 'uuid']]);
+        $type = $input['scope_type'] ?? null;
+        $id = $type === null ? null : ($input['scope_id'] ?? null);
+
+        // The place, its company when it is a branch, and the organization.
+        $places = [['organization', $this->tenant->idOrFail()]];
+        if ($type === 'company') {
+            $places[] = ['company', $id];
+        }
+        if ($type === 'franchise') {
+            $places[] = ['franchise', $id];
+            $places[] = ['company', \App\Models\Franchise::query()->whereKey($id)->value('company_id')];
+        }
+        $here = fn ($q) => $q->where(function ($w) use ($places) {
+            foreach ($places as [$t, $i]) {
+                $w->orWhere(fn ($x) => $x->where('scope_type', $t)->where('scope_id', $i));
+            }
+        });
+
+        $sms = \App\Models\PhoneNumber::query()->where('sms_outbound_allowed', true)->where($here)->exists();
+        $whatsApp = \App\Models\WhatsAppNumber::query()->exists();
+        $email = \App\Models\SendingIdentity::query()->where($here)->exists() || \App\Models\Mailbox::query()->where($here)->exists();
+        $ready = fn (bool $ok, string $why) => ['ready' => $ok, 'why_not' => $ok ? null : $why];
+
+        return response()->json(['data' => [
+            'sms.send' => $ready($sms, 'No number here can send texts yet.'),
+            'lead.text' => $ready($sms, 'No number here can send texts yet.'),
+            'whatsapp.send' => $ready($whatsApp, 'WhatsApp is not connected.'),
+            'email.send' => $ready($email, 'No inbox or sending address is set up here.'),
+            'notify' => $ready(true, ''),
+        ]]);
+    }
+
+    /** "scheduled_for" -> "Scheduled for"; "customer_id" -> "Customer". */
+    public static function fieldLabel(string $field): string
+    {
+        return ucfirst(trim(str_replace('_', ' ', preg_replace('/_(id|ids|e164|minor)$/', '', $field))));
+    }
+
+    /** text, number, date, boolean, enum (the builder has its values) or id (technical, hidden by default). */
+    public static function fieldType(string $field, ?array $values, mixed $sample): string
+    {
+        return match (true) {
+            (bool) preg_match('/(^id|_id|_ids)$/', $field) => 'id',
+            $values !== null => 'enum',
+            is_bool($sample) => 'boolean',
+            is_int($sample) || is_float($sample) => 'number',
+            is_string($sample) && (bool) preg_match('/^\d{4}-\d{2}-\d{2}/', $sample) => 'date',
+            default => 'text',
+        };
+    }
+
     public function test(Request $request, Automation $automation): JsonResponse
     {
         $this->assertMine($automation);
