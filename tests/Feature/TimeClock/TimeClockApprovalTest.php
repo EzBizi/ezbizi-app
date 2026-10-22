@@ -59,6 +59,7 @@ class TimeClockApprovalTest extends TestCase
         $this->assertSame('5:30 PM', $adjustment['was_out']);
         $this->assertSame('5:00 PM', $adjustment['now_out']);
         $this->assertSame('Left at 5, forgot to clock out.', $adjustment['reason']);
+        $this->assertSame('person', $adjustment['was_ended_by'], 'who ended it before the edit');
 
         $this->signedInAs($gm)->postJson('/api/v1/hr/time-clock/approvals/all', ['date' => '2026-10-21'])->assertOk();
         $this->assertSame(2, TimeClockDayApproval::query()->withoutGlobalScopes()->where('status', 'approved')->count());
@@ -90,6 +91,11 @@ class TimeClockApprovalTest extends TestCase
         $hr = $this->userWithRole($alpha, 'Hr', ['work_hours.general.view', 'work_hours.all', 'work_hours.manage'], 'hr@alpha.test');
 
         $this->signedInAs($hr)->getJson('/api/v1/hr/time-clock/approvals')->assertForbidden();
+
+        // The tab alone reads the day but cannot approve.
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['work_hours.general.view', 'work_hours.all', 'work_hours.approval.view'], 'viewer@alpha.test');
+        $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/approvals')->assertOk();
+        $this->signedInAs($viewer)->postJson('/api/v1/hr/time-clock/approvals/all', ['date' => '2026-10-21'])->assertForbidden();
         $this->signedInAs($ana)->getJson('/api/v1/hr/time-clock/approvals')->assertForbidden();
     }
 

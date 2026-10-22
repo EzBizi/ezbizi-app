@@ -1896,8 +1896,10 @@ Route::prefix('v1')
         });
 
         // Work Hours › Daily approval (2026-10-22).
+        // Reading the day is the tab (view-only reads, UI/UX 2026-10-22);
+        // approving and adjusting need "Approve daily hours".
+        Route::get('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'index']);
         Route::middleware('permission:work_hours.approve')->group(function () {
-            Route::get('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'index']);
             Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
             Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
             Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);

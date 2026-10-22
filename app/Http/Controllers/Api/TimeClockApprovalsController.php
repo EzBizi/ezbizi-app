@@ -22,6 +22,12 @@ class TimeClockApprovalsController extends Controller
     /** GET /api/v1/hr/time-clock/approvals?date=YYYY-MM-DD (yesterday by default) */
     public function index(Request $request): JsonResponse
     {
+        // The tab reads; an approver reads too, with or without the tab tick.
+        abort_unless(
+            $request->user()->hasPermission('work_hours.approval.view') || $request->user()->hasPermission('work_hours.approve'),
+            403,
+        );
+
         $date = $request->query('date');
 
         return response()->json(['data' => $this->approvals->day($request->user(), is_string($date) ? $date : null)]);
