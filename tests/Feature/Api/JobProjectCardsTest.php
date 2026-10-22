@@ -34,6 +34,7 @@ class JobProjectCardsTest extends TestCase
         $data = $get();
         $this->assertSame(['Paid: J-9'], array_column($data['tasks'], 'title'), 'only the project group');
         $this->assertCount(1, $data['boards']);
+        $this->assertSame(['J-9', $alpha['franchise']->id], [$data['tasks'][0]['job']['number'], $data['tasks'][0]['franchise']['id']]);
         $this->assertArrayHasKey('builtin_columns', $data['boards'][0]);
         $this->assertSame(['Paid: J-9'], array_column($get('?q=Ann')['tasks'], 'title'), 'search reaches the job it is about');
         $this->assertSame([], $get('?q=nobody')['tasks']);
