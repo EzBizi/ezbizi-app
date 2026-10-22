@@ -85,6 +85,22 @@ class TimeClockApprovalTest extends TestCase
         $this->assertSame(0, TimeClockDayApproval::query()->withoutGlobalScopes()->where('user_id', $ana->id)->count());
     }
 
+    /** "for Technicians only" (2026-10-22): the roles setting narrows the list, and the approver is never in it. */
+    public function test_only_the_listed_roles_are_on_the_day_and_never_the_approver(): void
+    {
+        [$alpha, $gm, $ana, $ben] = $this->tenant();
+        $this->shift($alpha, $ana, '2026-10-21 12:00', '2026-10-21 20:00');
+        $this->shift($alpha, $ben, '2026-10-21 12:00', '2026-10-21 20:00');
+        $this->shift($alpha, $gm, '2026-10-21 12:00', '2026-10-21 20:00');
+
+        $ids = fn () => array_column(array_column($this->signedInAs($gm)->getJson('/api/v1/hr/time-clock/approvals')->assertOk()->json('data.rows'), 'person'), 'id');
+        $this->assertNotContains($gm->id, $ids(), 'never the approver');
+        $this->assertContains($ben->id, $ids(), 'empty setting: everybody');
+
+        app(TenantContext::class)->run($alpha['org'], fn () => app(SettingsResolver::class)->set('time_clock.approval_roles', $alpha['org'], [$ana->role_id]));
+        $this->assertSame([$ana->id], $ids());
+    }
+
     public function test_approving_needs_the_permission(): void
     {
         [$alpha, , $ana] = $this->tenant();

@@ -1604,6 +1604,14 @@ class SettingRegistry
                 help: 'When on, people whose role can "Approve daily hours" get yesterday\'s clock-ins each morning to approve or adjust.',
             ),
             new SettingDefinition(
+                key: 'time_clock.approval_roles',
+                label: 'Roles whose hours need daily approval',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Leave empty for everybody. The approver is never in their own list.',
+            ),
+            new SettingDefinition(
                 key: 'time_clock.approval_time',
                 label: 'Daily approval reminder time',
                 type: SettingDefinition::TYPE_ENUM,

@@ -44,8 +44,11 @@ class TimeClockApprovals
         $timeFormat = (string) $this->settings->get('time_format', $scope);
         $locale = (string) $this->settings->get('locale', $scope);
 
-        $people = $this->clock->narrowToView($this->clock->visiblePeople($actor), $actor)
-            ->where('is_active', true)->with('role:id,name')->orderBy('name')->get();
+        $people = $this->whoseHoursNeedApproval(
+            $actor,
+            $this->clock->narrowToView($this->clock->visiblePeople($actor), $actor)
+                ->where('is_active', true)->with('role:id,name')->orderBy('name')->get(),
+        );
         $shifts = $this->shiftsOn($people->modelKeys(), $day);
         $approvals = TimeClockDayApproval::query()->with('approver:id,name')
             ->whereIn('user_id', $shifts->keys())->whereDate('date', $day->toDateString())->get()->keyBy('user_id');
@@ -145,7 +148,7 @@ class TimeClockApprovals
      */
     public function openWaiting(User $approver, Carbon $date): Collection
     {
-        $people = $this->clock->visiblePeople($approver)->where('is_active', true)->get();
+        $people = $this->whoseHoursNeedApproval($approver, $this->clock->visiblePeople($approver)->where('is_active', true)->get());
         $shifts = $this->shiftsOn($people->modelKeys(), $date);
         $waiting = collect();
 
@@ -163,6 +166,23 @@ class TimeClockApprovals
         }
 
         return $waiting;
+    }
+
+    /**
+     * Only the roles the approver's place lists (time_clock.approval_roles;
+     * empty is everybody), and never the approver themself. Jose's ask was
+     * "for Technicians only" (2026-10-22), as a setting rather than a name.
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection<int, User>  $people
+     */
+    private function whoseHoursNeedApproval(User $approver, Collection $people): Collection
+    {
+        $roles = (array) $this->settings->get('time_clock.approval_roles', $this->clock->placeOf($approver));
+
+        return $people
+            ->reject(fn (User $p) => $p->is($approver))
+            ->filter(fn (User $p) => $roles === [] || in_array($p->role_id, $roles, true))
+            ->values();
     }
 
     /** @return Collection<string, Collection<int, TimeClockShift>> shifts that STARTED on the day, by user */
