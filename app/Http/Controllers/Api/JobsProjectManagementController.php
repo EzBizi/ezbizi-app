@@ -619,8 +619,10 @@ class JobsProjectManagementController extends Controller
         $flag = fn (string $k) => array_key_exists($k, $input) && $input[$k] !== null ? filter_var($input[$k], FILTER_VALIDATE_BOOL) : null;
         $org = $this->pmScope($user);
 
-        return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
-            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->where('franchise_id', $id))
+        $reach = \App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())
+            ->when($input['franchise_id'] ?? null, fn ($q, $id) => $q->whereKey($id))->get();
+
+        return ProjectStages::inScope(Job::query(), $reach, $settings)
             ->when($input['service_area_id'] ?? null, fn ($q, $id) => $q->where('service_area_id', $id))
             ->when(filled($input['q'] ?? null), fn ($q) => $this->search($q, $input['q']))
             ->when($flag('redo') !== null, fn ($q) => $flag('redo')

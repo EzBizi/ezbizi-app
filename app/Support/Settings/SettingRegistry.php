@@ -991,6 +991,23 @@ class SettingRegistry
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'Which statuses, scheduled or not, money due or not, make each stage.',
             ),
+            /*
+             * Which jobs Project Management is about at all (Shoval, 2026-10-22:
+             * "Only open jobs ... and only ones that are partly paid deposits").
+             */
+            new SettingDefinition(
+                key: 'jobs.pm_scope_statuses', label: 'Project Management shows jobs in these statuses',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Empty: every status.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_partly_paid_only', label: 'Project Management shows only partly paid jobs',
+                type: SettingDefinition::TYPE_BOOL, default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Something paid and money still due: a deposit.',
+            ),
             new SettingDefinition(
                 key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
                 type: SettingDefinition::TYPE_JSON,
