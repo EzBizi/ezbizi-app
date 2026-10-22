@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 130 · Automations › When step — **sent 2026-10-22** (`docs/previews/automations-when-step-layouts.html`)
+
+Jose: the right panel repeats the card and changes when trigger-fields load; use the sidebar icons; add more. **1** (recommended) category rail with sidebar icons and groups, "Most used" first, empty categories hidden; compact cards (name, one line, "N in 30 days · N details · N rules"), never-raised sorted last and dimmed; right panel drawn at once with placeholders, adds what the card lacks: full description, details in plain words, last 3 occurrences, rules using it (links), often-paired Then steps. **2** chosen card expands in place. **3** one grouped searchable list. Phone **4** (recommended: icon chips, ⓘ opens details) / **5** / **6**. Server needs: per-event recent examples, rules count, often-paired actions, field labels.
+
 ### 129 · "Where it applies" scope picker — **sent 2026-10-22** (`docs/previews/scope-picker-layouts.html`)
 
 Jose: "a bit ugly and confusing", wants Entire organization / Company + branches / Company branch with dividers. Today two flat lists ("Main — Ace Air Duct", "Ace Air Duct and everything under it"). **1** (recommended) one grouped list: Entire organization, divider, each company bold with "N branches" (= company and its branches), its branches indented by name only, single-branch companies one row, dividers between companies, search keeps the company header above a matching branch, switched-off branches greyed "off". **2** drill-down org > company > branch with breadcrumb. **3** two columns. Phone **4** (recommended: same grouping full screen) / **5** / **6**.
