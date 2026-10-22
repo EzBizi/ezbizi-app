@@ -2750,6 +2750,7 @@ Route::prefix('v1')
             Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
             Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
             Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);
+            Route::post('email/mailboxes/{mailbox}/messages/{message}/forward', [MailboxMessagesController::class, 'forward']);
             Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
             Route::get('email/mailboxes/{mailbox}/messages/{message}/picture',
                 [MailboxMessagesController::class, 'picture']);

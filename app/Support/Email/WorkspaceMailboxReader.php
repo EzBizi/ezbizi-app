@@ -16,7 +16,7 @@ use App\Models\Mailbox;
  *
  * Mail is still live. The mailbox row holds no credential.
  */
-final class WorkspaceMailboxReader implements LabelsThreads, MailboxReader
+final class WorkspaceMailboxReader implements LabelsThreads, MailboxReader, RepliesWithCopies
 {
     public function __construct(
         private readonly GoogleWorkspace $workspace,
@@ -76,6 +76,13 @@ final class WorkspaceMailboxReader implements LabelsThreads, MailboxReader
         $this->workspace->assertCanOpen($mailbox);
 
         $this->gmail->markReadAtSource($mailbox, $messageId);
+    }
+
+    public function replyWith(Mailbox $mailbox, string $messageId, string $body, array $cc, bool $all): void
+    {
+        $this->workspace->assertCanOpen($mailbox);
+
+        $this->gmail->replyWith($mailbox, $messageId, $body, $cc, $all);
     }
 
     public function modifyThread(Mailbox $mailbox, string $messageId, array $add, array $remove): void

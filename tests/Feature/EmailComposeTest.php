@@ -455,4 +455,23 @@ class EmailComposeTest extends TestCase
         $this->assertStringNotContainsString('+', $encoded);
         $this->assertStringNotContainsString('/', $encoded);
     }
+
+    /** Reply-all / copies (design 137): To and Cc each guarded, so a typed Cc cannot add a header. */
+    public function test_a_reply_with_copies_carries_to_and_cc_and_cannot_inject(): void
+    {
+        $original = new \App\Support\Email\MessageSummary(
+            id: 'm-1', threadId: 't-1', subject: 'Quote', fromName: 'Bob', fromAddress: 'bob@example.com',
+            to: [], sentAt: null, snippet: '',
+        );
+
+        $message = $this->composer()->compose(
+            $this->inbox(), $original, [], 'Hi all',
+            ['bob@example.com', 'ann@example.com'],
+            ["carl@example.com\r\nBcc: spy@evil.test"],
+        );
+
+        $this->assertStringContainsString('To: bob@example.com, ann@example.com', $message);
+        $this->assertStringContainsString('Cc: carl@example.com', $message);
+        $this->assertNoHeaderLineStartsWith($message, 'Bcc');
+    }
 }
