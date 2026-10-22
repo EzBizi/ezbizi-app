@@ -50,4 +50,19 @@ class AutomationBuildStatsTest extends TestCase
         $viewer = $this->userWithRole($t, 'Nobody', []);
         $this->signedInAs($viewer)->getJson('/api/v1/automations/trigger-stats?triggers=email.received')->assertForbidden();
     }
+    public function test_readiness_says_why_a_step_cannot_send_here(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $url = '/api/v1/automations/readiness?scope_type=franchise&scope_id='.$t['franchise']->id;
+        $before = $this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data');
+        $this->assertSame(['ready' => false, 'why_not' => 'No number here can send texts yet.'], $before['sms.send']);
+        $this->assertTrue($before['notify']['ready']);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $c = \App\Models\PhoneConnection::factory()->create(['scope_type' => 'organization', 'scope_id' => $t['org']->id]);
+            \App\Models\PhoneNumber::factory()->create(['connection_id' => $c->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'e164' => '+12035551004', 'sms_outbound_allowed' => true]);
+        });
+        $this->assertTrue($this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data')['sms.send']['ready']);
+    }
 }
