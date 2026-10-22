@@ -1102,10 +1102,9 @@ Route::prefix('v1')
             Route::get('repair-split', 'repairSplit');
             Route::get('repair-report', 'repairReport');
             Route::get('refunds', 'refunds');
-            Route::get('repair-week', 'repairWeek');
-            Route::post('repair-week/approve', 'approveRepairWeek');
-            Route::get('repair-week/table', 'repairTable');
-            Route::patch('repair-week/value', 'setRepairValue');
+            Route::post('repair-report/approve', 'approveRepairReport');
+            Route::get('repair-report/table', 'repairTable');
+            Route::patch('repair-report/value', 'setRepairValue');
             Route::get('production-cost', 'productionCost');
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('airtable-links', 'mirrorAirtable');

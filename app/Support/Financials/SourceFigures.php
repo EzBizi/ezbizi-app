@@ -4,7 +4,9 @@ namespace App\Support\Financials;
 
 use App\Models\AirtableRecord;
 use App\Models\FinancialAdjustment;
+use App\Models\FinancialRepairWeek;
 use App\Models\FinancialSource;
+use App\Models\User;
 use Illuminate\Support\Collection;
 
 /**
@@ -89,6 +91,7 @@ final class SourceFigures
                 $t ??= ['hours' => 0.0, 'cents' => array_fill_keys([...array_values(self::REPORT_COSTS), ...array_values(self::REPORT_JOB_SUMS)], 0), 'jobs' => 0, 'reason' => null];
 
                 if (strcasecmp($kind, $summary) === 0) {
+                    $t['summary'] = true;
                     $hours = self::value($source, $f, 'hours');
                     if (is_numeric($hours)) {
                         $t['hours'] += (float) $hours;
@@ -108,11 +111,24 @@ final class SourceFigures
                 }
                 unset($t);
             }
+            // A Monday-to-Sunday week also carries its approval in EzBizi and the
+            // values typed in where the sheet left one out (RepairReport).
+            $week = RepairReport::isWeek($from, $to) && $source->franchise_id
+                ? FinancialRepairWeek::query()->where('franchise_id', $source->franchise_id)->whereDate('week_start', $from)->first() : null;
+            foreach ((array) ($week?->overrides ?? []) as $team => $values) {
+                $teams[$team] ??= ['hours' => 0.0, 'cents' => array_fill_keys([...array_values(self::REPORT_COSTS), ...array_values(self::REPORT_JOB_SUMS)], 0), 'jobs' => 0, 'reason' => null];
+                foreach ((array) $values as $line => $dollars) {
+                    $line === 'hours' ? $teams[$team]['hours'] = (float) $dollars : $teams[$team]['cents'][$line] = (int) round($dollars * 100);
+                    $teams[$team]['typed'][$line] = true;
+                }
+            }
             ksort($teams);
 
             $cards = [];
             foreach ($teams as $team => $t) {
-                $cards[] = ['technician' => $team] + self::reportCard($t['hours'], $t['cents'], $t['jobs']) + ['reason' => $t['reason']];
+                $missing = $t['jobs'] > 0 && empty($t['summary'])
+                    ? array_values(array_filter(['hours', 'paycheck', 'operation'], fn ($k) => empty($t['typed'][$k]))) : [];
+                $cards[] = ['technician' => $team] + self::reportCard($t['hours'], $t['cents'], $t['jobs']) + ['reason' => $t['reason'], 'missing' => $missing];
             }
             $all = [];
             foreach ($teams as $t) {
@@ -122,8 +138,12 @@ final class SourceFigures
             }
             $combined = self::reportCard(array_sum(array_column($teams, 'hours')), $all, array_sum(array_column($teams, 'jobs')));
 
-            $out[] = [
+            $approver = $week?->approved_by_user_id ? User::query()->whereKey($week->approved_by_user_id)->value('name') : null;
+            $row = [
                 'place' => $source->franchise?->name ?? $source->company?->name,
+                'week_status' => $week?->approved_at ? 'approved' : 'draft',
+                'approved_by' => $approver,
+                'approved_at' => $week?->approved_at?->toIso8601String(),
                 'company' => $source->company?->name,
                 'company_id' => $source->company_id,
                 'franchise_id' => $source->franchise_id,
@@ -137,6 +157,7 @@ final class SourceFigures
                 'technicians' => $cards,
                 'combined' => ['count' => count($cards)] + $combined,
             ];
+            $out[] = $row + ['text' => RepairReport::text($row)];
         }
 
         return $out;
