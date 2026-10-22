@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 139 · Project Management › Logs — **sent 2026-10-22** (`docs/previews/project-management-logs-layouts.html`)
+### 139 · Project Management › Logs — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/project-management-logs-layouts.html`)
 
 Jobs relayed Jose (84be725a0). **1** (recommended) range control as Dashboard, branch + rule pickers, outcome segment Changes (succeeded + manual, default) / Failed / Skipped / All with counts; rows when, job # (opens timeline), customer, what changed, by (rule link or person), outcome chip; failed rows show the error beneath; skipped folded into one grey line per rule "skipped N times · Why?" with reasons grouped and counted. **2** every run a row, skipped off by default. **3** grouped by rule. Phone **4** (recommended) / **5** / **6**.
 
