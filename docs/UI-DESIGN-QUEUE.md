@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 139 · Project Management › Logs — **sent 2026-10-22** (`docs/previews/project-management-logs-layouts.html`)
+
+Jobs relayed Jose (84be725a0). **1** (recommended) range control as Dashboard, branch + rule pickers, outcome segment Changes (succeeded + manual, default) / Failed / Skipped / All with counts; rows when, job # (opens timeline), customer, what changed, by (rule link or person), outcome chip; failed rows show the error beneath; skipped folded into one grey line per rule "skipped N times · Why?" with reasons grouped and counted. **2** every run a row, skipped off by default. **3** grouped by rule. Phone **4** (recommended) / **5** / **6**.
+
 ### 138 · Leads › Manage › Office hours — **sent 2026-10-22 — Jose: "better, go ahead, and places that do not have time set up should be highlighted" (1 and 4)** (`docs/previews/leads-office-hours-layouts.html`)
 
 Google API session asked (9f578924e; nobody had set hours, every place ran Mon–Fri 8–5 ET). **1** (recommended) a table of places (org, companies, branches indented) with an hours summary, time zone, inherited values in grey italic "from X", an "own" chip; a yellow banner counting places on the default; Edit opens the week inline under its row (Jose: "not sure i like the sidepart", redrawn 2026-10-22): seven day boxes with open/close or Closed, Copy Monday to weekdays, time zone picker, "Use X's hours/zone again"; "Used by N auto-replies" with rule links. **2** week grid. **3** cards. Phone **4** (recommended: nested cards, edit full screen) / **5** / **6**.
