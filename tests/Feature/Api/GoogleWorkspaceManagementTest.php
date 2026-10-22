@@ -296,7 +296,15 @@ class GoogleWorkspaceManagementTest extends TestCase
         $viewer = $this->userWithRole($t, 'Viewer', ['email.view', 'email.workspace.view']);
         $settingsOnly = $this->userWithRole($t, 'Settings', ['email.view', 'email.settings.view', 'email.edit']);
 
-        $this->signedInAs($viewer)->getJson('/api/v1/email/workspaces')->assertForbidden();
+        // The tab alone reads, read-only; changing anything needs email.edit.
+        $this->signedInAs($viewer)->getJson('/api/v1/email/workspaces')->assertOk()->assertJsonPath('data.0.may_edit', false);
+        $this->signedInAs($viewer)->getJson("/api/v1/email/workspaces/{$c->id}/people")->assertOk();
+        $this->signedInAs($viewer)
+            ->putJson("/api/v1/email/workspaces/{$c->id}/signature-template", ['html' => 'x'])->assertForbidden();
+        $this->signedInAs($viewer)
+            ->postJson("/api/v1/email/workspaces/{$c->id}/signatures/apply", ['addresses' => ['ana@a-1chimney.com']])->assertForbidden();
+        $this->signedInAs($viewer)
+            ->putJson("/api/v1/email/workspaces/{$c->id}/people/ana@a-1chimney.com/link", ['user_id' => null])->assertForbidden();
         $this->signedInAs($settingsOnly)->getJson('/api/v1/email/workspaces')->assertForbidden();
 
         $this->signedInAs($t['admin'])
