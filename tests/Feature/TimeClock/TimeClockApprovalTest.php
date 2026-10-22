@@ -111,6 +111,12 @@ class TimeClockApprovalTest extends TestCase
         $this->assertSame(1, TimeClockDayApproval::query()->withoutGlobalScopes()->where('status', 'waiting')->count());
         $this->assertContains('time_clock.day_awaiting_approval', AutomationEvent::query()->withoutGlobalScopes()->pluck('event_key')->all());
 
+        // Tapping it opens Work Hours › Daily approval on yesterday (design 136).
+        $meta = $this->signedInAs($gm)->getJson('/api/v1/notifications')->assertOk()->json('data.0.meta');
+        $this->assertSame('work_hours', $meta['module']);
+        $this->assertSame('time_clock_day_approval', $meta['record']['type']);
+        $this->assertSame('2026-10-21', $meta['record']['date']);
+
         // The control: a place with daily approval off is never reminded.
         [$beta, $otherGm, $bob] = $this->tenant('Beta', approval: false);
         $this->shift($beta, $bob, '2026-10-21 12:00', '2026-10-21 20:00');

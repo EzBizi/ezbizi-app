@@ -431,6 +431,43 @@ const Map<String, Tour> assistTours = {
       ),
     ],
   ),
+  'work_hours/Daily approval': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-approval',
+        title: 'Daily approval',
+        body:
+            'One day of clock-ins for the people in your view, yesterday '
+            'unless you pick another.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-day',
+        title: 'The day',
+        body: 'The arrows move a day; the calendar jumps to any day.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-summary',
+        title: 'Waiting, approved, no-shows',
+        body:
+            'A no-show was scheduled and never clocked in. Approve all leaves '
+            'them alone.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-all',
+        title: 'Approve all',
+        body: 'Approves every day still waiting, except the no-shows.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-rows',
+        title: 'Each person',
+        body:
+            'Their shifts, a bar of the day over the schedule (dashed), the '
+            'total against the schedule, and Late or Early. Adjust changes a '
+            'time with a reason and keeps the original; it does not approve.',
+      ),
+    ],
+  ),
   'work_hours/Settings': Tour(
     version: 1,
     steps: [

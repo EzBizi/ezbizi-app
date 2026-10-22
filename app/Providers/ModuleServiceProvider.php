@@ -829,6 +829,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // Saved weekly hours reports (2026-09-28): sent by hand here,
                     // or on a schedule by the action below.
                     new TabDefinition('reports', 'Reports'),
+                    // Daily approval (design 136, 2026-10-22): a day of the
+                    // people one reaches, approved or adjusted. Approving and
+                    // adjusting are `work_hours.approve`; without it the tab
+                    // reads only.
+                    new TabDefinition('approval', 'Daily approval'),
                     // Registry order is the roles editor's order: keep it the
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),
