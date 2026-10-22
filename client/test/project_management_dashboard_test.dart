@@ -17,7 +17,7 @@ void main() {
   // A fixed local noon on a Wednesday: "Today" is 2026-10-21.
   final now = DateTime(2026, 10, 21, 12);
 
-  testWidgets('three tabs, opening on Dashboard', (tester) async {
+  testWidgets('four tabs, opening on Dashboard', (tester) async {
     final stub = _Stub();
     await _pump(tester, stub, now: now);
 
@@ -26,7 +26,7 @@ void main() {
           in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
         l.$1,
     ];
-    expect(labels, ['Dashboard', 'Pending Jobs', 'Settings']);
+    expect(labels, ['Dashboard', 'Pending Jobs', 'Logs', 'Settings']);
     expect(stub.stats.single.queryParameters, {
       'from': '2026-10-21',
       'to': '2026-10-21',
@@ -244,10 +244,15 @@ void main() {
       'timezone': 'America/New_York',
     });
 
-    // Another stage is the watched list, without the filter.
+    // Another stage is the watched list, without the filter; the dates still
+    // go, for Recently paid's count.
     await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
     await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, {'timezone': 'America/New_York'});
+    expect(stub.lists.last.queryParameters, {
+      'from': '2026-10-20',
+      'to': '2026-10-20',
+      'timezone': 'America/New_York',
+    });
     expect(find.byKey(const ValueKey('pm-range')), findsNothing);
   });
 

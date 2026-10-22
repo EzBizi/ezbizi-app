@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
+import '../../core/deep_links.dart';
 import '../../core/device_zone.dart';
 import '../../core/job_money.dart';
 import '../../core/job_status.dart';
@@ -12,6 +13,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/open_destination.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
@@ -28,8 +30,8 @@ import 'pm_range.dart';
 /// phone a card opens it in place of the list.
 ///
 /// One request, unpaginated (about a thousand rows). The stage is filtered
-/// here rather than on the server so the segment's counts are of the rows
-/// loaded; branch and days are the server's filters.
+/// here; branch, days and search are the server's filters, and every chip's
+/// count is the server's `meta.counts` for those filters.
 class ProjectManagementTab extends StatefulWidget {
   const ProjectManagementTab({
     super.key,
@@ -202,7 +204,10 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     });
 
     final response = await widget.api.get('/jobs/project-management', {
-      if (_paidMode) ...{'filter': pmRecentlyPaid, ..._range.query(_now())},
+      // The range always goes: without it the server sends no Recently paid
+      // count, and every chip shows its count whichever is chosen.
+      if (_paidMode) 'filter': pmRecentlyPaid,
+      ..._range.query(_now()),
       'timezone': ?widget.zone(),
       'franchise_id': ?_branch,
       if (_minDays != null) 'min_days': '$_minDays',
@@ -227,6 +232,12 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
       final meta = response.body['meta'];
       final watched = meta is Map ? meta['watched'] : null;
       _watched = watched is List ? [for (final w in watched) '$w'] : const [];
+      final counts = meta is Map ? meta['counts'] : null;
+      _counts = {
+        if (counts is Map)
+          for (final e in counts.entries)
+            if (e.value is int) '${e.key}': e.value as int,
+      };
       final days = meta is Map ? meta['deadline_days'] : null;
       _deadlineDays = days is int ? days : 30;
       if (_openId != null && !_rows.any((r) => '${r['id']}' == _openId)) {
@@ -240,13 +251,20 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
     _load();
   }
 
-  Map<String, int> get _counts {
-    final counts = {for (final s in pmStages) s: 0};
-    for (final r in _rows) {
-      final s = '${r['stage']}';
-      if (counts.containsKey(s)) counts[s] = counts[s]! + 1;
+  /// Every chip's count, from the server's `meta.counts` on each list call:
+  /// the same branch, search and days, whichever chip is chosen (UI/UX,
+  /// 2026-10-22). A count the server leaves out is drawn without one.
+  Map<String, int> _counts = const {};
+
+  /// All: the four stages together, once the server has counted each.
+  int? get _allCount {
+    var sum = 0;
+    for (final s in pmStages) {
+      final c = _counts[s];
+      if (c == null) return null;
+      sum += c;
     }
-    return counts;
+    return sum;
   }
 
   List<Map<String, dynamic>> get _shown => _stage == null || _paidMode
@@ -362,23 +380,16 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
           },
         );
 
-    // The stage counts are of the watched rows, so Recently paid's rows count
-    // only themselves.
     final chips = [
       chip(
         pmRecentlyPaid,
         pmStageLabel(pmRecentlyPaid),
-        count: _paidMode && !_loading ? _rows.length : null,
+        count: counts[pmRecentlyPaid],
         tone: pmStageTone(pmRecentlyPaid),
       ),
       for (final s in pmStages)
-        chip(
-          s,
-          pmStageLabel(s),
-          count: _paidMode ? null : counts[s],
-          tone: pmStageTone(s),
-        ),
-      chip(null, 'All'),
+        chip(s, pmStageLabel(s), count: counts[s], tone: pmStageTone(s)),
+      chip(null, 'All', count: _allCount),
     ];
 
     return Padding(
@@ -775,6 +786,61 @@ class _ProjectManagementTabState extends State<ProjectManagementTab> {
   }
 }
 
+/// Opens a rule in Automations, the way a notification about a rule does:
+/// the link for Automations to take, then the module. Null when there is no
+/// rule, no shell to switch modules, or Automations is not this person's.
+VoidCallback? pmOpenRule(BuildContext context, Me me, Object? rule) {
+  final id = rule is Map ? rule['id'] : null;
+  final open = OpenDestination.of(context);
+  if (id is! String || id.isEmpty || open == null) return null;
+  if (!me.reaches('automations')) return null;
+  return () {
+    DeepLinks.open(DeepLink(module: 'automations', type: 'automation', id: id));
+    open('automations');
+  };
+}
+
+/// A rule's name as a link that opens it; plain text when it cannot open.
+class PmRuleLink extends StatelessWidget {
+  const PmRuleLink({
+    super.key,
+    required this.label,
+    required this.rule,
+    required this.me,
+    this.style,
+  });
+
+  final String label;
+  final Object? rule;
+  final Me me;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final go = pmOpenRule(context, me, rule);
+    final text = Text(
+      label,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: go == null
+          ? style
+          : (style ?? const TextStyle()).copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+    );
+    if (go == null) return text;
+    return Semantics(
+      link: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: go,
+        child: text,
+      ),
+    );
+  }
+}
+
 /// The job's technician, or null when it has none.
 String? pmTechnician(Map<String, dynamic> row) {
   final t = row['technician'];
@@ -1016,10 +1082,14 @@ class PmTimeline extends StatelessWidget {
 
     final at = e['at'] is String ? DateTime.tryParse(e['at'])?.toLocal() : null;
     final money = e['amount_minor'] ?? e['total_minor'];
+    final by = e['by'] is String && (e['by'] as String).isNotEmpty
+        ? e['by'] as String
+        : null;
+    // "EzBizi · <rule>": the rule opens from here too (UI queue 139).
+    final rule = e['rule'] is Map ? e['rule'] as Map : null;
     final detail = [
       if (at != null) me.display.formatDate(at),
-      if (e['by'] is String && (e['by'] as String).isNotEmpty)
-        e['by'] as String,
+      if (by != null && rule == null) by,
       if (money is int) formatMoney(money),
     ].join(' · ');
 
@@ -1059,6 +1129,14 @@ class PmTimeline extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   if (detail.isNotEmpty) Text(detail, style: muted),
+                  if (by != null && rule != null)
+                    PmRuleLink(
+                      key: ValueKey('pm-timeline-rule-${rule['id']}'),
+                      label: by,
+                      rule: rule,
+                      me: me,
+                      style: muted,
+                    ),
                 ],
               ),
             ),

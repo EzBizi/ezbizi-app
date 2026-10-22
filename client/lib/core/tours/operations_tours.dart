@@ -832,6 +832,31 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  // UI queue 139: what rules and people changed on jobs, and why a rule skipped.
+  'project_management/Logs': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-logs-range',
+        title: 'Dates',
+        body: 'Today, Yesterday, This week, This month, or dates you choose.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-logs-outcome',
+        title: 'What to show',
+        body:
+            'Changes a rule or a person made, runs that failed, runs a rule '
+            'skipped, or all of them.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-logs-list',
+        title: 'What happened',
+        body:
+            'Each change, the job and who made it. Click a job number for its '
+            'timeline, or a rule to open it. Why? says why a rule skipped.',
+      ),
+    ],
+  ),
   'project_management/Pending Jobs': Tour(
     version: 1,
     steps: [
