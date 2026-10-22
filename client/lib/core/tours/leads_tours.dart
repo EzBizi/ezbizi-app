@@ -7,8 +7,8 @@ import '../tab_tours.dart';
 /// Leads' sources are keyed by their names in the module's permission tabs:
 /// `leads/Messenger` is the source the rail calls Facebook. The rail is not a
 /// TabBarLike, so these run once it says which source is open. Manage's own
-/// strip is one, so its tabs are `leads/Connections`, `leads/Templates` and
-/// `leads/Dashboard`.
+/// strip is one, so its tabs are `leads/Connections`, `leads/Templates`,
+/// `leads/Dashboard`, `leads/Stats` and `leads/Office hours`.
 const Map<String, Tour> leadsTours = {
   'leads/Thumbtack': Tour(
     version: 1,
@@ -552,6 +552,31 @@ const Map<String, Tour> leadsTours = {
         anchor: 'leads-stats-heatmap',
         title: 'When they call',
         body: 'Leads by day and time of day: the darker, the more.',
+      ),
+    ],
+  ),
+  'leads/Office hours': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'office-hours-banner',
+        title: 'Not set up',
+        body:
+            'How many places still answer on the default hours. Those rows '
+            'are highlighted below.',
+      ),
+      TourStep(
+        anchor: 'office-hours-table',
+        title: 'Every place',
+        body:
+            'The organization, each company and its branches, with their '
+            'hours and time zone. Grey italics are inherited from the place '
+            'named. Edit opens the week under the row.',
+      ),
+      TourStep(
+        anchor: 'office-hours-used-by',
+        title: 'Used by',
+        body: 'The auto-replies that read these hours. Tap one to open it.',
       ),
     ],
   ),

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/widgets/leads_accounts.dart';
+import 'package:ezbizi_client/widgets/leads_office_hours.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
@@ -497,6 +498,18 @@ void main() {
       find.widgetWithText(TextField, 'Thanks, Harbor here.'),
       findsOneWidget,
     );
+  });
+
+  /// UI queue 138: Office hours is Manage's own tab, beside Stats.
+  testWidgets('Manage has an Office hours tab', (tester) async {
+    await _pump(tester, connections: _many(3));
+
+    await tester.tap(find.text('Office hours'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LeadsOfficeHours), findsOneWidget);
+    expect(_rows(), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   /// UI queue 38, 4: a template open on a phone takes the page, the Manage
