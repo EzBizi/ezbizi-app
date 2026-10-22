@@ -34,6 +34,10 @@ class SeedCompanyAvailabilityTest extends TestCase
                 ServiceAreaSlot::create(['service_area_id' => $a->id, 'weekday' => $day, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => $name === 'North' ? 2 : 4]);
             }
         }
+        // Areas with no week (most of A-1's) do not dilute the pattern.
+        foreach (['East', 'West', 'Central'] as $empty) {
+            ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => $empty]);
+        }
         $everdoors = Company::create(['name' => 'Everdoors']);
         $branch = Franchise::create(['company_id' => $everdoors->id, 'name' => 'Everdoors MD']);
         $sub = Company::create(['name' => 'AngiSweep', 'parent_company_id' => $source->id]);

@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  * company edits its own afterwards.
  *
  * The pattern is the source's typical week: a (weekday, window) every second
- * area of the source works, at the median capacity. Sub-companies are skipped
+ * area of the source that has a week works, at the median capacity. Sub-companies are skipped
  * when their parent has areas, because they book on the parent's availability.
  * Upcoming jobs of a seeded branch with no area are placed in the new area so
  * they count against it.
@@ -85,10 +85,11 @@ class SchedulingSeedCompanyAvailability extends Command
     private function pattern(Company $source): array
     {
         $areas = ServiceArea::query()->whereIn('franchise_id', Franchise::query()->where('company_id', $source->id)->pluck('id'))->pluck('id');
-        $rows = ServiceAreaSlot::query()->whereIn('service_area_id', $areas)->get(['weekday', 'start_time', 'end_time', 'max_jobs']);
+        $rows = ServiceAreaSlot::query()->whereIn('service_area_id', $areas)->get(['service_area_id', 'weekday', 'start_time', 'end_time', 'max_jobs']);
 
         return $rows->groupBy(fn ($r) => $r->weekday.'|'.$r->start_time.'|'.$r->end_time)
-            ->filter(fn ($g) => $g->count() * 2 >= $areas->count())
+            // Of the areas that have a week at all: on A-1, 22 of 47 have none.
+            ->filter(fn ($g) => $g->count() * 2 >= $rows->pluck('service_area_id')->unique()->count())
             ->map(fn ($g) => [
                 'weekday' => (int) $g->first()->weekday,
                 'start_time' => (string) $g->first()->start_time,
