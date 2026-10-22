@@ -40,6 +40,9 @@ class InboxController extends Controller
 
     private const PER_INBOX = 25;
 
+    /** With a tab chosen, at most this many Gmail pages per inbox per request. */
+    private const MAX_PAGES = 4;
+
     public function __construct(
         private readonly MailboxAccess $access,
         private readonly MailboxReaders $readers,
@@ -69,6 +72,7 @@ class InboxController extends Controller
             ]]);
         }
 
+        $category = $input['category'] ?? null;
         $cursors = json_decode(base64_decode((string) ($input['cursor'] ?? ''), true) ?: '{}', true) ?: [];
         $search  = trim((string) ($input['search'] ?? ''));
         $next    = [];
@@ -82,29 +86,46 @@ class InboxController extends Controller
             }
 
             $reader = $this->readers->for($mailbox);
+            $cursor = $cursors[$mailbox->id] ?? null;
+            $wanted = 0;
 
-            try {
-                $page = $search === ''
-                    ? $reader->list($mailbox, $cursors[$mailbox->id] ?? null, self::PER_INBOX, self::FOLDERS[$folder])
-                    : $reader->search($mailbox, $search, $cursors[$mailbox->id] ?? null, self::PER_INBOX, self::FOLDERS[$folder]);
-            } catch (CannotReadMailbox $e) {
-                $errors[] = ['mailbox_id' => $mailbox->id, 'address' => $mailbox->address, 'message' => $e->getMessage()];
+            /*
+             * A tab is a filter over Gmail's pages, so one page of 25 can hold
+             * 24 notifications and 1 person (Jose, 2026-10-22: "emails inboxes
+             * are kind of empty"). With a tab chosen, read on until it has a
+             * page's worth or MAX_PAGES pages have been read.
+             * ponytail: matches by isBulk before the customer lookup, so a bulk
+             * mail from a customer can be counted as a notification here.
+             */
+            for ($pages = 0; $pages < ($category === null ? 1 : self::MAX_PAGES); $pages++) {
+                try {
+                    $page = $search === ''
+                        ? $reader->list($mailbox, $cursor, self::PER_INBOX, self::FOLDERS[$folder])
+                        : $reader->search($mailbox, $search, $cursor, self::PER_INBOX, self::FOLDERS[$folder]);
+                } catch (CannotReadMailbox $e) {
+                    $errors[] = ['mailbox_id' => $mailbox->id, 'address' => $mailbox->address, 'message' => $e->getMessage()];
 
-                continue;
+                    break;
+                }
+
+                foreach ($page->messages as $summary) {
+                    $found[] = [$mailbox, $summary];
+                    $wanted += ($category === 'notifications') === $summary->isBulk ? 1 : 0;
+                }
+
+                $cursor = $page->nextCursor;
+
+                if ($cursor === null || $wanted >= self::PER_INBOX) {
+                    break;
+                }
             }
 
-            foreach ($page->messages as $summary) {
-                $found[] = [$mailbox, $summary];
-            }
-
-            if ($page->nextCursor !== null) {
-                $next[$mailbox->id] = $page->nextCursor;
+            if ($cursor !== null) {
+                $next[$mailbox->id] = $cursor;
             }
         }
 
         $rows = $this->merge($found, $user);
-
-        $category = $input['category'] ?? null;
 
         return response()->json([
             'data' => $rows->when($category !== null, fn ($r) => $r->where('category', $category))->values(),
