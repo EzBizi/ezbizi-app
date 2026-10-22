@@ -33,7 +33,7 @@ void main() {
     // It replaces the screen rather than sitting beside it: the settings are
     // organization-scoped, so this is never one person's state.
     expect(find.text('6 days a year'), findsNothing);
-    expect(find.text('When you can use them'), findsNothing);
+    expect(find.text('When they can be used'), findsNothing);
   });
 
   testWidgets('desktop: the team beside one person, and the date in its own box', (
@@ -49,8 +49,8 @@ void main() {
     // something only HER panel can say — "6 days a year" appears in the rows
     // too, so it cannot tell whose panel is open.
     expect(find.text('Toula Elwell (you)'), findsOneWidget);
-    expect(find.text('When you can use them'), findsOneWidget);
-    expect(find.textContaining('You started on'), findsOneWidget);
+    expect(find.text('When they can be used'), findsOneWidget);
+    expect(find.textContaining('They started on'), findsOneWidget);
   });
 
   /// The sentence names the NUMBER, never "three months".
@@ -81,7 +81,7 @@ void main() {
     await tester.tap(find.textContaining('Jon Ames').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('We cannot tell you'), findsOneWidget);
+    expect(find.text('Not known'), findsOneWidget);
     expect(find.textContaining('any date would be a guess'), findsOneWidget);
     expect(
       find.textContaining('only been kept since this was added'),
@@ -158,7 +158,7 @@ void main() {
     );
 
     expect(find.text('Now'), findsOneWidget);
-    expect(find.text('We cannot tell you'), findsNothing);
+    expect(find.text('Not known'), findsNothing);
     expect(
       find.textContaining('from somebody’s first day here'),
       findsOneWidget,
