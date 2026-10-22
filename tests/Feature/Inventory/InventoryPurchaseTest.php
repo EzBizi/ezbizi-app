@@ -504,4 +504,24 @@ class InventoryPurchaseTest extends TestCase
             $this->assertSame($status, $po->status->value);
         });
     }
+
+    /** The search bar: `q` narrows by vendor or item; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        [$vendor, $item] = $this->vendorItemLocation($t);
+        [$brickyard, $cap] = $this->inTenant($t['org'], fn () => [
+            InventoryVendor::factory()->create(['company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id, 'name' => 'Brickyard']),
+            InventoryItem::factory()->create(['company_id' => $t['company']->id, 'franchise_id' => $t['franchise']->id, 'name' => 'Chimney cap']),
+        ]);
+        $this->openOrder($t['admin'], $vendor, $item, $t, 2);
+        $this->openOrder($t['admin'], $brickyard, $cap, $t, 1);
+
+        $url = '/api/v1/inventory/purchase-orders';
+        $this->signedInAs($t['admin'])->getJson($url.'?q=brickyard')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.tiles', fn ($tiles) => is_array($tiles));
+        $this->signedInAs($t['admin'])->getJson($url.'?q=6%20mil')->assertOk()->assertJsonCount(1, 'data');
+        $this->signedInAs($t['admin'])->getJson($url.'?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->signedInAs($t['admin'])->getJson($url)->assertOk()->assertJsonCount(2, 'data');
+    }
 }

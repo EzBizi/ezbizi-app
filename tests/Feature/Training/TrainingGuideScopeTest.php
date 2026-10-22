@@ -426,4 +426,19 @@ class TrainingGuideScopeTest extends TestCase
             return $user;
         });
     }
+
+    /** The search bar: `q` narrows by title or summary; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], function () {
+            TrainingGuide::create(['title' => 'Ladder safety', 'summary' => 'Three points of contact', 'status' => TrainingGuide::PUBLISHED, 'screens' => []]);
+            TrainingGuide::create(['title' => 'Booking a job', 'status' => TrainingGuide::PUBLISHED, 'screens' => []]);
+        });
+        $as = $this->signedInAs($tenant['admin']);
+
+        $as->getJson('/api/v1/training/guides?q=contact')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Ladder safety');
+        $as->getJson('/api/v1/training/guides?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/training/guides')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

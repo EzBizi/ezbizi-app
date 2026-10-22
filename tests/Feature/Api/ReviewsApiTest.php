@@ -365,4 +365,20 @@ class ReviewsApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('meta.connections.0.provider', 'google_business_profile');
     }
+
+    /** The search bar: `q` narrows by reviewer or comment; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->review($t);
+        $this->review($t, ['reviewer_name' => 'Marco Ruiz', 'comment' => 'Swept clean, on time.', 'rating' => 5]);
+
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=marco')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.reviewer_name', 'Marco Ruiz');
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=soot')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.reviewer_name', 'Dana Whitfield');
+        // A LIKE wildcard is a literal character, not "match anything".
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=%25')->assertOk()->assertJsonCount(0, 'data');
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'?q=%20%20')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

@@ -73,4 +73,21 @@ class FinancialAdjustmentsTest extends TestCase
         $this->assertSame('unavailable', $team['status']);
         $this->assertSame('A recorded move takes more from Bob than their share.', $team['reason']);
     }
+
+    /** The search bar: `q` narrows by technician, job number or reason; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $as = $this->signedInAs($t['admin']);
+        foreach ([['Ann', 'J-9', 'Came back twice'], ['Marisol', 'J-77', 'Wrong cap size']] as [$tech, $job, $reason]) {
+            $as->postJson('/api/v1/financials/adjustments', ['place' => 'Alpha F1', 'kind' => 'refund', 'date' => '2026-10-06',
+                'technician' => $tech, 'amount' => 10, 'job_number' => $job, 'reason' => $reason])->assertCreated();
+        }
+
+        $url = '/api/v1/financials/adjustments?from=2026-10-01&to=2026-10-31';
+        $as->getJson($url.'&q=marisol')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.job_number', 'J-77');
+        $as->getJson($url.'&q=came%20back')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.technician', 'Ann');
+        $as->getJson($url.'&q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson($url)->assertOk()->assertJsonCount(2, 'data');
+    }
 }

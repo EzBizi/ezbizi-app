@@ -131,7 +131,11 @@ final class FieldRecordingsController extends Controller
     /** Yours, or with field.listen everyone's you can see on Field. ?user_id narrows, ?date picks a day. */
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['user_id' => ['nullable', 'uuid'], 'date' => ['nullable', 'date_format:Y-m-d']]);
+        $data = $request->validate([
+            'user_id' => ['nullable', 'uuid'],
+            'date' => ['nullable', 'date_format:Y-m-d'],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
         $actor = $request->user();
 
         $query = FieldRecording::query()->with(['user:id,name', 'job:id,number,title'])->latest('started_at');
@@ -145,6 +149,14 @@ final class FieldRecordingsController extends Controller
         }
         if (isset($data['date'])) {
             $query->whereDate('started_at', $data['date']);
+        }
+        // Who recorded it, the job it was on, or why it was flagged.
+        $term = trim((string) ($data['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('flag_reason', 'like', $like)
+                ->orWhereHas('user', fn ($u) => $u->where('name', 'like', $like))
+                ->orWhereHas('job', fn ($j) => $j->where('number', 'like', $like)->orWhere('title', 'like', $like)));
         }
 
         return response()->json(['data' => $query->limit(200)->get()->map(fn ($r) => $this->present($r))]);

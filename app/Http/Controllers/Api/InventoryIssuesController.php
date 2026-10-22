@@ -60,6 +60,15 @@ class InventoryIssuesController extends Controller
                 fn (Builder $q) => InventoryVisibility::constrain($q, $user, $scope),
             );
 
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn (Builder $w) => $w->where('number', 'like', $like)
+                ->orWhere('note', 'like', $like)
+                ->orWhereHas('location', fn (Builder $l) => $l->where('name', 'like', $like))
+                ->orWhereHas('job', fn (Builder $j) => $j->where('number', 'like', $like)->orWhere('title', 'like', $like)));
+        }
+
         $issues = $query
             ->with(['location', 'job', 'lines.item'])
             ->orderByDesc('issued_on')

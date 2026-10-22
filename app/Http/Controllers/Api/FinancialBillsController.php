@@ -36,9 +36,19 @@ class FinancialBillsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->may($request->user(), 'view');
-        $input = $request->validate(['from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d']]);
+        $input = $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+        $term = trim((string) ($input['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
 
         $bills = FinancialBill::query()->with('company:id,name', 'franchise:id,name')
+            // The place a bill is for, which is the name the row shows.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
+                ->whereHas('company', fn ($c) => $c->where('name', 'like', $like))
+                ->orWhereHas('franchise', fn ($f) => $f->where('name', 'like', $like))))
             ->when($input['from'] ?? null, fn ($q, $d) => $q->where('period_to', '>=', $d))
             ->when($input['to'] ?? null, fn ($q, $d) => $q->where('period_from', '<=', $d))
             ->orderByDesc('period_from')->limit(500)->get()

@@ -268,9 +268,36 @@ class CallsController extends Controller
             $this->withoutVoicemailTranscript($query);
         }
 
+        // The search bar: either number on the call, a transcript, or the name
+        // of the customer whose phone it is (the same exact-phone match the
+        // rows below use to name the caller). After the tiles, like `dealt`.
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $digits = preg_replace('/\D/', '', $term);
+            $customerPhones = Customer::query()->where('name', 'like', $like)->whereNotNull('phone')->select('phone');
+
+            $query->where(function ($w) use ($like, $digits, $customerPhones) {
+                $w->where('from_e164', 'like', $like)
+                    ->orWhere('to_e164', 'like', $like)
+                    ->orWhere('transcript', 'like', $like)
+                    ->orWhere('voicemail_transcript', 'like', $like)
+                    ->orWhereIn('from_e164', $customerPhones)
+                    ->orWhereIn('to_e164', (clone $customerPhones));
+                // "(555) 123-4567" against +15551234567.
+                if (strlen($digits) >= 3) {
+                    $w->orWhere('from_e164', 'like', '%'.$digits.'%')
+                        ->orWhere('to_e164', 'like', '%'.$digits.'%');
+                }
+            });
+        }
+
+        // No per_page is every call, on purpose: Records builds its threads
+        // from the whole list. With per_page, capped at 200, and `page` steps
+        // through it.
         $perPage = (int) $request->query('per_page', 0);
         if ($perPage > 0) {
-            $query->limit(min($perPage, 200));
+            $query->forPage(max(1, (int) $request->query('page', 1)), min($perPage, 200));
         }
 
         $calls = $query->get();

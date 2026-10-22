@@ -157,4 +157,40 @@ class PhoneVoicemailTilesTest extends TestCase
         $this->assertNull($response->json('meta'));
         $this->assertCount(5, $response->json('data'));
     }
+
+    /** The search bar: `q` narrows by number, transcript or customer name; a blank `q` is no filter. */
+    public function test_q_narrows_the_call_list_and_a_blank_q_changes_nothing(): void
+    {
+        [$t, $number, $desk] = $this->mailbox();
+        $this->message($t, $number, ['voicemail' => false, 'from_e164' => '+17865550199']);
+        $this->inTenant($t['org'], fn () => \App\Models\Customer::query()->create([
+            'owning_franchise_id' => $t['franchise']->id,
+            'number' => 'C-SEARCH',
+            'name' => 'Odalys Fernandez',
+            'phone' => '+17865550199',
+        ]));
+
+        $as = $this->signedInAs($desk);
+        $this->assertCount(1, $as->getJson('/api/v1/phone/calls?q=call%20me')->assertOk()->json('data'));
+        $this->assertCount(1, $as->getJson('/api/v1/phone/calls?q=(786)%20555-0199')->assertOk()->json('data'));
+        $this->assertCount(1, $as->getJson('/api/v1/phone/calls?q=odalys')->assertOk()->json('data'));
+        $this->assertCount(6, $as->getJson('/api/v1/phone/calls?q=')->assertOk()->json('data'));
+        $this->assertCount(6, $as->getJson('/api/v1/phone/calls')->assertOk()->json('data'));
+        // The tiles still count the whole box; the search narrows the rows.
+        $this->signedInAs($desk)->getJson('/api/v1/phone/calls?voicemail_only=1&q=call%20me')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.tiles.all', 4);
+    }
+
+    /** With no per_page the list is every call (Records threads from it); per_page and page page it. */
+    public function test_the_call_list_is_whole_by_default_and_pages_when_asked(): void
+    {
+        [$t, $number, $desk] = $this->line();
+        for ($i = 0; $i < 52; $i++) {
+            $this->message($t, $number, ['voicemail' => false]);
+        }
+
+        $this->assertCount(52, $this->signedInAs($desk)->getJson('/api/v1/phone/calls')->assertOk()->json('data'));
+        $this->assertCount(50, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?per_page=50')->assertOk()->json('data'));
+        $this->assertCount(2, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?per_page=50&page=2')->assertOk()->json('data'));
+    }
 }

@@ -302,4 +302,21 @@ class StaffSuggestionsTest extends TestCase
             ->assertJsonPath('data.0.status', Suggestion::STATUS_DENIED)
             ->assertJsonPath('data.0.decision_note', 'The board already does this — see the filter menu.');
     }
+
+    /** The search bar: `q` narrows by words or organization, across tenants; a blank `q` is no filter. */
+    public function test_q_narrows_the_queue_and_a_blank_q_changes_nothing(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta', 'beta@example.test');
+        $this->suggestionIn($alpha, 'Let me print the route sheet.');
+        $this->suggestionIn($beta, 'Dark mode please.');
+
+        $token = $this->staffToken();
+        $this->withToken($token)->getJson('/api/v1/staff/suggestions?q=route%20sheet')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization', 'Alpha');
+        $this->withToken($token)->getJson('/api/v1/staff/suggestions?q=beta')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization', 'Beta');
+        $this->withToken($token)->getJson('/api/v1/staff/suggestions?q=')->assertOk()->assertJsonCount(2, 'data');
+        $this->withToken($token)->getJson('/api/v1/staff/suggestions')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

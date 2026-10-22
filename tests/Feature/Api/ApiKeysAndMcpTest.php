@@ -459,4 +459,23 @@ class ApiKeysAndMcpTest extends TestCase
             McpController::$maxChars = 100_000;
         }
     }
+
+    /** The search bar: `q` narrows by path, key, person or action; a blank `q` is no filter. */
+    public function test_activity_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant();
+        $key = $this->keyFor($t['admin']);
+        $this->withToken($key)->getJson('/api/v1/me')->assertOk();
+        $this->withToken($key)->getJson('/api/v1/me/preferences')->assertOk();
+        $this->app['auth']->forgetGuards();
+
+        $all = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity')->assertOk()->json('activity');
+        $this->assertGreaterThan(2, count($all));
+
+        $found = $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?q=preferences')->assertOk()->json('activity');
+        $this->assertSame(['api/v1/me/preferences'], array_column($found, 'path'));
+
+        $this->assertCount(count($all), $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?q=')->json('activity'));
+        $this->assertCount(0, $this->signedInAs($t['admin'])->getJson('/api/v1/api-keys/activity?q=%25')->json('activity'));
+    }
 }

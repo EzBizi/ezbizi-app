@@ -36,12 +36,21 @@ class FinancialAdjustmentsController extends Controller
             'from' => ['required', 'date_format:Y-m-d'],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
             'kind' => ['nullable', Rule::in(FinancialAdjustment::KINDS)],
+            'q' => ['nullable', 'string', 'max:200'],
         ]);
         $scope = ViewScope::forUser($request->user());
+        $term = trim((string) ($input['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
 
         $rows = FinancialAdjustment::query()->with('franchise:id,name')
             ->whereBetween('date', [$input['from'], $input['to']])
             ->when($input['kind'] ?? null, fn ($q, $k) => $q->where('kind', $k))
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('technician', 'like', $like)
+                ->orWhere('from_technician', 'like', $like)
+                ->orWhere('team', 'like', $like)
+                ->orWhere('job_number', 'like', $like)
+                ->orWhere('reason', 'like', $like)
+                ->orWhereHas('franchise', fn ($f) => $f->where('name', 'like', $like))))
             ->orderBy('date')->limit(1000)->get()
             ->filter(fn (FinancialAdjustment $a) => $scope->coversFranchise($a->franchise_id));
 

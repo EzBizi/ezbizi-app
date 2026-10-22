@@ -338,4 +338,22 @@ class StaffControlPlaneTest extends TestCase
         // business trail. Sign-ins and impersonations are the carve-outs.
         $this->assertSame(0, AuditEvent::count());
     }
+
+    /** The search bar on the impersonation log: `q` narrows by client or reason; a blank `q` is no filter. */
+    public function test_impersonations_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        [$staff, $secret] = $this->staff();
+        ['organization' => $alpha] = $this->organization('Alpha');
+        ['organization' => $beta] = $this->organization('Beta');
+        $token = $this->signIn($staff, $secret);
+        $as = $this->withHeader('Authorization', "Bearer {$token}");
+
+        $as->postJson('/api/v1/staff/impersonations', ['organization_id' => $alpha->id, 'reason' => 'Investigating a reported export failure.'])->assertCreated();
+        $as->postJson('/api/v1/staff/impersonations', ['organization_id' => $beta->id, 'reason' => 'Checking their invoice numbering.'])->assertCreated();
+
+        $as->getJson('/api/v1/staff/impersonations?q=invoice')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization.name', 'Beta');
+        $as->getJson('/api/v1/staff/impersonations?q=alpha')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.organization.name', 'Alpha');
+        $as->getJson('/api/v1/staff/impersonations?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/staff/impersonations')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

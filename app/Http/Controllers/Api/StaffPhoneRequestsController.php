@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Concerns\TenantScope;
 use App\Models\PhoneServiceRequest;
 use App\Models\PhoneServiceRequestCompany;
 use App\Support\Tenancy\TenantContext;
@@ -38,9 +39,20 @@ class StaffPhoneRequestsController extends Controller
     /** GET /api/v1/staff/phone-requests */
     public function index(Request $request): JsonResponse
     {
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
         $rows = PhoneServiceRequest::query()
             ->withoutGlobalScopes()
             ->with(['organization:id,name', 'requester:id,name', 'companies.company:id,name'])
+            // Every tenant's, like the list itself: the related reads drop the
+            // tenant scope for the same reason the outer one does.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('purpose', 'like', $like)
+                ->orWhere('decision_note', 'like', $like)
+                ->orWhereHas('organization', fn ($o) => $o->where('name', 'like', $like))
+                ->orWhereHas('requester', fn ($u) => $u->withoutGlobalScope(TenantScope::class)->where('name', 'like', $like))
+                ->orWhereHas('companies', fn ($line) => $line->withoutGlobalScope(TenantScope::class)
+                    ->whereHas('company', fn ($c) => $c->withoutGlobalScope(TenantScope::class)->where('name', 'like', $like)))))
             ->orderByRaw("CASE WHEN status = ? THEN 0 ELSE 1 END", [PhoneServiceRequest::STATUS_PENDING])
             ->latest('created_at')
             ->limit(200)
