@@ -1293,7 +1293,10 @@ void main() {
     // A searchable list, not a plain dropdown: a dispatcher with a line per
     // company and per branch reads thirty of them otherwise, and the one they
     // want has a name they already know.
-    await tester.enterText(find.byType(TextField).first, 'Miami');
+    await tester.enterText(find.descendant(
+        of: find.byKey(const ValueKey('tour-phone-calling-as')),
+        matching: find.byType(TextField),
+      ), 'Miami');
     await tester.pumpAndSettle();
     await _tap(tester, find.textContaining('Miami · +1 (305) 555-0188').last);
 
@@ -1359,7 +1362,10 @@ void main() {
       ],
     );
 
-    await _tap(tester, find.byType(TextField).first);
+    await _tap(tester, find.descendant(
+        of: find.byKey(const ValueKey('tour-phone-calling-as')),
+        matching: find.byType(TextField),
+      ));
 
     // All three, including the one already selected.
     expect(find.byKey(const ValueKey('calling-as-n-1')), findsOneWidget);
@@ -1402,7 +1408,10 @@ void main() {
       ],
     );
 
-    await _tap(tester, find.byType(TextField).first);
+    await _tap(tester, find.descendant(
+        of: find.byKey(const ValueKey('tour-phone-calling-as')),
+        matching: find.byType(TextField),
+      ));
 
     expect(find.text('on a call with Ana Ventoso'), findsOneWidget);
 
@@ -1462,7 +1471,10 @@ void main() {
     final before = fetches();
     expect(before, greaterThan(0), reason: 'the tab never loaded the lines');
 
-    await _tap(tester, find.byType(TextField).first);
+    await _tap(tester, find.descendant(
+        of: find.byKey(const ValueKey('tour-phone-calling-as')),
+        matching: find.byType(TextField),
+      ));
 
     expect(
       fetches(),

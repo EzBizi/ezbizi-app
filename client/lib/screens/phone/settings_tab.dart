@@ -271,6 +271,10 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
   /// `bad` or `none`; null is every row.
   String? _tile;
 
+  /// What is typed in the search box. /phone/connections returns every
+  /// account, so the filter runs here.
+  String _query = '';
+
   bool _saving = false;
   String? _notice;
 
@@ -645,6 +649,16 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
 
       // Its error is a failed LOAD, so a reload discards nothing.
       onRetry: _load,
+      trailing: places.isEmpty
+          ? null
+          : Align(
+              alignment: Alignment.centerRight,
+              child: _searchBox(
+                key: const ValueKey('comm-connections-search'),
+                hint: 'Search company or account',
+                onChanged: (value) => setState(() => _query = value),
+              ),
+            ),
 
       // No footer: nothing on this pane is saved. Connecting is one button on
       // one row, and a Save here would claim the pane as a whole is a form.
@@ -744,14 +758,26 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     final small = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    final shown = _tile == null
-        ? places
-        : places.where((p) => _stage(p) == _tile).toList();
+    final shown = [
+      for (final place in places)
+        if ((_tile == null || _stage(place) == _tile) &&
+            _searchHit(_query, [
+              place.name,
+              _connectionFor(place)?.accountSid,
+              _connectionFor(place)?.status,
+            ]))
+          place,
+    ];
 
     if (shown.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text('No accounts like that.', textAlign: TextAlign.center),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _query.trim().isNotEmpty
+              ? 'Nothing matches "${_query.trim()}".'
+              : 'No accounts like that.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -946,4 +972,48 @@ class _Connection {
     accountSid: json['account_sid'] as String?,
     statusReason: json['status_reason'] as String?,
   );
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

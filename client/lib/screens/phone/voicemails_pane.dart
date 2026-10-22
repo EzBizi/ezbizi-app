@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
@@ -68,6 +70,10 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   /// (Mia, 2026-10-02, layout B). Null until it answers, drawn as a dash.
   Map<String, int>? _tiles;
 
+  /// What is typed in the search box, sent as `q` 400 ms after the last key.
+  String _query = '';
+  Timer? _searchDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +82,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     if (_ownsPlayer) _player.dispose();
     super.dispose();
   }
@@ -131,6 +138,7 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     final query = {
       ...boxId == null ? {'voicemail_only': '1'} : {'box_id': boxId},
       'per_page': '50',
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
 
       // The tile narrows the rows on the server, so "To deal with" shows the
       // 50 newest waiting rather than whichever of the newest 50 are waiting.
@@ -338,11 +346,46 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
     );
   }
 
+  void _search(String value) {
+    setState(() => _query = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 400),
+      _loadMessages,
+    );
+  }
+
+  /// The 50 rows on screen, narrowed by the search box as well.
+  ///
+  /// CallsController@index (GET /phone/calls) does not read `q` yet, so the
+  /// server returns the same newest 50 whatever is typed; this filter is what
+  /// narrows them until it does. Once the server honours `q` it is a no-op.
+  List<_Voicemail> get _shown => [
+    for (final message in _messages)
+      if (_searchHit(_query, [
+        message.name,
+        message.from,
+        message.transcript,
+      ]))
+        message,
+  ];
+
   Widget _messageList(ThemeData theme) {
     return Column(
       key: const ValueKey('tour-phone-voicemail-list'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _searchBox(
+              key: const ValueKey('comm-voicemail-messages-search'),
+              hint: 'Search name, number or transcript',
+              onChanged: _search,
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
           child: _tileRow(),
@@ -372,6 +415,21 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
   }
 
   Widget _cards(ThemeData theme) {
+    final shown = _shown;
+
+    if (_query.trim().isNotEmpty && shown.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Nothing matches "${_query.trim()}".',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+
     // A tile with nothing under it is not an empty box: the box has messages,
     // just none in this state.
     if (_messages.isEmpty && _tile != null) {
@@ -415,8 +473,8 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: _messages.length,
-      itemBuilder: (context, i) => _row(_messages[i], theme),
+      itemCount: shown.length,
+      itemBuilder: (context, i) => _row(shown[i], theme),
     );
   }
 
@@ -640,4 +698,48 @@ class _Voicemail {
         json['caller_name'] as String? ??
         json['peer_name'] as String?,
   );
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }
