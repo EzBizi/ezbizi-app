@@ -2069,6 +2069,9 @@ Route::prefix('v1')
          * rather than `view` because it renders a draft of what people sign.
          */
         Route::post('hr/contracts/{contract}/preview', [HrContractsController::class, 'preview']);
+        // The current version as a PDF with sample values, stamped DRAFT
+        // (Jose, 2026-10-22: a Download on contracts).
+        Route::get('hr/contracts/{contract}/draft.pdf', [HrContractsController::class, 'draftPdf']);
         Route::get('hr/contracts/{contract}', [HrContractsController::class, 'show']);
         Route::patch('hr/contracts/{contract}', [HrContractsController::class, 'update']);
 
