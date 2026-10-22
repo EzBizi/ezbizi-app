@@ -25,7 +25,7 @@ class AutomationBuildStatsTest extends TestCase
         $mail('notify@ringcentral.com', now()->subDays(40)); // too old
 
         $this->signedInAs($t['admin'])->getJson('/api/v1/automations/trigger-stats?triggers=email.received,nope')
-            ->assertOk()->assertExactJson(['data' => ['email.received' => ['last_30_days' => 2, 'rules' => 0, 'top_actions' => []]]]);
+            ->assertOk()->assertExactJson(['data' => ['email.received' => ['last_30_days' => 2, 'details' => 2, 'rules' => 0, 'top_actions' => []]]]);
 
         $run = $this->signedInAs($t['admin'])->postJson('/api/v1/automations/would-have-run', [
             'trigger' => 'email.received',
@@ -38,6 +38,9 @@ class AutomationBuildStatsTest extends TestCase
         $fields = $this->signedInAs($t['admin'])->getJson('/api/v1/automations/trigger-fields?trigger=email.received')->assertOk()->json('data');
         $this->assertSame('From address', $fields['labels']['from_address']);
         $this->assertSame('text', $fields['types']['from_address']);
+        $this->assertCount(3, $fields['events'], 'the last three times, whole, whatever their age');
+        $this->assertSame('notify@ringcentral.com', $fields['events'][0]['values']['from_address']);
+        $this->assertNotEmpty($fields['events'][0]['event_id']);
         $dry = $this->signedInAs($t['admin'])->postJson('/api/v1/automations/dry-run', [
             'trigger_key' => 'email.received',
             'conditions' => ['all' => [['field' => 'from_address', 'op' => 'contains', 'value' => 'ringcentral']]],
