@@ -482,6 +482,10 @@ class AutomationsController extends Controller
                     ->map(fn (WhatsAppGroup $g) => ['id' => $g->purpose, 'label' => $g->subject ?: $g->purpose])
                     ->all(),
 
+                // report.text's choices (audit, 2026-10-22).
+                'report_text_kinds' => array_map(fn ($k, $l) => ['id' => $k, 'label' => $l],
+                    array_keys(\App\Support\Reports\Texts\DailyTexts::KINDS), array_values(\App\Support\Reports\Texts\DailyTexts::KINDS)),
+
                 'reports' => SavedReport::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -595,7 +599,9 @@ class AutomationsController extends Controller
                 ],
                 // The vocabulary POST /automations accepts. Anything not here is
                 // declared intent, not a usable action.
-                'action_types' => $this->actionTypes(),
+                // Which records each step works on; null means any (audit, 2026-10-22).
+                'action_types' => array_map(fn (array $t) => $t + ['subjects' => array_key_exists($t['key'], self::ACTION_SUBJECTS)
+                    ? array_map('class_basename', self::ACTION_SUBJECTS[$t['key']]) : null], $this->actionTypes()),
                 /*
                  * The zones a schedule may be written in, from the one list that
                  * defines them.
@@ -1054,7 +1060,10 @@ class AutomationsController extends Controller
             // Keys AND names. "scheduled_for" is a wire name, and the person
             // reading this picker runs a chimney business.
             'writable_fields' => array_map(
-                fn (string $field, string $label) => ['key' => $field, 'label' => $label],
+                fn (string $field, string $label) => ['key' => $field, 'label' => $label,
+                    'kind' => ActionRunner::fieldKind($module->subject->model, $field),
+                    'options' => ($o = ActionRunner::optionsFor($module->subject->model, $field)) === null ? null
+                        : array_map(fn ($v, $l) => ['value' => (string) $v, 'label' => $l], array_keys($o), array_values($o))],
                 array_keys($writable),
                 array_values($writable),
             ),
@@ -2087,6 +2096,8 @@ class AutomationsController extends Controller
             ]);
         }
 
+        $this->assertSubjectFits((string) $type, $index, $triggerKey);
+
         if ($type === 'webhook') {
             try {
                 $this->webhook->assertAllowed($action['url'] ?? '');
@@ -2099,6 +2110,7 @@ class AutomationsController extends Controller
 
         if ($type === 'update_field') {
             $this->assertFieldWritable($action['field'] ?? null, $index, $triggerKey);
+            $this->assertValueAllowed((string) ($action['field'] ?? ''), $action['value'] ?? null, $index, $triggerKey);
         }
 
         if ($type === 'notify' && blank($action['message'] ?? null)) {
@@ -2115,6 +2127,49 @@ class AutomationsController extends Controller
             }
 
             $this->assertStatusChangeable($index, $triggerKey);
+            $this->assertValueAllowed('status', $action['value'] ?? $action['status'] ?? null, $index, $triggerKey);
+        }
+    }
+
+    /**
+     * Steps that only make sense on one kind of record, as their arms in
+     * ActionRunner check it (audit, 2026-10-22: they saved under any trigger
+     * and then failed every run).
+     */
+    private const ACTION_SUBJECTS = [
+        'voicemail.mark_dealt' => [\App\Models\PhoneCall::class],
+        'missed.create_job' => [\App\Models\PhoneCall::class],
+        'message.mark_dealt' => [\App\Models\Mailbox::class],
+        'message.reply' => [\App\Models\Mailbox::class],
+        'lead.text' => [\App\Models\Lead::class],
+        'job.create' => [\App\Models\Job::class, \App\Models\Customer::class],
+        'workiz.job_update' => [\App\Models\Job::class],
+        'task.assign' => [\App\Models\Task::class],
+        'task.move_group' => [\App\Models\Task::class],
+    ];
+
+    /** Refused at save when the trigger is about a record this step does not work on. */
+    private function assertSubjectFits(string $type, int $index, ?string $triggerKey): void
+    {
+        $allowed = self::ACTION_SUBJECTS[$type] ?? null;
+        $model = $triggerKey === null ? null : $this->registry->get((string) $this->registry->moduleKeyOfTrigger($triggerKey))?->subject?->model;
+        if ($allowed !== null && $model !== null && ! in_array($model, $allowed, true)) {
+            throw ValidationException::withMessages([
+                "actions.{$index}.type" => 'This step works on '.implode(' or ', array_map(fn ($m) => strtolower(class_basename($m)), $allowed))
+                    .' records, and this trigger is about a '.strtolower(class_basename($model)).'.',
+            ]);
+        }
+    }
+
+    /** A "Set to" value must be one the field takes, where it takes a closed list (audit, 2026-10-22). */
+    private function assertValueAllowed(string $field, mixed $value, int $index, ?string $triggerKey): void
+    {
+        $model = $triggerKey === null ? null : $this->registry->get((string) $this->registry->moduleKeyOfTrigger($triggerKey))?->subject?->model;
+        $options = ActionRunner::optionsFor($model, $field);
+        if ($options !== null && $value !== null && $value !== '' && ! array_key_exists((string) $value, $options)) {
+            throw ValidationException::withMessages([
+                "actions.{$index}.value" => '"'.$value.'" is not one of the choices: '.implode(', ', array_values($options)).'.',
+            ]);
         }
     }
 
@@ -2143,7 +2198,11 @@ class AutomationsController extends Controller
 
         return [
             $type('update_field', 'Update a field'),
-            $type('change_status', 'Change the status'),
+            // The status box (audit, 2026-10-22: it had none and could never save).
+            // Its options are the subject's writable_fields['status'].options.
+            $type('change_status', 'Change the status', false, [
+                $parameter('value', 'Move it to', 'status'),
+            ]),
             $type('webhook', 'Call a webhook'),
             // DECLARED, not bespoke. The builder drew a hand-written Message box
             // for this one action and posted {type, message} from a separate
@@ -2265,7 +2324,7 @@ class AutomationsController extends Controller
             // Reports' daily texts, WhatsApped 1:1 (A1 Leads takeover, 2026-10-20).
             // ponytail: free-text kind until the builder has a choice picker.
             $type('report.text', 'WhatsApp a report text', false, [
-                $parameter('kind', 'Report (ppc, marketing_ppc, dispatchers, technician_sales, weekly_losses, weekly_reviews)', 'text'),
+                $parameter('kind', 'Which report', 'report_text_kind'),
                 $parameter('user_ids', 'Send to', 'people'),
             ]),
             $type('report.send', 'Send a saved report', true, [
@@ -2295,7 +2354,7 @@ class AutomationsController extends Controller
              */
             // A notification narrowed to administrator roles. Only a message:
             // who receives it is the point of the step, so it is not a choice.
-            $type('notify_administrators', 'Notify the administrators', true, [
+            $type('notify_administrators', 'Notify the administrators', false, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
             $type('reassign_owner', 'Hand the customer to another franchise', true, [

@@ -325,6 +325,40 @@ class ActionRunner
         return $out;
     }
 
+    /**
+     * The closed list a field takes, or null where any value goes (the audit
+     * Jose asked for, 2026-10-22). A job's status is the organization's own
+     * pipeline; the rest come from FIELD_VALUES. Task statuses are per board,
+     * so they stay open here.
+     *
+     * @return array<string, string>|null value => label
+     */
+    public static function optionsFor(?string $model, string $field): ?array
+    {
+        if ($model === Job::class && $field === 'status') {
+            $org = \App\Models\Organization::query()->find(app(\App\Support\Tenancy\TenantContext::class)->id());
+
+            return $org === null ? null : collect(Job::statusEntries($org))->pluck('label', 'value')->all();
+        }
+        if ($model === Task::class) {
+            return null;
+        }
+
+        return self::valuesOn($model)[$field] ?? null;
+    }
+
+    /** text, enum, money, datetime or integer, for the builder's "Set to" box. */
+    public static function fieldKind(?string $model, string $field): string
+    {
+        return match (true) {
+            self::optionsFor($model, $field) !== null => 'enum',
+            str_ends_with($field, '_minor') => 'money',
+            $field === 'scheduled_for' => 'datetime',
+            str_ends_with($field, '_minutes') => 'integer',
+            default => 'text',
+        };
+    }
+
     public static function writableOn(?string $model): array
     {
         return $model === null ? [] : (self::WRITABLE[$model] ?? []);
@@ -2331,6 +2365,14 @@ class ActionRunner
                 'detail' => "'{$field}' is not a field an automation may set on "
                     .class_basename($subject).'. Allowed: '.implode(', ', array_keys($writable)).'.',
             ];
+        }
+
+        // A closed list is checked at run too: a rule saved before its pipeline
+        // changed must not write a status the organization no longer has.
+        $options = self::optionsFor($subject::class, $field);
+        if ($options !== null && $value !== null && $value !== '' && ! array_key_exists((string) $value, $options)) {
+            return ['type' => 'update_field', 'ok' => false,
+                'detail' => '"'.$value.'" is not one of the choices for '.strtolower($writable[$field]).': '.implode(', ', array_values($options)).'.'];
         }
 
         if ($subject instanceof Job && in_array($field, ['tag_add', 'tag_remove'], true)) {

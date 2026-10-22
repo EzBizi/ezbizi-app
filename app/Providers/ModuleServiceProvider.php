@@ -2463,6 +2463,12 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Makes a person the owner of the task the rule fired on.',
                         executionType: 'task.assign',
                     ),
+                    new ActionDefinition(
+                        key: 'task.move_group',
+                        label: 'Move the task to a group',
+                        description: 'Moves the task the rule fired on into another group on its own board.',
+                        executionType: 'task.move_group',
+                    ),
                 ],
             ),
 
