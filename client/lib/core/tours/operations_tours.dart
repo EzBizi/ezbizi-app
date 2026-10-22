@@ -541,6 +541,49 @@ const Map<String, Tour> operationsTours = {
   'hr/Onboarding/Form': _onboardingForm,
   'hr/Onboarding/Contract': _onboardingContract,
 
+  // ── Human Resources › Payroll ────────────────────────────────────────
+  'hr/Payroll': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-payroll-filters',
+        title: 'Narrow it down',
+        body:
+            'Show only signed or unsigned W2s, one role, one contract, or a '
+            'name.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-left',
+        title: 'People who left',
+        body: 'They are listed last and greyed. Switch this off to hide them.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-table',
+        title: 'Everyone',
+        body:
+            'One row per person: salary, W2, start and end dates, role and '
+            'contract.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-salary',
+        title: 'Salary',
+        body:
+            'Click one to see its history and, if your role may, set a new '
+            'rate from a date. The old rate stays in the history.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-w2',
+        title: 'W2',
+        body: 'Signed or not. A signed one can be downloaded.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-contract',
+        title: 'Contract',
+        body: 'Their latest contract and where it stands, with its PDF.',
+      ),
+    ],
+  ),
+
   // ── Inspection ───────────────────────────────────────────────────────
   'inspection/Generated Reports': Tour(
     version: 1,

@@ -204,7 +204,19 @@ class Onboarding {
     this.downloadable = false,
     this.i9Section2Done = false,
     this.i9Section2Mine = false,
+    this.parties = const [],
+    this.startedBy,
   });
+
+  /// Which sides the reader acts as on this form: `employee` when it is about
+  /// them, `employer` when they may act for the employer, both, or neither
+  /// (somebody reading a record). Only for choosing which tab opens and which
+  /// one is the other side's; who may write a field is still
+  /// [OnboardingQuestion.writable].
+  final List<String> parties;
+
+  /// Who started it, which is who the employer's half waits on.
+  final String? startedBy;
 
   /// There is a signed PDF to download, its own or an imported one.
   final bool downloadable;
@@ -393,6 +405,10 @@ class Onboarding {
       downloadable: json['downloadable'] == true,
       i9Section2Done: (json['i9'] as Map?)?['section2'] == true,
       i9Section2Mine: (json['i9'] as Map?)?['mine'] == true,
+      parties: [
+        for (final party in json['parties'] as List? ?? const []) '$party',
+      ],
+      startedBy: json['started_by'] as String?,
     );
   }
 }

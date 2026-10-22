@@ -64,9 +64,11 @@ void main() {
     await _pumpForm(tester, _handler(form: _asEmployer));
 
     expect(find.text('YOURS TO FILL IN'), findsOneWidget);
-    expect(find.text('NOT YOURS TO ANSWER'), findsOneWidget);
-
     expect(_box(tester, 'hourly_wage').enabled, isTrue);
+
+    // The other half is on the Employee tab (design 135, section 7).
+    await _onSide(tester, 'Employee');
+    expect(find.text('NOT YOURS TO ANSWER'), findsOneWidget);
 
     // Theirs. Drawn, so the employer can see what is still outstanding, and
     // dead, because it is not their answer to give.
@@ -103,6 +105,7 @@ void main() {
 
     // The wage is the employer's and stays theirs — but it is on the page, so a
     // wage nobody has set is visibly outstanding rather than invisible.
+    await _onSide(tester, 'Employer');
     expect(_box(tester, 'hourly_wage').enabled, isFalse);
     expect(find.text('Hourly wage *'), findsOneWidget);
     expect(find.text('Head office'), findsWidgets);
@@ -116,7 +119,7 @@ void main() {
     await _pumpForm(tester, _handler(form: _asEmployer));
 
     expect(_day(tester, 'date_of_birth').enabled, isTrue);
-    expect(find.text('Either of you'), findsWidgets);
+    expect(find.text('Either of you can answer'), findsWidgets);
 
     await _pumpForm(tester, _handler(form: _asEmployee));
 
@@ -140,8 +143,10 @@ void main() {
     await _pumpForm(tester, _handler(form: _asEmployee));
 
     // The values the server already holds, in the boxes, not lost.
-    expect(_box(tester, 'hourly_wage').controller!.text, '22.50');
     expect(_day(tester, 'date_of_birth').controller.text, '1990-02-11');
+    await _onSide(tester, 'Employer');
+    expect(_box(tester, 'hourly_wage').controller!.text, '22.50');
+    await _onSide(tester, 'Employee');
 
     // Counted, because "your progress is saved" with no number behind it is
     // what every form says and nobody believes.
@@ -510,6 +515,7 @@ void main() {
 
     expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
 
+    await _onSide(tester, 'Employee');
     await _tap(tester, find.widgetWithText(OutlinedButton, 'Reveal'));
 
     expect(
@@ -575,6 +581,7 @@ void main() {
 
     // And the sensitive answer is still masked here, with the reveal still an
     // audited act. This is the screen where getting that wrong costs the most.
+    await _onSide(tester, 'Employee');
     expect(find.text('••••••••'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Reveal'), findsOneWidget);
   });
@@ -616,6 +623,7 @@ void main() {
     tester,
   ) async {
     await _pumpForm(tester, _handler(form: _asEmployer));
+    await _onSide(tester, 'Employee');
 
     expect(_box(tester, 'shoe_size').enabled, isFalse);
     expect(
@@ -1129,6 +1137,7 @@ void main() {
     };
 
     await _pumpForm(tester, _handler(form: i9(false)));
+    await _onSide(tester, 'Employee');
     expect(find.byKey(const Key('i9-section2-open')), findsOneWidget);
     expect(find.textContaining('Section 2 is the employer'), findsOneWidget);
   });
@@ -1156,6 +1165,7 @@ void main() {
         },
       ),
     );
+    await _onSide(tester, 'Employee');
     expect(find.byKey(const Key('i9-section2-open')), findsNothing);
     expect(find.text('Signed I-9 attached, both sections.'), findsOneWidget);
   });
@@ -1439,6 +1449,7 @@ void main() {
       tester,
       _handler(form: _employerVoidsForm, onSave: (body) => saved = body),
     );
+    await _onSide(tester, 'Employee');
 
     expect(_frozen(tester, 'drivers_license_back'), isFalse);
     await _tap(tester, find.byKey(const Key('void:drivers_license_front')));
@@ -1902,6 +1913,17 @@ Future<void> _sized(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1400, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+}
+
+/// Open the Employer or Employee tab over the form (design 135, section 7).
+Future<void> _onSide(WidgetTester tester, String side) async {
+  await _tap(
+    tester,
+    find.descendant(
+      of: find.byKey(const Key('onboarding-sides')),
+      matching: find.textContaining('$side ·'),
+    ),
+  );
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
