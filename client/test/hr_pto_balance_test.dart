@@ -419,6 +419,76 @@ void main() {
     expect(find.text('You'), findsOneWidget);
   });
 
+  testWidgets('Expired: a fourth equal tile and "· N expired" on the row when '
+      'days were lost, nothing at 0 or null', (tester) async {
+    await _pump(tester, _expiredBody(me: 0), width: 1200);
+
+    // Sam lost 3; Pat's is 0 (carry-over on) and Dana's is null.
+    expect(find.text('0 left · 3 expired'), findsOneWidget);
+    expect(find.text('12 left'), findsOneWidget);
+    expect(find.text('7 left'), findsOneWidget);
+    expect(find.textContaining('expired'), findsOneWidget);
+
+    // Pat's own panel: 0 is no loss.
+    expect(find.byKey(const Key('pto-tile-expired')), findsNothing);
+
+    await tester.tap(find.text('Dana Reyes'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('pto-tile-expired')),
+      findsNothing,
+      reason: 'null is no start date, not a loss.',
+    );
+
+    await tester.tap(find.text('Sam Ortiz'));
+    await tester.pumpAndSettle();
+    final tile = find.byKey(const Key('pto-tile-expired'));
+    expect(
+      find.descendant(of: tile, matching: find.text('Expired')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: tile, matching: find.text('3')), findsOneWidget);
+    expect(
+      find.descendant(of: tile, matching: find.text('lost at past resets')),
+      findsOneWidget,
+    );
+
+    // Same row, same size as the other three.
+    final widths = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getSize(find.byKey(Key('pto-tile-$k'))).width,
+    };
+    expect(widths, hasLength(1));
+    final tops = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getTopLeft(find.byKey(Key('pto-tile-$k'))).dy,
+    };
+    expect(tops, hasLength(1));
+  });
+
+  testWidgets('Expired on the phone: four tiles fit at 390×844 and the row '
+      'says it', (tester) async {
+    await _pump(tester, _expiredBody(me: 2), width: 390, height: 844);
+    expect(tester.takeException(), isNull);
+
+    expect(find.byKey(const Key('pto-tile-expired')), findsOneWidget);
+    final widths = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getSize(find.byKey(Key('pto-tile-$k'))).width,
+    };
+    expect(widths, hasLength(1));
+
+    await tester.scrollUntilVisible(find.text('0 left · 3 expired'), 200);
+    expect(find.text('0 left · 3 expired'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('Dana Reyes'));
+    await tester.tap(find.text('Dana Reyes'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pto-tile-expired')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('without the new fields the screen draws what it drew before', (
     tester,
   ) async {
@@ -607,6 +677,29 @@ Map<String, dynamic> _body({Map<String, dynamic> policy = const {}}) => {
     },
   ],
 };
+
+/// [_body] with HR's `expired` (80655a5da): Sam lost 3 days, Pat [me],
+/// Dana null.
+Map<String, dynamic> _expiredBody({required num me}) {
+  final body = _body(policy: {'carry_over': false});
+  // Copied, because the literals in [_body] are typed to hold no null.
+  final rows = [
+    for (final row in body['data'] as List)
+      Map<String, dynamic>.from(row as Map),
+  ];
+  body['data'] = rows;
+  for (final person in rows) {
+    switch (person['name']) {
+      case 'Sam Ortiz':
+        person['expired'] = 3;
+      case 'Pat Lin':
+        person['expired'] = me;
+      case 'Dana Reyes':
+        person['expired'] = null;
+    }
+  }
+  return body;
+}
 
 /// Exactly the fields `HrPeopleController::pto` sends today.
 Map<String, dynamic> _legacyBody() => {
