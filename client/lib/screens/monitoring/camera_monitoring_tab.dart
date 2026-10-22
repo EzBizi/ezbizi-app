@@ -10,6 +10,9 @@ import '../../core/api_client.dart';
 import '../../core/camera_watch.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/help_video_io.dart'
+    if (dart.library.js_interop) '../../widgets/help_video_web.dart'
+    as native;
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
@@ -625,26 +628,143 @@ Future<void> _openLivePanel(BuildContext context, String label, String url) {
 /// dialog; the grid stays visible beside it) hosting the same [CameraImageView]
 /// pointed at the `?live=1` URL. Closing the panel drops the stream, which is
 /// what tells the bridge to stop pulling the camera.
-class _LiveViewPanel extends StatelessWidget {
+class _LiveViewPanel extends StatefulWidget {
   const _LiveViewPanel({required this.label, required this.url});
 
   final String label;
   final String url;
 
   @override
+  State<_LiveViewPanel> createState() => _LiveViewPanelState();
+}
+
+class _LiveViewPanelState extends State<_LiveViewPanel> with _LiveFeed {
+  @override
+  String get feedLabel => widget.label;
+  @override
+  String? get feedUrl => widget.url;
+
+  @override
   Widget build(BuildContext context) {
     return SidePanel(
-      title: label,
+      title: widget.label,
       subtitle: 'Live — full motion while this is open.',
       width: 760,
+      headerActions: feedHeaderActions(),
       // The body wants the height for itself (a video fills it); a scroll view
       // would hand it unbounded height and nothing to fill.
       scrollable: false,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CameraImageView(url: url),
+      child: panelFeed(),
+    );
+  }
+}
+
+/// The live panel's feed, its Fit/Fill toggle and its Full screen. Jose,
+/// 2026-10-22: "also if we can add full screen mode".
+///
+/// Full screen is an [OverlayEntry] on the root overlay, not a pushed route
+/// (the containment rule): it covers the whole app window, and closing it
+/// leaves the panel, the grid and the sidebar exactly where they were. On a
+/// computer the window goes full screen too, through the same helper the
+/// how-to video uses; window_manager restores the window's frame on the way
+/// out, and the runner's placement saver skips a full-screen window (see
+/// SaveWindowPlacement), so the remembered size is not overwritten.
+mixin _LiveFeed<T extends StatefulWidget> on State<T> {
+  String get feedLabel;
+
+  /// The URL playing now, or null while there is none (a bridge camera still
+  /// asking, or offline).
+  String? get feedUrl;
+
+  /// Fit by default in the panel: the box is sized to the feed, so Fit leaves
+  /// no bands on a wide camera. Fill crops to the panel's whole body.
+  BoxFit _panelFit = BoxFit.contain;
+
+  /// The feed's width / height once a frame says so.
+  double? _aspect;
+
+  OverlayEntry? _full;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    // The overlay is built outside this widget; a new URL or aspect has to
+    // reach it too.
+    _full?.markNeedsBuild();
+  }
+
+  @override
+  void dispose() {
+    if (_full != null) _leaveFullScreen();
+    super.dispose();
+  }
+
+  void _learnAspect(double aspect) {
+    if (mounted && aspect != _aspect) setState(() => _aspect = aspect);
+  }
+
+  List<Widget> feedHeaderActions() => [
+    _FitToggle(
+      key: const Key('camera-panel-fit'),
+      fit: _panelFit,
+      onChanged: (fit) => setState(() => _panelFit = fit),
+    ),
+    IconButton(
+      key: const Key('camera-fullscreen'),
+      icon: const Icon(Icons.fullscreen),
+      tooltip: 'Full screen',
+      onPressed: feedUrl == null ? null : _openFullScreen,
+    ),
+  ];
+
+  /// The panel body; [none] says why nothing plays while [feedUrl] is null.
+  Widget panelFeed({Widget Function()? none}) {
+    if (_full != null) {
+      // One stream at a time: the overlay is playing this camera.
+      return const SizedBox.expand();
+    }
+    final url = feedUrl;
+    if (url == null) return none?.call() ?? const SizedBox.expand();
+    return _SizedFeed(
+      url: url,
+      fit: _panelFit,
+      aspect: _aspect,
+      onAspect: _learnAspect,
+      alignment: Alignment.topCenter,
+    );
+  }
+
+  void _openFullScreen() {
+    if (_full != null || feedUrl == null) return;
+    _full = OverlayEntry(
+      builder: (_) => _CameraFullScreen(
+        label: feedLabel,
+        url: feedUrl,
+        aspect: _aspect,
+        onAspect: _learnAspect,
+        onClose: () => setState(_leaveFullScreen),
       ),
     );
+    Overlay.of(context, rootOverlay: true).insert(_full!);
+    unawaited(native.setHelpVideoWindowFullScreen(true));
+    unawaited(
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky),
+    );
+    unawaited(
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]),
+    );
+    setState(() {});
+  }
+
+  void _leaveFullScreen() {
+    _full?.remove();
+    _full = null;
+    unawaited(native.setHelpVideoWindowFullScreen(false));
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    unawaited(SystemChrome.setPreferredOrientations(const []));
   }
 }
 
@@ -975,25 +1095,260 @@ class _BridgeLivePanel extends StatefulWidget {
   State<_BridgeLivePanel> createState() => _BridgeLivePanelState();
 }
 
-class _BridgeLivePanelState extends State<_BridgeLivePanel> with _Watching {
+class _BridgeLivePanelState extends State<_BridgeLivePanel>
+    with _Watching, _LiveFeed {
   @override
   ApiClient get watchApi => widget.api;
   @override
   String get watchId => widget.id;
   @override
   String get watchQuality => 'main';
+  @override
+  String get feedLabel => widget.label;
+  @override
+  String? get feedUrl => failure == null ? play?.url : null;
 
   @override
   Widget build(BuildContext context) => SidePanel(
     title: widget.label,
     subtitle: 'Live — full motion while this is open.',
     width: 760,
+    headerActions: feedHeaderActions(),
     scrollable: false,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: watchBody((url) => CameraImageView(url: url)),
-    ),
+    child: panelFeed(none: () => watchBody((_) => const SizedBox.expand())),
   );
+}
+
+/// The feed in a box sized to it: Fit draws the box at the feed's own aspect
+/// (16:9 until a frame says otherwise), as large as fits, so a wide camera
+/// gets no bands; Fill takes the whole space and crops what overflows. The
+/// same tree either way, so switching never reconnects the stream.
+class _SizedFeed extends StatelessWidget {
+  const _SizedFeed({
+    required this.url,
+    required this.fit,
+    required this.aspect,
+    required this.onAspect,
+    this.alignment = Alignment.center,
+  });
+
+  final String url;
+  final BoxFit fit;
+  final double? aspect;
+  final ValueChanged<double> onAspect;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        var w = c.maxWidth;
+        var h = c.maxHeight;
+        if (fit != BoxFit.cover) {
+          final a = aspect ?? 16 / 9;
+          if (w / h > a) {
+            w = h * a;
+          } else {
+            h = w / a;
+          }
+        }
+        return Align(
+          alignment: alignment,
+          child: SizedBox(
+            width: w,
+            height: h,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CameraImageView(url: url, fit: fit, onAspect: onAspect),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Fit (the whole frame) or Fill (no bands, edges cropped), as one button
+/// that says what a press switches to.
+class _FitToggle extends StatelessWidget {
+  const _FitToggle({super.key, required this.fit, required this.onChanged});
+
+  final BoxFit fit;
+  final ValueChanged<BoxFit> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final filling = fit == BoxFit.cover;
+    return IconButton(
+      icon: Icon(filling ? Icons.fit_screen_outlined : Icons.crop_free),
+      tooltip: filling ? 'Fit: show the whole picture' : 'Fill: no bands',
+      onPressed: () => onChanged(filling ? BoxFit.contain : BoxFit.cover),
+    );
+  }
+}
+
+/// The camera over the whole app window, on black: a top bar (name, Fit/Fill,
+/// Close) that fades after 3 s without movement and comes back on any. Esc or
+/// the close button leaves it.
+class _CameraFullScreen extends StatefulWidget {
+  const _CameraFullScreen({
+    required this.label,
+    required this.url,
+    required this.aspect,
+    required this.onAspect,
+    required this.onClose,
+  });
+
+  final String label;
+  final String? url;
+  final double? aspect;
+  final ValueChanged<double> onAspect;
+  final VoidCallback onClose;
+
+  @override
+  State<_CameraFullScreen> createState() => _CameraFullScreenState();
+}
+
+class _CameraFullScreenState extends State<_CameraFullScreen> {
+  /// Taken from the panel underneath, so Esc leaves full screen rather than
+  /// closing the panel.
+  final _focus = FocusNode(debugLabel: 'camera full screen');
+
+  /// Fill by default: the point of full screen is no bands.
+  BoxFit _fit = BoxFit.cover;
+
+  bool _bar = true;
+  Timer? _hide;
+
+  @override
+  void initState() {
+    super.initState();
+    _poke();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _hide?.cancel();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  /// Shows the bar and restarts its 3 s.
+  void _poke([Object? _]) {
+    _hide?.cancel();
+    _hide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _bar = false);
+    });
+    if (!_bar) setState(() => _bar = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final url = widget.url;
+    final onBar = scheme.onInverseSurface;
+    final filling = _fit == BoxFit.cover;
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): widget.onClose,
+      },
+      child: Focus(
+        focusNode: _focus,
+        child: Listener(
+          onPointerDown: _poke,
+          onPointerHover: _poke,
+          onPointerMove: _poke,
+          child: Material(
+            key: const Key('camera-fullscreen-view'),
+            // The video's own black.
+            color: scheme.scrim,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (url == null)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  _SizedFeed(
+                    url: url,
+                    fit: _fit,
+                    aspect: widget.aspect,
+                    onAspect: widget.onAspect,
+                  ),
+                SafeArea(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: IgnorePointer(
+                      ignoring: !_bar,
+                      child: AnimatedOpacity(
+                        opacity: _bar ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: scheme.inverseSurface.withValues(
+                                alpha: 0.72,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      widget.label,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(color: onBar),
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    key: const Key('camera-fullscreen-fit'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: onBar,
+                                    ),
+                                    onPressed: () => setState(
+                                      () => _fit = filling
+                                          ? BoxFit.contain
+                                          : BoxFit.cover,
+                                    ),
+                                    icon: Icon(
+                                      filling
+                                          ? Icons.fit_screen_outlined
+                                          : Icons.crop_free,
+                                    ),
+                                    label: Text(filling ? 'Fit' : 'Fill'),
+                                  ),
+                                  IconButton(
+                                    key: const Key('camera-fullscreen-close'),
+                                    color: onBar,
+                                    icon: const Icon(Icons.close),
+                                    tooltip: 'Close full screen (Esc)',
+                                    onPressed: widget.onClose,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _BridgeOfflineNote extends StatelessWidget {

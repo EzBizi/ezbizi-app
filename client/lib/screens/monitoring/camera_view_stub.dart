@@ -18,8 +18,12 @@ import 'package:flutter/material.dart';
 /// Jose, 2026-10-06: the Ring cameras "should work on the app, not just on web."
 /// This is what makes the inline tile render in the Windows/Mac/mobile build
 /// instead of the open-in-browser card.
-Widget buildCameraImage(String url, {ByteStreamOpener? open}) =>
-    _MjpegView(url: url, open: open);
+Widget buildCameraImage(
+  String url, {
+  ByteStreamOpener? open,
+  BoxFit fit = BoxFit.contain,
+  ValueChanged<double>? onAspect,
+}) => _MjpegView(url: url, open: open, fit: fit, onAspect: onAspect);
 
 /// No native HLS player, so an `hls` camera still falls to the deep-link card
 /// off-web (unchanged). mjpeg/snapshot are what gained an inline view here.
@@ -101,10 +105,17 @@ double? jpegAspect(Uint8List bytes) {
 }
 
 class _MjpegView extends StatefulWidget {
-  const _MjpegView({required this.url, this.open});
+  const _MjpegView({
+    required this.url,
+    this.open,
+    this.fit = BoxFit.contain,
+    this.onAspect,
+  });
 
   final String url;
   final ByteStreamOpener? open;
+  final BoxFit fit;
+  final ValueChanged<double>? onAspect;
 
   @override
   State<_MjpegView> createState() => _MjpegViewState();
@@ -177,6 +188,7 @@ class _MjpegViewState extends State<_MjpegView> {
         if (aspect != null) _aspect = aspect;
         _error = false;
       });
+      if (aspect != null) widget.onAspect?.call(aspect);
     }
   }
 
@@ -222,14 +234,18 @@ class _MjpegViewState extends State<_MjpegView> {
 
     Widget child;
     if (_frame != null) {
-      // contain, not cover: these are wide cameras, and cover crops a wide
-      // frame to fill a taller tile. Wrapped in the stream's real aspect ratio
+      // contain by default, not cover: these are wide cameras, and cover crops
+      // a wide frame to fill a taller tile (Fill asks for exactly that). Wrapped in the stream's real aspect ratio
       // (once known) so the whole feed shows at the largest size that fits,
       // instead of floating in a tall letterbox. Jose, 2026-10-07.
+      final cover = widget.fit == BoxFit.cover;
       Widget image = Image.memory(
         _frame!,
         gaplessPlayback: true, // no flash between frames
-        fit: BoxFit.contain,
+        fit: widget.fit,
+        // Fill (cover) fills the whole box and crops; the box is the bounds.
+        width: cover ? double.infinity : null,
+        height: cover ? double.infinity : null,
         // A corrupt frame must not crash the tile; show the offline mark
         // and let the next frame recover.
         errorBuilder: (_, _, _) => Center(
@@ -237,7 +253,7 @@ class _MjpegViewState extends State<_MjpegView> {
               color: scheme.onSurfaceVariant),
         ),
       );
-      if (_aspect != null) {
+      if (_aspect != null && !cover) {
         image = AspectRatio(aspectRatio: _aspect!, child: image);
       }
       child = Center(child: image);

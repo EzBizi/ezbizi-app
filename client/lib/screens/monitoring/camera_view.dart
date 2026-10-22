@@ -17,12 +17,26 @@ import 'camera_view_stub.dart'
 /// and without the conditional import `dart:ui_web`/`package:web` would
 /// still need to compile for non-web targets, which they cannot.
 class CameraImageView extends StatelessWidget {
-  const CameraImageView({super.key, required this.url});
+  const CameraImageView({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.contain,
+    this.onAspect,
+  });
 
   final String url;
 
+  /// [BoxFit.contain] shows the whole frame; [BoxFit.cover] fills the box and
+  /// crops what does not fit (the full-screen view's Fill).
+  final BoxFit fit;
+
+  /// The stream's width / height, once its first frame says so — what lets a
+  /// host size its box to the feed instead of drawing bands around it.
+  final ValueChanged<double>? onAspect;
+
   @override
-  Widget build(BuildContext context) => impl.buildCameraImage(url);
+  Widget build(BuildContext context) =>
+      impl.buildCameraImage(url, fit: fit, onAspect: onAspect);
 }
 
 /// A camera's live HLS stream, inline — a DOM `<video>` fed by the vendored
