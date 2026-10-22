@@ -18,6 +18,7 @@ class VersionHistory {
       date: '22 Oct 2026',
       items: [
         'Integrations › Email: the Sending server card shows again, connected or not, so a company can connect the mail server its invoices and messages go out from. If it cannot be shown, it says why.',
+        'Project Management dashboard: a busy day opens from its tile instead of failing, both lists show the technician and the job\'s tags, and Recently paid has its own colour. On web, Linux and Mac, Today follows your computer\'s time zone; elsewhere it follows the company\'s.',
       ],
     ),
     VersionRelease(
