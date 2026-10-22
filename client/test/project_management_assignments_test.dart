@@ -215,4 +215,15 @@ void main() {
     );
     expect(find.byKey(const ValueKey('pm-timeline-close')), findsWidgets);
   });
+
+  testWidgets('a saved Technician reads the open job timeline again', (
+    tester,
+  ) async {
+    final server = await open(tester, const Size(1440, 1000));
+    await tester.tap(find.byKey(const ValueKey('pm-assign-job-t-1')));
+    await tester.pumpAndSettle();
+    final before = server.get('/jobs/project-management').length;
+    await pickPat(tester);
+    expect(server.get('/jobs/project-management').length, before + 1);
+  });
 }

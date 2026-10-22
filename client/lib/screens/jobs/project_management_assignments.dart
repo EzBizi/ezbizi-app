@@ -239,6 +239,10 @@ class _ProjectManagementAssignmentsState
     final data = res.data;
     if (data is Map) put({...task, ...data.cast<String, dynamic>()});
     setState(() => _cardError = null);
+    // The card's Technician and its job's sync both ways (Jose): the open
+    // timeline is read again so it shows the job's new technician.
+    final job = task['job'] is Map ? '${(task['job'] as Map)['id']}' : null;
+    if (job != null && job == _openId) _openJob(job);
   }
 
   /// The job whose timeline is open, and its Project Management row.
