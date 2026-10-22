@@ -24,7 +24,7 @@ import 'project_management_tab.dart' show PmTimeline, pmTechnician;
 ///
 /// One stage at a time from `jobs/project-management/jobs`, 100 to a page,
 /// newest change first: In progress, Waiting review, Ready to schedule,
-/// Scheduled, Done waiting payment ‖ Completed, Cancelled, each with its
+/// Scheduled and Done, waiting payment, each with its
 /// count from `meta.counts` under the same filters. A stage `meta.mapped`
 /// leaves out is not set up, and says where to set it up.
 ///

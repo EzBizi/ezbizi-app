@@ -489,35 +489,106 @@ class _ProjectManagementAssignmentsState
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return DecoratedBox(
-      key: ValueKey('pm-assign-col-$name'),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: Text(
-              '$name · ${cards.length}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+    return DragTarget<Map<String, dynamic>>(
+      onWillAcceptWithDetails: (d) => _groupOf(d.data) != name,
+      onAcceptWithDetails: (d) => _drop(d.data, name),
+      builder: (context, hovering, _) => DecoratedBox(
+        key: ValueKey('pm-assign-col-$name'),
+        decoration: BoxDecoration(
+          color: hovering.isEmpty
+              ? scheme.surfaceContainerLow
+              : scheme.primaryContainer,
+          border: Border.all(
+            color: hovering.isEmpty ? scheme.outlineVariant : scheme.primary,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+              child: Text(
+                '$name · ${cards.length}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-              children: [for (final c in cards) _card(context, c)],
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                children: [for (final c in cards) _draggable(context, c)],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
+
+  /// The column a card is in now.
+  String _groupOf(Map<String, dynamic> task) {
+    for (final (name, cards) in pmGroupCards([task], _boards)) {
+      if (cards.isNotEmpty) return name;
+    }
+    return pmToAssign;
+  }
+
+  /// A card dropped on a technician's column: the Technician value on the
+  /// card's own board that names them, through the same PATCH as the field.
+  void _drop(Map<String, dynamic> task, String name) {
+    final board = _boards['${task['board_id']}'];
+    final column = pmTechnicianOf(board);
+    if (column == null || board?['can_edit'] != true) return;
+    Object? value;
+    var found = name == pmToAssign;
+    if (!found) {
+      for (final o in column.options) {
+        if (o.label.trim() == name) {
+          value = o.id;
+          found = true;
+        }
+      }
+      for (final e in pmBoardPeople(board).entries) {
+        if (!found && e.value.trim() == name) {
+          value = e.key;
+          found = true;
+        }
+      }
+    }
+    if (!found) {
+      setState(
+        () => _cardError = (
+          '${task['id']}',
+          '$name is not a Technician choice on this board.',
+        ),
+      );
+      return;
+    }
+    _setTechnician(task, column, value);
+  }
+
+  /// A card that can be dragged to another column where its board allows
+  /// edits; the in-card field stays for keyboards and phones.
+  Widget _draggable(BuildContext context, Map<String, dynamic> task) {
+    final card = _card(context, task);
+    final board = _boards['${task['board_id']}'];
+    if (board?['can_edit'] != true || pmTechnicianOf(board) == null) {
+      return card;
+    }
+    return Draggable<Map<String, dynamic>>(
+      key: ValueKey('pm-assign-drag-${task['id']}'),
+      data: task,
+      feedback: Material(
+        elevation: 6,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(width: _columnWidth - 16, child: card),
+      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: card),
+      child: card,
     );
   }
 

@@ -128,7 +128,7 @@ void main() {
     ) async {
       await open(tester, const Size(1440, 1000), tab);
       expect(
-        find.text('Showing jobs in every status · Brightway'),
+        find.text('Showing jobs in any status · Brightway'),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('pm-scope-change')));
@@ -139,4 +139,28 @@ void main() {
       );
     });
   }
+
+  testWidgets(
+    'a branch is named "Company · Branch" on the scope line and Settings',
+    (tester) async {
+      final server = PmServer(
+        serviceAreas: areas,
+        meOverride: me,
+        scope: const {
+          'type': 'franchise',
+          'id': 'fr-1',
+          'label': 'Main',
+          'path': ['Company A', 'Main'],
+        },
+      );
+      await server.pump(tester, size: const Size(1440, 1000));
+      expect(
+        find.text('Showing jobs in any status · Company A · Main'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('pm-scope-change')));
+      await tester.pumpAndSettle();
+      expect(find.text('Set for Company A · Main'), findsOneWidget);
+    },
+  );
 }

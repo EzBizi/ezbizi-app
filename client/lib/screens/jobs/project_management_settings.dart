@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
@@ -43,6 +44,15 @@ Map<String, String> pmPlaceScope(Me me) => {
   'scope_type': me.scope.type,
   'scope_id': me.scope.id ?? me.organization.id,
 };
+
+/// The place being viewed as every Project Management tab names it: a
+/// branch as "Company · Branch" (branch_options.dart), else its own name.
+String pmPlaceLabel(Me me) {
+  final s = me.scope;
+  return s.type == 'franchise' && s.id != null
+      ? branchLabelOf(me, s.id!, s.label)
+      : s.label;
+}
 
 /// One stage's rule, as `jobs.pm_stages` holds it.
 @immutable
@@ -343,7 +353,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
           padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 16),
           children: [
             Text(
-              'Set for ${_me.scope.label}',
+              'Set for ${pmPlaceLabel(_me)}',
               key: const ValueKey('pm-set-place'),
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
