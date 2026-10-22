@@ -407,6 +407,30 @@ class FinancialsController extends Controller
         return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::repairSplit($from, $to, $place));
     }
 
+    /**
+     * The weekly repair-team report per place: each technician's hours, cost
+     * lines, shares ($ and %), jobs and jobs amount, and the teams combined.
+     * week_start gives a seven-day week; from/to any period up to two months.
+     */
+    public function repairReport(Request $request): JsonResponse
+    {
+        // Validated here, not in the helper, so the staff bot's catalogue can read the names.
+        $input = $request->validate([
+            'week_start' => ['required_without:from', 'nullable', 'date_format:Y-m-d'],
+            'from' => ['required_without:week_start', 'nullable', 'date_format:Y-m-d'],
+            'to' => ['required_with:from', 'nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
+        ]);
+        if (! empty($input['week_start'])) {
+            $input['from'] = $input['week_start'];
+            $input['to'] = now()->parse($input['week_start'])->addDays(6)->toDateString();
+        }
+        $company = $input['company_id'] ?? null;
+
+        return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::repairReport($from, $to, $place, $company));
+    }
+
     /** Refunds, disputes and returned checks per place and technician, from the mapped sources. */
     public function refunds(Request $request): JsonResponse
     {

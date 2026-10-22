@@ -47,6 +47,7 @@ class FinancialSource extends Model implements StatesRetention
         'amount', 'date', 'company', 'technician', 'team', 'job_number', 'category', 'kind', 'status', 'reason', 'total', 'jobs',
         // Repair team sheets.
         'parts', 'tech_share', 'external_share', 'contracting', 'employee', 'helper', 'gas', 'operation', 'hours',
+        'job_amount', 'approval',
     ];
 
     protected function casts(): array
