@@ -1989,6 +1989,9 @@ Route::prefix('v1')
         Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');
         // Used typed into Total / Used / Left (Jose, 2026-10-21); UserPolicy::editPtoUsed.
         Route::put('hr/people/{user}/pto/used', [HrPeopleController::class, 'setPtoUsed']);
+        // The days themselves (Jose, 2026-10-22: "it can be different days").
+        Route::post('hr/people/{user}/pto/days', [HrPeopleController::class, 'addPtoDays']);
+        Route::delete('hr/people/{user}/pto/days/{day}', [HrPeopleController::class, 'removePtoDay']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
