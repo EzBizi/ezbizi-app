@@ -1419,8 +1419,8 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 /*
-                 * Dashboard | Reports | Table | Jobs | Logs | Settings (UI
-                 * queue 127, 139, 141). All are the one grant the module
+                 * Dashboard | Reports | Table | Jobs | Assignments | Logs |
+                 * Settings (UI queue 127, 139, 141, 143). All are the one grant the module
                  * always was: naming `view` mints no permission, so no role
                  * gains or loses a tab, and Settings' writes stay the settings
                  * API's to refuse. Reports and Table read Financials' repair
@@ -1433,6 +1433,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('reports', 'Reports', action: 'view'),
                     new TabDefinition('table', 'Table', action: 'view'),
                     new TabDefinition('pending', 'Jobs', action: 'view'),
+                    // Assignments (design 143): Action 1's Task Board cards by technician, the same grant.
+                    new TabDefinition('assignments', 'Assignments', action: 'view'),
                     // Logs (UI queue 139): what rules and people changed, the same grant.
                     new TabDefinition('logs', 'Logs', action: 'view'),
                     new TabDefinition('settings', 'Settings', action: 'view'),

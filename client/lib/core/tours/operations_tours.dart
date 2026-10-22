@@ -980,6 +980,26 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  // Design 143: the cards Action 1 made when a payment arrived.
+  'project_management/Assignments': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-assign-filters',
+        title: 'Search',
+        body:
+            'Job, customer, address, phone or tech. The line above says which '
+            'jobs Project Management shows; Change opens Settings.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-assign-board',
+        title: 'By technician',
+        body:
+            'Task Board cards the payment rule made on every branch board, '
+            'grouped by their Technician column, To assign first.',
+      ),
+    ],
+  ),
   'project_management/Jobs': Tour(
     version: 1,
     steps: [
@@ -987,8 +1007,8 @@ const Map<String, Tour> operationsTours = {
         anchor: 'tour-pm-jobs-stages',
         title: 'Stage',
         body:
-            'In progress to Done, waiting payment, then Completed and '
-            'Cancelled, each with how many jobs are in it.',
+            'In progress to Done, waiting payment, each with how many jobs '
+            'are in it.',
       ),
       TourStep(
         anchor: 'tour-pm-jobs-filters',

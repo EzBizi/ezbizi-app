@@ -38,7 +38,11 @@ class ProjectManagementDashboard extends StatefulWidget {
     this.generation = 0,
     this.onOpenJobs,
     this.onOpenSettings,
+    this.scope = const PmScope(),
   });
+
+  /// Which jobs these numbers are about, as the scope line says.
+  final PmScope scope;
 
   final ApiClient api;
   final Session session;
@@ -227,52 +231,33 @@ class _ProjectManagementDashboardState
   }
 
   Widget _controls(BuildContext context, {required bool phone}) {
-    final search = SizedBox(
-      width: phone ? double.infinity : 300,
-      child: TextField(
+    return PmToolbar(
+      above: PmScopeLine(scope: widget.scope, onChange: widget.onOpenSettings),
+      search: TextField(
         key: const ValueKey('pm-dash-search'),
         controller: _search,
         onChanged: _typed,
         decoration: const InputDecoration(
           isDense: true,
           prefixIcon: Icon(Icons.search, size: 18),
-          hintText: 'Search jobs',
+          hintText: pmJobSearchHint,
         ),
       ),
-    );
-    final areas = widget.areas.isEmpty
-        ? null
-        : PmAreaChips(
-            key: const ValueKey('tour-pm-dash-areas'),
-            areas: widget.areas,
-            selected: _filters.areaId,
-            franchiseName: _franchise,
-            onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
-          );
-    final flags = PmFlagChips(
-      key: const ValueKey('tour-pm-dash-flags'),
-      filters: _filters,
-      onChanged: _refilter,
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (phone) ...[
-          ?areas,
-          if (areas != null) const SizedBox(height: 8),
-          search,
-        ] else
-          Row(
-            children: [
-              Expanded(child: areas ?? const SizedBox.shrink()),
-              const SizedBox(width: 12),
-              search,
-            ],
-          ),
-        const SizedBox(height: 8),
-        flags,
-      ],
+      areas: widget.areas.isEmpty
+          ? null
+          : PmAreaChips(
+              key: const ValueKey('tour-pm-dash-areas'),
+              areas: widget.areas,
+              selected: _filters.areaId,
+              allLabel: 'All areas',
+              franchiseName: _franchise,
+              onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
+            ),
+      filters: PmFlagChips(
+        key: const ValueKey('tour-pm-dash-flags'),
+        filters: _filters,
+        onChanged: _refilter,
+      ),
     );
   }
 
