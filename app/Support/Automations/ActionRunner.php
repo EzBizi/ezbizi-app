@@ -3559,6 +3559,18 @@ class ActionRunner
                 $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,
                     'position' => (int) $board->groups()->max('position') + 1]);
             }
+            // A blank value writes nothing; a column the board lacks is made, a
+            // person's column when the value is somebody on the board (Jose,
+            // 2026-10-22: "tag the Technician in another column").
+            $values = array_filter($values, fn ($v) => trim((string) $v) !== '');
+            $people = null;
+            foreach ($values as $name => $value) {
+                if (! $board->columns()->get()->contains(fn ($c) => mb_strtolower(trim($c->name)) === mb_strtolower(trim((string) $name)))) {
+                    $people ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+                    $board->columns()->create(['organization_id' => $board->organization_id, 'name' => trim((string) $name),
+                        'type' => in_array($value, $people, true) ? 'person' : 'text', 'position' => (int) $board->columns()->max('position') + 1]);
+                }
+            }
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
                 'assignee_user_ids' => $owners->map->getKey()->all(),
