@@ -877,6 +877,7 @@ Route::prefix('v1')
         // Before the resource, or 'project-management' reads as a job id.
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
+        Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board

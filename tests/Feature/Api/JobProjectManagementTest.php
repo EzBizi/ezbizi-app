@@ -136,6 +136,57 @@ class JobProjectManagementTest extends TestCase
         $this->assertSame([$job], $get('filter=recently_paid&from=2026-10-10&to=2026-10-10'));
     }
 
+    /** Jose, 2026-10-22: what EzBizi itself did, and a Workiz step EzBizi caused named as EzBizi's. */
+    public function test_logs_list_ezbizis_own_changes_and_the_timeline_credits_the_rule(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $job) {
+            $model = Job::query()->findOrFail($job);
+            $emit = function (string $key, array $payload, string $at) use ($model) {
+                $e = app(\App\Support\Automations\EventEmitter::class)->emit($key, $model, $payload);
+                $e->forceFill(['occurred_at' => $at])->save();
+
+                return $e;
+            };
+            $rule = \App\Models\Automation::create(['organization_id' => $alpha['org']->id, 'name' => 'Payment on DPA',
+                'trigger_key' => 'job.payment_received', 'is_active' => true]);
+            $actions = [['type' => 'workiz.job_update', 'status' => 'Submitted', 'tags' => 'Deposit Received']];
+            $version = \App\Models\AutomationVersion::create(['organization_id' => $alpha['org']->id, 'automation_id' => $rule->id,
+                'version' => 1, 'conditions' => null, 'actions' => $actions, 'created_at' => now()]);
+            $run = fn (string $at, string $status, array $extra) => \App\Models\AutomationRun::create($extra + [
+                'automation_id' => $rule->id, 'automation_version_id' => $version->id, 'status' => $status,
+                'event_id' => $emit('job.payment_received', [], $at)->id, 'started_at' => $at, 'finished_at' => Carbon::parse($at)->addSeconds(5),
+                'actions_snapshot' => $actions, 'action_count' => 1]);
+
+            $run('2026-10-14 10:00:00', 'succeeded', ['action_results' => [['type' => 'workiz.job_update', 'ok' => true, 'state' => 'succeeded',
+                'detail' => 'Set status Submitted; tags Deposit Received in Workiz.']]]);
+            // Workiz's sync reports the change ten minutes later, as its own.
+            $emit('job.status_changed', ['before' => ['status' => 'dpa'], 'after' => ['status' => 'submitted']], '2026-10-14 10:10:00');
+            $run('2026-10-15 09:00:00', 'skipped', ['action_results' => [], 'condition_trace' => ['type' => 'all', 'matched' => false,
+                'children' => [['type' => 'condition', 'field' => 'status', 'op' => 'eq', 'actual' => 'scheduled', 'expected' => 'dpa', 'matched' => false]]]]);
+            $emit('job.updated', ['before' => ['title' => 'A job'], 'after' => ['title' => 'Renamed']], '2026-10-15 11:00:00')
+                ->forceFill(['actor_id' => $alpha['admin']->id, 'actor_label' => 'Ada Admin <ada@example.test>'])->save();
+        });
+
+        $row = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?ids[]='.$job)->assertOk()->json('data.0.timeline'))
+            ->firstWhere('to', 'submitted');
+        $this->assertSame('EzBizi · Payment on DPA', $row['by']);
+
+        $logs = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC')
+            ->assertOk()->json('data');
+        $this->assertSame(['manual', 'skipped', 'succeeded'], array_column($logs, 'outcome'));
+        $this->assertSame('Ada Admin', $logs[0]['by']);
+        $this->assertSame('Title: "Renamed"', $logs[0]['changes'][0]['detail']);
+        $this->assertSame('Status was Scheduled; the rule wants Done, pending approval.', $logs[1]['reason']);
+        $this->assertSame(['Payment on DPA', 'J-1', 'A Customer'], [$logs[2]['rule']['name'], $logs[2]['job']['number'], $logs[2]['job']['customer']]);
+        $this->assertSame('Set status Submitted; tags Deposit Received in Workiz.', $logs[2]['changes'][0]['detail']);
+
+        $this->assertSame(['skipped'], array_column($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&outcome=skipped')->json('data'), 'outcome'));
+    }
+
     public function test_filters_by_stage_branch_and_days(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
