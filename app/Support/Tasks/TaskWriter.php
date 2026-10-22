@@ -421,6 +421,10 @@ class TaskWriter
                     $ok = in_array($value, $assignable, true);
                     $why = 'That person cannot be named on this board.';
                     $row['value_user_id'] = $value;
+                    // A card's Technician is its job's (Jose, 2026-10-22): the job takes it first, or nothing is saved.
+                    if ($ok && \App\Support\Jobs\JobTechnicianSync::isTechnicianColumn($column)) {
+                        \App\Support\Jobs\JobTechnicianSync::toJob($task, $value, $key);
+                    }
                     break;
                 case 'checkbox':
                     $ok = in_array($value, [true, false, 0, 1, '0', '1'], true);
