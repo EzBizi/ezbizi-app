@@ -6,11 +6,14 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
+import '../core/branch_options.dart';
+import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
+import '../widgets/scope_choice_field.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
 import 'hr/work_hours_reports_tab.dart';
@@ -52,6 +55,8 @@ class AutomationBuilder extends StatefulWidget {
     this.editing,
     this.canEditHoursReports = false,
     this.onTry,
+    this.companies = const [],
+    this.branches = const [],
   });
 
   final ApiClient api;
@@ -72,6 +77,11 @@ class AutomationBuilder extends StatefulWidget {
   /// Rehearses the SAVED rule against a recent real event, beside Save
   /// (UI queue 73). Null for a rule not saved yet: there is nothing to try.
   final VoidCallback? onTry;
+
+  /// The person's reach, from `/me`, which names and groups the catalogue's
+  /// places in "Where it applies" (UI queue 129).
+  final List<CompanySummary> companies;
+  final List<FranchiseSummary> branches;
 
   @override
   State<AutomationBuilder> createState() => _AutomationBuilderState();
@@ -2160,21 +2170,33 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   }
 
   /// Where it applies, as the end of the sentence.
+  ///
+  /// Named the way the picker names it: "Entire organization", "Ace Air Duct
+  /// (all branches)", "Ace Air Duct · Main".
   String get _placeWords {
     final place = _place;
-    if (place == null) return 'Where you are now';
+    if (place == null) return 'In the view you are in now';
+
+    final named = scopeLabel(place, widget.companies, widget.branches);
+    if (named != null) return named;
 
     for (final known in widget.catalogue.places) {
       if (known.key == place) return known.label;
     }
 
-    if (place == 'organization') return 'Everywhere in this business';
-
     final label = (widget.editing?['scope'] as Map?)?['label'];
     return label is String && label.isNotEmpty ? label : 'In one place';
   }
 
-  /// "When …, only if …, then …. Everywhere in this business." Each part is
+  /// The catalogue's places as the scope picker takes them, optionally only
+  /// one kind.
+  Map<String, String> _placesOf({String? kind}) => {
+    for (final place in widget.catalogue.places)
+      if (kind == null || place.key.startsWith('$kind:'))
+        place.key: place.label,
+  };
+
+  /// "When …, only if …, then …. Entire organization." Each part is
   /// the way back to the step that wrote it.
   Widget _sentence(BuildContext context) {
     final theme = Theme.of(context);
@@ -2271,7 +2293,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Where it applies: $_placeWords',
+            // Not "Where it applies: In the view…", which says where twice.
+            _place == null
+                ? 'Where it applies: the view you are in now'
+                : 'Where it applies: $_placeWords',
             style: theme.textTheme.bodyMedium,
           ),
         ),
@@ -2551,7 +2576,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ),
           if (widget.catalogue.places.isNotEmpty) ...[
             const SizedBox(height: 12),
-            SearchPickerField<String>(
+            ScopeChoiceField(
+              key: const ValueKey('automation-where-it-applies'),
               value: _place,
               label: 'Where it applies',
               // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
@@ -2560,15 +2586,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               // reach is decided by a chip in the top bar that nobody would
               // ever connect to it.
               helperText: _place == null
-                  ? 'Left alone, it applies where you are now. A company also '
-                        'covers everything under it.'
-                  : 'A company covers its franchises, its sub companies and '
+                  ? 'Left alone, it applies in the view you are in now. A '
+                        'company covers all its branches.'
+                  : 'A company covers its branches, its sub companies and '
                         'theirs.',
               helperMaxLines: 3,
-              options: [
-                for (final place in widget.catalogue.places)
-                  SearchOption(value: place.key, label: place.label),
-              ],
+              places: _placesOf(),
+              companies: widget.companies,
+              branches: widget.branches,
+              fallbackLabel: _placeWords,
               onChanged: _busy ? null : (value) => setState(() => _place = value),
             ),
           ],
@@ -3914,22 +3940,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     ),
             )
           else if (definition.parameters[i].kind == 'franchise')
-            SearchPickerField<String>(
+            // Branches only, so each company is a header above its own.
+            ScopeChoiceField(
               value: row.parameter(definition.parameters[i].key).text.isEmpty
                   ? null
                   : row.parameter(definition.parameters[i].key).text,
               label: definition.parameters[i].label,
               isDense: true,
-              options: [
-                for (final place in widget.catalogue.places)
-                  if (place.key.startsWith('franchise:'))
-                    SearchOption<String>(value: place.key, label: place.label),
-              ],
+              places: _placesOf(kind: 'franchise'),
+              companies: widget.companies,
+              branches: widget.branches,
               onChanged: _busy
                   ? null
                   : (chosen) => setState(
                       () => row.parameter(definition.parameters[i].key).text =
-                          chosen ?? '',
+                          chosen,
                     ),
             )
           else if (definition.parameters[i].kind == 'training')

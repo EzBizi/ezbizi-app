@@ -903,6 +903,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       formats: _formats,
       editing: _editing,
       canEditHoursReports: widget.session.me?.can('work_hours.manage') ?? false,
+      companies: widget.session.me?.companies ?? const [],
+      branches: widget.session.me?.franchises ?? const [],
       onTry: switch (_editing) {
         final saved? => () => _test(saved),
         null => null,
