@@ -2965,11 +2965,15 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 137 · Email › Inbox like Gmail — **sent 2026-10-22** (`docs/previews/email-inbox-gmail-layouts.html`)
+
+Jose: "overhaul the Email - Inbox UI, something more akin to how gmail looks". Also fixes seen in his screenshot: one email to two inboxes shows twice, snippets show &lt; / &#39; entities, the not-connected notice shows on All inboxes, 65 inboxes in one flat list. **1** (recommended) Gmail desktop: rail with Compose, Inbox/Starred/Snoozed/Sent/Drafts/All mail with counts, inboxes grouped by company (collapsible, unread counts, Not connected group last); rounded search; Primary / Leads & customers / Notifications tabs; one-line rows (tick, star, sender + thread count, inbox tag, subject + grey snippet, time; bold unread; hover Archive/Read/Snooze); one row per thread across inboxes; reading pane right (or below/off) with Reply/Reply all/Forward and the from-inbox, customer/lead link; entities decoded; bulk Archive/Mark read/Move. **2** no pane, open over the list. **3** today cleaned up. Phone **4** (recommended: Gmail app layout) / **5** / **6**.
+
 ### 136 · Work Hours › Daily approval — **sent 2026-10-22** (`docs/previews/work-hours-daily-approval-layouts.html`)
 
 Clock In asked (Shoval via Jose; Ohio GM approves technicians' hours daily). **1** (recommended) one day (yesterday default, ‹ › + picker), branch picker, summary Waiting/Approved/No-shows, "Approve all N waiting"; table: person+role, shifts text, a day bar with the schedule dashed, worked vs scheduled, Late/Early chips, status (Waiting / Approved by X · T / Adjusted), Adjust + Approve; no clock-in on a scheduled day = "Didn't clock in"; Adjust side pane edits in/out per shift, reason required, original kept and shown struck through with who/why; adjusting does not approve. **2** cards. **3** team timeline. Phone **4** (recommended: cards with Adjust/Approve, Approve all) / **5** / **6**.
 
-### 135 · HR › Payroll tab + onboarding Employer/Employee tabs — **sent 2026-10-22** (`docs/previews/hr-payroll-layouts.html`)
+### 135 · HR › Payroll tab + onboarding Employer/Employee tabs — **sent 2026-10-22 — no answer in 10 min, went with 1, 4 and 7** (`docs/previews/hr-payroll-layouts.html`)
 
 HR asked (server 3bd574538). **1** (recommended) Jose's columns (Employee, Salary amount+period+since, W2 Signed/Not signed + download, Start, Terminated, Role, Contract + status + download); filters W2 segment, Role, Contract, search, "Show people who left" (left ones last, dimmed); Salary opens a side pane: new amount, period, basis, effective date, note → adds to history (listed); no hr.pay.view = "—", no hr.pay.edit = read-only. **2** inline cell edit. **3** cards. Phone **4** (recommended: cards + filters, person full screen) / **5** / **6**. **7** onboarding form: Employer · N left | Employee · N left tabs, opens on the reader's side; "either" questions on the reader's own tab marked "either of you can answer"; the other side read-only with "Waiting on <name>".
 
