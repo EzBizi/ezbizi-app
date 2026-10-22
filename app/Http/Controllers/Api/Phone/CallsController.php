@@ -292,14 +292,15 @@ class CallsController extends Controller
             });
         }
 
-        // Paged by default. With no per_page this returned every call the
-        // organization ever had; 50 is what the other paged lists default to.
-        // `page` is additive and the response shape is unchanged.
+        // No per_page is every call, on purpose: Records builds its threads
+        // from the whole list. With per_page, capped at 200, and `page` steps
+        // through it.
         $perPage = (int) $request->query('per_page', 0);
-        $perPage = $perPage > 0 ? min($perPage, 200) : 50;
-        $page = max(1, (int) $request->query('page', 1));
+        if ($perPage > 0) {
+            $query->forPage(max(1, (int) $request->query('page', 1)), min($perPage, 200));
+        }
 
-        $calls = $query->forPage($page, $perPage)->get();
+        $calls = $query->get();
 
         $customerIds = $this->customerIdsByPhone($calls);
         $customerNames = $this->customerNamesById(array_values($customerIds));

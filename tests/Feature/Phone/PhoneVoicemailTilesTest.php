@@ -181,16 +181,16 @@ class PhoneVoicemailTilesTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.tiles.all', 4);
     }
 
-    /** With no per_page the list is a page of 50, newest first, not every call ever made. */
-    public function test_the_call_list_pages_at_fifty_by_default(): void
+    /** With no per_page the list is every call (Records threads from it); per_page and page page it. */
+    public function test_the_call_list_is_whole_by_default_and_pages_when_asked(): void
     {
         [$t, $number, $desk] = $this->line();
         for ($i = 0; $i < 52; $i++) {
             $this->message($t, $number, ['voicemail' => false]);
         }
 
-        $this->assertCount(50, $this->signedInAs($desk)->getJson('/api/v1/phone/calls')->assertOk()->json('data'));
-        $this->assertCount(2, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?page=2')->assertOk()->json('data'));
-        $this->assertCount(52, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?per_page=200')->assertOk()->json('data'));
+        $this->assertCount(52, $this->signedInAs($desk)->getJson('/api/v1/phone/calls')->assertOk()->json('data'));
+        $this->assertCount(50, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?per_page=50')->assertOk()->json('data'));
+        $this->assertCount(2, $this->signedInAs($desk)->getJson('/api/v1/phone/calls?per_page=50&page=2')->assertOk()->json('data'));
     }
 }
