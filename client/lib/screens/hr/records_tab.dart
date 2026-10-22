@@ -1206,6 +1206,7 @@ class _PersonRecordState extends State<_PersonRecord> {
               : '${days(pto['left'] as num?)} left of '
                     '${days(pto['total'] as num?)}, '
                     '${days(pto['used'] as num?)} used'
+                    '${((pto['expired'] as num?) ?? 0) > 0 ? ' · ${days(pto['expired'] as num?)} expired' : ''}'
                     '${pto['resets_on'] == null ? '' : ' · resets ${widget.formats.formatDate(DateTime.parse(pto['resets_on'].toString()))}'}.',
           key: const Key('pto-balance'),
           style: theme.textTheme.titleMedium,
