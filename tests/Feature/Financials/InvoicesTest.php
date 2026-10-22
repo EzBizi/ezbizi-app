@@ -111,9 +111,10 @@ class InvoicesTest extends TestCase
         $as->patchJson("/api/v1/invoices/{$invoice['id']}", ['notes' => 'x'])->assertStatus(422);
         $as->postJson("/api/v1/invoices/{$invoice['id']}/void", ['reason' => 'x'])->assertStatus(422);
 
-        $this->inTenant($t['org'], fn () => $this->assertSame(
+        // Canonicalized: the three events can land in the same second, so occurred_at cannot order them.
+        $this->inTenant($t['org'], fn () => $this->assertEqualsCanonicalizing(
             ['invoice.approved', 'invoice.sent', 'invoice.paid'],
-            AutomationEvent::query()->where('event_key', 'like', 'invoice.%')->orderBy('occurred_at')->pluck('event_key')->all(),
+            AutomationEvent::query()->where('event_key', 'like', 'invoice.%')->pluck('event_key')->all(),
         ));
     }
 
