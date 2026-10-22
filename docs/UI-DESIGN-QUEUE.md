@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 138 · Leads › Manage › Office hours — **sent 2026-10-22** (`docs/previews/leads-office-hours-layouts.html`)
+
+Google API session asked (9f578924e; nobody had set hours, every place ran Mon–Fri 8–5 ET). **1** (recommended) a table of places (org, companies, branches indented) with an hours summary, time zone, inherited values in grey italic "from X", an "own" chip; a yellow banner counting places on the default; Edit side pane: per-day Closed switch + open/close times, Copy Monday to weekdays, time zone picker, "Use X's hours/zone again"; "Used by N auto-replies" with rule links. **2** week grid. **3** cards. Phone **4** (recommended: nested cards, edit full screen) / **5** / **6**.
+
 ### 137 · Email › Inbox like Gmail — **sent 2026-10-22 — no answer in 10 min, went with 1 and 4** (`docs/previews/email-inbox-gmail-layouts.html`)
 
 Jose: "overhaul the Email - Inbox UI, something more akin to how gmail looks". Also fixes seen in his screenshot: one email to two inboxes shows twice, snippets show &lt; / &#39; entities, the not-connected notice shows on All inboxes, 65 inboxes in one flat list. **1** (recommended) Gmail desktop: rail with Compose, Inbox/Starred/Snoozed/Sent/Drafts/All mail with counts, inboxes grouped by company (collapsible, unread counts, Not connected group last); rounded search; Primary / Leads & customers / Notifications tabs; one-line rows (tick, star, sender + thread count, inbox tag, subject + grey snippet, time; bold unread; hover Archive/Read/Snooze); one row per thread across inboxes; reading pane right (or below/off) with Reply/Reply all/Forward and the from-inbox, customer/lead link; entities decoded; bulk Archive/Mark read/Move. **2** no pane, open over the list. **3** today cleaned up. Phone **4** (recommended: Gmail app layout) / **5** / **6**.
