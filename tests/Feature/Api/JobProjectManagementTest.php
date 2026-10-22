@@ -202,6 +202,8 @@ class JobProjectManagementTest extends TestCase
         // Every chip's count on every call (UI/UX, 2026-10-22).
         $this->assertSame(['recently_paid' => 1, 'waiting' => 0, 'partial' => 1, 'full' => 0, 'closed' => 0],
             $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?stage=full&from=2026-10-10&to=2026-10-10')->json('meta.counts'));
+        $this->assertSame(['recently_paid' => 0, 'waiting' => 0, 'partial' => 0, 'full' => 0, 'closed' => 0],
+            $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?min_days=25&from=2026-10-10&to=2026-10-10')->json('meta.counts'), 'min_days counts too');
         $this->assertSame([], $get('stage=full'));
         $this->assertSame([$job], $get('franchise_id='.$alpha['franchise']->id));
         $this->assertSame([], $get('min_days=25'));
