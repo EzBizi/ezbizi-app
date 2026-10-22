@@ -85,6 +85,37 @@ final class ProjectStages
         });
     }
 
+    /**
+     * Only the jobs Project Management is about, each branch by its own place's
+     * jobs.pm_scope_statuses (empty: any) and jobs.pm_partly_paid_only (Shoval,
+     * 2026-10-22: "Only open jobs ... and only ones that are partly paid deposits").
+     *
+     * @param  iterable<\App\Models\Franchise>  $franchises
+     */
+    public static function inScope(Builder $q, iterable $franchises, \App\Support\Settings\SettingsResolver $settings): Builder
+    {
+        $groups = [];
+        foreach ($franchises as $f) {
+            $statuses = array_values(array_map('strval', (array) $settings->get('jobs.pm_scope_statuses', $f)));
+            $partly = (bool) $settings->get('jobs.pm_partly_paid_only', $f);
+            $sig = json_encode([$statuses, $partly]);
+            $groups[$sig] ??= ['ids' => [], 'statuses' => $statuses, 'partly' => $partly];
+            $groups[$sig]['ids'][] = $f->getKey();
+        }
+        if ($groups === []) {
+            return $q->whereRaw('1 = 0');
+        }
+
+        return $q->where(function ($any) use ($groups) {
+            foreach ($groups as $g) {
+                $any->orWhere(fn ($one) => $one->whereIn('franchise_id', $g['ids'])
+                    ->when($g['statuses'] !== [], fn ($q) => $q->whereIn('status', $g['statuses']))
+                    ->when($g['partly'], fn ($q) => self::due($q)->whereIn('id', WorkizRecord::query()->where('type', 'payment')
+                        ->where('status', 'succeeded')->whereNotNull('job_id')->select('job_id'))));
+            }
+        });
+    }
+
     /** Jobs with money still due (Workiz's amount due, until EzBizi invoices its own). */
     public static function due(Builder $q): Builder
     {
