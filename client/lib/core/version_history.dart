@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0477',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management: the Dashboard\'s lists and Recently paid show their jobs even when no statuses are being watched. Before, emptying the watched statuses left every list blank while the tiles still counted. Recently paid lists every job paid in the dates, watched or not.',
+        'Work Hours › Daily approval: a manager approves or adjusts each day\'s clock-ins, with a morning reminder, and an adjustment keeps what it was before. It is off until switched on for a place, and approving needs the Approve daily hours permission.',
+        'Work Hours › Paid Time Off: an Expired tile, and the number expired on each person\'s row, when days were lost at a reset.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0476',
       date: '22 Oct 2026',
       items: [
