@@ -118,6 +118,15 @@ class TaskStepsTest extends TestCase
             $this->assertSame([$t['admin']->id, $second->id], $task->owners()->pluck('user_id')->all());
             $this->assertSame($group->id, $task->group_id);
             $this->assertSame('+13055550123', $task->values()->where('column_id', $col->id)->value('value_text'));
+
+            // A group the board lacks is made there, once (PM Action 1, 2026-10-22).
+            foreach ([1, 2] as $_) {
+                $again = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Paid', 'assignee' => 'user:'.$t['admin']->id,
+                    'group' => 'Project Management'], $event, null, automation: $rule);
+                $this->assertTrue($again['ok'], $again['detail']);
+            }
+            $made = $board->groups()->where('name', 'Project Management')->sole();
+            $this->assertSame(2, Task::query()->where('group_id', $made->id)->count());
         });
     }
 
