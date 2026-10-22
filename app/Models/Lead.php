@@ -710,7 +710,27 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     {
         $url = $this->brandSetting('leads.booking_url');
 
-        return $url === '' ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
+        // A page that can offer no day is worse than no link (Bar, 2026-10-21:
+        // garage-door customers were sent links with no availability).
+        return $url === '' || ! $this->bookableOnline() ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
+    }
+
+    /**
+     * The booking widget can offer this lead a day: a service area with
+     * capacity in the lead's company or the one above it - the widget's own
+     * lookup (Web\EnquiriesController::bookingArea) - covering their ZIP when
+     * it is known.
+     */
+    private function bookableOnline(): bool
+    {
+        $companies = array_values(array_filter([$this->company_id, $this->company?->parent_company_id]));
+        $zips = ServiceAreaZip::query()->whereIn('franchise_id', Franchise::query()->whereIn('company_id', $companies)->select('id'));
+        if (preg_match('/^[0-9]{5}/', (string) $this->postal_code, $m) === 1) {
+            $zips->where('zip', $m[0]);
+        }
+
+        return ServiceArea::query()->whereIn('id', $zips->select('service_area_id'))->get()
+            ->contains(fn (ServiceArea $area) => \App\Support\Scheduling\Openings::hasCapacity($area));
     }
 
     /**
