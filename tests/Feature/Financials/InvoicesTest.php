@@ -8,6 +8,7 @@ use App\Models\AutomationEvent;
 use App\Models\FinancialSource;
 use App\Models\Franchise;
 use App\Models\Invoice;
+use App\Support\Invoices\InvoiceChannels;
 use App\Support\Mail\MailDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -148,5 +149,43 @@ class InvoicesTest extends TestCase
         $beta = $this->provisionTenant('Beta');
         $this->assertSame([], $this->signedInAs($beta['admin'])->getJson('/api/v1/invoices')->json('data'));
         $this->signedInAs($beta['admin'])->getJson("/api/v1/invoices/{$invoice['id']}")->assertNotFound();
+    }
+
+    public function test_a_chosen_channel_that_is_not_set_up_refuses_the_send_and_the_link_opens_the_pdf(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        $t = $this->provisionTenant('Alpha');
+        $this->mailCanSend($t);
+        $as = $this->signedInAs($t['admin']);
+        $col = $as->putJson('/api/v1/invoices/charge-columns', ['columns' => [['name' => 'Royalties']]])->json('data.0.id');
+        $sheet = $as->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30'])->json('data');
+        $as->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 150000]]]])->assertOk();
+        $invoice = $as->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.made.0');
+        $as->patchJson("/api/v1/invoices/{$invoice['id']}", ['bill_to_emails' => ['f1@branch.test'], 'bill_to_phones' => ['+12035550111']])->assertOk()
+            ->assertJsonPath('data.bill_to.phones', ['+12035550111']);
+        $as->postJson("/api/v1/invoices/{$invoice['id']}/approve")->assertOk();
+
+        $as->patchJson("/api/v1/settings/invoicing.channels?scope_type=organization&scope_id={$t['org']->id}", ['value' => ['email', 'sms', 'whatsapp']])->assertOk();
+        $settings = collect($as->getJson('/api/v1/invoices/settings')->assertOk()->json('data.channels'))->keyBy('channel');
+        $this->assertTrue($settings['email']['ready']);
+        $this->assertSame('This company has no number that can send texts yet. Add one in Phone.', $settings['sms']['why_not']);
+        $this->assertSame('Connect a WhatsApp number in Integrations.', $settings['whatsapp']['why_not']);
+        $preview = $as->postJson('/api/v1/invoices/send-preview', ['ids' => [$invoice['id']]])->json('data');
+        $this->assertSame(['email', 'sms', 'whatsapp'], array_column($preview['channels'], 'channel'));
+        $this->assertSame(['+12035550111'], $preview['channels'][1]['to']);
+
+        // Nothing goes out by half: email is ready, texting is not.
+        $as->postJson('/api/v1/invoices/send', ['ids' => [$invoice['id']]])->assertStatus(422)
+            ->assertJsonPath('errors.send.0', 'This company has no number that can send texts yet. Add one in Phone.');
+        $this->assertSame([], $this->sent);
+
+        // Email only: it goes, and the texted link opens the PDF without signing in; a bare URL does not.
+        $as->patchJson("/api/v1/settings/invoicing.channels?scope_type=organization&scope_id={$t['org']->id}", ['value' => ['email']])->assertOk();
+        $as->postJson('/api/v1/invoices/send', ['ids' => [$invoice['id']]])->assertOk();
+        $this->assertSame(['f1@branch.test'], $this->sent[0]['to']);
+        $link = $this->inTenant($t['org'], fn () => app(InvoiceChannels::class)->link(Invoice::find($invoice['id'])));
+        $this->app['auth']->forgetGuards();
+        $this->get($link)->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->get("/api/v1/invoices/shared/{$invoice['id']}")->assertForbidden();
     }
 }

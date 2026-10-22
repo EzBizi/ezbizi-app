@@ -510,6 +510,36 @@ class SettingRegistry
                 editPermission: 'invoices.edit',
                 help: 'Addresses for the summary email, separated by commas. Used when invoices go as one summary.',
             ),
+            new SettingDefinition(
+                key: 'invoicing.channels', label: 'Invoices are sent by',
+                type: SettingDefinition::TYPE_JSON, default: ['email'],
+                editPermission: 'invoices.edit',
+                help: 'Any of email, sms and whatsapp. Each goes through what this business connected: its mailbox, a number of its own that can text, its WhatsApp.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.mailbox_id', label: 'Mailbox invoices are emailed from',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                editPermission: 'invoices.edit',
+                help: 'Empty: the company\'s connected mailbox, else the organization\'s, else its own mail server.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.sms_from', label: 'Number invoices are texted from',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                editPermission: 'invoices.edit',
+                help: 'One of this business\'s own numbers that can send texts.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.whatsapp_from', label: 'WhatsApp number invoices go from',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                editPermission: 'invoices.edit',
+                help: 'Needed only when the business has more than one WhatsApp number.',
+            ),
+            new SettingDefinition(
+                key: 'invoicing.whatsapp_template', label: 'WhatsApp template for invoices',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                editPermission: 'invoices.edit',
+                help: 'An approved template taking four values: the business name, the invoice number, the total and a link to the PDF.',
+            ),
         ];
     }
 
