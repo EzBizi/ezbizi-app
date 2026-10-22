@@ -1,3 +1,4 @@
+import '../../core/branch_options.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -132,7 +133,8 @@ mixin _RepairPlace<T extends StatefulWidget> on State<T> {
         value: place,
         isDense: true,
         options: [
-          for (final b in branches) SearchOption(value: b.id, label: b.name),
+          for (final b in branchOptionsInView(me, activeOnly: false))
+            SearchOption(value: b.id, label: b.label),
         ],
         onChanged: (v) {
           if (v == null || v == place) return;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
+import '../../widgets/search_picker.dart';
 
 /// Project Management's stages (design 141, option 1), in the Jobs tab's
 /// order: the five open ones, then Completed and Cancelled. The keys are the
@@ -226,11 +227,14 @@ class PmBar extends StatelessWidget {
 }
 
 /// A review reason's colour in the stacked bars and their legend: the
-/// palette's hues by position, "No reason" neutral.
+/// palette's hues by position.
+///
+/// "No reason" was the neutral grey, the family of the bar's own track. On
+/// 2026-10-22 every live job waiting review had no reason, so every bar read
+/// as an empty grey track (Jose: "bars dont have any collors?"). It takes a
+/// hue like the rest; [none] is kept for callers.
 Color pmReasonColour(BuildContext context, int index, {bool none = false}) =>
-    none
-    ? ToneColours.of(context, Tone.neutral).ink
-    : PersonColours.hue(context, index).ink;
+    PersonColours.hue(context, index).ink;
 
 /// "Not set up", with the way to Settings, for a stage `jobs.pm_stages`
 /// does not map.
@@ -279,7 +283,13 @@ class PmNotSetUp extends StatelessWidget {
   }
 }
 
-/// The service area chips, All first, as one row. A name two franchises
+/// How many service areas still show as chips; more become one picker.
+const pmAreaChipLimit = 6;
+
+const _all = '__all__';
+
+/// The service area chips, All first, wrapped onto lines; past
+/// [pmAreaChipLimit] areas, one searchable picker instead. A name two franchises
 /// share carries its franchise.
 class PmAreaChips extends StatelessWidget {
   const PmAreaChips({
@@ -322,14 +332,40 @@ class PmAreaChips extends StatelessWidget {
       ),
     );
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          chip(null, allLabel),
-          for (final a in areas) chip(a.id, label(a)),
-        ],
-      ),
+    // Jose, 2026-10-22, "overflow issue as well": dozens of areas in one row
+    // ran past the screen edge and under the search field. Past
+    // [pmAreaChipLimit] the chips become one picker; up to it they wrap.
+    if (areas.length > pmAreaChipLimit) {
+      final byLabel = [for (final a in areas) (id: a.id, text: label(a))]
+        ..sort((x, y) => x.text.toLowerCase().compareTo(y.text.toLowerCase()));
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: SearchPickerField<String>(
+            key: const ValueKey('pm-area-picker'),
+            value: selected ?? _all,
+            label: 'Service area',
+            isDense: true,
+            options: [
+              SearchOption(value: _all, label: allLabel),
+              for (final a in byLabel) SearchOption(value: a.id, label: a.text),
+            ],
+            onChanged: (v) {
+              final id = v == null || v == _all ? null : v;
+              if (id != selected) onSelected(id);
+            },
+          ),
+        ),
+      );
+    }
+
+    return Wrap(
+      runSpacing: 6,
+      children: [
+        chip(null, allLabel),
+        for (final a in areas) chip(a.id, label(a)),
+      ],
     );
   }
 }

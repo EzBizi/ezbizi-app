@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/branch_options.dart';
 import '../../core/api_client.dart';
 import '../../core/job_money.dart';
 import '../../core/numbers.dart';
@@ -184,8 +185,9 @@ class _ProjectManagementDashboardState
   ];
 
   String _franchise(String id) {
+    // "Company · Branch" (branch_options.dart): two companies' "Main".
     for (final f in _me.franchises) {
-      if (f.id == id) return f.name;
+      if (f.id == id) return branchLabelOf(_me, id, f.name);
     }
     return '';
   }
@@ -622,6 +624,45 @@ class _ProjectManagementDashboardState
     );
   }
 
+  /// Cards showing every row instead of their first few.
+  final _expanded = <String>{};
+
+  /// The first [cap] of [rows], then a line that shows the rest in place.
+  /// Jose, 2026-10-22: Waiting to start listed 377 jobs ("endless").
+  Widget _capped(
+    BuildContext context, {
+    required String card,
+    required List<Widget> rows,
+    required int cap,
+    required String Function(int more) moreLine,
+    List<Widget> footer = const [],
+  }) {
+    final open = _expanded.contains(card);
+    final more = rows.length - cap;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...(open || more <= 0 ? rows : rows.take(cap)),
+        if (more > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: ValueKey('pm-$card-more'),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: () => setState(
+                () => open ? _expanded.remove(card) : _expanded.add(card),
+              ),
+              child: Text(open ? 'Show fewer' : moreLine(more)),
+            ),
+          ),
+        ...footer,
+      ],
+    );
+  }
+
   Widget _none(BuildContext context, String text, Key key) => Text(
     text,
     key: key,
@@ -684,23 +725,30 @@ class _ProjectManagementDashboardState
     final legend = _reasons(review['by_reason']);
     final theme = Theme.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    // Each bar is its location against the largest one, so the bars compare;
+    // its segments are the reasons, in the legend's colours.
+    final most = locations
+        .map((l) => _int(l['count']) ?? 0)
+        .fold<int>(0, (a, b) => b > a ? b : a);
+
+    return _capped(
+      context,
+      card: 'review',
+      cap: 12,
+      moreLine: (n) => 'Show all · $n more',
+      rows: [
         for (final l in locations)
           _barRow(
             context,
             key: ValueKey('pm-review-loc-${l['name']}'),
             name: '${l['name']}',
             count: _int(l['count']) ?? 0,
-            bar: (_int(l['count']) ?? 0) == 0
+            bar: most == 0
                 ? const PmBar(segments: [])
-                : _reasonBar(
-                    context,
-                    _reasons(l['by_reason']),
-                    _int(l['count'])!,
-                  ),
+                : _reasonBar(context, _reasons(l['by_reason']), most),
           ),
+      ],
+      footer: [
         const SizedBox(height: 4),
         Wrap(
           key: const ValueKey('pm-review-legend'),
@@ -742,9 +790,20 @@ class _ProjectManagementDashboardState
       );
     }
     final scheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    final limit = _int(rows.first['limit']) ?? 0;
+    final over = rows.where((r) => (_int(r['days']) ?? 0) >= limit).length;
+    return _capped(
+      context,
+      card: 'start',
+      cap: 10,
+      moreLine: (n) {
+        // Longest first, so the hidden rows over the limit are the rest.
+        final hidden = (over - 10).clamp(0, n);
+        return hidden == n
+            ? 'and $n more over the $limit-day limit · See all'
+            : 'and $n more, $hidden over the $limit-day limit · See all';
+      },
+      rows: [
         for (final r in rows)
           Builder(
             builder: (context) {
@@ -752,6 +811,10 @@ class _ProjectManagementDashboardState
               final id = '${job['id']}';
               final days = _int(r['days']) ?? 0;
               final limit = _int(r['limit']) ?? 0;
+              final name = [
+                '${job['number'] ?? ''}',
+                '${job['customer'] ?? ''}',
+              ].where((s) => s.isNotEmpty).join(' · ');
               return InkWell(
                 key: ValueKey('pm-start-$id'),
                 borderRadius: BorderRadius.circular(6),
@@ -761,17 +824,19 @@ class _ProjectManagementDashboardState
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 110,
-                        child: Text(
-                          [
-                            '${job['number'] ?? ''}',
-                            '${job['customer'] ?? ''}',
-                          ].where((s) => s.isNotEmpty).join(' '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: scheme.onSurface,
+                        width: 150,
+                        // Cut short at this width: the whole name on hover.
+                        child: Tooltip(
+                          key: ValueKey('pm-start-name-$id'),
+                          message: name,
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface,
+                            ),
                           ),
                         ),
                       ),
@@ -801,25 +866,44 @@ class _ProjectManagementDashboardState
     if (teams.isEmpty) {
       return _none(context, 'No open jobs.', const ValueKey('pm-team-none'));
     }
-    final most = teams
+    // "Unassigned" (1,334 live on 2026-10-22, against 26 for the busiest
+    // team) set the scale and left every team's bar near empty. Teams scale
+    // against the busiest team; Unassigned goes last, muted, capped at full.
+    final named = [
+      for (final t in teams)
+        if (t['name'] != 'Unassigned') t,
+    ];
+    final unassigned = [
+      for (final t in teams)
+        if (t['name'] == 'Unassigned') t,
+    ];
+    final most = (named.isEmpty ? teams : named)
         .map((t) => _int(t['count']) ?? 0)
         .fold<int>(0, (a, b) => b > a ? b : a);
     final colour = PersonColours.hue(context, 0).ink;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final t in teams)
-          _barRow(
-            context,
-            key: ValueKey('pm-team-${t['name']}'),
-            name: '${t['name']}',
-            count: _int(t['count']) ?? 0,
-            bar: PmBar(
-              segments: [
-                if (most > 0) ((_int(t['count']) ?? 0) / most, colour),
-              ],
-            ),
-          ),
+    final muted = ToneColours.of(context, Tone.neutral).ink;
+    Widget row(Map<String, dynamic> t, Color c) {
+      final n = _int(t['count']) ?? 0;
+      return _barRow(
+        context,
+        key: ValueKey('pm-team-${t['name']}'),
+        name: '${t['name']}',
+        count: n,
+        bar: PmBar(
+          key: ValueKey('pm-team-bar-${t['name']}'),
+          segments: [if (most > 0) ((n / most).clamp(0.0, 1.0), c)],
+        ),
+      );
+    }
+
+    return _capped(
+      context,
+      card: 'teams',
+      cap: 12,
+      moreLine: (n) => 'Show all · $n more',
+      rows: [
+        for (final t in named) row(t, colour),
+        for (final t in unassigned) row(t, muted),
       ],
     );
   }

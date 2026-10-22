@@ -1,3 +1,4 @@
+import '../../core/branch_options.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -213,7 +214,18 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
     if (!mounted || !response.ok) return;
     setState(() {
       _franchises = (response.body['data'] as List? ?? const [])
-          .cast<Map<String, dynamic>>();
+          .cast<Map<String, dynamic>>()
+          .map(
+            (f) => {
+              ...f,
+              'label': branchLabelOf(
+                widget.session.me,
+                f['id'] as String?,
+                f['name'] as String? ?? '',
+              ),
+            },
+          )
+          .toList();
     });
   }
 
@@ -610,7 +622,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
         ),
         for (final f in _franchises)
           ChoiceChip(
-            label: Text(f['name'] as String? ?? ''),
+            label: Text(f['label'] as String? ?? f['name'] as String? ?? ''),
             selected: _franchiseId == f['id'],
             onSelected: (_) => _pickFranchise(f['id'] as String),
           ),
