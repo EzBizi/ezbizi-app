@@ -191,6 +191,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Widget _search() => TextField(
+        key: const Key('sales-search'),
         decoration: const InputDecoration(
           prefixIcon: Icon(Icons.search),
           hintText: 'Search name, phone, job #',

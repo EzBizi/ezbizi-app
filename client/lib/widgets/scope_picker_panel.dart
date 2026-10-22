@@ -167,6 +167,7 @@ class _ScopePickerPanelState extends State<ScopePickerPanel> {
         children: [
           if (searchable) ...[
             TextField(
+              key: const Key('scope-picker-search'),
               controller: _search,
               focusNode: _focus,
               autofocus: true,

@@ -337,6 +337,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextFormField(
+          key: const Key('email-directory-search'),
           controller: _directorySearch,
           autofocus: true,
           enabled: !_saving,

@@ -432,6 +432,7 @@ class _AssignPaneState extends State<_AssignPane> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
+              key: const Key('training-assign-people-search'),
               controller: _search,
               decoration: const InputDecoration(
                 labelText: 'Search by name or email',

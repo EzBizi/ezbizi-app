@@ -169,6 +169,7 @@ class _CataloguePickerState extends State<CataloguePicker> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
+          key: const Key('catalogue-picker-search'),
           controller: _search,
           decoration: InputDecoration(
             isDense: true,
