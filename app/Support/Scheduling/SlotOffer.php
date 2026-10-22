@@ -2,7 +2,7 @@
 
 namespace App\Support\Scheduling;
 
-use App\Models\ServiceAreaZip;
+use App\Models\ServiceArea;
 use Carbon\CarbonImmutable;
 
 /**
@@ -28,7 +28,7 @@ final class SlotOffer
     public function for(string $zip, CarbonImmutable $from, ?array $window = null): ?array
     {
         $zip = substr(str_pad(preg_replace('/\D+/', '', $zip), 5, '0', STR_PAD_LEFT), 0, 5);
-        $area = ServiceAreaZip::query()->where('zip', $zip)->first()?->serviceArea;
+        $area = ServiceArea::forZip($zip);
         if ($area === null || ! Openings::hasCapacity($area)) {
             return null;
         }
