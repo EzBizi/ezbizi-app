@@ -147,7 +147,7 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'automations/Build': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-automations-name',
@@ -182,17 +182,25 @@ const Map<String, Tour> assistTours = {
       ),
       TourStep(
         anchor: 'automation-builder-try',
-        title: 'Try the saved rule',
+        title: 'Try it',
         body:
-            'A rehearsal against the most recent real event. Nothing is '
-            'actually done.',
+            'Runs the rule as it is now on the newest real event and shows '
+            'what each step would do. Nothing is sent or changed.',
       ),
       TourStep(
         anchor: 'tour-automations-save',
-        title: 'Save',
+        title: 'Save switched off',
         body:
-            'A new rule is saved switched off, to turn on once you have read '
-            'it back. Saving an edit makes it the live version.',
+            'Keeps the rule without it running yet. Saving an edit to a rule '
+            'that is on makes it the live version.',
+      ),
+      TourStep(
+        anchor: 'tour-automations-turn-on',
+        title: 'Turn on',
+        body:
+            'Saves it and starts it on new events. It stays greyed out while '
+            'the checklist above has anything marked ✕.',
+        since: 2,
       ),
     ],
   ),
