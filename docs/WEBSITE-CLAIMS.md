@@ -3008,3 +3008,34 @@ no 7th publisher. **The YouTube `sent` row is Triplex Group (formerly A1-Group),
 org.** "Newly built and not yet proven" stays for one checkable reason: an unaudited YouTube
 API project's uploads are locked to private. Invert only when that video is confirmed public. Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461.
+
+## 2026-10-22: 0.0.0472-0.0.0483 live, invoices now on production, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0483 at `f72e0f361`. All 10 live `www/` files
+byte-identical to the repo, including the new **`/support/`** (`67d6a48ce`, another
+session, for the Google Workspace Marketplace listing: email, postal address, in-app
+Suggestions; in the sitemap). Its "Suggestions inside the app" line was left alone: the
+Suggestions row's hold was about selling it, and the feature is live and pinned
+(`client/lib/main.dart`); this is a support route, not a capability claim.
+
+- **Invoices are LIVE** (`5e98257a` is an ancestor of `f72e0f361`). The do-not-list
+  verdict still holds: gate terms, no real-tenant row count yet (asked in `0135`).
+  `InvoiceChannels` sends through what the company connected — its mailbox (Google /
+  Microsoft) or own mail server (`throughTenantProvider`, its first caller), its own
+  Twilio number, its WhatsApp number — so no new processor. `/privacy/`'s "Those leave
+  from EzBizi's own address" is about automation mail (`ActionRunner` still
+  `platformForTenant`) and stays true.
+- **Open, not a falsehood: `/privacy/` "Google user data" covers only Google Ads.**
+  Gmail (`gmail.readonly` / `.modify` / `.send`) and, since 0.0.0475, Workspace admin
+  (`admin.directory.user.readonly`, `gmail.settings.basic`) are Google user data too,
+  and mailbox contents can reach xAI via AppAsk. Nothing on the page is false, but a
+  Workspace Marketplace reviewer will look for a Gmail / Limited Use disclosure. Not
+  written by this run: a Limited Use attestation is a legal claim to Google about the
+  xAI path, which is Jose's call. Mail is read live (no message store; only
+  seen/dealt/snooze markers), which is the fact a section would start from.
+- Email reply/forward, PTO, Payroll API, Project Management, search bars, Scheduling
+  catch-all areas: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
+directory 1.10.0 (widgets row stays held). Counts asked as `0135`.
