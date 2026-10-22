@@ -66,6 +66,41 @@ class TaskStepsTest extends TestCase
         });
     }
 
+    /** Jose, 2026-10-22: the card filled from the job, owned by EzBizi, the technician tagged in a column. */
+    public function test_a_job_card_carries_the_jobs_client_and_technician_and_no_owner(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $tech = $this->userWithRole($t, 'Tech', ['tasks.view']);
+
+        $this->inTenant($t['org'], function () use ($t, $tech) {
+            $customer = \App\Models\Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1',
+                'name' => 'Ann Client', 'phone' => '+13055550123', 'address_line1' => '1 Main St', 'city' => 'Columbus']);
+            $job = \App\Models\Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-7',
+                'title' => 'Chimney Sweep', 'status' => 'scheduled', 'currency' => 'USD', 'performed_by_user_id' => $tech->id]);
+            $rule = Automation::create(['name' => 'R', 'trigger_key' => 'job.payment_received', 'is_active' => false, 'created_by' => $t['admin']->id]);
+            $event = new AutomationEvent(['event_key' => 'job.payment_received', 'payload' => [],
+                'scope_snapshot' => ['type' => 'franchise', 'id' => $t['franchise']->id, 'company_chain' => []]]);
+
+            $made = app(ActionRunner::class)->run(['type' => 'task.create', 'title' => 'Paid: {{number}}', 'group' => 'Project Management',
+                'values' => ['Client name' => '{{customer_name}}', 'Phone number' => '{{customer_phone}}',
+                    'Description' => '{{title}} · {{customer_address}}', 'Technician' => '{{technician_user_id}}', 'Empty' => '{{nothing}}']],
+                $event, $job, automation: $rule);
+
+            $this->assertTrue($made['ok'], $made['detail']);
+            $task = Task::query()->sole();
+            $this->assertSame([], $task->owners()->pluck('user_id')->all(), 'EzBizi made it; no person owns it');
+            $cols = \App\Models\TaskColumn::query()->where('board_id', $task->board_id)->pluck('type', 'name');
+            $this->assertSame('person', $cols['Technician']);
+            $this->assertArrayNotHasKey('Empty', $cols->all(), 'a blank value makes no column');
+            $value = fn (string $name) => $task->values()->where('column_id', \App\Models\TaskColumn::query()
+                ->where('board_id', $task->board_id)->where('name', $name)->value('id'))->first();
+            $this->assertSame('Ann Client', $value('Client name')->value_text);
+            $this->assertSame('+13055550123', $value('Phone number')->value_text);
+            $this->assertSame('Chimney Sweep · 1 Main St, Columbus', $value('Description')->value_text);
+            $this->assertSame($tech->id, $value('Technician')->value_user_id);
+        });
+    }
+
     public function test_a_rule_moves_a_task_to_a_group_on_its_own_board_only(): void
     {
         $t = $this->provisionTenant('Alpha');
