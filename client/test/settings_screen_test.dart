@@ -107,9 +107,7 @@ void main() {
 
   // UI queue 104, design 7: a place setting is found by address, not typed
   // as coordinates.
-  testWidgets('a location setting is set by finding an address', (
-    tester,
-  ) async {
+  testWidgets('a location setting is set by finding an address', (tester) async {
     Object? written;
     await _pumpSettings(tester, (request) async {
       final path = request.url.path;
@@ -125,8 +123,7 @@ void main() {
           },
         });
       }
-      if (path.endsWith('/field/map/tiles'))
-        return _json({'message': 'No.'}, 403);
+      if (path.endsWith('/field/map/tiles')) return _json({'message': 'No.'}, 403);
       final row = _row(
         'time_clock.geofence_center',
         label: 'Clock-in zone centre',
@@ -134,14 +131,9 @@ void main() {
         value: written ?? '',
         source: _source('organization', 'org-1', 'Everdoors', false),
       );
-      if (request.method == 'GET')
-        return _json({
-          'data': [row],
-        });
+      if (request.method == 'GET') return _json({'data': [row]});
       written = (jsonDecode(request.body) as Map)['value'];
-      return _json({
-        'data': {...row, 'value': written},
-      });
+      return _json({'data': {...row, 'value': written}});
     });
 
     await tester.tap(find.byKey(const ValueKey('location-setting')));
@@ -1146,7 +1138,6 @@ void main() {
   /// The card belongs to this screen, so this is about it BEING here and
   /// obeying the screen's rules. What it says about inheritance, verification
   /// and refusals is test/sending_identity_test.dart.
-
   // Jose, 2026-10-22: "the work hours setting could be separated in their
   // respective categories". A row's `section` is a sub-heading in its group.
   group('sections', () {
