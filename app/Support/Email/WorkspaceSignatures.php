@@ -65,13 +65,13 @@ final class WorkspaceSignatures
     {
         $links = GoogleWorkspacePerson::query()
             ->where('google_workspace_connection_id', $connection->getKey())
-            ->with('user:id,name,email')
+            ->with('user:id,name,email,first_name,last_name,phone')
             ->get()
             ->keyBy('address');
 
         $byEmail = User::query()
             ->where('is_active', true)
-            ->get(['id', 'name', 'email'])
+            ->get(['id', 'name', 'email', 'first_name', 'last_name', 'phone'])
             ->keyBy(fn (User $u) => mb_strtolower((string) $u->email));
 
         return array_map(function (array $person) use ($links, $byEmail) {
@@ -88,6 +88,9 @@ final class WorkspaceSignatures
             return [
                 ...$person,
                 'user'                  => $user ? ['id' => $user->id, 'name' => $user->name] : null,
+                // What a signature would be filled with, and where each value
+                // comes from: EzBizi's person first, the directory second.
+                'fills'                 => $this->fills($person, $user),
                 'link'                  => $how,
                 'has_own_signature'     => $row?->signature_html !== null,
                 'signature_applied_at'  => $row?->signature_applied_at?->toIso8601String(),
@@ -122,6 +125,27 @@ final class WorkspaceSignatures
     public function sourceFor(GoogleWorkspaceConnection $connection, string $address): ?string
     {
         return $this->row($connection, $address)?->signature_html ?? $connection->signature_template;
+    }
+
+    /**
+     * @param  array<string, mixed>  $person
+     * @return array<string, array{value: string, from: ?string}>
+     */
+    public function fills(array $person, ?User $user): array
+    {
+        $parts = preg_split('/\s+/', trim((string) ($person['name'] ?? '')), 2) ?: [];
+        $pick  = fn (?string $ours, ?string $theirs) => filled($ours)
+            ? ['value' => (string) $ours, 'from' => 'ezbizi']
+            : (filled($theirs) ? ['value' => (string) $theirs, 'from' => 'google'] : ['value' => '', 'from' => null]);
+
+        return [
+            'name'       => $pick($user?->name, $person['name'] ?? null),
+            'first_name' => $pick($user?->first_name, ($person['first_name'] ?? '') ?: ($parts[0] ?? null)),
+            'last_name'  => $pick($user?->last_name, ($person['last_name'] ?? '') ?: ($parts[1] ?? null)),
+            'phone'      => $pick($user?->phone, $person['phone'] ?? null),
+            'title'      => $pick(null, $person['title'] ?? null),
+            'email'      => ['value' => (string) ($person['address'] ?? ''), 'from' => 'google'],
+        ];
     }
 
     /**

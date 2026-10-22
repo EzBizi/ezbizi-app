@@ -222,6 +222,39 @@ const Map<String, Tour> assistTours = {
       ),
     ],
   ),
+  'email/Google Workspace': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-email-workspace-cards',
+        title: 'Your Workspaces',
+        body:
+            'One card for each connected Google Workspace, with whether its '
+            'signatures can be set. With only one, it opens straight away.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-template',
+        title: 'Signature template',
+        body:
+            'Everyone without their own signature gets this. The chips put in '
+            "each person's name, title or phone, and the preview shows it for "
+            'the person you pick.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-search',
+        title: 'Find a person',
+        body: 'Type a name, address or title to narrow the people.',
+      ),
+      TourStep(
+        anchor: 'tour-email-workspace-people',
+        title: 'People',
+        body:
+            'Who each address is in EzBizi and which signature they get. Tick '
+            'people to set theirs together, or click one to see what Gmail '
+            'has now.',
+      ),
+    ],
+  ),
   'services/Settings': Tour(
     version: 1,
     steps: [

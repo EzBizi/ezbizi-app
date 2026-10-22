@@ -3407,6 +3407,7 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('inbox', 'Inbox'),
                     new TabDefinition('settings', 'Settings'),
+                    new TabDefinition('workspace', 'Google Workspace'),
                 ],
                 triggers: [
                     /*

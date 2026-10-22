@@ -39,7 +39,15 @@ class GoogleWorkspaceManagementController extends Controller
         $this->assertMayManage($request);
 
         return response()->json(['data' => $this->workspace->connectionsVisibleTo($request->user())
-            ->map(fn (GoogleWorkspaceConnection $c) => $this->card($c))
+            ->map(function (GoogleWorkspaceConnection $c) {
+                try {
+                    $count = count($this->signatures->people($c));
+                } catch (GoogleWorkspaceRefused) {
+                    $count = null;   // the directory could not be read just now
+                }
+
+                return [...$this->card($c), 'people_count' => $count];
+            })
             ->values()]);
     }
 
