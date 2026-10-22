@@ -3,113 +3,109 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
-import '../../core/branch_options.dart';
-import '../../core/device_zone.dart';
 import '../../core/job_money.dart';
-import '../../core/job_status.dart';
 import '../../core/numbers.dart';
 import '../../core/session.dart';
-import '../../core/timestamps.dart';
+import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
-import '../../widgets/date_range_picker.dart' show DateSpan, dayKey;
-import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
-import 'pm_range.dart';
-import 'project_management_tab.dart'
-    show PmTags, PmTimeline, pmTags, pmTechnician;
+import 'pm_stages.dart';
+import 'project_management_reports.dart' show pmAverageCost, pmYmd;
 
-/// Project Management › Dashboard (UI queue 127, option 1 and phone 4).
+/// Project Management › Dashboard (design 141, option 1; phone 4).
 ///
-/// What happened in a date range, today by default: five numbers from
-/// `jobs/project-management/stats`, each a count and the jobs behind it. A
-/// number lists its jobs underneath (`?ids[]=`), with what happened, when and
-/// who did it; a job opens the same timeline Pending Jobs uses. On a phone the
-/// list and the timeline each take the screen, with a back arrow.
+/// Where every job stands now, from `jobs/project-management/overview`:
+/// service area chips, search and the flag chips on top; eight tiles in
+/// pipeline order, each opening Jobs on its stage under the same filters;
+/// then waiting review by location and reason, paid jobs waiting to start as
+/// countdown bars, and jobs per team. Money only when the server sends it
+/// (Jobs Financials). A stage `jobs.pm_stages` leaves unmapped says so, with
+/// the way to Settings.
+///
+/// The overview takes no dates, so there is no range control: its numbers
+/// are the jobs as they stand.
 class ProjectManagementDashboard extends StatefulWidget {
   const ProjectManagementDashboard({
     super.key,
     required this.api,
     required this.session,
-    this.statuses = const [],
-    this.cancelled,
+    this.areas = const [],
+    this.stoppedDays,
     this.labels,
-    this.now,
     this.generation = 0,
-    this.zone = deviceZone,
+    this.onOpenJobs,
+    this.onOpenSettings,
   });
 
   final ApiClient api;
   final Session session;
 
-  /// The organization's status words, for the timeline. Empty: humanized keys.
-  final List<JobStatus> statuses;
+  /// The service areas in reach, for the chips. Empty: no chips.
+  final List<PmArea> areas;
 
-  /// `jobs.cancelled_statuses`, null until read. Empty: Cancelled counts
-  /// nothing, and says why.
-  final List<String>? cancelled;
+  /// `jobs.pm_stopped_days`, for the Stopped tile's words. Null: not read.
+  final int? stoppedDays;
 
   final JobLabels? labels;
-  final DateTime Function()? now;
 
   /// Bumped by the screen when Settings changes: count again.
   final int generation;
 
-  /// The device's IANA zone, sent so the server's days are the viewer's.
-  final String? Function() zone;
+  /// A tile's tap: Jobs on that stage, under these filters.
+  final void Function(String stage, PmFilters filters)? onOpenJobs;
+  final VoidCallback? onOpenSettings;
 
   @override
   State<ProjectManagementDashboard> createState() =>
       _ProjectManagementDashboardState();
 }
 
-/// The five numbers, in the order drawn: the stats key and its name.
+/// The eight tiles in pipeline order: the key, its name, and the stage a tap
+/// opens (null: it opens nothing).
 const pmDashboardTiles = [
-  ('payments', 'Paid'),
-  ('status_changes', 'Status changes'),
-  ('tag_changes', 'Tag changes'),
-  ('cancellations', 'Cancelled'),
-  ('deadlines_due', 'Deadlines due'),
+  ('waiting_review', 'Waiting review', 'waiting_review'),
+  ('in_progress', 'In progress', 'in_progress'),
+  ('ready_to_schedule', 'Ready to schedule', 'ready_to_schedule'),
+  ('scheduled', 'Scheduled', 'scheduled'),
+  ('done_waiting_payment', 'Done, waiting payment', 'done_waiting_payment'),
+  ('pipeline', 'Pipeline (open projects)', 'in_progress'),
+  ('avg_production_cost', 'Avg production cost', null),
+  ('stopped_payments', 'Stopped payments', 'done_waiting_payment'),
 ];
 
 class _ProjectManagementDashboardState
     extends State<ProjectManagementDashboard> {
-  /// Below this the drill-down and the timeline each take the screen.
   static const _phoneBelow = 600.0;
 
-  /// Every tile the same size, whatever it says (a fixed height, and widths
-  /// shared out equally).
-  static const _tileHeight = 116.0;
+  /// Every tile the same size, whatever it says.
+  static const _tileHeight = 132.0;
 
-  PmRange _range = PmRange.today;
-  String? _branch;
-
+  PmFilters _filters = const PmFilters();
   bool _loading = true;
   String? _error;
-  Map<String, dynamic>? _stats;
+  Map<String, dynamic>? _data;
   int _request = 0;
 
-  /// The chosen tile, its jobs, and the one open.
-  String? _tile;
-  bool _listing = false;
-  String? _listError;
-  List<Map<String, dynamic>> _rows = const [];
-  int _listRequest = 0;
-  String? _openId;
+  /// Financials' average production cost, while the overview's is null.
+  int? _avgCost;
 
-  /// Search in a tile's jobs (Jose: every list gets one), sent as `q` 400 ms
-  /// after typing. The server matches it as Pending Jobs' search does.
   final _search = TextEditingController();
   Timer? _typing;
 
   Me get _me => widget.session.me!;
-  DateTime _now() => (widget.now ?? DateTime.now)();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(ProjectManagementDashboard old) {
+    super.didUpdateWidget(old);
+    if (old.generation != widget.generation) _load();
   }
 
   @override
@@ -119,53 +115,30 @@ class _ProjectManagementDashboardState
     super.dispose();
   }
 
-  void _typed(String _) {
+  void _typed(String text) {
     _typing?.cancel();
     _typing = Timer(const Duration(milliseconds: 400), () {
-      if (_tile != null) _list(_tile!);
+      _refilter(_filters.copyWith(q: text));
     });
   }
 
-  Widget _searchField({required EdgeInsets padding}) => Padding(
-    padding: padding,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: SizedBox(
-        width: 300,
-        child: TextField(
-          key: const ValueKey('pm-dash-search'),
-          controller: _search,
-          onChanged: _typed,
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Job, customer, address, phone or tech',
-          ),
-        ),
-      ),
-    ),
-  );
-
-  @override
-  void didUpdateWidget(ProjectManagementDashboard old) {
-    super.didUpdateWidget(old);
-    if (old.generation != widget.generation) _load();
+  void _refilter(PmFilters next) {
+    if (next == _filters) return;
+    setState(() => _filters = next);
+    _load();
   }
 
   Future<void> _load() async {
     final request = ++_request;
     setState(() {
-      _loading = _stats == null;
+      _loading = _data == null;
       _error = null;
     });
-
-    final response = await widget.api.get('/jobs/project-management/stats', {
-      ..._range.query(_now()),
-      'timezone': ?widget.zone(),
-      'franchise_id': ?_branch,
-    });
+    final response = await widget.api.get(
+      '/jobs/project-management/overview',
+      _filters.query(),
+    );
     if (!mounted || request != _request) return;
-
     setState(() {
       _loading = false;
       if (!response.ok) {
@@ -173,301 +146,258 @@ class _ProjectManagementDashboardState
         return;
       }
       final data = response.data;
-      _stats = data is Map ? data.cast<String, dynamic>() : const {};
+      _data = data is Map ? data.cast<String, dynamic>() : const {};
     });
-    if (_tile != null) _list(_tile!);
+    _loadAvgCost(request);
   }
 
-  void _refilter(VoidCallback change) {
-    setState(change);
-    _load();
-  }
-
-  Map<String, dynamic>? _bucket(String key) {
-    final b = _stats?[key];
-    return b is Map ? b.cast<String, dynamic>() : null;
-  }
-
-  int _count(String key) {
-    final c = _bucket(key)?['count'];
-    return c is int ? c : 0;
-  }
-
-  /// Whether a tile has anything to list.
-  List<String> _ids(String key) => _count(key) == 0
-      ? const []
-      : [
-          for (final id in (_bucket(key)?['job_ids'] as List?) ?? const [])
-            '$id',
-        ];
-
-  /// A tile's jobs, asked for by the stat's name and the same dates, branch
-  /// and zone as the numbers (Jose, 2026-10-22: Yesterday's 514 ids broke
-  /// the 500 cap). A count of none sends nothing.
-  Future<void> _list(String key) async {
-    final ids = _ids(key);
-    final request = ++_listRequest;
-    setState(() {
-      _tile = key;
-      _listError = null;
-      if (ids.isEmpty) {
-        _rows = const [];
-        _listing = false;
-        _openId = null;
-      } else {
-        _listing = true;
-      }
-    });
-    if (ids.isEmpty) return;
-
-    final response = await widget.api.get('/jobs/project-management', {
-      'event': key,
-      if (_search.text.trim().isNotEmpty) 'q': _search.text.trim(),
-      ..._range.query(_now()),
-      'timezone': ?widget.zone(),
-      'franchise_id': ?_branch,
-    });
-    if (!mounted || request != _listRequest) return;
-
-    setState(() {
-      _listing = false;
-      if (!response.ok) {
-        _listError = response.message;
-        return;
-      }
-      final data = response.data;
-      _rows = data is List
-          ? [
-              for (final r in data)
-                if (r is Map) r.cast<String, dynamic>(),
-            ]
-          : const [];
-      if (_openId != null && !_rows.any((r) => '${r['id']}' == _openId)) {
-        _openId = null;
-      }
-    });
-  }
-
-  Map<String, dynamic>? get _open {
-    for (final r in _rows) {
-      if ('${r['id']}' == _openId) return r;
+  /// The overview sends the average production cost as null until it has
+  /// its own; Financials has it per month, place and team, and this person
+  /// may read it with financials.bases.view.
+  Future<void> _loadAvgCost(int request) async {
+    final data = _data;
+    if (data == null ||
+        !data.containsKey('avg_production_cost_minor') ||
+        data['avg_production_cost_minor'] != null ||
+        !_me.can('financials.bases.view')) {
+      return;
     }
-    return null;
+    final now = DateTime.now();
+    final response = await widget.api.get('/financials/production-cost', {
+      'from': pmYmd(DateTime(now.year, now.month - 2, 1)),
+      'to': pmYmd(now),
+    });
+    if (!mounted || request != _request || !response.ok) return;
+    final rows = response.data;
+    setState(() => _avgCost = rows is List ? pmAverageCost(rows) : null);
   }
 
-  String _status(Object? value) {
-    if (value == null) return '—';
-    for (final s in widget.statuses) {
-      if (s.value == '$value') return s.label;
+  Map<String, dynamic> _map(String key) {
+    final v = _data?[key];
+    return v is Map ? v.cast<String, dynamic>() : const {};
+  }
+
+  int? _int(Object? v) => v is int ? v : null;
+
+  List<String> get _mapped => [
+    for (final m in (_data?['mapped'] as List?) ?? const []) '$m',
+  ];
+
+  String _franchise(String id) {
+    for (final f in _me.franchises) {
+      if (f.id == id) return f.name;
     }
-    return jobStatusLabel(null, '$value');
+    return '';
   }
-
-  String _tileLabel(String key) => pmDashboardTiles
-      .firstWhere((t) => t.$1 == key, orElse: () => (key, key))
-      .$2;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final phone = constraints.maxWidth < _phoneBelow;
-        final open = _open;
-
-        if (phone && open != null) {
-          return PmTimeline(
-            key: const ValueKey('pm-timeline'),
-            back: true,
-            row: open,
-            now: _now(),
-            me: _me,
-            status: _status,
-            onClose: () => setState(() => _openId = null),
-            onOpenJob: () => _openJob(open),
-          );
-        }
-        if (phone && _tile != null) return _phoneList(context);
-
-        final controls = _controls(context, phone: phone);
-        final tiles = _tiles(context, constraints.maxWidth - (phone ? 32 : 48));
-
-        if (phone) {
-          return ListView(
-            key: const ValueKey('pm-dash'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            children: [
-              controls,
-              const SizedBox(height: 12),
-              AsyncBody(
-                loading: _loading,
-                error: _error,
-                onRetry: _load,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [tiles, const SizedBox(height: 12), _hint()],
-                ),
-              ),
-            ],
-          );
-        }
-
-        return Padding(
+        final pad = phone ? 16.0 : 24.0;
+        return ListView(
           key: const ValueKey('pm-dash'),
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              controls,
-              const SizedBox(height: 12),
-              Expanded(
-                child: AsyncBody(
-                  loading: _loading,
-                  error: _error,
-                  onRetry: _load,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      tiles,
-                      const SizedBox(height: 12),
-                      Expanded(child: _wideList(context)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          padding: EdgeInsets.fromLTRB(pad, 12, pad, 24),
+          children: [
+            _controls(context, phone: phone),
+            const SizedBox(height: 12),
+            AsyncBody(
+              loading: _loading,
+              error: _error,
+              onRetry: _load,
+              child: _data == null
+                  ? const SizedBox.shrink()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _tiles(context, constraints.maxWidth - pad * 2, phone),
+                        const SizedBox(height: 12),
+                        _boxes(context, phone: phone),
+                      ],
+                    ),
+            ),
+          ],
         );
       },
     );
   }
 
   Widget _controls(BuildContext context, {required bool phone}) {
-    final branches = branchOptionsInView(_me);
-    final range = PmRangeControl(
-      key: const ValueKey('tour-pm-dash-range'),
-      range: _range,
-      now: _now(),
-      formats: _me.display,
-      narrow: phone,
-      onChanged: (r) => _refilter(() => _range = r),
+    final search = SizedBox(
+      width: phone ? double.infinity : 300,
+      child: TextField(
+        key: const ValueKey('pm-dash-search'),
+        controller: _search,
+        onChanged: _typed,
+        decoration: const InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'Search jobs',
+        ),
+      ),
     );
-    if (branches.isEmpty) return range;
-
-    final branch = SearchPickerField<String?>(
-      key: const ValueKey('pm-dash-branch'),
-      value: _branch,
-      isDense: true,
-      options: [
-        const SearchOption(value: null, label: 'All branches'),
-        for (final b in branches) SearchOption(value: b.id, label: b.label),
-      ],
-      onChanged: (v) {
-        if (v == _branch) return;
-        _refilter(() => _branch = v);
-      },
+    final areas = widget.areas.isEmpty
+        ? null
+        : PmAreaChips(
+            key: const ValueKey('tour-pm-dash-areas'),
+            areas: widget.areas,
+            selected: _filters.areaId,
+            franchiseName: _franchise,
+            onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
+          );
+    final flags = PmFlagChips(
+      key: const ValueKey('tour-pm-dash-flags'),
+      filters: _filters,
+      onChanged: _refilter,
     );
 
-    if (phone) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [range, const SizedBox(height: 8), branch],
-      );
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        range,
+        if (phone) ...[
+          ?areas,
+          if (areas != null) const SizedBox(height: 8),
+          search,
+        ] else
+          Row(
+            children: [
+              Expanded(child: areas ?? const SizedBox.shrink()),
+              const SizedBox(width: 12),
+              search,
+            ],
+          ),
         const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SizedBox(width: 260, child: branch),
-        ),
+        flags,
       ],
     );
   }
 
-  /// Five across on a wide screen, two to a row on a phone (phone 4).
-  Widget _tiles(BuildContext context, double width) {
-    final perRow = width < _phoneBelow - 32 ? 2 : 5;
-    const gap = 12.0;
+  /// Four to a row on a wide screen, two on a phone; money tiles only when
+  /// the server sends money.
+  Widget _tiles(BuildContext context, double width, bool phone) {
+    final perRow = phone ? 2 : 4;
+    const gap = 10.0;
     final tileWidth = (width - gap * (perRow - 1)) / perRow;
+    final data = _data!;
 
     return Wrap(
       key: const ValueKey('tour-pm-dash-tiles'),
       spacing: gap,
       runSpacing: gap,
       children: [
-        for (final (key, label) in pmDashboardTiles)
-          SizedBox(
-            width: tileWidth,
-            height: _tileHeight,
-            child: _tileCard(context, key, label),
-          ),
+        for (final (key, label, stage) in pmDashboardTiles)
+          if (switch (key) {
+            'pipeline' => data.containsKey('pipeline_minor'),
+            'avg_production_cost' => data.containsKey(
+              'avg_production_cost_minor',
+            ),
+            _ => true,
+          })
+            SizedBox(
+              width: tileWidth,
+              height: _tileHeight,
+              child: _tile(context, key, label, stage),
+            ),
       ],
     );
   }
 
-  Widget _tileCard(BuildContext context, String key, String label) {
+  Widget _tile(BuildContext context, String key, String label, String? stage) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final selected = _tile == key;
-    final amount = key == 'payments' ? (_bucket(key)?['amount_minor']) : null;
-    final unset = key == 'cancellations' && widget.cancelled?.isEmpty == true;
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: scheme.onSurfaceVariant,
     );
+    final unmapped = pmStageKeys.contains(key) && !_mapped.contains(key);
+    final (value, bar, sub, tone) = _tileBody(context, key);
+
+    final open = stage == null || unmapped || widget.onOpenJobs == null
+        ? null
+        : () => widget.onOpenJobs!(
+            stage,
+            key == 'stopped_payments'
+                ? _filters.copyWith(stopped: true)
+                : _filters,
+          );
 
     return Material(
-      color: selected ? scheme.primaryContainer : scheme.surface,
+      color: scheme.surface,
       shape: RoundedRectangleBorder(
-        side: BorderSide(
-          color: selected ? scheme.primary : scheme.outlineVariant,
-          width: selected ? 2 : 1,
-        ),
-        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: ValueKey('pm-tile-$key'),
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => _list(key),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
+        onTap: open,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: tone == null
+                    ? scheme.outlineVariant
+                    : ToneColours.of(context, tone).ink,
+                width: 4,
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                label,
+                label.toUpperCase(),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
+                style: theme.textTheme.labelSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: scheme.onSurfaceVariant,
+                  letterSpacing: 0.4,
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                formatCount(_count(key)),
-                key: ValueKey('pm-tile-$key-count'),
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              if (amount is int)
+              if (unmapped) ...[
                 Text(
-                  formatMoney(amount),
-                  key: const ValueKey('pm-tile-payments-amount'),
+                  'Not set up',
+                  key: ValueKey('pm-tile-$key-unmapped'),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                if (widget.onOpenSettings != null)
+                  TextButton(
+                    key: ValueKey('pm-tile-$key-setup'),
+                    onPressed: widget.onOpenSettings,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 32),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Set up in Settings'),
+                  ),
+              ] else ...[
+                Text(
+                  value,
+                  key: ValueKey('pm-tile-$key-value'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: muted,
-                )
-              else if (unset)
-                Text(
-                  'Choose which statuses mean cancelled in Settings',
-                  key: const ValueKey('pm-tile-cancellations-hint'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: muted,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
+                if (bar != null) ...[const SizedBox(height: 6), bar],
+                const Spacer(),
+                if (sub.isNotEmpty)
+                  Text(
+                    sub,
+                    key: ValueKey('pm-tile-$key-sub'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+              ],
             ],
           ),
         ),
@@ -475,399 +405,435 @@ class _ProjectManagementDashboardState
     );
   }
 
-  bool get _empty =>
-      _stats != null && pmDashboardTiles.every((t) => _count(t.$1) == 0);
+  /// A tile's number, its bar, its line underneath and its edge tone.
+  (String, Widget?, String, Tone?) _tileBody(BuildContext context, String key) {
+    final data = _data!;
+    switch (key) {
+      case 'waiting_review':
+        final m = _map(key);
+        final reasons = _reasons(m['by_reason']);
+        final total = _int(m['count']) ?? 0;
+        return (
+          formatCount(total),
+          total == 0 ? null : _reasonBar(context, reasons, total),
+          [
+            for (final r in reasons)
+              if (r.count > 0) '${r.label} ${formatCount(r.count)}',
+          ].join(' · '),
+          Tone.caution,
+        );
+      case 'in_progress':
+        final m = _map(key);
+        final count = _int(m['count']) ?? 0;
+        final ours = _int(m['ours']) ?? 0;
+        final external = _int(m['external']) ?? 0;
+        return (
+          formatCount(count),
+          count == 0
+              ? null
+              : PmBar(
+                  key: const ValueKey('pm-tile-in_progress-bar'),
+                  segments: [
+                    (ours / count, PersonColours.hue(context, 0).ink),
+                    (external / count, PersonColours.hue(context, 5).ink),
+                  ],
+                ),
+          [
+            'Us ${formatCount(ours)}',
+            'External ${formatCount(external)}',
+            '2nd visit ${formatCount(_int(m['second_visit']) ?? 0)}',
+            'Redo ${formatCount(_int(m['redo']) ?? 0)} / '
+                'new ${formatCount(_int(m['new']) ?? 0)}',
+          ].join(' · '),
+          Tone.info,
+        );
+      case 'ready_to_schedule':
+        final m = _map(key);
+        final oldest = _int(m['oldest_days']);
+        return (
+          formatCount(_int(m['count']) ?? 0),
+          null,
+          oldest == null
+              ? ''
+              : 'Oldest waiting $oldest ${oldest == 1 ? 'day' : 'days'}',
+          Tone.info,
+        );
+      case 'scheduled':
+        final m = _map(key);
+        return (
+          formatCount(_int(m['count']) ?? 0),
+          null,
+          'Next 7 days: ${formatCount(_int(m['next_7_days']) ?? 0)}',
+          Tone.info,
+        );
+      case 'done_waiting_payment':
+        final m = _map(key);
+        final total = _int(m['total_minor']);
+        final due = _int(m['due_minor']);
+        return (
+          formatCount(_int(m['count']) ?? 0),
+          null,
+          [
+            if (total != null) '${formatMoney(total, cents: false)} total',
+            if (due != null) '${formatMoney(due, cents: false)} due',
+          ].join(' · '),
+          Tone.ok,
+        );
+      case 'pipeline':
+        final open = _int(data['pipeline_minor']);
+        return (
+          open == null ? '—' : formatMoney(open, cents: false),
+          null,
+          'In progress, waiting review, ready and scheduled',
+          Tone.ok,
+        );
+      case 'avg_production_cost':
+        final own = _int(data['avg_production_cost_minor']);
+        final avg = own ?? _avgCost;
+        return (
+          avg == null ? '—' : formatMoney(avg, cents: false),
+          null,
+          avg == null
+              ? 'No production cost yet'
+              : own == null
+              ? 'Per job, the last three months'
+              : 'Tech, helper, operation, gas and parts',
+          null,
+        );
+      case 'stopped_payments':
+        final days = widget.stoppedDays;
+        return (
+          formatCount(_int(data['stopped_payments']) ?? 0),
+          null,
+          days == null
+              ? 'Partly paid, then nothing'
+              : 'Partly paid, nothing for $days+ days',
+          Tone.bad,
+        );
+    }
+    return ('—', null, '', null);
+  }
 
-  /// Under the tiles before one is chosen, or when the range is empty.
-  Widget _hint() {
-    final theme = Theme.of(context);
-    final text = _empty
-        ? 'Nothing happened in these dates.'
-        : 'Choose a number to list its jobs.';
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Text(
-        text,
-        key: ValueKey(_empty ? 'pm-dash-empty' : 'pm-dash-choose'),
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+  List<({String? value, String label, int count})> _reasons(Object? list) => [
+    for (final r in (list as List?) ?? const [])
+      if (r is Map)
+        (
+          value: r['value'] as String?,
+          label: '${r['label'] ?? r['value'] ?? 'No reason'}',
+          count: r['count'] is int ? r['count'] as int : 0,
         ),
+  ];
+
+  Color _reasonColour(
+    BuildContext context,
+    List<({String? value, String label, int count})> reasons,
+    int i,
+  ) => pmReasonColour(context, i, none: reasons[i].value == null);
+
+  Widget _reasonBar(
+    BuildContext context,
+    List<({String? value, String label, int count})> reasons,
+    int total,
+  ) => PmBar(
+    segments: [
+      for (final (i, r) in reasons.indexed)
+        (r.count / total, _reasonColour(context, reasons, i)),
+    ],
+  );
+
+  Widget _boxes(BuildContext context, {required bool phone}) {
+    final boxes = [
+      _box(
+        context,
+        anchor: const ValueKey('tour-pm-dash-review'),
+        title: 'Waiting review by location and reason',
+        child: _byLocation(context),
+      ),
+      _box(
+        context,
+        anchor: const ValueKey('tour-pm-dash-start'),
+        title: 'Waiting to start after payment',
+        child: _waitingToStart(context),
+      ),
+      _box(
+        context,
+        anchor: const ValueKey('tour-pm-dash-teams'),
+        title: 'Jobs per team',
+        child: _perTeam(context),
+      ),
+    ];
+    if (phone) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, b) in boxes.indexed) ...[
+            if (i > 0) const SizedBox(height: 10),
+            b,
+          ],
+        ],
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, b) in boxes.indexed) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(child: b),
+          ],
+        ],
       ),
     );
   }
 
-  Widget _wideList(BuildContext context) {
-    if (_empty || _tile == null) {
-      return Align(alignment: Alignment.topCenter, child: _hint());
-    }
-
-    final scheme = Theme.of(context).colorScheme;
-    final open = _open;
-
+  Widget _box(
+    BuildContext context, {
+    required Key anchor,
+    required String title,
+    required Widget child,
+  }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return DecoratedBox(
-      key: const ValueKey('tour-pm-dash-list'),
+      key: anchor,
       decoration: BoxDecoration(
         color: scheme.surface,
         border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _searchField(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  ),
-                  _headerRow(context),
-                  Divider(height: 1, color: scheme.outlineVariant),
-                  Expanded(child: _listBody(context, table: true)),
-                ],
+            Text(
+              title.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant,
+                letterSpacing: 0.4,
               ),
             ),
-            if (open != null) ...[
-              VerticalDivider(width: 1, color: scheme.outlineVariant),
-              SizedBox(
-                width: 360,
-                child: PmTimeline(
-                  key: const ValueKey('pm-timeline'),
-                  row: open,
-                  now: _now(),
-                  me: _me,
-                  status: _status,
-                  onClose: () => setState(() => _openId = null),
-                  onOpenJob: () => _openJob(open),
-                ),
-              ),
-            ],
+            const SizedBox(height: 8),
+            child,
           ],
         ),
       ),
     );
   }
 
-  /// The chosen tile's jobs, full screen on a phone, with a way back.
-  Widget _phoneList(BuildContext context) {
-    final theme = Theme.of(context);
-    final key = _tile!;
+  Widget _none(BuildContext context, String text, Key key) => Text(
+    text,
+    key: key,
+    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    ),
+  );
 
-    return Column(
-      key: const ValueKey('tour-pm-dash-list'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _barRow(
+    BuildContext context, {
+    required Key key,
+    required String name,
+    required int count,
+    required Widget bar,
+  }) => Padding(
+    key: key,
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
-          child: Row(
-            children: [
-              IconButton(
-                key: const ValueKey('pm-dash-back'),
-                tooltip: 'Back',
-                onPressed: () => setState(() {
-                  _tile = null;
-                  _rows = const [];
-                }),
-                icon: const Icon(Icons.arrow_back),
-              ),
-              Expanded(
-                child: Text(
-                  '${_tileLabel(key)} · ${formatCount(_count(key))}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+        SizedBox(
+          width: 96,
+          child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: bar),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 32,
+          child: Text(
+            formatCount(count),
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-        _searchField(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8)),
-        Divider(height: 1, color: theme.colorScheme.outlineVariant),
-        Expanded(child: _listBody(context, table: false)),
+      ],
+    ),
+  );
+
+  Widget _byLocation(BuildContext context) {
+    final review = _map('waiting_review');
+    if (!_mapped.contains('waiting_review')) {
+      return _none(
+        context,
+        'Waiting review is not set up.',
+        const ValueKey('pm-review-unmapped'),
+      );
+    }
+    final locations = [
+      for (final l in (review['by_location'] as List?) ?? const [])
+        if (l is Map) l.cast<String, dynamic>(),
+    ];
+    if (locations.isEmpty) {
+      return _none(
+        context,
+        'Nothing waits for review.',
+        const ValueKey('pm-review-none'),
+      );
+    }
+    // The legend is the overall reasons, in the order each bar uses.
+    final legend = _reasons(review['by_reason']);
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final l in locations)
+          _barRow(
+            context,
+            key: ValueKey('pm-review-loc-${l['name']}'),
+            name: '${l['name']}',
+            count: _int(l['count']) ?? 0,
+            bar: (_int(l['count']) ?? 0) == 0
+                ? const PmBar(segments: [])
+                : _reasonBar(
+                    context,
+                    _reasons(l['by_reason']),
+                    _int(l['count'])!,
+                  ),
+          ),
+        const SizedBox(height: 4),
+        Wrap(
+          key: const ValueKey('pm-review-legend'),
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            for (final (i, r) in legend.indexed)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _reasonColour(context, legend, i),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(r.label, style: theme.textTheme.bodySmall),
+                ],
+              ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget _listBody(BuildContext context, {required bool table}) {
-    final theme = Theme.of(context);
-    if (_listing || _listError != null) {
-      return AsyncBody(
-        loading: _listing,
-        error: _listError,
-        onRetry: () => _list(_tile!),
-        child: const SizedBox.shrink(),
-      );
-    }
-    if (_rows.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          _search.text.trim().isNotEmpty
-              ? 'No jobs here match “${_search.text.trim()}”.'
-              : 'No jobs for ${_tileLabel(_tile!).toLowerCase()} in these dates.',
-          key: const ValueKey('pm-dash-none'),
-          textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-
-    final lines = [for (final r in _rows) (row: r, step: _stepFor(r))];
-    return ListView.builder(
-      padding: table
-          ? EdgeInsets.zero
-          : const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      itemCount: lines.length,
-      itemBuilder: (context, i) => table
-          ? _tableRow(context, lines[i].row, lines[i].step)
-          : _card(context, lines[i].row, lines[i].step),
-    );
-  }
-
-  /// What the tile counted for this job: the latest step of its kind inside
-  /// the dates, as the server words it.
-  ({String what, String when, String by}) _stepFor(Map<String, dynamic> r) {
-    final formats = _me.display;
-    final now = _now();
-
-    if (_tile == 'deadlines_due') {
-      final waiting = r['waiting'];
-      final day = parseCalendarDay(
-        waiting is Map ? waiting['deadline'] as String? : null,
-      );
-      return (
-        what: 'Cancels unless something is paid',
-        when: day == null ? '—' : formats.formatDate(day),
-        by: '—',
-      );
-    }
-
-    // Entering a watched status is a status change too, with from, to and
-    // `what` since 2026-10-22 (a job whose only change was its entry read "—").
-    final kinds = switch (_tile) {
-      'payments' => const {'payment'},
-      'tag_changes' => const {'tags'},
-      _ => const {'status', 'entered'},
-    };
-    final span = _range.span(now);
-    final steps = [
-      for (final e in (r['timeline'] as List?) ?? const [])
-        if (e is Map && kinds.contains(e['kind']) && _inside(e['at'], span))
-          if (_tile != 'cancellations' ||
-              (widget.cancelled ?? const []).contains('${e['to']}'))
-            e.cast<String, dynamic>(),
+  Widget _waitingToStart(BuildContext context) {
+    final rows = [
+      for (final r in (_data?['waiting_to_start'] as List?) ?? const [])
+        if (r is Map) r.cast<String, dynamic>(),
     ];
-    if (steps.isEmpty) return (what: '—', when: '—', by: '—');
-
-    final step = steps.last;
-    final money = step['amount_minor'];
-    // The server's sentence, in the organization's status words (0d70ec402).
-    final what = [
-      '${step['what'] ?? step['kind'] ?? ''}',
-      if (money is int) formatMoney(money),
-    ].join(' · ');
-    final by = step['by'];
-    return (
-      what: what,
-      when: formatListStamp(step['at'], '—', formats: formats, now: now),
-      by: by is String && by.isNotEmpty ? by : '—',
-    );
-  }
-
-  static bool _inside(Object? at, DateSpan span) {
-    final t = at is String ? DateTime.tryParse(at)?.toLocal() : null;
-    if (t == null) return false;
-    final day = dayKey(t);
-    return day.compareTo(span.fromKey) >= 0 && day.compareTo(span.toKey) <= 0;
-  }
-
-  static const _flex = [4, 3, 3, 5, 2, 2];
-
-  Widget _cells(List<Widget> cells) => Row(
-    children: [
-      for (final (i, c) in cells.indexed)
-        Expanded(
-          flex: _flex[i],
-          child: Padding(
-            padding: const EdgeInsets.only(right: 10),
-            child: Align(alignment: Alignment.centerLeft, child: c),
-          ),
-        ),
-    ],
-  );
-
-  Widget _headerRow(BuildContext context) {
-    final theme = Theme.of(context);
-    final style = theme.textTheme.labelSmall?.copyWith(
-      fontWeight: FontWeight.w700,
-      color: theme.colorScheme.onSurfaceVariant,
-      letterSpacing: 0.4,
-    );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
-      child: _cells([
-        for (final h in const [
-          'JOB',
-          'CUSTOMER',
-          'TECHNICIAN',
-          'WHAT',
-          'WHEN',
-          'BY',
-        ])
-          Text(h, style: style),
-      ]),
-    );
-  }
-
-  Widget _tableRow(
-    BuildContext context,
-    Map<String, dynamic> r,
-    ({String what, String when, String by}) step,
-  ) {
+    if (rows.isEmpty) {
+      return _none(
+        context,
+        'No paid job is waiting to start.',
+        const ValueKey('pm-start-none'),
+      );
+    }
     final scheme = Theme.of(context).colorScheme;
-    final id = '${r['id']}';
-
-    return Material(
-      color: id == _openId ? scheme.primaryContainer : scheme.surface,
-      child: InkWell(
-        key: ValueKey('pm-dash-row-$id'),
-        onTap: () => setState(() => _openId = id),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: scheme.outlineVariant, width: 0.5),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
-          child: _cells([
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text.rich(
-                  TextSpan(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final r in rows)
+          Builder(
+            builder: (context) {
+              final job = r['job'] is Map ? r['job'] as Map : const {};
+              final id = '${job['id']}';
+              final days = _int(r['days']) ?? 0;
+              final limit = _int(r['limit']) ?? 0;
+              return InkWell(
+                key: ValueKey('pm-start-$id'),
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _openJob(id),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
                     children: [
-                      TextSpan(
-                        text: '${r['number'] ?? ''}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      TextSpan(text: '  ${r['title'] ?? ''}'),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (pmTags(r).isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
-                ],
-              ],
-            ),
-            _one(_name(r['customer'])),
-            _one(pmTechnician(r) ?? '—'),
-            _one(step.what),
-            _one(step.when),
-            _one(step.by),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  Widget _card(
-    BuildContext context,
-    Map<String, dynamic> r,
-    ({String what, String when, String by}) step,
-  ) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final id = '${r['id']}';
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: scheme.surface,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: InkWell(
-          key: ValueKey('pm-dash-card-$id'),
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => setState(() => _openId = id),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${r['number'] ?? ''} ${_name(r['customer'])}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                // The second line: who works it, and its tags.
-                if (pmTechnician(r) != null || pmTags(r).isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (pmTechnician(r) != null)
-                        Text(
-                          pmTechnician(r)!,
-                          key: ValueKey('pm-dash-tech-$id'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
+                      SizedBox(
+                        width: 110,
+                        child: Text(
+                          [
+                            '${job['number'] ?? ''}',
+                            '${job['customer'] ?? ''}',
+                          ].where((s) => s.isNotEmpty).join(' '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface,
                           ),
                         ),
-                      if (pmTags(r).isNotEmpty)
-                        PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: PmCountdownBar(
+                          key: ValueKey('pm-start-bar-$id'),
+                          days: days,
+                          limit: limit,
+                        ),
+                      ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 2),
-                Text(step.what, maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  [step.when, step.by].where((s) => s != '—').join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
-        ),
-      ),
+      ],
     );
   }
 
-  Widget _one(String text) =>
-      Text(text, maxLines: 1, overflow: TextOverflow.ellipsis);
+  Widget _perTeam(BuildContext context) {
+    final teams = [
+      for (final t in (_data?['per_team'] as List?) ?? const [])
+        if (t is Map) t.cast<String, dynamic>(),
+    ];
+    if (teams.isEmpty) {
+      return _none(context, 'No open jobs.', const ValueKey('pm-team-none'));
+    }
+    final most = teams
+        .map((t) => _int(t['count']) ?? 0)
+        .fold<int>(0, (a, b) => b > a ? b : a);
+    final colour = PersonColours.hue(context, 0).ink;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final t in teams)
+          _barRow(
+            context,
+            key: ValueKey('pm-team-${t['name']}'),
+            name: '${t['name']}',
+            count: _int(t['count']) ?? 0,
+            bar: PmBar(
+              segments: [
+                if (most > 0) ((_int(t['count']) ?? 0) / most, colour),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
-  Future<void> _openJob(Map<String, dynamic> row) async {
+  Future<void> _openJob(String id) async {
     final changed = await showSidePanel<bool>(
       context,
       builder: (_) => JobDetailPanel(
         api: widget.api,
         session: widget.session,
-        id: '${row['id']}',
+        id: id,
         labels: widget.labels,
       ),
     );
     if (changed == true && mounted) _load();
   }
 }
-
-String _name(Object? ref) =>
-    ref is Map && ref['name'] is String ? ref['name'] as String : '—';

@@ -1,787 +1,326 @@
-import 'dart:convert';
-
-import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/screens/project_management_screen.dart';
-import 'package:ezbizi_client/widgets/status_pill.dart';
+import 'package:ezbizi_client/screens/jobs/pm_stages.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
-/// Project Management › Dashboard | Pending Jobs | Settings (UI queue 127,
-/// option 1 and phone 4). Every name and number invented.
+import 'support/pm_server.dart';
+
+/// Project Management's screen and its Dashboard (design 141, option 1 and
+/// phone 4): the six tabs, the tiles from the overview, a tile's way into
+/// Jobs, the countdown bars and the phone. Every name invented.
 void main() {
-  // A fixed local noon on a Wednesday: "Today" is 2026-10-21.
-  final now = DateTime(2026, 10, 21, 12);
+  List<String> tabs(WidgetTester tester) => [
+    for (final l
+        in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
+      l.$1,
+  ];
 
-  testWidgets('four tabs, opening on Dashboard', (tester) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
+  String text(WidgetTester tester, String key) =>
+      tester.widget<Text>(find.byKey(ValueKey(key))).data ?? '';
 
-    final labels = [
-      for (final l
-          in tester.widget<TabBarLike>(find.byType(TabBarLike).first).labels)
-        l.$1,
-    ];
-    expect(labels, ['Dashboard', 'Pending Jobs', 'Logs', 'Settings']);
-    expect(stub.stats.single.queryParameters, {
-      'from': '2026-10-21',
-      'to': '2026-10-21',
-      'timezone': 'America/New_York',
-    });
+  testWidgets('six tabs, opening on Dashboard', (tester) async {
+    await PmServer().pump(tester);
+    expect(tabs(tester), [
+      'Dashboard',
+      'Reports',
+      'Table',
+      'Jobs',
+      'Logs',
+      'Settings',
+    ]);
+    expect(find.byKey(const ValueKey('pm-dash')), findsOneWidget);
   });
 
-  testWidgets('five equal tiles from the stats, Paid with its amount', (
+  testWidgets('without financials.bases.view, no Reports or Table', (
     tester,
   ) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-
-    String count(String key) =>
-        tester.widget<Text>(find.byKey(ValueKey('pm-tile-$key-count'))).data!;
-    expect(count('payments'), '2');
-    expect(count('status_changes'), '3');
-    expect(count('tag_changes'), '1');
-    expect(count('cancellations'), '0');
-    expect(count('deadlines_due'), '1');
-    expect(
-      tester
-          .widget<Text>(find.byKey(const ValueKey('pm-tile-payments-amount')))
-          .data,
-      r'$1,650.00',
-    );
-
-    final sizes = {
-      for (final key in _tiles)
-        tester.getSize(find.byKey(ValueKey('pm-tile-$key'))),
-    };
-    expect(sizes, hasLength(1), reason: 'sibling tiles are one size');
-    // Five across.
-    final tops = {
-      for (final key in _tiles)
-        tester.getTopLeft(find.byKey(ValueKey('pm-tile-$key'))).dy,
-    };
-    expect(tops, hasLength(1));
+    await PmServer(
+      permissions: const ['jobs.view', 'project_management.view'],
+    ).pump(tester);
+    expect(tabs(tester), ['Dashboard', 'Jobs', 'Logs', 'Settings']);
   });
 
-  testWidgets('no amount on Paid when the server sends none', (tester) async {
-    final stub = _Stub(money: false);
-    await _pump(tester, stub, now: now);
+  testWidgets('the tiles come from the overview, in pipeline order', (
+    tester,
+  ) async {
+    final server = PmServer();
+    await server.pump(tester);
 
-    // The control: the tile and its count are there.
+    expect(server.get('/overview').single.queryParameters, isEmpty);
+    expect(text(tester, 'pm-tile-waiting_review-value'), '23');
     expect(
-      tester
-          .widget<Text>(find.byKey(const ValueKey('pm-tile-payments-count')))
-          .data,
-      '2',
+      text(tester, 'pm-tile-waiting_review-sub'),
+      'Order parts 9 · Measurements 7 · No reason 7',
     );
-    expect(find.byKey(const ValueKey('pm-tile-payments-amount')), findsNothing);
+    expect(text(tester, 'pm-tile-in_progress-value'), '41');
+    expect(
+      text(tester, 'pm-tile-in_progress-sub'),
+      'Us 29 · External 12 · 2nd visit 6 · Redo 4 / new 37',
+    );
+    expect(
+      text(tester, 'pm-tile-ready_to_schedule-sub'),
+      'Oldest waiting 9 days',
+    );
+    expect(
+      text(tester, 'pm-tile-done_waiting_payment-sub'),
+      r'$48,200 total · $21,700 due',
+    );
+    expect(text(tester, 'pm-tile-pipeline-value'), r'$186,000');
+    // The overview's is null: Financials' production cost stands in.
+    expect(text(tester, 'pm-tile-avg_production_cost-value'), r'$1,180');
+    expect(
+      text(tester, 'pm-tile-avg_production_cost-sub'),
+      'Per job, the last three months',
+    );
+    expect(text(tester, 'pm-tile-stopped_payments-value'), '5');
+    expect(
+      text(tester, 'pm-tile-stopped_payments-sub'),
+      'Partly paid, nothing for 30+ days',
+    );
+
+    // Pipeline order, left to right then down.
+    final order = [
+      for (final key in pmTileKeys)
+        tester.getTopLeft(find.byKey(ValueKey('pm-tile-$key'))),
+    ];
+    for (var i = 1; i < order.length; i++) {
+      final before = order[i - 1];
+      final now = order[i];
+      expect(
+        now.dy > before.dy || (now.dy == before.dy && now.dx > before.dx),
+        isTrue,
+        reason: 'tile $i is out of order',
+      );
+    }
+    // Every tile the same size.
+    final sizes = {
+      for (final t in pmTileKeys)
+        tester.getSize(find.byKey(ValueKey('pm-tile-$t'))),
+    };
+    expect(sizes, hasLength(1));
+  });
+
+  testWidgets('without money: no amounts, no Pipeline or cost tiles', (
+    tester,
+  ) async {
+    await PmServer(overview: pmOverview(money: false)).pump(tester);
+    expect(find.byKey(const ValueKey('pm-tile-pipeline')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('pm-tile-avg_production_cost')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('pm-tile-done_waiting_payment-sub')),
+      findsNothing,
+    );
+    expect(text(tester, 'pm-tile-done_waiting_payment-value'), '19');
     expect(find.textContaining(r'$'), findsNothing);
   });
 
-  testWidgets('Cancelled points at Settings until statuses are chosen', (
+  testWidgets('an unmapped stage says not set up and links to Settings', (
     tester,
   ) async {
-    await _pump(tester, _Stub(), now: now);
+    await PmServer().pump(tester);
     expect(
-      find.text('Choose which statuses mean cancelled in Settings'),
+      find.byKey(const ValueKey('pm-tile-scheduled-unmapped')),
       findsOneWidget,
     );
-
-    await _pump(tester, _Stub(cancelled: const ['lost']), now: now);
+    expect(find.byKey(const ValueKey('pm-tile-scheduled-value')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('pm-tile-scheduled-setup')));
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('pm-tile-cancellations-hint')),
-      findsNothing,
+      tabs(tester)[tester
+          .widget<TabBarLike>(find.byType(TabBarLike).first)
+          .selected],
+      'Settings',
     );
   });
 
-  // Jose: every list gets a search; the drill-down sends it as q.
-  testWidgets("a tile's list searches on the server after 400 ms", (
-    tester,
-  ) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-    await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
+  testWidgets('filters and search ask the overview again', (tester) async {
+    final server = PmServer();
+    await server.pump(tester);
+
+    await tester.tap(find.byKey(const ValueKey('pm-area-sa-2')));
     await tester.pumpAndSettle();
-    expect(stub.lists, hasLength(1));
+    expect(server.get('/overview').last.queryParameters, {
+      'service_area_id': 'sa-2',
+    });
+
+    await tester.tap(find.byKey(const ValueKey('pm-flag-one_go')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pm-flag-dispute')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pm-flag-second_visit')));
+    await tester.pumpAndSettle();
+    expect(server.get('/overview').last.queryParameters, {
+      'service_area_id': 'sa-2',
+      'redo': '0',
+      'dispute': '1',
+      'second_visit': '1',
+    });
 
     await tester.enterText(
       find.byKey(const ValueKey('pm-dash-search')),
-      'Vroom',
+      'Ortiz',
     );
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(stub.lists, hasLength(1), reason: 'still typing');
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, {
-      'event': 'payments',
-      'q': 'Vroom',
-      'from': '2026-10-21',
-      'to': '2026-10-21',
-      'timezone': 'America/New_York',
-    });
+    expect(server.get('/overview').last.queryParameters['q'], 'Ortiz');
   });
 
-  // 2026-10-22: a job whose only change today was entering a watched status
-  // read "—" in Status changes.
-  testWidgets('Status changes lists an entry by its what, when and by', (
+  testWidgets('a tile opens Jobs on its stage, under the same filters', (
     tester,
   ) async {
-    final stub = _Stub(enteredOnly: true);
-    await _pump(tester, stub, now: now);
-    await tester.tap(find.byKey(const ValueKey('pm-tile-status_changes')));
+    final server = PmServer();
+    await server.pump(tester);
+    await tester.tap(find.byKey(const ValueKey('pm-area-sa-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pm-flag-external')));
     await tester.pumpAndSettle();
 
-    Finder inRow(String text) => find.descendant(
-      of: find.byKey(const ValueKey('pm-dash-row-j-1')),
-      matching: find.text(text),
-    );
-    expect(inRow('Status Submitted → Done pending approval'), findsOneWidget);
-    expect(inRow('EzBizi · Close-out'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('pm-dash-row-j-1')),
-        matching: find.textContaining('8:30'),
-      ),
-      findsOneWidget,
-    );
-    expect(inRow('—'), findsNothing);
-
-    // The timeline draws it by its what, with the rule as a link.
-    await tester.tap(find.byKey(const ValueKey('pm-dash-row-j-1')));
+    await tester.tap(find.byKey(const ValueKey('pm-tile-waiting_review')));
     await tester.pumpAndSettle();
-    final pane = find.byKey(const ValueKey('pm-timeline'));
-    expect(
-      find.descendant(
-        of: pane,
-        matching: find.text('Status Submitted → Done pending approval'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: pane,
-        matching: find.byKey(const ValueKey('pm-timeline-rule-r-9')),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('a tile asks for its jobs by name and lists what happened', (
-    tester,
-  ) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-    expect(find.byKey(const ValueKey('pm-dash-choose')), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
-    await tester.pumpAndSettle();
-
-    // By the stat's name, never its ids: Yesterday's 514 broke the 500 cap.
-    final asked = stub.lists.single;
-    expect(asked.queryParameters, {
-      'event': 'payments',
-      'from': '2026-10-21',
-      'to': '2026-10-21',
-      'timezone': 'America/New_York',
-    });
-    expect(asked.queryParametersAll.containsKey('ids[]'), isFalse);
-
-    for (final h in ['JOB', 'CUSTOMER', 'TECHNICIAN', 'WHAT', 'WHEN', 'BY']) {
-      expect(find.text(h), findsOneWidget);
-    }
-    Finder inRow(String id, String text) => find.descendant(
-      of: find.byKey(ValueKey('pm-dash-row-$id')),
-      matching: find.textContaining(text),
-    );
-    expect(
-      inRow('j-1', r'Payment received, partly paid · $1,200.00'),
-      findsOneWidget,
-    );
-    expect(inRow('j-1', 'Workiz'), findsOneWidget);
-    expect(inRow('j-1', 'Lena Vroom'), findsOneWidget);
-    expect(inRow('j-1', 'Omar Pell'), findsOneWidget);
-    // Three tags, then the count of the rest.
-    final tags = find.byKey(const ValueKey('pm-tags-j-1'));
-    for (final t in ['Follow up', 'VIP', 'Rush', '+1']) {
-      expect(find.descendant(of: tags, matching: find.text(t)), findsOneWidget);
-    }
-    expect(find.text('Warranty'), findsNothing);
-    // Today's step is a time; the older payment is outside the dates.
-    expect(inRow('j-1', '9:42'), findsOneWidget);
-    expect(inRow('j-1', r'$300.00'), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('pm-dash-row-j-1')));
-    await tester.pumpAndSettle();
-    final pane = find.byKey(const ValueKey('pm-timeline'));
-    expect(pane, findsOneWidget);
-    expect(
-      find.descendant(of: pane, matching: find.text('Open the job')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets("status changes use the server's sentence", (tester) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-
-    await tester.tap(find.byKey(const ValueKey('pm-tile-status_changes')));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('pm-dash-row-j-1')),
-        matching: find.text('Status Quote out → Booked'),
-      ),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('an empty range says so, and asks for no jobs', (tester) async {
-    final stub = _Stub(empty: true);
-    await _pump(tester, stub, now: now);
-
-    expect(find.text('Nothing happened in these dates.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
-    await tester.pumpAndSettle();
-    expect(stub.lists, isEmpty, reason: 'no ids is every watched job');
-  });
-
-  testWidgets('a range choice asks again with its dates', (tester) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-
-    await tester.tap(find.byKey(const ValueKey('pm-range-this_week')));
-    await tester.pumpAndSettle();
-    expect(stub.stats.last.queryParameters, {
-      'from': '2026-10-19',
-      'to': '2026-10-21',
-      'timezone': 'America/New_York',
-    });
-
-    await tester.tap(find.byKey(const ValueKey('pm-range-custom')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('pm-range-panel')), findsOneWidget);
-  });
-
-  testWidgets('Pending Jobs opens on Recently paid, with the dates', (
-    tester,
-  ) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-
-    await tester.tap(find.text('Pending Jobs'));
-    await tester.pumpAndSettle();
-
-    expect(stub.lists.single.queryParameters, {
-      'filter': 'recently_paid',
-      'from': '2026-10-21',
-      'to': '2026-10-21',
-      'timezone': 'America/New_York',
+    expect(server.get('/project-management/jobs').last.queryParameters, {
+      'stage': 'waiting_review',
+      'service_area_id': 'sa-1',
+      'external': '1',
     });
     final chip = tester.widget<ChoiceChip>(
-      find.byKey(const ValueKey('pm-stage-recently_paid')),
+      find.byKey(const ValueKey('pm-stage-waiting_review')),
     );
     expect(chip.selected, isTrue);
-    // A colour of its own, as each stage has.
-    expect((chip.avatar! as ToneDot).tone, Tone.review);
-    expect({
-      for (final st in ['recently_paid', 'waiting', 'partial', 'full'])
-        (tester.widget<ChoiceChip>(find.byKey(ValueKey('pm-stage-$st'))).avatar!
-                as ToneDot)
-            .tone,
-    }, hasLength(4));
-    // The row's technician and tags, on Pending Jobs too.
-    expect(find.text('TECHNICIAN'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('pm-row-j-1')),
-        matching: find.text('Omar Pell'),
-      ),
-      findsOneWidget,
+
+    // Back on the Dashboard, Stopped payments adds its own filter.
+    await tester.tap(find.text('Dashboard'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('pm-tile-stopped_payments')),
     );
-    expect(find.byKey(const ValueKey('pm-tags-j-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pm-stage-waiting')), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pm-range-yesterday')));
+    await tester.tap(find.byKey(const ValueKey('pm-tile-stopped_payments')));
     await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, {
-      'filter': 'recently_paid',
-      'from': '2026-10-20',
-      'to': '2026-10-20',
-      'timezone': 'America/New_York',
+    expect(server.get('/project-management/jobs').last.queryParameters, {
+      'stage': 'done_waiting_payment',
+      'service_area_id': 'sa-1',
+      'external': '1',
+      'stopped': '1',
     });
-
-    // Another stage is the watched list, without the filter; the dates still
-    // go, for Recently paid's count.
-    await tester.tap(find.byKey(const ValueKey('pm-stage-waiting')));
-    await tester.pumpAndSettle();
-    expect(stub.lists.last.queryParameters, {
-      'from': '2026-10-20',
-      'to': '2026-10-20',
-      'timezone': 'America/New_York',
-    });
-    expect(find.byKey(const ValueKey('pm-range')), findsNothing);
   });
 
-  testWidgets('Settings writes both lists', (tester) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
+  testWidgets('waiting review by location, stacked, with the legend', (
+    tester,
+  ) async {
+    await PmServer().pump(tester);
     expect(
-      find.text('A job cancels 30 days after its estimate.'),
+      find.byKey(const ValueKey('pm-review-loc-Columbus')),
       findsOneWidget,
     );
-
-    // Remove a watched status.
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey('pm-settings-jobs.estimate_aging_statuses-approved'),
-        ),
-        matching: find.byTooltip('Remove'),
-      ),
+    expect(
+      find.byKey(const ValueKey('pm-review-loc-Cleveland')),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
-
-    // Add a cancelled one.
-    await tester.tap(
-      find.byKey(const ValueKey('pm-settings-jobs.cancelled_statuses-add')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Lost').last);
-    await tester.pumpAndSettle();
-
-    expect(stub.patches.keys, [
-      'jobs.estimate_aging_statuses',
-      'jobs.cancelled_statuses',
-    ]);
-    expect(stub.patches['jobs.estimate_aging_statuses'], {
-      'value': ['estimate_sent'],
-    });
-    expect(stub.patches['jobs.cancelled_statuses'], {
-      'value': ['lost'],
-    });
-    for (final q in stub.patchQueries) {
-      expect(q, {'scope_type': 'organization', 'scope_id': 'org-1'});
+    final legend = find.byKey(const ValueKey('pm-review-legend'));
+    for (final l in ['Order parts', 'Measurements', 'No reason']) {
+      expect(
+        find.descendant(of: legend, matching: find.text(l)),
+        findsOneWidget,
+      );
     }
-    expect(
-      find.byKey(const ValueKey('pm-settings-jobs.cancelled_statuses-lost')),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('the last watched status cannot be removed', (tester) async {
-    final stub = _Stub();
-    await _pump(tester, stub, now: now);
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
-
-    const approved = ValueKey(
-      'pm-settings-jobs.estimate_aging_statuses-approved',
-    );
-    const sent = ValueKey(
-      'pm-settings-jobs.estimate_aging_statuses-estimate_sent',
-    );
-    await tester.tap(
+    final bar = tester.widget<PmBar>(
       find.descendant(
-        of: find.byKey(approved),
-        matching: find.byTooltip('Remove'),
+        of: find.byKey(const ValueKey('pm-review-loc-Columbus')),
+        matching: find.byType(PmBar),
       ),
     );
-    await tester.pumpAndSettle();
-    expect(stub.patchLog, ['jobs.estimate_aging_statuses ["estimate_sent"]']);
-
-    // One left: no X, and a line saying why.
-    expect(
-      find.descendant(of: find.byKey(sent), matching: find.byTooltip('Remove')),
-      findsNothing,
-    );
-    expect(tester.widget<InputChip>(find.byKey(sent)).onDeleted, isNull);
-    expect(
-      find.text(
-        'Keep at least one status; add another before removing this one.',
-      ),
-      findsOneWidget,
-    );
-
-    // Even a direct call on the chip sends nothing empty.
-    tester.widget<InputChip>(find.byKey(sent)).onDeleted?.call();
-    await tester.pumpAndSettle();
-    expect(stub.patchLog.where((p) => p.endsWith(' []')), isEmpty);
-    expect(stub.patchLog, hasLength(1));
-    expect(find.byKey(sent), findsOneWidget);
+    expect([for (final s in bar.segments) (s.$1 * 11).round()], [5, 4, 2]);
+    expect(find.byKey(const ValueKey('pm-team-Repair NJ')), findsOneWidget);
   });
 
-  testWidgets('removing the last cancelled status saves [] and offers Undo', (
+  test('the countdown tone: red at the limit, amber two days before', () {
+    expect(pmCountdownTone(10, 10), Tone.bad);
+    expect(pmCountdownTone(12, 10), Tone.bad);
+    expect(pmCountdownTone(9, 10), Tone.caution);
+    expect(pmCountdownTone(8, 10), Tone.caution);
+    expect(pmCountdownTone(7, 10), Tone.info);
+    expect(pmCountdownText(10, 10), '10 days · warned daily');
+    expect(pmCountdownText(8, 10), '8 days · 2 left');
+  });
+
+  testWidgets('waiting to start: a bar per job, its tone and words', (
     tester,
   ) async {
-    final stub = _Stub(cancelled: const ['lost']);
-    await _pump(tester, stub, now: now);
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
-
-    const lost = ValueKey('pm-settings-jobs.cancelled_statuses-lost');
-    await tester.tap(
-      find.descendant(of: find.byKey(lost), matching: find.byTooltip('Remove')),
+    await PmServer().pump(tester);
+    final late = find.byKey(const ValueKey('pm-start-bar-j-3990'));
+    expect(
+      find.descendant(of: late, matching: find.text('12 days · warned daily')),
+      findsOneWidget,
     );
-    await tester.pumpAndSettle();
-    expect(stub.patchLog, ['jobs.cancelled_statuses []']);
-    expect(find.byKey(lost), findsNothing);
-    expect(find.text('Nothing counts as cancelled now'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
-    await tester.pumpAndSettle();
-    expect(stub.patchLog, [
-      'jobs.cancelled_statuses []',
-      'jobs.cancelled_statuses ["lost"]',
-    ]);
-    expect(find.byKey(lost), findsOneWidget);
-  });
-
-  testWidgets('phone: two tiles a row, the list and timeline full screen', (
-    tester,
-  ) async {
-    final overflows = <String>[];
-    final previous = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if ('${details.exception}'.contains('overflowed')) {
-        overflows.add('${details.exception}');
-        return;
-      }
-      previous?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = previous);
-
-    final stub = _Stub();
-    await _pump(tester, stub, now: now, size: const Size(390, 844));
-
-    final first = tester.getTopLeft(
-      find.byKey(const ValueKey('pm-tile-payments')),
-    );
-    final second = tester.getTopLeft(
-      find.byKey(const ValueKey('pm-tile-status_changes')),
-    );
-    final third = tester.getTopLeft(
-      find.byKey(const ValueKey('pm-tile-tag_changes')),
-    );
-    expect(second.dy, first.dy);
-    expect(third.dy, greaterThan(first.dy));
-    expect({
-      for (final key in _tiles)
-        tester.getSize(find.byKey(ValueKey('pm-tile-$key'))),
-    }, hasLength(1));
-
-    await tester.tap(find.byKey(const ValueKey('pm-tile-payments')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('pm-tile-payments')), findsNothing);
-    expect(find.byKey(const ValueKey('pm-dash-card-j-1')), findsOneWidget);
-    // The card's second line: the technician and the tags.
-    final card = find.byKey(const ValueKey('pm-dash-card-j-1'));
-    final tech = find.byKey(const ValueKey('pm-dash-tech-j-1'));
-    expect(find.descendant(of: card, matching: tech), findsOneWidget);
     expect(
       find.descendant(
-        of: card,
-        matching: find.byKey(const ValueKey('pm-tags-j-1')),
+        of: find.byKey(const ValueKey('pm-start-bar-j-4188')),
+        matching: find.text('3 days · 7 left'),
       ),
       findsOneWidget,
     );
+  });
 
-    await tester.tap(find.byKey(const ValueKey('pm-dash-card-j-1')));
+  testWidgets('phone at 390×844: tiles two a row, no overflow', (tester) async {
+    await PmServer().pump(tester, size: const Size(390, 844));
+    expect(tester.takeException(), isNull);
+    final a = tester.getTopLeft(
+      find.byKey(const ValueKey('pm-tile-waiting_review')),
+    );
+    final b = tester.getTopLeft(
+      find.byKey(const ValueKey('pm-tile-in_progress')),
+    );
+    final c = tester.getTopLeft(
+      find.byKey(const ValueKey('pm-tile-ready_to_schedule')),
+    );
+    expect(a.dy, b.dy);
+    expect(c.dy, greaterThan(a.dy));
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('pm-team-Repair OH')),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('pm-dash')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(tester.takeException(), isNull);
+
+    // The tabs scroll; Jobs is cards.
+    await tester.ensureVisible(find.text('Jobs'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Jobs'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pm-card-j-4102')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('pm-card-j-4102')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-timeline')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pm-dash-card-j-1')), findsNothing);
+    expect(find.byKey(const ValueKey('pm-field-reason')), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byKey(const ValueKey('pm-timeline-close')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('pm-dash-card-j-1')), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('pm-dash-back')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('pm-tile-payments')), findsOneWidget);
-
-    // The other two tabs at the same width.
-    await tester.tap(find.text('Pending Jobs'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Settings'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('A job cancels 30 days after its estimate.'),
-      findsOneWidget,
-    );
-
-    expect(overflows, isEmpty);
+    for (final tab in ['Reports', 'Table', 'Settings']) {
+      await tester.ensureVisible(find.text(tab).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(tab).first);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: tab);
+    }
   });
 }
 
-const _tiles = [
-  'payments',
-  'status_changes',
-  'tag_changes',
-  'cancellations',
-  'deadlines_due',
+const pmTileKeys = [
+  'waiting_review',
+  'in_progress',
+  'ready_to_schedule',
+  'scheduled',
+  'done_waiting_payment',
+  'pipeline',
+  'avg_production_cost',
+  'stopped_payments',
 ];
-
-/// The server, and what was asked of it.
-class _Stub {
-  _Stub({
-    this.money = true,
-    this.empty = false,
-    this.cancelled = const [],
-    this.enteredOnly = false,
-  });
-
-  final bool money;
-
-  /// The listed job's only change today is entering a watched status.
-  final bool enteredOnly;
-  final bool empty;
-  final List<String> cancelled;
-
-  final stats = <Uri>[];
-  final lists = <Uri>[];
-  final patches = <String, Object?>{};
-  final patchQueries = <Map<String, String>>[];
-
-  /// Every PATCH in order, as `key value-json`.
-  final patchLog = <String>[];
-
-  Map<String, dynamic> bucket(List<String> ids) => {
-    'count': empty ? 0 : ids.length,
-    'job_ids': empty ? const <String>[] : ids,
-  };
-
-  Future<http.Response> handle(http.Request request) async {
-    final path = request.url.path;
-    if (path.endsWith('/me')) return _json({'data': _me});
-
-    if (path.endsWith('/jobs/project-management/stats')) {
-      stats.add(request.url);
-      final q = request.url.queryParameters;
-      return _json({
-        'data': {
-          'from': q['from'],
-          'to': q['to'],
-          'payments': {
-            ...bucket(['j-1', 'j-2']),
-            if (money && !empty) 'amount_minor': 165000,
-          },
-          'status_changes': {
-            ...bucket(['j-1', 'j-2', 'j-3']),
-            'count': empty ? 0 : 3,
-          },
-          'tag_changes': bucket(['j-2']),
-          'cancellations': bucket(const []),
-          'deadlines_due': bucket(['j-3']),
-        },
-      });
-    }
-
-    if (path.endsWith('/jobs/project-management')) {
-      lists.add(request.url);
-      return _json({
-        'data': [
-          enteredOnly
-              ? {
-                  ..._row('j-1', 'JOB-601', 'Lena Vroom', money: money),
-                  'timeline': [
-                    {
-                      'kind': 'entered',
-                      'at': DateTime(
-                        2026,
-                        10,
-                        21,
-                        8,
-                        30,
-                      ).toUtc().toIso8601String(),
-                      'status': 'approved',
-                      'from': 'estimate_sent',
-                      'to': 'approved',
-                      'what': 'Status Submitted → Done pending approval',
-                      'by': 'EzBizi · Close-out',
-                      'rule': {'id': 'r-9', 'name': 'Close-out'},
-                    },
-                  ],
-                }
-              : _row('j-1', 'JOB-601', 'Lena Vroom', money: money),
-        ],
-        'meta': {
-          'watched': ['estimate_sent'],
-          'deadline_days': 30,
-        },
-      });
-    }
-
-    if (path.contains('/settings/') && request.method == 'PATCH') {
-      final key = path.split('/').last;
-      final body = jsonDecode(request.body) as Map<String, dynamic>;
-      patches[key] = body;
-      patchLog.add('$key ${jsonEncode(body['value'])}');
-      patchQueries.add(request.url.queryParameters);
-      return _json({
-        'data': {'key': key, 'value': body['value']},
-      });
-    }
-
-    if (path.endsWith('/settings')) {
-      List<Map<String, String>> options() => const [
-        {'value': 'estimate_sent', 'label': 'Estimate sent'},
-        {'value': 'approved', 'label': 'Approved'},
-        {'value': 'lost', 'label': 'Lost'},
-      ];
-      return _json({
-        'data': [
-          {'key': 'jobs.statuses', 'value': options()},
-          {
-            'key': 'jobs.estimate_aging_statuses',
-            'value': ['estimate_sent', 'approved'],
-            'options': options(),
-            'may_edit': true,
-          },
-          {
-            'key': 'jobs.cancelled_statuses',
-            'value': cancelled,
-            'options': options(),
-            'may_edit': true,
-          },
-        ],
-      });
-    }
-
-    return _json({'message': 'Nothing stubbed for $path.'}, 404);
-  }
-}
-
-Map<String, dynamic> _row(
-  String id,
-  String number,
-  String customer, {
-  required bool money,
-}) => {
-  'id': id,
-  'number': number,
-  'title': 'Flue reline',
-  'status': 'approved',
-  'tags': const ['Follow up', 'VIP', 'Rush', 'Warranty'],
-  'technician': 'Omar Pell',
-  'franchise': {'id': 'fr-1', 'name': 'Northgate'},
-  'customer': {'id': 'c-$id', 'name': customer},
-  'stage': 'partial',
-  'waiting': {
-    'estimate_date': '2026-10-01',
-    'days_waiting': 20,
-    'deadline': null,
-    'deadline_at': null,
-    'timer': 'stopped',
-  },
-  'timeline': [
-    {
-      'kind': 'entered',
-      'at': '2026-10-01T14:00:00Z',
-      'status': 'estimate_sent',
-      'by': 'Dara Quill',
-      'what': 'Entered estimate_sent',
-    },
-    {
-      'kind': 'payment',
-      'at': DateTime(2026, 10, 2, 10).toUtc().toIso8601String(),
-      'marks': 'partial',
-      'by': 'Workiz',
-      'what': 'Payment received, partly paid',
-      if (money) 'amount_minor': 30000,
-    },
-    {
-      'kind': 'status',
-      'at': DateTime(2026, 10, 21, 9, 10).toUtc().toIso8601String(),
-      'from': 'estimate_sent',
-      'to': 'approved',
-      'by': 'Dara Quill',
-      // Not the client's own status words: the sentence is the server's.
-      'what': 'Status Quote out → Booked',
-    },
-    {
-      'kind': 'payment',
-      'at': DateTime(2026, 10, 21, 9, 42).toUtc().toIso8601String(),
-      'marks': 'partial',
-      'by': 'Workiz',
-      'what': 'Payment received, partly paid',
-      if (money) 'amount_minor': 120000,
-    },
-  ],
-};
-
-Future<void> _pump(
-  WidgetTester tester,
-  _Stub stub, {
-  required DateTime now,
-  Size size = const Size(1280, 900),
-}) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(tester.view.reset);
-
-  final api = ApiClient(client: MockClient(stub.handle));
-  final session = Session(api);
-  await tester.runAsync(() => session.adopt('tok'));
-  expect(session.signedIn, isTrue);
-
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: EzBiziTheme.light(),
-      home: Scaffold(
-        body: ProjectManagementScreen(
-          key: UniqueKey(),
-          api: api,
-          session: session,
-          now: () => now,
-          zone: () => 'America/New_York',
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
-
-http.Response _json(Object body, [int status = 200]) => http.Response(
-  jsonEncode(body),
-  status,
-  headers: const {'content-type': 'application/json'},
-);
-
-const _me = {
-  'id': 'u-1',
-  'name': 'Rhea Tollan',
-  'email': 'rhea@example.com',
-  'role': {'name': 'Manager'},
-  'has_avatar': false,
-  'permissions': ['jobs.view', 'jobs.financials', 'project_management.view'],
-  'preferences': <String, dynamic>{},
-  'organization': {
-    'id': 'org-1',
-    'name': 'Brightway',
-    'franchise_label': 'Franchise',
-    'is_read_only': false,
-  },
-  'scope': {
-    'type': 'organization',
-    'id': 'org-1',
-    'label': 'Brightway',
-    'path': ['Brightway'],
-  },
-  'companies': [
-    {'id': 'co-1', 'name': 'Brightway', 'parent_company_id': null},
-  ],
-  'franchises': [
-    {'id': 'fr-1', 'name': 'Northgate', 'company_id': 'co-1'},
-    {'id': 'fr-2', 'name': 'Lakeside', 'company_id': 'co-1'},
-  ],
-};

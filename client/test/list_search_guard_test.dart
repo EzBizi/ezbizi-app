@@ -322,6 +322,13 @@ const Map<String, _Exemption> _exempt = {
   ),
 
   // Search drawn by the parent file.
+  'lib/screens/jobs/project_management_tab.dart': (
+    why:
+        "one job's timeline, a dot per event; opened from a row in Jobs and "
+        'Logs, which search',
+    owner: 'Project Management',
+    host: 'lib/screens/jobs/project_management_jobs.dart',
+  ),
   'lib/screens/financials/financial_grid.dart': (
     why: 'the grid is searched from the Financials bar',
     owner: 'Financials',
