@@ -1968,6 +1968,9 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // The Payroll tab (Jose, 2026-10-22). Salary itself rides on hr.pay.view
+        // and is changed through the pay-rate history (details/pay-rates).
+        Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');
         // Used typed into Total / Used / Left (Jose, 2026-10-21); UserPolicy::editPtoUsed.
         Route::put('hr/people/{user}/pto/used', [HrPeopleController::class, 'setPtoUsed']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared

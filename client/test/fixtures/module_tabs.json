@@ -124,7 +124,8 @@
                 "Records",
                 "Contracts",
                 "Invitations",
-                "Onboarding"
+                "Onboarding",
+                "Payroll"
             ]
         },
         "inspection": {
@@ -444,6 +445,7 @@
         "hr.onboarding.view",
         "hr.pay.edit",
         "hr.pay.view",
+        "hr.payroll.view",
         "hr.records.view",
         "hr.security.reset",
         "hr.view",

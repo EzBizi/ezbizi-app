@@ -372,6 +372,10 @@ class _OnboardingFormState extends State<OnboardingForm> {
   /// On a phone the form and the contract take turns.
   bool _showContract = false;
 
+  /// The Employer or Employee tab picked over the form (design 135, section
+  /// 7). Null opens on the reader's own side.
+  String? _side;
+
   /// The stored bytes of the document, which the rendered contract replaces
   /// as the thing to read. Still one tap away: they are what is signed.
   bool _showBytes = false;
@@ -962,15 +966,57 @@ class _OnboardingFormState extends State<OnboardingForm> {
       rows.insert(county, rows.removeAt(state));
     }
 
-    final mine = [
+    // Design 135, section 7: an Employer tab and an Employee tab, each with
+    // its own side's questions, opening on the reader's. An `either` question
+    // goes on the reader's own tab, so nothing is drawn twice.
+    final reader = _readerSide(form);
+    final side = _side ?? reader;
+    String sideOf(OnboardingQuestion q) => switch (q.field.filledBy) {
+      filledByEmployer => filledByEmployer,
+      filledByEither => reader,
+      _ => filledByEmployee,
+    };
+    int left(String of) =>
+        rows.where((q) => sideOf(q) == of && _isMissing(q)).length;
+    final onTab = [
       for (final question in rows)
+        if (sideOf(question) == side) question,
+    ];
+    // The other side's tab: read-only, greyed, and waiting on them.
+    final othersTab = !form.parties.contains(side);
+    final addressHere =
+        form.employerAddressEditable && side == filledByEmployer;
+
+    final mine = [
+      for (final question in onTab)
         if (question.writable) question,
     ];
 
     final theirs = [
-      for (final question in rows)
+      for (final question in onTab)
         if (!question.writable) question,
     ];
+
+    final strayChanges = mine.isEmpty && !addressHere && _pending.isNotEmpty;
+
+    final sides = Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: TabBarLike(
+        level: TabLevel.secondary,
+        key: const Key('onboarding-sides'),
+        labels: [
+          (
+            'Employer · ${left(filledByEmployer)} left',
+            Icons.business_outlined,
+          ),
+          ('Employee · ${left(filledByEmployee)} left', Icons.person_outline),
+        ],
+        selected: side == filledByEmployer ? 0 : 1,
+        onSelected: (i) => setState(
+          () => _side = i == 0 ? filledByEmployer : filledByEmployee,
+        ),
+      ),
+    );
 
     return LayoutBuilder(
       builder: (context, box) {
@@ -1002,14 +1048,19 @@ class _OnboardingFormState extends State<OnboardingForm> {
           // belongs beside the button that was pressed; a refused reveal
           // on a record nobody may write has no button to sit beside, and
           // used to have nowhere at all.
-          if (_actionError != null && mine.isEmpty) ...[
+          if (_actionError != null && mine.isEmpty && !strayChanges) ...[
             const SizedBox(height: 16),
             ErrorNote(_actionError!),
           ],
-          if (mine.isNotEmpty) ...[
+          if (questions.isNotEmpty) sides,
+          if (othersTab && onTab.isNotEmpty)
+            _otherSideNote(context, form, side, left(side)),
+          if (mine.isNotEmpty || addressHere) ...[
             const SizedBox(height: 28),
             _sectionTitle(context, 'Yours to fill in'),
-            if (form.employerAddressEditable) _employerAddress(context, form),
+            if (addressHere) _employerAddress(context, form),
+            // Writable is the server's word, so a row it opened stays live
+            // even on the other side's tab.
             for (final question in mine) _row(context, question),
             const SizedBox(height: 8),
             _saveBar(context),
@@ -1018,20 +1069,37 @@ class _OnboardingFormState extends State<OnboardingForm> {
             const SizedBox(height: 28),
             _sectionTitle(
               context,
-              mine.isEmpty ? 'The answers' : 'Not yours to answer',
+              mine.isEmpty && !othersTab
+                  ? 'The answers'
+                  : 'Not yours to answer',
             ),
+            // On the other side's tab the note above has said it.
+            if (!othersTab)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  mine.isEmpty
+                      ? 'Nothing here can be changed from this screen.'
+                      : 'Here so you can see what is still outstanding on '
+                            'the other side. You cannot change these.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            for (final question in theirs)
+              _row(context, question, greyed: othersTab),
+          ],
+          // Changes made on this tab with no box of the reader's own on it,
+          // such as the employer marking an employee question as not
+          // applying, still need their Save.
+          if (strayChanges) ...[const SizedBox(height: 16), _saveBar(context)],
+          if (questions.isNotEmpty && onTab.isEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(top: 20),
               child: Text(
-                mine.isEmpty
-                    ? 'Nothing here can be changed from this screen.'
-                    : 'Here so you can see what is still outstanding on '
-                          'the other side. You cannot change these.',
-                style: theme.textTheme.bodySmall,
+                'Nothing on this side to answer.',
+                style: theme.textTheme.bodyMedium,
               ),
             ),
-            for (final question in theirs) _row(context, question),
-          ],
           // A contract can genuinely ask nothing of its own — a one-page
           // agreement with a signature and no fields is a real thing — so
           // this is stated rather than left as a page that stops after
@@ -1445,7 +1513,78 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
   // ── one question ─────────────────────────────────────────────────
 
-  Widget _row(BuildContext context, OnboardingQuestion question) {
+  /// Which tab the reader opens on: Employee for the person it is about,
+  /// otherwise Employer, which is also where somebody who is neither lands.
+  String _readerSide(Onboarding form) =>
+      form.parties.contains(filledByEmployee) &&
+          !form.parties.contains(filledByEmployer)
+      ? filledByEmployee
+      : filledByEmployer;
+
+  /// Required and still empty, by the server's count (the one signing
+  /// refuses on), until something is typed (Jose, 2026-10-14). The schedule
+  /// row answers the days too, so either one missing marks it.
+  bool _isMissing(OnboardingQuestion question) {
+    final field = question.field;
+    final days = field.key == 'work_hours'
+        ? _question(_form!, 'work_days')
+        : null;
+
+    return !_voided(question) &&
+        _answerOf(field.key).trim().isEmpty &&
+        (_form!.missing.containsKey(field.key) ||
+            (days != null && _form!.missing.containsKey(days.field.key)));
+  }
+
+  /// Over the other side's tab: whose these are, and that they are only to
+  /// read. "Waiting on" them, by name, until that side has nothing left.
+  Widget _otherSideNote(
+    BuildContext context,
+    Onboarding form,
+    String side,
+    int left,
+  ) {
+    final theme = Theme.of(context);
+    final name = side == filledByEmployee
+        ? (form.personName.isNotEmpty
+              ? form.personName
+              : form.personEmail.isNotEmpty
+              ? form.personEmail
+              : _vocabulary.filledByLabel(filledByEmployee))
+        : (form.startedBy ?? _vocabulary.filledByLabel(filledByEmployer));
+
+    return Padding(
+      key: const Key('onboarding-other-side'),
+      padding: const EdgeInsets.only(top: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            left > 0 ? Icons.hourglass_empty : Icons.visibility_outlined,
+            size: 18,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              left > 0
+                  ? 'Waiting on $name. These are theirs to answer; you can '
+                        'read them here but not change them.'
+                  : 'These are $name’s answers. You can read them here but '
+                        'not change them.',
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    OnboardingQuestion question, {
+    bool greyed = false,
+  }) {
     final theme = Theme.of(context);
     final field = question.field;
     final voided = _voided(question);
@@ -1457,13 +1596,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
     final label = days == null
         ? field.label
         : '${days.field.label} and ${field.label.toLowerCase()}';
-    // Required and still empty, by the server's count (the one signing
-    // refuses on), until something is typed (Jose, 2026-10-14).
-    final missing =
-        !voided &&
-        _answerOf(field.key).trim().isEmpty &&
-        (_form!.missing.containsKey(field.key) ||
-            (days != null && _form!.missing.containsKey(days.field.key)));
+    final missing = _isMissing(question);
     final caution = StateColour.of(context).caution;
 
     return Container(
@@ -1494,7 +1627,7 @@ class _OnboardingFormState extends State<OnboardingForm> {
                     // may have got there first, and that correcting them is
                     // expected.
                     if (field.filledBy == filledByEither)
-                      const Tag('Either of you'),
+                      const Tag('Either of you can answer'),
                     if (field.sensitive) const Tag('Sensitive'),
                     // Whose question this is, in the server's word for it.
                     // Only where it is not this person's to answer — on their
@@ -1512,10 +1645,17 @@ class _OnboardingFormState extends State<OnboardingForm> {
           const SizedBox(height: 6),
           // Greyed and still while the term does not apply: its clause is
           // out of the contract until ✓ brings it back.
+          // The other side's answers are greyed too: theirs to give. Greyed
+          // only; their controls are already dead unless the server opened
+          // one (the employer's I-9 Section 2 sits on the employee's file).
           IgnorePointer(
             ignoring: voided,
             child: Opacity(
-              opacity: voided ? 0.4 : 1,
+              opacity: voided
+                  ? 0.4
+                  : greyed
+                  ? 0.6
+                  : 1,
               child: _control(context, question),
             ),
           ),
@@ -1712,6 +1852,16 @@ class _OnboardingFormState extends State<OnboardingForm> {
     switch (field.key) {
       case 'state':
         return _statePicker(question, enabled: enabled);
+      // Several rates by weekly sales (the accountant via Jose, 2026-10-22:
+      // "15% when above X, 30% when above X"). Saved as the sentence the
+      // contract prints, so nothing downstream changes.
+      case 'commission_stages':
+        return CommissionTiers(
+          key: answerKey(field.key),
+          value: _answerOf(question.key),
+          enabled: enabled,
+          onChanged: (v) => _answer(question.key, v),
+        );
       // Eve was unsure what it means (Jose, 2026-10-06): the usual answers
       // to tap, and the box still takes any words.
       case 'comp_method':
@@ -3245,4 +3395,163 @@ Future<String?> downloadSignedPdf(ApiClient api, OnboardingSummary row) async {
   ].join(' - ');
   Files.download('${name.isEmpty ? 'Signed contract' : name}.pdf', bytes);
   return null;
+}
+
+/// Commission rates by weekly sales, one row each: "15% above $5,000; 30%
+/// above $10,000". Text that does not read as tiers (typed before this
+/// existed) starts as one row holding it, so nothing is lost.
+class CommissionTiers extends StatefulWidget {
+  const CommissionTiers({
+    super.key,
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  static final _tier = RegExp(
+    r'^\s*([\d.]+)\s*%\s*above\s*\$?\s*([\d,.]+)\s*$',
+  );
+
+  /// "15% above $5,000; 30% above $10,000" → [(15, 5,000), (30, 10,000)],
+  /// or null when the text is something else.
+  static List<(String, String)>? parse(String text) {
+    if (text.trim().isEmpty) return [];
+    final out = <(String, String)>[];
+    for (final part in text.split(';')) {
+      final m = _tier.firstMatch(part);
+      if (m == null) return null;
+      out.add((m.group(1)!, m.group(2)!));
+    }
+    return out;
+  }
+
+  static String format(List<(String, String)> tiers) => [
+    for (final (pct, above) in tiers)
+      if (pct.trim().isNotEmpty && above.trim().isNotEmpty)
+        '${pct.trim()}% above \$${above.trim()}',
+  ].join('; ');
+
+  @override
+  State<CommissionTiers> createState() => _CommissionTiersState();
+}
+
+class _CommissionTiersState extends State<CommissionTiers> {
+  late final List<(TextEditingController, TextEditingController)> _rows;
+  String? _legacy;
+
+  @override
+  void initState() {
+    super.initState();
+    final parsed = CommissionTiers.parse(widget.value);
+    if (parsed == null) _legacy = widget.value;
+    _rows = [
+      for (final (pct, above) in parsed ?? const <(String, String)>[])
+        (TextEditingController(text: pct), TextEditingController(text: above)),
+    ];
+    if (_rows.isEmpty) {
+      _rows.add((TextEditingController(), TextEditingController()));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final (a, b) in _rows) {
+      a.dispose();
+      b.dispose();
+    }
+    super.dispose();
+  }
+
+  void _changed() => widget.onChanged(
+    CommissionTiers.format([for (final (a, b) in _rows) (a.text, b.text)]),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_legacy != null && _legacy!.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Saved before tiers: "$_legacy". Enter it as tiers below to replace it.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        for (final (i, (pct, above)) in _rows.indexed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 110,
+                  child: TextField(
+                    key: Key('tier-pct-$i'),
+                    controller: pct,
+                    enabled: widget.enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      suffixText: '%',
+                      labelText: 'Commission',
+                    ),
+                    onChanged: (_) => _changed(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Flexible(child: Text('when weekly sales are above')),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    key: Key('tier-above-$i'),
+                    controller: above,
+                    enabled: widget.enabled,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      prefixText: '\$',
+                      labelText: 'Sales',
+                    ),
+                    onChanged: (_) => _changed(),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove this rate',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: !widget.enabled || _rows.length == 1
+                      ? null
+                      : () {
+                          setState(() => _rows.removeAt(i));
+                          _changed();
+                        },
+                ),
+              ],
+            ),
+          ),
+        TextButton.icon(
+          key: const Key('tier-add'),
+          onPressed: widget.enabled
+              ? () => setState(
+                  () => _rows.add((
+                    TextEditingController(),
+                    TextEditingController(),
+                  )),
+                )
+              : null,
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Add a commission rate'),
+        ),
+      ],
+    );
+  }
 }
