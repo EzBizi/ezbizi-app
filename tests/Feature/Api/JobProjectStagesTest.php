@@ -72,6 +72,12 @@ class JobProjectStagesTest extends TestCase
         $this->assertSame(['A'], array_column($get('jobs?stage=in_progress&redo=1&external=1')['data'], 'number'));
         $this->assertSame([], $get('jobs?stage=in_progress&redo=0')['data']);
         $this->assertSame(['E'], array_column($get('jobs?stage=done_waiting_payment&stopped=1')['data'], 'number'));
+        // The Dashboard's "See all": paid, not started; past the 10 days, C (15 days).
+        $this->assertSame(['C'], array_column($get('jobs?waiting_to_start=1')['data'], 'number'));
+        $this->assertSame(['C'], array_column($get('jobs?waiting_to_start=1&over_limit=1')['data'], 'number'));
+        Carbon::setTestNow(Carbon::parse('2026-10-12 15:00:00', 'UTC'));
+        $this->assertSame([], $get('jobs?waiting_to_start=1&over_limit=1')['data'], 'five days paid is not past ten');
+        Carbon::setTestNow(Carbon::parse('2026-10-22 15:00:00', 'UTC'));
 
         $o = $get('overview')['data'];
         $this->assertSame(['count' => 1, 'ours' => 0, 'external' => 1, 'second_visit' => 0, 'redo' => 1, 'new' => 0], $o['in_progress']);
