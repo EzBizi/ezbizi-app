@@ -146,7 +146,8 @@ class GoogleWorkspaceManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', $c->id)
             ->assertJsonPath('data.0.domain', self::DOMAIN)
-            ->assertJsonPath('data.0.signatures_ready', true);
+            ->assertJsonPath('data.0.signatures_ready', true)
+            ->assertJsonPath('data.0.people_count', 2);
     }
 
     /** Without gmail.settings.basic on the delegation, the card says what to add, and apply refuses. */
@@ -184,6 +185,11 @@ class GoogleWorkspaceManagementTest extends TestCase
         $this->assertNull($people['ana@'.self::DOMAIN]['user']);
         $this->assertSame('same_email', $people['office@nj.'.self::DOMAIN]['link']);
         $this->assertSame($t['admin']->id, $people['office@nj.'.self::DOMAIN]['user']['id']);
+
+        // Where a signature's values would come from: EzBizi's person first, Google second.
+        $this->assertSame(['value' => 'Dispatcher', 'from' => 'google'], $people['ana@'.self::DOMAIN]['fills']['title']);
+        $this->assertSame(['value' => 'Ana Directory', 'from' => 'google'], $people['ana@'.self::DOMAIN]['fills']['name']);
+        $this->assertSame(['value' => $t['admin']->name, 'from' => 'ezbizi'], $people['office@nj.'.self::DOMAIN]['fills']['name']);
     }
 
     public function test_an_address_can_be_linked_to_a_person_and_unlinked(): void
@@ -286,9 +292,12 @@ class GoogleWorkspaceManagementTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
         $c = $this->connect($t);
         $this->fakeGoogle();
-        $viewer = $this->userWithRole($t, 'Viewer', ['email.view', 'email.settings.view']);
+        // The tab without email.edit: may not manage. Settings alone no longer reaches it.
+        $viewer = $this->userWithRole($t, 'Viewer', ['email.view', 'email.workspace.view']);
+        $settingsOnly = $this->userWithRole($t, 'Settings', ['email.view', 'email.settings.view', 'email.edit']);
 
         $this->signedInAs($viewer)->getJson('/api/v1/email/workspaces')->assertForbidden();
+        $this->signedInAs($settingsOnly)->getJson('/api/v1/email/workspaces')->assertForbidden();
 
         $this->signedInAs($t['admin'])
             ->putJson($this->base($t, $c).'/people/ana@evil.com/link', ['user_id' => null])

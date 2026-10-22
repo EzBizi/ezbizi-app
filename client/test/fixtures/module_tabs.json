@@ -66,7 +66,8 @@
             "parent": null,
             "tabs": [
                 "Inbox",
-                "Settings"
+                "Settings",
+                "Google Workspace"
             ]
         },
         "estimates": {
@@ -396,6 +397,7 @@
         "email.inbox.view",
         "email.settings.view",
         "email.view",
+        "email.workspace.view",
         "estimates.create",
         "estimates.delete",
         "estimates.edit",

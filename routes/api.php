@@ -2716,7 +2716,7 @@ Route::prefix('v1')
 
         // Email → Google Workspace (2026-10-22): each Workspace's people, who
         // they are in EzBizi, and their Gmail signatures.
-        Route::middleware('permission:email.settings.view')->group(function () {
+        Route::middleware('permission:email.workspace.view')->group(function () {
             Route::get('email/workspaces', [GoogleWorkspaceManagementController::class, 'index']);
             Route::get('email/workspaces/{connection}/people', [GoogleWorkspaceManagementController::class, 'people']);
             Route::put('email/workspaces/{connection}/people/{address}/link', [GoogleWorkspaceManagementController::class, 'link']);
