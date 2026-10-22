@@ -305,7 +305,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.edit_outlined));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'Reception');
+    await tester.enterText(find.byType(TextField).last, 'Reception');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 

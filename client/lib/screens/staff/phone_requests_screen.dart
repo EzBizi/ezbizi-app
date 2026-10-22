@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/staff_session.dart';
@@ -46,6 +48,38 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
   bool _saving = false;
   String? _formError;
 
+  final _search = TextEditingController();
+  String _query = '';
+  Timer? _debounce;
+
+  /// The requests whose visible text contains the search, case-insensitively.
+  ///
+  /// Until StaffPhoneRequestsController@index reads q, the loaded rows are
+  /// filtered here too.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((row) {
+      final companies = (row['companies'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>();
+      final text = [
+        row['organization']?.toString(),
+        row['purpose']?.toString(),
+        row['requested_by']?.toString(),
+        row['expected_volume_label']?.toString(),
+        row['decision_note']?.toString(),
+        switch (row['status']) {
+          'pending' => 'Waiting',
+          'approved' => 'Approved',
+          'partial' => 'Partly approved',
+          _ => 'Declined',
+        },
+        for (final c in companies) c['name']?.toString(),
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +88,8 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -62,11 +98,15 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
     final request = ++_request;
 
     setState(() {
-      _loading = _rows.isEmpty;
+      // Not while searching: a spinner would tear the search field down
+      // mid-typing when a search comes back empty.
+      _loading = _rows.isEmpty && _query.trim().isEmpty;
       _error = null;
     });
 
-    final response = await widget.staff.api.get('/staff/phone-requests');
+    final response = await widget.staff.api.get('/staff/phone-requests', {
+      if (_query.trim().isNotEmpty) 'q': _query.trim(),
+    });
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
@@ -172,11 +212,42 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('phone-requests-search'),
+                controller: _search,
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a request',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) {
+                  setState(() => _query = v);
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 400), _load);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
-          if (_rows.isEmpty)
+          if (_shown.isEmpty && _query.trim().isNotEmpty)
+            Text(
+              'No requests match "${_query.trim()}".',
+              style: theme.textTheme.bodyMedium,
+            )
+          else if (_rows.isEmpty)
             Text('Nobody has asked yet.', style: theme.textTheme.bodyMedium)
           else
-            for (final row in _rows) _card(row, theme),
+            for (final row in _shown) _card(row, theme),
         ],
       ),
     );

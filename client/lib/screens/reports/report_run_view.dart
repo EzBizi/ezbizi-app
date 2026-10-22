@@ -55,6 +55,7 @@ class _ReportRunViewState extends State<ReportRunView> {
   ReportRun? _run;
   String? _error;
   bool _loading = true;
+  String _query = '';
 
   @override
   void initState() {
@@ -110,21 +111,69 @@ class _ReportRunViewState extends State<ReportRunView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= ReportRunView.tableAbove;
+        final query = _query.trim().toLowerCase();
+        final rows = query.isEmpty
+            ? run.rows
+            : [
+                for (final row in run.rows)
+                  if (run.columns.any(
+                    (column) => _cell(
+                      row[column.key],
+                      column.type,
+                    ).toLowerCase().contains(query),
+                  ))
+                    row,
+              ];
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // The count leads, because "how many" is the question it is
-            // usually asked; on a computer it was missing altogether.
-            Text(
-              run.count == 1 ? '1 row' : '${run.count} rows',
-              style: wide
-                  ? Theme.of(context).textTheme.titleMedium
-                  : Theme.of(context).textTheme.headlineSmall,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              alignment: WrapAlignment.spaceBetween,
+              children: [
+                // The count leads, because "how many" is the question it is
+                // usually asked; on a computer it was missing altogether.
+                Text(
+                  run.count == 1 ? '1 row' : '${run.count} rows',
+                  style: wide
+                      ? Theme.of(context).textTheme.titleMedium
+                      : Theme.of(context).textTheme.headlineSmall,
+                ),
+                // As tall as the buttons beside it (Jose, 2026-10-20).
+                SizedBox(
+                  width: 240,
+                  height: 40,
+                  child: TextField(
+                    key: const Key('report-run-search'),
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                      prefixIconConstraints: BoxConstraints(minWidth: 36),
+                      prefixIcon: Icon(Icons.search, size: 18),
+                      hintText: 'Find a row',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() => _query = v),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             if (run.capped) ...[_capLine(context), const SizedBox(height: 12)],
-            Expanded(child: wide ? _table(context, run) : _cards(context, run)),
+            Expanded(
+              child: rows.isEmpty
+                  ? Text(
+                      'No rows match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    )
+                  : wide
+                  ? _table(context, run, rows)
+                  : _cards(context, run, rows),
+            ),
           ],
         );
       },
@@ -146,7 +195,11 @@ class _ReportRunViewState extends State<ReportRunView> {
     );
   }
 
-  Widget _table(BuildContext context, ReportRun run) {
+  Widget _table(
+    BuildContext context,
+    ReportRun run,
+    List<Map<String, dynamic>> rows,
+  ) {
     return SingleChildScrollView(
       scrollDirection: Axis.vertical,
       child: SingleChildScrollView(
@@ -160,7 +213,7 @@ class _ReportRunViewState extends State<ReportRunView> {
               ),
           ],
           rows: [
-            for (final row in run.rows)
+            for (final row in rows)
               DataRow(
                 cells: [
                   for (final column in run.columns)
@@ -176,14 +229,18 @@ class _ReportRunViewState extends State<ReportRunView> {
     );
   }
 
-  Widget _cards(BuildContext context, ReportRun run) {
+  Widget _cards(
+    BuildContext context,
+    ReportRun run,
+    List<Map<String, dynamic>> rows,
+  ) {
     final theme = Theme.of(context);
 
     return ListView.separated(
-      itemCount: run.rows.length,
+      itemCount: rows.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, i) {
-        final row = run.rows[i];
+        final row = rows[i];
 
         return Card(
           margin: EdgeInsets.zero,

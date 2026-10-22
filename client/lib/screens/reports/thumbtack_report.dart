@@ -40,6 +40,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
   String? _state;
   Map<String, dynamic>? _data;
   String? _error;
+  String _query = '';
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
@@ -117,6 +118,20 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
     final spend = total('spend_minor');
     final charged = total('charged');
     final booked = total('booked');
+    // The figures and the Total row stay the whole report's; the search
+    // narrows the rows.
+    final query = _query.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? rows
+        : [
+            for (final r in rows)
+              if ([
+                r['category'] ?? 'No category',
+                r['state'],
+                r['branch'] ?? 'Unassigned',
+              ].any((v) => '${v ?? ''}'.toLowerCase().contains(query)))
+                r,
+          ];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -135,7 +150,26 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
         Wrap(
           spacing: 12,
           runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
+            // As tall as the buttons beside it (Jose, 2026-10-20).
+            SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('thumbtack-report-search'),
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a category or branch',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
             _filter(
               'Category',
               _category,
@@ -203,55 +237,61 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
             ],
           ),
           const SizedBox(height: 12),
-          ReportGrid(
-            key: const ValueKey('thumbtack-table'),
-            columns: const [
-              GridColumn('Category', pinned: true),
-              GridColumn('State'),
-              GridColumn('Branch'),
-              GridColumn('Leads', numeric: true, main: true),
-              GridColumn('Refunded', numeric: true),
-              GridColumn('Spend', numeric: true, main: true),
-              GridColumn('Cost per lead', numeric: true),
-              GridColumn('Booked', numeric: true, main: true),
-              GridColumn('Cost per booked', numeric: true),
-            ],
-            rows: [
-              for (final r in rows)
-                [
-                  GridCell('${r['category'] ?? 'No category'}'),
-                  r['state'] == null
-                      ? const GridCell.none()
-                      : GridCell('${r['state']}'),
-                  GridCell('${r['branch'] ?? 'Unassigned'}'),
-                  GridCell(_count(r['leads'])),
-                  GridCell(_count(r['credited'])),
-                  GridCell(_money(r['spend_minor'])),
-                  r['cost_per_lead_minor'] == null
-                      ? const GridCell.none()
-                      : GridCell(_money(r['cost_per_lead_minor'])),
-                  GridCell(_count(r['booked'])),
-                  r['cost_per_booked_minor'] == null
-                      ? const GridCell.none()
-                      : GridCell(_money(r['cost_per_booked_minor'])),
-                ],
-            ],
-            total: [
-              const GridCell('Total'),
-              const GridCell(''),
-              const GridCell(''),
-              GridCell(_count(total('leads'))),
-              GridCell(_count(total('credited'))),
-              GridCell(_money(spend)),
-              charged > 0
-                  ? GridCell(_money(spend ~/ charged))
-                  : const GridCell.none(),
-              GridCell(_count(booked)),
-              booked > 0
-                  ? GridCell(_money(spend ~/ booked))
-                  : const GridCell.none(),
-            ],
-          ),
+          if (shown.isEmpty)
+            Text(
+              'No rows match "${_query.trim()}".',
+              style: theme.textTheme.bodyMedium,
+            )
+          else
+            ReportGrid(
+              key: const ValueKey('thumbtack-table'),
+              columns: const [
+                GridColumn('Category', pinned: true),
+                GridColumn('State'),
+                GridColumn('Branch'),
+                GridColumn('Leads', numeric: true, main: true),
+                GridColumn('Refunded', numeric: true),
+                GridColumn('Spend', numeric: true, main: true),
+                GridColumn('Cost per lead', numeric: true),
+                GridColumn('Booked', numeric: true, main: true),
+                GridColumn('Cost per booked', numeric: true),
+              ],
+              rows: [
+                for (final r in shown)
+                  [
+                    GridCell('${r['category'] ?? 'No category'}'),
+                    r['state'] == null
+                        ? const GridCell.none()
+                        : GridCell('${r['state']}'),
+                    GridCell('${r['branch'] ?? 'Unassigned'}'),
+                    GridCell(_count(r['leads'])),
+                    GridCell(_count(r['credited'])),
+                    GridCell(_money(r['spend_minor'])),
+                    r['cost_per_lead_minor'] == null
+                        ? const GridCell.none()
+                        : GridCell(_money(r['cost_per_lead_minor'])),
+                    GridCell(_count(r['booked'])),
+                    r['cost_per_booked_minor'] == null
+                        ? const GridCell.none()
+                        : GridCell(_money(r['cost_per_booked_minor'])),
+                  ],
+              ],
+              total: [
+                const GridCell('Total'),
+                const GridCell(''),
+                const GridCell(''),
+                GridCell(_count(total('leads'))),
+                GridCell(_count(total('credited'))),
+                GridCell(_money(spend)),
+                charged > 0
+                    ? GridCell(_money(spend ~/ charged))
+                    : const GridCell.none(),
+                GridCell(_count(booked)),
+                booked > 0
+                    ? GridCell(_money(spend ~/ booked))
+                    : const GridCell.none(),
+              ],
+            ),
         ],
         const SizedBox(height: 12),
         Text(

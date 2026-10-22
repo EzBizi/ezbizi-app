@@ -809,10 +809,24 @@ class _LibraryTabState extends State<LibraryTab> {
   List<Map<String, dynamic>>? _entries;
   String? _error;
 
+  /// What the search bar holds; matched against what each answer's row shows.
+  String _query = '';
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  bool _matches(Map<String, dynamic> e) {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return true;
+    return [
+      e['title'],
+      e['section'],
+      _place(e),
+      e['audience'] == 'staff' ? 'Staff only' : 'Everyone',
+    ].any((v) => v != null && '$v'.toLowerCase().contains(needle));
   }
 
   Future<void> _load() async {
@@ -890,12 +904,40 @@ class _LibraryTabState extends State<LibraryTab> {
         key: const ValueKey('tour-ai_assistance-library'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            // As tall as the buttons beside it (Jose, 2026-10-20).
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('ai-library-search'),
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find an answer',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           if (entries.isEmpty)
             const Text(
               'No answers yet. Each answer appears in the WhatsApp menu and on '
               'the AI tab, grouped by its section.',
             ),
-          for (final section in bySection.entries) ...[
+          if (entries.isNotEmpty && !entries.any(_matches))
+            Text(
+              'No answers match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          for (final section in bySection.entries)
+            if (section.value.any(_matches)) ...[
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 4),
               child: Text(
@@ -905,7 +947,7 @@ class _LibraryTabState extends State<LibraryTab> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            for (final e in section.value)
+            for (final e in section.value.where(_matches))
               Card(
                 child: ListTile(
                   title: Text(e['title'] as String),

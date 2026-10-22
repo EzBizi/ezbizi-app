@@ -36,6 +36,23 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
   int _request = 0;
   String? _error;
   List<Map<String, dynamic>> _accounts = [];
+  String _query = '';
+
+  /// The accounts whose visible text contains the search, case-insensitively.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _accounts;
+    return _accounts.where((account) {
+      final text = [
+        account['name'],
+        account['email'],
+        account['tier'] == 'lead_developer' ? 'Lead Developer' : 'Developer',
+        if (account['is_active'] == false) 'Disabled',
+        if (account['audit_exempt'] == true) 'Not audited',
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -82,10 +99,35 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
               'Accounts that work across every organization. Two factors are '
               'mandatory — an account without a confirmed authenticator cannot '
               'sign in at all.',
-          action: FilledButton.icon(
-            onPressed: _create,
-            icon: const Icon(Icons.person_add_outlined, size: 18),
-            label: const Text('Add staff'),
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('staff-accounts-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a staff account',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _create,
+                icon: const Icon(Icons.person_add_outlined, size: 18),
+                label: const Text('Add staff'),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -93,12 +135,20 @@ class _StaffAccountsScreenState extends State<StaffAccountsScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              itemCount: _accounts.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _row(context, _accounts[i]),
-            ),
+            child: _accounts.isNotEmpty && _shown.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No staff accounts match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    itemCount: _shown.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) => _row(context, _shown[i]),
+                  ),
           ),
         ),
       ],

@@ -141,6 +141,9 @@ class RolesScreen extends StatefulWidget {
 
 class _RolesScreenState extends State<RolesScreen> {
   bool _loading = true;
+
+  /// Filters the role list by name.
+  String _listQuery = '';
   String? _error;
 
   /// Which load owns the screen. Every write here ends in a refresh and the
@@ -413,14 +416,39 @@ class _RolesScreenState extends State<RolesScreen> {
             // set — and it HID the button, which leaves somebody looking for
             // "New role" concluding the screen is broken. Shown and refused,
             // like everywhere else now.
-            action: Refused(
-              reason: noCreate,
-              child: FilledButton.icon(
-                key: const ValueKey('tour-roles-new'),
-                onPressed: noCreate == null ? _create : null,
-                icon: const Icon(Icons.add),
-                label: const Text('New role'),
-              ),
+            action: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // As tall as the buttons beside it (Jose, 2026-10-20).
+                SizedBox(
+                  width: 240,
+                  height: 40,
+                  child: TextField(
+                    key: const Key('roles-list-search'),
+                    textAlignVertical: TextAlignVertical.center,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                      prefixIconConstraints: BoxConstraints(minWidth: 36),
+                      prefixIcon: Icon(Icons.search, size: 18),
+                      hintText: 'Find a role',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => setState(() => _listQuery = v),
+                  ),
+                ),
+                Refused(
+                  reason: noCreate,
+                  child: FilledButton.icon(
+                    key: const ValueKey('tour-roles-new'),
+                    onPressed: noCreate == null ? _create : null,
+                    icon: const Icon(Icons.add),
+                    label: const Text('New role'),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -486,16 +514,32 @@ class _RolesScreenState extends State<RolesScreen> {
       }),
     );
 
+    final q = _listQuery.trim().toLowerCase();
+    bool keeps(RoleSummary role) =>
+        q.isEmpty || role.name.toLowerCase().contains(q);
+    final builtIn = _builtIn.where(keeps).toList();
+    final composed = _composed.where(keeps).toList();
+
+    if (builtIn.isEmpty && composed.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          'No roles match "${_listQuery.trim()}".',
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        if (_builtIn.isNotEmpty) ...[
+        if (builtIn.isNotEmpty) ...[
           heading('Built in'),
-          for (final role in _builtIn) row(role),
+          for (final role in builtIn) row(role),
         ],
-        if (_composed.isNotEmpty) ...[
+        if (composed.isNotEmpty) ...[
           heading('Yours'),
-          for (final role in _composed) row(role),
+          for (final role in composed) row(role),
         ],
       ],
     );

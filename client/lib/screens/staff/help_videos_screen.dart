@@ -37,6 +37,24 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
   bool _loading = true;
   String? _error;
   String? _saveError;
+  String _query = '';
+
+  /// The rows whose visible text contains the search, case-insensitively.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((row) {
+      final video = row['video'] as Map?;
+      final text = [
+        row['label'],
+        row['module_key'],
+        video?['url'],
+        video?['title'],
+        video == null ? 'No video yet' : null,
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -90,10 +108,35 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
               'The how-to video behind each tab\'s ▶, the same for every '
               'organization. A tab with no video shows no ▶. A link must be '
               'https, to a file the app can play.',
-          action: IconButton(
-            tooltip: 'Refresh',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('help-videos-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a tab',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
         ),
         if (_saveError != null)
@@ -106,38 +149,47 @@ class _HelpVideosScreenState extends State<HelpVideosScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              itemCount: _rows.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final row = _rows[i];
-                final video = row['video'] as Map?;
-                final tour = tabTours[row['module_key']];
-                final seconds = (video?['duration_seconds'] as num?)?.toInt();
-                return ListTile(
-                  key: ValueKey('help-video-row-${row['module_key']}'),
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${row['label']}'),
-                  subtitle: Text(
-                    [
-                      video == null
-                          ? 'No video yet: ▶ hidden'
-                          : '${video['url']}'
-                                '${seconds == null ? '' : ' · ${_clock(seconds)}'}',
-                      if (tour != null)
-                        'Walkthrough v${tour.version} · '
-                            '${tour.steps.length} steps',
-                    ].join('\n'),
-                    style: theme.textTheme.bodySmall,
+            child: _rows.isNotEmpty && _shown.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No tabs match "${_query.trim()}".',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    itemCount: _shown.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final row = _shown[i];
+                      final video = row['video'] as Map?;
+                      final tour = tabTours[row['module_key']];
+                      final seconds = (video?['duration_seconds'] as num?)
+                          ?.toInt();
+                      return ListTile(
+                        key: ValueKey('help-video-row-${row['module_key']}'),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${row['label']}'),
+                        subtitle: Text(
+                          [
+                            video == null
+                                ? 'No video yet: ▶ hidden'
+                                : '${video['url']}'
+                                      '${seconds == null ? '' : ' · ${_clock(seconds)}'}',
+                            if (tour != null)
+                              'Walkthrough v${tour.version} · '
+                                  '${tour.steps.length} steps',
+                          ].join('\n'),
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        trailing: OutlinedButton(
+                          onPressed: () => _edit(row),
+                          child: Text(video == null ? 'Add a video' : 'Change'),
+                        ),
+                      );
+                    },
                   ),
-                  trailing: OutlinedButton(
-                    onPressed: () => _edit(row),
-                    child: Text(video == null ? 'Add a video' : 'Change'),
-                  ),
-                );
-              },
-            ),
           ),
         ),
       ],

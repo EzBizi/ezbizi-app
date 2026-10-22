@@ -101,6 +101,10 @@ class _FilesTabState extends State<FilesTab> {
   String? _unlockError;
   final TextEditingController _code = TextEditingController();
 
+  /// Filters the open folder's entries by name; a new folder starts unfiltered.
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
   /// Explorer's Quick access from the roots' listing; empty from an agent too
   /// old to send it.
   List<QuickLink> _quickLinks = const [];
@@ -108,6 +112,7 @@ class _FilesTabState extends State<FilesTab> {
   @override
   void dispose() {
     _code.dispose();
+    _search.dispose();
     super.dispose();
   }
 
@@ -182,6 +187,8 @@ class _FilesTabState extends State<FilesTab> {
     setState(() {
       _browsing = true;
       _browseError = null;
+      _search.clear();
+      _query = '';
     });
 
     try {
@@ -681,6 +688,15 @@ class _FilesTabState extends State<FilesTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _breadcrumbBar(context, device, narrow: narrow),
+        // A phone has no room beside the crumbs: the field gets its own row.
+        if (narrow)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _searchField(),
+            ),
+          ),
         const Divider(height: 1),
         Expanded(child: _list(context)),
       ],
@@ -716,15 +732,38 @@ class _FilesTabState extends State<FilesTab> {
               ),
             ),
           ),
-          if (count != null && !_browsing && _browseError == null)
+          if (!narrow) ...[const SizedBox(width: 8), _searchField()],
+          if (count != null && !_browsing && _browseError == null) ...[
+            const SizedBox(width: 12),
             Text(
               count == 1 ? '1 item' : '$count items',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+          ],
         ],
       ),
     );
   }
+
+  // As tall as the buttons beside it (Jose, 2026-10-20).
+  Widget _searchField() => SizedBox(
+    width: 240,
+    height: 40,
+    child: TextField(
+      key: const Key('files-search'),
+      controller: _search,
+      textAlignVertical: TextAlignVertical.center,
+      decoration: const InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+        prefixIconConstraints: BoxConstraints(minWidth: 36),
+        prefixIcon: Icon(Icons.search, size: 18),
+        hintText: 'Find a file or folder',
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (v) => setState(() => _query = v),
+    ),
+  );
 
   Widget _list(BuildContext context) {
     if (_browsing) {
@@ -770,11 +809,25 @@ class _FilesTabState extends State<FilesTab> {
       'size' => (a.sizeBytes ?? -1).compareTo(b.sizeBytes ?? -1),
       _ => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
     };
-    final sorted = [...entries]..sort((a, b) {
+    final q = _query.trim().toLowerCase();
+    final sorted = [
+      for (final e in entries)
+        if (q.isEmpty || e.name.toLowerCase().contains(q)) e,
+    ]..sort((a, b) {
         if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
         final order = by(a, b);
         return _ascending ? order : -order;
       });
+
+    if (sorted.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          'No files or folders match "${_query.trim()}".',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      );
+    }
 
     return LayoutBuilder(
       builder: (context, box) {
