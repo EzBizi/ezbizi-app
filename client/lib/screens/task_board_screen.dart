@@ -173,8 +173,8 @@ String _createdLabel(Object? at, DisplayFormats formats) {
 const _builtinDefaults = {
   'owner': 'Owner',
   'status': 'Status',
-  'due': 'Due',
   'created': 'Created',
+  'due': 'Due',
   'about': 'About',
   'updates': 'Updates',
 };
@@ -1457,8 +1457,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             ),
             if (shown('owner')) b('owner', _widths.owner),
             if (shown('status')) b('status', _widths.status),
-            if (shown('due')) b('due', _widths.due),
             if (shown('created')) b('created', _widths.created),
+            if (shown('due')) b('due', _widths.due),
             for (final c in boardColumns(_board))
               _cell(
                 context,
@@ -1552,7 +1552,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   context,
                   _widths.owner,
                   owner == null
-                      ? const SizedBox.shrink()
+                      ? _automationOwner(t)
                       : Row(
                           children: [
                             _avatar(context, owner),
@@ -1569,6 +1569,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               if (shown('status'))
                 SizedBox(width: _widths.status, child: _statusCell(context, t)),
+              if (shown('created'))
+                _cell(
+                  context,
+                  _widths.created,
+                  Text(
+                    _createdLabel(t['created_at'], _formats),
+                    key: ValueKey('task-created-${t['id']}'),
+                    maxLines: 1,
+                  ),
+                ),
               if (shown('due'))
                 _cell(
                   context,
@@ -1582,16 +1592,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                             fontWeight: FontWeight.w700,
                           )
                         : null,
-                  ),
-                ),
-              if (shown('created'))
-                _cell(
-                  context,
-                  _widths.created,
-                  Text(
-                    _createdLabel(t['created_at'], _formats),
-                    key: ValueKey('task-created-${t['id']}'),
-                    maxLines: 1,
                   ),
                 ),
               for (final c in boardColumns(_board))
@@ -1665,6 +1665,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// "+2" after a task's primary owner, every name on hover.
+  /// A card a rule made with nobody on it is EzBizi's: the mark and the
+  /// name, with the rule's name on hover (Jose, 2026-10-22).
+  Widget _automationOwner(_Json t) {
+    final madeBy = t['created_by'];
+    if (madeBy is! Map || madeBy['type'] != 'automation') {
+      return const SizedBox.shrink();
+    }
+    return Tooltip(
+      key: ValueKey('task-owner-ezbizi-${t['id']}'),
+      message: '${madeBy['label'] ?? ''}',
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/logo/app-icon-120.png',
+            width: 18,
+            height: 18,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 6),
+          const Flexible(
+            child: Text('EzBizi', overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _moreOwners(_Json t, List<String> owners) => Tooltip(
     message: owners.join(', '),
     child: Padding(
