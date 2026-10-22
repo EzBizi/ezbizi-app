@@ -10,7 +10,7 @@ use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
-use App\Models\ServiceAreaZip;
+use App\Models\ServiceArea;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
@@ -1814,7 +1814,7 @@ class LeadsController extends Controller
             return $blank;
         }
 
-        $area = ServiceAreaZip::query()->where('zip', str_pad(substr($digits, 0, 5), 5, '0', STR_PAD_LEFT))->first()?->serviceArea;
+        $area = ServiceArea::forZip($digits, ViewScope::forUser(request()->user())->franchiseIds());
 
         if ($area === null || ! Openings::hasCapacity($area)) {
             return $blank;
