@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/contracts.dart';
+import '../../core/files.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
@@ -73,6 +74,9 @@ class _ContractsTabState extends State<ContractsTab> {
   /// from [_error]: a missing catalogue does not make the list of templates
   /// unreadable, and blanking the page over it hides what somebody came to read.
   String? _cannotDesign;
+
+  /// Why the last draft download was refused, in the server's words.
+  String? _draftError;
 
   /// The template being designed, as `GET /hr/contracts/{contract}` returned
   /// it. NULL for one that does not exist yet — there is nothing to fetch and
@@ -210,6 +214,11 @@ class _ContractsTabState extends State<ContractsTab> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
             child: ErrorNote(_cannotDesign!),
           ),
+        if (_draftError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: ErrorNote(_draftError!),
+          ),
         Expanded(
           child: AsyncBody(
             key: const ValueKey('tour-hr-contracts-list'),
@@ -338,7 +347,7 @@ class _ContractsTabState extends State<ContractsTab> {
         ListColumn('Questions', flex: 2),
         ListColumn('Wording', flex: 2),
         ListColumn('Cover', flex: 1),
-        ListColumn('', flex: 2, end: true),
+        ListColumn('', flex: 4, end: true),
       ],
       rowKey: (i) => ValueKey('contract-${shown[i]['id']}'),
       onTap: (i) {
@@ -392,11 +401,29 @@ class _ContractsTabState extends State<ContractsTab> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : TextButton(
-                    onPressed: template['id'] == null
-                        ? null
-                        : () => _open(template['id'] as String),
-                    child: Text(_mayEdit ? 'Design' : 'Read'),
+                : Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Tooltip(
+                        message: 'A copy marked DRAFT, nothing is signed',
+                        child: OutlinedButton.icon(
+                          key: ValueKey('contract-draft-${template['id']}'),
+                          onPressed: template['id'] == null
+                              ? null
+                              : () => _draft(template),
+                          icon: const Icon(Icons.download_outlined, size: 18),
+                          label: const Text('Download draft'),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: template['id'] == null
+                            ? null
+                            : () => _open(template['id'] as String),
+                        child: Text(_mayEdit ? 'Design' : 'Read'),
+                      ),
+                    ],
                   ),
           ],
       ],
@@ -416,6 +443,25 @@ class _ContractsTabState extends State<ContractsTab> {
     if (count == null) return '';
 
     return '$count asked today';
+  }
+
+  /// The current version with sample values, stamped DRAFT on every page
+  /// (`GET /hr/contracts/{id}/draft.pdf`). Gated like preview; a refusal shows
+  /// the server's own sentence beside the list.
+  Future<void> _draft(Map<String, dynamic> template) async {
+    setState(() => _draftError = null);
+    final response = await widget.api.getBytesResponse(
+      '/hr/contracts/${template['id']}/draft.pdf',
+    );
+    if (!mounted) return;
+    final bytes = response.bytes;
+    if (!response.ok || bytes == null) {
+      setState(
+        () => _draftError = response.message ?? 'The draft could not be made.',
+      );
+      return;
+    }
+    Files.download(draftFilename(template['name'] as String?), bytes);
   }
 
   void _create() => setState(() {
@@ -453,4 +499,10 @@ class _ContractsTabState extends State<ContractsTab> {
       _creating = false;
     });
   }
+}
+
+/// `<name>-draft.pdf`, the name a draft copy is saved under.
+String draftFilename(String? name) {
+  final base = (name ?? '').trim();
+  return '${base.isEmpty ? 'Contract' : base}-draft.pdf';
 }

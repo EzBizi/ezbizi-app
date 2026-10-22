@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/files.dart';
 import 'package:ezbizi_client/core/contracts.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -547,6 +548,46 @@ void main() {
 
     expect(asked, 1);
     expect(find.byKey(const Key('onboarding-save-pdf')), findsOneWidget);
+  });
+
+  testWidgets('an unsigned onboarding offers a draft from the preview, '
+      'not the signed copy', (tester) async {
+    Map<String, dynamic>? body;
+    var signed = 0;
+    String? saved;
+    Files.debugOnDownload = (name, _) => saved = name;
+    addTearDown(() => Files.debugOnDownload = null);
+    await _pumpForm(
+      tester,
+      _handler(
+        onPdf: (b) {
+          body = b;
+          return Uint8List.fromList(utf8.encode('%PDF-1.7 draft'));
+        },
+        onSignedPdf: () => signed++,
+      ),
+    );
+
+    expect(find.byKey(const Key('onboarding-download-pdf')), findsNothing);
+    final button = find.byKey(const Key('onboarding-download-draft'));
+    expect(
+      find.widgetWithText(OutlinedButton, 'Download draft'),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(body, {'answers': <String, dynamic>{}});
+    expect(signed, 0);
+    expect(saved, endsWith('-draft.pdf'));
+  });
+
+  testWidgets('a fully signed onboarding has no draft button', (tester) async {
+    await _pumpForm(tester, _handler(form: _asRecord));
+
+    expect(find.byKey(const Key('onboarding-download-draft')), findsNothing);
+    expect(find.byKey(const Key('onboarding-download-pdf')), findsOneWidget);
   });
 
   testWidgets('a finished record reads as one, signature and all', (

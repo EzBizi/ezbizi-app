@@ -22,6 +22,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/signature_field.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
+import 'contracts_tab.dart' show draftFilename;
 import 'tax_form_panel.dart';
 import '../../widgets/work_schedule_panel.dart';
 
@@ -1278,6 +1279,25 @@ class _OnboardingFormState extends State<OnboardingForm> {
             ],
           ],
         ),
+        // Not signed yet: the hire's answers so far, stamped DRAFT. Its own
+        // endpoint, never the signed copy's. A line of its own so a phone-wide
+        // header still fits.
+        if (!frozen)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Tooltip(
+                message: 'A copy marked DRAFT, nothing is signed',
+                child: OutlinedButton.icon(
+                  key: const Key('onboarding-download-draft'),
+                  onPressed: _gettingDraft ? null : _draftPdf,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: Text(_gettingDraft ? 'Preparing…' : 'Download draft'),
+                ),
+              ),
+            ),
+          ),
         if (_previewError != null && !frozen)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -2649,6 +2669,36 @@ class _OnboardingFormState extends State<OnboardingForm> {
   }
 
   bool _gettingPdf = false;
+  bool _gettingDraft = false;
+
+  /// `POST …/preview?format=pdf` with no unsaved answers: what the hire has
+  /// filled in so far, stamped DRAFT, saved as `<name>-draft.pdf`.
+  Future<void> _draftPdf() async {
+    setState(() {
+      _gettingDraft = true;
+      _actionError = null;
+    });
+    final response = await widget.api.postBytesResponse(
+      '/hr/onboardings/${widget.onboardingId}/preview',
+      {'answers': <String, dynamic>{}},
+      {'format': 'pdf'},
+    );
+    if (!mounted) return;
+    setState(() => _gettingDraft = false);
+    final bytes = response.bytes;
+    if (!response.ok || bytes == null) {
+      setState(
+        () => _actionError = response.message ?? 'The draft could not be made.',
+      );
+      return;
+    }
+    final form = _form;
+    final name = [
+      if (form != null && form.contractName.isNotEmpty) form.contractName,
+      if (form != null && form.personName.isNotEmpty) form.personName,
+    ].join(' - ');
+    Files.download(draftFilename(name), bytes);
+  }
 
   /// Fetch the signed copy, show it, and offer to save it. Its own endpoint
   /// (`…/document/pdf`) audits the copy and refuses one whose stored document
