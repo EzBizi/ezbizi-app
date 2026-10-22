@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/device_zone.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
@@ -30,6 +31,7 @@ class ProjectManagementScreen extends StatefulWidget {
     required this.api,
     required this.session,
     this.now,
+    this.zone = deviceZone,
   });
 
   final ApiClient api;
@@ -37,6 +39,9 @@ class ProjectManagementScreen extends StatefulWidget {
 
   /// The countdown's clock, passed through for tests.
   final DateTime Function()? now;
+
+  /// The device's IANA zone, passed through for tests.
+  final String? Function() zone;
 
   @override
   State<ProjectManagementScreen> createState() =>
@@ -157,6 +162,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         statuses: _statuses,
         cancelled: _cancelled?.value,
         now: widget.now,
+        zone: widget.zone,
         generation: _generation,
       ),
     ),
@@ -169,6 +175,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         session: widget.session,
         statuses: _statuses,
         now: widget.now,
+        zone: widget.zone,
         generation: _generation,
       ),
     ),

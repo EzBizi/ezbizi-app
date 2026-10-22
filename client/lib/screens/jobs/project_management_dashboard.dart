@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/branch_options.dart';
+import '../../core/device_zone.dart';
 import '../../core/job_money.dart';
 import '../../core/job_status.dart';
 import '../../core/numbers.dart';
@@ -14,7 +15,8 @@ import '../../widgets/side_panel.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
 import 'pm_range.dart';
-import 'project_management_tab.dart' show PmTimeline;
+import 'project_management_tab.dart'
+    show PmTags, PmTimeline, pmTags, pmTechnician;
 
 /// Project Management › Dashboard (UI queue 127, option 1 and phone 4).
 ///
@@ -33,6 +35,7 @@ class ProjectManagementDashboard extends StatefulWidget {
     this.labels,
     this.now,
     this.generation = 0,
+    this.zone = deviceZone,
   });
 
   final ApiClient api;
@@ -50,6 +53,9 @@ class ProjectManagementDashboard extends StatefulWidget {
 
   /// Bumped by the screen when Settings changes: count again.
   final int generation;
+
+  /// The device's IANA zone, sent so the server's days are the viewer's.
+  final String? Function() zone;
 
   @override
   State<ProjectManagementDashboard> createState() =>
@@ -114,6 +120,7 @@ class _ProjectManagementDashboardState
 
     final response = await widget.api.get('/jobs/project-management/stats', {
       ..._range.query(_now()),
+      'timezone': ?widget.zone(),
       'franchise_id': ?_branch,
     });
     if (!mounted || request != _request) return;
@@ -145,12 +152,17 @@ class _ProjectManagementDashboardState
     return c is int ? c : 0;
   }
 
-  List<String> _ids(String key) => [
-    for (final id in (_bucket(key)?['job_ids'] as List?) ?? const []) '$id',
-  ];
+  /// Whether a tile has anything to list.
+  List<String> _ids(String key) => _count(key) == 0
+      ? const []
+      : [
+          for (final id in (_bucket(key)?['job_ids'] as List?) ?? const [])
+            '$id',
+        ];
 
-  /// A tile's jobs. None to ask for is not a request: the list without ids
-  /// is every watched job.
+  /// A tile's jobs, asked for by the stat's name and the same dates, branch
+  /// and zone as the numbers (Jose, 2026-10-22: Yesterday's 514 ids broke
+  /// the 500 cap). A count of none sends nothing.
   Future<void> _list(String key) async {
     final ids = _ids(key);
     final request = ++_listRequest;
@@ -168,7 +180,10 @@ class _ProjectManagementDashboardState
     if (ids.isEmpty) return;
 
     final response = await widget.api.get('/jobs/project-management', {
-      'ids[]': ids.take(500).toList(),
+      'event': key,
+      ..._range.query(_now()),
+      'timezone': ?widget.zone(),
+      'franchise_id': ?_branch,
     });
     if (!mounted || request != _listRequest) return;
 
@@ -603,12 +618,11 @@ class _ProjectManagementDashboardState
 
     final step = steps.last;
     final money = step['amount_minor'];
-    // A status step in the organization's own words; the server's sentence
-    // carries the stored keys.
-    final said = kind == 'status'
-        ? 'Status ${_status(step['from'])} → ${_status(step['to'])}'
-        : '${step['what'] ?? step['kind'] ?? ''}';
-    final what = [said, if (money is int) formatMoney(money)].join(' · ');
+    // The server's sentence, in the organization's status words (0d70ec402).
+    final what = [
+      '${step['what'] ?? step['kind'] ?? ''}',
+      if (money is int) formatMoney(money),
+    ].join(' · ');
     final by = step['by'];
     return (
       what: what,
@@ -624,7 +638,7 @@ class _ProjectManagementDashboardState
     return day.compareTo(span.fromKey) >= 0 && day.compareTo(span.toKey) <= 0;
   }
 
-  static const _flex = [4, 3, 5, 2, 2];
+  static const _flex = [4, 3, 3, 5, 2, 2];
 
   Widget _cells(List<Widget> cells) => Row(
     children: [
@@ -649,7 +663,14 @@ class _ProjectManagementDashboardState
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
       child: _cells([
-        for (final h in const ['JOB', 'CUSTOMER', 'WHAT', 'WHEN', 'BY'])
+        for (final h in const [
+          'JOB',
+          'CUSTOMER',
+          'TECHNICIAN',
+          'WHAT',
+          'WHEN',
+          'BY',
+        ])
           Text(h, style: style),
       ]),
     );
@@ -676,20 +697,30 @@ class _ProjectManagementDashboardState
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 6, 10),
           child: _cells([
-            Text.rich(
-              TextSpan(
-                children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
                   TextSpan(
-                    text: '${r['number'] ?? ''}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    children: [
+                      TextSpan(
+                        text: '${r['number'] ?? ''}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      TextSpan(text: '  ${r['title'] ?? ''}'),
+                    ],
                   ),
-                  TextSpan(text: '  ${r['title'] ?? ''}'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (pmTags(r).isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
                 ],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              ],
             ),
             _one(_name(r['customer'])),
+            _one(pmTechnician(r) ?? '—'),
             _one(step.what),
             _one(step.when),
             _one(step.by),
@@ -731,6 +762,27 @@ class _ProjectManagementDashboardState
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
+                // The second line: who works it, and its tags.
+                if (pmTechnician(r) != null || pmTags(r).isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (pmTechnician(r) != null)
+                        Text(
+                          pmTechnician(r)!,
+                          key: ValueKey('pm-dash-tech-$id'),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      if (pmTags(r).isNotEmpty)
+                        PmTags(pmTags(r), key: ValueKey('pm-tags-$id')),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Text(step.what, maxLines: 2, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
