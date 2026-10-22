@@ -159,7 +159,11 @@ class GoogleWorkspaceManagementTest extends TestCase
 
         $this->signedInAs($t['admin'])->getJson('/api/v1/email/workspaces')
             ->assertJsonPath('data.0.signatures_ready', false)
-            ->assertJsonPath('data.0.signatures_reason', fn ($r) => str_contains($r, 'gmail.settings.basic'));
+            ->assertJsonPath('data.0.signatures_reason', fn ($r) => str_contains($r, 'Update permissions'))
+            ->assertJsonPath('data.0.authorize_url', fn ($u) => str_starts_with($u, 'https://admin.google.com/ac/owl/domainwidedelegation?')
+                && str_contains(urldecode($u), 'clientIdToAdd=1234567890')
+                && str_contains(urldecode($u), 'gmail.settings.basic')
+                && str_contains(urldecode($u), 'gmail.readonly'));
 
         $this->signedInAs($t['admin'])
             ->postJson($this->base($t, $c).'/signatures/apply', ['addresses' => ['ana@'.self::DOMAIN], 'html' => 'x'])

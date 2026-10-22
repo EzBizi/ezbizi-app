@@ -47,9 +47,8 @@ final class WorkspaceSignatures
 
             return null;
         } catch (\Throwable) {
-            return 'Google Admin has not allowed EzBizi to change Gmail settings yet. In Google Admin, '
-                .'open Security → API controls → Domain-wide delegation, edit EzBizi\'s client and add '
-                .self::SCOPE_SETTINGS.' to its scopes.';
+            return 'Google Admin has not allowed EzBizi to change Gmail settings yet. A Workspace '
+                .'administrator for '.$connection->domain.' clicks Update permissions, then Authorize.';
         }
     }
 
