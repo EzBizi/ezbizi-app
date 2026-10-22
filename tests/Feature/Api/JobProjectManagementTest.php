@@ -183,8 +183,13 @@ class JobProjectManagementTest extends TestCase
         $this->assertSame(['Payment on DPA', 'J-1', 'A Customer'], [$logs[2]['rule']['name'], $logs[2]['job']['number'], $logs[2]['job']['customer']]);
         $this->assertSame('Set status Submitted; tags Deposit Received in Workiz.', $logs[2]['changes'][0]['detail']);
 
-        $this->assertSame(['skipped'], array_column($this->signedInAs($alpha['admin'])
-            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&outcome=skipped')->json('data'), 'outcome'));
+        $skipped = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&outcome=skipped')->json();
+        $this->assertSame(['skipped'], array_column($skipped['data'], 'outcome'));
+        // Counts for every outcome whatever is selected, and the skips folded per rule.
+        $this->assertSame(['succeeded' => 1, 'failed' => 0, 'skipped' => 1, 'manual' => 1], $skipped['meta']['counts']);
+        $this->assertSame([['reason' => 'Status was Scheduled; the rule wants Done, pending approval.', 'count' => 1]],
+            $skipped['meta']['skipped_by_rule'][0]['reasons']);
     }
 
     public function test_filters_by_stage_branch_and_days(): void
@@ -194,6 +199,9 @@ class JobProjectManagementTest extends TestCase
         $get = fn (string $q) => array_column($this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management?{$q}")->assertOk()->json('data'), 'id');
 
         $this->assertSame([$job], $get('stage=partial'));
+        // Every chip's count on every call (UI/UX, 2026-10-22).
+        $this->assertSame(['recently_paid' => 1, 'waiting' => 0, 'partial' => 1, 'full' => 0, 'closed' => 0],
+            $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?stage=full&from=2026-10-10&to=2026-10-10')->json('meta.counts'));
         $this->assertSame([], $get('stage=full'));
         $this->assertSame([$job], $get('franchise_id='.$alpha['franchise']->id));
         $this->assertSame([], $get('min_days=25'));
