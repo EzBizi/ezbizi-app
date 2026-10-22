@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0483',
+      date: '22 Oct 2026',
+      items: [
+        'Notifications: choose which companies you hear from in the bell, under Notify me about. Picking one includes its sub companies and branches, and it applies to the bell, phone and email. Organization-wide notices always arrive.',
+        'Customer Experience follows the place you are viewing: a branch sees its own reviews, listings, performance and complaints. Assigning a listing to a branch under Business Profile moves its reviews and complaints with it.',
+        'Branch pickers everywhere read "Company · Branch" instead of "Main".',
+        'Project Management: the Dashboard\'s bars are coloured and show the top entries with Show all, many service areas fold into one picker, and each place chooses which statuses Project Management covers and whether only partly paid jobs show.',
+        'Task Board: a card a rule made shows EzBizi as its owner, with the rule\'s name on hover, and Created comes before Due.',
+        'Online booking: a branch can have a catch-all area that covers every ZIP code the branch has no listed area for, so companies without service areas can be booked.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0482',
       date: '22 Oct 2026',
       items: [
