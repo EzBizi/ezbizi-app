@@ -1,3 +1,4 @@
+import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/session.dart';
@@ -68,7 +69,12 @@ class InventoryPlaceFields extends StatelessWidget {
                 value: inventoryGeneralValue,
                 label: inventoryGeneralLabel,
               ),
-              for (final f in _places) SearchOption(value: f.id, label: f.name),
+              for (final f in branchOptions(
+                _places,
+                me.companies,
+                activeOnly: false,
+              ))
+                SearchOption(value: f.id, label: f.label),
             ],
             onChanged: enabled
                 ? (v) =>

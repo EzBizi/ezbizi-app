@@ -1,3 +1,4 @@
+import '../../core/branch_options.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -486,8 +487,8 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
                   value: fleetGeneralValue,
                   label: fleetGeneralLabel,
                 ),
-                for (final f in _places)
-                  SearchOption(value: f.id, label: f.name),
+                for (final f in branchOptions(_places, _me.companies, activeOnly: false))
+                  SearchOption(value: f.id, label: f.label),
               ],
               enabled
                   ? (v) => setState(
