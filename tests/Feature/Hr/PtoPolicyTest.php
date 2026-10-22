@@ -170,7 +170,7 @@ class PtoPolicyTest extends TestCase
         $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->json('data'))->firstWhere('id', $t['admin']->id);
         $this->assertSame(['2026-06-01', '2026-06-03'], array_column($row['days_off'], 'date'));
         $this->assertSame('2026-04-01', $row['period_start']);
-        $this->assertNotNull($row['role']);
+        $this->assertArrayHasKey('id', $row['role']);
 
         $this->signedInAs($t['admin'])->deleteJson("{$url}/{$row['days_off'][0]['id']}")
             ->assertOk()->assertJsonPath('data.used', 0.5);

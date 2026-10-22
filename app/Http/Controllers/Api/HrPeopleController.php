@@ -1080,7 +1080,6 @@ class HrPeopleController extends Controller
                     'resets_on' => $answer['resets_on'],
                     'can_edit_used' => $actor->can('editPtoUsed', $person),
                     'used_changes' => $changes->get($person->getKey(), collect())->values(),
-                    'role' => $person->role?->name,
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],
