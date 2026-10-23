@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 144 · Project Management overhaul 2: one frame, the flow, a Rules tab — **sent 2026-10-23** (`docs/previews/pm-overhaul-2-layouts.html`)
+
+Jose: "impossible to understand … do an overhaul" + a Rules tab. Audit: scratchpad/pm_audit/AUDIT.md (6 contradictions sent to Jobs; Action 1 is OFF in production). **1** (recommended) one frame on all tabs (purpose sentence + How this is measured, scope bar, filter bar in fixed order); stages as one ordered flow with one colour each; ⓘ on every number; tabs Overview · Jobs · Assignments · Repair team (Reports+Table merged) · Rules (new, live, read-only, links to Settings/Automations) · Logs · Settings; Needs attention cards. **2** keep the 7 tabs + frame + Rules. **3** guided home + More. Phone **4** / **5** / **6**.
+
 ### 143 · Project Management › Assignments board — **sent 2026-10-22** (`docs/previews/pm-assignments-layouts.html`)
 
 Shoval via Jose: a Task-Board-like tab where a job lands once its deposit is paid and gets assigned to a technician. **1** (recommended) columns: "Just paid · to assign" (auto, newest first, days since payment vs limit) then one per technician + External company with load (count, $ due); drag or Assign ▾ sets the technician (EzBizi + Workiz when connected), logged; card = job, customer, area, deposit, due, stage chip, flags; search, area picker, Jobs filters. **2** stage columns. **3** queue table. Phone **4** (recommended: one column at a time, Assign button) / **5** / **6**. **Jose 2026-10-22 corrected:** it "refers to the action 1 stuff, when the job gets a payment and switches status tags" — the tab embeds the Task Board cards Action 1 creates (that board/group, Technician column), not a new assignment system.
