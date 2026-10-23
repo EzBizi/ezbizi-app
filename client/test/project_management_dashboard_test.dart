@@ -63,7 +63,7 @@ void main() {
     expect(text(tester, 'pm-tile-in_progress-value'), '41');
     expect(
       text(tester, 'pm-tile-in_progress-sub'),
-      'Us 29 · External 12 · 2nd visit 6 · Redo 4 / new 37',
+      'Our team 29 · External company 12 · Needs a second visit 6 · Redo 4 · New 37',
     );
     expect(
       text(tester, 'pm-tile-ready_to_schedule-sub'),
@@ -198,7 +198,7 @@ void main() {
     );
     expect(chip.selected, isTrue);
 
-    // Back on the Dashboard, Stopped payments adds its own filter.
+    // Back on the Dashboard, Payments stopped adds its own filter.
     await tester.tap(find.text('Dashboard'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(

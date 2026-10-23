@@ -255,7 +255,11 @@ class PmBar extends StatelessWidget {
         height: height,
         child: ColoredBox(
           color: track,
+          // Stretch: a childless ColoredBox takes the smallest height it is
+          // allowed, and a Row's default lets it be 0, so every segment was
+          // laid out 0 px tall and only the track painted (0.0.0486).
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final (share, colour) in segments)
                 if ((share * 1000).round() > 0)
@@ -277,10 +281,12 @@ class PmBar extends StatelessWidget {
 ///
 /// "No reason" was the neutral grey, the family of the bar's own track. On
 /// 2026-10-22 every live job waiting review had no reason, so every bar read
-/// as an empty grey track (Jose: "bars dont have any collors?"). It takes a
-/// hue like the rest; [none] is kept for callers.
-Color pmReasonColour(BuildContext context, int index, {bool none = false}) =>
-    PersonColours.hue(context, index).ink;
+/// as an empty grey track (Jose: "bars dont have any collors?"). It is now a
+/// mid grey, clearly darker (light) or lighter (dark) than the track.
+Color pmReasonColour(BuildContext context, int index, {bool none = false}) {
+  if (none) return ToneColours.midGrey(context);
+  return PersonColours.hue(context, index).ink;
+}
 
 /// "Not set up", with the way to Settings, for a stage `jobs.pm_stages`
 /// does not map.
@@ -416,8 +422,8 @@ class PmAreaChips extends StatelessWidget {
   }
 }
 
-/// Redo / One go, Disputes, Stopped payments, External and, where it is
-/// offered, Needs 2nd visit.
+/// "Show only:" then Needs a second visit (where it is offered), External
+/// company, Redo, Done in one visit, In dispute and Payments stopped.
 class PmFlagChips extends StatelessWidget {
   const PmFlagChips({
     super.key,
@@ -444,17 +450,25 @@ class PmFlagChips extends StatelessWidget {
     return Wrap(
       spacing: 6,
       runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        Text(
+          'Show only:',
+          key: const ValueKey('pm-flag-label'),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
         if (secondVisit)
           chip(
             'second_visit',
-            'Needs 2nd visit',
+            'Needs a second visit',
             f.secondVisit,
             f.copyWith(secondVisit: !f.secondVisit),
           ),
         chip(
           'external',
-          'External',
+          'External company',
           f.external,
           f.copyWith(external: !f.external),
         ),
@@ -466,14 +480,19 @@ class PmFlagChips extends StatelessWidget {
         ),
         chip(
           'one_go',
-          'One go',
+          'Done in one visit',
           f.redo == false,
           f.copyWith(redo: f.redo == false ? null : false),
         ),
-        chip('dispute', 'Disputes', f.dispute, f.copyWith(dispute: !f.dispute)),
+        chip(
+          'dispute',
+          'In dispute',
+          f.dispute,
+          f.copyWith(dispute: !f.dispute),
+        ),
         chip(
           'stopped',
-          'Stopped payments',
+          'Payments stopped',
           f.stopped,
           f.copyWith(stopped: !f.stopped),
         ),
