@@ -109,6 +109,9 @@ class JobProjectStagesTest extends TestCase
         $this->assertSame(['C', 'D'], $numbers('stages[]=ready_to_schedule&stages[]=scheduled'));
         $this->assertSame(['A', 'B', 'C', 'D', 'E', 'F'], $numbers(''));
         $this->assertSame(['E'], $numbers('stopped=1'));
+        $this->assertSame(['B'], $numbers('review_reason[]=order_parts'));
+        $this->assertSame(['A', 'C', 'D', 'E', 'F'], $numbers('review_reason[]=none'), 'no reason picked');
+        $this->assertSame(['A', 'B', 'C', 'D', 'E', 'F'], $numbers('review_reason[]=none&review_reason[]=order_parts'));
         $this->assertSame(15, collect($get('jobs?stage=ready_to_schedule')['data'])->firstWhere('number', 'C')['days_since_first_payment']);
 
         // What triggers what (Jose: "impossible to understand"), read live.
