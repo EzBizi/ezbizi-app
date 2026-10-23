@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
+use App\Http\Controllers\Api\TechAssistantController;
 use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
@@ -1888,6 +1889,20 @@ Route::prefix('v1')
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);
+        // The Chimney Tech Assistant (2026-10-23): Parts, Manuals and Answers
+        // tabs - read on each tab, written under `ai_assistance.manage`.
+        Route::get('ai-assistance/parts', [TechAssistantController::class, 'parts'])->middleware('permission:ai_assistance.parts.view');
+        Route::get('ai-assistance/manuals', [TechAssistantController::class, 'manuals'])->middleware('permission:ai_assistance.manuals.view');
+        Route::get('ai-assistance/answers', [TechAssistantController::class, 'answers'])->middleware('permission:ai_assistance.answers.view');
+        Route::middleware('permission:ai_assistance.manage')->group(function () {
+            Route::post('ai-assistance/parts', [TechAssistantController::class, 'storePart']);
+            Route::patch('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::put('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::delete('ai-assistance/parts/{part}', [TechAssistantController::class, 'destroyPart']);
+            Route::post('ai-assistance/manuals', [TechAssistantController::class, 'storeManual']);
+            Route::delete('ai-assistance/manuals/{manual}', [TechAssistantController::class, 'destroyManual']);
+            Route::post('ai-assistance/answers/{answer}/review', [TechAssistantController::class, 'review']);
+        });
         // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
         Route::middleware('permission:ai_assistance.manage')->group(function () {
             Route::apiResource('ai-assistance/whatsapp-groups', WhatsAppGroupsController::class)

@@ -11,6 +11,9 @@
             "tabs": [
                 "AI",
                 "Library",
+                "Parts",
+                "Manuals",
+                "Answers",
                 "WhatsApp groups",
                 "Staff bot",
                 "Settings"
@@ -362,9 +365,12 @@
         "ads_performance.manage",
         "ads_performance.view",
         "ai_assistance.ai.view",
+        "ai_assistance.answers.view",
         "ai_assistance.command",
         "ai_assistance.library.view",
         "ai_assistance.manage",
+        "ai_assistance.manuals.view",
+        "ai_assistance.parts.view",
         "ai_assistance.settings.view",
         "ai_assistance.staff_bot.view",
         "ai_assistance.view",
