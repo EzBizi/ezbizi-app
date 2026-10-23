@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0487',
+      date: '23 Oct 2026',
+      items: [
+        'Work Hours › Paid time off: the timeline lists each time days were earned. The countdown sits inside the ring, and remove sits beside the day it removes.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0486',
       date: '23 Oct 2026',
       items: [
