@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\Assignment;
+use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\Company;
 use App\Models\Franchise;
@@ -116,7 +117,7 @@ class NotificationDispatcher
         );
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
-        $recipients = $this->onlyThoseFollowing($recipients, $subject);
+        $recipients = $this->onlyThoseFollowing($recipients, $subject, $source, $eventId);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -507,16 +508,23 @@ class NotificationDispatcher
      * and their branches — so a record counts when ANY company above it is
      * chosen. A record in no company is organization-wide and reaches all.
      */
-    private function onlyThoseFollowing(Collection $recipients, ?Model $subject): Collection
+    private function onlyThoseFollowing(Collection $recipients, ?Model $subject, string $source, ?string $eventId): Collection
     {
         $choosers = $recipients->filter(fn (User $user) => ($user->preferences['notifications.companies'] ?? []) !== []);
         if ($choosers->isEmpty()) {
             return $recipients;
         }
 
-        $chain = $this->companyChain($subject);
+        $chain = $this->companyChain($subject, $eventId);
+
+        // No company known. An alert or system notice is organization-wide and
+        // reaches everyone; an automation's (a missed call on an unmapped line)
+        // is not "from Everdoors" for someone who chose only Everdoors —
+        // measured 2026-10-23, Bar still got every company's missed calls.
         if ($chain === []) {
-            return $recipients;
+            return in_array($source, ['alert', 'system'], true)
+                ? $recipients
+                : $recipients->diff($choosers)->values();
         }
 
         return $recipients->filter(fn (User $user) => ($chosen = $user->preferences['notifications.companies'] ?? []) === []
@@ -524,11 +532,13 @@ class NotificationDispatcher
     }
 
     /** The record's company and every company above it, nearest first. */
-    private function companyChain(?Model $subject): array
+    private function companyChain(?Model $subject, ?string $eventId = null): array
     {
         $companyId = match (true) {
             $subject instanceof Company => $subject->getKey(),
-            $subject === null => null,
+            // A record-less event (a missed call) names its company in the payload.
+            $subject === null => $eventId === null ? null
+                : data_get(AutomationEvent::query()->find($eventId)?->payload, 'company_id'),
             default => $subject->getAttribute('company_id')
                 ?? (($franchiseId = $this->franchiseIdFor($subject)) === null
                     ? null
