@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0486',
+      date: '23 Oct 2026',
+      items: [
+        'Work Hours › Paid time off: days can wait before they start accumulating, counted in days, weeks, or months from the start date. The wait happens once. Later years earn the full allowance. When the days can be used is still its own setting.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0485',
       date: '22 Oct 2026',
       items: [
