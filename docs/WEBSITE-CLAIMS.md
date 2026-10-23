@@ -3039,3 +3039,29 @@ Suggestions row's hold was about selling it, and the feature is live and pinned
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
 directory 1.10.0 (widgets row stays held). Counts asked as `0135`.
+
+## 2026-10-23: 0.0.0484-0.0.0489 live, and `/privacy/` did not name the tech assistant or Telegram
+
+Production `/download/windows.json` 0.0.0489 at `b28f1c9e8`. Before this edit all 15 live
+`www/` files were byte-identical to the repo. No answer to `0135` in the inbox.
+
+- **The finding: two new parties-and-paths shipped in 0.0.0488 and `/privacy/` named neither.**
+  `34ea9c3d2` (Tech Assistant) sends xAI the org's name, matching parts rows, manual pages,
+  up to five Library answers, the tech's unit memory (brand/model/serial/fuel/ignition,
+  parts discussed) and any photo (rating plate); `TechAssistantController` sends a manual PDF
+  to xAI when local extraction fails. `ai_assistance.tech_mode` **defaults to true**.
+  `eca6a6551` routes staff WhatsApp photos and parts questions to it — so the AppAsk
+  paragraph's "never audio, images or files" is true only of AppAsk, and now sits beside a
+  path that does send images. `35d9b46b9` adds a Telegram bot (`TELEGRAM_ORG_ID`, one
+  organization, staff link by sharing their own phone number) — **Telegram** was missing
+  from "these are all of them". Fixed: a "tech assistant" and a "Telegram" paragraph under
+  Calls and messages, the xAI list item extended, a Telegram list item, Last updated /
+  `dateModified` / sitemap lastmod 2026-10-23. Not measured: whether the bot token is set
+  on production (`TELEGRAM_BOT_TOKEN`) — the copy says "where it is set up", which holds
+  either way, matching the 10-06 precedent of disclosing before a switch-on.
+- PM overhaul, PTO accrual/timeline, HR contract drafts, review reply pacing, missed-call
+  focus: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
+directory 1.10.0 (widgets row stays held). Publish asked, and `0135`'s counts re-asked, as `0136`.
