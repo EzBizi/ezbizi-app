@@ -4,6 +4,7 @@ namespace App\Support\Social;
 
 use App\Jobs\AnswerWhatsAppFromApp;
 use App\Jobs\AnswerWhatsAppWithAi;
+use App\Jobs\AnswerWhatsAppWithTech;
 use App\Jobs\PlanReportCorrection;
 use App\Jobs\PlanWhatsAppCommand;
 use App\Jobs\ReadWhatsAppBill;
@@ -22,6 +23,7 @@ use App\Support\Ai\GrokCli;
 use App\Support\Ai\ReportAsk;
 use App\Support\Ai\ReportCorrection;
 use App\Support\Assistant\AssistantBrain;
+use App\Support\Assistant\TechAssistant;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Support\Collection;
 
@@ -138,11 +140,46 @@ final class WhatsAppStaffBot
             return;
         }
 
-        // A photo from somebody who may file bills: read as a period's bills.
+        $techMode = $viewer !== null && GrokCli::configured()
+            && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
+
+        // A photo from somebody who may file bills: read as a period's bills -
+        // when its caption says bill or receipt, once the tech assistant is on
+        // (Chimney Tech Assistant, 2026-10-23: everything else is a plate or valve).
         if ($viewer?->hasPermission(WhatsAppBills::PERMISSION) && $inbound->kind === 'image'
-            && $inbound->media_id !== null && GrokCli::configured()) {
+            && $inbound->media_id !== null && GrokCli::configured()
+            && (! $techMode || preg_match('/\b(bills?|receipts?|recibo|factura)\b/iu', $text) === 1)) {
             ReadWhatsAppBill::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
             $this->text($number, $to, "\u{1F440} Reading the bills in that photo\u{2026}", preview: false);
+
+            return;
+        }
+
+        // Staff photos (a rating plate, a valve label) go to the tech assistant.
+        if ($techMode && $inbound->kind === 'image' && $inbound->media_id !== null) {
+            AnswerWhatsAppWithTech::dispatch($number->id, $to, $viewer->getKey(), $text, (string) $inbound->media_id);
+            $this->text($number, $to, "\u{1F440} Reading that photo\u{2026}", preview: false);
+
+            return;
+        }
+
+        // No transcription yet: a voice note is asked to be typed.
+        if ($viewer !== null && in_array($inbound->kind, ['audio', 'voice'], true)) {
+            $this->text($number, $to, self::typeIt($this->lastWords($number, $to)), preview: false);
+
+            return;
+        }
+
+        // A PDF is acknowledged; manuals are added in the app.
+        if ($viewer !== null && $inbound->kind === 'document') {
+            $this->text($number, $to, "\u{1F4C4} Got the file. Manuals are added in the app: AI Assistance \u{2192} Manuals, so every tech's answers can use them.", preview: false);
+
+            return;
+        }
+
+        // "new job", or a parts / unit question, from staff: the tech assistant.
+        if ($techMode && $text !== '' && TechAssistant::looksTechnical($text)) {
+            AnswerWhatsAppWithTech::dispatch($number->id, $to, $viewer->getKey(), $text, null);
 
             return;
         }
@@ -765,9 +802,67 @@ final class WhatsAppStaffBot
             $reply = null;
         }
 
+        // Nothing in the Library or the app: the tech assistant, when it is on.
+        if ($reply === null && GrokCli::configured()
+            && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id))) {
+            $this->techReply($number, $to, $viewer, $query, null);
+
+            return;
+        }
+
         $reply === null
             ? $this->nothingMatched($number, $to, $viewer, $query)
             : $this->text($number, $to, $reply."\n\n_From EzBizi, read by AI with your access._", preview: false);
+    }
+
+    /** AnswerWhatsAppWithTech's half: the tech assistant's answer, a photo read when one came. */
+    public function techReply(WhatsAppNumber $number, string $to, User $viewer, string $query, ?string $mediaId): void
+    {
+        $files = [];
+        if ($mediaId !== null) {
+            try {
+                $file = $this->cloud->downloadMedia($mediaId, $number->phone_number_id);
+            } catch (\RuntimeException $e) {
+                $this->text($number, $to, "\u{274C} ".$e->getMessage(), preview: false);
+
+                return;
+            }
+            $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/heic' => 'heic'][strtolower(trim(explode(';', $file['mime'])[0]))] ?? 'jpg';
+            $files['photo.'.$ext] = $file['bytes'];
+        }
+
+        try {
+            $answer = app(TechAssistant::class)->answer($viewer, Organization::findOrFail($number->organization_id), $query, 'whatsapp', $files, $files === [] ? 60 : 120);
+        } catch (\RuntimeException) {
+            $this->text($number, $to, "\u{26A0}\u{FE0F} The tech assistant could not answer just now. Try again in a minute.", preview: false);
+
+            return;
+        }
+
+        if ($answer === null) {
+            $this->nothingMatched($number, $to, $viewer, $query);
+
+            return;
+        }
+
+        $this->text($number, $to, $answer['reply'], preview: false);
+    }
+
+    /** "Please type it", in the person's language when their last words show it. */
+    public static function typeIt(string $lastWords): string
+    {
+        return match (TechAssistant::language($lastWords)) {
+            'es' => "\u{1F3A4} Todavía no puedo escuchar notas de voz. Por favor escríbelo.",
+            'he' => "\u{1F3A4} אני עדיין לא יכול לשמוע הודעות קוליות. בבקשה תכתוב את זה.",
+            default => "\u{1F3A4} I can't listen to voice notes yet. Please type it.",
+        };
+    }
+
+    private function lastWords(WhatsAppNumber $number, string $to): string
+    {
+        return (string) WhatsAppMessage::query()->withoutGlobalScopes()
+            ->where('organization_id', $number->organization_id)->where('counterparty', $to)
+            ->where('direction', 'in')->whereNotNull('body')->latest('created_at')->value('body');
     }
 
     private function nothingMatched(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
