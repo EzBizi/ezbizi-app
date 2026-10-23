@@ -859,6 +859,9 @@ class JobsProjectManagementController extends Controller
             // Paid, not started; over_limit: past the warning's days.
             'waiting_to_start' => ['nullable', 'boolean'],
             'over_limit' => ['nullable', 'boolean'],
+            // A reason's value, or `none` for no reason picked (UI/UX, 2026-10-23).
+            'review_reason' => ['nullable', 'array'],
+            'review_reason.*' => ['string', 'max:100'],
         ];
     }
 
@@ -881,6 +884,9 @@ class JobsProjectManagementController extends Controller
             ->when($flag('stopped'), fn ($q) => ProjectStages::stopped($q, (int) $settings->get('jobs.pm_stopped_days', $org)))
             ->when($flag('external') !== null, fn ($q) => $flag('external') ? $q->whereNotNull('external_company') : $q->whereNull('external_company'))
             ->when($flag('second_visit') !== null, fn ($q) => $q->where('needs_second_visit', $flag('second_visit')))
+            ->when($input['review_reason'] ?? null, fn ($q, $reasons) => $q->where(fn ($w) => $w
+                ->whereIn('review_reason', array_diff($reasons, ['none']))
+                ->when(in_array('none', $reasons, true), fn ($n) => $n->orWhereNull('review_reason'))))
             ->when($flag('waiting_to_start'), function ($q) use ($user, $settings, $flag, $org) {
                 $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
                 $q->where(fn ($any) => collect(ProjectStages::NOT_STARTED)->each(fn ($k) => $any->orWhere(fn ($one) => ProjectStages::scope($one, $rules[$k] ?? null))))
