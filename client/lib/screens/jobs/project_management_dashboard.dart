@@ -599,7 +599,7 @@ class _ProjectManagementDashboardState
             'waiting_review',
             _filters.copyWith(noReason: true),
             s,
-            label: 'Waiting review with no reason',
+            label: 'No reason picked',
           ),
         );
     }

@@ -106,8 +106,7 @@ class PmFilters {
   final bool waitingToStart;
 
   /// Waiting review with no review reason: the Overview's third Needs
-  /// attention card. The server has no such filter, so Jobs keeps the
-  /// rows of the page whose review reason is empty.
+  /// attention card, sent as `review_reason[]=none` (ecba203c9).
   final bool noReason;
 
   PmFilters copyWith({
@@ -133,7 +132,7 @@ class PmFilters {
   );
 
   /// The query. [secondVisit] goes only where it is offered.
-  Map<String, String> query({bool withSecondVisit = true}) => {
+  Map<String, Object> query({bool withSecondVisit = true}) => {
     'service_area_id': ?areaId,
     if (q.trim().isNotEmpty) 'q': q.trim(),
     if (redo != null) 'redo': redo! ? '1' : '0',
@@ -142,6 +141,7 @@ class PmFilters {
     if (external) 'external': '1',
     if (secondVisit && withSecondVisit) 'second_visit': '1',
     if (waitingToStart) ...{'waiting_to_start': '1', 'over_limit': '1'},
+    if (noReason) 'review_reason[]': const ['none'],
   };
 
   @override
