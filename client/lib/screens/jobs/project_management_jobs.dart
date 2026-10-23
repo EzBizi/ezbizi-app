@@ -350,14 +350,6 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     _load();
   }
 
-  /// The rows the page shows: with the no-reason drill, those with none.
-  List<Map<String, dynamic>> get _shownRows => _filters.noReason
-      ? [
-          for (final r in _rows)
-            if ('${r['review_reason'] ?? ''}'.isEmpty) r,
-        ]
-      : _rows;
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -534,7 +526,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       );
     }
     final theme = Theme.of(context);
-    final rows = _shownRows;
+    final rows = _rows;
     if (rows.isEmpty) {
       return Center(
         child: Padding(
@@ -625,13 +617,8 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
           ),
           Expanded(
             child: Text(
-              _filters.noReason
-                  ? 'Page $_page of $_lastPage · '
-                        '${formatCount(_shownRows.length)} of '
-                        '${formatCount(_rows.length)} on this page have no '
-                        'reason'
-                  : 'Page $_page of $_lastPage · ${formatCount(_total)} '
-                        '${_total == 1 ? 'job' : 'jobs'}, newest change first',
+              'Page $_page of $_lastPage · ${formatCount(_total)} '
+              '${_total == 1 ? 'job' : 'jobs'}, newest change first',
               key: const ValueKey('pm-jobs-page'),
               textAlign: TextAlign.center,
               maxLines: 1,

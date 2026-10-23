@@ -341,7 +341,9 @@ void main() {
       final o = pmOverview();
       final q = uri.queryParametersAll;
       int c(String k) => (o[k] as Map)['count'] as int;
-      final total = q['stopped']?.single == '1'
+      final total = q['review_reason[]']?.single == 'none'
+          ? 7
+          : q['stopped']?.single == '1'
           ? o['stopped_payments'] as int
           : q['waiting_to_start']?.single == '1'
           ? 1
@@ -483,12 +485,31 @@ void main() {
       final server = await open(tester);
       await tester.tap(find.byKey(const ValueKey('pm-attention-no_reason')));
       await tester.pumpAndSettle();
-      expect(server.get('/project-management/jobs').last.queryParameters, {
+      final uri = server.get('/project-management/jobs').last;
+      expect(uri.queryParameters, {
         'stage': 'waiting_review',
         'service_area_id': 'sa-1',
+        'review_reason[]': 'none',
       });
-      expect(drill(tester), 'Waiting review with no reason');
-      expect(page(tester), contains('have no reason'));
+      expect(uri.queryParametersAll['review_reason[]'], ['none']);
+      expect(drill(tester), 'No reason picked');
+      // The server filters now: the page is its count, no client filter.
+      expect(page(tester), startsWith('Page 1 of 1 · 7 jobs'));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('pm-jobs-drill')),
+          matching: find.byTooltip('Remove'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        server
+            .get('/project-management/jobs')
+            .last
+            .queryParametersAll
+            .containsKey('review_reason[]'),
+        isFalse,
+      );
     });
   });
 
