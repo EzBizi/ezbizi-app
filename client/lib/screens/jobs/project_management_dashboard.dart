@@ -77,8 +77,8 @@ const pmDashboardTiles = [
   ('scheduled', 'Scheduled', 'scheduled'),
   ('done_waiting_payment', 'Done, waiting payment', 'done_waiting_payment'),
   ('pipeline', 'Pipeline (open projects)', 'in_progress'),
-  ('avg_production_cost', 'Avg production cost', null),
-  ('stopped_payments', 'Stopped payments', 'done_waiting_payment'),
+  ('avg_production_cost', 'Average production cost', null),
+  ('stopped_payments', 'Payments stopped', 'done_waiting_payment'),
 ];
 
 class _ProjectManagementDashboardState
@@ -431,11 +431,11 @@ class _ProjectManagementDashboardState
                   ],
                 ),
           [
-            'Us ${formatCount(ours)}',
-            'External ${formatCount(external)}',
-            '2nd visit ${formatCount(_int(m['second_visit']) ?? 0)}',
-            'Redo ${formatCount(_int(m['redo']) ?? 0)} / '
-                'new ${formatCount(_int(m['new']) ?? 0)}',
+            'Our team ${formatCount(ours)}',
+            'External company ${formatCount(external)}',
+            'Needs a second visit ${formatCount(_int(m['second_visit']) ?? 0)}',
+            'Redo ${formatCount(_int(m['redo']) ?? 0)}',
+            'New ${formatCount(_int(m['new']) ?? 0)}',
           ].join(' · '),
           Tone.info,
         );

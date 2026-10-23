@@ -49,7 +49,10 @@ void main() {
     ],
   };
 
-  /// The painted width and colour of a bar's first filled segment.
+  /// The painted width and colour of a bar's first filled segment. Its
+  /// painted height must be the track's: on 0.0.0486 every segment was laid
+  /// out 0 px tall (a childless ColoredBox in a Row takes the smallest
+  /// height it is allowed), so it was wide, coloured, and invisible.
   (double, Color) filled(WidgetTester tester, Finder bar) {
     final boxes = find
         .descendant(of: bar, matching: find.byType(ColoredBox))
@@ -58,6 +61,16 @@ void main() {
     // [0] is the track; [1] the first segment.
     expect(boxes.length, greaterThan(1), reason: 'the bar has no segment');
     final seg = boxes[1];
+    final segBox = tester.renderObject<RenderBox>(find.byWidget(seg.widget));
+    final trackBox = tester.renderObject<RenderBox>(
+      find.byWidget(boxes[0].widget),
+    );
+    expect(
+      segBox.size.height,
+      greaterThan(0),
+      reason: 'segment painted 0 tall',
+    );
+    expect(segBox.size.height, trackBox.size.height);
     return (
       tester.getSize(find.byWidget(seg.widget)).width,
       (seg.widget as ColoredBox).color,
@@ -103,6 +116,20 @@ void main() {
               .color;
       expect(colour, isNot(trackColour));
     }
+
+    // "No reason" is a neutral grey that is not the track's own colour.
+    final noReason = tester
+        .widget<ColoredBox>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('pm-review-loc-Place 5')),
+                matching: find.byType(ColoredBox),
+              )
+              .at(1),
+        )
+        .color;
+    expect(noReason, isNot(const Color(0xffe8ecf0)));
+    expect(noReason.r, closeTo(noReason.b, 0.1), reason: 'a neutral grey');
 
     // Teams scale against the busiest team, not Unassigned; Unassigned last.
     final (team0, _) = filled(

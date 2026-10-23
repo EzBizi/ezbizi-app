@@ -30,7 +30,7 @@ import 'project_management_tab.dart' show PmTimeline, pmTechnician;
 ///
 /// A row opens its timeline beside the table (on a phone, in its place),
 /// read from the timeline endpoint by id, with the three Project Management
-/// fields above it: review reason, external company and Needs 2nd visit,
+/// fields above it: review reason, external company and Needs a second visit,
 /// each saved as it changes through PATCH /jobs/{id}.
 class ProjectManagementJobs extends StatefulWidget {
   const ProjectManagementJobs({
@@ -663,7 +663,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     return [
       if (r['needs_second_visit'] == true)
         StatusPill(
-          '2nd visit',
+          'Needs a second visit',
           key: ValueKey('pm-flag-2nd-$id'),
           tone: Tone.caution,
         ),
@@ -892,7 +892,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
 String _name(Object? ref) =>
     ref is Map && ref['name'] is String ? ref['name'] as String : '—';
 
-/// Review reason, external company and Needs 2nd visit for one job, each
+/// Review reason, external company and Needs a second visit for one job, each
 /// PATCHed to /jobs/{id} as it changes. A refusal puts the old value back
 /// and says why.
 class PmJobFields extends StatefulWidget {
@@ -1035,7 +1035,7 @@ class _PmJobFieldsState extends State<PmJobFields> {
             key: const ValueKey('pm-field-second-visit'),
             contentPadding: EdgeInsets.zero,
             dense: true,
-            title: const Text('Needs a 2nd visit'),
+            title: const Text('Needs a second visit'),
             value: _second,
             onChanged: _saving ? null : _saveSecond,
           ),
