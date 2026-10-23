@@ -19,7 +19,8 @@ class VersionHistory {
       items: [
         'AI Assistance: a Tech Assistant for technicians on WhatsApp. It answers part and manual questions from your own Parts and Manuals, remembers the job until "new job", says how sure it is, and says DO NOT ORDER YET when a part number is not from your data. New tabs: Parts, Manuals (upload PDFs) and Answers (mark each answer correct or incorrect).',
         'WhatsApp staff messages: a plate photo goes to the Tech Assistant, and only a photo captioned bill or receipt goes to the bill reader. A voice note is answered with a request to type it.',
-        'Notifications: choosing companies under Notify me about also filters missed calls.',
+        'Notifications: choosing companies under Notify me about also filters missed calls, and each missed call now says which company\'s line it rang.',
+        'Customer Experience: automatic replies to good reviews are spread over an hour or two rather than posted all at once.',
       ],
     ),
     VersionRelease(
