@@ -202,6 +202,7 @@ use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Http\Controllers\Api\WorkizWebSessionController;
@@ -487,6 +488,14 @@ Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'ver
 Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.whatsapp.webhook');
+
+/*
+| Telegram - the staff Tech Assistant bot. Unauthenticated in the session
+| sense; the X-Telegram-Bot-Api-Secret-Token header is checked in the controller.
+*/
+Route::post('v1/telegram/webhook', TelegramWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('telegram.webhook');
 
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')

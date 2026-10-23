@@ -486,6 +486,16 @@ final class WhatsAppStaffBot
      */
     private function staffMember(WhatsAppNumber $number, string $sender): ?User
     {
+        return self::staffByPhone((string) $number->organization_id, $sender);
+    }
+
+    /**
+     * An active staff member of the organization whose profile phone is this
+     * full international number. Shared with the Telegram bot, whose shared
+     * contact carries the country code the same way a wa_id does.
+     */
+    public static function staffByPhone(string $organizationId, string $sender): ?User
+    {
         /*
          * THE SENDER IS NOT A NUMBER SOMEBODY TYPED - it is a WhatsApp wa_id,
          * which ALWAYS carries its country code. Found by the deploy desk and
@@ -512,7 +522,7 @@ final class WhatsAppStaffBot
         }
 
         return User::query()
-            ->where('organization_id', $number->organization_id)
+            ->where('organization_id', $organizationId)
             ->where('is_active', true)
             ->whereNotNull('phone')
             ->get()

@@ -337,7 +337,7 @@ final class TechAssistant
             ."9. If a photo is attached, read it (rating plate, valve label): extract brand, model, serial, fuel, ignition into job.\n"
             ."10. No web access: if the rows and pages do not hold it, say it is UNVERIFIED and ask them to check.\n"
             ."Fill job with anything newly learned (empty string when unknown). part_ids: ids of PARTS ROWS you used. manual_pages: the manual_id and page you used.\n"
-            .($channel === 'whatsapp' ? "Plain text for WhatsApp; no Markdown headings or tables.\n" : '')
+            .(in_array($channel, ['whatsapp', 'telegram'], true) ? 'Plain text for '.($channel === 'telegram' ? 'Telegram' : 'WhatsApp')."; no Markdown headings or tables.\n" : '')
             .($extra !== '' ? "\nADMIN INSTRUCTIONS:\n{$extra}\n" : '')
             ."\nCURRENT JOB: {$jobText}\n"
             ."\nPARTS ROWS:\n".($partRows ?: '(none matched)')

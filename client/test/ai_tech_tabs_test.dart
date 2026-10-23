@@ -110,7 +110,7 @@ void main() {
       },
       {
         'id': 'a-2',
-        'channel': 'whatsapp',
+        'channel': 'telegram',
         'user': 'Carlos M.',
         'question': 'valve for majestic insert',
         'answer': "I'm not ready to approve ordering this part yet.",
@@ -122,6 +122,7 @@ void main() {
         'job': {'model': 'Majestic', 'fuel': null},
       },
     ],
+    'telegram_configured': true,
     'summary': {
       'this_month': 2,
       'correct': 1,
@@ -268,6 +269,9 @@ void main() {
     expect(find.text('ANSWERS THIS MONTH'), findsOneWidget);
     expect(find.text('2166-302 · Ready to order'), findsOneWidget);
     expect(find.text('6000C · NG ✔'), findsOneWidget);
+    expect(find.text('WhatsApp'), findsOneWidget);
+    expect(find.text('Telegram'), findsOneWidget);
+    expect(find.text('Telegram bot: configured'), findsOneWidget);
     expect(find.text('Majestic · ?'), findsOneWidget);
     // Already reviewed: a pill, not buttons.
     expect(find.byKey(const ValueKey('ai-answer-correct-a-2')), findsNothing);

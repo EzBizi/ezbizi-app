@@ -718,6 +718,14 @@ class _ManualPanelState extends State<_ManualPanel> {
 
 // ── Answers ─────────────────────────────────────────────────────────
 
+/// "whatsapp" -> "WhatsApp", "telegram" -> "Telegram", "app" (or none) -> "App".
+String channelLabel(Object? channel) => switch ('${channel ?? ''}') {
+  'whatsapp' => 'WhatsApp',
+  'telegram' => 'Telegram',
+  '' || 'app' => 'App',
+  final other => other[0].toUpperCase() + other.substring(1),
+};
+
 class AnswersTab extends StatefulWidget {
   const AnswersTab({super.key, required this.api, required this.canEdit});
 
@@ -730,6 +738,7 @@ class AnswersTab extends StatefulWidget {
 
 class _AnswersTabState extends State<AnswersTab> {
   List<Map<String, dynamic>>? _answers;
+  bool _telegram = false;
   Map<String, dynamic> _summary = const {};
   String? _error;
   String? _filter;
@@ -751,6 +760,7 @@ class _AnswersTabState extends State<AnswersTab> {
         _summary =
             (response.body['summary'] as Map?)?.cast<String, dynamic>() ??
             const {};
+        _telegram = response.body['telegram_configured'] == true;
       }
     });
   }
@@ -866,7 +876,7 @@ class _AnswersTabState extends State<AnswersTab> {
               key: null,
               label: 'Answers this month',
               count: _summary['this_month'] as int?,
-              note: 'WhatsApp + app',
+              note: 'WhatsApp, Telegram + app',
             ),
             FilterTile(
               key: 'correct',
@@ -890,6 +900,14 @@ class _AnswersTabState extends State<AnswersTab> {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Text(
+          _telegram
+              ? 'Telegram bot: configured'
+              : 'Telegram bot: not configured',
+          key: const Key('ai-answers-telegram'),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
         const SizedBox(height: 14),
         _search(
           const Key('ai-answers-search'),
@@ -899,12 +917,13 @@ class _AnswersTabState extends State<AnswersTab> {
         const SizedBox(height: 14),
         if (shown.isEmpty)
           const Text(
-            'No answers yet. Every tech answer, on WhatsApp or here, is listed.',
+            'No answers yet. Every tech answer, on WhatsApp, Telegram or here, is listed.',
           )
         else
           ListTable(
             columns: const [
               ListColumn('Who'),
+              ListColumn('Channel'),
               ListColumn('Question', flex: 3),
               ListColumn('Answer', flex: 3),
               ListColumn('Job'),
@@ -916,6 +935,7 @@ class _AnswersTabState extends State<AnswersTab> {
               for (final a in shown)
                 [
                   Text(_s(a['user']).isEmpty ? '—' : _s(a['user'])),
+                  Text(channelLabel(a['channel'])),
                   Text(
                     _s(a['question']),
                     maxLines: 2,
@@ -967,7 +987,7 @@ class _AnswerPanelState extends State<_AnswerPanel> {
       title: _s(a['question']),
       subtitle: [
         _s(a['user']),
-        _s(a['channel']),
+        channelLabel(a['channel']),
       ].where((s) => s.isNotEmpty).join(' · '),
       actions: [
         if (widget.canEdit)
