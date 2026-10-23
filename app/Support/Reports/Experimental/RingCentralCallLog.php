@@ -84,6 +84,26 @@ final class RingCentralCallLog
 
     public const NOT_CONNECTED = 'RingCentral is not connected. Connect it in Settings › Integrations.';
 
+    /**
+     * The company whose calls these are: a company-scoped connection's
+     * company, else the env account's (REPORT_RINGCENTRAL_COMPANY). Null when
+     * nobody said (Notifications' per-person company filter, 2026-10-23).
+     */
+    public function companyId(): ?string
+    {
+        $tenant = app(TenantContext::class)->get()
+            ?? Organization::query()->where('slug', self::ENV_ORGANIZATION_SLUG)->first();
+        $connection = $tenant === null ? null : SocialConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', $tenant->getKey())->where('provider', SocialProvider::RingCentral->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)->first();
+
+        if ($connection !== null) {
+            return $connection->scope_type === SocialConnection::SCOPE_COMPANY ? (string) $connection->scope_id : null;
+        }
+
+        return config('experimental_reports.ringcentral.company_id') ?: null;
+    }
+
     public function configured(): bool
     {
         return $this->credentials() !== null;

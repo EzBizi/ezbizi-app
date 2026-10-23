@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Company;
 use App\Support\Automations\EventEmitter;
 use App\Support\Notifications\LeadNotificationText;
 use App\Support\Reports\Experimental\RingCentralCallLog;
@@ -52,6 +53,9 @@ class WatchMissedCalls extends Command
         }
 
         $now = CarbonImmutable::now((string) config('app.timezone'));
+        // Every call on this account is its company's.
+        $companyId = $tenant->run($organization, fn () => $log->companyId());
+        $companyName = $companyId === null ? null : Company::query()->withoutGlobalScopes()->whereKey($companyId)->value('name');
         $names = null;
         $raised = 0;
 
@@ -67,7 +71,7 @@ class WatchMissedCalls extends Command
                 continue;
             }
 
-            $company = $this->company($call['queue']);
+            $company = $this->company($call['queue']) ?? $companyName;
             // RingCentral's label for the number they dialled; the queue when it has none.
             $names ??= $log->numberNames();
             $line = $names[$call['to_number']] ?? $call['queue'];
@@ -82,6 +86,8 @@ class WatchMissedCalls extends Command
                 'to_name' => $line,
                 'queue' => $call['queue'],
                 'company' => $company,
+                // Which company's line it was, for a per-person company filter (2026-10-23).
+                'company_id' => $companyId,
                 'result' => $call['result'],
             ]));
 
