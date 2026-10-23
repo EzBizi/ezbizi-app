@@ -13,6 +13,7 @@ import '../../core/files.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/list_table.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 
@@ -385,16 +386,14 @@ class _PartPanelState extends State<_PartPanel> {
     ValueChanged<String> onChanged,
   ) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: DropdownButtonFormField<String>(
+    child: SearchPickerField<String>(
       key: Key('ai-part-$key'),
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-      ),
-      items: [
+      value: value,
+      label: label,
+      border: const OutlineInputBorder(),
+      options: [
         for (final o in options.entries)
-          DropdownMenuItem(value: o.key, child: Text(o.value)),
+          SearchOption(value: o.key, label: o.value),
       ],
       onChanged: (v) => v == null ? null : setState(() => onChanged(v)),
     ),
