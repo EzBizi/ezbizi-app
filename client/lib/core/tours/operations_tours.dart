@@ -839,10 +839,11 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management ───────────────────────────────────────────────
-  // Its own module since 2026-10-21. Design 141: Dashboard, Reports, Table,
-  // Jobs (which was Pending Jobs), Logs and Settings.
+  // Its own module since 2026-10-21. Design 144: Overview (was Dashboard),
+  // Jobs, Assignments, Repair team (Reports and Table merged), Rules (new),
+  // Logs and Settings, all in one frame.
   'project_management': Tour(
-    version: 3,
+    version: 4,
     steps: [
       TourStep(
         anchor: 'tour-pm-dash-areas',
@@ -854,43 +855,52 @@ const Map<String, Tour> operationsTours = {
         anchor: 'tour-pm-dash-flags',
         title: 'Filters',
         body:
-            'Redo or one go, disputes, stopped payments, external companies '
-            'and jobs that need a second visit.',
+            'Redo or one go, disputes, stopped payments and external '
+            'companies.',
         since: 3,
       ),
       TourStep(
         anchor: 'tour-pm-dash-tiles',
-        title: 'The pipeline',
+        title: 'The flow',
         body:
-            'Each stage, in order, with money where you can see it. Click one '
-            'to open its jobs.',
-        since: 3,
+            'The five stages in the order a job moves through them, each '
+            'with its rule and count. Click one to open exactly those jobs; '
+            'ⓘ says how it is counted.',
+        since: 4,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-attention',
+        title: 'Needs attention',
+        body:
+            'Paid but not started past the warning days, payments stopped, '
+            'and jobs waiting review with no reason. Red means something to '
+            'do.',
+        since: 4,
       ),
       TourStep(
         anchor: 'tour-pm-dash-review',
         title: 'Waiting review',
-        body: 'Each location, split by why its jobs wait.',
-        since: 3,
-      ),
-      TourStep(
-        anchor: 'tour-pm-dash-start',
-        title: 'Waiting to start',
-        body:
-            'Paid jobs that have not started. Red at the limit, when the '
-            'daily warning email goes.',
+        body: 'Each service area, split by why its jobs wait.',
         since: 3,
       ),
       TourStep(
         anchor: 'tour-pm-dash-teams',
-        title: 'Per team',
-        body: 'How many open jobs each team has.',
-        since: 3,
+        title: 'By technician',
+        body: 'How many open jobs each technician has.',
+        since: 4,
       ),
     ],
   ),
-  'project_management/Reports': Tour(
+  'project_management/Repair team': Tour(
     version: 1,
     steps: [
+      TourStep(
+        anchor: 'tour-pm-report-mode',
+        title: 'Cards or Table',
+        body:
+            'Cards: one week, a card per technician. Table: eight weeks, a '
+            'row per technician per week, every field.',
+      ),
       TourStep(
         anchor: 'tour-pm-report-week',
         title: 'The week',
@@ -900,26 +910,38 @@ const Map<String, Tour> operationsTours = {
         anchor: 'tour-pm-report-cards',
         title: 'The Repair Team report',
         body:
-            'A card per technician and the teams combined. Cost from gross '
-            'is red above the limit in Settings. Copy for WhatsApp copies it '
-            'as text.',
+            'A card per technician and the repair team combined. Cost from '
+            'gross is red above the limit in Settings. Copy for WhatsApp '
+            'copies it as text.',
       ),
     ],
   ),
-  'project_management/Table': Tour(
+  'project_management/Rules': Tour(
     version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-pm-report-week',
-        title: 'The week',
-        body: 'Monday to Sunday. The arrows go a week back or forward.',
+        anchor: 'tour-pm-rules-scope',
+        title: 'Which jobs count',
+        body:
+            'Every number in Project Management counts only these jobs. '
+            'Change opens the card in Settings.',
       ),
       TourStep(
-        anchor: 'tour-pm-table-grid',
-        title: 'Every field',
+        anchor: 'tour-pm-rules-stages',
+        title: 'How a job moves',
+        body: 'Which statuses put a job in each stage, and how many are there.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-rules-automations',
+        title: 'What changes jobs',
         body:
-            'One row per technician. A missing value is amber; "Show only '
-            'rows with gaps" leaves just those.',
+            'Each rule as When, Only if and Then, whether it is on, and what '
+            'it did this week.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-rules-numbers',
+        title: 'How numbers are measured',
+        body: 'Every number on the other tabs, in plain words.',
       ),
     ],
   ),
@@ -988,8 +1010,9 @@ const Map<String, Tour> operationsTours = {
         anchor: 'tour-pm-assign-filters',
         title: 'Search',
         body:
-            'Job, customer, address, phone or tech. The line above says which '
-            'jobs Project Management shows; Change opens Settings.',
+            'A card title, or its job, customer, address or phone. The line '
+            'above says which jobs Project Management shows; Change opens '
+            'Settings.',
       ),
       TourStep(
         anchor: 'tour-pm-assign-board',
@@ -1002,14 +1025,15 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   'project_management/Jobs': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-pm-jobs-stages',
-        title: 'Stage',
+        title: 'The flow',
         body:
-            'In progress to Done, waiting payment, each with how many jobs '
-            'are in it.',
+            'Waiting review to Done, waiting payment, each with how many jobs '
+            'are in it. Click one to list it.',
+        since: 2,
       ),
       TourStep(
         anchor: 'tour-pm-jobs-filters',

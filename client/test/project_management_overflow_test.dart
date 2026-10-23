@@ -32,10 +32,22 @@ void main() {
   Future<PmServer> open(WidgetTester tester, Size size, String tab) async {
     final server = PmServer(serviceAreas: areas, meOverride: me);
     await server.pump(tester, size: size);
-    if (tab != 'Dashboard') {
-      await tester.ensureVisible(find.text(tab).first);
+    // Reports and Table are one tab since design 144: Repair team.
+    final strip = tab == 'Reports' || tab == 'Table' ? 'Repair team' : tab;
+    if (strip != 'Overview') {
+      await tester.ensureVisible(find.text(strip).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(tab).first);
+      await tester.tap(find.text(strip).first);
+      await tester.pumpAndSettle();
+    }
+    // On a phone the place and the tab's filters wait behind Filters.
+    final filters = find.byKey(const ValueKey('pm-frame-filters-button'));
+    if (size.width < 600 && filters.evaluate().isNotEmpty) {
+      await tester.tap(filters);
+      await tester.pumpAndSettle();
+    }
+    if (tab == 'Table') {
+      await tester.tap(find.byKey(const ValueKey('pm-repair-table')));
       await tester.pumpAndSettle();
     }
     // Proof the tab opened, so a phone width is not measured on Dashboard.
@@ -53,11 +65,12 @@ void main() {
     Size(390, 1000),
   ]) {
     for (final tab in const [
-      'Dashboard',
-      'Reports',
-      'Table',
+      'Overview',
       'Jobs',
       'Assignments',
+      'Reports',
+      'Table',
+      'Rules',
       'Logs',
       'Settings',
     ]) {
@@ -67,11 +80,9 @@ void main() {
         await open(tester, size, tab);
         // A RenderFlex overflow is reported as an exception.
         expect(tester.takeException(), isNull);
-        if (const ['Dashboard', 'Jobs', 'Assignments'].contains(tab)) {
-          // The scope line, linking to Settings (design 142's scope card).
-          expect(find.byKey(const ValueKey('pm-scope-line')), findsOneWidget);
-        }
-        if (tab == 'Dashboard' || tab == 'Jobs') {
+        // The scope bar is on every tab (design 144's frame).
+        expect(find.byKey(const ValueKey('pm-scope-line')), findsOneWidget);
+        if (tab == 'Overview' || tab == 'Jobs') {
           expect(find.byKey(const ValueKey('pm-area-picker')), findsOneWidget);
           expect(find.byKey(const ValueKey('pm-area-sa-1')), findsNothing);
         }
@@ -79,7 +90,7 @@ void main() {
     }
   }
 
-  for (final tab in const ['Dashboard', 'Jobs']) {
+  for (final tab in const ['Overview', 'Jobs']) {
     testWidgets('$tab: the area picker sets service_area_id', (tester) async {
       final server = await open(tester, const Size(1440, 1000), tab);
       await tester.tap(find.byKey(const ValueKey('pm-area-picker')));
@@ -122,13 +133,15 @@ void main() {
     );
   });
 
-  for (final tab in const ['Dashboard', 'Jobs', 'Assignments']) {
+  for (final tab in const ['Overview', 'Jobs', 'Assignments', 'Rules']) {
     testWidgets('$tab: the scope line says which jobs and opens Settings', (
       tester,
     ) async {
       await open(tester, const Size(1440, 1000), tab);
       expect(
-        find.text('Showing jobs in any status · Brightway'),
+        find.text(
+          'Counting jobs in any status · Brightway · set at Brightway Chimney',
+        ),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('pm-scope-change')));
@@ -155,12 +168,18 @@ void main() {
       );
       await server.pump(tester, size: const Size(1440, 1000));
       expect(
-        find.text('Showing jobs in any status · Company A · Main'),
+        find.text(
+          'Counting jobs in any status · Company A · Main · set at Brightway '
+          'Chimney',
+        ),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('pm-scope-change')));
       await tester.pumpAndSettle();
-      expect(find.text('Set for Company A · Main'), findsOneWidget);
+      expect(
+        find.text('Set for Company A · Main · this branch only'),
+        findsOneWidget,
+      );
     },
   );
 }

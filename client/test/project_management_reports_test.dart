@@ -18,10 +18,44 @@ void main() {
         ? PmServer()
         : PmServer(permissions: permissions);
     await server.pump(tester, size: const Size(1400, 1600));
-    await tester.tap(find.text(tab));
+    // One tab since design 144: Repair team, Cards or Table.
+    await tester.tap(find.text('Repair team'));
     await tester.pumpAndSettle();
+    if (tab == 'Table') {
+      await tester.tap(find.byKey(const ValueKey('pm-repair-table')));
+      await tester.pumpAndSettle();
+    }
     return server;
   }
+
+  testWidgets('Repair team switches between Cards and Table', (tester) async {
+    final server = await open(tester, 'Reports');
+    expect(find.byKey(const ValueKey('pm-repair-mode-cards')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pm-repair-mode-table')), findsNothing);
+    expect(find.byKey(const ValueKey('pm-reports')), findsOneWidget);
+    expect(server.get('/financials/repair-report/table'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('pm-repair-table')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pm-repair-mode-table')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pm-table')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pm-reports')), findsNothing);
+    expect(server.get('/financials/repair-report/table'), hasLength(1));
+    // The switch is in the frame's filter bar, after the search.
+    final bar = find.byKey(const ValueKey('pm-frame-filters'));
+    expect(
+      find.descendant(
+        of: bar,
+        matching: find.byKey(const ValueKey('tour-pm-report-mode')),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pm-repair-cards')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pm-reports')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   List<List<Object?>> writes(PmServer s) => [
     for (final w in s.writes())

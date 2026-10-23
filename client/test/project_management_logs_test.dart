@@ -44,7 +44,8 @@ void main() {
     String chip(int i) => tester
         .widget<StatusPill>(find.byKey(ValueKey('pm-logs-outcome-$i')))
         .label;
-    expect([chip(0), chip(1), chip(2)], ['Done', 'By hand', 'Failed']);
+    // Not "Done", a job status (design 144).
+    expect([chip(0), chip(1), chip(2)], ['Succeeded', 'By hand', 'Failed']);
     expect(find.text('Wren Halvey'), findsOneWidget, reason: 'the person');
   });
 
@@ -267,7 +268,7 @@ void main() {
         find.descendant(of: pane, matching: find.text(text));
     expect(inPane('Workiz: Status → Ready to invoice'), findsOneWidget);
     expect(inPane('Message to customer: not sent'), findsOneWidget);
-    expect(inPane('Done'), findsOneWidget);
+    expect(inPane('Succeeded'), findsOneWidget);
     expect(inPane('Failed'), findsOneWidget);
     expect(inPane('Skipped'), findsNWidgets(2), reason: 'its title and chip');
     final why = tester.widget<Text>(inPane('No mobile number.'));
@@ -323,11 +324,17 @@ void main() {
       -200,
       scrollable: _page,
     );
+    await tester.ensureVisible(find.byKey(const ValueKey('pm-logs-job-0')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pm-logs-job-0')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-timeline')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pm-logs-outcome')), findsNothing);
+    expect(find.byKey(const ValueKey('pm-frame-logs')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('pm-timeline-close')));
+    await tester.pumpAndSettle();
+    // On a phone the filters wait behind Filters (design 144, phone 4).
+    expect(find.byKey(const ValueKey('pm-logs-outcome')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('pm-frame-filters-button')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-logs-outcome')), findsOneWidget);
     expect(tester.takeException(), isNull);

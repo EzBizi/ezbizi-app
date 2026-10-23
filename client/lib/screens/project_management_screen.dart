@@ -5,27 +5,33 @@ import '../core/device_zone.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'jobs/pm_frame.dart';
 import 'jobs/pm_stages.dart';
 import 'jobs/project_management_assignments.dart';
 import 'jobs/project_management_dashboard.dart';
 import 'jobs/project_management_jobs.dart';
 import 'jobs/project_management_logs.dart';
 import 'jobs/project_management_reports.dart';
+import 'jobs/project_management_rules.dart';
 import 'jobs/project_management_settings.dart';
 
 /// Project Management, its own sidebar module since 2026-10-21 (Jose: "This
 /// Project Management should be its own tab, not a sub tab of Jobs").
 ///
-/// Seven tabs: Dashboard, where every job stands; Reports and Table,
-/// Financials' weekly Repair Team report; Jobs (which was Pending Jobs, key
-/// `pending`), one stage at a time; Assignments (design 143), Action 1's
-/// Task Board cards by technician; Logs (UI queue 139); Settings, for the
-/// place being viewed.
+/// Seven tabs, one frame (design 144, option 1; phone 4): Overview (which
+/// was Dashboard, key `dashboard`), what needs attention; Jobs (which was
+/// Pending Jobs, key `pending`); Assignments (design 143), the payment
+/// rule's Task Board cards by technician; Repair team (key `reports`; it
+/// was Reports and Table), Financials' weekly report; Rules, how it all
+/// works, read live; Logs (UI queue 139); Settings, for the place being
+/// viewed. Every tab draws [PmFrame]: what it is for and "How this is
+/// measured ›", which opens Rules at its section; the scope bar, whose
+/// Change opens Settings at the scope card; and the filter bar.
 ///
 /// The module's reach is its gate: the sidebar draws it only for somebody
 /// holding `project_management.view`, and every tab is that one grant.
-/// Reports and Table also need `financials.bases.view`, which their endpoint
-/// requires, so they are not drawn without it.
+/// Repair team also needs `financials.bases.view`, which its endpoint
+/// requires, so it is not drawn without it.
 ///
 /// It reads the place's settings once, and again after Settings saves: the
 /// status words, the warning days, the review reasons and the redo and
@@ -71,6 +77,15 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   PmJobsIntent? _intent;
   int _serial = 0;
 
+  /// `jobs/project-management/rules`, read on open, after a save, and each
+  /// time Rules is opened, so it is live.
+  PmRules? _rules;
+  String? _rulesError;
+
+  /// Where Rules and Settings scroll to, with a serial.
+  (String, int)? _rulesFocus;
+  (String, int)? _settingsFocus;
+
   String _tab = 'dashboard';
   final Set<String> _shown = {'dashboard'};
 
@@ -81,6 +96,20 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
     super.initState();
     _loadSettings();
     _loadAreas();
+    _loadRules();
+  }
+
+  Future<void> _loadRules() async {
+    final response = await widget.api.get('/jobs/project-management/rules');
+    if (!mounted) return;
+    setState(() {
+      if (!response.ok) {
+        _rulesError = response.message;
+        return;
+      }
+      _rulesError = null;
+      _rules = PmRules.parse(response.data);
+    });
   }
 
   Future<void> _loadSettings() async {
@@ -123,17 +152,39 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
 
   void _saved() {
     _loadSettings();
+    _loadRules();
     setState(() => _generation++);
   }
 
-  void _go(String tab) => setState(() {
-    _tab = tab;
-    _shown.add(tab);
-  });
+  void _go(String tab) {
+    if (tab == 'rules' && _tab != 'rules') _loadRules();
+    setState(() {
+      _tab = tab;
+      _shown.add(tab);
+    });
+  }
 
-  void _openJobs(String? stage, PmFilters filters) {
-    _intent = PmJobsIntent(stage, filters, ++_serial);
+  void _openJobs(PmJobsIntent intent) {
+    _intent = PmJobsIntent(
+      intent.stage,
+      intent.filters,
+      ++_serial,
+      stages: intent.stages,
+      label: intent.label,
+    );
     _go('pending');
+  }
+
+  /// Rules, scrolled to [section].
+  void _openRules(String section) {
+    _rulesFocus = (section, ++_serial);
+    _go('rules');
+  }
+
+  /// Settings, scrolled to [card].
+  void _openSettings([String card = 'scope']) {
+    _settingsFocus = (card, ++_serial);
+    _go('settings');
   }
 
   /// The scope line's words: the statuses by their own names, and the place
@@ -144,6 +195,7 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
       statuses: [for (final v in _scopeStatuses) names[v] ?? v],
       partlyPaidOnly: _partlyPaidOnly,
       place: pmPlaceLabel(_me),
+      setAt: _rules?.scopeSetAt,
     );
   }
 
@@ -152,41 +204,21 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
   List<(String, String, IconData, Widget Function())> get _tabs => [
     (
       'dashboard',
-      'Dashboard',
+      'Overview',
       Icons.insights_outlined,
       () => ProjectManagementDashboard(
         api: widget.api,
         session: widget.session,
         areas: _areas,
         stoppedDays: _stoppedDays,
+        warnDays: _warnDays,
         generation: _generation,
         onOpenJobs: _openJobs,
-        onOpenSettings: () => _go('settings'),
+        onOpenSettings: () => _openSettings('stages'),
         scope: _scope,
+        rules: _rules,
       ),
     ),
-    if (_financials) ...[
-      (
-        'reports',
-        'Reports',
-        Icons.summarize_outlined,
-        () => ProjectManagementReports(
-          api: widget.api,
-          session: widget.session,
-          now: widget.now,
-        ),
-      ),
-      (
-        'table',
-        'Table',
-        Icons.table_chart_outlined,
-        () => ProjectManagementReportTable(
-          api: widget.api,
-          session: widget.session,
-          now: widget.now,
-        ),
-      ),
-    ],
     (
       'pending',
       'Jobs',
@@ -202,10 +234,11 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         statuses: _statuses,
         intent: _intent,
         generation: _generation,
-        onOpenSettings: () => _go('settings'),
+        onOpenSettings: () => _openSettings('stages'),
         now: widget.now,
         zone: widget.zone,
         scope: _scope,
+        rules: _rules,
       ),
     ),
     (
@@ -217,11 +250,36 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         session: widget.session,
         areas: _areas,
         generation: _generation,
-        onOpenSettings: () => _go('settings'),
+        onOpenSettings: _openSettings,
         scope: _scope,
         statuses: _statuses,
         now: widget.now,
         zone: widget.zone,
+      ),
+    ),
+    if (_financials)
+      (
+        'reports',
+        'Repair team',
+        Icons.summarize_outlined,
+        () => ProjectManagementRepairTeam(
+          api: widget.api,
+          session: widget.session,
+          now: widget.now,
+        ),
+      ),
+    (
+      'rules',
+      'Rules',
+      Icons.rule_outlined,
+      () => ProjectManagementRules(
+        session: widget.session,
+        rules: _rules,
+        error: _rulesError,
+        onRetry: _loadRules,
+        focus: _rulesFocus,
+        onChange: _openSettings,
+        scope: _scope,
       ),
     ),
     (
@@ -246,6 +304,8 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         session: widget.session,
         statuses: _statuses,
         onSaved: _saved,
+        focus: _settingsFocus,
+        onRules: _openRules,
       ),
     ),
   ];
@@ -270,18 +330,22 @@ class _ProjectManagementScreenState extends State<ProjectManagementScreen> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              for (final tab in tabs)
-                Offstage(
-                  key: ValueKey('pm-pane-${tab.$1}'),
-                  offstage: tab.$1 != (index < 0 ? tabs.first.$1 : _tab),
-                  child: _shown.contains(tab.$1)
-                      ? tab.$4()
-                      : const SizedBox.shrink(),
-                ),
-            ],
+          child: PmFrameLinks(
+            onHow: (tab) => _openRules(pmRulesSectionFor(tab)),
+            onChangeScope: _openSettings,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                for (final tab in tabs)
+                  Offstage(
+                    key: ValueKey('pm-pane-${tab.$1}'),
+                    offstage: tab.$1 != (index < 0 ? tabs.first.$1 : _tab),
+                    child: _shown.contains(tab.$1)
+                        ? tab.$4()
+                        : const SizedBox.shrink(),
+                  ),
+              ],
+            ),
           ),
         ),
       ],

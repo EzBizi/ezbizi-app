@@ -150,11 +150,12 @@ void main() {
     expect(find.text('Use Brightway’s again'), findsOneWidget);
   });
 
-  testWidgets('See all opens Jobs on paid, not started, past the limit; the '
-      'chip comes off', (tester) async {
+  testWidgets('Paid but not started opens Jobs on paid, not started, past '
+      'the limit; the chip comes off', (tester) async {
     final server = PmServer();
     await server.pump(tester, size: const Size(1440, 1600));
-    final see = find.byKey(const ValueKey('pm-start-see-all'));
+    // Needs attention's card, since design 144 (was the box's See all).
+    final see = find.byKey(const ValueKey('pm-attention-not_started'));
     await tester.ensureVisible(see);
     await tester.tap(see);
     await tester.pumpAndSettle();
@@ -164,14 +165,14 @@ void main() {
     expect(query.queryParameters['over_limit'], '1');
     expect(query.queryParameters.containsKey('stage'), isFalse);
 
-    final chip = find.byKey(const ValueKey('pm-jobs-waiting-to-start'));
+    final chip = find.byKey(const ValueKey('pm-jobs-drill'));
     expect(chip, findsOneWidget);
-    expect(find.text('Paid, not started'), findsOneWidget);
+    expect(find.text('Paid 10 or more days ago, not started'), findsOneWidget);
     tester.widget<InputChip>(chip).onDeleted!();
     await tester.pumpAndSettle();
     final after = server.get('/jobs/project-management/jobs').last;
     expect(after.queryParameters.containsKey('waiting_to_start'), isFalse);
-    expect(after.queryParameters['stage'], 'in_progress');
+    expect(after.queryParameters['stage'], 'waiting_review');
     expect(chip, findsNothing);
   });
 

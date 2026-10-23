@@ -40,8 +40,9 @@ void main() {
 
   testWidgets('stage tabs in order, each with its count', (tester) async {
     final server = await open(tester);
+    // The flow's first stage (design 144): Waiting review.
     expect(server.get('/project-management/jobs').single.queryParameters, {
-      'stage': 'in_progress',
+      'stage': 'waiting_review',
     });
     expect(label(tester, 'in_progress'), 'In progress · 41');
     expect(label(tester, 'done_waiting_payment'), 'Done, waiting payment · 19');
@@ -83,6 +84,8 @@ void main() {
     Map<String, String> last() =>
         server.get('/project-management/jobs').last.queryParameters;
 
+    await tester.tap(find.byKey(const ValueKey('pm-stage-in_progress')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pm-area-sa-1')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('pm-flag-second_visit')));
@@ -131,10 +134,10 @@ void main() {
     for (final h in [
       'JOB',
       'CUSTOMER',
-      'AREA',
-      'TEAM',
+      'SERVICE AREA',
+      'TECHNICIAN',
       'FLAGS',
-      'AFTER PAYMENT',
+      'AFTER FIRST PAYMENT',
     ]) {
       expect(find.text(h), findsOneWidget);
     }
@@ -157,7 +160,10 @@ void main() {
 
   testWidgets('Older and Newer turn the page', (tester) async {
     final server = await open(tester);
-    expect(find.text('Page 1 of 3 · 245 jobs'), findsOneWidget);
+    expect(
+      find.text('Page 1 of 3 · 245 jobs, newest change first'),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const ValueKey('pm-jobs-older')));
     await tester.pumpAndSettle();
     expect(

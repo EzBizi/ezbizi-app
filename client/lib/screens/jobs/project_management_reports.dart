@@ -12,6 +12,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
+import 'pm_frame.dart';
 
 // Project Management › Reports and › Table (design 141, option 1; phone 4):
 // Financials' weekly Repair Team report ("WhatsApp Shoval Report"), under
@@ -71,11 +72,11 @@ final List<PmReportField> pmReportFields = [
   ('gas', 'Gas', (c) => _money(c['gas_cents'])),
   ('parts', 'Parts', (c) => _money(c['parts_cents'])),
   ('total_cost', 'Total cost', (c) => _money(c['total_cost_cents'])),
-  ('tech_share', 'Tech share', (c) => _share(c['tech_share'])),
+  ('tech_share', 'Technician share', (c) => _share(c['tech_share'])),
   ('external_share', 'External share', (c) => _share(c['external_share'])),
   ('contracting', 'Contracting', (c) => _share(c['contracting_profit'])),
   ('company_share', 'Company share', (c) => _share(c['company_share'])),
-  ('jobs', 'Jobs done', (c) => c['jobs'] is int ? '${c['jobs']}' : null),
+  ('jobs', 'Jobs', (c) => c['jobs'] is int ? '${c['jobs']}' : null),
   ('jobs_amount', 'Jobs amount', (c) => _money(c['jobs_amount_cents'])),
   (
     'cost_from_gross',
@@ -162,11 +163,16 @@ class ProjectManagementReports extends StatefulWidget {
     required this.api,
     required this.session,
     this.now,
+    this.modeSwitch,
   });
 
   final ApiClient api;
   final Session session;
   final DateTime Function()? now;
+
+  /// The Repair team tab's Cards / Table switch, drawn first among the
+  /// filters.
+  final Widget? modeSwitch;
 
   @override
   State<ProjectManagementReports> createState() =>
@@ -299,49 +305,50 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
     final pad = phone ? 16.0 : 24.0;
     final picker = placePicker(_load);
 
-    return ListView(
-      key: const ValueKey('pm-reports'),
-      padding: EdgeInsets.fromLTRB(pad, 8, pad, 24),
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            // Search first, as on every Project Management tab.
-            SizedBox(
-              width: phone ? double.infinity : 300,
-              child: TextField(
-                key: const ValueKey('pm-reports-search'),
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search technicians',
-                ),
-              ),
-            ),
-            ?picker,
-            _weekPicker(context),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (place == null)
-          noPlace(context)
-        else
-          AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: _report == null
-                ? Text(
-                    _empty ? 'No repair report for this branch this week.' : '',
-                    key: const ValueKey('pm-reports-empty'),
-                  )
-                : _body(context, phone: phone),
+    return PmFrame(
+      tab: 'reports',
+      purpose:
+          'The weekly repair team report: a card per technician and the '
+          'repair team combined.',
+      scopeText:
+          "Source: Financials' Repair Team sheet, one branch and one week at a time. Not limited to Project Management's jobs.",
+      search: SizedBox(
+        width: phone ? double.infinity : 300,
+        child: TextField(
+          key: const ValueKey('pm-reports-search'),
+          controller: _search,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search, size: 18),
+            hintText: 'Search technicians',
           ),
-      ],
+        ),
+      ),
+      place: picker,
+      filters: [?widget.modeSwitch, _weekPicker(context)],
+      child: ListView(
+        key: const ValueKey('pm-reports'),
+        padding: EdgeInsets.fromLTRB(pad, 0, pad, 24),
+        children: [
+          if (place == null)
+            noPlace(context)
+          else
+            AsyncBody(
+              loading: _loading,
+              error: _error,
+              onRetry: _load,
+              child: _report == null
+                  ? Text(
+                      _empty
+                          ? 'No repair report for this branch this week.'
+                          : '',
+                      key: const ValueKey('pm-reports-empty'),
+                    )
+                  : _body(context, phone: phone),
+            ),
+        ],
+      ),
     );
   }
 
@@ -614,7 +621,11 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
           ),
         ),
         Text(
-          'Tech, helper, operation, gas and parts, the last three months.',
+          // The months it really covers (design 144): from the first day of
+          // the month two months back, to today.
+          'Technician, helper, operation, gas and parts, from '
+          '${me.display.formatDate(DateTime(_today().year, _today().month - 2, 1))} '
+          'to today.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurfaceVariant,
           ),
@@ -636,7 +647,13 @@ class _ProjectManagementReportsState extends State<ProjectManagementReports>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                row(['MONTH', 'PLACE', 'TEAM', 'JOBS', 'AVG'], style: head),
+                row([
+                  'MONTH',
+                  'PLACE',
+                  'TECHNICIAN',
+                  'JOBS',
+                  'AVERAGE PER JOB',
+                ], style: head),
                 for (final p in _production)
                   row([
                     '${p['month'] ?? ''}',
@@ -660,11 +677,16 @@ class ProjectManagementReportTable extends StatefulWidget {
     required this.api,
     required this.session,
     this.now,
+    this.modeSwitch,
   });
 
   final ApiClient api;
   final Session session;
   final DateTime Function()? now;
+
+  /// The Repair team tab's Cards / Table switch, drawn first among the
+  /// filters.
+  final Widget? modeSwitch;
 
   @override
   State<ProjectManagementReportTable> createState() =>
@@ -852,109 +874,111 @@ class _ProjectManagementReportTableState
               )
               .firstOrNull;
 
-    return ListView(
-      key: const ValueKey('pm-table'),
-      padding: EdgeInsets.fromLTRB(pad, 8, pad, 24),
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
+    return PmFrame(
+      tab: 'reports',
+      purpose:
+          'The weekly repair team report as a table: one row per '
+          'technician per week, a column per field.',
+      scopeText:
+          "Source: Financials' Repair Team sheet, one branch and one week at a time. Not limited to Project Management's jobs.",
+      search: SizedBox(
+        width: phone ? double.infinity : 300,
+        child: TextField(
+          key: const ValueKey('pm-table-search'),
+          controller: _search,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(Icons.search, size: 18),
+            hintText: 'Search technicians',
+          ),
+        ),
+      ),
+      place: picker,
+      filters: [
+        ?widget.modeSwitch,
+        Row(
+          key: const ValueKey('tour-pm-report-week'),
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Search first, as on every Project Management tab.
-            SizedBox(
-              width: phone ? double.infinity : 300,
-              child: TextField(
-                key: const ValueKey('pm-table-search'),
-                controller: _search,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search technicians',
+            IconButton(
+              key: const ValueKey('pm-week-back'),
+              tooltip: 'Earlier weeks',
+              onPressed: _loading ? null : () => _shift(-1),
+              icon: const Icon(Icons.chevron_left),
+            ),
+            Flexible(
+              child: Text(
+                '${formats.formatDate(_from)} – ${formats.formatDate(_to)}',
+                key: const ValueKey('pm-week-label'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            ?picker,
-            Row(
-              key: const ValueKey('tour-pm-report-week'),
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  key: const ValueKey('pm-week-back'),
-                  tooltip: 'Earlier weeks',
-                  onPressed: _loading ? null : () => _shift(-1),
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Flexible(
-                  child: Text(
-                    '${formats.formatDate(_from)} – ${formats.formatDate(_to)}',
-                    key: const ValueKey('pm-week-label'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  key: const ValueKey('pm-week-next'),
-                  tooltip: 'Later weeks',
-                  onPressed: _loading || !_to.isBefore(_today())
-                      ? null
-                      : () => _shift(1),
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-            if (!_loading && _error == null)
-              StatusPill(
-                missing == 0
-                    ? 'No fields missing'
-                    : '${formatCount(missing)} '
-                          '${missing == 1 ? 'field' : 'fields'} missing',
-                key: const ValueKey('pm-table-missing'),
-                tone: missing == 0 ? Tone.ok : Tone.caution,
-              ),
-            FilterChip(
-              key: const ValueKey('pm-table-gaps'),
-              selected: _gapsOnly,
-              label: const Text('Show only rows with gaps'),
-              onSelected: (v) => setState(() => _gapsOnly = v),
+            IconButton(
+              key: const ValueKey('pm-week-next'),
+              tooltip: 'Later weeks',
+              onPressed: _loading || !_to.isBefore(_today())
+                  ? null
+                  : () => _shift(1),
+              icon: const Icon(Icons.chevron_right),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        if (place == null)
-          noPlace(context)
-        else
-          AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_editing != null) _editor(context, editingRow),
-                if (rows.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: Text(
-                      _rows.isEmpty
-                          ? 'No repair report in these weeks.'
-                          : 'No technicians match “${_search.text.trim()}”.',
-                      key: const ValueKey('pm-table-none'),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                else
-                  _grid(context, rows, caution),
-              ],
-            ),
+        if (!_loading && _error == null)
+          StatusPill(
+            missing == 0
+                ? 'No fields missing'
+                : '${formatCount(missing)} '
+                      '${missing == 1 ? 'field' : 'fields'} missing',
+            key: const ValueKey('pm-table-missing'),
+            tone: missing == 0 ? Tone.ok : Tone.caution,
           ),
+        FilterChip(
+          key: const ValueKey('pm-table-gaps'),
+          selected: _gapsOnly,
+          label: const Text('Show only rows with gaps'),
+          onSelected: (v) => setState(() => _gapsOnly = v),
+        ),
       ],
+      child: ListView(
+        key: const ValueKey('pm-table'),
+        padding: EdgeInsets.fromLTRB(pad, 0, pad, 24),
+        children: [
+          if (place == null)
+            noPlace(context)
+          else
+            AsyncBody(
+              loading: _loading,
+              error: _error,
+              onRetry: _load,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_editing != null) _editor(context, editingRow),
+                  if (rows.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        _rows.isEmpty
+                            ? 'No repair report in these weeks.'
+                            : 'No technicians match “${_search.text.trim()}”.',
+                        key: const ValueKey('pm-table-none'),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  else
+                    _grid(context, rows, caution),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1179,4 +1203,64 @@ int? pmAverageCost(List rows) {
     }
   }
   return jobs == 0 ? null : cost ~/ jobs;
+}
+
+/// Project Management › Repair team (design 144): Reports and Table, which
+/// were two tabs, as one with a Cards / Table switch. Its key is `reports`;
+/// `table` is retired.
+class ProjectManagementRepairTeam extends StatefulWidget {
+  const ProjectManagementRepairTeam({
+    super.key,
+    required this.api,
+    required this.session,
+    this.now,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final DateTime Function()? now;
+
+  @override
+  State<ProjectManagementRepairTeam> createState() =>
+      _ProjectManagementRepairTeamState();
+}
+
+class _ProjectManagementRepairTeamState
+    extends State<ProjectManagementRepairTeam> {
+  String _mode = 'cards';
+
+  @override
+  Widget build(BuildContext context) {
+    final toggle = SegmentedButton<String>(
+      key: const ValueKey('tour-pm-report-mode'),
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: 'cards',
+          label: Text('Cards', key: ValueKey('pm-repair-cards')),
+        ),
+        ButtonSegment(
+          value: 'table',
+          label: Text('Table', key: ValueKey('pm-repair-table')),
+        ),
+      ],
+      selected: {_mode},
+      onSelectionChanged: (v) => setState(() => _mode = v.first),
+    );
+    return _mode == 'cards'
+        ? ProjectManagementReports(
+            key: const ValueKey('pm-repair-mode-cards'),
+            api: widget.api,
+            session: widget.session,
+            now: widget.now,
+            modeSwitch: toggle,
+          )
+        : ProjectManagementReportTable(
+            key: const ValueKey('pm-repair-mode-table'),
+            api: widget.api,
+            session: widget.session,
+            now: widget.now,
+            modeSwitch: toggle,
+          );
+  }
 }
