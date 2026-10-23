@@ -439,14 +439,16 @@ class _PtoTabState extends State<PtoTab> {
     return '${days == 1 ? '1 day' : '$days days'} $period';
   }
 
-  /// "90 days", "3 months" — said the way the setting says it.
+  String _waitingPhrase() =>
+      _span(_policy['waiting'] as int? ?? 0, _policy['waiting_unit']);
+
+  /// "90 days", "3 months", "1 week" — the unit the setting named.
   ///
   /// Never converted to days: three months from 30 November is 28 February and
   /// ninety days is 1 March in three years out of four, so a conversion here
   /// would hand somebody a wrong date about their own leave.
-  String _waitingPhrase() {
-    final n = _policy['waiting'] as int? ?? 0;
-    final word = switch (_policy['waiting_unit']) {
+  String _span(int n, Object? unit) {
+    final word = switch (unit) {
       'week' => 'week',
       'month' => 'month',
       'quarter' => 'quarter',
@@ -1143,9 +1145,12 @@ class _PtoTabState extends State<PtoTab> {
     final waiting = (_policy['waiting'] as int? ?? 0) == 0
         ? 'usable from the first day'
         : 'usable from ${_waitingPhrase()} after starting';
+    final accrueAfter = _policy['accrue_after'] as int? ?? 0;
 
     return [
       'Earns ${days == 1 ? '1 day' : '${_days(days)} days'} $period',
+      if (accrueAfter > 0)
+        'starts accumulating ${_span(accrueAfter, _policy['accrue_after_unit'])} after starting',
       waiting,
       if (_policy['carry_over'] == true) 'unused days carry over',
     ].join(' · ');

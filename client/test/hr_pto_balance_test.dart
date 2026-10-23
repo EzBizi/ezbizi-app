@@ -214,6 +214,31 @@ void main() {
     expect(find.textContaining('carried'), findsNothing);
   });
 
+  testWidgets('a wait before earning is said in the policy line', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _body(
+        policy: {
+          'allowance_period': 'quarter',
+          'carry_over': false,
+          'accrue_after': 3,
+          'accrue_after_unit': 'month',
+        },
+      ),
+      width: 1200,
+    );
+
+    expect(
+      find.text(
+        'Earns 10 days a quarter · starts accumulating 3 months after starting · '
+        'usable from 90 days after starting',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a quarterly policy says a quarter', (tester) async {
     await _pump(
       tester,

@@ -79,6 +79,7 @@ class PtoPolicy
      * @return array{
      *     enabled: bool, allowance: int, allowance_period: string,
      *     waiting: int, waiting_unit: string,
+     *     accrue_after: int, accrue_after_unit: string, accrues_from: ?string,
      *     carry_over: bool, started_on: ?string, eligible_from: ?string,
      *     eligible: bool,
      * }
@@ -90,6 +91,8 @@ class PtoPolicy
         $allowance = (int) $this->settings->get('pto.allowance', $organization);
         $waiting = max(0, (int) $this->settings->get('pto.waiting', $organization));
         $unit = (string) $this->settings->get('pto.waiting_unit', $organization);
+        $accrueAfter = max(0, (int) $this->settings->get('pto.accrue_after', $organization));
+        $accrueUnit = (string) $this->settings->get('pto.accrue_after_unit', $organization);
 
         $startedOn = $this->startedOn($user);
 
@@ -113,7 +116,8 @@ class PtoPolicy
         $period = (string) $this->settings->get('pto.allowance_period', $organization);
         $carryOver = (bool) $this->settings->get('pto.carry_over', $organization);
         $reset = (string) $this->settings->get('pto.reset', $organization);
-        $balance = $this->balance($user, $startedOn, max(0, $allowance), $period, $reset, $carryOver);
+        $accruesFrom = $startedOn === null ? null : $this->after($startedOn, $accrueAfter, $accrueUnit);
+        $balance = $this->balance($user, $startedOn, $accruesFrom, max(0, $allowance), $period, $reset, $carryOver);
 
         return [
             'enabled' => $this->enabledFor($organization),
@@ -128,6 +132,9 @@ class PtoPolicy
             ...$balance,
             'waiting' => $waiting,
             'waiting_unit' => $unit,
+            'accrue_after' => $accrueAfter,
+            'accrue_after_unit' => $accrueUnit,
+            'accrues_from' => $accruesFrom?->toDateString(),
             'carry_over' => (bool) $this->settings->get('pto.carry_over', $organization),
             'started_on' => $startedOn?->toDateString(),
             'eligible_from' => $eligibleFrom?->toDateString(),
@@ -154,13 +161,14 @@ class PtoPolicy
      *
      * The window runs from the last reset (each work anniversary, each
      * 1 January, or each earned period) to the next. What was earned is whole
-     * periods counted from the start date; with carryover, what was left at
+     * periods counted from the day accumulation starts — the start date, unless
+     * the organization set a one-time wait. With carryover, what was left at
      * the last reset comes along as `carried`. Undated used days ("before
      * EzBizi") count in the current window.
      *
      * @return array{total: ?float, used: float, left: ?float, carried: ?float, expired: ?float, resets_on: ?string, window_from: ?string}
      */
-    private function balance(User $user, ?Carbon $startedOn, int $allowance, string $period, string $reset, bool $carryOver): array
+    private function balance(User $user, ?Carbon $startedOn, ?Carbon $accruesFrom, int $allowance, string $period, string $reset, bool $carryOver): array
     {
         $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
         if ($startedOn === null || $startedOn->isFuture()) {
@@ -168,17 +176,24 @@ class PtoPolicy
                 'carried' => null, 'expired' => null, 'resets' => [], 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
         }
 
+        // Zero wait: accumulation starts on the start date, which is what every
+        // balance did before the wait existed.
+        $origin = $accruesFrom ?? $startedOn;
         $step = fn (Carbon $at, int $n) => match ($period) {
             'week' => $at->copy()->addWeeks($n),
             'month' => $at->copy()->addMonthsNoOverflow($n),
             'quarter' => $at->copy()->addMonthsNoOverflow(3 * $n),
             default => $at->copy()->addYearsNoOverflow($n),
         };
-        // Whole periods from the start date to $until. ponytail: counts one by
-        // one; decades of weeks is a few thousand steps.
-        $periods = function (Carbon $until) use ($startedOn, $step): int {
+        // Whole periods from the day accumulation starts to $until. A date
+        // before that day has earned nothing. ponytail: counts one by one;
+        // decades of weeks is a few thousand steps.
+        $periods = function (Carbon $until) use ($origin, $step): int {
+            if ($until->lt($origin)) {
+                return 0;
+            }
             $n = 0;
-            while ($step($startedOn, $n + 1)->lte($until)) {
+            while ($step($origin, $n + 1)->lte($until)) {
                 $n++;
             }
 
@@ -195,12 +210,19 @@ class PtoPolicy
 
                 return [$startedOn->copy()->addYearsNoOverflow($k), $startedOn->copy()->addYearsNoOverflow($k + 1)];
             })(),
-            'period' => [$step($startedOn, $periods($today)), $step($startedOn, $periods($today) + 1)],
+            // The period grid moves with the wait. Before it starts, the
+            // window is the one that is about to open and it holds nothing.
+            'period' => $today->lt($origin)
+                ? [$origin->copy(), $step($origin, 1)]
+                : [$step($origin, $periods($today)), $step($origin, $periods($today) + 1)],
             default => [$startedOn->copy()->max($today->copy()->startOfYear()), $today->copy()->startOfYear()->addYear()],
         };
 
-        // Reset every period: that period's days are there from its first day.
-        $earnedNow = $reset === 'period' ? $allowance : ($periods($today) - $periods($from)) * $allowance;
+        // Reset every period: that period's days are there from its first day,
+        // and not before accumulation has started.
+        $earnedNow = $reset === 'period'
+            ? ($today->lt($origin) ? 0 : $allowance)
+            : ($periods($today) - $periods($from)) * $allowance;
         // Every past reset, played forward from the start date: what was left
         // at each either carried into the next window or expired (Jose,
         // 2026-10-22: "show when past resets happened").
@@ -249,6 +271,21 @@ class PtoPolicy
             'resets_on' => $next->toDateString(),
             'window_from' => $from->toDateString(),
         ];
+    }
+
+    /**
+     * A count of days, weeks or months after a date, without overflowing.
+     *
+     * Three months from 31 January is 30 April. Ninety days is 1 May. The
+     * unit the policy named is the one that has to come back.
+     */
+    private function after(Carbon $from, int $count, string $unit): Carbon
+    {
+        return match ($unit) {
+            'week' => $from->copy()->addWeeks($count),
+            'month' => $from->copy()->addMonthsNoOverflow($count),
+            default => $from->copy()->addDays($count),
+        };
     }
 
     /**

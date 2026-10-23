@@ -1040,13 +1040,14 @@ class HrPeopleController extends Controller
             // the whole screen. The settings are organization-scoped, so it can
             // never be one person's state beside somebody else's.
             // Read off one person's answer rather than the settings
-            // directly: these six are organization-scoped, so every row carries
+            // directly: these are organization-scoped, so every row carries
             // the same ones, and one reader means the units cannot disagree
             // with the dates computed from them.
             'policy' => collect($policy->for($actor))
                 ->only([
                     'enabled', 'allowance', 'allowance_period',
                     'waiting', 'waiting_unit', 'carry_over', 'reset',
+                    'accrue_after', 'accrue_after_unit',
                 ])
                 ->all(),
 

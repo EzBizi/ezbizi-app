@@ -388,6 +388,81 @@ class PtoPolicyTest extends TestCase
     }
 
     /**
+     * Accumulation can wait, once, after the day they started (Jose, 2026-10-23).
+     *
+     * 2 days a quarter and 3 months before anything accumulates. Started
+     * 1 April 2026, the quarter that finishes as that wait ends is not earned,
+     * so the first work year is 6 and the second is 8. The wait is not applied
+     * again. On the morning of the third anniversary both years have closed
+     * and nothing new has been earned yet, so what was carried is 6 then 8.
+     */
+    public function test_accumulation_starts_after_a_one_time_wait_and_the_second_year_is_full(): void
+    {
+        Carbon::setTestNow('2026-10-23 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, [
+            'pto.enabled' => true,
+            'pto.allowance' => 2,
+            'pto.allowance_period' => 'quarter',
+            'pto.reset' => 'anniversary',
+            'pto.carry_over' => true,
+            'pto.accrue_after' => 3,
+            'pto.accrue_after_unit' => 'month',
+        ]);
+        $this->started($t, '2026-04-01');
+
+        $first = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame(3, $first['accrue_after']);
+        $this->assertSame('month', $first['accrue_after_unit']);
+        $this->assertSame('2026-07-01', $first['accrues_from']);
+        // October has arrived; July was the end of the wait, so only 2 days.
+        $this->assertSame(2.0, $first['total']);
+        $this->assertSame(0.0, $first['carried']);
+
+        Carbon::setTestNow('2028-04-01 12:00:00');
+        $closed = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame(0.0, $closed['expired']);
+        $this->assertSame(14.0, $closed['carried']);
+        $this->assertSame(14.0, $closed['total']);
+        $this->assertSame([
+            ['on' => '2028-04-01', 'expired' => 0.0, 'carried' => 14.0],
+            ['on' => '2027-04-01', 'expired' => 0.0, 'carried' => 6.0],
+        ], $closed['resets']);
+    }
+
+    /**
+     * Ninety days is not three months, and the first year shows which was used.
+     *
+     * From 31 January 2026, three months starts accumulation on 30 April and
+     * the first year earns 6. Ninety days starts it on 1 May, and that first
+     * year earns 4. Converting one into the other would hand both people the
+     * same balance.
+     */
+    public function test_ninety_days_before_accumulation_is_not_three_months(): void
+    {
+        Carbon::setTestNow('2028-01-31 12:00:00');
+        $t = $this->provisionTenant('Alpha');
+        $this->started($t, '2026-01-31');
+        $base = [
+            'pto.enabled' => true,
+            'pto.allowance' => 2,
+            'pto.allowance_period' => 'quarter',
+            'pto.reset' => 'anniversary',
+            'pto.carry_over' => true,
+        ];
+
+        $this->set($t, [...$base, 'pto.accrue_after' => 3, 'pto.accrue_after_unit' => 'month']);
+        $months = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame('2026-04-30', $months['accrues_from']);
+        $this->assertSame(14.0, $months['carried']);
+
+        $this->set($t, ['pto.accrue_after' => 90, 'pto.accrue_after_unit' => 'day']);
+        $days = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
+        $this->assertSame('2026-05-01', $days['accrues_from']);
+        $this->assertSame(12.0, $days['carried']);
+    }
+
+    /**
      * A zero wait opens for somebody with no start date at all.
      *
      * The case that distinguishes: everybody on the books before the

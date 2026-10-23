@@ -1827,6 +1827,34 @@ class SettingRegistry
                 help: 'Most written policies say a number of days a year. Per month or per week is for policies that accrue as somebody works.',
             ),
             new SettingDefinition(
+                key: 'pto.accrue_after',
+                section: 'Paid time off',
+                // The number only, same split as "Can be used after": 3 here
+                // with Days below is three days, not three months.
+                label: 'Starts accumulating after (number — its unit is the next setting)',
+                type: SettingDefinition::TYPE_INT,
+                default: 0,
+                allowedScopes: $orgOnly,
+                help: 'Counted from the day somebody started, in the unit set just below. Zero means days start accumulating on their first day. This wait happens once and is not applied again at the next reset. It does not decide when those days may be used — that is "Can be used after".',
+            ),
+            new SettingDefinition(
+                key: 'pto.accrue_after_unit',
+                section: 'Paid time off',
+                label: 'UNIT of "Starts accumulating after": days, weeks or months',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'day',
+                options: ['day', 'week', 'month'],
+                optionLabels: [
+                    'day' => 'Days',
+                    'week' => 'Weeks',
+                    'month' => 'Months',
+                ],
+                allowedScopes: $orgOnly,
+                // Three months from 31 January is 30 April; ninety days is
+                // 1 May. The earning clock has to land on the one they chose.
+                help: 'Three months and ninety days are not the same date. Say it the way the policy says it. Check the unit: 3 with Days is three days, not three months.',
+            ),
+            new SettingDefinition(
                 key: 'pto.waiting',
                 section: 'Paid time off',
                 // The number only: 90 here with Months below is seven and a half
