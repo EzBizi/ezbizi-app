@@ -85,6 +85,17 @@ final class ProjectStages
         });
     }
 
+    /** In any of these stages (each by its own rule); every mapped stage when none are named. */
+    public static function anyOf(Builder $q, array $rules, ?array $keys = null): Builder
+    {
+        $keys = array_values(array_filter($keys ?? array_keys($rules), fn ($k) => isset($rules[$k])));
+        if ($keys === []) {
+            return $q->whereRaw('1 = 0');
+        }
+
+        return $q->where(fn ($any) => array_map(fn ($k) => $any->orWhere(fn ($one) => self::scope($one, $rules[$k])), $keys));
+    }
+
     /**
      * Only the jobs Project Management is about, each branch by its own place's
      * jobs.pm_scope_statuses (empty: any) and jobs.pm_partly_paid_only (Shoval,
