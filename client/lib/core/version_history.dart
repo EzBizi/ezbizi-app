@@ -14,6 +14,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0490',
+      date: '23 Oct 2026',
+      items: [
+        'Project Management: the No reason card lists exactly the waiting-review jobs with no reason, and Jobs can be filtered by review reason.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0489',
       date: '23 Oct 2026',
       items: [
