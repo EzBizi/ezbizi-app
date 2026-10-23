@@ -596,14 +596,18 @@ class _PtoTabState extends State<PtoTab> {
           Text(heading, style: theme.textTheme.titleMedium),
           const SizedBox(height: 12),
         ],
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(child: _standing(context, person)),
+            _standing(context, person),
             // Only with the server's say-so: the permission is HR's to decide
             // per person, and a button that answers 403 is a promise this
-            // screen cannot keep.
-            if (person['can_edit_used'] == true && !recording) ...[
-              const SizedBox(width: 8),
+            // screen cannot keep. A wrap, not a row: beside a long name the
+            // button was wider than the space left and painted past the card.
+            if (person['can_edit_used'] == true && !recording)
               FilledButton.icon(
                 key: const Key('pto-record-days'),
                 onPressed: () => setState(() {
@@ -613,7 +617,6 @@ class _PtoTabState extends State<PtoTab> {
                 icon: const Icon(Icons.event_available, size: 18),
                 label: const Text('Record days off'),
               ),
-            ],
           ],
         ),
         const SizedBox(height: 14),
@@ -796,7 +799,13 @@ class _PtoTabState extends State<PtoTab> {
             value == null ? '—' : _days(value),
             style: theme.textTheme.headlineMedium?.copyWith(color: colour),
           ),
-          if (note != null) Text(note, style: theme.textTheme.bodySmall),
+          if (note != null)
+            Text(
+              note,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
         ],
       ),
     );
@@ -912,7 +921,17 @@ class _PtoTabState extends State<PtoTab> {
     final size = compact ? 60.0 : 88.0;
     final left = days < 0 ? 0 : days;
 
-    return SizedBox(
+    final number = Text(
+      '$left',
+      style: (compact
+              ? theme.textTheme.titleMedium
+              : theme.textTheme.headlineSmall)
+          ?.copyWith(height: 1),
+    );
+    // On a phone the word is "days", which fits in the hole. On a desk
+    // "days left" is wider than the ring, and drawing it in the hole
+    // painted it across the stroke, so it sits underneath.
+    final dial = SizedBox(
       key: const Key('pto-ring'),
       width: size,
       height: size,
@@ -926,30 +945,44 @@ class _PtoTabState extends State<PtoTab> {
             backgroundColor: scheme.surfaceContainerHighest,
           ),
           Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '$left',
-                  style: (compact
-                          ? theme.textTheme.titleMedium
-                          : theme.textTheme.headlineMedium)
-                      ?.copyWith(height: 1),
-                ),
-                Text(
-                  compact
-                      ? (left == 1 ? 'day' : 'days')
-                      : (left == 1 ? 'day to reset' : 'days to reset'),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.outline,
-                  ),
-                ),
-              ],
+            child: Padding(
+              padding: EdgeInsets.all(compact ? 8 : 14),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: compact
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          number,
+                          Text(
+                            left == 1 ? 'day' : 'days',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.outline,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      )
+                    : number,
+              ),
             ),
           ),
         ],
       ),
+    );
+    if (compact) return dial;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        dial,
+        const SizedBox(height: 4),
+        Text(
+          left == 1 ? 'day left' : 'days left',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelSmall?.copyWith(color: scheme.outline),
+        ),
+      ],
     );
   }
 
@@ -964,7 +997,8 @@ class _PtoTabState extends State<PtoTab> {
     final scheme = Theme.of(context).colorScheme;
     final caution = ToneColours.of(context, Tone.caution).ink;
 
-    return SizedBox(
+    return ClipRect(
+      child: SizedBox(
       key: const Key('pto-period-bar'),
       height: 16,
       child: Stack(
@@ -1001,9 +1035,10 @@ class _PtoTabState extends State<PtoTab> {
           Align(
             key: const Key('pto-bar-today'),
             alignment: Alignment(elapsed * 2 - 1, 0),
-            child: Container(width: 3, color: scheme.onSurface),
+            child: Container(width: 3, height: 16, color: scheme.onSurface),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1019,7 +1054,8 @@ class _PtoTabState extends State<PtoTab> {
       color: theme.colorScheme.outline,
     );
 
-    return Stack(
+    return ClipRect(
+      child: Stack(
       children: [
         // Each end may shrink: two long date formats in a phone's card are
         // wider than the card.
@@ -1050,6 +1086,7 @@ class _PtoTabState extends State<PtoTab> {
             child: Text('today', style: style),
           ),
       ],
+      ),
     );
   }
 
@@ -1159,8 +1196,8 @@ class _PtoTabState extends State<PtoTab> {
   // ── the timeline ─────────────────────────────────────────────────
 
   /// Everything that moved this person's balance, newest first, in one
-  /// stream: days off (consecutive days as one run), corrections to the
-  /// total, resets and the day they started.
+  /// stream: days off (consecutive days as one run), the days earned,
+  /// corrections to the total, resets and the day they started.
   Widget _timeline(BuildContext context, Map<String, dynamic> person) {
     final theme = Theme.of(context);
     final canEdit = person['can_edit_used'] == true;
@@ -1214,12 +1251,17 @@ class _PtoTabState extends State<PtoTab> {
     final scheme = theme.colorScheme;
     final tone = ToneColours.of(context, switch (event.kind) {
       PtoEventKind.daysOff => Tone.info,
+      PtoEventKind.earned => Tone.ok,
       PtoEventKind.correction => Tone.review,
       PtoEventKind.reset => Tone.caution,
       PtoEventKind.started => Tone.ok,
     });
 
     final (String title, List<String> detail) = switch (event.kind) {
+      PtoEventKind.earned => (
+        'Earned · ${_formats.formatDate(event.on)} (${event.days == 1 ? '1 day' : '${_days(event.days ?? 0)} days'})',
+        const <String>[],
+      ),
       PtoEventKind.daysOff => (
         'Days off · ${event.run!.label} (${event.run!.daysWords})',
         [
@@ -1274,12 +1316,36 @@ class _PtoTabState extends State<PtoTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    key: Key('pto-event-${event.kind.name}'),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          key: Key('pto-event-${event.kind.name}'),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      // Beside the words. At the end of the row it sat on the
+                      // far side of the panel, a screen away from the day it
+                      // removes.
+                      if (event.kind == PtoEventKind.daysOff && canEdit)
+                        IconButton(
+                          key: Key('pto-remove-${event.run!.ids.first}'),
+                          tooltip: 'Remove these days',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
+                          iconSize: 18,
+                          onPressed: () => _removeRun(person, event.run!),
+                          icon: const Icon(Icons.close),
+                        ),
+                    ],
                   ),
                   if (detail.isNotEmpty)
                     Text(
@@ -1292,18 +1358,6 @@ class _PtoTabState extends State<PtoTab> {
               ),
             ),
           ),
-          if (event.kind == PtoEventKind.daysOff && canEdit)
-            Align(
-              alignment: Alignment.topCenter,
-              child: IconButton(
-                key: Key('pto-remove-${event.run!.ids.first}'),
-                tooltip: 'Remove these days',
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                onPressed: () => _removeRun(person, event.run!),
-                icon: const Icon(Icons.close),
-              ),
-            ),
         ],
       ),
     );
@@ -1520,7 +1574,7 @@ class PtoDayRun {
   }
 }
 
-enum PtoEventKind { daysOff, correction, reset, started }
+enum PtoEventKind { daysOff, earned, correction, reset, started }
 
 /// One line of the timeline.
 class PtoEvent {
@@ -1535,6 +1589,7 @@ class PtoEvent {
     this.to,
     this.expired,
     this.carried,
+    this.days,
   });
 
   final PtoEventKind kind;
@@ -1549,6 +1604,9 @@ class PtoEvent {
   final num? to;
   final num? expired;
   final num? carried;
+
+  /// Days added by an earn grant.
+  final num? days;
 }
 
 abstract final class PtoMaths {
@@ -1685,6 +1743,14 @@ abstract final class PtoMaths {
           byName: run.byName,
           reason: run.reason,
         ),
+      for (final e in person['earned'] as List? ?? const [])
+        if (e is Map)
+          if (day(e['on']) case final on?)
+            PtoEvent(
+              kind: PtoEventKind.earned,
+              on: on,
+              days: _PtoTabState._num(e['days']),
+            ),
       for (final c in person['used_changes'] as List? ?? const [])
         if (c is Map)
           if (day(c['at']) case final at?)

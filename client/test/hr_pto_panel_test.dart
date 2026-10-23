@@ -131,6 +131,23 @@ void main() {
       },
     );
 
+    test('days earned are lines of their own, newest first', () {
+      final events = PtoMaths.timeline({
+        'started_on': '2026-04-01',
+        'earned': [
+          {'on': '2026-07-01', 'days': 2},
+          {'on': '2026-10-01', 'days': 2},
+        ],
+      });
+
+      expect(
+        [for (final e in events) e.kind],
+        [PtoEventKind.earned, PtoEventKind.earned, PtoEventKind.started],
+      );
+      expect(events.first.on, DateTime(2026, 10, 1));
+      expect(events.first.days, 2);
+    });
+
     test('an empty resets list adds no reset; an absent one falls back to '
         'period_start unless that is the start', () {
       List<PtoEventKind> kinds(Map<String, dynamic> row) => [

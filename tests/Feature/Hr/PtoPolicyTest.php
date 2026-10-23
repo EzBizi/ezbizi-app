@@ -415,9 +415,11 @@ class PtoPolicyTest extends TestCase
         $this->assertSame(3, $first['accrue_after']);
         $this->assertSame('month', $first['accrue_after_unit']);
         $this->assertSame('2026-07-01', $first['accrues_from']);
-        // October has arrived; July was the end of the wait, so only 2 days.
+        // October has arrived; July was the end of the wait, so only 2 days,
+        // and the timeline can say the day they arrived.
         $this->assertSame(2.0, $first['total']);
         $this->assertSame(0.0, $first['carried']);
+        $this->assertSame([['on' => '2026-10-01', 'days' => 2]], $first['earned']);
 
         Carbon::setTestNow('2028-04-01 12:00:00');
         $closed = $this->inTenant($t['org'], fn () => $this->policy()->for($t['admin']));
