@@ -16,7 +16,8 @@ import '../../widgets/status_pill.dart';
 /// An outcome as its chip says it: a Logs row, or a rule's step in a
 /// timeline.
 ({String label, Tone tone}) pmLogOutcome(Object? outcome) => switch (outcome) {
-  'succeeded' => (label: 'Done', tone: Tone.ok),
+  // Not "Done": that is a job status, and a stage's name (design 144).
+  'succeeded' => (label: 'Succeeded', tone: Tone.ok),
   'manual' => (label: 'By hand', tone: Tone.info),
   'failed' => (label: 'Failed', tone: Tone.bad),
   'skipped' => (label: 'Skipped', tone: Tone.neutral),

@@ -94,12 +94,6 @@ void main() {
           )
           .first,
       find.byKey(const ValueKey('pm-team-bar-Team 5')),
-      find
-          .descendant(
-            of: find.byKey(const ValueKey('pm-start-bar-j-3')),
-            matching: find.byType(PmBar),
-          )
-          .first,
     ]) {
       final (width, colour) = filled(tester, bar);
       expect(width, greaterThan(20));
@@ -150,19 +144,20 @@ void main() {
       overview: overview(),
     ).pump(tester, size: const Size(1440, 1600));
 
-    expect(find.byKey(const ValueKey('pm-start-j-9')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pm-start-j-10')), findsNothing);
+    // The waiting-to-start list is gone (design 144): it repeated the
+    // stages' own jobs, and Needs attention counts the late ones.
+    expect(find.byKey(const ValueKey('pm-start-j-9')), findsNothing);
     expect(
-      find.text('and 30 more over the 10-day limit · See all'),
-      findsOneWidget,
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('pm-attention-not_started-value')),
+          )
+          .data,
+      '40',
     );
     expect(find.byKey(const ValueKey('pm-team-Team 11')), findsOneWidget);
     expect(find.byKey(const ValueKey('pm-team-Team 12')), findsNothing);
     expect(find.byKey(const ValueKey('pm-review-loc-Place 12')), findsNothing);
-
-    await tester.tap(find.byKey(const ValueKey('pm-start-more')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('pm-start-j-39')), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const ValueKey('pm-teams-more')));
     await tester.tap(find.byKey(const ValueKey('pm-teams-more')));
@@ -174,15 +169,5 @@ void main() {
     ];
     expect(ys[1], greaterThan(ys[0]));
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a waiting job\'s full name is on hover', (tester) async {
-    await PmServer(
-      overview: overview(),
-    ).pump(tester, size: const Size(1440, 1600));
-    final tip = tester.widget<Tooltip>(
-      find.byKey(const ValueKey('pm-start-name-j-0')),
-    );
-    expect(tip.message, 'JOB-0 · Customer With A Long Name 0');
   });
 }

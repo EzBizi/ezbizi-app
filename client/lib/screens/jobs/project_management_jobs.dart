@@ -16,17 +16,23 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
+import 'pm_frame.dart';
 import 'pm_stages.dart';
+import 'project_management_rules.dart';
 import 'project_management_tab.dart' show PmTimeline, pmTechnician;
 
-/// Project Management › Jobs (design 141, option 1; phone 4), which was
-/// Pending Jobs.
+/// Project Management › Jobs (design 141, then 144 option 1; phone 4),
+/// which was Pending Jobs.
 ///
 /// One stage at a time from `jobs/project-management/jobs`, 100 to a page,
-/// newest change first: In progress, Waiting review, Ready to schedule,
-/// Scheduled and Done, waiting payment, each with its
-/// count from `meta.counts` under the same filters. A stage `meta.mapped`
-/// leaves out is not set up, and says where to set it up.
+/// newest change first. The stages are the flow every tab draws (Waiting
+/// review › Ready to schedule › Scheduled › In progress › Done, waiting
+/// payment), each with its count from `meta.counts` under the same filters,
+/// and the flow is the stage filter. An Overview number arrives as a drill:
+/// several stages at once (the pipeline, `stages[]`), or every mapped stage
+/// (no stage: payments stopped, paid not started), shown as a chip that
+/// takes it off. A stage `meta.mapped` leaves out is not set up, and says
+/// where to set it up.
 ///
 /// A row opens its timeline beside the table (on a phone, in its place),
 /// read from the timeline endpoint by id, with the three Project Management
@@ -50,7 +56,11 @@ class ProjectManagementJobs extends StatefulWidget {
     this.now,
     this.zone = deviceZone,
     this.scope = const PmScope(),
+    this.rules,
   });
+
+  /// The rules endpoint, for the ⓘ sentences. Null: the client's own.
+  final PmRules? rules;
 
   /// Which jobs these are, as the scope line says.
   final PmScope scope;
@@ -90,8 +100,13 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
 
   String _stage = pmStageKeys.first;
 
-  /// Every stage at once: the Dashboard's waiting-to-start "See all".
-  bool _anyStage = false;
+  /// An Overview number's drill: its chip's words and its stages (null:
+  /// every mapped stage). Null: one stage, [_stage].
+  ({String label, List<String>? stages})? _drill;
+  bool get _anyStage => _drill != null;
+
+  /// The no-reason drill's chip words; null: not drilled.
+  String? _noReasonLabel;
   PmFilters _filters = const PmFilters();
   int _page = 1;
 
@@ -138,7 +153,13 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
 
   void _adopt(PmJobsIntent? intent) {
     if (intent == null) return;
-    _anyStage = intent.stage == null;
+    final label = intent.label;
+    _drill = intent.stage != null
+        ? null
+        : (label: label ?? 'Every stage', stages: intent.stages);
+    _noReasonLabel = intent.stage != null && intent.filters.noReason
+        ? label
+        : null;
     _stage = intent.stage ?? _stage;
     _filters = intent.filters;
     _search.text = intent.filters.q;
@@ -175,7 +196,10 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       _error = null;
     });
     final response = await widget.api.get('/jobs/project-management/jobs', {
-      if (!_anyStage) 'stage': _stage,
+      if (_drill == null)
+        'stage': _stage
+      else if (_drill!.stages != null)
+        'stages[]': _drill!.stages!,
       if (_page > 1) 'page': '$_page',
       ..._filters.query(withSecondVisit: _secondVisit),
     });
@@ -219,7 +243,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
   void _choose(String stage) {
     if (stage == _stage && !_anyStage) return;
     setState(() {
-      _anyStage = false;
+      _drill = null;
       _stage = stage;
       _page = 1;
       _rows = const [];
@@ -309,6 +333,31 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     });
   }
 
+  /// Takes the drill off: back to one stage, its filter gone.
+  void _undrill() {
+    setState(() {
+      _drill = null;
+      _noReasonLabel = null;
+      _rows = const [];
+      _filters = _filters.copyWith(
+        stopped: false,
+        waitingToStart: false,
+        noReason: false,
+      );
+      _page = 1;
+    });
+    _close();
+    _load();
+  }
+
+  /// The rows the page shows: with the no-reason drill, those with none.
+  List<Map<String, dynamic>> get _shownRows => _filters.noReason
+      ? [
+          for (final r in _rows)
+            if ('${r['review_reason'] ?? ''}'.isEmpty) r,
+        ]
+      : _rows;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -317,29 +366,60 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
         final open = _open;
         if (!wide && open != null) return _pane(context, open, back: true);
 
-        return HeaderAboveList(
-          header: Column(
-            mainAxisSize: MainAxisSize.min,
+        return PmFrame(
+          tab: 'pending',
+          purpose:
+              'Work the jobs of one stage, or of a number opened from '
+              'Overview, and open a job for its timeline.',
+          scope: widget.scope,
+          search: TextField(
+            key: const ValueKey('pm-jobs-search'),
+            controller: _search,
+            onChanged: _typed,
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: pmJobSearchHint,
+            ),
+          ),
+          place: widget.areas.isEmpty
+              ? null
+              : PmAreaChips(
+                  areas: widget.areas,
+                  selected: _filters.areaId,
+                  allLabel: 'All areas',
+                  franchiseName: _franchise,
+                  onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
+                ),
+          filters: [
+            KeyedSubtree(
+              key: const ValueKey('tour-pm-jobs-filters'),
+              child: PmFlagChips(
+                filters: _filters,
+                secondVisit: _secondVisit,
+                onChanged: _refilter,
+              ),
+            ),
+          ],
+          below: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 12),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  wide ? 24 : 16,
-                  0,
-                  wide ? 24 : 16,
-                  8,
-                ),
-                child: PmScopeLine(
-                  scope: widget.scope,
-                  onChange: widget.onOpenSettings,
-                ),
-              ),
               _stages(context, wide: wide),
-              _filtersRow(context, wide: wide),
+              if (_drill != null || _noReasonLabel != null) ...[
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: InputChip(
+                    key: const ValueKey('pm-jobs-drill'),
+                    label: Text(_drill?.label ?? _noReasonLabel!),
+                    deleteButtonTooltipMessage: 'Remove',
+                    onDeleted: _undrill,
+                  ),
+                ),
+              ],
             ],
           ),
-          list: AsyncBody(
+          child: AsyncBody(
             key: const ValueKey('tour-pm-jobs-list'),
             loading: _loading,
             error: _error,
@@ -354,6 +434,13 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
   bool get _unmapped =>
       !_anyStage && _mapped != null && !_mapped!.contains(_stage);
 
+  String _stageRule(String key) =>
+      widget.rules?.stageSentence(key, _me) ??
+      'Jobs in scope whose status is one of the ${pmStageName(key)} '
+          'statuses in Settings.';
+
+  /// The flow, which is the stage filter: the stages in their one order,
+  /// › between them, each with its count and the rule that counted it.
   Widget _stages(BuildContext context, {required bool wide}) {
     final scheme = Theme.of(context).colorScheme;
 
@@ -361,56 +448,70 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       final count = _counts[key];
       final mapped = _mapped == null || _mapped!.contains(key);
       final selected = !_anyStage && _stage == key;
-      return Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: ChoiceChip(
-          key: ValueKey('pm-stage-$key'),
-          showCheckmark: false,
-          selected: selected,
-          // The stage's colour, shared with Settings and the Dashboard.
-          avatar: PmStageDot(key, key: ValueKey('pm-stage-$key-dot')),
-          label: Text.rich(
-            TextSpan(
-              text: pmStageName(key),
-
-              children: [
-                if (mapped && count != null)
-                  TextSpan(
-                    text: ' · ${formatCount(count)}',
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w500,
+      return ChoiceChip(
+        key: ValueKey('pm-stage-$key'),
+        showCheckmark: false,
+        selected: selected,
+        // The stage's colour, shared with Settings and the Overview.
+        avatar: PmStageDot(key, key: ValueKey('pm-stage-$key-dot')),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text.rich(
+              TextSpan(
+                text: pmStageName(key),
+                children: [
+                  if (mapped && count != null)
+                    TextSpan(
+                      text: ' · ${formatCount(count)}',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
+              key: ValueKey('pm-stage-$key-label'),
             ),
-            key: ValueKey('pm-stage-$key-label'),
-          ),
-          onSelected: (_) => _choose(key),
+            const SizedBox(width: 4),
+            PmInfo(
+              '${pmStageName(key)} = ${_stageRule(key)}',
+              key: ValueKey('pm-info-stage-$key'),
+              size: 14,
+            ),
+          ],
         ),
+        onSelected: (_) => _choose(key),
       );
     }
 
-    final children = [for (final key in pmStageKeys) chip(key)];
+    final children = [
+      for (final (i, key) in pmStageKeys.indexed) ...[
+        if (i > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        chip(key),
+      ],
+    ];
 
-    return Padding(
+    return KeyedSubtree(
       key: const ValueKey('tour-pm-jobs-stages'),
-      padding: const EdgeInsets.only(bottom: 8),
       // Wide: wrapped onto lines, nothing past the edge. Phone: one strip
-      // that scrolls sideways, like the tabs above it; wrapped, eight stage
-      // chips took 380 of 844 points and pushed the jobs off the screen.
+      // that scrolls sideways, like the tabs above it.
       child: wide
-          ? Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Wrap(
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: children,
-              ),
+          ? Wrap(
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: children,
             )
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(children: children),
             ),
     );
@@ -424,61 +525,6 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     return '';
   }
 
-  Widget _filtersRow(BuildContext context, {required bool wide}) {
-    return Padding(
-      key: const ValueKey('tour-pm-jobs-filters'),
-      padding: EdgeInsets.fromLTRB(wide ? 24 : 16, 0, wide ? 24 : 16, 8),
-      child: PmToolbar(
-        search: TextField(
-          key: const ValueKey('pm-jobs-search'),
-          controller: _search,
-          onChanged: _typed,
-          decoration: const InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: pmJobSearchHint,
-          ),
-        ),
-        areas: widget.areas.isEmpty
-            ? null
-            : PmAreaChips(
-                areas: widget.areas,
-                selected: _filters.areaId,
-                allLabel: 'All areas',
-                franchiseName: _franchise,
-                onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
-              ),
-        filters: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_filters.waitingToStart) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: InputChip(
-                  key: const ValueKey('pm-jobs-waiting-to-start'),
-                  label: const Text('Paid, not started'),
-                  deleteButtonTooltipMessage: 'Remove',
-                  onDeleted: () {
-                    // No stage to fall back on: the first one.
-                    _anyStage = false;
-                    _rows = const [];
-                    _refilter(_filters.copyWith(waitingToStart: false));
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            PmFlagChips(
-              filters: _filters,
-              secondVisit: _secondVisit,
-              onChanged: _refilter,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _body(BuildContext context, {required bool wide}) {
     if (_unmapped) {
       return PmNotSetUp(
@@ -488,15 +534,16 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       );
     }
     final theme = Theme.of(context);
-    if (_rows.isEmpty) {
+    final rows = _shownRows;
+    if (rows.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
             _filters.q.trim().isNotEmpty
                 ? 'No jobs here match “${_filters.q.trim()}”.'
-                : _anyStage
-                ? 'No paid job is waiting to start.'
+                : _anyStage || _filters.noReason
+                ? 'No jobs match “${_drill?.label ?? _noReasonLabel ?? ''}”.'
                 : 'No jobs are ${pmStageName(_stage).toLowerCase()}.',
             key: const ValueKey('pm-jobs-none'),
             textAlign: TextAlign.center,
@@ -508,15 +555,15 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       );
     }
 
-    final money = _rows.any((r) => r['due_minor'] is int);
+    final money = rows.any((r) => r['due_minor'] is int);
     final pager = _pager(context);
 
     if (!wide) {
       return ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-        itemCount: _rows.length + 1,
+        itemCount: rows.length + 1,
         itemBuilder: (context, i) =>
-            i == _rows.length ? pager : _card(context, _rows[i], money),
+            i == rows.length ? pager : _card(context, rows[i], money),
       );
     }
 
@@ -543,9 +590,9 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
                     Divider(height: 1, color: scheme.outlineVariant),
                     Expanded(
                       child: ListView.builder(
-                        itemCount: _rows.length,
+                        itemCount: rows.length,
                         itemBuilder: (context, i) =>
-                            _tableRow(context, _rows[i], money),
+                            _tableRow(context, rows[i], money),
                       ),
                     ),
                     Divider(height: 1, color: scheme.outlineVariant),
@@ -578,8 +625,13 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
           ),
           Expanded(
             child: Text(
-              'Page $_page of $_lastPage · ${formatCount(_total)} '
-              '${_total == 1 ? 'job' : 'jobs'}',
+              _filters.noReason
+                  ? 'Page $_page of $_lastPage · '
+                        '${formatCount(_shownRows.length)} of '
+                        '${formatCount(_rows.length)} on this page have no '
+                        'reason'
+                  : 'Page $_page of $_lastPage · ${formatCount(_total)} '
+                        '${_total == 1 ? 'job' : 'jobs'}, newest change first',
               key: const ValueKey('pm-jobs-page'),
               textAlign: TextAlign.center,
               maxLines: 1,
@@ -630,13 +682,33 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
         for (final h in [
           'JOB',
           'CUSTOMER',
-          'AREA',
-          'TEAM',
+          'SERVICE AREA',
+          'TECHNICIAN',
           'FLAGS',
-          'AFTER PAYMENT',
-          if (money) 'DUE',
         ])
           Text(h, style: style),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                'AFTER FIRST PAYMENT',
+                key: const ValueKey('pm-jobs-after-head'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
+            ),
+            const SizedBox(width: 4),
+            PmInfo(
+              pmMeasures(warnDays: widget.warnDays)
+                  .firstWhere((m) => m.number == 'Jobs · After first payment')
+                  .rule,
+              key: const ValueKey('pm-info-after'),
+              size: 14,
+            ),
+          ],
+        ),
+        if (money) Text('DUE', style: style),
       ], money),
     );
   }
@@ -668,7 +740,12 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
           tone: Tone.caution,
         ),
       if (_hasWord(r, widget.redoWords))
-        StatusPill('Redo', key: ValueKey('pm-flag-redo-$id'), tone: Tone.bad),
+        // Red is only "needs attention" (design 144): a redo is a fact.
+        StatusPill(
+          'Redo',
+          key: ValueKey('pm-flag-redo-$id'),
+          tone: Tone.caution,
+        ),
       if (_hasWord(r, widget.disputeWords))
         StatusPill(
           'Dispute',
@@ -692,10 +769,28 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     return _one(pmTechnician(r) ?? '—');
   }
 
+  /// Whether the rows shown are all in a stage not started yet, where the
+  /// paid-but-not-started warning applies; null: some may be, some not.
+  bool? get _notStarted {
+    const notStarted = {'waiting_review', 'ready_to_schedule', 'scheduled'};
+    if (_drill == null) return notStarted.contains(_stage);
+    if (_filters.waitingToStart) return true;
+    final stages = _drill!.stages;
+    if (stages != null && stages.every(notStarted.contains)) return true;
+    if (stages != null && !stages.any(notStarted.contains)) return false;
+    return null;
+  }
+
+  /// Days since the first payment: the countdown where the warning applies,
+  /// plain days where the rows are mixed, nothing where it never applies.
   Widget _after(Map<String, dynamic> r) {
-    final days = r['days_since_payment'];
+    final days = r['days_since_first_payment'];
     final limit = widget.warnDays;
-    if (days is! int || limit == null) return _one('—');
+    final applies = _notStarted;
+    if (days is! int || applies == false) return _one('—');
+    if (applies == null || limit == null) {
+      return _one('$days ${days == 1 ? 'day' : 'days'}');
+    }
     return PmCountdownBar(
       key: ValueKey('pm-after-${r['id']}'),
       days: days,
@@ -802,8 +897,8 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
                   const SizedBox(height: 6),
                   Wrap(spacing: 4, runSpacing: 4, children: flags),
                 ],
-                if (r['days_since_payment'] is int &&
-                    widget.warnDays != null) ...[
+                if (r['days_since_first_payment'] is int &&
+                    _notStarted != false) ...[
                   const SizedBox(height: 6),
                   _after(r),
                 ],
@@ -1027,7 +1122,7 @@ class _PmJobFieldsState extends State<PmJobFields> {
             decoration: const InputDecoration(
               isDense: true,
               labelText: 'External company',
-              helperText: 'Empty means our own team',
+              helperText: 'Empty means our own technicians',
             ),
           ),
           const SizedBox(height: 4),

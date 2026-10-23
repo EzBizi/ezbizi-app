@@ -33,7 +33,11 @@ void main() {
   testWidgets('stage mapping writes jobs.pm_stages as JSON', (tester) async {
     final server = await settings(tester);
     expect(server.get('/settings').last.queryParameters, org);
-    expect(find.text('Set for Brightway'), findsOneWidget);
+    // In the frame's scope bar since design 144.
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('pm-scope-text'))).data,
+      'Set for Brightway · its branches use these unless they set their own',
+    );
 
     // Add Parts ordered to In progress, then say it must have money due.
     await tester.tap(
@@ -259,7 +263,10 @@ void main() {
 
     const company = {'scope_type': 'company', 'scope_id': 'co-1'};
     expect(server.get('/settings').last.queryParameters, company);
-    expect(find.text('Set for Brightway Chimney'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('pm-scope-text'))).data,
+      startsWith('Set for Brightway Chimney · '),
+    );
     expect(
       tester
           .widget<Text>(

@@ -13,6 +13,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../task_board_columns.dart';
 import 'job_detail_panel.dart';
+import 'pm_frame.dart';
 import 'pm_stages.dart';
 import 'project_management_tab.dart' show PmTimeline;
 
@@ -351,28 +352,27 @@ class _ProjectManagementAssignmentsState
     return LayoutBuilder(
       builder: (context, constraints) {
         final phone = constraints.maxWidth < _phoneBelow;
-        final pad = phone ? 16.0 : 24.0;
+        final pad = PmFrame.gutter(constraints.maxWidth);
         if (phone && _openId != null) return _pane(back: true);
-        final board = Padding(
-          key: const ValueKey('tour-pm-assign-board'),
-          padding: EdgeInsets.fromLTRB(pad, 12, pad, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              KeyedSubtree(
-                key: const ValueKey('tour-pm-assign-filters'),
-                child: _toolbar(),
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: AsyncBody(
-                  loading: _loading && _tasks.isEmpty,
-                  error: _error,
-                  onRetry: _load,
-                  child: _body(context, phone: phone),
-                ),
-              ),
-            ],
+        final board = PmFrame(
+          tab: 'assignments',
+          purpose:
+              'Who works each paid job: the Task Board cards a payment rule '
+              'makes, by the technician on the card.',
+          scope: widget.scope,
+          search: KeyedSubtree(
+            key: const ValueKey('tour-pm-assign-filters'),
+            child: _searchField(),
+          ),
+          child: Padding(
+            key: const ValueKey('tour-pm-assign-board'),
+            padding: EdgeInsets.symmetric(horizontal: pad),
+            child: AsyncBody(
+              loading: _loading && _tasks.isEmpty,
+              error: _error,
+              onRetry: _load,
+              child: _body(context, phone: phone),
+            ),
           ),
         );
         if (_openId == null) return board;
@@ -388,17 +388,15 @@ class _ProjectManagementAssignmentsState
     );
   }
 
-  Widget _toolbar() => PmToolbar(
-    above: PmScopeLine(scope: widget.scope, onChange: widget.onOpenSettings),
-    search: TextField(
-      key: const ValueKey('pm-assign-search'),
-      controller: _search,
-      onChanged: _typed,
-      decoration: const InputDecoration(
-        isDense: true,
-        prefixIcon: Icon(Icons.search, size: 18),
-        hintText: pmJobSearchHint,
-      ),
+  /// The cards are searched by their title, or by their job's own search.
+  Widget _searchField() => TextField(
+    key: const ValueKey('pm-assign-search'),
+    controller: _search,
+    onChanged: _typed,
+    decoration: const InputDecoration(
+      isDense: true,
+      prefixIcon: Icon(Icons.search, size: 18),
+      hintText: 'Card title, or its job, customer, address or phone',
     ),
   );
 

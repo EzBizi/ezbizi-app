@@ -101,6 +101,9 @@ class PmServer {
       if (r.method != 'GET') r,
   ];
 
+  /// GET /jobs/project-management/rules' answer; null: not served (404).
+  Map<String, dynamic>? rules = pmRules();
+
   /// GET /jobs/project-management/cards' answer; null: not served (404).
   Map<String, dynamic>? cards;
 
@@ -165,6 +168,9 @@ class PmServer {
       }
       if (path.endsWith('/jobs/project-management/overview')) {
         return _json({'data': overview});
+      }
+      if (path.endsWith('/jobs/project-management/rules') && rules != null) {
+        return _json({'data': rules});
       }
       if (path.endsWith('/jobs/project-management/jobs')) {
         return _json((jobs ?? pmJobsPage)(request.url));
@@ -460,7 +466,8 @@ Map<String, dynamic> pmJobRow(
   'external_company': external,
   'needs_second_visit': second,
   'paid_at': '2026-10-14',
-  'days_since_payment': days,
+  'days_since_first_payment': days,
+  'days_since_last_payment': days,
 };
 
 const pmEditable = [
@@ -546,3 +553,117 @@ const _me = {
     {'id': 'fr-1', 'name': 'Northgate', 'company_id': 'co-1'},
   ],
 };
+
+/// GET jobs/project-management/rules: one config, or [two] branch groups
+/// set up apart; one rule on, one off. Every name is invented.
+Map<String, dynamic> pmRules({bool two = false}) {
+  Map<String, dynamic> config(List<String> branches, {bool warn = true}) => {
+    'branches': branches,
+    'place': {'type': 'company', 'name': 'Brightway Chimney'},
+    'scope': {
+      'statuses': ['in_progress', 'review', 'done'],
+      'partly_paid_only': true,
+      'set_at': 'company: Brightway Chimney',
+      'sentence':
+          'Project Management shows jobs in In progress, Needs review, Done '
+          'that have a payment and still owe money.',
+      'count': 97,
+    },
+    'stages': [
+      {
+        'key': 'waiting_review',
+        'statuses': ['review'],
+        'sentence': 'Status Needs review.',
+        'count': 23,
+      },
+      {
+        'key': 'in_progress',
+        'statuses': ['in_progress'],
+        'sentence': 'Status In progress.',
+        'count': 41,
+      },
+      {
+        'key': 'done_waiting_payment',
+        'statuses': ['done'],
+        'sentence': 'Status Done, money still due.',
+        'count': 19,
+      },
+    ],
+    'stages_set_at': 'company: Brightway Chimney',
+    'warnings': [
+      if (warn)
+        '"Parts ordered" is in scope but in no stage, so its 4 job(s) show '
+            'in no tab.',
+    ],
+    'alerts': {
+      'warn_days': {'value': 10, 'set_at': 'default'},
+      'warning_email': {
+        'value': 'office@example.com',
+        'set_at': 'company: Brightway Chimney',
+      },
+      'stopped_days': {'value': 30, 'set_at': 'default'},
+      'cost_alert_percent': {'value': 15, 'set_at': 'default'},
+      'redo_words': {
+        'value': ['Redo'],
+        'set_at': 'company: Brightway Chimney',
+      },
+      'dispute_words': {
+        'value': ['Dispute'],
+        'set_at': 'default',
+      },
+      'task_group': {'value': 'Project Management', 'set_at': 'default'},
+    },
+    'server_jobs': [
+      {
+        'name': 'Paid but not started warning',
+        'when': 'Every day at 8:20 AM Eastern',
+        'what':
+            'Emails office@example.com the jobs first paid 10 or more '
+            'days ago.',
+      },
+      {
+        'name': 'Payments stopped',
+        'when': 'Worked out whenever the page loads',
+        'what':
+            'A job counts when its last payment is more than 30 days '
+            'old. Changes nothing.',
+      },
+    ],
+  };
+  return {
+    'configs': [
+      config(['Northgate']),
+      if (two) config(['Southside'], warn: false),
+    ],
+    'automations': [
+      {
+        'id': 'a-1',
+        'name': 'Payment on Needs review: deposit tags',
+        'active': false,
+        'trigger': 'job.payment_received',
+        'conditions': 'When status is Needs review.',
+        'actions': [
+          'In Workiz: set status Submitted; add tags Deposit Received.',
+          'Add a Task Board card "Paid: {number}" to the "Project '
+              'Management" group on the branch board.',
+        ],
+        'runs_7d': 0,
+        'skipped_7d': 12,
+        'last_skip_reason':
+            'Status was In progress; the rule wants Needs '
+            'review.',
+      },
+      {
+        'id': 'a-2',
+        'name': 'Done: ask for a review',
+        'active': true,
+        'trigger': 'job.status_changed',
+        'conditions': 'When status is Done.',
+        'actions': ['Send a notification: "Thanks"'],
+        'runs_7d': 5,
+        'skipped_7d': 0,
+        'last_skip_reason': null,
+      },
+    ],
+  };
+}

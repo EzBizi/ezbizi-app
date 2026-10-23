@@ -5,6 +5,7 @@ import '../../core/branch_options.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../widgets/search_picker.dart';
+import 'pm_frame.dart';
 import 'pm_stages.dart';
 
 /// The statuses Project Management watches for the estimate clock; never
@@ -101,7 +102,16 @@ class ProjectManagementSettings extends StatefulWidget {
     required this.session,
     this.statuses = const [],
     this.onSaved,
+    this.focus,
+    this.onRules,
   });
+
+  /// A card to scroll to, by its key ([pmSettingsCards]), and a serial
+  /// telling two asks apart: a Rules block's Change, or the scope bar's.
+  final (String, int)? focus;
+
+  /// "On the Rules tab ›": the Rules section a card's settings drive.
+  final void Function(String section)? onRules;
 
   final ApiClient api;
   final Session session;
@@ -126,15 +136,42 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
   Me get _me => widget.session.me!;
   Map<String, String> get _scope => pmPlaceScope(_me);
 
+  final _cardKeys = {for (final c in pmSettingsCards) c: GlobalKey()};
+  final _search = TextEditingController();
+  String _q = '';
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  @override
+  void didUpdateWidget(ProjectManagementSettings old) {
+    super.didUpdateWidget(old);
+    if (widget.focus != old.focus) _scrollSoon();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _scrollSoon() {
+    final focus = widget.focus;
+    if (focus == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _cardKeys[focus.$1]?.currentContext;
+      if (c == null || !c.mounted) return;
+      Scrollable.ensureVisible(c, duration: Duration.zero);
+    });
+  }
+
   Future<void> _load() async {
     final response = await widget.api.get('/settings', _scope);
     if (!mounted) return;
+    _scrollSoon();
     setState(() {
       if (!response.ok) {
         _loadError = response.message;
@@ -257,7 +294,32 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    return PmFrame(
+      tab: 'settings',
+      purpose:
+          'Change the rules Project Management counts by. Each card links to '
+          'its line on the Rules tab.',
+      scopeText: [
+        'Set for ${pmPlaceLabel(_me)}',
+        _me.scope.type == 'franchise'
+            ? 'this branch only'
+            : 'its branches use these unless they set their own',
+      ].join(' · '),
+      search: TextField(
+        key: const ValueKey('pm-set-search'),
+        controller: _search,
+        onChanged: (t) => setState(() => _q = t.trim().toLowerCase()),
+        decoration: const InputDecoration(
+          isDense: true,
+          prefixIcon: Icon(Icons.search, size: 18),
+          hintText: 'Find a setting',
+        ),
+      ),
+      child: _content(context),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     if (_loadError != null) {
       return Center(
         child: Text(_loadError!, key: const ValueKey('pm-set-error')),
@@ -273,16 +335,18 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
 
         final reasons = _card(
           context,
+          card: 'reasons',
           anchor: const ValueKey('tour-pm-settings-reasons'),
           title: 'Review reasons',
           note:
               'Why a job waits for review. Shown on a job, and on the '
-              'Dashboard.',
+              'Overview.',
           keys: const [pmReasonsKey],
           child: _reasons(context),
         );
         final words = _card(
           context,
+          card: 'words',
           anchor: const ValueKey('tour-pm-settings-words'),
           title: 'Redo and dispute words',
           note: 'Tags or job types, any case.',
@@ -317,6 +381,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
         );
         final alerts = _card(
           context,
+          card: 'alerts',
           anchor: const ValueKey('tour-pm-settings-warn'),
           title: 'Alerts',
           note: 'Paid but not started, stopped payments and cost.',
@@ -325,6 +390,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
         );
         final watched = _card(
           context,
+          card: 'watched',
           anchor: const ValueKey('tour-pm-settings-watched'),
           title: 'Estimate clock',
           note:
@@ -334,64 +400,68 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
           child: _watched(context),
         );
 
-        Widget pair(Widget a, Widget b) => two
-            ? Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: a),
-                  const SizedBox(width: 16),
-                  Expanded(child: b),
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [a, const SizedBox(height: 16), b],
-              );
+        Widget pair(Widget? a, Widget? b) {
+          if (a == null || b == null) {
+            return a ?? b ?? const SizedBox.shrink();
+          }
+          return two
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: a),
+                    const SizedBox(width: 16),
+                    Expanded(child: b),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [a, const SizedBox(height: 16), b],
+                );
+        }
 
-        return ListView(
+        final scope = _card(
+          context,
+          card: 'scope',
+          anchor: const ValueKey('tour-pm-settings-scope'),
+          title: 'Which jobs Project Management includes',
+          note: 'Every tab counts and lists only these jobs.',
+          keys: const [pmScopeStatusesKey, pmPartlyPaidKey],
+          child: _included(context),
+        );
+        final stages = _card(
+          context,
+          card: 'stages',
+          anchor: const ValueKey('tour-pm-settings-stages'),
+          title: 'Stages',
+          note: 'Which statuses put a job in each stage.',
+          keys: const [pmStagesKey],
+          child: _stages(context),
+        );
+        final shown = [
+          ?scope,
+          ?stages,
+          if (reasons != null || words != null) pair(reasons, words),
+          if (alerts != null || watched != null) pair(alerts, watched),
+        ];
+
+        // Not a lazy list: a card scrolled to must be built.
+        return SingleChildScrollView(
           key: const ValueKey('pm-settings'),
-          padding: EdgeInsets.symmetric(horizontal: gutter, vertical: 16),
-          children: [
-            Text(
-              'Set for ${pmPlaceLabel(_me)}',
-              key: const ValueKey('pm-set-place'),
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _me.scope.type == 'franchise'
-                  ? 'This branch only.'
-                  : 'Its branches use these unless they set their own.',
-              key: const ValueKey('pm-set-place-note'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _card(
-              context,
-              anchor: const ValueKey('tour-pm-settings-scope'),
-              title: 'Which jobs Project Management includes',
-              note: 'Every tab counts and lists only these jobs.',
-              keys: const [pmScopeStatusesKey, pmPartlyPaidKey],
-              child: _included(context),
-            ),
-            const SizedBox(height: 16),
-            _card(
-              context,
-              anchor: const ValueKey('tour-pm-settings-stages'),
-              title: 'Stages',
-              note: 'Which statuses put a job in each stage.',
-              keys: const [pmStagesKey],
-              child: _stages(context),
-            ),
-            const SizedBox(height: 16),
-            pair(reasons, words),
-            const SizedBox(height: 16),
-            pair(alerts, watched),
-          ],
+          padding: EdgeInsets.fromLTRB(gutter, 0, gutter, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (shown.isEmpty)
+                Text(
+                  'No setting matches “$_q”.',
+                  key: const ValueKey('pm-set-none'),
+                ),
+              for (final (i, w) in shown.indexed) ...[
+                if (i > 0) const SizedBox(height: 16),
+                w,
+              ],
+            ],
+          ),
         );
       },
     );
@@ -400,14 +470,18 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
   /// A card per topic. Its header says once whether the card's settings are
   /// this place's own ("Own settings · Use (the parent)'s again") or come
   /// from the parent ("From (the parent)").
-  Widget _card(
+  Widget? _card(
     BuildContext context, {
+    required String card,
     required Key anchor,
     required String title,
     String? note,
     required List<String> keys,
     required Widget child,
   }) {
+    if (_q.isNotEmpty && !'$title ${note ?? ''}'.toLowerCase().contains(_q)) {
+      return null;
+    }
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final muted = theme.textTheme.bodySmall?.copyWith(
@@ -453,52 +527,77 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
           )
         : null;
 
-    return DecoratedBox(
-      key: anchor,
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Wrap(
-              key: ValueKey('pm-set-head-${keys.first}'),
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+    final rules = widget.onRules;
+    return KeyedSubtree(
+      key: _cardKeys[card],
+      child: DecoratedBox(
+        key: anchor,
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border.all(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Wrap(
+                key: ValueKey('pm-set-head-${keys.first}'),
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  ?state,
+                ],
+              ),
+              if (rules != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: InkWell(
+                    key: ValueKey('pm-set-rules-$card'),
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => rules(pmRulesSectionForCard(card)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(
+                        'On the Rules tab ›',
+                        style: muted?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                ?state,
+              if (note != null) ...[
+                const SizedBox(height: 2),
+                Text(note, style: muted),
               ],
-            ),
-            if (note != null) ...[
-              const SizedBox(height: 2),
-              Text(note, style: muted),
+              const SizedBox(height: 12),
+              child,
+              for (final r in reasons) ...[
+                const SizedBox(height: 6),
+                Text(r, style: muted),
+              ],
+              for (final e in errors) ...[
+                const SizedBox(height: 6),
+                Text(
+                  e,
+                  key: ValueKey('pm-set-error-${keys.first}'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.error,
+                  ),
+                ),
+              ],
             ],
-            const SizedBox(height: 12),
-            child,
-            for (final r in reasons) ...[
-              const SizedBox(height: 6),
-              Text(r, style: muted),
-            ],
-            for (final e in errors) ...[
-              const SizedBox(height: 6),
-              Text(
-                e,
-                key: ValueKey('pm-set-error-${keys.first}'),
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -1309,3 +1408,22 @@ class _PmTextSettingState extends State<_PmTextSetting> {
     ),
   );
 }
+
+/// The Settings cards, by the key a Rules block's Change names.
+const pmSettingsCards = [
+  'scope',
+  'stages',
+  'reasons',
+  'words',
+  'alerts',
+  'watched',
+];
+
+/// The Rules section a Settings card's settings drive.
+String pmRulesSectionForCard(String card) => switch (card) {
+  'stages' => 'stages',
+  'reasons' => 'numbers',
+  'words' || 'alerts' => 'alerts',
+  'watched' => 'daily',
+  _ => 'scope',
+};

@@ -259,11 +259,11 @@
             "label": "Project Management",
             "parent": null,
             "tabs": [
-                "Dashboard",
-                "Reports",
-                "Table",
+                "Overview",
                 "Jobs",
                 "Assignments",
+                "Repair team",
+                "Rules",
                 "Logs",
                 "Settings"
             ]

@@ -1423,22 +1423,25 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 /*
-                 * Dashboard | Reports | Table | Jobs | Assignments | Logs |
-                 * Settings (UI queue 127, 139, 141, 143). All are the one grant the module
-                 * always was: naming `view` mints no permission, so no role
+                 * Overview | Jobs | Assignments | Repair team | Rules | Logs |
+                 * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
+                 * module always was: naming `view` mints no permission, so no role
                  * gains or loses a tab, and Settings' writes stay the settings
-                 * API's to refuse. Reports and Table read Financials' repair
-                 * report, so the client also hides them without
-                 * financials.bases.view. Jobs was "Pending Jobs" (design 141);
-                 * its key stays `pending`, so nothing stored moves.
+                 * API's to refuse. Overview was "Dashboard" and keeps its key; Jobs
+                 * was "Pending Jobs" and keeps `pending`. Repair team (design 144)
+                 * is Reports and Table merged, under Reports' key; `table` is
+                 * retired, and as it minted nothing no grant moves and no
+                 * migration is needed. It reads Financials' repair report, so the
+                 * client also hides it without financials.bases.view. Rules
+                 * (design 144) reads GET jobs/project-management/rules, the same grant.
                  */
                 tabs: [
-                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
-                    new TabDefinition('reports', 'Reports', action: 'view'),
-                    new TabDefinition('table', 'Table', action: 'view'),
+                    new TabDefinition('dashboard', 'Overview', action: 'view'),
                     new TabDefinition('pending', 'Jobs', action: 'view'),
                     // Assignments (design 143): Action 1's Task Board cards by technician, the same grant.
                     new TabDefinition('assignments', 'Assignments', action: 'view'),
+                    new TabDefinition('reports', 'Repair team', action: 'view'),
+                    new TabDefinition('rules', 'Rules', action: 'view'),
                     // Logs (UI queue 139): what rules and people changed, the same grant.
                     new TabDefinition('logs', 'Logs', action: 'view'),
                     new TabDefinition('settings', 'Settings', action: 'view'),

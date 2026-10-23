@@ -3,16 +3,26 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../widgets/search_picker.dart';
 
-/// Project Management's stages (design 141, option 1), in the Jobs tab's
-/// order. Open jobs only: Completed and Cancelled came out (Jose,
-/// 2026-10-22: Project Management is about open, partly paid jobs). The keys are the
+/// Project Management's stages, in the one order every tab draws them
+/// (design 144: Overview's flow, Jobs' flow, Settings' table): the way a job
+/// moves. Open jobs only: Completed and Cancelled came out (Jose, 2026-10-22:
+/// Project Management is about open, partly paid jobs). The keys are the
 /// server's (`ProjectStages::KEYS`); `jobs.pm_stages` maps each to statuses.
 const pmStageKeys = [
-  'in_progress',
   'waiting_review',
   'ready_to_schedule',
   'scheduled',
+  'in_progress',
   'done_waiting_payment',
+];
+
+/// The open stages whose jobs are the pipeline (`ProjectStages::OPEN`), in
+/// flow order: the Overview's pipeline line drills into exactly these.
+const pmPipelineStages = [
+  'waiting_review',
+  'ready_to_schedule',
+  'scheduled',
+  'in_progress',
 ];
 
 String pmStageName(String key) => switch (key) {
@@ -27,15 +37,21 @@ String pmStageName(String key) => switch (key) {
 };
 
 /// Each stage's colour, one map for the Settings table's dots, the Jobs
-/// tab's stage chips and the Dashboard's stage tiles (design 142): the
-/// palette's hues, so it reads in light and dark.
+/// tab's flow and the Overview's flow: the palette's hues, so it reads in
+/// light and dark. Used for stages only (design 144): In progress was blue
+/// and Scheduled sky, two dots nobody could tell apart, and the same hues
+/// coloured review reasons and teams. Red is no stage's: it means "needs
+/// attention".
 const pmStageHues = {
-  'in_progress': 0, // blue
-  'waiting_review': 5, // orange
+  'waiting_review': 4, // gold
   'ready_to_schedule': 1, // teal
-  'scheduled': 10, // sky
-  'done_waiting_payment': 4, // gold
+  'scheduled': 0, // blue
+  'in_progress': 5, // orange
+  'done_waiting_payment': 3, // olive
 };
+
+/// Hues no stage wears, for review reasons and other categories.
+const pmCategoryHues = [2, 7, 9, 10, 8];
 
 Color pmStageColour(BuildContext context, String key) =>
     PersonColours.hue(context, pmStageHues[key] ?? 9).ink;
@@ -71,6 +87,7 @@ class PmFilters {
     this.external = false,
     this.secondVisit = false,
     this.waitingToStart = false,
+    this.noReason = false,
   });
 
   /// A service area's id, or null for All.
@@ -88,6 +105,11 @@ class PmFilters {
   /// (`waiting_to_start=1&over_limit=1`, 0f181d521).
   final bool waitingToStart;
 
+  /// Waiting review with no review reason: the Overview's third Needs
+  /// attention card. The server has no such filter, so Jobs keeps the
+  /// rows of the page whose review reason is empty.
+  final bool noReason;
+
   PmFilters copyWith({
     Object? areaId = _keep,
     String? q,
@@ -97,6 +119,7 @@ class PmFilters {
     bool? external,
     bool? secondVisit,
     bool? waitingToStart,
+    bool? noReason,
   }) => PmFilters(
     areaId: areaId == _keep ? this.areaId : areaId as String?,
     q: q ?? this.q,
@@ -106,6 +129,7 @@ class PmFilters {
     external: external ?? this.external,
     secondVisit: secondVisit ?? this.secondVisit,
     waitingToStart: waitingToStart ?? this.waitingToStart,
+    noReason: noReason ?? this.noReason,
   );
 
   /// The query. [secondVisit] goes only where it is offered.
@@ -130,7 +154,8 @@ class PmFilters {
       other.stopped == stopped &&
       other.external == external &&
       other.secondVisit == secondVisit &&
-      other.waitingToStart == waitingToStart;
+      other.waitingToStart == waitingToStart &&
+      other.noReason == noReason;
 
   @override
   int get hashCode => Object.hash(
@@ -142,21 +167,32 @@ class PmFilters {
     external,
     secondVisit,
     waitingToStart,
+    noReason,
   );
 }
 
 const _keep = Object();
 
-/// Where a Dashboard tile sends Jobs: a stage and the filters it counted
-/// under; no stage is every stage (the waiting-to-start "See all"). [serial]
-/// tells two taps on the same tile apart.
+/// Where an Overview number sends Jobs: a stage and the filters it counted
+/// under; no stage is every mapped stage (stopped payments, paid not
+/// started), and [stages] several at once (the pipeline). [label] names the
+/// drill on its removable chip; null: a plain stage, no chip. [serial] tells
+/// two taps on the same number apart.
 @immutable
 class PmJobsIntent {
-  const PmJobsIntent(this.stage, this.filters, this.serial);
+  const PmJobsIntent(
+    this.stage,
+    this.filters,
+    this.serial, {
+    this.stages,
+    this.label,
+  });
 
   final String? stage;
+  final List<String>? stages;
   final PmFilters filters;
   final int serial;
+  final String? label;
 }
 
 /// A service area, as GET /jobs's `meta.service_areas` lists them.
@@ -285,7 +321,10 @@ class PmBar extends StatelessWidget {
 /// mid grey, clearly darker (light) or lighter (dark) than the track.
 Color pmReasonColour(BuildContext context, int index, {bool none = false}) {
   if (none) return ToneColours.midGrey(context);
-  return PersonColours.hue(context, index).ink;
+  return PersonColours.hue(
+    context,
+    pmCategoryHues[index % pmCategoryHues.length],
+  ).ink;
 }
 
 /// "Not set up", with the way to Settings, for a stage `jobs.pm_stages`
@@ -509,6 +548,7 @@ class PmScope {
     this.statuses = const [],
     this.partlyPaidOnly = false,
     this.place = '',
+    this.setAt,
   });
 
   /// The statuses' own words, as Settings names them.
@@ -517,26 +557,40 @@ class PmScope {
 
   /// The top-bar place these settings are read for: "Company · Branch".
   final String place;
+
+  /// Where the scope is set, as the rules endpoint says it ("company:
+  /// A-1 Chimney", "default"); null: not read yet.
+  final String? setAt;
 }
 
-/// "Showing partly paid jobs in Open, Scheduled": what [PmScope] keeps in.
+/// "company: A-1 Chimney" as "A-1 Chimney"; "default" as "the default".
+String pmSetAtLabel(String? setAt) {
+  if (setAt == null || setAt.isEmpty) return '';
+  if (setAt == 'default') return 'the default';
+  final i = setAt.indexOf(': ');
+  return i < 0 ? setAt : setAt.substring(i + 2);
+}
+
+/// "Counting partly paid jobs in Open, Scheduled": what [PmScope] keeps
+/// in, every status named (the audit, 2026-10-23: "5 statuses" hid that one
+/// of them belongs to no stage).
 String pmScopeSentence(PmScope scope) {
   final s = scope.statuses;
-  final which = s.isEmpty
-      ? 'in any status'
-      : s.length > 3
-      ? 'in ${s.length} statuses'
-      : 'in ${s.join(', ')}';
-  return 'Showing ${scope.partlyPaidOnly ? 'partly paid ' : ''}jobs $which';
+  final which = s.isEmpty ? 'in any status' : 'in ${s.join(', ')}';
+  return 'Counting ${scope.partlyPaidOnly ? 'partly paid ' : ''}jobs $which';
 }
 
 /// The scope as one line, with the place and the way to its Settings card.
 /// Dashboard, Jobs and Assignments draw it above their toolbar.
 class PmScopeLine extends StatelessWidget {
-  const PmScopeLine({super.key, required this.scope, this.onChange});
+  const PmScopeLine({super.key, required this.scope, this.onChange, this.text});
 
   final PmScope scope;
   final VoidCallback? onChange;
+
+  /// Said instead of the scope, on a tab that is not about Project
+  /// Management's jobs (Repair team, Logs, Settings).
+  final String? text;
 
   @override
   Widget build(BuildContext context) {
@@ -549,10 +603,13 @@ class PmScopeLine extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(
-          [
-            pmScopeSentence(scope),
-            if (scope.place.isNotEmpty) scope.place,
-          ].join(' · '),
+          text ??
+              [
+                pmScopeSentence(scope),
+                if (scope.place.isNotEmpty) scope.place,
+                if (pmSetAtLabel(scope.setAt).isNotEmpty)
+                  'set at ${pmSetAtLabel(scope.setAt)}',
+              ].join(' · '),
           key: const ValueKey('pm-scope-text'),
           style: muted,
         ),
@@ -635,4 +692,4 @@ class PmToolbar extends StatelessWidget {
 }
 
 /// The one search hint Dashboard, Jobs and Assignments share.
-const pmJobSearchHint = 'Job, customer, address, phone or tech';
+const pmJobSearchHint = 'Job, customer, address, phone or technician';

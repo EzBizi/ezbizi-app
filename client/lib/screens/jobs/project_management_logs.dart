@@ -15,6 +15,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import 'job_detail_panel.dart';
 import 'job_labels.dart';
+import 'pm_frame.dart';
 import 'pm_range.dart';
 import 'project_management_tab.dart' show PmRuleLink, PmTimeline, pmLogOutcome;
 
@@ -279,15 +280,16 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       builder: (context, constraints) {
         final phone = constraints.maxWidth < _phoneBelow;
         if (phone && _openId != null) return _pane(back: true);
+        final pad = PmFrame.gutter(constraints.maxWidth);
+        final c = _controls(context, phone: phone);
+        final scheme = Theme.of(context).colorScheme;
 
-        final controls = _controls(context, phone: phone);
+        final Widget content;
         if (phone) {
-          return ListView(
+          content = ListView(
             key: const ValueKey('pm-logs'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: EdgeInsets.fromLTRB(pad, 0, pad, 16),
             children: [
-              controls,
-              const SizedBox(height: 12),
               AsyncBody(
                 loading: _loading && _rows.isEmpty,
                 error: _error,
@@ -300,66 +302,64 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
               ),
             ],
           );
-        }
-
-        final scheme = Theme.of(context).colorScheme;
-        return Padding(
-          key: const ValueKey('pm-logs'),
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              controls,
-              const SizedBox(height: 12),
-              Expanded(
-                child: AsyncBody(
-                  loading: _loading && _rows.isEmpty,
-                  error: _error,
-                  onRetry: _load,
-                  child: DecoratedBox(
-                    key: const ValueKey('tour-pm-logs-list'),
-                    decoration: BoxDecoration(
-                      color: scheme.surface,
-                      border: Border.all(color: scheme.outlineVariant),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _headerRow(context),
-                                Divider(
-                                  height: 1,
-                                  color: scheme.outlineVariant,
-                                ),
-                                Expanded(
-                                  child: ListView(
-                                    children: _items(context, phone: false),
-                                  ),
-                                ),
-                              ],
+        } else {
+          content = Padding(
+            key: const ValueKey('pm-logs'),
+            padding: EdgeInsets.fromLTRB(pad, 0, pad, 16),
+            child: AsyncBody(
+              loading: _loading && _rows.isEmpty,
+              error: _error,
+              onRetry: _load,
+              child: DecoratedBox(
+                key: const ValueKey('tour-pm-logs-list'),
+                decoration: BoxDecoration(
+                  color: scheme.surface,
+                  border: Border.all(color: scheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _headerRow(context),
+                            Divider(height: 1, color: scheme.outlineVariant),
+                            Expanded(
+                              child: ListView(
+                                children: _items(context, phone: false),
+                              ),
                             ),
-                          ),
-                          if (_openId != null) ...[
-                            VerticalDivider(
-                              width: 1,
-                              color: scheme.outlineVariant,
-                            ),
-                            SizedBox(width: 360, child: _pane(back: false)),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
+                      if (_openId != null) ...[
+                        VerticalDivider(width: 1, color: scheme.outlineVariant),
+                        SizedBox(width: 360, child: _pane(back: false)),
+                      ],
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          );
+        }
+
+        return PmFrame(
+          tab: 'logs',
+          purpose:
+              'What EzBizi and people changed on jobs, and why a rule '
+              'did not.',
+          scopeText:
+              'Every rule run on a job in your branches, and every edit a '
+              'person made to a job, by the day on this device.',
+          search: c.search,
+          place: c.branch,
+          filters: c.filters,
+          child: content,
         );
       },
     );
@@ -408,7 +408,10 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
     );
   }
 
-  Widget _controls(BuildContext context, {required bool phone}) {
+  ({Widget search, Widget? branch, List<Widget> filters}) _controls(
+    BuildContext context, {
+    required bool phone,
+  }) {
     final branches = branchOptionsInView(_me);
     final range = PmRangeControl(
       key: const ValueKey('tour-pm-logs-range'),
@@ -493,40 +496,17 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
             },
           );
 
-    if (phone) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          range,
-          const SizedBox(height: 8),
-          search,
-          for (final p in pickers) ...[const SizedBox(height: 8), p],
-          const SizedBox(height: 8),
-          KeyedSubtree(
-            key: const ValueKey('tour-pm-logs-outcome'),
-            child: outcome,
-          ),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        range,
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(width: 300, child: search),
-            for (final p in pickers) SizedBox(width: 240, child: p),
-            KeyedSubtree(
-              key: const ValueKey('tour-pm-logs-outcome'),
-              child: outcome,
-            ),
-          ],
+    Widget sized(Widget w) => phone ? w : SizedBox(width: 240, child: w);
+    return (
+      search: search,
+      branch: branches.isEmpty ? null : pickers.first,
+      filters: [
+        sized(pickers.last),
+        KeyedSubtree(
+          key: const ValueKey('tour-pm-logs-outcome'),
+          child: outcome,
         ),
+        range,
       ],
     );
   }

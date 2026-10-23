@@ -9,24 +9,27 @@ import '../../core/numbers.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
-import '../../widgets/side_panel.dart';
-import 'job_detail_panel.dart';
 import 'job_labels.dart';
 import 'pm_stages.dart';
-import 'project_management_reports.dart' show pmAverageCost, pmYmd;
+import 'pm_frame.dart';
+import 'project_management_rules.dart';
 
-/// Project Management › Dashboard (design 141, option 1; phone 4).
+/// Project Management › Overview, which was Dashboard (design 144, option 1;
+/// phone 4). Its key stays `dashboard`, so nothing stored moves.
 ///
-/// Where every job stands now, from `jobs/project-management/overview`:
-/// service area chips, search and the flag chips on top; eight tiles in
-/// pipeline order, each opening Jobs on its stage under the same filters;
-/// then waiting review by location and reason, paid jobs waiting to start as
-/// countdown bars, and jobs per team. Money only when the server sends it
-/// (Jobs Financials). A stage `jobs.pm_stages` leaves unmapped says so, with
-/// the way to Settings.
+/// What needs attention today, from `jobs/project-management/overview`:
+/// the five stages as one flow (Waiting review › Ready to schedule ›
+/// Scheduled › In progress › Done, waiting payment), each tile the same
+/// size, with its rule in one line and its count; the pipeline; then "Needs
+/// attention", three cards; then waiting review by service area and open
+/// jobs by technician. Every number has an ⓘ with the rule that counted it,
+/// in the rules endpoint's own words where it has them, and every number
+/// opens Jobs filtered to exactly what it counted.
 ///
-/// The overview takes no dates, so there is no range control: its numbers
-/// are the jobs as they stand.
+/// The overview takes no dates: its numbers are the jobs as they stand.
+/// Average production cost is gone (design 144): it came from Financials'
+/// sheet, ignored every filter on the page, and said "the last three
+/// months" for two months and a part.
 class ProjectManagementDashboard extends StatefulWidget {
   const ProjectManagementDashboard({
     super.key,
@@ -34,68 +37,60 @@ class ProjectManagementDashboard extends StatefulWidget {
     required this.session,
     this.areas = const [],
     this.stoppedDays,
+    this.warnDays,
     this.labels,
     this.generation = 0,
     this.onOpenJobs,
     this.onOpenSettings,
     this.scope = const PmScope(),
+    this.rules,
   });
 
-  /// Which jobs these numbers are about, as the scope line says.
+  /// Which jobs these numbers are about, as the scope bar says.
   final PmScope scope;
 
   final ApiClient api;
   final Session session;
 
-  /// The service areas in reach, for the chips. Empty: no chips.
+  /// The service areas in reach, for the place picker. Empty: none.
   final List<PmArea> areas;
 
-  /// `jobs.pm_stopped_days`, for the Stopped tile's words. Null: not read.
+  /// `jobs.pm_stopped_days` and `jobs.pm_warn_days`, for the words. Null:
+  /// not read.
   final int? stoppedDays;
+  final int? warnDays;
 
   final JobLabels? labels;
 
   /// Bumped by the screen when Settings changes: count again.
   final int generation;
 
-  /// A tile's tap: Jobs on that stage, under these filters. No stage: every
-  /// stage (Waiting to start's "See all").
-  final void Function(String? stage, PmFilters filters)? onOpenJobs;
+  /// A number's tap: Jobs filtered to exactly what it counted.
+  final void Function(PmJobsIntent intent)? onOpenJobs;
   final VoidCallback? onOpenSettings;
+
+  /// The rules endpoint, for the ⓘ sentences. Null: the client's own.
+  final PmRules? rules;
 
   @override
   State<ProjectManagementDashboard> createState() =>
       _ProjectManagementDashboardState();
 }
 
-/// The eight tiles in pipeline order: the key, its name, and the stage a tap
-/// opens (null: it opens nothing).
-const pmDashboardTiles = [
-  ('waiting_review', 'Waiting review', 'waiting_review'),
-  ('in_progress', 'In progress', 'in_progress'),
-  ('ready_to_schedule', 'Ready to schedule', 'ready_to_schedule'),
-  ('scheduled', 'Scheduled', 'scheduled'),
-  ('done_waiting_payment', 'Done, waiting payment', 'done_waiting_payment'),
-  ('pipeline', 'Pipeline (open projects)', 'in_progress'),
-  ('avg_production_cost', 'Average production cost', null),
-  ('stopped_payments', 'Payments stopped', 'done_waiting_payment'),
-];
+/// The three Needs attention cards, in order.
+const pmAttentionCards = ['not_started', 'stopped', 'no_reason'];
 
 class _ProjectManagementDashboardState
     extends State<ProjectManagementDashboard> {
-  static const _phoneBelow = 600.0;
-
-  /// Every tile the same size, whatever it says.
-  static const _tileHeight = 132.0;
+  /// Every flow tile the same size, whatever it says.
+  static const _tileHeight = 148.0;
+  static const _phoneTileHeight = 104.0;
 
   PmFilters _filters = const PmFilters();
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
   int _request = 0;
-
-  /// Financials' average production cost, while the overview's is null.
-  int? _avgCost;
 
   final _search = TextEditingController();
   Timer? _typing;
@@ -142,7 +137,7 @@ class _ProjectManagementDashboardState
     });
     final response = await widget.api.get(
       '/jobs/project-management/overview',
-      _filters.query(),
+      _filters.query(withSecondVisit: false),
     );
     if (!mounted || request != _request) return;
     setState(() {
@@ -154,28 +149,6 @@ class _ProjectManagementDashboardState
       final data = response.data;
       _data = data is Map ? data.cast<String, dynamic>() : const {};
     });
-    _loadAvgCost(request);
-  }
-
-  /// The overview sends the average production cost as null until it has
-  /// its own; Financials has it per month, place and team, and this person
-  /// may read it with financials.bases.view.
-  Future<void> _loadAvgCost(int request) async {
-    final data = _data;
-    if (data == null ||
-        !data.containsKey('avg_production_cost_minor') ||
-        data['avg_production_cost_minor'] != null ||
-        !_me.can('financials.bases.view')) {
-      return;
-    }
-    final now = DateTime.now();
-    final response = await widget.api.get('/financials/production-cost', {
-      'from': pmYmd(DateTime(now.year, now.month - 2, 1)),
-      'to': pmYmd(now),
-    });
-    if (!mounted || request != _request || !response.ok) return;
-    final rows = response.data;
-    setState(() => _avgCost = rows is List ? pmAverageCost(rows) : null);
   }
 
   Map<String, dynamic> _map(String key) {
@@ -197,42 +170,26 @@ class _ProjectManagementDashboardState
     return '';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final phone = constraints.maxWidth < _phoneBelow;
-        final pad = phone ? 16.0 : 24.0;
-        return ListView(
-          key: const ValueKey('pm-dash'),
-          padding: EdgeInsets.fromLTRB(pad, 12, pad, 24),
-          children: [
-            _controls(context, phone: phone),
-            const SizedBox(height: 12),
-            AsyncBody(
-              loading: _loading,
-              error: _error,
-              onRetry: _load,
-              child: _data == null
-                  ? const SizedBox.shrink()
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _tiles(context, constraints.maxWidth - pad * 2, phone),
-                        const SizedBox(height: 12),
-                        _boxes(context, phone: phone),
-                      ],
-                    ),
-            ),
-          ],
-        );
-      },
-    );
+  int? get _warnDays {
+    final rows = (_data?['waiting_to_start'] as List?) ?? const [];
+    for (final r in rows) {
+      if (r is Map && r['limit'] is int) return r['limit'] as int;
+    }
+    return widget.warnDays;
   }
 
-  Widget _controls(BuildContext context, {required bool phone}) {
-    return PmToolbar(
-      above: PmScopeLine(scope: widget.scope, onChange: widget.onOpenSettings),
+  void _open(PmJobsIntent Function(int serial) intent) {
+    widget.onOpenJobs?.call(intent(0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PmFrame(
+      tab: 'dashboard',
+      purpose:
+          "What needs attention today, across Project Management's open "
+          'jobs.',
+      scope: widget.scope,
       search: TextField(
         key: const ValueKey('pm-dash-search'),
         controller: _search,
@@ -243,7 +200,7 @@ class _ProjectManagementDashboardState
           hintText: pmJobSearchHint,
         ),
       ),
-      areas: widget.areas.isEmpty
+      place: widget.areas.isEmpty
           ? null
           : PmAreaChips(
               key: const ValueKey('tour-pm-dash-areas'),
@@ -253,61 +210,166 @@ class _ProjectManagementDashboardState
               franchiseName: _franchise,
               onSelected: (id) => _refilter(_filters.copyWith(areaId: id)),
             ),
-      filters: PmFlagChips(
-        key: const ValueKey('tour-pm-dash-flags'),
-        filters: _filters,
-        onChanged: _refilter,
+      filters: [
+        PmFlagChips(
+          key: const ValueKey('tour-pm-dash-flags'),
+          filters: _filters,
+          secondVisit: false,
+          onChanged: _refilter,
+        ),
+      ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final phone = constraints.maxWidth < PmFrame.phoneBelow;
+          final pad = PmFrame.gutter(constraints.maxWidth);
+          return ListView(
+            key: const ValueKey('pm-dash'),
+            padding: EdgeInsets.fromLTRB(pad, 0, pad, 24),
+            children: [
+              AsyncBody(
+                loading: _loading,
+                error: _error,
+                onRetry: _load,
+                child: _data == null
+                    ? const SizedBox.shrink()
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _flow(context, phone: phone),
+                          const SizedBox(height: 10),
+                          _pipeline(context),
+                          const SizedBox(height: 16),
+                          _attention(context, phone: phone),
+                          const SizedBox(height: 16),
+                          _boxes(context, phone: phone),
+                        ],
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// Four to a row on a wide screen, two on a phone; money tiles only when
-  /// the server sends money.
-  Widget _tiles(BuildContext context, double width, bool phone) {
-    final perRow = phone ? 2 : 4;
-    const gap = 10.0;
-    final tileWidth = (width - gap * (perRow - 1)) / perRow;
-    final data = _data!;
+  // ── The flow ──────────────────────────────────────────────────────────
 
-    return Wrap(
+  /// A stage's rule: the rules endpoint's sentence, else the client's.
+  String _stageRule(String key) =>
+      widget.rules?.stageSentence(key, _me) ??
+      'Jobs in scope whose status is one of the ${pmStageName(key)} '
+          'statuses in Settings.';
+
+  String _stageInfo(String key) {
+    final scope = widget.rules?.scopeSentence;
+    return [
+      '${pmStageName(key)} = ${_stageRule(key)}',
+      ?scope,
+      if (key == 'ready_to_schedule')
+        'Oldest: days since the oldest of these jobs last changed status.',
+      if (key == 'scheduled')
+        'Next 7 days: scheduled from the start of today to the end of 7 '
+            'days from now.',
+      if (key == 'in_progress')
+        'External company: the job has an external company set.',
+    ].join('\n');
+  }
+
+  /// A stage tile's count and its second line.
+  (int, String) _stageNumbers(String key) {
+    final m = _map(key);
+    final count = _int(m['count']) ?? 0;
+    switch (key) {
+      case 'ready_to_schedule':
+        final oldest = _int(m['oldest_days']);
+        return (
+          count,
+          oldest == null
+              ? ''
+              : 'Oldest $oldest ${oldest == 1 ? 'day' : 'days'} in this status',
+        );
+      case 'scheduled':
+        return (
+          count,
+          '${formatCount(_int(m['next_7_days']) ?? 0)} in the next 7 days',
+        );
+      case 'in_progress':
+        return (
+          count,
+          'Our own technicians ${formatCount(_int(m['ours']) ?? 0)} · '
+              'external company ${formatCount(_int(m['external']) ?? 0)}',
+        );
+      case 'done_waiting_payment':
+        final due = _int(m['due_minor']);
+        return (
+          count,
+          due == null ? '' : '${formatMoney(due, cents: false)} due',
+        );
+      case 'waiting_review':
+        final none = _noReason;
+        return (count, '${formatCount(none)} with no reason picked');
+    }
+    return (count, '');
+  }
+
+  int get _noReason {
+    for (final r
+        in (_map('waiting_review')['by_reason'] as List?) ?? const []) {
+      if (r is Map && r['value'] == null && r['count'] is int) {
+        return r['count'] as int;
+      }
+    }
+    return 0;
+  }
+
+  Widget _flow(BuildContext context, {required bool phone}) {
+    final scheme = Theme.of(context).colorScheme;
+    final tiles = [
+      for (final key in pmStageKeys)
+        SizedBox(
+          height: phone ? _phoneTileHeight : _tileHeight,
+          child: _stageTile(context, key, phone: phone),
+        ),
+    ];
+    Widget arrow(IconData icon) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+      child: Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+    );
+
+    if (phone) {
+      return Column(
+        key: const ValueKey('tour-pm-dash-tiles'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (i, t) in tiles.indexed) ...[
+            if (i > 0) Center(child: arrow(Icons.keyboard_arrow_down)),
+            t,
+          ],
+        ],
+      );
+    }
+    return Row(
       key: const ValueKey('tour-pm-dash-tiles'),
-      spacing: gap,
-      runSpacing: gap,
       children: [
-        for (final (key, label, stage) in pmDashboardTiles)
-          if (switch (key) {
-            'pipeline' => data.containsKey('pipeline_minor'),
-            'avg_production_cost' => data.containsKey(
-              'avg_production_cost_minor',
-            ),
-            _ => true,
-          })
-            SizedBox(
-              width: tileWidth,
-              height: _tileHeight,
-              child: _tile(context, key, label, stage),
-            ),
+        for (final (i, t) in tiles.indexed) ...[
+          if (i > 0) arrow(Icons.chevron_right),
+          Expanded(child: t),
+        ],
       ],
     );
   }
 
-  Widget _tile(BuildContext context, String key, String label, String? stage) {
+  Widget _stageTile(BuildContext context, String key, {required bool phone}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: scheme.onSurfaceVariant,
     );
-    final unmapped = pmStageKeys.contains(key) && !_mapped.contains(key);
-    final (value, bar, sub, tone) = _tileBody(context, key);
-
-    final open = stage == null || unmapped || widget.onOpenJobs == null
+    final unmapped = !_mapped.contains(key);
+    final (count, second) = _stageNumbers(key);
+    final open = unmapped || widget.onOpenJobs == null
         ? null
-        : () => widget.onOpenJobs!(
-            stage,
-            key == 'stopped_payments'
-                ? _filters.copyWith(stopped: true)
-                : _filters,
-          );
+        : () => _open((s) => PmJobsIntent(key, _filters, s));
 
     return Material(
       color: scheme.surface,
@@ -322,33 +384,31 @@ class _ProjectManagementDashboardState
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(
-                // A stage's tile wears its stage colour, as the Jobs tab's
-                // chips and the Settings table do (design 142).
-                color: pmStageKeys.contains(key)
-                    ? pmStageColour(context, key)
-                    : tone == null
-                    ? scheme.outlineVariant
-                    : ToneColours.of(context, tone).ink,
-                width: 4,
-              ),
+              top: BorderSide(color: pmStageColour(context, key), width: 4),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurfaceVariant,
-                  letterSpacing: 0.4,
-                ),
+              Row(
+                children: [
+                  PmStageDot(key, key: ValueKey('pm-tile-$key-dot')),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      pmStageName(key),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  PmInfo(_stageInfo(key), key: ValueKey('pm-info-$key')),
+                ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               if (unmapped) ...[
                 Text(
                   'Not set up',
@@ -364,28 +424,34 @@ class _ProjectManagementDashboardState
                     onPressed: widget.onOpenSettings,
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 32),
+                      minimumSize: const Size(0, 28),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: const Text('Set up in Settings'),
                   ),
               ] else ...[
                 Text(
-                  value,
+                  formatCount(count),
                   key: ValueKey('pm-tile-$key-value'),
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                if (bar != null) ...[const SizedBox(height: 6), bar],
-                const Spacer(),
-                if (sub.isNotEmpty)
+                if (!phone)
                   Text(
-                    sub,
-                    key: ValueKey('pm-tile-$key-sub'),
+                    _stageRule(key).split('\n').first,
+                    key: ValueKey('pm-tile-$key-rule'),
                     maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+                const Spacer(),
+                if (second.isNotEmpty)
+                  Text(
+                    second,
+                    key: ValueKey('pm-tile-$key-sub'),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: muted,
                   ),
@@ -397,113 +463,247 @@ class _ProjectManagementDashboardState
     );
   }
 
-  /// A tile's number, its bar, its line underneath and its edge tone.
-  (String, Widget?, String, Tone?) _tileBody(BuildContext context, String key) {
-    final data = _data!;
-    switch (key) {
-      case 'waiting_review':
-        final m = _map(key);
-        final reasons = _reasons(m['by_reason']);
-        final total = _int(m['count']) ?? 0;
-        return (
-          formatCount(total),
-          total == 0 ? null : _reasonBar(context, reasons, total),
-          [
-            for (final r in reasons)
-              if (r.count > 0) '${r.label} ${formatCount(r.count)}',
-          ].join(' · '),
-          Tone.caution,
-        );
-      case 'in_progress':
-        final m = _map(key);
-        final count = _int(m['count']) ?? 0;
-        final ours = _int(m['ours']) ?? 0;
-        final external = _int(m['external']) ?? 0;
-        return (
-          formatCount(count),
-          count == 0
-              ? null
-              : PmBar(
-                  key: const ValueKey('pm-tile-in_progress-bar'),
-                  segments: [
-                    (ours / count, PersonColours.hue(context, 0).ink),
-                    (external / count, PersonColours.hue(context, 5).ink),
-                  ],
+  // ── The pipeline ──────────────────────────────────────────────────────
+
+  int get _pipelineCount => [
+    for (final k in pmPipelineStages)
+      if (_mapped.contains(k)) _int(_map(k)['count']) ?? 0,
+  ].fold(0, (a, b) => a + b);
+
+  Widget _pipeline(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final money = _int(_data?['pipeline_minor']);
+    final count = _pipelineCount;
+    final rule = pmMeasures().firstWhere((m) => m.number == 'Pipeline').rule;
+    final open = widget.onOpenJobs == null
+        ? null
+        : () => _open(
+            (s) => PmJobsIntent(
+              null,
+              _filters,
+              s,
+              stages: [
+                for (final k in pmPipelineStages)
+                  if (_mapped.contains(k)) k,
+              ],
+              label: 'Pipeline: Waiting review to In progress',
+            ),
+          );
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        key: const ValueKey('pm-tile-pipeline'),
+        borderRadius: BorderRadius.circular(6),
+        onTap: open,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      const TextSpan(text: 'Pipeline: '),
+                      TextSpan(
+                        text:
+                            '${formatCount(count)} open '
+                            '${count == 1 ? 'job' : 'jobs'}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      if (money != null)
+                        TextSpan(
+                          text: ' · ${formatMoney(money, cents: false)} total',
+                        ),
+                      TextSpan(
+                        text: '  See them ›',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  key: const ValueKey('pm-tile-pipeline-value'),
+                  style: theme.textTheme.bodyMedium,
                 ),
-          [
-            'Our team ${formatCount(ours)}',
-            'External company ${formatCount(external)}',
-            'Needs a second visit ${formatCount(_int(m['second_visit']) ?? 0)}',
-            'Redo ${formatCount(_int(m['redo']) ?? 0)}',
-            'New ${formatCount(_int(m['new']) ?? 0)}',
-          ].join(' · '),
-          Tone.info,
-        );
-      case 'ready_to_schedule':
-        final m = _map(key);
-        final oldest = _int(m['oldest_days']);
+              ),
+              const SizedBox(width: 6),
+              PmInfo(rule, key: const ValueKey('pm-info-pipeline')),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Needs attention ───────────────────────────────────────────────────
+
+  int get _notStarted {
+    var n = 0;
+    for (final r in (_data?['waiting_to_start'] as List?) ?? const []) {
+      if (r is Map && r['days'] is int && r['limit'] is int) {
+        if ((r['days'] as int) >= (r['limit'] as int)) n++;
+      }
+    }
+    return n;
+  }
+
+  ({int count, String text, String info, PmJobsIntent Function(int) intent})
+  _card(String key) {
+    final warn = _warnDays;
+    final stopped = widget.stoppedDays;
+    final measures = pmMeasures(warnDays: warn, stoppedDays: stopped);
+    String rule(String n) => measures.firstWhere((m) => m.number == n).rule;
+    switch (key) {
+      case 'not_started':
+        final email = widget.rules?.serverJob('Paid but not started warning');
         return (
-          formatCount(_int(m['count']) ?? 0),
-          null,
-          oldest == null
-              ? ''
-              : 'Oldest waiting $oldest ${oldest == 1 ? 'day' : 'days'}',
-          Tone.info,
+          count: _notStarted,
+          text: warn == null
+              ? 'paid but not started past the warning days'
+              : 'paid $warn or more days ago, not started',
+          info: [rule('Paid but not started'), ?email].join('\n'),
+          intent: (s) => PmJobsIntent(
+            null,
+            _filters.copyWith(waitingToStart: true),
+            s,
+            label: warn == null
+                ? 'Paid, not started'
+                : 'Paid $warn or more days ago, not started',
+          ),
         );
-      case 'scheduled':
-        final m = _map(key);
+      case 'stopped':
         return (
-          formatCount(_int(m['count']) ?? 0),
-          null,
-          'Next 7 days: ${formatCount(_int(m['next_7_days']) ?? 0)}',
-          Tone.info,
+          count: _int(_data?['stopped_payments']) ?? 0,
+          text: stopped == null
+              ? 'payments stopped'
+              : 'payments stopped: nothing paid for over $stopped days',
+          info: rule('Payments stopped'),
+          intent: (s) => PmJobsIntent(
+            null,
+            _filters.copyWith(stopped: true),
+            s,
+            label: 'Payments stopped, every stage',
+          ),
         );
-      case 'done_waiting_payment':
-        final m = _map(key);
-        final total = _int(m['total_minor']);
-        final due = _int(m['due_minor']);
+      default:
         return (
-          formatCount(_int(m['count']) ?? 0),
-          null,
-          [
-            if (total != null) '${formatMoney(total, cents: false)} total',
-            if (due != null) '${formatMoney(due, cents: false)} due',
-          ].join(' · '),
-          Tone.ok,
-        );
-      case 'pipeline':
-        final open = _int(data['pipeline_minor']);
-        return (
-          open == null ? '—' : formatMoney(open, cents: false),
-          null,
-          'In progress, waiting review, ready and scheduled',
-          Tone.ok,
-        );
-      case 'avg_production_cost':
-        final own = _int(data['avg_production_cost_minor']);
-        final avg = own ?? _avgCost;
-        return (
-          avg == null ? '—' : formatMoney(avg, cents: false),
-          null,
-          avg == null
-              ? 'No production cost yet'
-              : own == null
-              ? 'Per job, the last three months'
-              : 'Tech, helper, operation, gas and parts',
-          null,
-        );
-      case 'stopped_payments':
-        final days = widget.stoppedDays;
-        return (
-          formatCount(_int(data['stopped_payments']) ?? 0),
-          null,
-          days == null
-              ? 'Partly paid, then nothing'
-              : 'Partly paid, nothing for $days+ days',
-          Tone.bad,
+          count: _noReason,
+          text: 'waiting review with no reason picked',
+          info:
+              '${rule('Waiting review with no reason')} Pick one on the '
+              "job's timeline in Jobs.",
+          intent: (s) => PmJobsIntent(
+            'waiting_review',
+            _filters.copyWith(noReason: true),
+            s,
+            label: 'Waiting review with no reason',
+          ),
         );
     }
-    return ('—', null, '', null);
+  }
+
+  Widget _attention(BuildContext context, {required bool phone}) {
+    final theme = Theme.of(context);
+    final cards = [
+      for (final key in pmAttentionCards)
+        SizedBox(height: 92, child: _attentionCard(context, key)),
+    ];
+    return Column(
+      key: const ValueKey('tour-pm-dash-attention'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Needs attention',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (phone)
+          for (final (i, c) in cards.indexed) ...[
+            if (i > 0) const SizedBox(height: 8),
+            c,
+          ]
+        else
+          Row(
+            children: [
+              for (final (i, c) in cards.indexed) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(child: c),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _attentionCard(BuildContext context, String key) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final c = _card(key);
+    // Red is "needs attention", and only when there is something to attend.
+    final edge = c.count > 0
+        ? ToneColours.of(context, Tone.bad).ink
+        : scheme.outlineVariant;
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: ValueKey('pm-attention-$key'),
+        onTap: widget.onOpenJobs == null ? null : () => _open(c.intent),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(left: BorderSide(color: edge, width: 4)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    formatCount(c.count),
+                    key: ValueKey('pm-attention-$key-value'),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: c.count > 0 ? edge : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        c.text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  PmInfo(c.info, key: ValueKey('pm-info-attention-$key')),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                'See them ›',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   List<({String? value, String label, int count})> _reasons(Object? list) => [
@@ -538,19 +738,19 @@ class _ProjectManagementDashboardState
       _box(
         context,
         anchor: const ValueKey('tour-pm-dash-review'),
-        title: 'Waiting review by location and reason',
+        title: 'Waiting review by service area',
+        info:
+            'Jobs in Waiting review, by their service area ("No service '
+            'area" when they have none), split by review reason.',
         child: _byLocation(context),
       ),
       _box(
         context,
-        anchor: const ValueKey('tour-pm-dash-start'),
-        title: 'Waiting to start after payment',
-        child: _waitingToStart(context),
-      ),
-      _box(
-        context,
         anchor: const ValueKey('tour-pm-dash-teams'),
-        title: 'Jobs per team',
+        title: 'Open jobs by technician',
+        info: pmMeasures()
+            .firstWhere((m) => m.number == 'Open jobs by technician')
+            .rule,
         child: _perTeam(context),
       ),
     ];
@@ -582,6 +782,7 @@ class _ProjectManagementDashboardState
     BuildContext context, {
     required Key anchor,
     required String title,
+    required String info,
     required Widget child,
   }) {
     final theme = Theme.of(context);
@@ -598,13 +799,21 @@ class _ProjectManagementDashboardState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              title.toUpperCase(),
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurfaceVariant,
-                letterSpacing: 0.4,
-              ),
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurfaceVariant,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                PmInfo(info, key: ValueKey('pm-info-box-$title')),
+              ],
             ),
             const SizedBox(height: 8),
             child,
@@ -767,107 +976,6 @@ class _ProjectManagementDashboardState
     );
   }
 
-  Widget _waitingToStart(BuildContext context) {
-    final rows = [
-      for (final r in (_data?['waiting_to_start'] as List?) ?? const [])
-        if (r is Map) r.cast<String, dynamic>(),
-    ];
-    if (rows.isEmpty) {
-      return _none(
-        context,
-        'No paid job is waiting to start.',
-        const ValueKey('pm-start-none'),
-      );
-    }
-    final scheme = Theme.of(context).colorScheme;
-    final limit = _int(rows.first['limit']) ?? 0;
-    final over = rows.where((r) => (_int(r['days']) ?? 0) >= limit).length;
-    return _capped(
-      context,
-      card: 'start',
-      cap: 10,
-      moreLine: (n) {
-        // Longest first, so the hidden rows over the limit are the rest.
-        final hidden = (over - 10).clamp(0, n);
-        return hidden == n
-            ? 'and $n more over the $limit-day limit · See all'
-            : 'and $n more, $hidden over the $limit-day limit · See all';
-      },
-      footer: [
-        if (widget.onOpenJobs != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              key: const ValueKey('pm-start-see-all'),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                visualDensity: VisualDensity.compact,
-              ),
-              icon: const Icon(Icons.open_in_new, size: 16),
-              label: const Text('See all in Jobs'),
-              // Paid and past the limit, every not-started stage (0f181d521).
-              onPressed: () => widget.onOpenJobs!(
-                null,
-                _filters.copyWith(waitingToStart: true),
-              ),
-            ),
-          ),
-      ],
-      rows: [
-        for (final r in rows)
-          Builder(
-            builder: (context) {
-              final job = r['job'] is Map ? r['job'] as Map : const {};
-              final id = '${job['id']}';
-              final days = _int(r['days']) ?? 0;
-              final limit = _int(r['limit']) ?? 0;
-              final name = [
-                '${job['number'] ?? ''}',
-                '${job['customer'] ?? ''}',
-              ].where((s) => s.isNotEmpty).join(' · ');
-              return InkWell(
-                key: ValueKey('pm-start-$id'),
-                borderRadius: BorderRadius.circular(6),
-                onTap: () => _openJob(id),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 150,
-                        // Cut short at this width: the whole name on hover.
-                        child: Tooltip(
-                          key: ValueKey('pm-start-name-$id'),
-                          message: name,
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: scheme.onSurface,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: PmCountdownBar(
-                          key: ValueKey('pm-start-bar-$id'),
-                          days: days,
-                          limit: limit,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
   Widget _perTeam(BuildContext context) {
     final teams = [
       for (final t in (_data?['per_team'] as List?) ?? const [])
@@ -890,7 +998,8 @@ class _ProjectManagementDashboardState
     final most = (named.isEmpty ? teams : named)
         .map((t) => _int(t['count']) ?? 0)
         .fold<int>(0, (a, b) => b > a ? b : a);
-    final colour = PersonColours.hue(context, 0).ink;
+    // No stage's colour: these bars count people, not a stage.
+    final colour = PersonColours.hue(context, 9).ink;
     final muted = ToneColours.of(context, Tone.neutral).ink;
     Widget row(Map<String, dynamic> t, Color c) {
       final n = _int(t['count']) ?? 0;
@@ -916,18 +1025,5 @@ class _ProjectManagementDashboardState
         for (final t in unassigned) row(t, muted),
       ],
     );
-  }
-
-  Future<void> _openJob(String id) async {
-    final changed = await showSidePanel<bool>(
-      context,
-      builder: (_) => JobDetailPanel(
-        api: widget.api,
-        session: widget.session,
-        id: id,
-        labels: widget.labels,
-      ),
-    );
-    if (changed == true && mounted) _load();
   }
 }
