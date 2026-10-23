@@ -368,6 +368,9 @@ final class AutomationTemplates
                     .'published on Google only on listings where automatic replies are switched on under '
                     .'Business Profile, and only for reviews written in the last 30 days.',
                 'trigger_key' => 'review.received',
+                // An hour to two after the review is found, spread so a batch
+                // is not answered in the same minute.
+                'delay_minutes' => 60,
                 'conditions' => [
                     'all' => [
                         ['field' => 'rating', 'op' => 'gte', 'value' => '4'],
