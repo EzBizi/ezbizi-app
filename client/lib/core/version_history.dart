@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0489',
+      date: '23 Oct 2026',
+      items: [
+        'Project Management: one layout on every tab, the stages as one ordered flow with their own colours, and an ⓘ on every number saying how it is counted; clicking a number lists exactly those jobs. Reports and Table become one Repair team tab, and a new Rules tab shows how each stage and filter is decided.',
+        'Project Management: the Dashboard\'s bars are drawn again (they showed only their grey track), and labels are spelled out: Needs a second visit, Done in one visit, In dispute, Payments stopped, Our team.',
+        'Project Management: the paid-not-started warning email covers only the jobs Project Management includes, and Done waiting payment also takes jobs done pending approval with money still due.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0488',
       date: '23 Oct 2026',
       items: [
