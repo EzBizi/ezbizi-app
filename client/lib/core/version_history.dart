@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0488',
+      date: '23 Oct 2026',
+      items: [
+        'AI Assistance: a Tech Assistant for technicians on WhatsApp. It answers part and manual questions from your own Parts and Manuals, remembers the job until "new job", says how sure it is, and says DO NOT ORDER YET when a part number is not from your data. New tabs: Parts, Manuals (upload PDFs) and Answers (mark each answer correct or incorrect).',
+        'WhatsApp staff messages: a plate photo goes to the Tech Assistant, and only a photo captioned bill or receipt goes to the bill reader. A voice note is answered with a request to type it.',
+        'Notifications: choosing companies under Notify me about also filters missed calls.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0487',
       date: '23 Oct 2026',
       items: [
