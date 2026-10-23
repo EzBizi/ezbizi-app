@@ -122,7 +122,8 @@ class AutomationEngine
                     }
                     // A rule with a wait comes back for this event when it is due;
                     // the others act now, and a redelivery cannot run them twice.
-                    $due = $event->occurred_at->copy()->addMinutes((int) $automation->delay_minutes);
+                    $due = $event->occurred_at->copy()->addMinutes((int) $automation->delay_minutes
+                        + self::replySpread($version, $event, (int) $automation->delay_minutes));
                     if ($due->isFuture()) {
                         $dueAt = $dueAt === null || $due->lt($dueAt) ? $due : $dueAt;
                         continue;
@@ -550,5 +551,22 @@ class AutomationEngine
                 'would_do' => $results,
             ];
         });
+    }
+
+    /**
+     * Public review replies are spread out, not posted in a burst (A1 Leads'
+     * pacing, Jose's takeover, 2026-10-23): a sync finds a batch of reviews at
+     * once, and a rule that publishes replies would otherwise answer them all in
+     * the same minute. Such a rule's wait becomes somewhere between the wait and
+     * twice the wait, the same for an event every time it is looked at (so a
+     * redelivery does not move it). Every other rule waits exactly as set.
+     */
+    private static function replySpread(AutomationVersion $version, AutomationEvent $event, int $delay): int
+    {
+        if ($delay <= 0 || ! collect((array) $version->actions)->contains(fn ($a) => ($a['type'] ?? null) === 'publish_reply')) {
+            return 0;
+        }
+
+        return crc32((string) $event->getKey()) % ($delay + 1);
     }
 }
