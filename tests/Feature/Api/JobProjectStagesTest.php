@@ -68,7 +68,7 @@ class JobProjectStagesTest extends TestCase
         $list = $get('jobs?stage=ready_to_schedule');
         $this->assertSame(['in_progress' => 1, 'waiting_review' => 1, 'ready_to_schedule' => 1, 'scheduled' => 1,
             'done_waiting_payment' => 1, 'completed' => 1, 'cancelled' => 0], $list['meta']['counts']);
-        $this->assertSame([['C', '2026-10-07', 15]], array_map(fn ($r) => [$r['number'], $r['paid_at'], $r['days_since_payment']], $list['data']));
+        $this->assertSame([['C', '2026-10-07', 15]], array_map(fn ($r) => [$r['number'], $r['paid_at'], $r['days_since_first_payment']], $list['data']));
         $this->assertSame(['A'], array_column($get('jobs?stage=in_progress&redo=1&external=1')['data'], 'number'));
         $this->assertSame([], $get('jobs?stage=in_progress&redo=0')['data']);
         $this->assertSame(['E'], array_column($get('jobs?stage=done_waiting_payment&stopped=1')['data'], 'number'));
@@ -102,5 +102,22 @@ class JobProjectStagesTest extends TestCase
         $this->assertSame(['ready_to_schedule' => 1, 'scheduled' => 1], $scope(['submitted'], false));
         $this->assertSame([], $scope(['submitted'], true), 'C is paid but owes nothing; D is unpaid');
         $this->assertSame(['done_waiting_payment' => 1], $scope([], true), 'E: a deposit paid, money still due');
+
+        // A count's drill lists what it counted: several stages at once, or every mapped stage (audit, 2026-10-23).
+        $scope(['in progress', 'pending', 'submitted', 'dpa', 'done', 'canceled'], false);
+        $numbers = fn (string $q) => collect($get('jobs?'.$q)['data'])->pluck('number')->sort()->values()->all();
+        $this->assertSame(['C', 'D'], $numbers('stages[]=ready_to_schedule&stages[]=scheduled'));
+        $this->assertSame(['A', 'B', 'C', 'D', 'E', 'F'], $numbers(''));
+        $this->assertSame(['E'], $numbers('stopped=1'));
+        $this->assertSame(15, collect($get('jobs?stage=ready_to_schedule')['data'])->firstWhere('number', 'C')['days_since_first_payment']);
+
+        // What triggers what (Jose: "impossible to understand"), read live.
+        $r = $get('rules')['data']['configs'][0];
+        $this->assertSame('Project Management shows jobs in In progress, Pending, Submitted, Dpa, Done, Canceled.', $r['scope']['sentence']);
+        $this->assertSame('Status Submitted, not scheduled.', collect($r['stages'])->firstWhere('key', 'ready_to_schedule')['sentence']);
+        $this->assertSame(1, collect($r['stages'])->firstWhere('key', 'ready_to_schedule')['count']);
+        $this->assertSame(['"Canceled" is in scope but in no stage, so its 0 job(s) show in no tab.'], $r['warnings']);
+        $this->assertStringStartsWith('company', $r['stages_set_at']);
+        $this->assertSame(['Paid but not started warning', 'Payments stopped', 'Estimate aging'], array_column($r['server_jobs'], 'name'));
     }
 }

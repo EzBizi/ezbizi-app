@@ -455,13 +455,18 @@ class JobsProjectManagementController extends Controller
         $user = $this->pmUser($request);
         $input = $request->validate($this->stageFilters() + [
             // Or every not-started stage at once, for the Dashboard's "See all" (UI/UX, 2026-10-22).
-            'stage' => ['required_without:waiting_to_start', 'nullable', Rule::in(ProjectStages::KEYS)],
+            // One stage, several (stages[]: the Pipeline tile's four), or none: every
+            // mapped stage, so a count's drill lists what it counted (UI/UX audit, 2026-10-23).
+            'stage' => ['nullable', Rule::in(ProjectStages::KEYS)],
+            'stages' => ['nullable', 'array'],
+            'stages.*' => [Rule::in(ProjectStages::KEYS)],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
         $filtered = fn () => $this->stageFiltered($user, $settings, $input);
 
-        $page = (isset($input['stage']) ? ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null) : $filtered())
+        $page = (isset($input['stage']) ? ProjectStages::scope($filtered(), $rules[$input['stage']] ?? null)
+                : ProjectStages::anyOf($filtered(), $rules, $input['stages'] ?? null))
             ->with(['customer:id,name', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])
             ->orderByDesc('updated_at')->paginate(100, ['*'], 'page', (int) ($input['page'] ?? 1));
 
@@ -485,7 +490,9 @@ class JobsProjectManagementController extends Controller
                 'external_company' => $j->external_company,
                 'needs_second_visit' => (bool) $j->needs_second_visit,
                 'paid_at' => $first ? Carbon::parse($first)->toDateString() : null,
-                'days_since_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->last_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
+                // One clock, from the first payment, as the warning and the dashboard count (audit, 2026-10-23).
+                'days_since_first_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->first_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
+                'days_since_last_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->last_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
             ] + ($money && $m ? ['total_minor' => $m['total'], 'due_minor' => $m['due']] : []);
         });
 
@@ -557,7 +564,9 @@ class JobsProjectManagementController extends Controller
             ],
             'ready_to_schedule' => [
                 'count' => $in('ready_to_schedule')->count(),
-                'oldest_days' => ($oldest = $in('ready_to_schedule')->min('created_at')) ? (int) Carbon::parse($oldest)->diffInDays(now()) : null,
+                // Since the job moved into its status (its last status change), else since it was made.
+                'oldest_days' => ($oldest = $this->enteredAt($in('ready_to_schedule'))) ? (int) Carbon::parse($oldest)->diffInDays(now()) : null,
+                'oldest_since' => 'status_change',
             ],
             'scheduled' => [
                 'count' => $in('scheduled')->count(),
@@ -565,7 +574,7 @@ class JobsProjectManagementController extends Controller
             ],
             'done_waiting_payment' => ['count' => $doneWaiting->count()]
                 + ($money ? ['total_minor' => $sum($in('done_waiting_payment'), 'JobTotalPrice'), 'due_minor' => $sum($in('done_waiting_payment'), 'JobAmountDue')] : []),
-            'stopped_payments' => ProjectStages::stopped($this->stageFiltered($user, $settings, $input), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
+            'stopped_payments' => ProjectStages::stopped(ProjectStages::anyOf($this->stageFiltered($user, $settings, $input), $rules), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
             'per_team' => (clone $open)->with('performedBy:id,name')->get(['id', 'performed_by_user_id'])
                 ->groupBy(fn ($j) => $j->performedBy?->name ?? 'Unassigned')->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count()])
                 ->sortByDesc('count')->values()->all(),
@@ -636,6 +645,196 @@ class JobsProjectManagementController extends Controller
                 'franchise' => ($f = $boards->firstWhere('id', $t->board_id)?->franchise) ? ['id' => $f->id, 'name' => $f->name] : null,
             ])->all(),
         ]]);
+    }
+
+    /**
+     * GET /api/v1/jobs/project-management/rules
+     *
+     * "What triggers what changes" (Jose, 2026-10-23: Project Management is
+     * "impossible to understand"). Read live, in sentences: which jobs PM is
+     * about and where that is set, each stage's rule and count, the alerts, the
+     * rules that act on jobs with their last week, and the fixed server jobs.
+     */
+    public function rules(Request $request, SettingsResolver $settings): JsonResponse
+    {
+        $user = $this->pmUser($request);
+        $all = \App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->with('company')->get();
+        // Branches set up alike share one block: each branch is staged by its own resolved settings.
+        $keys = ['jobs.pm_stages', 'jobs.pm_scope_statuses', 'jobs.pm_partly_paid_only', 'jobs.pm_warn_days', 'jobs.pm_warning_email',
+            'jobs.pm_stopped_days', 'jobs.pm_cost_alert_percent', 'jobs.pm_redo_words', 'jobs.pm_dispute_words', 'jobs.pm_task_group'];
+        $groups = $all->groupBy(fn ($f) => json_encode(array_map(fn ($k) => $settings->get($k, $f), $keys)));
+        $configs = $groups->map(function ($branches) use ($user, $settings) {
+            $companies = $branches->pluck('company_id')->unique();
+            $place = $companies->count() === 1 && $branches->first()->company ? $branches->first()->company : $branches->first();
+
+            return ['branches' => $branches->pluck('name')->sort()->values()->all()] + $this->rulesFor($user, $settings, $place, $branches);
+        })->values()->all();
+
+        $since = now()->subDays(7);
+        $automations = \App\Models\Automation::query()->where('trigger_key', 'like', 'job.%')->with('activeVersion')->get()
+            ->map(function (\App\Models\Automation $a) use ($since) {
+                $runs = AutomationRun::query()->where('automation_id', $a->id)->where('is_test', false)->where('started_at', '>=', $since);
+                $lastSkip = (clone $runs)->where('status', 'skipped')->latest('started_at')->first();
+
+                return [
+                    'id' => $a->id, 'name' => $a->name, 'active' => (bool) $a->is_active, 'trigger' => $a->trigger_key,
+                    'conditions' => $this->conditionsSentence($a->activeVersion?->conditions),
+                    'actions' => array_map(fn ($x) => $this->actionSentence((array) $x), (array) ($a->activeVersion?->actions ?? [])),
+                    'runs_7d' => (clone $runs)->whereIn('status', ['succeeded', 'failed'])->count(),
+                    'skipped_7d' => (clone $runs)->where('status', 'skipped')->count(),
+                    'last_skip_reason' => $lastSkip ? $this->skipReason((array) $lastSkip->condition_trace) : null,
+                ];
+            })->values()->all();
+
+        return response()->json(['data' => ['configs' => $configs, 'automations' => $automations]]);
+    }
+
+    /** One setup's rules, read where it is set ($place), for the branches using it. */
+    private function rulesFor($user, SettingsResolver $settings, \Illuminate\Database\Eloquent\Model $place, $reach): array
+    {
+        $stageRules = ProjectStages::forFranchises($reach, $settings);
+        $this->labels = $this->statusLabels($settings, $user);
+        $label = fn (array $statuses) => implode(', ', array_map(fn ($s) => $this->label($s), $statuses));
+        $setting = fn (string $key) => ['value' => $settings->get($key, $place), 'set_at' => $this->setAt($key, $place)];
+
+        $scopeStatuses = (array) $settings->get('jobs.pm_scope_statuses', $place);
+        $partly = (bool) $settings->get('jobs.pm_partly_paid_only', $place);
+        $inScope = fn () => ProjectStages::inScope(Job::query(), $reach, $settings);
+
+        $stages = [];
+        $seen = [];
+        foreach (ProjectStages::KEYS as $key) {
+            $rule = $stageRules[$key][0]['rule'] ?? null;
+            if ($rule === null) {
+                continue;
+            }
+            foreach ($rule['statuses'] as $st) {
+                $seen[$st][$key] = $rule;
+            }
+            $stages[] = ['key' => $key, 'statuses' => $rule['statuses'],
+                'sentence' => 'Status '.$label($rule['statuses'])
+                    .($rule['scheduled'] === null ? '' : ($rule['scheduled'] ? ', scheduled' : ', not scheduled'))
+                    .($rule['due'] === null ? '' : ($rule['due'] ? ', money still due' : ', nothing due')).'.',
+                'count' => ProjectStages::scope($inScope(), $stageRules[$key])->count()];
+        }
+
+        $warnings = [];
+        foreach ($scopeStatuses as $st) {
+            if (! isset($seen[$st])) {
+                $n = $inScope()->where('status', $st)->count();
+                $warnings[] = "\"{$this->label($st)}\" is in scope but in no stage, so its {$n} job(s) show in no tab.";
+            }
+        }
+        // Two stages on one status are fine when schedule or money keeps them apart; warn only when they overlap.
+        $apart = fn (array $a, array $b) => ($a['scheduled'] !== null && $b['scheduled'] !== null && $a['scheduled'] !== $b['scheduled'])
+            || ($a['due'] !== null && $b['due'] !== null && $a['due'] !== $b['due']);
+        foreach ($seen as $st => $byKey) {
+            $keys = array_keys($byKey);
+            foreach ($keys as $i => $a) {
+                foreach (array_slice($keys, $i + 1) as $b) {
+                    if (! $apart($byKey[$a], $byKey[$b])) {
+                        $warnings[] = "\"{$this->label($st)}\" is in both {$a} and {$b}, so a job can count twice.";
+                    }
+                }
+            }
+        }
+
+        $warnDays = (int) $settings->get('jobs.pm_warn_days', $place);
+        $email = (string) $settings->get('jobs.pm_warning_email', $place);
+        $stoppedDays = (int) $settings->get('jobs.pm_stopped_days', $place);
+
+        return [
+            'place' => ['type' => strtolower(class_basename($place)), 'name' => $place->name ?? null],
+            'scope' => [
+                'statuses' => $scopeStatuses, 'partly_paid_only' => $partly,
+                'set_at' => $this->setAt('jobs.pm_scope_statuses', $place),
+                'sentence' => 'Project Management shows jobs '.($scopeStatuses === [] ? 'in any status' : 'in '.$label($scopeStatuses))
+                    .($partly ? ' that have a payment and still owe money.' : '.'),
+                'count' => $inScope()->count(),
+            ],
+            'stages' => $stages,
+            'stages_set_at' => $this->setAt('jobs.pm_stages', $place),
+            'warnings' => $warnings,
+            'alerts' => [
+                'warn_days' => $setting('jobs.pm_warn_days'),
+                'warning_email' => $setting('jobs.pm_warning_email'),
+                'stopped_days' => $setting('jobs.pm_stopped_days'),
+                'cost_alert_percent' => $setting('jobs.pm_cost_alert_percent'),
+                'redo_words' => $setting('jobs.pm_redo_words'),
+                'dispute_words' => $setting('jobs.pm_dispute_words'),
+                'task_group' => $setting('jobs.pm_task_group'),
+            ],
+            'server_jobs' => [
+                ['name' => 'Paid but not started warning', 'when' => 'Every day at 8:20 AM Eastern',
+                    'what' => $email === ''
+                        ? 'Sends nothing: no warning email is set.'
+                        : "Emails {$email} the jobs in Project Management that were first paid {$warnDays} or more days ago and are still waiting review, waiting to be scheduled, or scheduled. Changes nothing on the jobs."],
+                ['name' => 'Payments stopped', 'when' => 'Worked out whenever the page loads',
+                    'what' => "A job counts when it has a payment, still owes money, and its last payment is more than {$stoppedDays} days old. Changes nothing."],
+                ['name' => 'Estimate aging', 'when' => 'Every day at 8:10 AM Eastern',
+                    'what' => 'Raises "job.estimate_aging" for jobs in '.$label((array) $settings->get('jobs.estimate_aging_statuses', $user->organization))
+                        .' (set for the whole organization), so a rule can act on them. Changes nothing by itself.'],
+            ],
+        ];
+    }
+
+    /** Where a setting's value comes from for this place: franchise, company, parent company, organization, or default. */
+    private function setAt(string $key, \Illuminate\Database\Eloquent\Model $place): string
+    {
+        $chain = match (true) {
+            $place instanceof \App\Models\Franchise => array_filter([$place, $place->company, $place->company?->parent, $place->organization]),
+            $place instanceof \App\Models\Company => array_filter([$place, $place->parent, $place->organization]),
+            default => [$place],
+        };
+        foreach ($chain as $link) {
+            if (\App\Models\Setting::query()->where('key', $key)->where('scope_type', $link->getMorphClass())->where('scope_id', $link->getKey())->exists()
+                || \App\Models\Setting::query()->where('key', $key)->where('scope_type', strtolower(class_basename($link)))->where('scope_id', $link->getKey())->exists()) {
+                return strtolower(class_basename($link)).': '.($link->name ?? '');
+            }
+        }
+
+        return 'default';
+    }
+
+    private function conditionsSentence(?array $conditions): string
+    {
+        $parts = [];
+        foreach ((array) ($conditions['all'] ?? $conditions['any'] ?? []) as $c) {
+            $value = is_array($c['value'] ?? null) ? implode(' or ', $c['value']) : (string) ($c['value'] ?? '');
+            $field = str_replace('_', ' ', (string) ($c['field'] ?? 'value'));
+            $parts[] = $field.' '.match ($c['op'] ?? 'eq') { 'eq' => 'is', 'neq' => 'is not', 'contains' => 'contains', 'in' => 'is one of', default => $c['op'] }.' '.($field === 'status' ? $this->label($value) : $value);
+        }
+
+        return $parts === [] ? 'Always.' : 'When '.implode(isset($conditions['any']) ? ' or ' : ' and ', $parts).'.';
+    }
+
+    private function actionSentence(array $a): string
+    {
+        return match ($a['type'] ?? '') {
+            'workiz.job_update' => 'In Workiz: '.implode('; ', array_filter([
+                filled($a['status'] ?? null) ? 'set status '.$a['status'] : null,
+                filled($a['sub_status'] ?? null) ? 'sub-status '.$a['sub_status'] : null,
+                filled($a['tags'] ?? null) ? 'add tags '.(is_array($a['tags']) ? implode(', ', $a['tags']) : $a['tags']) : null,
+                ! empty($a['unschedule']) ? 'remove the scheduled time' : null,
+            ])).'.',
+            'notify' => (! empty($a['to_job_technicians']) ? "Tell the job's technician" : 'Send a notification').': "'.($a['message'] ?? '').'".',
+            'task.create' => 'Add a Task Board card "'.($a['title'] ?? '').'"'.(filled($a['group'] ?? null) ? ' to the "'.$a['group'].'" group' : '')
+                .' on the job\'s branch board'.(! empty($a['values']) ? ', filling '.implode(', ', array_keys((array) $a['values'])) : '').'.',
+            default => ucfirst(str_replace(['.', '_'], ' ', (string) ($a['type'] ?? 'step'))).'.',
+        };
+    }
+
+    /** The earliest moment any of these jobs entered its current status: its last status change, else its creation. */
+    private function enteredAt(\Illuminate\Database\Eloquent\Builder $jobs): ?string
+    {
+        $rows = $jobs->get(['id', 'created_at']);
+        if ($rows->isEmpty()) {
+            return null;
+        }
+        $changed = AutomationEvent::query()->where('event_key', 'job.status_changed')->where('subject_type', Job::class)
+            ->whereIn('subject_id', $rows->modelKeys())->groupBy('subject_id')->selectRaw('subject_id, MAX(occurred_at) at')->pluck('at', 'subject_id');
+
+        return $rows->map(fn (Job $j) => (string) ($changed[$j->id] ?? $j->created_at))->min();
     }
 
     private function pmUser(Request $request)
