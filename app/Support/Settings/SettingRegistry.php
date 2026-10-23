@@ -1181,6 +1181,27 @@ class SettingRegistry
                 help: 'Somebody with "Correct reports" can reply to a report draft in their own words, such as '
                     .'"leave out job 4512". AI reads it, the bot repeats the change back, and nothing changes until they answer YES.',
             ),
+            // The Chimney Tech Assistant (2026-10-23, tech-assistant.html).
+            new SettingDefinition(
+                key: 'ai_assistance.tech_mode',
+                label: 'Tech assistant',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Staff parts and unit questions, and rating-plate photos, are answered from the Parts list and Manuals, '
+                    .'with an ORDER CHECK. Off, the assistant answers from the Library only.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.tech_prompt',
+                label: 'Tech assistant instructions',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Extra instructions added to the tech assistant\'s rules, such as preferred suppliers. '
+                    .'They cannot switch off its no-guessing rule.',
+            ),
         ];
     }
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
+use App\Http\Controllers\Api\TechAssistantController;
 use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
@@ -201,6 +202,7 @@ use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Http\Controllers\Api\WorkizWebSessionController;
@@ -486,6 +488,14 @@ Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'ver
 Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.whatsapp.webhook');
+
+/*
+| Telegram - the staff Tech Assistant bot. Unauthenticated in the session
+| sense; the X-Telegram-Bot-Api-Secret-Token header is checked in the controller.
+*/
+Route::post('v1/telegram/webhook', TelegramWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('telegram.webhook');
 
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
@@ -1889,6 +1899,20 @@ Route::prefix('v1')
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);
+        // The Chimney Tech Assistant (2026-10-23): Parts, Manuals and Answers
+        // tabs - read on each tab, written under `ai_assistance.manage`.
+        Route::get('ai-assistance/parts', [TechAssistantController::class, 'parts'])->middleware('permission:ai_assistance.parts.view');
+        Route::get('ai-assistance/manuals', [TechAssistantController::class, 'manuals'])->middleware('permission:ai_assistance.manuals.view');
+        Route::get('ai-assistance/answers', [TechAssistantController::class, 'answers'])->middleware('permission:ai_assistance.answers.view');
+        Route::middleware('permission:ai_assistance.manage')->group(function () {
+            Route::post('ai-assistance/parts', [TechAssistantController::class, 'storePart']);
+            Route::patch('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::put('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::delete('ai-assistance/parts/{part}', [TechAssistantController::class, 'destroyPart']);
+            Route::post('ai-assistance/manuals', [TechAssistantController::class, 'storeManual']);
+            Route::delete('ai-assistance/manuals/{manual}', [TechAssistantController::class, 'destroyManual']);
+            Route::post('ai-assistance/answers/{answer}/review', [TechAssistantController::class, 'review']);
+        });
         // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
         Route::middleware('permission:ai_assistance.manage')->group(function () {
             Route::apiResource('ai-assistance/whatsapp-groups', WhatsAppGroupsController::class)
