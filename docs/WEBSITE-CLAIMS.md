@@ -3065,3 +3065,17 @@ Production `/download/windows.json` 0.0.0489 at `b28f1c9e8`. Before this edit al
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
 directory 1.10.0 (widgets row stays held). Publish asked, and `0135`'s counts re-asked, as `0136`.
+
+## 2026-10-24: 0.0.0490 live, nothing on the site went false, `/privacy/` edit still unpublished
+
+Production `/download/windows.json` 0.0.0490 at `38beebb10` (only the PM review-reason
+filter: `ecba203c9`, `88a32efb0`; no sentence on the site touched). 13 of 15 live `www/`
+files byte-identical to the repo; `/privacy/` and `sitemap.xml` match `e8403d2f5^` exactly,
+so they are yesterday's tech-assistant/Telegram edit not yet published, not a revert:
+`e8403d2f5` was committed 23:06 UTC, after the 0.0.0490 publish (`Last-Modified` 22:11 UTC).
+No release since, and `0136` (publish + `0135` counts) is still unanswered in the inbox, so
+no new ask was filed; the next release of `main` publishes it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0461.
