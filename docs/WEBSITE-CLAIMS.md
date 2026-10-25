@@ -3079,3 +3079,15 @@ no new ask was filed; the next release of `main` publishes it.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
 `resultCount` 1, 0.0.0461.
+
+## 2026-10-25: nothing shipped, `/privacy/` edit ~48h unpublished
+
+Production `/download/windows.json` still 0.0.0490 at `38beebb10`; `main` gained nothing
+since `3844c4096`. 13 of 15 live `www/` files byte-identical to the repo; `/privacy/` and
+`sitemap.xml` still exactly `e8403d2f5^` (`Last-Modified` 10-23 22:11 UTC) — the same
+unpublished tech-assistant/Telegram edit, not a revert. `0136` still unanswered in the
+inbox; not re-filed, the next release of `main` publishes it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0461.
