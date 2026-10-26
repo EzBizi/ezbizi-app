@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0493',
+      date: '26 Oct 2026',
+      items: [
+        'Project Management is now Project Management - 1. A new Project Management - 2 lists every job done pending approval: Job ID, Customer, Status, Tags, Address, Money pending and Money owed.',
+        'Work Hours › Paid Time Off › Requests: ask for days off on a calendar (half days too) and see what would be left; whoever can edit paid time off for you gets it under Waiting for you to approve, or deny with a reason. Approved days count as used.',
+        'Inspection › Testing: try any form, even an unpublished draft, as a technician would, with a Why panel for every screen and question and a report preview. Nothing is saved.',
+        'Inspection reports look like A1\'s: a logo header, an overall Pass or Fail, a badge on every finding and a summary page; the A1 form matches the one technicians use today.',
+        'Customer Experience › Reviews: this month and last month\'s average and count, and a Low rating filter.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0492',
       date: '26 Oct 2026',
       items: [
