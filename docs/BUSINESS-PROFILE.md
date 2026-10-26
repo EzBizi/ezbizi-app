@@ -148,9 +148,17 @@ Access*. Signed in as an account with a linked profile.
 
 ## 8 · Outstanding
 
-- **Watch `info@ezbizi.com`** for Google's questions on case `6-2027000041783`;
-  one left unanswered stalls the application.
-- If rejected on profile age, re-file after **24 October 2026**.
+- **RE-FILED 2026-10-26 as `info@ezbizi.com`: case `3-3702000041562`**, read off
+  the confirmation screen (*"review time is approximately 7–10 business days"*;
+  *"submit only one request"*). Workflow 16726127: confirm account → profile
+  "EzBizi, 800 SE 4th Ave #107, Verified" → project number `247590132639`,
+  website `https://www.ezbizi.com/` (live, 200), reason text in
+  `H:\Development\Leads\GBP-API-APPLICATION-2026-10-26.md` → verified 60 days:
+  Yes → allowlisted project: No. **The last Continue submits; there is no
+  review page.** File nothing else for this project.
+- **Watch the quota, not the inbox:** Business Information API "Requests per
+  minute" on `ezbizi-506117` — 0 = not yet, 300 = approved. Watch
+  `info@ezbizi.com` for Google's questions on the new case.
 - Settle the storage question in [Reviews §5](REVIEWS.md) before approval —
   the form's *General API Question* option costs nothing.
 
