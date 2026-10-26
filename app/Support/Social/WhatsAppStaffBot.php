@@ -22,6 +22,7 @@ use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\ReportAsk;
 use App\Support\Ai\ReportCorrection;
+use App\Support\Ai\StaffAnswer;
 use App\Support\Assistant\AssistantBrain;
 use App\Support\Assistant\TechAssistant;
 use App\Support\Settings\SettingsResolver;
@@ -178,7 +179,7 @@ final class WhatsAppStaffBot
         }
 
         // "new job", or a parts / unit question, from staff: the tech assistant.
-        if ($techMode && $text !== '' && TechAssistant::looksTechnical($text)) {
+        if ($techMode && $text !== '' && StaffAnswer::isPartsQuestion($text)) {
             AnswerWhatsAppWithTech::dispatch($number->id, $to, $viewer->getKey(), $text, null);
 
             return;
@@ -667,45 +668,48 @@ final class WhatsAppStaffBot
         ], $body);
     }
 
-    /** AnswerWhatsAppWithAi's half: Grok's answer, or the usual "nothing matched" menu. */
+    /**
+     * AnswerWhatsAppWithAi's half. Staff get StaffAnswer, the same brain as
+     * the AI tab and Telegram (Jose, 2026-10-26: one question, one answer);
+     * a stranger gets the Library only. One reply, or the "nothing matched" menu.
+     */
     public function aiReply(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
     {
         $organization = Organization::findOrFail($number->organization_id);
 
-        // A question about the figures, from someone who may read Reports
-        // (Jose, 2026-10-13, Rodrigo's report-on-request). The whole reply
-        // fits the job's 75 s (AnswerWhatsAppWithAi): the Library gets what
-        // the figures left, and nothing when under 10 s remain.
-        $started = microtime(true);
-        if ($viewer?->hasPermission('reports.view')) {
-            $figures = app(ReportAsk::class)->answer($organization, $query);
-            if ($figures !== null) {
-                $this->text($number, $to, $figures."\n\n_From EzBizi Reports, written by AI._", preview: false);
-
-                return;
+        if ($viewer === null) {
+            try {
+                $answer = $this->brain->aiAnswer(null, $organization, $query, 60, forWhatsApp: true);
+            } catch (\RuntimeException) {
+                $answer = null;
             }
-        }
-
-        $left = min(60, 70 - (int) ceil(microtime(true) - $started));
-        try {
-            $answer = $left >= 10 ? $this->brain->aiAnswer($viewer, $organization, $query, $left, forWhatsApp: true) : null;
-        } catch (\RuntimeException) {
-            $answer = null;
-        }
-
-        if ($answer === null && $viewer !== null) {
-            // Not in the Library: staff get the app's own data, read-only (AppAsk), in a job of its own.
-            AnswerWhatsAppFromApp::dispatch($number->id, $to, $viewer->id, $query);
+            $answer === null
+                ? $this->nothingMatched($number, $to, null, $query)
+                : $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
 
             return;
         }
-        if ($answer === null) {
+
+        try {
+            // 80 s: inside AnswerWhatsAppWithAi's 85 s and the queue's 90 s retry_after.
+            $found = StaffAnswer::answer($viewer, $organization, $query, 'whatsapp', 80);
+        } catch (\RuntimeException) {
+            $this->text($number, $to, "\u{26A0}\u{FE0F} AI could not answer just now. Try again in a minute.", preview: false);
+
+            return;
+        }
+
+        if ($found === null) {
             $this->nothingMatched($number, $to, $viewer, $query);
 
             return;
         }
 
-        $this->text($number, $to, $answer['reply']."\n\n_Answered by AI from the Library._", preview: false);
+        $this->text($number, $to, match ($found['source']) {
+            StaffAnswer::TECH => $found['reply'],
+            StaffAnswer::APP => $found['reply']."\n\n_From EzBizi, read by AI with your access._",
+            default => $found['reply']."\n\n_Answered by AI from the Library._",
+        }, preview: false);
     }
 
     public static function isCommand(string $query): bool
@@ -810,14 +814,6 @@ final class WhatsAppStaffBot
             $reply = AppAsk::answer($viewer, $query);
         } catch (\RuntimeException) {
             $reply = null;
-        }
-
-        // Nothing in the Library or the app: the tech assistant, when it is on.
-        if ($reply === null && GrokCli::configured()
-            && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id))) {
-            $this->techReply($number, $to, $viewer, $query, null);
-
-            return;
         }
 
         $reply === null

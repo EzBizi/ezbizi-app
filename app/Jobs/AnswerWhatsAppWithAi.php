@@ -22,7 +22,7 @@ class AnswerWhatsAppWithAi implements ShouldQueue
 
     public int $tries = 1;   // a retry would answer twice
 
-    public int $timeout = 75;   // under the queue's 90 s retry_after
+    public int $timeout = 85;   // under the queue's 90 s retry_after
 
     public function __construct(
         public string $numberId,
