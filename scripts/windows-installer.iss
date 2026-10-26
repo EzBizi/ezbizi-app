@@ -13,8 +13,11 @@
 ; installs after a SmartScreen warning — a worse first impression, but a working
 ; one, and it costs no code signing certificate to find out.
 ;
-; ponytail: unsigned. Buy an EV code signing certificate and add SignTool here
-; when the SmartScreen warning starts costing more than the certificate.
+; Signed since 26 Oct 2026 with the DigiCert "EzBizi LLC" certificate on the
+; SafeNet token. release.sh signs ezbizi.exe before this runs and the finished
+; installer after it, so Inno's own SignTool is not used here.
+; ponytail: the uninstaller Inno writes stays unsigned. It is a per-user install,
+; so no UAC prompt shows it. Move signing to Inno's SignTool= if that changes.
 
 #ifndef AppVersion
   #error AppVersion must be passed with /DAppVersion=

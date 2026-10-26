@@ -2965,6 +2965,14 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 146 · Work Hours › Paid Time Off › Requests — **sent 2026-10-26 — Jose: "looks good" (1 and 4)** (`docs/previews/pto-requests-layouts.html`)
+
+HR relayed Jose (staff request PTO, approvers decide). **1** (recommended) a Balances · Requests segment inside Paid Time Off with a waiting count; Waiting for you (approvers): person, grouped days with ½, total, note, "Approving leaves N", Approve / Deny with an inline required reason; Request time off inline: the Record-days-off calendar, balance before/after, note, Send (blocked with a sentence when over the balance unless allowed); My requests with status chips and Cancel while waiting; search + status filter. **2** own tab. **3** per-person panel. Phone **4** / **5** / **6**.
+
+### 145 · Customer Experience › Reviews as an inbox — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/reviews-inbox-layouts.html`)
+
+Jose: "I feel this screen can look better." **1** (recommended) summary strip (average rating vs last month, new this month, unanswered, 1-2 star to answer; each filters); search + quick chips (Unanswered, 1-2 stars, This week) + More filters; list (avatar, name, stars red when low, unanswered dot, location tag, time, one line; match shown only when useful); right pane (full review, match/link, technician named, reply box with Draft with AI + Post, notes, status). Board stays a toggle. **2** card grid. **3** cleaned table. Phone **4** / **5** / **6**.
+
 ### 144 · Project Management overhaul 2: one frame, the flow, a Rules tab — **sent 2026-10-23 — no answer in 10 min, went with 1 and 4; built 64cd5555a** (`docs/previews/pm-overhaul-2-layouts.html`)
 
 Jose: "impossible to understand … do an overhaul" + a Rules tab. Audit: scratchpad/pm_audit/AUDIT.md (6 contradictions sent to Jobs; Action 1 is OFF in production). **1** (recommended) one frame on all tabs (purpose sentence + How this is measured, scope bar, filter bar in fixed order); stages as one ordered flow with one colour each; ⓘ on every number; tabs Overview · Jobs · Assignments · Repair team (Reports+Table merged) · Rules (new, live, read-only, links to Settings/Automations) · Logs · Settings; Needs attention cards. **2** keep the 7 tabs + frame + Rules. **3** guided home + More. Phone **4** / **5** / **6**.

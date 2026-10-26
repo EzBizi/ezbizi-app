@@ -413,6 +413,37 @@ run() {
   "$@"
 }
 
+# ── Windows code signing ─────────────────────────────────────────
+#
+# The EzBizi LLC certificate (DigiCert, valid to 25 Oct 2027) lives on the
+# SafeNet eToken, the USB key, next to a dead A1 Chimney one. So the
+# certificate is picked by NAME. /a would let signtool choose, and it can choose
+# A1.
+#
+# SafeNet asks for the token password in a popup. If nobody is there to type it,
+# or the token is not plugged in, this gives up after 5 minutes and the build
+# ships UNSIGNED with a warning. Jose, 26 Oct: an update that never ships is
+# worse than one with a SmartScreen warning. Turning on "single logon" in
+# SafeNet Authentication Client makes it ask once per Windows session rather
+# than once per file.
+SIGNTOOL=$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/signtool.exe 2>/dev/null | sort -V | tail -1 || true)
+UNSIGNED=()
+sign() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "   would sign $1"
+    return 0
+  fi
+  # MSYS_NO_PATHCONV for the same reason as the ISCC call below: /n, /fd and /tr
+  # would otherwise be rewritten into Windows paths.
+  if [ -n "$SIGNTOOL" ] && timeout 300 env MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+      "$SIGNTOOL" sign /n "EzBizi LLC" /fd sha256 /tr http://timestamp.digicert.com /td sha256 \
+      "$(cygpath -w "$1")"; then
+    return 0
+  fi
+  echo "   ⚠ $(basename "$1") NOT signed: token not plugged in, password not entered, or no signtool" >&2
+  UNSIGNED+=("$(basename "$1")")
+}
+
 mkdir -p "$DIST_WINDOWS" "$DIST_ANDROID" "$DIST_APPLE"
 
 # ── 1. web ───────────────────────────────────────────────────────
@@ -464,6 +495,11 @@ if wants windows; then
     exit 1
   fi
 
+  # The app itself first, so the copy the installer drops on disk is signed too,
+  # not only the installer that carries it.
+  echo "→ windows — signing ezbizi.exe"
+  sign "$WIN_BUILD/ezbizi.exe"
+
   echo "→ windows — wrapping into an installer"
   # Two separate Windows/POSIX boundaries here, and both bite.
   #
@@ -502,6 +538,10 @@ if wants windows; then
     echo "✗ Inno reported success but $WIN_EXE is not there." >&2
     exit 1
   fi
+
+  # Before the upload below, so the installer that gets published is the signed one.
+  echo "→ windows — signing the installer"
+  sign "$WIN_EXE"
 
   # ── do not advertise a client the API cannot serve ───────────────
   #
@@ -647,6 +687,11 @@ echo
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "✓ dry run — nothing was built"
   exit 0
+fi
+
+if [ ${#UNSIGNED[@]} -gt 0 ]; then
+  echo "⚠ shipped UNSIGNED (Windows will show a SmartScreen warning): ${UNSIGNED[*]}"
+  echo "  Plug in the EzBizi token and run --only windows to replace it with a signed build."
 fi
 
 if [ ${#FAILED[@]} -gt 0 ]; then

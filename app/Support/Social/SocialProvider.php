@@ -111,6 +111,11 @@ enum SocialProvider: string
     // like Mailchimp, not a network anybody posts to.
     case WhatsApp = 'whatsapp';
 
+    // The organization's own Telegram bot for the staff Tech Assistant
+    // (docs/TELEGRAM-BOT.md), connected by pasting its BotFather token. One
+    // per organization; its webhook secret is what routes an update to it.
+    case Telegram = 'telegram';
+
     public function label(): string
     {
         return match ($this) {
@@ -133,6 +138,7 @@ enum SocialProvider: string
             self::FacebookAds => 'Facebook Ads',
             self::RingCentral => 'RingCentral',
             self::WhatsApp => 'WhatsApp',
+            self::Telegram => 'Telegram',
         };
     }
 
@@ -164,6 +170,7 @@ enum SocialProvider: string
             self::FacebookAds => 'facebook-ads',
             self::RingCentral => 'ringcentral',
             self::WhatsApp => 'whatsapp',
+            self::Telegram => 'telegram',
         };
     }
 
@@ -189,6 +196,7 @@ enum SocialProvider: string
             self::WorkizWeb => 'password',
             self::Airtable => 'api_key',
             self::RingCentral => 'api_key',
+            self::Telegram => 'api_key',
             default => 'sign_in',
         };
     }
@@ -225,7 +233,7 @@ enum SocialProvider: string
      */
     public static function sendingProviders(): array
     {
-        return [self::Mailchimp, self::WhatsApp];
+        return [self::Mailchimp, self::WhatsApp, self::Telegram];
     }
 
     /**
@@ -397,6 +405,10 @@ enum SocialProvider: string
             // WhatsApp module of its own to ask instead.
             self::WhatsApp => 'phone.edit',
 
+            // The bot is the staff Tech Assistant, which AI Assistance owns;
+            // `ai_assistance.manage` is that module's write grant.
+            self::Telegram => 'ai_assistance.manage',
+
             default => 'marketing.edit',
         };
     }
@@ -442,6 +454,7 @@ enum SocialProvider: string
             self::FacebookAds => 'connect a Facebook Ads account',
             self::RingCentral => 'connect a RingCentral account',
             self::WhatsApp => 'connect a WhatsApp number',
+            self::Telegram => 'connect a Telegram bot',
             default => 'connect a social account',
         };
     }
@@ -576,6 +589,12 @@ enum SocialProvider: string
                     .'receives on it under your business name.',
                     $name,
                 ),
+
+            self::Telegram => sprintf(
+                '%s is connected to EzBizi. Staff share their phone number with it once, '
+                .'and its answers appear in AI Assistance › Answers.',
+                $name,
+            ),
 
             // The nine publishing networks. "Page" is their word and Social
             // Media Management is genuinely where they are used.

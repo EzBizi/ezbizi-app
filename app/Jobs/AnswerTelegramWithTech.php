@@ -21,7 +21,7 @@ class AnswerTelegramWithTech implements ShouldQueue
     // Same queues as AnswerWhatsAppWithTech: a photo is a tool turn.
     public int $timeout = 75;
 
-    public function __construct(public string $userId, public int $chatId, public string $text, public ?string $fileId = null)
+    public function __construct(public string $userId, public int $chatId, public string $text, public ?string $fileId = null, public ?string $organizationId = null)
     {
         if ($fileId !== null) {
             $this->timeout = 150;
@@ -31,7 +31,7 @@ class AnswerTelegramWithTech implements ShouldQueue
 
     public function handle(TelegramStaffBot $bot, TenantContext $tenant): void
     {
-        $organization = Organization::withoutGlobalScopes()->findOrFail(config('services.telegram.org_id'));
+        $organization = Organization::withoutGlobalScopes()->findOrFail($this->organizationId ?? config('services.telegram.org_id'));
 
         $tenant->run($organization, fn () => $bot->techReply(
             $organization, User::query()->withoutGlobalScopes()->findOrFail($this->userId), $this->chatId, $this->text, $this->fileId,

@@ -65,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
             \App\Support\Integrations\Dependents\Counters\AirtableTablesCounter::class,
             \App\Support\Integrations\Dependents\Counters\PhoneNumbersCounter::class,
             \App\Support\Integrations\Dependents\Counters\WorkspaceMailboxesCounter::class,
+            \App\Support\Integrations\Dependents\Counters\TelegramLinksCounter::class,
         ], \App\Support\Integrations\Dependents\DependentRegistry::TAG);
 
         // Bedrock, for what a model can say about a lead. No keys, no client:

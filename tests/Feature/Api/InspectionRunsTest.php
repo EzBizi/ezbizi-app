@@ -42,6 +42,38 @@ class InspectionRunsTest extends TestCase
             ->assertJsonPath('message', 'Client not found');
     }
 
+    /**
+     * A phone typed any way finds its client on digits, and each suggestion
+     * carries the one-line address and the branch for "Company · Branch".
+     * A name that shares no digits is not matched by the phone path.
+     */
+    public function test_search_finds_a_client_by_phone_and_says_where_they_are(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $tech = $this->tech($tenant);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            \App\Models\Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-1',
+                'name' => 'Rosa Diaz', 'phone' => '+13057242199', 'address_line1' => '14 Maple St',
+                'city' => 'Miami', 'state' => 'FL', 'postal_code' => '33180']);
+            \App\Models\Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => 'C-2',
+                'name' => 'Other Person', 'phone' => '+12125550000']);
+        });
+
+        $data = $this->signedInAs($tech)
+            ->getJson('/api/v1/inspections/search?q='.urlencode('(305) 724-2199'))
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $data);
+        $this->assertSame('Rosa Diaz', $data[0]['customer_name']);
+        $this->assertSame('14 Maple St, Miami, FL 33180', $data[0]['address']);
+        $this->assertSame(['id' => $tenant['franchise']->id, 'name' => $tenant['franchise']->name], $data[0]['franchise']);
+
+        $byName = $this->signedInAs($tech)->getJson('/api/v1/inspections/search?q=Rosa')->json('data');
+        $this->assertSame('14 Maple St, Miami, FL 33180', $byName[0]['address'] ?? null);
+    }
+
     public function test_a_second_start_offers_resume_instead_of_a_unique_index_error(): void
     {
         $tenant = $this->provisionTenant('Alpha');
