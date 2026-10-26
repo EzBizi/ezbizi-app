@@ -91,9 +91,10 @@ void main() {
 
     for (final label in [
       'Reporting',
-      'At a job',
       'Stopped too long',
-      'Not reporting',
+      'Not reported',
+      'Lost signal',
+      'Offline',
       'Job with a technician',
       'Job not assigned',
       'Job you opened',

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/theme.dart';
+import 'field_status.dart';
 
 /// The pieces drawn over the Field map: the floating list (people and jobs),
 /// the technician bar, and the job card a dispatcher answers an ETA call from.
@@ -16,21 +17,49 @@ class FieldPersonPin extends StatelessWidget {
     required this.name,
     required this.colour,
     required this.selected,
+    this.dashed = false,
   });
 
   final String name;
   final Color colour;
   final bool selected;
 
+  /// Lost signal: the ring is dashed.
+  final bool dashed;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    // A round ring with initials, never a job's filled square; the full
+    // name only when selected or hovered, so pins in one town do not stack
+    // their labels on each other (Jose, 2026-10-26).
+    final ring = CustomPaint(
+      painter: FieldRingPainter(
+        colour: colour,
+        fill: scheme.surface,
+        dashed: dashed,
+        width: 3,
+      ),
+      child: SizedBox.square(
+        dimension: selected ? 34 : 28,
+        child: Center(
+          child: Text(
+            fieldInitials(name),
+            style: TextStyle(
+              fontSize: selected ? 12 : 10,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.location_on, size: selected ? 38 : 30, color: colour),
-        _Label(text: name, bold: selected, scheme: scheme),
+        Tooltip(message: name, child: ring),
+        if (selected) _Label(text: name, bold: true, scheme: scheme),
       ],
     );
   }
@@ -174,7 +203,7 @@ class FieldMapPanel extends StatelessWidget {
     final jobsTab = showJobs && tab == 'jobs';
     // People are searched by name; the list grows as technicians join.
     final shownPeople = [
-      for (final p in people)
+      for (final p in fieldSortByAttention(people))
         if (q.isEmpty ||
             '${(p['user'] as Map)['name']}'.toLowerCase().contains(q))
           p,
@@ -396,7 +425,10 @@ class _PersonRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Dot(colour: colour),
+          _Dot(
+            colour: colour,
+            dashed: fieldPersonState(person) == FieldPersonState.lostSignal,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -416,7 +448,14 @@ class _PersonRow extends StatelessWidget {
                     style: muted,
                   ),
                 if (seen == null)
-                  Text('Has not reported yet', style: muted)
+                  Text(
+                    fieldPersonState(person) == FieldPersonState.offline
+                        ? 'Offline · has not reported yet'
+                        : 'Has not reported yet',
+                    style: muted?.copyWith(
+                      color: fieldPersonState(person).text(context),
+                    ),
+                  )
                 else
                   Text(
                     [
@@ -437,16 +476,19 @@ class _PersonRow extends StatelessWidget {
                   Text(
                     'Stopped too long',
                     style: muted?.copyWith(
-                      color: fieldText(context, EzBiziTheme.fieldRed),
+                      color: FieldPersonState.stopped.text(context),
                     ),
                   ),
                 if (person['silent'] == true)
                   Text(
                     'Lost signal',
                     style: muted?.copyWith(
-                      color: fieldText(context, EzBiziTheme.fieldYellow),
+                      color: FieldPersonState.lostSignal.text(context),
                     ),
                   ),
+                if (seen != null &&
+                    fieldPersonState(person) == FieldPersonState.offline)
+                  Text('Offline', style: muted),
                 if (day != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -589,18 +631,30 @@ class _Selectable extends StatelessWidget {
 }
 
 class _Dot extends StatelessWidget {
-  const _Dot({required this.colour});
+  const _Dot({required this.colour, this.dashed = false});
 
   final Color colour;
+  final bool dashed;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(top: 5),
-    child: Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
-    ),
+    child: dashed
+        ? CustomPaint(
+            key: const ValueKey('field-dot-dashed'),
+            painter: FieldRingPainter(
+              colour: colour,
+              fill: colour.withValues(alpha: 0.35),
+              dashed: true,
+              width: 2,
+            ),
+            child: const SizedBox.square(dimension: 10),
+          )
+        : Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+          ),
   );
 }
 
@@ -741,7 +795,10 @@ class FieldPersonBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
         child: Row(
           children: [
-            _Dot(colour: colour),
+            _Dot(
+              colour: colour,
+              dashed: fieldPersonState(person) == FieldPersonState.lostSignal,
+            ),
             const SizedBox(width: 8),
             Text(
               '${(person['user'] as Map)['name']}',
@@ -1023,7 +1080,6 @@ class FieldMapLegend extends StatelessWidget {
     final scheme = theme.colorScheme;
     final text = theme.textTheme.bodySmall;
 
-    Widget pin(Color c) => Icon(Icons.location_on, size: 16, color: c);
     Widget job(Color c) => Container(
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
@@ -1045,10 +1101,21 @@ class FieldMapLegend extends StatelessWidget {
     );
 
     final items = <(Widget, String)>[
-      (pin(EzBiziTheme.fieldGreen), 'Reporting'),
-      (pin(EzBiziTheme.fieldBlue), 'At a job'),
-      (pin(EzBiziTheme.fieldRed), 'Stopped too long'),
-      (pin(EzBiziTheme.fieldYellow), 'Not reporting'),
+      for (final st in const [
+        FieldPersonState.ongoing,
+        FieldPersonState.stopped,
+        FieldPersonState.notReported,
+        FieldPersonState.lostSignal,
+        FieldPersonState.offline,
+      ])
+        (
+          FieldStateRing(
+            key: ValueKey('field-legend-${st.name}'),
+            state: st,
+            size: 14,
+          ),
+          st.label,
+        ),
       (
         Container(
           width: 14,
