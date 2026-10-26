@@ -158,4 +158,23 @@ class ReviewCasesTest extends TestCase
 
         $this->assertSame('done', $mine->fresh()->status, 'a status set in Reviews wins');
     }
+
+    /** UI design 145: rating=low and this month / last month, under the filters but their own dates. */
+    public function test_low_ratings_and_month_stats(): void
+    {
+        $this->travelTo(now()->setDate(2026, 10, 15));
+        $this->review(['rating' => 5, 'loc' => '2']);
+        $this->review(['rating' => 2]);
+        $this->review(['rating' => 4, 'reviewed_at' => now()->subMonth()]);
+        $this->review(['rating' => 1, 'reviewed_at' => now()->subMonths(3)]);
+
+        $this->assertCount(2, $this->list(['rating' => 'low'])['data']);
+
+        $stats = $this->list(['from' => now()->toDateString()])['meta']['stats'];
+        $this->assertSame(['average' => 3.5, 'count' => 2], $stats['this_month'], 'the date filter does not narrow the stats');
+        $this->assertEquals(['average' => 4.0, 'count' => 1], $stats['last_month']);
+
+        $this->assertEquals(['average' => 5.0, 'count' => 1], $this->list(['location' => 'locations/2'])['meta']['stats']['this_month'],
+            'other filters do');
+    }
 }
