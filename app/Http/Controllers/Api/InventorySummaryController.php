@@ -39,14 +39,16 @@ class InventorySummaryController extends Controller
         $counts = InventorySummary::counts($user, $scope);
         $withMoney = $user->hasPermission('inventory.financials');
 
+        $period = DashboardPeriod::for($user, $periodKey);
+
         return response()->json([
             'health' => $this->health($counts, $withMoney),
             'warnings' => InventorySummary::warnings($user, $scope, $counts, $withMoney),
-            'movement' => InventorySummary::movement(
-                $user,
-                $scope,
-                DashboardPeriod::for($user, $periodKey),
-            ),
+            'movement' => [
+                ...InventorySummary::movement($user, $scope, $period),
+                'previous' => InventorySummary::previousTotals($user, $scope, $period),
+            ],
+            ...InventorySummary::holdings($user, $scope, $withMoney),
             // movement.points are quantities, always meant as decimals — an
             // integral point (0, or a whole 10) must still arrive as a float
             // so the client never has to guess a mixed-type array's shape.
@@ -74,6 +76,7 @@ class InventorySummaryController extends Controller
             'items' => $counts['items'],
             'locations' => $counts['locations'],
             'open_purchase_orders' => $counts['open_purchase_orders'],
+            'purchase_orders' => ['open' => $counts['open_orders'], 'draft' => $counts['draft_orders']],
             // Each figure carries the list that produced it, so the client links
             // rather than guessing. A figure with no entry here is drawn as text.
             'links' => [
