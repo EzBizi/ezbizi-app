@@ -53,7 +53,7 @@ class InspectionRunsController extends Controller
 
         if (LooksLikeJobNumber::check($q)) {
             $jobs = Job::query()
-                ->with('customer:id,name,number')
+                ->with(['customer', 'franchise:id,name'])
                 ->where('number', $q)
                 ->whereIn('franchise_id', $reachable)
                 ->limit(20)
@@ -72,12 +72,26 @@ class InspectionRunsController extends Controller
                     'job_id' => $job->id,
                     'customer_name' => $job->customer?->name,
                     'job_number' => $job->number,
+                    'address' => self::addressOf($job->customer),
+                    'franchise' => $job->franchise ? ['id' => $job->franchise->id, 'name' => $job->franchise->name] : null,
                 ])->values(),
             ]);
         }
 
+        // A phone number, typed any way ("(305) 724-2199", "305.724.2199"),
+        // matches on digits: phones are stored E.164, so the digits a person
+        // types are a contiguous run of the stored ones. Jobs carry no phone
+        // of their own — a job's phone is its customer's.
+        $digits = preg_replace('/\D+/', '', $q) ?? '';
+        $isPhone = strlen($digits) >= 4 && preg_match('/^[\d\s().+-]+$/', $q) === 1;
+
         $customers = Customer::query()
-            ->where('name', 'like', '%'.addcslashes($q, '%_\\').'%')
+            ->with('owningFranchise:id,name')
+            ->when(
+                $isPhone,
+                fn ($query) => $query->where('phone', 'like', '%'.$digits.'%'),
+                fn ($query) => $query->where('name', 'like', '%'.addcslashes($q, '%_\\').'%'),
+            )
             ->orderBy('name')
             ->limit(20)
             ->get();
@@ -95,8 +109,26 @@ class InspectionRunsController extends Controller
                 'job_id' => null,
                 'customer_name' => $c->name,
                 'job_number' => null,
+                'address' => self::addressOf($c),
+                'franchise' => $c->owningFranchise ? ['id' => $c->owningFranchise->id, 'name' => $c->owningFranchise->name] : null,
             ])->values(),
         ]);
+    }
+
+    /** One line, for a suggestion: "14 Maple St, Miami, FL 33180". */
+    private static function addressOf(?Customer $c): ?string
+    {
+        if ($c === null) {
+            return null;
+        }
+
+        $line = implode(', ', array_filter([
+            $c->address_line1,
+            $c->city,
+            trim(($c->state ?? '').' '.($c->postal_code ?? '')),
+        ], fn ($part) => is_string($part) && trim($part) !== ''));
+
+        return $line === '' ? null : $line;
     }
 
     public function startable(Request $request): JsonResponse
