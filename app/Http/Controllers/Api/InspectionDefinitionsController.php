@@ -124,7 +124,19 @@ class InspectionDefinitionsController extends Controller
         $this->authorize('view', $inspectionDefinition);
 
         return response()->json([
-            'data' => $this->present($inspectionDefinition->load('currentVersion'), detailed: true),
+            'data' => [
+                ...$this->present($inspectionDefinition->load('currentVersion'), detailed: true),
+                // The Testing tab's version picker: every published version,
+                // newest first, by the id rehearse takes.
+                'versions' => $inspectionDefinition->versions()
+                    ->get(['id', 'version', 'created_at', 'screens'])
+                    ->map(fn (InspectionDefinitionVersion $v) => [
+                        'id' => $v->id,
+                        'version' => $v->version,
+                        'published_at' => $v->created_at?->toIso8601String(),
+                        'screens' => $v->screens ?? [],
+                    ])->values(),
+            ],
         ]);
     }
 

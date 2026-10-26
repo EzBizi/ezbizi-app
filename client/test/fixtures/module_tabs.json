@@ -137,7 +137,8 @@
             "tabs": [
                 "New Inspection",
                 "Generated Reports",
-                "Builder"
+                "Builder",
+                "Testing"
             ]
         },
         "inventory": {
