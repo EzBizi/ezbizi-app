@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0491',
+      date: '26 Oct 2026',
+      items: [
+        'Settings › Integrations › Messaging: connect your Telegram bot by pasting its token. EzBizi checks it, registers it and shows the bot\'s name, whether it needs attention, and which staff have linked it, each with Unlink. Disconnecting asks for your authenticator code.',
+        'Windows: the app and its installer are signed by EzBizi LLC.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0490',
       date: '23 Oct 2026',
       items: [
