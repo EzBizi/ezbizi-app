@@ -93,6 +93,22 @@ final class PendingRegistry
                 missing: fn (Company $c) => blank($c->logo_path),
                 fill: $openCompany,
             ),
+            // Leads: hours nobody chose run on the 8-5 default, and customers
+            // heard "we're closed" at 6 PM (Bar, 2026-10-21). A default is not
+            // a gap to `expected`, so this asks whether anyone set them.
+            new PendingCheck(
+                key: 'leads.office_hours',
+                label: 'Office hours',
+                module: 'leads',
+                scopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['leads.manage'],
+                missing: fn (Model $place) => $this->resolver->sourceOf('leads.office_hours', $place) === null,
+                fill: fn () => [
+                    'kind'        => 'open',
+                    'destination' => 'leads',
+                    'hint'        => 'Open Leads, then Manage, then Office hours.',
+                ],
+            ),
         ];
     }
 
