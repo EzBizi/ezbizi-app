@@ -842,6 +842,7 @@ class SocialPostsApiTest extends TestCase
             ->assertJsonPath('data.0.title', 'Miami Shop')->assertJsonPath('data.0.postable', true)
             ->assertJsonPath('data.0.label', 'Miami Shop · Stamford, CT')
             ->assertJsonPath('data.0.branch', $t['franchise']->name)
+            ->assertJsonPath('data.0.company', $t['company']->name)
             ->assertJsonPath('data.1.postable', false);
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [

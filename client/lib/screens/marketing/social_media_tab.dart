@@ -27,6 +27,7 @@ import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../email/consent_window.dart';
 import 'media_library_panel.dart';
+import 'compose_listings_picker.dart';
 
 /// Marketing › Social Media Management — pages, compose, calendar.
 ///
@@ -1761,6 +1762,16 @@ class _ComposeColumnState extends State<_ComposeColumn> {
   List<Map<String, dynamic>> _places = const [];
   final Set<String> _pickedPlaces = <String>{};
 
+  /// Whether the listings show one by one, remembered per person.
+  static const _listingsExpanded = 'marketing.social.listings_expanded';
+
+  /// What was pressed here, which wins over the saved value until the next
+  /// visit: a refused save must not fold the list shut under the person.
+  bool? _expandedNow;
+  bool get _expanded =>
+      _expandedNow ??
+      widget.session.me?.preferences[_listingsExpanded] == true;
+
   /// The listing's button: none, or BOOK / ORDER / SHOP / LEARN_MORE /
   /// SIGN_UP / CALL. Only asked while a listing is ticked.
   String? _cta;
@@ -2268,51 +2279,19 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           ],
           if (_places.isNotEmpty) ...[
             label('Business Profile listings'),
-            // Which listing each is, grouped by branch (Jose, 2026-10-19:
-            // "They should have their appropiate names like they do in Leads
-            // Manage Connections").
-            for (final (i, branch) in {
-              for (final p in _places) '${p['branch'] ?? ''}',
-            }.indexed) ...[
-              if (branch.isNotEmpty)
-                Padding(
-                  padding: EdgeInsets.only(top: i == 0 ? 0 : 8, bottom: 4),
-                  child: Text(branch, style: theme.textTheme.labelMedium),
-                ),
-            Wrap(
-              key: i == 0 ? const ValueKey('social-places') : null,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final place in _places)
-                  if ('${place['branch'] ?? ''}' == branch)
-                  FilterChip(
-                    key: ValueKey('social-place-${place['id']}'),
-                    showCheckmark: false,
-                    avatar: const SocialNetworkMark(
-                      network: 'google_business_profile',
-                      size: 16,
-                    ),
-                    label: Text(
-                      place['postable'] == false
-                          ? '${place['label'] ?? place['title']} · ${place['state'] ?? 'cannot post'}'
-                          : '${place['label'] ?? place['title']}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    tooltip: place['address'] as String?,
-                    selected: _pickedPlaces.contains(place['id']),
-                    onSelected: _sending
-                        ? null
-                        : (on) => setState(
-                            () => on
-                                ? _pickedPlaces.add('${place['id']}')
-                                : _pickedPlaces.remove(place['id']),
-                          ),
-                  ),
-              ],
+            // One switch, a count and Expand (Jose, 2026-10-26); expanded,
+            // grouped by branch and named by city (Jose, 2026-10-19).
+            ComposeListingsPicker(
+              places: _places,
+              picked: _pickedPlaces,
+              enabled: !_sending,
+              onChanged: () => setState(() {}),
+              expanded: _expanded,
+              onExpandedChanged: (open) {
+                setState(() => _expandedNow = open);
+                widget.session.setPreference(_listingsExpanded, open);
+              },
             ),
-            ],
             if (_pickedPlaces.isNotEmpty) ...[
               const SizedBox(height: 10),
               Wrap(

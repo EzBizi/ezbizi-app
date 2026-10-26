@@ -141,6 +141,16 @@ class PreferencesTest extends TestCase
         $this->assertSame('board', $data['marketing.social.posts_view']);
     }
 
+    /** Jose 2026-10-26: Compose's listings stay expanded or collapsed per person. */
+    public function test_the_compose_listings_expansion_is_remembered(): void
+    {
+        $data = $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['marketing.social.listings_expanded' => true],
+        ])->assertOk()->json('data');
+
+        $this->assertTrue($data['marketing.social.listings_expanded']);
+    }
+
     public function test_a_value_outside_the_permitted_set_is_refused(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [
