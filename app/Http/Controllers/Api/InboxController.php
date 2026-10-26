@@ -43,6 +43,12 @@ class InboxController extends Controller
     /** With a tab chosen, at most this many Gmail pages per inbox per request. */
     private const MAX_PAGES = 4;
 
+    /** Rows asked of each inbox when several are listed together. */
+    private const PER_INBOX_MANY = 10;
+
+    /** Stop asking further inboxes after this long; the rest come on "Older". */
+    private const BUDGET_SECONDS = 20;
+
     public function __construct(
         private readonly MailboxAccess $access,
         private readonly MailboxReaders $readers,
@@ -79,6 +85,18 @@ class InboxController extends Controller
         $errors  = [];
         $found   = [];   // [mailbox, summary]
 
+        /*
+         * All inboxes is ~40 inboxes read one after another, and the gateway
+         * gives up at 60 s (Jose, 2026-10-26: "not loading the all inboxes";
+         * nginx: upstream timed out). Across several inboxes: fewer rows each,
+         * one page each, the cached Inbox listing, and a time budget -- inboxes
+         * not reached are carried in the cursor and read on "Older".
+         */
+        $many     = $mailboxes->count() > 1;
+        $limit    = $many ? self::PER_INBOX_MANY : self::PER_INBOX;
+        $maxPages = $category === null || $many ? 1 : self::MAX_PAGES;
+        $started  = microtime(true);
+
         foreach ($mailboxes as $mailbox) {
             // A paged-out inbox (cursor present, null) has nothing more; on the first page every inbox is asked.
             if ($cursors !== [] && ! array_key_exists($mailbox->id, $cursors)) {
@@ -89,6 +107,12 @@ class InboxController extends Controller
             $cursor = $cursors[$mailbox->id] ?? null;
             $wanted = 0;
 
+            if (microtime(true) - $started > self::BUDGET_SECONDS) {
+                $next[$mailbox->id] = $cursor;   // not reached: asked on the next page
+
+                continue;
+            }
+
             /*
              * A tab is a filter over Gmail's pages, so one page of 25 can hold
              * 24 notifications and 1 person (Jose, 2026-10-22: "emails inboxes
@@ -97,11 +121,16 @@ class InboxController extends Controller
              * ponytail: matches by isBulk before the customer lookup, so a bulk
              * mail from a customer can be counted as a notification here.
              */
-            for ($pages = 0; $pages < ($category === null ? 1 : self::MAX_PAGES); $pages++) {
+            for ($pages = 0; $pages < $maxPages; $pages++) {
                 try {
-                    $page = $search === ''
-                        ? $reader->list($mailbox, $cursor, self::PER_INBOX, self::FOLDERS[$folder])
-                        : $reader->search($mailbox, $search, $cursor, self::PER_INBOX, self::FOLDERS[$folder]);
+                    $page = match (true) {
+                        $search !== '' => $reader->search($mailbox, $search, $cursor, $limit, self::FOLDERS[$folder]),
+                        $folder === 'inbox' => $this->cache->remember(
+                            $mailbox, $cursor, $limit,
+                            fn () => $reader->list($mailbox, $cursor, $limit, 'INBOX'),
+                        ),
+                        default => $reader->list($mailbox, $cursor, $limit, self::FOLDERS[$folder]),
+                    };
                 } catch (CannotReadMailbox $e) {
                     $errors[] = ['mailbox_id' => $mailbox->id, 'address' => $mailbox->address, 'message' => $e->getMessage()];
 
@@ -115,7 +144,7 @@ class InboxController extends Controller
 
                 $cursor = $page->nextCursor;
 
-                if ($cursor === null || $wanted >= self::PER_INBOX) {
+                if ($cursor === null || $wanted >= $limit) {
                     break;
                 }
             }
