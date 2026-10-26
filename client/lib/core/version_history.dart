@@ -19,6 +19,7 @@ class VersionHistory {
       items: [
         'Inspection › New Inspection opens on one search bar that suggests customers, jobs and addresses as you type, with their branch.',
         'Human Resources: each empty pay or terms box on an onboarding shows an example of what goes in it.',
+        'Email: All inboxes loads again. With many inboxes it shows the newest from each straight away and leaves the rest for Older, instead of timing out.',
       ],
     ),
     VersionRelease(
