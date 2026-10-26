@@ -117,6 +117,12 @@ class SettingsVisibilityTest extends TestCase
             // organizations.edit" — which R8 forbids: a wire name on a
             // customer's screen, naming something that appears nowhere in the
             // product and nobody they could go and ask.
+            // A setting this scope cannot hold (a branch-only one such as
+            // invoicing.billing_contact, seen from the organization) has no
+            // reason by design: that is not about this person.
+            if ($setting['editable_here'] === false) {
+                continue;
+            }
             $this->assertNotEmpty($setting['may_edit_reason']);
             $this->assertStringNotContainsString(
                 'organizations.edit',
