@@ -418,6 +418,9 @@ class FieldTest extends TestCase
         $this->assertNull($row['lat']);
         $this->assertNull($row['last_seen_at']);
         $this->assertFalse($row['fresh']);
+        $this->assertFalse($row['should_track'], 'Clocked-in mode and not clocked in: off shift.');
+        $this->mode('always');
+        $this->assertTrue($this->mapRow($this->tech)['should_track']);
     }
 
     public function test_the_map_shows_only_the_roles_settings_tick(): void
