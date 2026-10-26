@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 148 · Services › Catalogue with photos — **sent 2026-10-26** (`docs/previews/services-catalogue-layouts.html`)
+### 148 · Services › Catalogue with photos — **sent 2026-10-26 — Jose: "as u recommend" (1 and 4)** (`docs/previews/services-catalogue-layouts.html`)
 
 Jose: "can we improve this screen, have it show the images as well too" (services already carry photo). **1** (recommended) photo grid grouped by kind/tag with counts, price on the photo, name/number/tags/company, placeholder + Add a photo; search, kind chips, sort, remembered Grid/List toggle; click opens the editor; 5 per row down to 2. **2** list + thumbnail. **3** big gallery. Phone **4** / **5** / **6**.
 
