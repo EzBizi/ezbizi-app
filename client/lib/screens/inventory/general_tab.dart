@@ -11,11 +11,11 @@ import 'stock_join.dart';
 /// request to `GET /inventory/summary`.
 ///
 /// Left: Stock status (one stacked bar) and Needs attention (only the rows
-/// that apply, each with its fix). Right: Movement for the chosen period.
+/// that apply, each with its fix). Right: Movement for the chosen period
+/// against the one before, Stock by location and the top five items.
 ///
-/// Drawn only from what the server sends. Stock by location, top items by
-/// value, movement against the previous period and overdue counts are not in
-/// the payload, so they are not drawn.
+/// Drawn only from what the server sends: a card whose list is missing or
+/// empty is not drawn, and there are no overdue counts to show.
 class InventoryGeneral extends StatefulWidget {
   const InventoryGeneral({
     super.key,
@@ -123,15 +123,21 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
       );
     }
 
-    final status = OverviewSection(
+    final status = _MeasurableSection(
       key: const ValueKey('inventory-general-items'),
       title: 'Stock status',
       child: _StockStatus(health: health),
     );
-    Widget attention({required bool narrow}) => OverviewSection(
+    Widget attention({required bool narrow}) => _MeasurableSection(
       key: const ValueKey('tour-inventory-attention'),
       title: 'Needs attention',
-      child: _attention(context, health, data['warnings'], narrow: narrow),
+      child: _attention(
+        context,
+        health,
+        data['warnings'],
+        data['purchase_orders'],
+        narrow: narrow,
+      ),
     );
     final picker = OverviewPeriodPicker(
       key: const ValueKey('tour-inventory-period'),
@@ -142,6 +148,14 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
       },
     );
     final movementBody = _Movement(raw: data['movement']);
+    final locations = _locationsCard(data['by_location']);
+    final top = _topItemsCard(data['top_items']);
+    final movementCard = _MeasurableSection(
+      key: const ValueKey('tour-inventory-movement'),
+      title: 'Movement',
+      trailing: picker,
+      child: movementBody,
+    );
 
     return LayoutBuilder(
       builder: (context, box) {
@@ -160,6 +174,8 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
                 trailing: picker,
                 child: movementBody,
               ),
+              if (locations != null) ...[const SizedBox(height: 16), locations],
+              if (top != null) ...[const SizedBox(height: 16), top],
             ],
           );
         }
@@ -190,14 +206,22 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
-                          child: _MeasurableSection(
-                            key: const ValueKey('tour-inventory-movement'),
-                            title: 'Movement',
-                            trailing: picker,
-                            child: movementBody,
-                          ),
-                        ),
+                        // The last card present takes the rest.
+                        if (locations == null && top == null)
+                          Expanded(child: movementCard)
+                        else
+                          movementCard,
+                        if (locations != null) ...[
+                          const SizedBox(height: 16),
+                          if (top == null)
+                            Expanded(child: locations)
+                          else
+                            locations,
+                        ],
+                        if (top != null) ...[
+                          const SizedBox(height: 16),
+                          Expanded(child: top),
+                        ],
                       ],
                     ),
                   ),
@@ -210,12 +234,85 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
     );
   }
 
+  /// Value and items per location. Value is drawn only when the server sent
+  /// the key (financials); a null value is "Not priced", never zero.
+  Widget? _locationsCard(Object? raw) {
+    if (raw is! List || raw.isEmpty) return null;
+    final rows = [
+      for (final r in raw)
+        if (r is Map) r,
+    ];
+    int itemsOf(Map r) => (r['items'] as num?)?.toInt() ?? 0;
+    final most = rows.fold<int>(0, (a, r) => itemsOf(r) > a ? itemsOf(r) : a);
+
+    return _MeasurableSection(
+      key: const ValueKey('inventory-general-locations'),
+      title: 'Stock by location',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final r in rows)
+            _HoldingRow(
+              key: Key('inventory-location-${(r['location'] as Map?)?['id']}'),
+              name: '${(r['location'] as Map?)?['name'] ?? ''}',
+              detail: itemsOf(r) == 1 ? '1 item' : '${itemsOf(r)} items',
+              value: _valueText(r),
+              share: most == 0 ? 0 : itemsOf(r) / most,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The top five. Ranked by value when the server sends values, so the
+  /// title says which ranking it is.
+  Widget? _topItemsCard(Object? raw) {
+    if (raw is! List || raw.isEmpty) return null;
+    final rows = [
+      for (final r in raw)
+        if (r is Map) r,
+    ];
+    final byValue = rows.any((r) => r.containsKey('value_minor'));
+    num qtyOf(Map r) => num.tryParse('${r['qty'] ?? 0}') ?? 0;
+    num sizeOf(Map r) => byValue ? (r['value_minor'] as num?) ?? 0 : qtyOf(r);
+    final most = rows.fold<num>(0, (a, r) => sizeOf(r) > a ? sizeOf(r) : a);
+
+    return _MeasurableSection(
+      key: const ValueKey('inventory-general-top'),
+      title: byValue ? 'Top items by value' : 'Top items by quantity',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final r in rows)
+            _HoldingRow(
+              key: Key('inventory-top-${(r['item'] as Map?)?['id']}'),
+              name: [
+                (r['item'] as Map?)?['number'],
+                (r['item'] as Map?)?['name'],
+              ].where((p) => p != null && '$p'.isNotEmpty).join(' · '),
+              detail: 'Qty ${_Movement._fmt(qtyOf(r))}',
+              value: _valueText(r),
+              share: most == 0 ? 0 : sizeOf(r) / most,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Null when the key is absent (no financials); "Not priced" when null.
+  static String? _valueText(Map r) {
+    if (!r.containsKey('value_minor')) return null;
+    final v = r['value_minor'];
+    return v is num ? inventoryMoney(v.toInt()) : 'Not priced';
+  }
+
   /// Rows only for what applies, each with the button that fixes it. The
   /// server's other warnings open the list their link names.
   Widget _attention(
     BuildContext context,
     Map<String, dynamic> health,
-    Object? rawWarnings, {
+    Object? rawWarnings,
+    Object? rawOrders, {
     required bool narrow,
   }) {
     int count(String key) => (health[key] as num?)?.toInt() ?? 0;
@@ -223,7 +320,18 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
 
     final low = count('low');
     final out = count('out');
-    final orders = count('open_purchase_orders');
+    // Only an open order can be received; drafts are a note on the row. A
+    // server without the split falls back to the combined count.
+    final split = rawOrders is Map ? rawOrders : null;
+    final orders = split == null
+        ? count('open_purchase_orders')
+        : (split['open'] as num?)?.toInt() ?? 0;
+    final drafts = (split?['draft'] as num?)?.toInt() ?? 0;
+    final draftNote = drafts == 0
+        ? ''
+        : drafts == 1
+        ? ' 1 draft is not sent yet.'
+        : ' $drafts drafts are not sent yet.';
 
     final rows = <Widget>[
       if (low > 0)
@@ -259,8 +367,8 @@ class _InventoryGeneralState extends State<InventoryGeneral> {
           tone: Tone.info,
           sentence: plural(
             orders,
-            '1 purchase order is open.',
-            '$orders purchase orders are open.',
+            '1 purchase order is open to receive.$draftNote',
+            '$orders purchase orders are open to receive.$draftNote',
           ),
           fix: 'Receive',
           onFix: () => widget.onOpen('orders'),
@@ -462,12 +570,23 @@ class _AttentionRow extends StatelessWidget {
 
 /// The period's totals as bars: received, issued and sold, adjusted (signed)
 /// and moved between your own places (net zero, never folded into the
-/// others). The server sends no previous period, so nothing is set against
-/// it.
+/// others), each over a thinner bar for the previous period when the server
+/// sends `movement.previous`.
 class _Movement extends StatelessWidget {
   const _Movement({required this.raw});
 
   final Object? raw;
+
+  static String _fmt(num n) =>
+      n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
+
+  /// "▲ 6 vs 12 last period", "▼ 3 vs ...", or "Same as last period".
+  static String _change(num now, num was) {
+    final diff = now - was;
+    if (diff == 0) return 'Same as last period';
+    return '${diff > 0 ? '▲' : '▼'} ${_fmt(diff.abs())} vs ${_fmt(was)} '
+        'last period';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -487,14 +606,25 @@ class _Movement extends StatelessWidget {
     String qty(num n) =>
         n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2);
 
+    final previous = movement['previous'] is Map
+        ? (movement['previous'] as Map)
+        : null;
+    num? before(String key) =>
+        previous == null ? null : (previous[key] as num?) ?? 0;
+
     final rows = [
-      ('in', 'Received', total('in')),
-      ('out', 'Issued and sold', total('out')),
-      ('adjusted', 'Adjusted', total('adjusted')),
-      ('transferred', 'Moved between your places', total('transferred')),
+      ('in', 'Received', total('in'), before('received')),
+      ('out', 'Issued and sold', total('out'), before('issued_sold')),
+      ('adjusted', 'Adjusted', total('adjusted'), before('adjusted')),
+      (
+        'transferred',
+        'Moved between your places',
+        total('transferred'),
+        before('moved'),
+      ),
     ];
 
-    if (rows.every((r) => r.$3 == 0)) {
+    if (rows.every((r) => r.$3 == 0 && (r.$4 ?? 0) == 0)) {
       return Text(
         'Nothing was received, issued, adjusted or moved in this period.',
         key: const Key('inventory-movement-empty'),
@@ -504,12 +634,14 @@ class _Movement extends StatelessWidget {
       );
     }
 
-    final most = rows.map((r) => r.$3.abs()).reduce((a, b) => a > b ? a : b);
+    final most = rows
+        .expand((r) => [r.$3.abs(), (r.$4 ?? 0).abs()])
+        .reduce((a, b) => a > b ? a : b);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (key, label, n) in rows)
+        for (final (key, label, n, was) in rows)
           Padding(
             key: Key('inventory-movement-$key'),
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -531,6 +663,30 @@ class _Movement extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 _Bar(share: most == 0 ? 0 : n.abs() / most),
+                if (was != null) ...[
+                  const SizedBox(height: 2),
+                  _Bar(
+                    key: Key('inventory-movement-$key-previous'),
+                    share: most == 0 ? 0 : was.abs() / most,
+                    previous: true,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _change(n, was),
+                    key: Key('inventory-movement-$key-change'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    // The arrows come from a fallback font whose taller line
+                    // the intrinsic pass did not count on the web: 2 px a row
+                    // overflowed the stretched last card. A forced strut
+                    // gives both passes one line height.
+                    strutStyle: StrutStyle.fromTextStyle(
+                      theme.textTheme.bodySmall ?? const TextStyle(),
+                      forceStrutHeight: true,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -541,9 +697,12 @@ class _Movement extends StatelessWidget {
 
 /// A thin bar filled to [share] (0..1) of its width.
 class _Bar extends StatelessWidget {
-  const _Bar({required this.share});
+  const _Bar({super.key, required this.share, this.previous = false});
 
   final num share;
+
+  /// The previous period's bar: thinner and in the outline colour.
+  final bool previous;
 
   @override
   Widget build(BuildContext context) {
@@ -552,14 +711,18 @@ class _Bar extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
       child: SizedBox(
-        height: 8,
+        height: previous ? 4 : 8,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (filled > 0)
               Expanded(
                 flex: filled,
-                child: ColoredBox(color: Theme.of(context).colorScheme.primary),
+                child: ColoredBox(
+                  color: previous
+                      ? Theme.of(context).colorScheme.outline
+                      : Theme.of(context).colorScheme.primary,
+                ),
               ),
             if (filled < 1000)
               Expanded(
@@ -575,18 +738,19 @@ class _Bar extends StatelessWidget {
 
 /// [OverviewSection]'s look with a one-line header, for inside
 /// IntrinsicHeight: OverviewSection's Wrap asks its children for a dry
-/// layout, which SegmentedButton cannot give, and the fixed-height trailing
-/// answers its intrinsic height without asking the button at all.
+/// layout, which SegmentedButton cannot give, and under-reports its own
+/// intrinsic height, which overflowed the stretched last card by 6 px with
+/// real fonts. The fixed-height trailing answers without asking the button.
 class _MeasurableSection extends StatelessWidget {
   const _MeasurableSection({
     super.key,
     required this.title,
-    required this.trailing,
+    this.trailing,
     required this.child,
   });
 
   final String title;
-  final Widget trailing;
+  final Widget? trailing;
   final Widget child;
 
   @override
@@ -606,12 +770,71 @@ class _MeasurableSection extends StatelessWidget {
           Row(
             children: [
               Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
-              const SizedBox(width: 12),
-              SizedBox(height: 40, child: trailing),
+              if (trailing != null) ...[
+                const SizedBox(width: 12),
+                SizedBox(height: 40, child: trailing),
+              ],
             ],
           ),
           const SizedBox(height: 12),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+/// One location or item: name, detail, optional value, and a bar.
+class _HoldingRow extends StatelessWidget {
+  const _HoldingRow({
+    super.key,
+    required this.name,
+    required this.detail,
+    required this.value,
+    required this.share,
+  });
+
+  final String name;
+  final String detail;
+  final String? value;
+  final num share;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(detail, style: muted),
+              if (value != null) ...[
+                const SizedBox(width: 12),
+                Text(
+                  value!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          _Bar(share: share),
         ],
       ),
     );
