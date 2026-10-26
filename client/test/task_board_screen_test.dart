@@ -298,11 +298,15 @@ void main() {
   ) async {
     await pumpBoard(tester);
 
-    // The picker opens on My board.
+    // It opens on My board: the button is lit (the picker is for others).
+    final quick = tester.widget<SegmentedButton<int>>(
+      find.byKey(const Key('tasks-quick-boards')),
+    );
+    expect(quick.selected, hasLength(1));
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('tasks-boards')),
-        matching: find.text('My board'),
+        of: find.byKey(const Key('tasks-quick-boards')),
+        matching: find.text('My Board'),
       ),
       findsOneWidget,
     );

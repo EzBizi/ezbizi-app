@@ -1051,11 +1051,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
     ];
 
+    final mine = _myBoardIndex;
+    final company = _companyBoardIndex;
+    final quick = {?mine, ?company};
+    final elsewhere = !quick.contains(_selected);
+
     final field = SearchPickerField<int>(
       key: const ValueKey('tasks-boards'),
-      label: 'Board',
+      label: elsewhere ? 'Board' : null,
+      hint: 'Other boards',
       isDense: true,
-      value: _selected,
+      // The picker names the board only when it is neither button's.
+      // -2 matches no option: null would match a section heading.
+      value: elsewhere ? _selected : -2,
       options: options,
       searchFrom: 6,
       onChanged: (i) {
@@ -1067,13 +1075,93 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       },
     );
 
+    // [My Board] [<Company> Board] [Board picker] (Jose, 2026-10-26): the
+    // two buttons read as one segmented control, lit when theirs is open.
+    Widget label(String text) => phone
+        ? ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 130),
+            child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
+          )
+        : Text(text);
+    final buttons = quick.isEmpty
+        ? null
+        : SegmentedButton<int>(
+            key: const Key('tasks-quick-boards'),
+            showSelectedIcon: false,
+            emptySelectionAllowed: true,
+            segments: [
+              if (mine != null)
+                ButtonSegment(
+                  value: mine,
+                  label: label('My Board'),
+                  icon: const Icon(Icons.person_outline, size: 18),
+                ),
+              if (company != null)
+                ButtonSegment(
+                  value: company,
+                  label: label(_companyBoardLabel(company)),
+                  icon: const Icon(Icons.business_outlined, size: 18),
+                ),
+            ],
+            selected: {if (quick.contains(_selected)) _selected},
+            onSelectionChanged: (s) {
+              if (s.isNotEmpty && s.first != _selected) _open(s.first);
+            },
+          );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: phone ? field : SizedBox(width: 340, child: field),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ?buttons,
+          SizedBox(width: phone ? 358 : 300, child: field),
+        ],
       ),
     );
+  }
+
+  /// This person's own board: the section "mine" (or, from an older
+  /// server, the personal board they own).
+  int? get _myBoardIndex {
+    final i = _boards.indexWhere(
+      (b) =>
+          b['kind'] == 'user' &&
+          (b['section'] == null ? !_othersPersonal(b) : b['section'] == 'mine'),
+    );
+    return i < 0 ? null : i;
+  }
+
+  /// The board of the place this person is in: at a company or a branch,
+  /// that company's board; at the organization, its board if it keeps one.
+  /// Null hides the button.
+  int? get _companyBoardIndex {
+    final me = widget.session.me;
+    if (me == null) return null;
+    final i = me.scope.type == 'organization'
+        ? _boards.indexWhere((b) => b['kind'] == 'organization')
+        : switch (me.filingCompanyId) {
+            null => -1,
+            final id => _boards.indexWhere(
+              (b) => b['kind'] == 'company' && b['company_id'] == id,
+            ),
+          };
+    return i < 0 ? null : i;
+  }
+
+  /// "A-1 Chimney Board": the company's name from the board, else from /me.
+  String _companyBoardLabel(int i) {
+    final b = _boards[i];
+    final me = widget.session.me;
+    final id = b['company_id'];
+    final name =
+        b['company_name'] ??
+        me?.companies.where((c) => c.id == id).firstOrNull?.name ??
+        (b['kind'] == 'organization' ? me?.organization.name : null) ??
+        b['name'];
+    return '$name Board';
   }
 
   Widget _toolbar(BuildContext context, {required bool phone}) {
