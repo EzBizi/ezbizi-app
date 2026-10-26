@@ -31,6 +31,8 @@ class VehicleList extends StatelessWidget {
     required this.dueSoon,
     required this.onToggleUnassigned,
     required this.onToggleDueSoon,
+    this.uninsured = false,
+    this.onToggleUninsured,
     required this.emptyLabel,
     required this.shown,
     required this.total,
@@ -73,6 +75,10 @@ class VehicleList extends StatelessWidget {
   final bool dueSoon;
   final VoidCallback onToggleUnassigned;
   final VoidCallback onToggleDueSoon;
+
+  /// No open insurance policy (`uninsured=1`), the General tab's Add insurance.
+  final bool uninsured;
+  final VoidCallback? onToggleUninsured;
 
   final String emptyLabel;
   final int shown;
@@ -179,6 +185,12 @@ class VehicleList extends StatelessWidget {
               selected: dueSoon,
               onSelected: (_) => onToggleDueSoon(),
             ),
+            if (onToggleUninsured != null)
+              FilterChip(
+                label: const Text('No insurance'),
+                selected: uninsured,
+                onSelected: (_) => onToggleUninsured!(),
+              ),
           ],
         ),
       ),
