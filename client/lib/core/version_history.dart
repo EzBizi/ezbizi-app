@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0494',
+      date: '26 Oct 2026',
+      items: [
+        'Fleet › General: a status bar, Needs attention with a fix for each row, what is coming up (registration, inspection, insurance and service), and spending by category against the last period with the top vehicles. Vehicles can be filtered to No insurance or Insurance expiring.',
+        'Inventory › General in the same layout: stock status, Needs attention, stock by location, top items, and movement against the last period.',
+        'Task Board: My Board, your company\'s board and Other boards are always at the top.',
+        'Field map: red is not reporting, dashed red lost signal, purple stopped too long, green reporting and grey offline; people show as round initials with their name on hover, and the list puts who needs attention first.',
+        'Paid time off: the period bar is a timeline with today marked and when the next days are earned.',
+        'Settings › Pending (behind the scenes for now): missing office hours, service areas and time slots, connected inboxes, review links, Business Profile listings without a branch, branch billing contacts and Workiz connections are collected for the coming Pending tab. A branch can now hold a billing contact that new invoices use.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0493',
       date: '26 Oct 2026',
       items: [
