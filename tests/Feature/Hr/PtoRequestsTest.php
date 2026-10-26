@@ -96,6 +96,10 @@ class PtoRequestsTest extends TestCase
         $this->assertContains('user.pto_denied', $this->events());
 
         $second = $ask('2026-11-09');
+        // A date already in a request still waiting is not asked for twice.
+        $this->signedInAs($staff)->postJson('/api/v1/hr/pto/requests', ['days' => [['date' => '2026-11-09', 'portion' => 1]]])
+            ->assertStatus(422);
+        $this->assertFalse($this->signedInAs($staff)->getJson('/api/v1/hr/pto')->json('policy.allow_negative'));
         $this->signedInAs($t['admin'])->postJson("/api/v1/hr/pto/requests/{$second}/cancel")->assertForbidden();
         $this->signedInAs($staff)->postJson("/api/v1/hr/pto/requests/{$second}/cancel")
             ->assertOk()->assertJsonPath('data.status', 'cancelled');

@@ -139,7 +139,7 @@ class PtoRequestsController extends Controller
 
         DB::transaction(function () use ($ptoRequest, $person, $actor, $status, $input) {
             if ($status === PtoRequest::APPROVED) {
-                $this->refuseTakenDates($person, array_column($ptoRequest->days, 'date'));
+                $this->refuseTakenDates($person, array_column($ptoRequest->days, 'date'), $ptoRequest->getKey());
                 foreach ($ptoRequest->days as $day) {
                     PtoUsed::create([
                         'organization_id' => $person->organization_id, 'user_id' => $person->getKey(),
@@ -169,12 +169,20 @@ class PtoRequestsController extends Controller
     }
 
     /** A date already recorded as a day off, or in another request still waiting, is refused. */
-    private function refuseTakenDates(User $person, array $dates): void
+    private function refuseTakenDates(User $person, array $dates, ?string $except = null): void
     {
         $taken = PtoUsed::query()->where('user_id', $person->getKey())->whereNull('set_to')
             ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
         if ($taken !== []) {
             throw ValidationException::withMessages(['days' => 'Already recorded as a day off: '.implode(', ', $taken).'.']);
+        }
+
+        // And not asked for twice: a date in another request still waiting.
+        $waiting = PtoRequest::query()->where('user_id', $person->getKey())->where('status', PtoRequest::PENDING)
+            ->when($except !== null, fn ($q) => $q->whereKeyNot($except))->pluck('days')
+            ->flatMap(fn ($days) => array_column($days, 'date'))->intersect($dates)->unique()->values()->all();
+        if ($waiting !== []) {
+            throw ValidationException::withMessages(['days' => 'Already in a request still waiting: '.implode(', ', $waiting).'.']);
         }
     }
 
