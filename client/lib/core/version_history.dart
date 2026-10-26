@@ -23,6 +23,7 @@ class VersionHistory {
         'Field map: red is not reporting, dashed red lost signal, purple stopped too long, green reporting and grey offline; people show as round initials with their name on hover, and the list puts who needs attention first.',
         'Paid time off: the period bar is a timeline with today marked and when the next days are earned.',
         'Settings › Pending (behind the scenes for now): missing office hours, service areas and time slots, connected inboxes, review links, Business Profile listings without a branch, branch billing contacts and Workiz connections are collected for the coming Pending tab. A branch can now hold a billing contact that new invoices use.',
+        'Scheduling › Re-Scheduling has two parts: Rescheduling Availability (booked against available per area, with the earlier-opening texts, moved from Overbooking) and AI Rescheduling Suggestion. Overbooking shows overbooked days only.',
       ],
     ),
     VersionRelease(
