@@ -105,7 +105,7 @@ void main() {
 
     expect(find.text('General'), findsOneWidget);
     expect(find.byKey(const Key('inventory-general-items')), findsOneWidget);
-    expect(find.text('\$12,345.00'), findsOneWidget);
+    expect(find.textContaining('\$12,345.00 at last cost'), findsOneWidget);
     expect(find.text('5 items are out of stock.'), findsOneWidget);
     expect(find.text('Moved between your places'), findsOneWidget);
   });
@@ -134,7 +134,7 @@ void main() {
           : null,
     );
 
-    await tester.tap(find.byKey(const Key('inventory-general-low')));
+    await tester.tap(find.text('Create purchase order'));
     await tester.pumpAndSettle();
 
     final tile = tester.widget<Material>(
