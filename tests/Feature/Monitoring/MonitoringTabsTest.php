@@ -47,7 +47,7 @@ class MonitoringTabsTest extends TestCase
         $tabs = $this->tabs();
 
         $this->assertSame(
-            ['general', 'map', 'specs', 'files', 'cameras', 'desktop'],
+            ['general', 'map', 'specs', 'files', 'cameras', 'desktop', 'lighting'],
             array_keys($tabs),
             'The declared order is the order MonitoringScreen draws the chips.'
         );
@@ -64,6 +64,9 @@ class MonitoringTabsTest extends TestCase
         $this->assertSame('files.view', $tabs['files']->action());
         $this->assertSame('cameras.view', $tabs['cameras']->action());
         $this->assertSame('screenshots.view', $tabs['desktop']->action());
+        // Lighting NAMES its own grant (lighting.manage, design 150): changing a PC's
+        // lights is an action, not a read, so no view backfill hands it out.
+        $this->assertSame('lighting.manage', $tabs['lighting']->action());
 
         // The two that mint. General is the ownership chart; Map is the floor
         // plan, which moved out of General on 2026-09-22 and took a key of its
