@@ -201,6 +201,9 @@ class FieldController extends Controller
                 'accuracy_m' => $p?->accuracy_m,
                 'last_seen_at' => $p?->last_seen_at->toIso8601ZuluString(),
                 'fresh' => $p !== null && $p->last_seen_at->gt(now()->subMinutes(self::FRESH_MINUTES)),
+                // Inside their window now (shift, schedule, always): silence is
+                // a problem only then, so the map greys out the rest.
+                'should_track' => $this->tracking->covers($person, [now()])[0],
                 'stopped' => (bool) $p?->stopped_alerted,
                 'silent' => (bool) $p?->signal_lost_alerted,
                 'at_job' => $p?->atJob ? ['id' => $p->atJob->id, 'number' => $p->atJob->number, 'title' => $p->atJob->title] : null,
