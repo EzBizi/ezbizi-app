@@ -81,6 +81,7 @@ use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnersh
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\FilesController as MonitoringFilesController;
+use App\Http\Controllers\Api\Monitoring\LightingController as MonitoringLightingController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
 use App\Http\Controllers\Api\Monitoring\ScreenshotsController as MonitoringScreenshotsController;
 use App\Http\Controllers\Api\NewsletterAudiencesController;
@@ -3037,6 +3038,8 @@ Route::prefix('v1')
         Route::delete('monitoring/files/unlock', [MonitoringFilesController::class, 'lock']);
         Route::post('monitoring/devices/{id}/files', [MonitoringFilesController::class, 'request']);
         Route::get('monitoring/devices/{id}/files/{requestId}', [MonitoringFilesController::class, 'result']);
+        Route::put('monitoring/devices/{id}/lighting', [MonitoringLightingController::class, 'update']);
+        Route::post('monitoring/lighting', [MonitoringLightingController::class, 'bulk']);
 
         // ── Monitoring: cameras (2026-09-01-monitoring-cameras, generic-protocol v1) ──
         //
@@ -3553,6 +3556,9 @@ Route::prefix('v1')
         Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
             ->middleware('throttle:120,1');
         Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
+            ->middleware('throttle:120,1');
+        // The PC's agent asking which lighting to show (LightingController).
+        Route::get('monitoring/lighting', [MonitoringLightingController::class, 'pending'])
             ->middleware('throttle:120,1');
     });
 

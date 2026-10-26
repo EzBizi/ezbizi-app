@@ -47,6 +47,7 @@ class DevicesController extends Controller
         $actor = $request->user();
         $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
         $canSeeCapture = $actor->hasPermission('monitoring.screenshots.view');
+        $canSetLighting = $actor->hasPermission('monitoring.lighting.manage');
 
         // ONE query for the whole roster rather than a lookup per row, and
         // `email` has to be selected below for it to mean anything: the
@@ -71,7 +72,7 @@ class DevicesController extends Controller
         return response()->json([
             'data' => $devices
                 ->map(fn (MonitoredDevice $d) => $this->present(
-                    $d, $canSeeSpecs, $canSeeCapture, $exemptEmails
+                    $d, $canSeeSpecs, $canSeeCapture, $exemptEmails, $canSetLighting
                 ))
                 ->all(),
         ]);
@@ -84,6 +85,7 @@ class DevicesController extends Controller
         bool $canSeeSpecs,
         bool $canSeeCapture,
         array $exemptEmails = [],
+        bool $canSetLighting = false,
     ): array
     {
         $row = [
@@ -116,6 +118,12 @@ class DevicesController extends Controller
         // shape of the response that specs exist to be granted.
         if ($canSeeSpecs) {
             $row['specs'] = $d->specs;
+        }
+
+        // The lighting a manager set, beside what the PC reports it has
+        // (specs.rgb_devices). Absent without the grant, like specs.
+        if ($canSetLighting) {
+            $row['lighting'] = $d->lighting;
         }
 
         // What is ON the screen — the window in front, the open tabs — rather

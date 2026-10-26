@@ -55,4 +55,12 @@ class MonitoredDevicePolicy
             ? Response::allow()
             : Refusal::permission('access files on this device');
     }
+
+    /** Change the RGB lighting on devices (2026-10-26). */
+    public function lighting(User $user): Response
+    {
+        return $user->hasPermission('monitoring.lighting.manage')
+            ? Response::allow()
+            : Refusal::permission('change the lighting on these computers');
+    }
 }
