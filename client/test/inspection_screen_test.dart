@@ -26,9 +26,7 @@ void main() {
     expect(_chips(tester), ['New Inspection', 'Generated Reports', 'Builder']);
 
     expect(
-      find.text(
-        'Search for a client by name, or a job by its number, to start.',
-      ),
+      find.text("Type a client's name, a phone or a job number"),
       findsOneWidget,
     );
   });

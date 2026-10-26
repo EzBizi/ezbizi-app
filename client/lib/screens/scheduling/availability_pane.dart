@@ -12,6 +12,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import 'availability_calendar.dart';
+import '../../widgets/suggest_search.dart';
 import 'availability_suggestion.dart';
 
 /// Availability — "When can we come out?"
@@ -547,61 +548,34 @@ class _AvailabilityPaneState extends State<AvailabilityPane>
   }
 
   Widget _zipSearch(ThemeData theme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const Key('availability-search'),
-                controller: _search,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: 'Zip code, address, city or area',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: _suggest,
-                onSubmitted: (_) => _check(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              key: const ValueKey('tour-scheduling-check'),
-              onPressed: _check,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-              ),
-              child: const Text('Check'),
-            ),
-          ],
-        ),
-        if (_suggestions.isNotEmpty)
-          Card(
-            margin: const EdgeInsets.only(top: 4),
-            child: Column(
-              children: [
-                for (final s in _suggestions)
-                  ListTile(
-                    dense: true,
-                    leading: Icon(switch (s['type']) {
-                      'area' => Icons.map_outlined,
-                      'city' => Icons.location_city_outlined,
-                      _ => Icons.location_on_outlined,
-                    }, size: 18),
-                    title: Text(s['label'] as String? ?? ''),
-                    subtitle: s['detail'] == null
-                        ? null
-                        : Text(s['detail'] as String),
-                    onTap: () => _pick(s),
-                  ),
-              ],
-            ),
+    return SuggestSearchField(
+      fieldKey: const Key('availability-search'),
+      controller: _search,
+      hintText: 'Zip code, address, city or area',
+      suggestions: [
+        for (final s in _suggestions)
+          SuggestItem(
+            icon: switch (s['type']) {
+              'area' => Icons.map_outlined,
+              'city' => Icons.location_city_outlined,
+              _ => Icons.location_on_outlined,
+            },
+            title: s['label'] as String? ?? '',
+            subtitle: s['detail'] as String?,
           ),
       ],
+      onChanged: _suggest,
+      onPick: (i) => _pick(_suggestions[i]),
+      onSubmitted: (_) => _check(),
+      onDismiss: () => setState(() => _suggestions = []),
+      trailing: FilledButton(
+        key: const ValueKey('tour-scheduling-check'),
+        onPressed: _check,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        ),
+        child: const Text('Check'),
+      ),
     );
   }
 
