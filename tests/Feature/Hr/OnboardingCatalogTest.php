@@ -3,6 +3,7 @@
 namespace Tests\Feature\Hr;
 
 use App\Console\Commands\CallScoringClause;
+use App\Console\Commands\CooClauses;
 use App\Console\Commands\CooContract;
 use App\Models\Contract;
 use App\Models\ContractVersion;
@@ -352,6 +353,25 @@ class OnboardingCatalogTest extends TestCase
         // The designer itself accepts the same wording and questions.
         $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
             'name' => 'COO check', 'body' => $coo->body, 'fields' => $fields,
+        ])->assertCreated();
+
+        // The standard clauses the other agreements have (Jose, 2026-10-26:
+        // "include all of it"), as version 2, once.
+        $this->artisan('hr:coo-clauses', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('standard clauses as version 2')->assertSuccessful();
+        $this->artisan('hr:coo-clauses', ['organization' => 'Alpha'])
+            ->expectsOutputToContain('already has the clauses')->assertSuccessful();
+        $v2 = $this->inTenant($alpha['org'], fn () => Contract::where('name', CooContract::NAME)->firstOrFail()->currentVersion);
+        $this->assertSame(2, (int) $v2->version);
+        foreach (['13. CONFIDENTIALITY', '15. NON-COMPETE & NON-SOLICITATION', '19. DISPUTE RESOLUTION',
+            '22. ENTIRE AGREEMENT', '23. ACCEPTANCE, ACKNOWLEDGMENT & SIGNATURES'] as $heading) {
+            $this->assertStringContainsString($heading, $v2->body);
+        }
+        $this->assertStringNotContainsString('upsale', $v2->body);
+        $this->assertStringEndsWith(CooClauses::CLOSING, $v2->body);
+        $this->assertContains('county', collect($v2->fieldSet()->toArray())->pluck('key')->all());
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
+            'name' => 'COO v2 check', 'body' => $v2->body, 'fields' => $v2->fieldSet()->toArray(),
         ])->assertCreated();
     }
 
