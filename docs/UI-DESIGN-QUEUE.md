@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 149 · Fleet Management › General dashboard — **sent 2026-10-26** (`docs/previews/fleet-dashboard-layouts.html`)
+
+Jose: "this dashboard can be improved." **1** (recommended) two columns: fleet status as one stacked bar (active / in shop / out of service, owned · rented); Needs attention rows each with its fix (Add insurance, Assign keys, Book service), no duplicates; Coming up next 30 days (registration, inspection, insurance, service; overdue red); Spending by period vs previous, bars by category, top vehicles, empty state with Record a cost. **2** four tiles + attention. **3** vehicle list with health lights. Phone **4** / **5** / **6**.
+
 ### 148 · Services › Catalogue with photos — **sent 2026-10-26 — Jose: "as u recommend" (1 and 4)** (`docs/previews/services-catalogue-layouts.html`)
 
 Jose: "can we improve this screen, have it show the images as well too" (services already carry photo). **1** (recommended) photo grid grouped by kind/tag with counts, price on the photo, name/number/tags/company, placeholder + Add a photo; search, kind chips, sort, remembered Grid/List toggle; click opens the editor; 5 per row down to 2. **2** list + thumbnail. **3** big gallery. Phone **4** / **5** / **6**.
