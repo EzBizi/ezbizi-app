@@ -3,6 +3,9 @@
 namespace App\Support\Settings\Pending;
 
 use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\ServiceArea;
+use App\Support\Scheduling\Openings;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -65,6 +68,13 @@ final class PendingRegistry
             'hint'        => 'Open Settings, then Organization, then the company.',
         ];
 
+        $openScheduling = fn () => [
+            'kind'        => 'open',
+            'destination' => 'scheduling',
+            'tab'         => 'settings',
+            'hint'        => 'Open Scheduling, then Settings, and add a service area with its time slots.',
+        ];
+
         return [
             new PendingCheck(
                 key: 'company.address',
@@ -108,6 +118,28 @@ final class PendingRegistry
                     'destination' => 'leads',
                     'hint'        => 'Open Leads, then Manage, then Office hours.',
                 ],
+            ),
+            // Scheduling: a branch takes no bookings without an area that has a
+            // week. A sub-company's branch books on its parent's areas.
+            new PendingCheck(
+                key: 'scheduling.service_area',
+                label: 'Service area',
+                module: 'scheduling',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['scheduling.settings.view'],
+                missing: fn (Franchise $f) => Company::find($f->company_id)?->parent_company_id === null
+                    && ! ServiceArea::query()->where('franchise_id', $f->id)->exists(),
+                fill: $openScheduling,
+            ),
+            new PendingCheck(
+                key: 'scheduling.area_slots',
+                label: 'Time slots for every service area',
+                module: 'scheduling',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['scheduling.settings.view'],
+                missing: fn (Franchise $f) => ServiceArea::query()->where('franchise_id', $f->id)->whereNull('shares_with_id')->get()
+                    ->contains(fn (ServiceArea $a) => ! Openings::hasCapacity($a)),
+                fill: $openScheduling,
             ),
         ];
     }

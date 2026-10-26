@@ -67,4 +67,26 @@ class DeepLinks {
     pending.value = null;
     return link;
   }
+
+  /// A web address that names a record, or null. `/scheduling/overbooking?
+  /// date=Y-m-d` is the link in the day-before under-filled email
+  /// (SchedulingWarnUnderfilled): Scheduling › Overbooking › Booked vs
+  /// available on that day. Takes the URI so a test can hand it one.
+  static DeepLink? fromUri(Uri uri) {
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segments.length != 2 ||
+        segments[0] != 'scheduling' ||
+        segments[1] != 'overbooking') {
+      return null;
+    }
+    final date = uri.queryParameters['date'];
+    final valid = date != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date);
+
+    return DeepLink(
+      module: 'scheduling',
+      type: 'booked_vs_available',
+      id: valid ? date : '',
+      date: valid ? date : null,
+    );
+  }
 }

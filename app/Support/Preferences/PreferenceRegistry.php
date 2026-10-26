@@ -246,6 +246,15 @@ class PreferenceRegistry
                 'help' => "Set by finishing or declining a tab's walkthrough.",
             ],
 
+            // Services › Catalogue: photo cards or a compact list (UI queue 148).
+            'services.catalogue_view' => [
+                'label' => 'Services catalogue view',
+                'type' => 'enum',
+                'default' => 'grid',
+                'options' => ['grid', 'list'],
+                'help' => 'Pick Grid or List above the catalogue.',
+            ],
+
             // Social › Dashboard: the posts as a list or a board (UI queue 100).
             'marketing.social.posts_view' => [
                 'label' => 'Social posts view',
