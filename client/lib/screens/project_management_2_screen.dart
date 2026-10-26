@@ -4,6 +4,7 @@ import '../core/api_client.dart';
 import '../core/job_money.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/list_table.dart';
 import '../widgets/status_pill.dart';
@@ -54,6 +55,19 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
     });
   }
 
+  /// The company under the branch only when the list spans several, where
+  /// two companies can each have an "Ohio".
+  bool get _manyCompanies => _rows.map((r) => r['company']).toSet().length > 1;
+
+  String _date(Object? ymd) {
+    final at = ymd is String ? DateTime.tryParse(ymd) : null;
+    return at == null
+        ? '—'
+        : (widget.session.me?.display ?? DisplayFormats.fallback).formatDate(
+            at,
+          );
+  }
+
   String _amount(Map<String, dynamic> row, String key) {
     final minor = row[key];
     return minor is int
@@ -85,9 +99,12 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
               columns: [
                 const ListColumn('Job ID', flex: 2),
                 const ListColumn('Customer', flex: 3),
+                const ListColumn('Branch', flex: 2),
                 const ListColumn('Status', flex: 3),
                 const ListColumn('Tags', flex: 3),
                 const ListColumn('Address', flex: 4),
+                const ListColumn('Created', flex: 2),
+                const ListColumn('Last modified', flex: 2),
                 if (_money) const ListColumn('Money pending', flex: 2),
                 if (_money) const ListColumn('Money owed', flex: 2),
               ],
@@ -100,6 +117,17 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${row['branch'] ?? '—'}'),
+                        if (_manyCompanies && row['company'] != null)
+                          Text(
+                            '${row['company']}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                      ],
                     ),
                     Align(
                       alignment: Alignment.centerLeft,
@@ -119,6 +147,8 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                       '${row['address'] ?? '—'}',
                       style: theme.textTheme.bodySmall,
                     ),
+                    Text(_date(row['created'])),
+                    Text(_date(row['modified'])),
                     if (_money) Text(_amount(row, 'money_pending')),
                     if (_money) Text(_amount(row, 'money_owed')),
                   ],

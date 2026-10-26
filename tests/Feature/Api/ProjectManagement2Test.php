@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\WorkizJob;
+use App\Models\WorkizRecord;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -24,16 +25,23 @@ class ProjectManagement2Test extends TestCase
         $id = $this->inTenant($alpha['org'], function () use ($alpha) {
             $this->job($alpha, 'J-2', 'Done');
 
-            return $this->job($alpha, 'J-1', 'Done Pending Approval', ['JobTotalPrice' => 1200, 'JobAmountDue' => 900.5]);
+            $id = $this->job($alpha, 'J-1', 'Done Pending Approval', ['JobTotalPrice' => 0, 'JobAmountDue' => 900.5, 'CreatedDate' => '2026-09-01 10:00:00']);
+            // The latest estimate still in play is what waits on approval.
+            foreach ([['E1', '300.00', 'Pending', '2026-09-02'], ['E2', '450.00', null, '2026-09-03'], ['E3', '999.00', 'Declined', '2026-09-04']] as [$remote, $amount, $status, $at]) {
+                WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'estimate', 'remote_id' => $remote, 'job_id' => $id,
+                    'amount' => $amount, 'status' => $status, 'starts_at' => "{$at} 10:00:00", 'payload' => [], 'synced_at' => now()]);
+            }
+
+            return $id;
         });
 
         $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->assertOk()->json('data');
 
         $this->assertCount(1, $rows, 'Done and another tenant are left out');
         $this->assertSame([
-            'id' => $id, 'customer' => 'Ann Smith', 'tags' => ['DEPOSIT'],
-            'address' => '1 Main St, Columbus, OH 43004',
-            'money_pending' => 120000, 'money_owed' => 90050, 'currency' => 'USD',
+            'id' => $id, 'customer' => 'Ann Smith', 'branch' => 'Alpha F1', 'company' => 'Alpha Co', 'tags' => ['DEPOSIT'],
+            'address' => '1 Main St, Columbus, OH 43004', 'created' => '2026-09-01', 'modified' => '2026-10-20',
+            'money_pending' => 45000, 'money_owed' => 90050, 'currency' => 'USD',
         ], array_diff_key($rows[0], ['status' => 1, 'job_number' => 1]));
         $this->assertEquals('7001', $rows[0]['job_number'], "Workiz's job number");
         $this->assertNotEmpty($rows[0]['status']);
@@ -61,7 +69,7 @@ class ProjectManagement2Test extends TestCase
             'title' => 'A job', 'status' => $status, 'currency' => 'USD', 'tags' => ['DEPOSIT']]);
 
         $mirror = WorkizJob::create(['franchise_id' => $job->franchise_id, 'remote_id' => "JOB-{$number}", 'serial_id' => '700'.preg_replace('/\D/', '', $number),
-            'status' => 'x', 'payload' => $money, 'synced_at' => now()]);
+            'status' => 'x', 'payload' => $money, 'last_status_update' => '2026-10-20 08:00:00', 'synced_at' => now()]);
         $mirror->job_id = $job->id;
         $mirror->save();
 

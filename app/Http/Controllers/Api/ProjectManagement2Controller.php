@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Job;
+use App\Models\WorkizRecord;
 use App\Support\Jobs\WorkizMoney;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Http\JsonResponse;
@@ -34,31 +35,53 @@ class ProjectManagement2Controller extends Controller
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->whereRaw('LOWER(TRIM(status)) = ?', [self::STATUS])
             ->with([
-                'franchise',
+                'franchise.company:id,name',
                 'customer:id,name,address_line1,city,state,postal_code',
-                'workizJob:id,job_id,serial_id,payload',
+                'workizJob:id,job_id,serial_id,last_status_update,payload',
             ])
             ->latest()
             ->get();
 
+        // Workiz's job total is empty on almost every one of these (36 of A-1's
+        // 1,711 on 2026-10-26); the price waiting on approval is on its estimate
+        // (909). The latest estimate still in play, not a sum: several are often
+        // options for one job.
+        $estimates = $money ? WorkizRecord::query()
+            ->whereIn('job_id', $jobs->pluck('id'))
+            ->where('type', 'estimate')
+            ->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', ['Archived', 'Declined']))
+            ->orderBy('starts_at')
+            ->get(['job_id', 'amount'])
+            ->keyBy('job_id') : collect();
+
         $labels = [];
 
-        return response()->json(['data' => $jobs->map(function (Job $job) use ($money, &$labels) {
+        return response()->json(['data' => $jobs->map(function (Job $job) use ($money, $estimates, &$labels) {
             $m = $money ? WorkizMoney::for($job) : null;
 
             return [
                 'id'         => $job->id,
                 'job_number' => $job->workizJob?->serial_id ?? $job->number,
                 'customer'   => $job->customer?->name,
+                'branch'     => $job->franchise?->name,
+                'company'    => $job->franchise?->company?->name,
                 'status'     => $labels[$job->franchise_id.'|'.$job->status] ??= $job->franchise
                     ? Job::labelFor($job->status, $job->franchise)
                     : Job::humanizeStatus($job->status),
                 'tags'       => $job->tags ?? [],
                 'address'    => $job->customer_address,
+                // Workiz's own dates: jobs.created_at is when the sync copied the
+                // job in. Workiz has no edit time, so modified is its last status change.
+                'created'    => substr((string) ($job->workizJob?->payload['CreatedDate'] ?? ''), 0, 10)
+                    ?: $job->created_at?->toDateString(),
+                'modified'   => $job->workizJob?->last_status_update?->toDateString()
+                    ?? $job->updated_at?->toDateString(),
                 // Financials only, and ABSENT without it, so the client draws no zero.
-                // Pending is the job's total waiting on approval; owed is what is still due.
+                // Pending is the estimate waiting on approval; owed is what is still due.
                 ...($money ? [
-                    'money_pending' => $m['total'] ?? $job->amount_minor,
+                    'money_pending' => $estimates->has($job->id)
+                        ? (int) round((float) $estimates[$job->id]->amount * 100)
+                        : ($m['total'] ?? $job->amount_minor),
                     'money_owed'    => $m['due'] ?? null,
                     'currency'      => $job->currency,
                 ] : []),
