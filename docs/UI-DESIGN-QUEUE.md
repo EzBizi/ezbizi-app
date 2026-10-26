@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 145 · Customer Experience › Reviews as an inbox — **sent 2026-10-26** (`docs/previews/reviews-inbox-layouts.html`)
+### 145 · Customer Experience › Reviews as an inbox — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/reviews-inbox-layouts.html`)
 
 Jose: "I feel this screen can look better." **1** (recommended) summary strip (average rating vs last month, new this month, unanswered, 1-2 star to answer; each filters); search + quick chips (Unanswered, 1-2 stars, This week) + More filters; list (avatar, name, stars red when low, unanswered dot, location tag, time, one line; match shown only when useful); right pane (full review, match/link, technician named, reply box with Draft with AI + Post, notes, status). Board stays a toggle. **2** card grid. **3** cleaned table. Phone **4** / **5** / **6**.
 
