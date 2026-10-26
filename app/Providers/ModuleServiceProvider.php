@@ -284,6 +284,22 @@ class ModuleServiceProvider extends ServiceProvider
                     // Paid time off (Jose, 2026-10-21), each with the person and
                     // Total / Used / Left. On the person, so a rule is scoped by them.
                     new TriggerDefinition(
+                        key: 'user.pto_requested',
+                        label: 'Paid time off requested',
+                        description: 'A person asked for paid days off. Carries the person, the days asked '
+                            .'for, and their total, used and left.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'user.pto_approved',
+                        label: 'Paid time off approved',
+                        description: 'A request for paid days off was approved and the days recorded as used.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'user.pto_denied',
+                        label: 'Paid time off denied',
+                        description: 'A request for paid days off was denied, with the reason given.',
+                    ),
+                    new TriggerDefinition(
                         key: 'user.pto_used_changed',
                         label: 'Paid time off used changed',
                         description: 'Somebody changed how many paid days off a person has used. '
@@ -814,7 +830,9 @@ class ModuleServiceProvider extends ServiceProvider
                 // Seeing balances is the Paid Time Off tab's own key.
                 // `approve` (Daily approval, 2026-10-22): sign off a day of the
                 // people one reaches. Implies seeing them.
-                actions: ['view', 'all', 'manage', 'pto.edit', 'approve'],
+                // `pto.request` (Jose, 2026-10-26): ask for your own paid time
+                // off. Every role was given it by the migration of that day.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve', 'pto.request'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
@@ -826,6 +844,7 @@ class ModuleServiceProvider extends ServiceProvider
                     'manage' => 'Edit hours and schedules',
                     'pto.edit' => 'Edit used paid time off',
                     'approve' => 'Approve daily hours',
+                    'pto.request' => 'Ask for paid time off',
                 ],
                 tabs: [
                     new TabDefinition('general', 'General'),

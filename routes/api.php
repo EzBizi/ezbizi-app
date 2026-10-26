@@ -2033,6 +2033,12 @@ Route::prefix('v1')
         Route::put('hr/people/{user}/pto/used', [HrPeopleController::class, 'setPtoUsed']);
         // The days themselves (Jose, 2026-10-22: "it can be different days").
         Route::post('hr/people/{user}/pto/days', [HrPeopleController::class, 'addPtoDays']);
+        // Staff ask for paid time off; approvers decide (Jose, 2026-10-26).
+        Route::get('hr/pto/requests', [\App\Http\Controllers\Api\PtoRequestsController::class, 'index']);
+        Route::post('hr/pto/requests', [\App\Http\Controllers\Api\PtoRequestsController::class, 'store']);
+        Route::post('hr/pto/requests/{ptoRequest}/approve', [\App\Http\Controllers\Api\PtoRequestsController::class, 'approve']);
+        Route::post('hr/pto/requests/{ptoRequest}/deny', [\App\Http\Controllers\Api\PtoRequestsController::class, 'deny']);
+        Route::post('hr/pto/requests/{ptoRequest}/cancel', [\App\Http\Controllers\Api\PtoRequestsController::class, 'cancel']);
         Route::delete('hr/people/{user}/pto/days/{day}', [HrPeopleController::class, 'removePtoDay']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
