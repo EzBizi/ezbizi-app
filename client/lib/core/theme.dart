@@ -30,6 +30,12 @@ class EzBiziTheme {
   static const fieldYellow = Color(0xFFFACC15);
   static const fieldBlue = Color(0xFF3B82F6);
 
+  /// People-only states (Jose, 2026-10-26): purple is stopped too long and
+  /// slate is offline, so no person colour equals a job marker's
+  /// (blue, yellow, onSurface). Mid-tone, so both read on light and dark tiles.
+  static const fieldPurple = Color(0xFFA855F7);
+  static const fieldSlate = Color(0xFF64748B);
+
   /// Ink on a coloured pin: near-black on yellow and on the light "opened"
   /// marker, white on the others.
   static const fieldInkDark = Color(0xFF111111);

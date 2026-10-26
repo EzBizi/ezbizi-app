@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/logo_badge.dart';
+import 'field_status.dart';
 import 'map_overlays.dart';
 
 /// Field › Map: everyone you can see and the day's jobs on a quiet map.
@@ -362,17 +363,9 @@ class _FieldMapTabState extends State<FieldMapTab> {
     });
   }
 
-  /// Green reporting, blue at a job, red stopped too long, yellow not
-  /// reporting. The legend reads the same four.
-  Color _colour(Map<String, dynamic> p, ColorScheme scheme) {
-    if (p['silent'] == true || p['fresh'] != true) {
-      return EzBiziTheme.fieldYellow;
-    }
-    if (p['stopped'] == true) return EzBiziTheme.fieldRed;
-    if (p['at_job'] != null) return EzBiziTheme.fieldBlue;
-
-    return EzBiziTheme.fieldGreen;
-  }
+  /// The person's state colour (field_status.dart). The legend reads the same four.
+  Color _colour(Map<String, dynamic> p, ColorScheme scheme) =>
+      fieldPersonState(p).colour;
 
   @override
   Widget build(BuildContext context) {
@@ -516,6 +509,9 @@ class _FieldMapTabState extends State<FieldMapTab> {
                           child: FieldPersonPin(
                             name: '${(p['user'] as Map)['name']}',
                             colour: _colour(p, scheme),
+                            dashed:
+                                fieldPersonState(p) ==
+                                FieldPersonState.lostSignal,
                             selected:
                                 (p['user'] as Map)['id'] == _personId ||
                                 (_route?['user'] as Map?)?['id'] ==
