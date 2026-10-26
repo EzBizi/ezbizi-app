@@ -26,6 +26,8 @@ final class WorkizWebSession
 
     public const COOKIES = ['sendajob_sessid', 'sendajob_user', 'sajFranchise'];
 
+    public const UNMATCHED = 'No branch matches this account. Choose one.';
+
     public const EXPIRED = 'Workiz signed this session out. Sign in to Workiz and send the session to EzBizi again.';
 
     /**
