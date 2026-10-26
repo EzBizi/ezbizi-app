@@ -820,7 +820,9 @@ void main() {
       onRequest: (request) {
         if (!request.url.path.endsWith('/vehicles')) return null;
         final place = request.url.queryParameters['franchise_id'];
-        asked.add(place);
+        // General's Coming up reads the whole register (per_page=200); this
+        // test is about the register's own requests.
+        if (request.url.queryParameters['per_page'] != '200') asked.add(place);
 
         final rows = switch (place) {
           'fr-ct' => [
