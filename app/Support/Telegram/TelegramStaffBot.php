@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\TelegramLink;
 use App\Models\User;
 use App\Support\Ai\GrokCli;
+use App\Support\Ai\StaffAnswer;
 use App\Support\Assistant\TechAssistant;
 use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Support\Facades\RateLimiter;
@@ -135,15 +136,23 @@ final class TelegramStaffBot
             $files['photo.'.(in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'heic'], true) ? $ext : 'jpg')] = $file['bytes'];
         }
 
+        // One brain with the AI tab and WhatsApp (StaffAnswer, Jose 2026-10-26):
+        // a parts question or a photo to the Tech Assistant, anything else to
+        // the Library and then the app's data, read as this person.
         try {
-            $answer = $this->tech->answer($user, $organization, $text, 'telegram', $files, $files === [] ? 60 : 120);
+            $found = StaffAnswer::answer($user, $organization, $text, 'telegram', $files === [] ? 70 : 140, $files);
         } catch (\RuntimeException) {
-            $this->api->sendMessage($chatId, "\u{26A0}\u{FE0F} The tech assistant could not answer just now. Try again in a minute.");
+            $this->api->sendMessage($chatId, "\u{26A0}\u{FE0F} AI could not answer just now. Try again in a minute.");
 
             return;
         }
 
-        $this->api->sendMessage($chatId, $answer['reply'] ?? "\u{1F937} I have nothing on that. Send the brand, model and fuel (NG/LP), or a rating plate photo.");
+        $this->api->sendMessage($chatId, match ($found['source'] ?? null) {
+            null => "\u{1F937} I have nothing on that. For a part, send the brand, model and fuel (NG/LP), or a rating plate photo.",
+            StaffAnswer::TECH => $found['reply'],
+            StaffAnswer::APP => $found['reply']."\n\nFrom EzBizi, read by AI with your access.",
+            default => $found['reply'],
+        });
     }
 
     /** @param  array<string, mixed>  $message */
@@ -157,7 +166,7 @@ final class TelegramStaffBot
 
         $user = WhatsAppStaffBot::staffByPhone((string) $organization->getKey(), (string) ($message['contact']['phone_number'] ?? ''));
         if ($user === null) {
-            $this->api->sendMessage($chatId, "Sorry, this bot is for A1 staff. If you work with us, ask the office to add this phone number to your profile.", ['remove_keyboard' => true]);
+            $this->api->sendMessage($chatId, 'Sorry, this bot is for A1 staff. If you work with us, ask the office to add this phone number to your profile.', ['remove_keyboard' => true]);
 
             return;
         }
