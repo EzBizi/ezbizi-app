@@ -180,7 +180,7 @@ class A1PortTest extends TestCase
      * The branch is the reason the engine exists. Answering one question on the
      * system screen removes dozens of others across the form.
      */
-    public function test_choosing_a_system_hides_the_other_four_branches(): void
+    public function test_choosing_a_system_hides_the_other_branches(): void
     {
         $screens = $this->importedScreens();
         $system = $screens[1];
@@ -188,11 +188,11 @@ class A1PortTest extends TestCase
         $masonry = $this->shownKeys($system, ['system_type' => 'masonry']);
         $wood = $this->shownKeys($system, ['system_type' => 'wood']);
 
-        $this->assertContains('masonry_firebox_condition', $masonry);
-        $this->assertNotContains('wood_stove_condition', $masonry);
+        $this->assertContains('masonry_firebox', $masonry);
+        $this->assertNotContains('wood_stove', $masonry);
 
-        $this->assertContains('wood_stove_condition', $wood);
-        $this->assertNotContains('masonry_firebox_condition', $wood);
+        $this->assertContains('wood_stove', $wood);
+        $this->assertNotContains('masonry_firebox', $wood);
     }
 
     /**
@@ -264,12 +264,16 @@ class A1PortTest extends TestCase
         $this->assertContains('services', $types);
     }
 
-    /** `system_type` steers everything and is never printed. */
-    public function test_the_steering_question_is_not_printed(): void
+    /**
+     * `system_type` steers everything and IS printed: A1's own report shows
+     * "System Type: Pre-Fabricated Fireplace" under System Details (140 of its
+     * October reports read, 2026-10-26), so EzBizi's does too.
+     */
+    public function test_the_system_type_is_printed_as_a1_prints_it(): void
     {
         foreach ($this->importedScreens()[1]['fields'] as $field) {
             if (($field['key'] ?? '') === 'system_type') {
-                $this->assertSame('ignore', $field['print']);
+                $this->assertSame('text', $field['print']);
 
                 return;
             }
