@@ -1255,8 +1255,29 @@ class MailboxMessagesApiTest extends TestCase
 
         // Without a tab, one page as before.
         FakeMailboxReader::$listedCursors = [];
+        \Illuminate\Support\Facades\Cache::flush();   // the Inbox listing is cached
         $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk();
         $this->assertSame([null], FakeMailboxReader::$listedCursors);
+    }
+
+    /** All inboxes: one page per inbox, so ~40 inboxes cannot outrun the gateway (Jose, 2026-10-26). */
+    public function test_all_inboxes_reads_one_page_per_inbox_even_on_a_tab(): void
+    {
+        $this->withFakeProvider();
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t, 'info@a-1chimney.com');
+        $this->inbox($t, 'office@a-1chimney.com');
+
+        $mail = fn (string $id) => new MessageSummary(
+            id: $id, threadId: 't-'.$id, subject: $id, fromName: 'X', fromAddress: 'x@example.com',
+            to: [], sentAt: Carbon::parse('2026-10-22 09:00:00'), snippet: '', isBulk: true,
+        );
+        FakeMailboxReader::$pages = [new MessagePage([$mail('n1')], 'p1'), new MessagePage([$mail('n2')])];
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?category=primary')
+            ->assertOk()->assertJsonPath('meta.cursor', fn ($c) => $c !== null);
+
+        $this->assertSame([null, null], FakeMailboxReader::$listedCursors, 'Several inboxes read more than one page each.');
     }
 
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
