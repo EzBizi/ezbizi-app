@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Inspection's three chips, and which ones a role actually sees.
+/// Inspection's four chips, and which ones a role actually sees.
 ///
 /// The destinations themselves are Task 8 and Task 6. This file defends the
 /// strip: the owner's order, honest empty states rather than blank panes, and
@@ -23,7 +23,12 @@ void main() {
       'inspection.builder.view',
     ]);
 
-    expect(_chips(tester), ['New Inspection', 'Generated Reports', 'Builder']);
+    expect(_chips(tester), [
+      'New Inspection',
+      'Generated Reports',
+      'Builder',
+      'Testing',
+    ]);
 
     expect(
       find.text("Type a client's name, a phone or a job number"),
@@ -87,7 +92,7 @@ void main() {
       'inspection.builder.view',
     ]);
 
-    expect(_chips(tester), ['New Inspection', 'Builder']);
+    expect(_chips(tester), ['New Inspection', 'Builder', 'Testing']);
     expect(find.widgetWithText(ChoiceChip, 'Generated Reports'), findsNothing);
   });
 }

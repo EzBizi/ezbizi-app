@@ -6,8 +6,9 @@ import '../widgets/tab_bar_like.dart';
 import 'inspection/builder_tab.dart';
 import 'inspection/new_tab.dart';
 import 'inspection/reports_tab.dart';
+import 'inspection/testing_tab.dart';
 
-/// Inspection — New Inspection, Generated Reports, Builder.
+/// Inspection — New Inspection, Generated Reports, Builder, Testing.
 ///
 /// One destination with three faces, the same strip Human Resources and Email
 /// use. The sidebar already says Inspection, so there is no heading above the
@@ -69,6 +70,14 @@ class _InspectionScreenState extends State<InspectionScreen> {
           'Builder',
           Icons.dashboard_customize_outlined,
           () => BuilderTab(api: widget.api, session: widget.session),
+        ),
+      // A dry run of a form is authoring, so it opens with the Builder's
+      // grant (the registry names `builder.view` for it) and its capability.
+      if (_mayOpen('builder') && can('inspection.edit'))
+        (
+          'Testing',
+          Icons.science_outlined,
+          () => TestingTab(api: widget.api, session: widget.session),
         ),
     ];
   }

@@ -623,6 +623,48 @@ const Map<String, Tour> operationsTours = {
       ),
     ],
   ),
+  'inspection/Testing': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'testing-saves-nothing',
+        title: 'Nothing is saved',
+        body:
+            'A test makes no inspection, report or message, and no automation '
+            'runs.',
+      ),
+      TourStep(anchor: 'testing-form', title: 'Form', body: 'The form to try.'),
+      TourStep(
+        anchor: 'testing-version',
+        title: 'Version',
+        body: 'The unpublished draft, or any version already published.',
+      ),
+      TourStep(
+        anchor: 'testing-client',
+        title: 'Test client',
+        body:
+            'Optional. Its details fill the questions bound to a client or job, '
+            'as a real inspection would.',
+      ),
+      TourStep(
+        anchor: 'testing-answers',
+        title: 'Answers',
+        body: 'Answer as a technician would, one screen at a time.',
+      ),
+      TourStep(
+        anchor: 'testing-why',
+        title: 'Why',
+        body:
+            'Every screen and question, shown or skipped, and why. Click the '
+            'first missing one to go to it.',
+      ),
+      TourStep(
+        anchor: 'testing-preview',
+        title: 'Report preview',
+        body: 'The report these answers would make.',
+      ),
+    ],
+  ),
   'inspection/Builder': Tour(
     version: 1,
     steps: [

@@ -74,4 +74,24 @@ class RehearsalTest extends TestCase
             ->postJson("/api/v1/inspections/{$definition->id}/rehearse", ['answers' => []])
             ->assertForbidden();
     }
+
+    public function test_the_form_lists_its_published_versions_by_the_id_rehearse_takes(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $definition = $this->inTenant($tenant['org'], fn () => InspectionDefinition::create([
+            'name' => 'Chimney', 'created_by' => $tenant['admin']->id, 'screens' => self::SCREENS,
+        ]));
+        $as = $this->signedInAs($tenant['admin']);
+
+        $this->assertSame([], $as->getJson("/api/v1/inspections/{$definition->id}")->assertOk()->json('data.versions'));
+
+        $as->postJson("/api/v1/inspections/{$definition->id}/publish")->assertSuccessful();
+        $versions = $as->getJson("/api/v1/inspections/{$definition->id}")->json('data.versions');
+
+        $this->assertCount(1, $versions);
+        $this->assertSame(1, $versions[0]['version']);
+        $as->postJson("/api/v1/inspections/{$definition->id}/rehearse", [
+            'version' => $versions[0]['id'], 'answers' => ['system_type' => 'wood'],
+        ])->assertOk()->assertJsonPath('data.screens.1.shown', true);
+    }
 }

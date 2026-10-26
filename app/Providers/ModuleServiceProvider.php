@@ -1602,6 +1602,12 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('new', 'New Inspection'),
                     new TabDefinition('reports', 'Generated Reports'),
                     new TabDefinition('builder', 'Builder'),
+                    /*
+                     * A dry run of a form, which is authoring: the same grant
+                     * as Builder rather than a fourth box (rehearse sits behind
+                     * builder.view). Jose chose the word "Testing", 2026-10-26.
+                     */
+                    new TabDefinition('testing', 'Testing', action: 'builder.view'),
                 ],
                 /*
                  * Both record types this module broadcasts, not just the one
