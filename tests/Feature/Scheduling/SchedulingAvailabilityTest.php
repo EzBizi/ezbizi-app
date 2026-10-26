@@ -710,6 +710,8 @@ class SchedulingAvailabilityTest extends TestCase
 
         $viewer = $this->userWithRole($tenant, 'Caller', ['scheduling.view']);
         $this->signedInAs($viewer)->getJson('/api/v1/scheduling/overbooking/fill')->assertForbidden();
+        $rescheduler = $this->userWithRole($tenant, 'Rescheduler', ['scheduling.view', 'scheduling.rescheduling.view'], 'r@example.test');
+        $this->signedInAs($rescheduler)->getJson('/api/v1/scheduling/overbooking/fill')->assertOk();
     }
 
     /**

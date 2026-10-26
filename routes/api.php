@@ -1551,11 +1551,16 @@ Route::prefix('v1')
             ->middleware('permission:scheduling.rescheduling.view');
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
+            Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
+        });
+        // Booked vs available is drawn by Overbooking and by Re-Scheduling ›
+        // Rescheduling Availability (Jose, 2026-10-26); sending offers also
+        // needs scheduling.edit, checked in the controller.
+        Route::middleware('permission:scheduling.overbooking.view,scheduling.rescheduling.view')->group(function () {
             Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);
             Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::post('scheduling/overbooking/offers/preview', [SchedulingOverbookingController::class, 'previewOffers']);
             Route::post('scheduling/overbooking/offers/send', [SchedulingOverbookingController::class, 'sendOffers']);
-            Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
 
         Route::middleware('permission:scheduling.schedule.view')->group(function () {
