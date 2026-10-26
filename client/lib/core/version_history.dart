@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0492',
+      date: '26 Oct 2026',
+      items: [
+        'Inspection › New Inspection opens on one search bar that suggests customers, jobs and addresses as you type, with their branch.',
+        'Human Resources: each empty pay or terms box on an onboarding shows an example of what goes in it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0491',
       date: '26 Oct 2026',
       items: [
