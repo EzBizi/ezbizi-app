@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 150 · Monitoring › Lighting (RGB controller) — **sent 2026-10-26** (`docs/previews/monitoring-lighting-layouts.html`)
+### 150 · Monitoring › Lighting (RGB controller) — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/monitoring-lighting-layouts.html`)
 
 Monitoring relayed Jose ("EzBizi also act as a RGB Controller … in bulk or individually"). **1** (recommended) a Lighting tab (lighting.manage): bulk bar (All PCs in view / ticked N, mode Off/Static/Breathing/Rainbow, swatches + hex, brightness, Apply with result); list (tick, PC + person, live swatch of current mode, lights count, set by, status chip incl. engine missing / no lights / needs admin / close <brand app>); per-PC side pane with the same controls + lights found; search + status filter. **2** a Lighting section inside PC Specs. **3** rooms/zones. Phone **4** / **5** / **6**.
 
