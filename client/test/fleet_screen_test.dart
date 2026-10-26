@@ -111,6 +111,24 @@ void main() {
     expect(asked.last.queryParameters['uninsured'], '1');
   });
 
+  testWidgets('the Insurance expiring chip asks for insurance_expiring', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pumpScreen(
+      tester,
+      onRequest: (request) {
+        if (request.url.path.endsWith('/vehicles')) asked.add(request.url);
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Insurance expiring'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last.queryParameters['insurance_expiring'], '1');
+  });
+
   testWidgets('In shop on General opens the register filtered to it', (
     tester,
   ) async {
@@ -316,7 +334,8 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Due soon'), findsOneWidget);
 
-    await tester.drag(find.text('Van 2'), const Offset(0, -500));
+    // The chips now wrap past the first rows, so drag from a chip itself.
+    await tester.drag(find.text('Due soon'), const Offset(0, -800));
     await tester.pumpAndSettle();
 
     // A finder skips what a viewport has scrolled out of view.

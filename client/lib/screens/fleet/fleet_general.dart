@@ -44,8 +44,8 @@ class FleetGeneral extends StatefulWidget {
 const _fixes = <String, (String, String)>{
   'service_overdue': ('Book service', 'due_soon=1'),
   'service_due_soon': ('Book service', 'due_soon=1'),
-  'insurance_expired': ('Renew insurance', ''),
-  'insurance_expiring': ('Renew insurance', ''),
+  'insurance_expired': ('Renew insurance', 'insurance_expiring=1'),
+  'insurance_expiring': ('Renew insurance', 'insurance_expiring=1'),
   'no_insurance': ('Add insurance', 'uninsured=1'),
   'out_of_service': ('Show them', 'status=out_of_service'),
   'active_unassigned': ('Assign keys', 'unassigned=1'),
