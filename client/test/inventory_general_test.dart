@@ -21,7 +21,14 @@ void main() {
     bool money = true,
     List<Map<String, dynamic>> warnings = const [],
     List<double> received = const [4.0, 0.0],
+    Map<String, dynamic>? previous,
+    List<Map<String, dynamic>>? byLocation,
+    List<Map<String, dynamic>>? topItems,
+    Map<String, dynamic>? purchaseOrders,
   }) => {
+    'by_location': ?byLocation,
+    'top_items': ?topItems,
+    'purchase_orders': ?purchaseOrders,
     'health': {
       'empty': false,
       'in_stock': inStock,
@@ -68,6 +75,7 @@ void main() {
           'points': [0.0, 0.0],
         },
       ],
+      'previous': ?previous,
     },
   };
 
@@ -250,6 +258,30 @@ void main() {
   for (final (name, fixture) in [
     ('a quiet one', () => summary(low: 0, out: 0, orders: 0, money: false)),
     (
+      'every card on the right',
+      () => summary(
+        low: 0,
+        out: 0,
+        orders: 0,
+        byLocation: [
+          for (var i = 1; i <= 4; i++)
+            {
+              'location': {'id': i, 'name': 'Place $i'},
+              'items': i,
+              'value_minor': i * 100,
+            },
+        ],
+        topItems: [
+          for (var i = 1; i <= 5; i++)
+            {
+              'item': {'id': i, 'name': 'Item $i', 'number': 'N$i'},
+              'qty': '$i.000',
+              'value_minor': i * 100,
+            },
+        ],
+      ),
+    ),
+    (
       'a long one',
       () => summary(
         warnings: [
@@ -283,7 +315,18 @@ void main() {
         find.byKey(const ValueKey('tour-inventory-movement')),
       );
       expect(status.top, movement.top);
-      expect(attention.bottom, movement.bottom);
+      // The last card on the right, whichever cards the server sent.
+      final lastRight = [
+        movement,
+        for (final key in [
+          'inventory-general-locations',
+          'inventory-general-top',
+        ])
+          if (find.byKey(ValueKey(key)).evaluate().isNotEmpty)
+            tester.getRect(find.byKey(ValueKey(key))),
+      ].last;
+      expect(attention.bottom, lastRight.bottom);
+      expect(lastRight.bottom, left.bottom);
     });
   }
 
@@ -326,5 +369,202 @@ void main() {
       300,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'Stock by location: value, Not priced for null, none when absent',
+    (tester) async {
+      await pump(
+        tester,
+        (_) => summary(
+          byLocation: [
+            {
+              'location': {'id': 1, 'name': 'Main shop'},
+              'items': 4,
+              'value_minor': 164450,
+            },
+            {
+              'location': {'id': 2, 'name': 'Van 3'},
+              'items': 2,
+              'value_minor': null,
+            },
+          ],
+        ),
+      );
+
+      expect(find.text('Stock by location'), findsOneWidget);
+      final shop = find.byKey(const Key('inventory-location-1'));
+      final van = find.byKey(const Key('inventory-location-2'));
+      expect(
+        find.descendant(of: shop, matching: find.text('\$1,644.50')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: van, matching: find.text('Not priced')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: van, matching: find.text('\$0.00')),
+        findsNothing,
+      );
+
+      // Painted: the fill has height, and halves for half the items.
+      Size fill(Finder row) => tester.getSize(
+        find.descendant(of: row, matching: find.byType(ColoredBox)).first,
+      );
+      expect(fill(shop).height, 8);
+      expect(fill(van).width / fill(shop).width, closeTo(0.5, 0.01));
+    },
+  );
+
+  testWidgets('without the value key a location shows no value at all', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (_) => summary(
+        money: false,
+        byLocation: [
+          {
+            'location': {'id': 1, 'name': 'Main shop'},
+            'items': 4,
+          },
+        ],
+      ),
+    );
+
+    final shop = find.byKey(const Key('inventory-location-1'));
+    expect(
+      find.descendant(of: shop, matching: find.text('4 items')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: shop, matching: find.text('Not priced')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: shop, matching: find.textContaining('\$')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('top items are by value with values, by quantity without', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (_) => summary(
+        topItems: [
+          {
+            'item': {'id': 7, 'name': '6 mil liner', 'number': 'LN-6'},
+            'qty': '12.000',
+            'value_minor': 90000,
+          },
+        ],
+      ),
+    );
+    expect(find.text('Top items by value'), findsOneWidget);
+    expect(find.text('LN-6 · 6 mil liner'), findsOneWidget);
+    expect(find.text('Qty 12'), findsOneWidget);
+    expect(find.text('\$900.00'), findsOneWidget);
+  });
+
+  testWidgets('top items without values are titled by quantity', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (_) => summary(
+        money: false,
+        topItems: [
+          {
+            'item': {'id': 7, 'name': '6 mil liner', 'number': 'LN-6'},
+            'qty': '12.500',
+          },
+        ],
+      ),
+    );
+    expect(find.text('Top items by quantity'), findsOneWidget);
+    expect(find.text('Top items by value'), findsNothing);
+    expect(find.text('Qty 12.50'), findsOneWidget);
+  });
+
+  testWidgets('Movement sets each total against the previous period', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (_) => summary(
+        received: const [4.0, 6.0],
+        previous: {
+          'received': 4.0,
+          'issued_sold': 3.0,
+          'adjusted': 0.0,
+          'moved': 0.0,
+        },
+      ),
+    );
+
+    expect(
+      find.byKey(const Key('inventory-movement-in-change')),
+      findsOneWidget,
+    );
+    expect(find.text('▲ 6 vs 4 last period'), findsOneWidget);
+    expect(find.text('▼ 3 vs 3 last period'), findsOneWidget);
+    expect(find.text('Same as last period'), findsNWidgets(2));
+
+    final now = tester.getSize(
+      find
+          .descendant(
+            of: find.byKey(const Key('inventory-movement-in')),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+    final before = tester.getSize(
+      find
+          .descendant(
+            of: find.byKey(const Key('inventory-movement-in-previous')),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+    expect(before.height, 4);
+    expect(before.width / now.width, closeTo(0.4, 0.01));
+  });
+
+  testWidgets('Receive counts open orders only, drafts as a note', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      (_) => summary(
+        low: 0,
+        out: 0,
+        orders: 3,
+        purchaseOrders: {'open': 1, 'draft': 2},
+      ),
+    );
+    expect(
+      find.text(
+        '1 purchase order is open to receive. 2 drafts are not sent yet.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Receive'), findsOneWidget);
+  });
+
+  testWidgets('no open orders, only drafts: no Receive row', (tester) async {
+    await pump(
+      tester,
+      (_) => summary(
+        low: 0,
+        out: 0,
+        orders: 2,
+        purchaseOrders: {'open': 0, 'draft': 2},
+      ),
+    );
+    expect(find.text('Receive'), findsNothing);
+    expect(find.text('Nothing needs attention.'), findsOneWidget);
   });
 }
