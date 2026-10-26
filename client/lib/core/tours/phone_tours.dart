@@ -407,8 +407,8 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Overbooking/Booked vs available': Tour(
-    version: 1,
+  'scheduling/Re-Scheduling/Rescheduling Availability': Tour(
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-booked-day',

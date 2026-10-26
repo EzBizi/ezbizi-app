@@ -3,51 +3,59 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/tab_bar_like.dart';
-import 'overbooking_pane.dart';
+import '../../core/session.dart';
+import 'rescheduling_pane.dart';
 
-/// Scheduling › Overbooking: the overbooked days, and Booked vs available.
+/// Scheduling › Re-Scheduling: Rescheduling Availability (Booked vs available,
+/// with the earlier-opening offers) and AI Rescheduling Suggestion (Jose,
+/// 2026-10-26: moved here from Overbooking, which keeps overbooked days only).
 ///
 /// design: docs/previews/scheduling-booked-vs-available-layouts.html — #1, phone #4
-/// (UI queue 147). A segment of Overbooking rather than a tab of its own:
-/// both read `scheduling.overbooking.view` on the server, so a separate tab
-/// would be a grant that opens nothing the other does not.
-class OverbookingTab extends StatefulWidget {
-  const OverbookingTab({
+/// (UI queue 147). The availability endpoints read `scheduling.overbooking.view`
+/// on the server, not the Re-Scheduling grant, so [showAvailability] is false
+/// for someone who may open Re-Scheduling without it and its sub-tab is not
+/// drawn: a tab that answers 403 is a tab nobody can use.
+class ReschedulingTab extends StatefulWidget {
+  const ReschedulingTab({
     super.key,
     required this.api,
+    required this.session,
     required this.visible,
     required this.canEdit,
+    required this.showAvailability,
     this.linkDate,
     this.linkSerial = 0,
   });
 
   final ApiClient api;
+  final Session session;
   final bool visible;
   final bool canEdit;
+  final bool showAvailability;
 
   /// A deep link's day (`/scheduling/overbooking?date=`); a new [linkSerial]
-  /// opens Booked vs available on it.
+  /// opens Rescheduling Availability on it.
   final String? linkDate;
   final int linkSerial;
 
   @override
-  State<OverbookingTab> createState() => _OverbookingTabState();
+  State<ReschedulingTab> createState() => _ReschedulingTabState();
 }
 
-class _OverbookingTabState extends State<OverbookingTab> {
+class _ReschedulingTabState extends State<ReschedulingTab> {
   int _tab = 0;
   final Set<int> _shown = {0};
 
   @override
   void initState() {
     super.initState();
-    if (widget.linkSerial > 0) _select(1);
+    if (widget.linkSerial > 0) _select(0);
   }
 
   @override
-  void didUpdateWidget(covariant OverbookingTab old) {
+  void didUpdateWidget(covariant ReschedulingTab old) {
     super.didUpdateWidget(old);
-    if (widget.linkSerial != old.linkSerial) _select(1);
+    if (widget.linkSerial != old.linkSerial) _select(0);
   }
 
   void _select(int i) {
@@ -57,17 +65,25 @@ class _OverbookingTabState extends State<OverbookingTab> {
 
   @override
   Widget build(BuildContext context) {
-    final panes = <Widget Function()>[
-      () => OverbookingPane(
+    if (!widget.showAvailability) {
+      return ReschedulingPane(
         api: widget.api,
-        visible: widget.visible && _tab == 0,
-      ),
+        session: widget.session,
+        visible: widget.visible,
+      );
+    }
+    final panes = <Widget Function()>[
       () => BookedAvailablePane(
         api: widget.api,
-        visible: widget.visible && _tab == 1,
+        visible: widget.visible && _tab == 0,
         canEdit: widget.canEdit,
         date: widget.linkDate,
         dateSerial: widget.linkSerial,
+      ),
+      () => ReschedulingPane(
+        api: widget.api,
+        session: widget.session,
+        visible: widget.visible && _tab == 1,
       ),
     ];
 
@@ -75,11 +91,11 @@ class _OverbookingTabState extends State<OverbookingTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TabBarLike(
-          key: const ValueKey('tour-scheduling-overbooking-segments'),
+          key: const ValueKey('tour-scheduling-rescheduling-segments'),
           level: TabLevel.secondary,
           labels: const [
-            ('Overbooked days', Icons.warning_amber_outlined),
-            ('Booked vs available', Icons.stacked_bar_chart),
+            ('Rescheduling Availability', Icons.stacked_bar_chart),
+            ('AI Rescheduling Suggestion', Icons.auto_awesome_outlined),
           ],
           selected: _tab,
           onSelected: (i) => setState(() => _select(i)),

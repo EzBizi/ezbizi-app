@@ -10,7 +10,7 @@ import 'scheduling/booked_available_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/helpers_pane.dart';
 import 'scheduling/locations_pane.dart';
-import 'scheduling/rescheduling_pane.dart';
+import 'scheduling/overbooking_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
 import 'scheduling/technician_links.dart';
@@ -56,7 +56,7 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
   void _takeLink() {
     final link = DeepLinks.take('scheduling');
     if (link?.type != 'booked_vs_available') return;
-    final at = _tabs.indexWhere((t) => t.$1 == 'overbooking');
+    final at = _tabs.indexWhere((t) => t.$1 == 'rescheduling');
     if (at < 0) return;
     _linkDate = link!.date;
     _linkSerial++;
@@ -101,23 +101,22 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'overbooking',
       'Overbooking',
       Icons.warning_amber_outlined,
-      // Overbooked days, and Booked vs available (UI queue 147).
-      () => OverbookingTab(
-        api: widget.api,
-        visible: _visible('overbooking'),
-        canEdit: widget.session.me?.can('scheduling.edit') ?? false,
-        linkDate: _linkDate,
-        linkSerial: _linkSerial,
-      ),
+      () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
     ),
     (
       'rescheduling',
       'Re-Scheduling',
       Icons.swap_horiz,
-      () => ReschedulingPane(
+      // Rescheduling Availability (Booked vs available, UI queue 147) and AI
+      // Rescheduling Suggestion (Jose, 2026-10-26).
+      () => ReschedulingTab(
         api: widget.api,
         session: widget.session,
         visible: _visible('rescheduling'),
+        canEdit: widget.session.me?.can('scheduling.edit') ?? false,
+        showAvailability: _mayOpen('overbooking'),
+        linkDate: _linkDate,
+        linkSerial: _linkSerial,
       ),
     ),
     (

@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Scheduling › Overbooking › Booked vs available (UI queue 147, 1 and 4).
+/// Scheduling › Re-Scheduling › Rescheduling Availability (UI queue 147, 1 and 4).
 void main() {
   testWidgets('rows sort over → open → full, with Company · Branch and chips', (
     tester,
@@ -208,7 +208,7 @@ void main() {
     );
   });
 
-  testWidgets('a linked date opens the segment on that day', (tester) async {
+  testWidgets('a linked date opens the pane on that day', (tester) async {
     final log = _Log();
     tester.view.physicalSize = const Size(1200, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -217,12 +217,12 @@ void main() {
       MaterialApp(
         theme: EzBiziTheme.light(),
         home: Scaffold(
-          body: OverbookingTab(
+          body: BookedAvailablePane(
             api: log.api(),
             visible: true,
             canEdit: true,
-            linkDate: '2026-11-02',
-            linkSerial: 1,
+            date: '2026-11-02',
+            dateSerial: 1,
           ),
         ),
       ),
