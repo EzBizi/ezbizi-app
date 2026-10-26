@@ -54,7 +54,7 @@ class SyncWorkizWebPayments extends Command
 
                     if ($franchise === null) {
                         $this->line('Workiz web payments: '.$name.' is not mapped to a branch; skipped.');
-                        WorkizWebSession::note($connection, $account, 'payments', 'No branch matches this account. Choose one.');
+                        WorkizWebSession::note($connection, $account, 'payments', WorkizWebSession::UNMATCHED);
 
                         continue;
                     }

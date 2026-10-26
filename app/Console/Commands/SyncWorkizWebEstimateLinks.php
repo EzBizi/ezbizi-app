@@ -58,7 +58,7 @@ class SyncWorkizWebEstimateLinks extends Command
             $franchise = WorkizWebSession::franchiseFor($connection, $account, $name);
 
             if ($franchise === null) {
-                WorkizWebSession::note($connection, $account, 'estimates', 'No branch matches this account. Choose one.');
+                WorkizWebSession::note($connection, $account, 'estimates', WorkizWebSession::UNMATCHED);
 
                 continue;
             }

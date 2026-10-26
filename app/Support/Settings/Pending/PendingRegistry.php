@@ -3,6 +3,10 @@
 namespace App\Support\Settings\Pending;
 
 use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
+use App\Support\Workiz\WorkizWebSession;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -65,7 +69,39 @@ final class PendingRegistry
             'hint'        => 'Open Settings, then Organization, then the company.',
         ];
 
+        $openWorkiz = fn () => [
+            'kind'        => 'open',
+            'destination' => 'integrations',
+            'hint'        => 'Open Integrations, then Workiz.',
+        ];
+        $workiz = fn () => SocialConnection::query()->where('provider', SocialProvider::Workiz->value);
+
         return [
+            // Asked only of an organization that uses Workiz at all: a branch
+            // without it is a gap there, and nothing anywhere else.
+            new PendingCheck(
+                key: 'workiz.branch_connection',
+                label: 'Workiz connection',
+                module: 'integrations',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: [SocialProvider::Workiz->connectPermission()],
+                missing: fn (Franchise $f) => $workiz()->exists() && ! $workiz()
+                    ->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $f->getKey())->exists(),
+                fill: $openWorkiz,
+            ),
+            // A Workiz account the company's web login reads that no branch matched.
+            new PendingCheck(
+                key: 'workiz.web_account_branch',
+                label: 'Workiz account without a branch',
+                module: 'integrations',
+                scopes: [SettingDefinition::SCOPE_COMPANY],
+                permissions: [SocialProvider::WorkizWeb->connectPermission()],
+                missing: fn (Company $c) => SocialConnection::query()->where('provider', SocialProvider::WorkizWeb->value)
+                    ->where('scope_type', SocialConnection::SCOPE_COMPANY)->where('scope_id', $c->getKey())->get()
+                    ->contains(fn (SocialConnection $l) => collect((array) ($l->credentials['reads'] ?? []))
+                        ->contains(fn ($read) => ($read['error'] ?? null) === WorkizWebSession::UNMATCHED)),
+                fill: $openWorkiz,
+            ),
             new PendingCheck(
                 key: 'company.address',
                 label: 'Address',
