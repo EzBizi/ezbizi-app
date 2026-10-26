@@ -202,6 +202,7 @@ use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\TelegramConnectController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
@@ -1418,6 +1419,11 @@ Route::prefix('v1')
         Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
         Route::put('social/workiz-web/{connection}/company', [WorkizWebSessionController::class, 'moveToCompany']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
+        // The organization's own Telegram bot (Integrations › Messaging), and
+        // the staff linked to it. Gated in the controller on the connect grant.
+        Route::post('social/telegram', [TelegramConnectController::class, 'store']);
+        Route::get('social/telegram/links', [TelegramConnectController::class, 'links']);
+        Route::delete('social/telegram/links/{link}', [TelegramConnectController::class, 'unlink']);
 
         /*
          * Profit & Loss, read live from a tenant's own Airtable base. Before

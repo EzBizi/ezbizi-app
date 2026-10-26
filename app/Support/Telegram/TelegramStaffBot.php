@@ -26,11 +26,15 @@ final class TelegramStaffBot
 
     public const SHARE = 'Share my phone number';
 
-    public function __construct(private readonly TelegramApi $api, private readonly TechAssistant $tech) {}
+    public function __construct(private TelegramApi $api, private readonly TechAssistant $tech) {}
 
     /** @param  array<string, mixed>  $message  a Telegram Message */
     public function handle(Organization $organization, array $message): void
     {
+        if (! $this->useBotOf($organization)) {
+            return;
+        }
+
         $fromId = (int) ($message['from']['id'] ?? 0);
         $chatId = (int) ($message['chat']['id'] ?? 0);
         if ($fromId === 0 || $chatId === 0 || ($message['chat']['type'] ?? 'private') !== 'private' || ($message['from']['is_bot'] ?? false)) {
@@ -85,7 +89,7 @@ final class TelegramStaffBot
 
         if (! empty($message['photo'])) {
             $largest = collect($message['photo'])->sortByDesc(fn ($p) => (int) ($p['file_size'] ?? 0) ?: ((int) ($p['width'] ?? 0)) * ((int) ($p['height'] ?? 0)))->first();
-            AnswerTelegramWithTech::dispatch($user->getKey(), $chatId, $text, (string) $largest['file_id']);
+            AnswerTelegramWithTech::dispatch($user->getKey(), $chatId, $text, (string) $largest['file_id'], (string) $organization->getKey());
             $this->api->sendMessage($chatId, "\u{1F440} Reading that photo\u{2026}");
 
             return;
@@ -108,12 +112,16 @@ final class TelegramStaffBot
             return;
         }
 
-        AnswerTelegramWithTech::dispatch($user->getKey(), $chatId, $text, null);
+        AnswerTelegramWithTech::dispatch($user->getKey(), $chatId, $text, null, (string) $organization->getKey());
     }
 
     /** AnswerTelegramWithTech's half: the assistant's answer, a photo read when one came. */
     public function techReply(Organization $organization, User $user, int $chatId, string $text, ?string $fileId): void
     {
+        if (! $this->useBotOf($organization)) {
+            return;
+        }
+
         $files = [];
         if ($fileId !== null) {
             try {
@@ -158,6 +166,22 @@ final class TelegramStaffBot
         TelegramLink::create(['user_id' => $user->getKey(), 'telegram_user_id' => $fromId, 'chat_id' => $chatId, 'linked_at' => now()]);
 
         $this->api->sendMessage($chatId, "\u{2705} Linked to {$user->name}. Ask me about a unit or a part, or send a rating plate photo.", ['remove_keyboard' => true]);
+    }
+
+    /**
+     * Every reply goes out through the organization's own bot (its
+     * connection, else the env bot for TELEGRAM_ORG_ID alone). False when it
+     * has none: nothing is sent with another organization's token.
+     */
+    private function useBotOf(Organization $organization): bool
+    {
+        $api = TelegramApi::forOrganization((string) $organization->getKey());
+        if ($api === null) {
+            return false;
+        }
+        $this->api = $api;
+
+        return true;
     }
 
     private function askForPhone(int $chatId, bool $greet): void

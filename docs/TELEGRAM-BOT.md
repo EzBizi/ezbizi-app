@@ -5,21 +5,26 @@ Staff link once by sharing their phone number with the bot; it must match the
 phone on their EzBizi profile. `/unlink` disconnects. Answers appear in
 AI Assistance → Answers with channel Telegram.
 
-## Setup
+## Setup (in the app)
 
 1. In Telegram, message **@BotFather**, send `/newbot`, pick a name and a
    username. Copy the token it gives you. Do not paste it in chat or the repo.
-2. On the server, set in `.env`:
-   - `TELEGRAM_BOT_TOKEN` — the BotFather token
-   - `TELEGRAM_WEBHOOK_SECRET` — a random string (`openssl rand -hex 32`; letters, digits, `_` and `-` only)
-   - `TELEGRAM_ORG_ID` — the id of the organization the bot serves
-3. Deploy (`scripts/deploy.sh`), which runs the `telegram_links` migration and
-   refreshes the config cache.
-4. Register the webhook:
+2. In EzBizi, organization view: **Settings › Integrations › Messaging ›
+   Telegram**, paste the token, **Connect bot** (needs `ai_assistance.manage`).
+   The server checks it with `getMe`, generates a webhook secret and calls
+   `setWebhook` itself. One bot per organization; a bot already connected to
+   another organization is refused.
+3. The Telegram page lists linked staff with **Unlink**. The card says
+   *Needs attention* when Telegram reports a webhook delivery error.
+   Disconnect needs an authenticator code and calls `deleteWebhook`.
 
-   ```
-   php artisan telegram:set-webhook https://<host>/api/v1/telegram/webhook
-   ```
+Tech mode (`ai_assistance.tech_mode`) and Grok must be on, as for WhatsApp.
 
-The Answers tab then shows "Telegram bot: configured". Tech mode
-(`ai_assistance.tech_mode`) and Grok must be on, as for WhatsApp.
+## Env fallback (A1-Group's original bot)
+
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` and `TELEGRAM_ORG_ID` in `.env`
+still work, for `TELEGRAM_ORG_ID`'s organization only, registered with
+`php artisan telegram:set-webhook https://<host>/api/v1/telegram/webhook`.
+The webhook matches an organization's connection secret first, then the env
+secret. Sends use the organization's connection token, else the env token only
+for `TELEGRAM_ORG_ID`.
