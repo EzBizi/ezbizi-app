@@ -33,6 +33,8 @@ class VehicleList extends StatelessWidget {
     required this.onToggleDueSoon,
     this.uninsured = false,
     this.onToggleUninsured,
+    this.insuranceExpiring = false,
+    this.onToggleInsuranceExpiring,
     required this.emptyLabel,
     required this.shown,
     required this.total,
@@ -79,6 +81,11 @@ class VehicleList extends StatelessWidget {
   /// No open insurance policy (`uninsured=1`), the General tab's Add insurance.
   final bool uninsured;
   final VoidCallback? onToggleUninsured;
+
+  /// An open policy expired or expiring within 30 days
+  /// (`insurance_expiring=1`), the General tab's Renew insurance.
+  final bool insuranceExpiring;
+  final VoidCallback? onToggleInsuranceExpiring;
 
   final String emptyLabel;
   final int shown;
@@ -190,6 +197,12 @@ class VehicleList extends StatelessWidget {
                 label: const Text('No insurance'),
                 selected: uninsured,
                 onSelected: (_) => onToggleUninsured!(),
+              ),
+            if (onToggleInsuranceExpiring != null)
+              FilterChip(
+                label: const Text('Insurance expiring'),
+                selected: insuranceExpiring,
+                onSelected: (_) => onToggleInsuranceExpiring!(),
               ),
           ],
         ),

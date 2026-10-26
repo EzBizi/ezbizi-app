@@ -230,6 +230,29 @@ void main() {
     expect(opened, ['due_soon=1', 'unassigned=1', 'uninsured=1']);
   });
 
+  testWidgets('Renew insurance opens the expiring filter', (tester) async {
+    final opened = await pump(
+      tester,
+      warningRows: [
+        {
+          'key': 'insurance_expired',
+          'count': 1,
+          'sentence': '1 vehicle has insurance that has expired.',
+        },
+        {
+          'key': 'insurance_expiring',
+          'count': 2,
+          'sentence': '2 vehicles have insurance expiring within 30 days.',
+        },
+      ],
+    );
+
+    expect(find.text('Renew insurance'), findsNWidgets(2));
+    await tester.tap(find.byKey(const Key('fleet-fix-insurance_expired')));
+    await tester.tap(find.byKey(const Key('fleet-fix-insurance_expiring')));
+    expect(opened, ['insurance_expiring=1', 'insurance_expiring=1']);
+  });
+
   testWidgets('no warnings is one sentence', (tester) async {
     await pump(tester, warningRows: const []);
 
