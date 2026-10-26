@@ -3091,3 +3091,30 @@ inbox; not re-filed, the next release of `main` publishes it.
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
 `resultCount` 1, 0.0.0461.
+
+## 2026-10-26: 0.0.0491-0.0.0494 live, and `/privacy/` said Telegram was EzBizi's bot carrying only the tech assistant
+
+Production `/download/windows.json` 0.0.0494 at `428654263`. Before this edit all live
+`www/` files were byte-identical to the repo, so `0136` (tech assistant / Telegram) and
+`2d2567128` (footer Support / Delete account links) are live; `/privacy/` `Last-Modified`
+10-26 19:54 UTC.
+
+- **The finding, two understatements in one paragraph set.** `0.0.0491`
+  (`TelegramConnectController`): the bot is each organization's own, connected by pasting
+  its BotFather token — not "EzBizi's Telegram bot". `0.0.0493` (`StaffAnswer`, called from
+  `TelegramStaffBot:143`): a Telegram question now runs tech assistant -> Library -> AppAsk,
+  so a Telegram answer can carry any record the asker may see, and that passes through
+  Telegram. Fixed: AppAsk paragraph and xAI list item name the Telegram bot; tech-assistant
+  and Telegram paragraphs say the organization's own bot; Telegram list item says its
+  answers can include any record the person may see. Last updated / `dateModified` /
+  sitemap lastmod 2026-10-26.
+- Windows signed by EzBizi LLC (0491): no sentence on the site says unsigned. Gmail scope
+  narrowed to one (0493): the site names no Gmail scope. Fleet / Inventory General, PM-2,
+  PTO requests, Inspection testing, Reviews inbox, Overbooking reschedule texts (company's
+  own number), Settings › Pending, Services cards: no sentence touched.
+- `0.0.0495` (RGB lighting, AppAsk across companies) is on main, not live; nothing on the
+  site names either.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461. Desk not
+reachable from a scheduled run; publish asked as an inbox file.
