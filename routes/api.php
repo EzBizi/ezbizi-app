@@ -2597,7 +2597,7 @@ Route::prefix('v1')
         Route::delete('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'destroy'])
             ->middleware('permission:inspection.builder.view');
         Route::get('inspections/search', [InspectionRunsController::class, 'search'])
-            ->middleware('permission:inspection.new.view');
+            ->middleware('permission:inspection.new.view,inspection.builder.view');
         Route::get('inspections/startable', [InspectionRunsController::class, 'startable'])
             ->middleware('permission:inspection.new.view');
         Route::get('inspections', [InspectionDefinitionsController::class, 'index'])
