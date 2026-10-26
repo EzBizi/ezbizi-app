@@ -1317,7 +1317,7 @@ class _PtoTabState extends State<PtoTab> {
           if (PtoMaths.day(e['on']) case final on?)
             if (inPeriod(on) && !on.isAfter(today))
               (on: on, days: _num(e['days']) ?? 0, earned: true),
-      for (final e in PtoMaths.expected(
+      for (final e in PtoMaths.upcoming(
         policy: _policy,
         person: person,
         today: today,
@@ -1442,7 +1442,7 @@ class _PtoTabState extends State<PtoTab> {
     final end = PtoMaths.day(person['resets_on']);
     final expected = end == null
         ? const <({DateTime on, num days})>[]
-        : PtoMaths.expected(
+        : PtoMaths.upcoming(
             policy: _policy,
             person: person,
             today: PtoMaths.today(),
@@ -1957,6 +1957,27 @@ abstract final class PtoMaths {
     final u = ((used ?? 0) / total).clamp(0.0, 1.0).toDouble();
     final w = ((wouldExpire ?? 0) / total).clamp(0.0, 1.0 - u).toDouble();
     return (used: u, wouldExpire: w);
+  }
+
+  /// The grants still to come this period: HR's `upcoming_earned` when the
+  /// row has it (after today up to and including `resets_on`, oldest first),
+  /// else [expected] from the policy for an answer that predates the field.
+  static List<({DateTime on, num days})> upcoming({
+    required Map<String, dynamic> policy,
+    required Map<String, dynamic> person,
+    required DateTime today,
+    required DateTime end,
+  }) {
+    final sent = person['upcoming_earned'];
+    if (sent is! List) {
+      return expected(policy: policy, person: person, today: today, end: end);
+    }
+    return [
+      for (final e in sent)
+        if (e is Map)
+          if (day(e['on']) case final on?)
+            (on: on, days: _PtoTabState._num(e['days']) ?? 0),
+    ];
   }
 
   /// The days still to be earned after [today] up to the reset on [end],

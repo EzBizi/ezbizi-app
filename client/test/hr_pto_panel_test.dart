@@ -460,6 +460,60 @@ void main() {
     );
   });
 
+  test('upcoming: HR’s upcoming_earned when sent, the policy when absent', () {
+    final policy = {
+      'allowance': 2,
+      'allowance_period': 'quarter',
+      'accrue_after': 3,
+      'accrue_after_unit': 'month',
+      'reset': 'anniversary',
+    };
+    final row = <String, dynamic>{'started_on': '2026-01-31'};
+    List<DateTime> at(Map<String, dynamic> person) => [
+      for (final e in PtoMaths.upcoming(
+        policy: policy,
+        person: person,
+        today: DateTime(2026, 8, 1),
+        end: DateTime(2027, 1, 31),
+      ))
+        e.on,
+    ];
+
+    // Absent: derived, as PtoMaths.expected.
+    expect(at(row), [DateTime(2026, 10, 30), DateTime(2027, 1, 30)]);
+    // Present: the server's list wins, even where it differs from the maths.
+    expect(
+      at({
+        ...row,
+        'upcoming_earned': [
+          {'on': '2026-11-02', 'days': 3},
+        ],
+      }),
+      [DateTime(2026, 11, 2)],
+    );
+    // Present and empty: nothing to come, not a fallback.
+    expect(at({...row, 'upcoming_earned': <Object>[]}), isEmpty);
+  });
+
+  testWidgets('the card draws HR’s upcoming_earned when the row has it', (
+    tester,
+  ) async {
+    final q = _quarterly();
+    final on = _inDays(9);
+    (q.body['data'] as List).first['upcoming_earned'] = [
+      {'on': _iso(on), 'days': 3},
+    ];
+    await _pump(tester, q.body, width: 1200);
+
+    expect(find.byKey(const Key('pto-earn-upcoming')), findsOneWidget);
+    expect(find.byKey(Key('pto-earn-${_iso(on)}')), findsOneWidget);
+    expect(find.text('Next: +3 days on ${_fmt(on)}'), findsOneWidget);
+    expect(find.text('Expected · +3 days on ${_fmt(on)}'), findsOneWidget);
+    for (final d in q.upcoming) {
+      expect(find.byKey(Key('pto-earn-${_iso(d)}')), findsNothing);
+    }
+  });
+
   testWidgets('phone at 390×844: the bar, its dots and labels fit', (
     tester,
   ) async {
