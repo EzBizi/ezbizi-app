@@ -42,7 +42,11 @@ class InspectionRunsController extends Controller
 
     public function search(Request $request): JsonResponse
     {
-        $this->authorize('create', InspectionRun::class);
+        // Read-only, so the Builder's Testing tab may pick a test client or
+        // job too; starting a real inspection still needs create.
+        if (! $request->user()->hasPermission('inspection.builder.view')) {
+            $this->authorize('create', InspectionRun::class);
+        }
 
         $q = trim((string) $request->query('q', $request->query('search', '')));
         if ($q === '') {
