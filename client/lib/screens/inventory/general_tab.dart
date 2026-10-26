@@ -358,6 +358,8 @@ class _StockStatus extends StatelessWidget {
             child: total == 0
                 ? ColoredBox(color: EzBiziTheme.edge(context))
                 : Row(
+                    // Stretch: a childless ColoredBox is otherwise 0 high.
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       for (final (key, _, tone, n) in parts)
                         if (n > 0)
@@ -552,6 +554,7 @@ class _Bar extends StatelessWidget {
       child: SizedBox(
         height: 8,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (filled > 0)
               Expanded(

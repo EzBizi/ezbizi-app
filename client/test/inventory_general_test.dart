@@ -120,6 +120,10 @@ void main() {
       find.byKey(const Key('inventory-status-bar-out')),
     );
 
+    // Painted, not only laid out: each part is as tall as the bar.
+    expect(bar.height, greaterThan(0));
+    expect({inStock.height, low.height, out.height}, {bar.height});
+
     // 6 : 2 : 1 of the bar's width.
     expect(inStock.width / bar.width, closeTo(6 / 9, 0.01));
     expect(low.width / bar.width, closeTo(2 / 9, 0.01));
@@ -217,6 +221,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const Key('inventory-movement-empty')), findsNothing);
+    final fill = tester.getSize(
+      find
+          .descendant(
+            of: find.byKey(const Key('inventory-movement-in')),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    );
+    expect(fill.height, 8);
 
     await tester.tap(find.text('Week'));
     await tester.pumpAndSettle();
