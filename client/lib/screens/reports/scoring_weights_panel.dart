@@ -154,7 +154,11 @@ class _ScoringWeightsPanelState extends State<ScoringWeightsPanel> {
                   borderRadius: BorderRadius.circular(8),
                   child: SizedBox(
                     height: 16,
+                    // Stretch: a childless ColoredBox takes the smallest
+                    // height a Row allows, which is 0, so without it no
+                    // segment painted (the PmBar and PTO bar bug).
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (final k in keys)
                           if ((weights[k] ?? 0) > 0)

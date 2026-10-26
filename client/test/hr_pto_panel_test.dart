@@ -289,20 +289,202 @@ void main() {
       findsOneWidget,
     );
 
-    final today = tester.widget<Align>(find.byKey(const Key('pto-bar-today')));
-    expect((today.alignment as Alignment).x, closeTo(200 / 365 - 1, 1e-9));
-
-    final used = tester.widget<Expanded>(find.byKey(const Key('pto-bar-used')));
-    final expire = tester.widget<Expanded>(
-      find.byKey(const Key('pto-bar-would-expire')),
-    );
-    expect(used.flex, (2 / 12 * 1000).round());
-    expect(expire.flex, (10 / 12 * 1000).round());
-
     // The end labels and the policy line with what would expire.
     expect(find.text(_fmt(_inDays(-100))), findsWidgets);
-    expect(find.text(_fmt(_inDays(265))), findsOneWidget);
+    expect(
+      find.textContaining('Resets ${_fmt(_inDays(265))} · '),
+      findsOneWidget,
+    );
     expect(find.text('10 would expire if none are used'), findsOneWidget);
+  });
+
+  testWidgets('the bar paints: a track and an elapsed fill with real height '
+      'and the theme colours, and a Today pin on it', (tester) async {
+    await _pump(tester, _body(), width: 1200);
+    await tester.tap(find.text('Dana Reyes'));
+    await tester.pumpAndSettle();
+
+    final scheme = EzBiziTheme.light().colorScheme;
+    final track = find.byKey(const Key('pto-bar-track'));
+    final fill = find.byKey(const Key('pto-bar-fill'));
+    // The bug this guards: segments laid out 0 px tall paint nothing.
+    expect(tester.getSize(track).height, 8);
+    expect(tester.getSize(fill).height, 8);
+    Color colour(Finder f) =>
+        (tester.widget<DecoratedBox>(f).decoration as BoxDecoration).color!;
+    expect(colour(track), scheme.surfaceContainerHighest);
+    expect(colour(fill), scheme.primary);
+
+    // 100 days into a 365-day period.
+    final width = tester.getSize(track).width;
+    expect(tester.getSize(fill).width, closeTo(width * 100 / 365, 0.01));
+
+    final pin = find.byKey(const Key('pto-bar-today-pin'));
+    expect(tester.getSize(pin).height, greaterThan(8));
+    expect(
+      tester.getCenter(pin).dx - tester.getTopLeft(track).dx,
+      closeTo(width * 100 / 365, 0.01),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pto-bar-today')),
+        matching: find.text('Today'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('earning dots: filled once earned, hollow while expected, the '
+      'next one in words and the reset with what carries', (tester) async {
+    final q = _quarterly();
+    await _pump(tester, q.body, width: 1200);
+    await tester.tap(find.text('Lee Park').first);
+    await tester.pumpAndSettle();
+
+    final scheme = EzBiziTheme.light().colorScheme;
+    BoxDecoration dot(DateTime on) =>
+        tester
+                .widget<DecoratedBox>(
+                  find.descendant(
+                    of: find.byKey(Key('pto-earn-${_iso(on)}')),
+                    matching: find.byType(DecoratedBox),
+                  ),
+                )
+                .decoration
+            as BoxDecoration;
+
+    expect(dot(q.earned).color, scheme.primary);
+    for (final on in q.upcoming) {
+      expect(dot(on).color, scheme.surface, reason: 'hollow');
+      expect((dot(on).border! as Border).top.color, scheme.primary);
+    }
+    expect(find.byKey(const Key('pto-earn-earned')), findsOneWidget);
+    expect(find.byKey(const Key('pto-earn-upcoming')), findsNWidgets(2));
+    expect(tester.getSize(find.byKey(const Key('pto-earn-earned'))).height, 10);
+
+    // Hover says +2.
+    final tip = tester.widget<Tooltip>(
+      find.descendant(
+        of: find.byKey(Key('pto-earn-${_iso(q.upcoming.first)}')),
+        matching: find.byType(Tooltip),
+      ),
+    );
+    expect(tip.message, startsWith('+2 expected'));
+
+    expect(
+      find.text('Next: +2 days on ${_fmt(q.upcoming.first)}'),
+      findsOneWidget,
+    );
+    // 2 left now and 4 still to come, carried.
+    expect(
+      find.text('Resets ${_fmt(q.end)} · 6 would carry over'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the timeline leads with the expected earnings, hollow, above '
+      'the earned history', (tester) async {
+    final q = _quarterly();
+    await _pump(tester, q.body, width: 1200);
+    await tester.tap(find.text('Lee Park').first);
+    await tester.pumpAndSettle();
+
+    double top(String text) => tester.getTopLeft(find.text(text)).dy;
+    final later = 'Expected · +2 days on ${_fmt(q.upcoming.last)}';
+    final next = 'Expected · +2 days on ${_fmt(q.upcoming.first)}';
+    final earned = 'Earned · ${_fmt(q.earned)} (2 days)';
+    expect(top(later), lessThan(top(next)));
+    expect(top(next), lessThan(top(earned)));
+  });
+
+  test('expected earnings: a quarterly policy that starts accumulating 3 '
+      'months after starting', () {
+    final policy = {
+      'allowance': 2,
+      'allowance_period': 'quarter',
+      'accrue_after': 3,
+      'accrue_after_unit': 'month',
+      'reset': 'anniversary',
+    };
+    final person = {'started_on': '2026-01-31'};
+    List<DateTime> at(DateTime today) => [
+      for (final e in PtoMaths.expected(
+        policy: policy,
+        person: person,
+        today: today,
+        end: DateTime(2027, 1, 31),
+      ))
+        e.on,
+    ];
+
+    // Accumulating from 30 Apr (no 31st), then every three months; the one on
+    // the reset day counts in this period.
+    expect(at(DateTime(2026, 2, 1)), [
+      DateTime(2026, 7, 30),
+      DateTime(2026, 10, 30),
+      DateTime(2027, 1, 30),
+    ]);
+    expect(at(DateTime(2026, 8, 1)), [
+      DateTime(2026, 10, 30),
+      DateTime(2027, 1, 30),
+    ]);
+    expect(
+      PtoMaths.expected(
+        policy: policy,
+        person: person,
+        today: DateTime(2026, 8, 1),
+        end: DateTime(2027, 1, 31),
+      ).first.days,
+      2,
+    );
+
+    // Reset each period: the allowance lands on the period's first day, so
+    // the one on the reset belongs to the next period.
+    expect(
+      PtoMaths.expected(
+        policy: {...policy, 'reset': 'period'},
+        person: person,
+        today: DateTime(2026, 8, 1),
+        end: DateTime(2026, 10, 30),
+      ),
+      isEmpty,
+    );
+    expect(
+      PtoMaths.expected(
+        policy: policy,
+        person: const {'started_on': null},
+        today: DateTime(2026, 8, 1),
+        end: DateTime(2027, 1, 31),
+      ),
+      isEmpty,
+    );
+  });
+
+  testWidgets('phone at 390×844: the bar, its dots and labels fit', (
+    tester,
+  ) async {
+    final q = _quarterly();
+    await _pump(tester, q.body, width: 390, height: 844);
+    // The only person opens on their own; a list would need the tap.
+    if (find.byKey(const Key('pto-resets')).evaluate().isEmpty) {
+      await tester.tap(find.text('Lee Park').first);
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('pto-next-earning')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byKey(const Key('pto-bar-fill'))).height, 8);
+    final track = tester.getRect(find.byKey(const Key('pto-bar-track')));
+    expect(track.right, lessThanOrEqualTo(390));
+    for (final on in [q.earned, ...q.upcoming]) {
+      final r = tester.getRect(find.byKey(Key('pto-earn-${_iso(on)}')));
+      expect(r.left, greaterThanOrEqualTo(track.left));
+      expect(r.right, lessThanOrEqualTo(track.right));
+    }
   });
 
   testWidgets('past resets: chips from resets, "No resets yet" for an empty '
@@ -901,3 +1083,65 @@ const _me = {
   'companies': <Map<String, Object?>>[],
   'franchises': <Map<String, Object?>>[],
 };
+
+/// A quarterly policy, 2 days a quarter, accumulating from 3 months after
+/// starting, resetting on the anniversary with carryover. Started 8 months
+/// ago: one grant has landed this period and two are still to come.
+({
+  Map<String, dynamic> body,
+  DateTime earned,
+  List<DateTime> upcoming,
+  DateTime end,
+})
+_quarterly() {
+  final today = _inDays(0);
+  final started = PtoMaths.addMonths(today, -8);
+  final origin = PtoMaths.addMonths(started, 3);
+  DateTime grant(int n) => PtoMaths.addMonths(origin, 3 * n);
+  final end = PtoMaths.addMonths(started, 12);
+  return (
+    earned: grant(1),
+    upcoming: [grant(2), grant(3)],
+    end: end,
+    body: {
+      'policy': {
+        'enabled': true,
+        'allowance': 2,
+        'allowance_period': 'quarter',
+        'waiting': 0,
+        'waiting_unit': 'day',
+        'accrue_after': 3,
+        'accrue_after_unit': 'month',
+        'carry_over': true,
+        'reset': 'anniversary',
+      },
+      'me': 'u-0',
+      'data': [
+        {
+          'id': 'u-7',
+          'name': 'Lee Park',
+          'role': {'id': 'r-tech', 'name': 'Technician'},
+          'allowance': 2,
+          'started_on': _iso(started),
+          'eligible_from': _iso(started),
+          'eligible': true,
+          'total': 2,
+          'used': 0,
+          'left': 2,
+          'carried': 0,
+          'expired': 0,
+          'would_expire': 0,
+          'resets': <Object>[],
+          'earned': [
+            {'on': _iso(grant(1)), 'days': 2},
+          ],
+          'period_start': _iso(started),
+          'resets_on': _iso(end),
+          'can_edit_used': false,
+          'days_off': <Object>[],
+          'used_changes': <Object>[],
+        },
+      ],
+    },
+  );
+}
