@@ -223,7 +223,7 @@ class GoogleMailAuthController extends Controller
 
             // Published rather than described, so a client never has to hard-code
             // a list of permissions that could drift from what is actually asked.
-            'scopes' => [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND],
+            'scopes' => [GoogleOAuth::SCOPE_MODIFY],
         ]]);
     }
 
@@ -571,7 +571,7 @@ class GoogleMailAuthController extends Controller
          * fails the first time anybody opens it, with a permission message
          * nobody could trace back to a box they cleared ten minutes earlier.
          */
-        if (! $grant->covers(GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND)) {
+        if (! $grant->covers(GoogleOAuth::SCOPE_MODIFY)) {
             $this->google->revoke($grant->refreshToken);
 
             throw MailOAuthRefused::permissionNotGiven('Google', $address);

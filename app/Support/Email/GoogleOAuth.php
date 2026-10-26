@@ -204,7 +204,10 @@ final class GoogleOAuth
             'client_id'     => (string) config('services.google_mail.client_id'),
             'redirect_uri'  => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(' ', [self::SCOPE_READ, self::SCOPE_SEND, self::SCOPE_MODIFY]),
+            // gmail.modify alone: it reads, sends and changes labels, so asking
+            // for readonly and send beside it was more than least privilege
+            // allows (Google's OAuth review, 2026-10-25).
+            'scope'         => self::SCOPE_MODIFY,
 
             /*
              * The two parameters without which this whole module cannot work

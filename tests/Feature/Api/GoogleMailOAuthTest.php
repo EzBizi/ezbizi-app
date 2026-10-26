@@ -92,7 +92,7 @@ class GoogleMailOAuthTest extends TestCase
     private function tokenBody(?string $refresh = self::REFRESH, ?array $scopes = null): array
     {
         $token = ['access_token' => 'an-access-token', 'expires_in' => 3599,
-            'scope' => implode(' ', $scopes ?? [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND])];
+            'scope' => implode(' ', $scopes ?? [GoogleOAuth::SCOPE_MODIFY])];
 
         return $refresh === null ? $token : [...$token, 'refresh_token' => $refresh];
     }
@@ -328,9 +328,10 @@ class GoogleMailOAuthTest extends TestCase
         $this->assertNotEmpty($query['code_challenge'] ?? '');
 
         $this->assertEqualsCanonicalizing(
-            [GoogleOAuth::SCOPE_READ, GoogleOAuth::SCOPE_SEND, GoogleOAuth::SCOPE_MODIFY],
+            [GoogleOAuth::SCOPE_MODIFY],
             explode(' ', $query['scope']),
-            'The scopes asked for are not read, send and modify (Trash).',
+            'Only gmail.modify is asked for: it reads, sends and labels, and Google review '
+            .'(2026-10-25) refused readonly and send beside it as more than least privilege.',
         );
 
         $this->assertSame(self::ADDRESS, $query['login_hint'] ?? null);
