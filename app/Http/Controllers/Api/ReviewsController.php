@@ -73,7 +73,7 @@ class ReviewsController extends Controller
             $query->where('rating', (int) $rating);
         } elseif ($rating === 'positive') {
             $query->where('rating', '>=', 4);
-        } elseif ($rating === 'negative') {
+        } elseif ($rating === 'negative' || $rating === 'low') {
             $query->where('rating', '<=', 3);
         }
 
@@ -82,10 +82,6 @@ class ReviewsController extends Controller
             $query->whereHas('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
         } elseif ($replied === 'no') {
             $query->whereDoesntHave('reply', fn ($q) => $q->where('status', ReviewReply::STATUS_PUBLISHED));
-        }
-
-        if (is_string($from = $request->query('from')) && strtotime($from) !== false) {
-            $query->where('reviewed_at', '>=', Carbon::parse($from)->startOfDay());
         }
 
         // A location is its `locations/<id>`: the account part differs by grant.
@@ -112,6 +108,13 @@ class ReviewsController extends Controller
                 ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', $like)));
         }
 
+        // This month and last, under every filter but the dates (UI design 145).
+        $stats = $this->stats(clone $query);
+
+        if (is_string($from = $request->query('from')) && strtotime($from) !== false) {
+            $query->where('reviewed_at', '>=', Carbon::parse($from)->startOfDay());
+        }
+
         $locations = $this->locations(clone $query);
 
         // UI queue 101 (2026-10-16): newest, oldest, highest, lowest.
@@ -131,6 +134,7 @@ class ReviewsController extends Controller
                 ...$this->pageMeta($reviews),
                 'unanswered'   => $this->unansweredCount($user),
                 'locations'    => $locations,
+                'stats'        => $stats,
                 'connections'  => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
             ],
         ]);
@@ -235,6 +239,26 @@ class ReviewsController extends Controller
         $review->forceFill(['reported_at' => now(), 'report_reason' => trim($input['reason'])])->save();
 
         return $this->show($review);
+    }
+
+    /**
+     * Average rating and count for this month and last, in the app's time zone.
+     *
+     * @return array{this_month: array{average: ?float, count: int}, last_month: array{average: ?float, count: int}}
+     */
+    private function stats($query): array
+    {
+        $month = fn (Carbon $start) => (clone $query)->reorder()->whereNotNull('rating')
+            ->whereBetween('reviewed_at', [$start, $start->copy()->endOfMonth()])
+            ->toBase()->select(DB::raw('avg(rating) as average, count(*) as n'))->first();
+        $now = Carbon::now()->startOfMonth();
+
+        return collect(['this_month' => $now, 'last_month' => $now->copy()->subMonth()])
+            ->map(function (Carbon $start) use ($month) {
+                $row = $month($start);
+
+                return ['average' => $row?->n ? round((float) $row->average, 2) : null, 'count' => (int) ($row->n ?? 0)];
+            })->all();
     }
 
     /** @return list<array{id: string, name: string}> each `locations/<id>` in the list, named. */
