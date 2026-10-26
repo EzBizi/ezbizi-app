@@ -5,10 +5,16 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/module_overview.dart';
 
-/// Fleet's General tab (Mia, 2026-10-02): what is on the road, what needs
-/// attention, and - with financials - what it cost, from one request to
-/// `GET /vehicles/summary`. A figure or warning with a link opens the
-/// vehicle list filtered to it through [onOpen].
+/// Fleet's General tab (design 149, options 1 and 4): fleet status as one
+/// stacked bar, what needs attention with its fix, what comes due in the next
+/// 30 days, and - with financials - what it cost. Two columns on a desktop,
+/// one on a phone.
+///
+/// Status, attention and spending come from `GET /vehicles/summary`; the
+/// dates in Coming up are the register's own (`GET /vehicles`), because the
+/// summary sends counts, not dates. Insurance expiry dates, a previous-period
+/// total and per-vehicle spending are not sent by the server, so they are
+/// not drawn.
 class FleetGeneral extends StatefulWidget {
   const FleetGeneral({
     super.key,
@@ -28,14 +34,30 @@ class FleetGeneral extends StatefulWidget {
   final bool canAdd;
   final VoidCallback onAdd;
 
+  /// How far ahead Coming up looks - the server's own "soon".
+  static const soonDays = 30;
+
   @override
   State<FleetGeneral> createState() => _FleetGeneralState();
 }
+
+/// The fix each warning carries: the button's words, and where it goes when
+/// the server sends no link of its own.
+const _fixes = <String, (String, String)>{
+  'service_overdue': ('Book service', 'due_soon=1'),
+  'service_due_soon': ('Book service', 'due_soon=1'),
+  'insurance_expired': ('Renew insurance', ''),
+  'insurance_expiring': ('Renew insurance', ''),
+  'no_insurance': ('Add insurance', ''),
+  'out_of_service': ('Show them', 'status=out_of_service'),
+  'active_unassigned': ('Assign keys', 'unassigned=1'),
+};
 
 class _FleetGeneralState extends State<FleetGeneral> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
+  List<Map<String, dynamic>>? _vehicles;
   String _period = 'month';
   int _request = 0;
 
@@ -51,16 +73,19 @@ class _FleetGeneralState extends State<FleetGeneral> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool withDates = true}) async {
     final request = ++_request;
     setState(() {
       _loading = _data == null;
       _error = null;
     });
 
-    final response = await widget.api.get('/vehicles/summary', {
-      'period': _period,
-    });
+    final summary = widget.api.get('/vehicles/summary', {'period': _period});
+    final list = withDates
+        ? widget.api.get('/vehicles', {'per_page': '200'})
+        : null;
+    final response = await summary;
+    final listed = await list;
 
     if (!mounted || request != _request) return;
 
@@ -71,11 +96,20 @@ class _FleetGeneralState extends State<FleetGeneral> {
       } else {
         _error = response.message;
       }
+      if (listed != null) {
+        final rows = listed.ok ? listed.body['data'] : null;
+        // A failed list hides Coming up rather than claiming nothing is due.
+        _vehicles = rows is List
+            ? [
+                for (final row in rows)
+                  if (row is Map) row.cast<String, dynamic>(),
+              ]
+            : null;
+      }
     });
   }
 
-  VoidCallback? _link(Object? link) =>
-      link is String ? () => widget.onOpen(link) : null;
+  void _open(String link) => widget.onOpen(link);
 
   @override
   Widget build(BuildContext context) {
@@ -113,102 +147,314 @@ class _FleetGeneralState extends State<FleetGeneral> {
       );
     }
 
-    final links = (health['links'] as Map?)?.cast<String, dynamic>() ?? {};
-    int count(String key) => (health[key] as num?)?.toInt() ?? 0;
-
-    final figures = [
-      OverviewFigure(
-        key: const Key('fleet-general-vehicles'),
-        label: 'Vehicles',
-        value: '${count('vehicles')}',
-        note: '${count('owned')} owned · ${count('rented')} rented',
-        onTap: _link(links['vehicles']),
-      ),
-      OverviewFigure(
-        key: const Key('fleet-general-active'),
-        label: 'Active',
-        value: '${count('active')}',
-        tone: Tone.ok,
-        onTap: _link(links['active']),
-      ),
-      OverviewFigure(
-        key: const Key('fleet-general-in-shop'),
-        label: 'In shop',
-        value: '${count('in_shop')}',
-        tone: count('in_shop') > 0 ? Tone.caution : null,
-        onTap: _link(links['in_shop']),
-      ),
-      OverviewFigure(
-        key: const Key('fleet-general-out-of-service'),
-        label: 'Out of service',
-        value: '${count('out_of_service')}',
-        tone: count('out_of_service') > 0 ? Tone.bad : null,
-        onTap: _link(links['out_of_service']),
-      ),
-      OverviewFigure(
-        key: const Key('fleet-general-unassigned'),
-        label: 'Nobody has the keys',
-        value: '${count('unassigned')}',
-        onTap: _link(links['unassigned']),
-      ),
-    ];
-
-    final warnings = [
-      for (final raw in (data['warnings'] as List? ?? const []))
-        if (raw is Map)
-          OverviewWarning(
-            sentence: '${raw['sentence'] ?? ''}',
-            tone: const {
-              'service_overdue',
-              'insurance_expired',
-            }.contains(raw['key'])
-                ? Tone.bad
-                : Tone.caution,
-            onTap: _link(raw['link']),
-          ),
-    ];
-
     final spending = data['spending'] is Map
         ? (data['spending'] as Map).cast<String, dynamic>()
         : null;
 
-    final attention = OverviewSection(
-      key: const ValueKey('tour-fleet_management-attention'),
-      title: 'Needs attention',
-      child: OverviewWarnings(warnings: warnings),
-    );
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        OverviewFigures(figures: figures),
-        const SizedBox(height: 16),
-        // Without financials there is no money block at all, and the
-        // warnings take the whole width rather than leaving a hole.
-        if (spending == null)
-          attention
-        else
-          OverviewPair(first: _spending(context, spending), second: attention),
+    final rows = <List<Widget>>[
+      [
+        _status(context, health),
+        _attention(context, data['warnings'] as List? ?? const []),
       ],
+      [
+        if (_vehicles != null) _comingUp(context, _vehicles!),
+        if (spending != null) _spending(context, spending),
+      ],
+    ];
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth >= 900;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            for (final row in rows)
+              if (row.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: wide && row.length > 1
+                      ? _EqualHeightRow(children: row)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var i = 0; i < row.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 16),
+                              row[i],
+                            ],
+                          ],
+                        ),
+                ),
+          ],
+        );
+      },
     );
   }
 
+  // --- Fleet status -------------------------------------------------------
+
+  Widget _status(BuildContext context, Map<String, dynamic> health) {
+    final theme = Theme.of(context);
+    final links = (health['links'] as Map?)?.cast<String, dynamic>() ?? {};
+    int count(String key) => (health[key] as num?)?.toInt() ?? 0;
+    VoidCallback? link(String key) =>
+        links[key] is String ? () => _open(links[key] as String) : null;
+
+    final parts = [
+      ('active', 'Active', Tone.ok),
+      ('in_shop', 'In shop', Tone.caution),
+      ('out_of_service', 'Out of service', Tone.bad),
+    ];
+
+    return OverviewSection(
+      key: const Key('fleet-general-status'),
+      title: 'Fleet status',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            key: const Key('fleet-general-vehicles'),
+            onTap: link('vehicles'),
+            child: Text(
+              '${count('vehicles')} '
+              '${count('vehicles') == 1 ? 'vehicle' : 'vehicles'}',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            child: SizedBox(
+              height: 16,
+              child: Row(
+                // Stretch: a childless ColoredBox under a loose height is 0px.
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (key, _, tone) in parts)
+                    if (count(key) > 0)
+                      Expanded(
+                        flex: count(key),
+                        child: ColoredBox(
+                          key: Key('fleet-status-segment-$key'),
+                          color: ToneColours.of(context, tone).ink,
+                        ),
+                      ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              for (final (key, label, tone) in parts)
+                InkWell(
+                  key: Key('fleet-general-${key.replaceAll('_', '-')}'),
+                  onTap: link(key),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: ToneColours.of(context, tone).ink,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('$label ${count(key)}'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            children: [
+              InkWell(
+                key: const Key('fleet-general-owned'),
+                onTap: link('owned'),
+                child: Text('${count('owned')} owned'),
+              ),
+              const Text('·'),
+              InkWell(
+                key: const Key('fleet-general-rented'),
+                onTap: link('rented'),
+                child: Text('${count('rented')} rented'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Needs attention ----------------------------------------------------
+
+  Widget _attention(BuildContext context, List<dynamic> warnings) {
+    final theme = Theme.of(context);
+    final rows = [
+      for (final raw in warnings)
+        if (raw is Map) raw.cast<String, dynamic>(),
+    ];
+
+    return OverviewSection(
+      key: const ValueKey('tour-fleet_management-attention'),
+      title: 'Needs attention',
+      child: rows.isEmpty
+          ? Text(
+              'Nothing needs attention.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: ToneColours.of(context, Tone.ok).ink,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final row in rows) _attentionRow(context, row),
+              ],
+            ),
+    );
+  }
+
+  Widget _attentionRow(BuildContext context, Map<String, dynamic> row) {
+    final key = '${row['key']}';
+    final fix = _fixes[key];
+    final bad = const {'service_overdue', 'insurance_expired'}.contains(key);
+    final link = row['link'] is String ? row['link'] as String : fix?.$2;
+
+    return Padding(
+      key: Key('fleet-attention-$key'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            bad ? Icons.error_outline : Icons.warning_amber_rounded,
+            size: 18,
+            color: ToneColours.of(context, bad ? Tone.bad : Tone.caution).ink,
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text('${row['sentence'] ?? ''}')),
+          if (fix != null && link != null) ...[
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: Key('fleet-fix-$key'),
+              onPressed: () => _open(link),
+              child: Text(fix.$1),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // --- Coming up ----------------------------------------------------------
+
+  Widget _comingUp(BuildContext context, List<Map<String, dynamic>> vehicles) {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final until = today.add(const Duration(days: FleetGeneral.soonDays));
+
+    final items = <(DateTime, String, String)>[];
+    for (final vehicle in vehicles) {
+      final label = '${vehicle['label'] ?? vehicle['number'] ?? ''}';
+      for (final (field, what) in const [
+        ('registration_expires_on', 'Registration'),
+        ('inspection_expires_on', 'Inspection'),
+        ('next_service_on', 'Service'),
+      ]) {
+        final day = DateTime.tryParse('${vehicle[field] ?? ''}');
+        if (day != null && !day.isAfter(until)) items.add((day, what, label));
+      }
+    }
+    items.sort((a, b) => a.$1.compareTo(b.$1));
+
+    const shown = 8;
+    final bad = ToneColours.of(context, Tone.bad).ink;
+
+    return OverviewSection(
+      key: const Key('fleet-general-coming-up'),
+      title: 'Coming up, next 30 days',
+      child: items.isEmpty
+          ? Text(
+              'Nothing is due in the next 30 days.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, (day, what, label)) in items.take(shown).indexed)
+                  Padding(
+                    key: Key('fleet-coming-$i'),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 96,
+                          child: Text(
+                            _date(day),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: day.isBefore(today) ? bad : null,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '$what · $label',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (day.isBefore(today))
+                          Text(
+                            'Overdue',
+                            key: Key('fleet-coming-overdue-$i'),
+                            style: TextStyle(
+                              color: bad,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (items.length > shown)
+                  Text(
+                    'and ${items.length - shown} more',
+                    style: theme.textTheme.bodySmall,
+                  ),
+              ],
+            ),
+    );
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  static String _date(DateTime day) => '${_months[day.month - 1]} ${day.day}';
+
+  // --- Spending -----------------------------------------------------------
+
   Widget _spending(BuildContext context, Map<String, dynamic> spending) {
-    final buckets = [
-      for (final b in (spending['buckets'] as List? ?? const [])) '$b',
-    ];
-    final points = [
-      for (final p in (spending['points'] as List? ?? const []))
-        ((p as num?) ?? 0) / 100,
-    ];
+    final theme = Theme.of(context);
+    final total = (spending['total_minor'] as num?)?.toInt() ?? 0;
     final categories = [
       for (final c in (spending['categories'] as List? ?? const []))
         if (c is Map)
           (
             '${c['label'] ?? c['key']}',
-            _money((c['amount_minor'] as num?)?.toInt() ?? 0),
+            (c['amount_minor'] as num?)?.toInt() ?? 0,
           ),
     ];
+    final most = categories.fold<int>(0, (m, c) => c.$2 > m ? c.$2 : m);
 
     return OverviewSection(
       key: const Key('fleet-general-spending'),
@@ -218,30 +464,80 @@ class _FleetGeneralState extends State<FleetGeneral> {
         period: _period,
         onChanged: (period) {
           setState(() => _period = period);
-          _load();
+          _load(withDates: false);
         },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            _money((spending['total_minor'] as num?)?.toInt() ?? 0),
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          OverviewTrend(
-            buckets: buckets,
-            lines: [('Spent', points)],
-            emptySentence: 'No payments were recorded in this period.',
-          ),
-          if (categories.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            OverviewBreakdown(rows: categories),
-          ],
-        ],
-      ),
+      child: total == 0
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No costs were recorded in this period.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  key: const Key('fleet-general-record-cost'),
+                  onPressed: () => _open(''),
+                  child: const Text('Record a cost ›'),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  _money(total),
+                  key: const Key('fleet-general-spending-total'),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                for (final (label, amount) in categories)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(child: Text(label)),
+                            Text(
+                              _money(amount),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: SizedBox(
+                            height: 8,
+                            child: ColoredBox(
+                              color: EzBiziTheme.edge(context),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: most == 0 ? 0 : amount / most,
+                                  heightFactor: 1,
+                                  child: ColoredBox(
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 
@@ -253,5 +549,65 @@ class _FleetGeneralState extends State<FleetGeneral> {
     );
     final part = (cents.abs() % 100).toString().padLeft(2, '0');
     return '${cents < 0 ? '-' : ''}\$$whole.$part';
+  }
+}
+
+/// Cards side by side at one height. Not IntrinsicHeight: the period picker
+/// (a SegmentedButton) cannot answer an intrinsic size, so each card is
+/// measured after layout and every one is given the tallest's height.
+class _EqualHeightRow extends StatefulWidget {
+  const _EqualHeightRow({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  State<_EqualHeightRow> createState() => _EqualHeightRowState();
+}
+
+class _EqualHeightRowState extends State<_EqualHeightRow> {
+  final _keys = <GlobalKey>[];
+  double _height = 0;
+
+  @override
+  void didUpdateWidget(covariant _EqualHeightRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Content may have shrunk: measure from natural heights again.
+    _height = 0;
+  }
+
+  void _measure(Duration _) {
+    if (!mounted) return;
+    var tallest = 0.0;
+    for (final key in _keys) {
+      final box = key.currentContext?.findRenderObject();
+      if (box is RenderBox && box.hasSize && box.size.height > tallest) {
+        tallest = box.size.height;
+      }
+    }
+    if ((tallest - _height).abs() > 0.5) setState(() => _height = tallest);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    while (_keys.length < widget.children.length) {
+      _keys.add(GlobalKey());
+    }
+    WidgetsBinding.instance.addPostFrameCallback(_measure);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < widget.children.length; i++) ...[
+          if (i > 0) const SizedBox(width: 16),
+          Expanded(
+            child: ConstrainedBox(
+              key: _keys[i],
+              constraints: BoxConstraints(minHeight: _height),
+              child: widget.children[i],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }
