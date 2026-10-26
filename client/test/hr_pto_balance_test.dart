@@ -403,6 +403,9 @@ void main() {
       find.text('Resets ${_fmt(_inDays(80))}, your work anniversary'),
       findsOneWidget,
     );
+    // The Balances · Requests segment (design 146) sits above "You", so the
+    // list below is built once it is scrolled near.
+    await tester.scrollUntilVisible(find.text('Everyone you can see'), 100);
     expect(
       tester.getTopLeft(find.byKey(const Key('pto-tile-total'))).dy,
       lessThan(tester.getTopLeft(find.text('Everyone you can see')).dy),
@@ -431,8 +434,9 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.arrow_back));
     await tester.pumpAndSettle();
-    expect(find.text('Everyone you can see'), findsOneWidget);
     expect(find.text('You'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Everyone you can see'), 100);
+    expect(find.text('Everyone you can see'), findsOneWidget);
   });
 
   testWidgets('Expired: always a fourth equal tile, and "· N expired" on the '

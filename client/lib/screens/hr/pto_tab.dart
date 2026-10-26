@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/deep_links.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
@@ -81,16 +82,37 @@ class _PtoTabState extends State<PtoTab> {
   DisplayFormats get _formats =>
       widget.session.me?.display ?? DisplayFormats.fallback;
 
+  /// Balances or Requests (design 146) — a segment rather than a tab, so a
+  /// person's balance and their requests are in one place.
+  bool _requestsView = false;
+
+  /// Requests waiting for the reader to decide, for the segment's badge.
+  int _waiting = 0;
+
   @override
   void initState() {
     super.initState();
+    _takeLink();
+    DeepLinks.pending.addListener(_takeLink);
     _load();
   }
 
   @override
   void dispose() {
+    DeepLinks.pending.removeListener(_takeLink);
     _search.dispose();
     super.dispose();
+  }
+
+  /// A PTO request notification opens Requests.
+  void _takeLink() {
+    final link = DeepLinks.pending.value;
+    if (link?.module != 'work_hours' || link?.type != ptoRequestLinkType) {
+      return;
+    }
+    DeepLinks.take('work_hours');
+    if (!mounted) return;
+    setState(() => _requestsView = true);
   }
 
   /// [quiet] reads the list again without the spinner — after a save, when
@@ -151,7 +173,104 @@ class _PtoTabState extends State<PtoTab> {
         // Training card asks: this is a pane inside a shell, and a window
         // measurement would put the desktop layout into a narrow column.
         builder: (context, constraints) =>
-            constraints.maxWidth < 600 ? _phone(context) : _desktop(context),
+            _withSegment(context, phone: constraints.maxWidth < 600),
+      ),
+    );
+  }
+
+  /// Balances · Requests above whichever view is chosen. The Requests view
+  /// stays mounted under Balances so its waiting count is there to badge.
+  Widget _withSegment(BuildContext context, {required bool phone}) {
+    if (_policy['enabled'] != true) return _notSetUp(context);
+    final segment = _segment(context);
+
+    final requests = PtoRequestsView(
+      api: widget.api,
+      session: widget.session,
+      me: _person(_me),
+      allowNegative: _policy['allow_negative'] is bool
+          ? _policy['allow_negative'] as bool
+          : null,
+      phone: phone,
+      // On a phone the segment scrolls with the list, so the first answer
+      // is not pushed below the fold.
+      header: phone ? segment : null,
+      onWaiting: (n) {
+        if (n != _waiting) setState(() => _waiting = n);
+      },
+      onDecided: () => _load(quiet: true),
+    );
+    final views = Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(
+          offstage: _requestsView,
+          child: phone ? _phone(context, header: segment) : _desktop(context),
+        ),
+        Offstage(offstage: !_requestsView, child: requests),
+      ],
+    );
+    if (phone) return views;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 24, 0),
+          child: segment,
+        ),
+        Expanded(child: views),
+      ],
+    );
+  }
+
+  Widget _segment(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<bool>(
+        key: const ValueKey('tour-work_hours-pto-segment'),
+        showSelectedIcon: false,
+        style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        segments: [
+          const ButtonSegment(
+            value: false,
+            label: Text('Balances', key: Key('pto-seg-balances')),
+          ),
+          ButtonSegment(
+            value: true,
+            label: Row(
+              key: const Key('pto-seg-requests'),
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Requests'),
+                if (_waiting > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    key: const Key('pto-requests-badge'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.error,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$_waiting',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onError,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+        selected: {_requestsView},
+        onSelectionChanged: (v) => setState(() => _requestsView = v.first),
       ),
     );
   }
@@ -461,7 +580,7 @@ class _PtoTabState extends State<PtoTab> {
 
   // ── phone 4: you first, everybody after ──────────────────────────
 
-  Widget _phone(BuildContext context) {
+  Widget _phone(BuildContext context, {Widget? header}) {
     if (_policy['enabled'] != true) return _notSetUp(context);
 
     // Recording days off: the calendar full screen, in place, with a way back
@@ -499,6 +618,7 @@ class _PtoTabState extends State<PtoTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
+        if (header != null) ...[header, const SizedBox(height: 16)],
         // The person holding a phone is almost always asking about themselves
         // — the suggestion this came from was somebody asking about her own
         // days — so the top answers that without a tap.
@@ -2362,5 +2482,963 @@ class _ChangeUsedFormState extends State<_ChangeUsedForm> {
         ),
       ],
     );
+  }
+}
+
+// ── Requests (design 146, Jose 2026-10-26: options 1 and 4) ──────────
+
+/// The notification record type a PTO request carries; it opens Requests.
+const ptoRequestLinkType = 'pto_request';
+
+/// Staff ask for days off; whoever may change their used days decides.
+///
+/// docs/previews/pto-requests-layouts.html: "Waiting for you" for approvers
+/// on top, "Request time off" inline under the toolbar (the Record days off
+/// calendar again), and "My requests" with a status chip each. On a phone the
+/// form is full screen in place with ←.
+class PtoRequestsView extends StatefulWidget {
+  const PtoRequestsView({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.me,
+    required this.allowNegative,
+    required this.phone,
+    required this.onWaiting,
+    required this.onDecided,
+    this.header,
+  });
+
+  final ApiClient api;
+  final Session session;
+
+  /// The reader's own row from GET hr/pto: left, and the days already off.
+  final Map<String, dynamic>? me;
+
+  /// `pto.allow_negative` for the reader's place, when the server says;
+  /// null leaves the answer to the server's 422.
+  final bool? allowNegative;
+  final bool phone;
+  final ValueChanged<int> onWaiting;
+
+  /// The Balances · Requests segment, scrolled with the list on a phone.
+  final Widget? header;
+
+  /// A decision changed somebody's used days: the balances are behind.
+  final VoidCallback onDecided;
+
+  @override
+  State<PtoRequestsView> createState() => _PtoRequestsViewState();
+}
+
+class _PtoRequestsViewState extends State<PtoRequestsView> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _rows = const [];
+
+  final _search = TextEditingController();
+  String? _status;
+
+  bool _asking = false;
+  String? _denying;
+  final _denyReason = TextEditingController();
+  final Set<String> _busy = {};
+  final Map<String, String> _rowError = {};
+
+  bool get _mayAsk =>
+      widget.session.me?.permissions.contains('work_hours.pto.request') ??
+      false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _denyReason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final query = <String, String>{
+      'status': ?_status,
+      if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+    };
+    final path = query.isEmpty
+        ? '/hr/pto/requests'
+        : '/hr/pto/requests?${Uri(queryParameters: query).query}';
+    final response = await widget.api.get(path);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (!response.ok) {
+        _error = response.reason;
+        return;
+      }
+      _rows = [
+        for (final r in response.data as List? ?? const [])
+          if (r is Map) Map<String, dynamic>.from(r),
+      ];
+    });
+    _report();
+  }
+
+  /// The badge counts only what an unfiltered read shows.
+  void _report() {
+    if (_status != null && _status != 'pending') return;
+    if (_search.text.trim().isNotEmpty) return;
+    widget.onWaiting(_rows.where(_waitsForMe).length);
+  }
+
+  static bool _waitsForMe(Map<String, dynamic> r) =>
+      r['status'] == 'pending' && r['can_decide'] == true;
+
+  void _replace(Map<String, dynamic> row) {
+    setState(() {
+      _rows = [
+        for (final r in _rows)
+          if ('${r['id']}' == '${row['id']}') row else r,
+      ];
+    });
+    _report();
+  }
+
+  void _openForm(bool open) {
+    setState(() => _asking = open);
+  }
+
+  Future<void> _decide(Map<String, dynamic> row, String verb) async {
+    final id = '${row['id']}';
+    final reason = _denyReason.text.trim();
+    setState(() {
+      _busy.add(id);
+      _rowError.remove(id);
+    });
+    final response = await widget.api.post('/hr/pto/requests/$id/$verb', {
+      if (verb == 'deny') 'reason': reason,
+    });
+    if (!mounted) return;
+    setState(() => _busy.remove(id));
+    if (response.ok && response.data is Map) {
+      if (_denying == id) {
+        _denying = null;
+        _denyReason.clear();
+      }
+      _replace(Map<String, dynamic>.from(response.data as Map));
+      if (verb != 'cancel') widget.onDecided();
+      return;
+    }
+    setState(() => _rowError[id] = _sentence(response));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.phone && _asking) {
+      return SidePanel(
+        key: const Key('pto-phone-request'),
+        docked: true,
+        title: 'Request time off',
+        onBack: () => _openForm(false),
+        child: _form(),
+      );
+    }
+
+    final theme = Theme.of(context);
+    final waiting = _rows.where(_waitsForMe).toList();
+    final mine = [
+      for (final r in _rows)
+        if (r['mine'] == true) r,
+    ];
+    final others = [
+      for (final r in _rows)
+        if (r['mine'] != true && !_waitsForMe(r)) r,
+    ];
+
+    final side = widget.phone ? 16.0 : 24.0;
+    return ListView(
+      key: const ValueKey('tour-work_hours-pto-requests'),
+      padding: EdgeInsets.fromLTRB(side, 12, side, 32),
+      children: [
+        if (widget.header case final header?) ...[
+          header,
+          const SizedBox(height: 12),
+        ],
+        _toolbar(context),
+        if (_asking) ...[const SizedBox(height: 12), _form()],
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Text(
+              _error!,
+              key: const Key('pto-requests-error'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          )
+        else ...[
+          if (waiting.isNotEmpty)
+            _section(
+              context,
+              'Waiting for you · ${waiting.length}',
+              const ValueKey('tour-work_hours-pto-requests-waiting'),
+              [for (final r in waiting) _waitingRow(context, r)],
+            ),
+          if (mine.isNotEmpty)
+            _section(
+              context,
+              'My requests',
+              const ValueKey('tour-work_hours-pto-requests-mine'),
+              [for (final r in mine) _mineRow(context, r)],
+            ),
+          if (others.isNotEmpty)
+            _section(context, 'Other requests', const Key('pto-req-others'), [
+              for (final r in others) _otherRow(context, r),
+            ]),
+          if (_rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 20),
+              child: Text(
+                _status == null && _search.text.trim().isEmpty
+                    ? 'No requests yet.'
+                    : 'No requests match.',
+                key: const Key('pto-requests-empty'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _toolbar(BuildContext context) {
+    final search = TextField(
+      key: const Key('pto-req-search'),
+      controller: _search,
+      onSubmitted: (_) => _load(),
+      onChanged: (v) {
+        if (v.isEmpty) _load();
+      },
+      decoration: const InputDecoration(
+        hintText: 'Search people',
+        prefixIcon: Icon(Icons.search),
+        isDense: true,
+      ),
+    );
+    final status = SearchPickerField<String>(
+      key: const Key('pto-req-status'),
+      value: _status,
+      label: 'Status',
+      isDense: true,
+      options: const [
+        SearchOption<String>(value: null, label: 'Any status'),
+        SearchOption<String>(value: 'pending', label: 'Waiting'),
+        SearchOption<String>(value: 'approved', label: 'Approved'),
+        SearchOption<String>(value: 'denied', label: 'Denied'),
+        SearchOption<String>(value: 'cancelled', label: 'Cancelled'),
+      ],
+      onChanged: (v) {
+        setState(() => _status = v);
+        _load();
+      },
+    );
+    final ask = _mayAsk && !_asking
+        ? FilledButton.icon(
+            key: const Key('pto-req-new'),
+            onPressed: () => _openForm(true),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('Request time off'),
+          )
+        : null;
+
+    if (widget.phone) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          search,
+          const SizedBox(height: 8),
+          status,
+          if (ask != null) ...[const SizedBox(height: 8), ask],
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(flex: 3, child: search),
+        const SizedBox(width: 12),
+        Expanded(flex: 2, child: status),
+        if (ask != null) ...[const SizedBox(width: 12), ask],
+      ],
+    );
+  }
+
+  Widget _section(
+    BuildContext context,
+    String title,
+    Key key,
+    List<Widget> rows,
+  ) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final row in rows) ...[row, const SizedBox(height: 8)],
+        ],
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context, Key key, Widget child) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: key,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: child,
+    );
+  }
+
+  String _asked(Map<String, dynamic> r) {
+    final day = PtoMaths.day(r['created_at']);
+    if (day == null) return '';
+    if (day == PtoMaths.today()) return 'asked today';
+    return 'asked ${PtoMaths.month(day)} ${day.day}';
+  }
+
+  String _name(Map<String, dynamic> r) =>
+      '${(r['person'] as Map?)?['name'] ?? ''}';
+
+  Widget _waitingRow(BuildContext context, Map<String, dynamic> r) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final id = '${r['id']}';
+    final leaves = _PtoTabState._num(r['would_leave']);
+    final total = PtoRequestMaths.half(_PtoTabState._num(r['total']) ?? 0);
+    final busy = _busy.contains(id);
+    final note = '${r['note'] ?? ''}'.trim();
+
+    final days = Text(
+      PtoRequestMaths.daysLabel(r['days']),
+      key: Key('pto-req-days-$id'),
+    );
+    final Widget leavesText = leaves == null
+        ? const SizedBox.shrink()
+        : Text(
+            'leaves ${PtoRequestMaths.half(leaves)}',
+            key: Key('pto-req-leaves-$id'),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: leaves < 0 ? scheme.error : null,
+            ),
+          );
+    final denyOpen = _denying == id;
+    final actions = Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      alignment: WrapAlignment.end,
+      children: [
+        if (!denyOpen) ...[
+          OutlinedButton(
+            key: Key('pto-req-deny-$id'),
+            onPressed: busy
+                ? null
+                : () => setState(() {
+                    _denying = id;
+                    _denyReason.clear();
+                  }),
+            child: const Text('Deny'),
+          ),
+          FilledButton(
+            key: Key('pto-req-approve-$id'),
+            onPressed: busy ? null : () => _decide(r, 'approve'),
+            child: const Text('Approve'),
+          ),
+        ],
+      ],
+    );
+
+    final denyRow = !denyOpen
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              alignment: WrapAlignment.end,
+              children: [
+                SizedBox(
+                  width: widget.phone ? double.infinity : 320,
+                  child: TextField(
+                    key: Key('pto-req-reason-$id'),
+                    controller: _denyReason,
+                    autofocus: true,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Reason',
+                      hintText: 'Required',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  key: Key('pto-req-deny-back-$id'),
+                  onPressed: busy
+                      ? null
+                      : () => setState(() => _denying = null),
+                  child: const Text('Back'),
+                ),
+                FilledButton(
+                  key: Key('pto-req-deny-confirm-$id'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: scheme.error,
+                    foregroundColor: scheme.onError,
+                  ),
+                  onPressed: busy || _denyReason.text.trim().isEmpty
+                      ? null
+                      : () => _decide(r, 'deny'),
+                  child: const Text('Deny'),
+                ),
+              ],
+            ),
+          );
+
+    final error = _rowError[id] == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _rowError[id]!,
+              key: Key('pto-req-error-$id'),
+              style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+            ),
+          );
+
+    final Widget body = widget.phone
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${_name(r)} · $total ${total == '1' ? 'day' : 'days'}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Wrap(
+                spacing: 6,
+                children: [days, if (leaves != null) const Text('·'), leavesText],
+              ),
+              if (note.isNotEmpty)
+                Text(
+                  note,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.outline,
+                  ),
+                ),
+              const SizedBox(height: 8),
+              Align(alignment: Alignment.centerRight, child: actions),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _name(r),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      _asked(r),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(flex: 4, child: days),
+              SizedBox(
+                width: 48,
+                child: Text(
+                  total,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  note.isEmpty ? '—' : note,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              Expanded(flex: 2, child: leavesText),
+              actions,
+            ],
+          );
+
+    return _card(
+      context,
+      Key('pto-req-waiting-$id'),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [body, ?denyRow, ?error],
+      ),
+    );
+  }
+
+  /// Waiting / Approved by X · date / Denied by X · "reason" / Cancelled.
+  Widget _chip(Map<String, dynamic> r) {
+    final by = r['decided_by'];
+    final at = PtoMaths.day(r['decided_at']);
+    final when = at == null ? '' : ' · ${PtoMaths.month(at)} ${at.day}';
+    final reason = '${r['reason'] ?? ''}'.trim();
+    final (label, tone) = switch (r['status']) {
+      'approved' => ('Approved${by == null ? '' : ' by $by'}$when', Tone.ok),
+      'denied' => (
+        'Denied${by == null ? '' : ' by $by'}'
+            '${reason.isEmpty ? '' : ' · "$reason"'}',
+        Tone.bad,
+      ),
+      'cancelled' => ('Cancelled', Tone.neutral),
+      _ => ('Waiting', Tone.caution),
+    };
+    return StatusPill(label, key: Key('pto-req-status-${r['id']}'), tone: tone);
+  }
+
+  Widget _mineRow(BuildContext context, Map<String, dynamic> r) {
+    final theme = Theme.of(context);
+    final id = '${r['id']}';
+    final total = _PtoTabState._num(r['total']) ?? 0;
+    return _card(
+      context,
+      Key('pto-req-mine-$id'),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 12,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                PtoRequestMaths.daysLabel(r['days']),
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                '${PtoRequestMaths.half(total)} ${total == 1 ? 'day' : 'days'}',
+                style: theme.textTheme.bodySmall,
+              ),
+              _chip(r),
+              if (r['status'] == 'pending')
+                TextButton(
+                  key: Key('pto-req-cancel-$id'),
+                  onPressed: _busy.contains(id)
+                      ? null
+                      : () => _decide(r, 'cancel'),
+                  child: const Text('Cancel'),
+                ),
+            ],
+          ),
+          if (_rowError[id] case final e?)
+            Text(
+              e,
+              key: Key('pto-req-error-$id'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _otherRow(BuildContext context, Map<String, dynamic> r) {
+    final theme = Theme.of(context);
+    return _card(
+      context,
+      Key('pto-req-other-${r['id']}'),
+      Wrap(
+        spacing: 12,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(_name(r), style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(PtoRequestMaths.daysLabel(r['days'])),
+          Text(
+            PtoRequestMaths.half(_PtoTabState._num(r['total']) ?? 0),
+            style: theme.textTheme.bodySmall,
+          ),
+          _chip(r),
+        ],
+      ),
+    );
+  }
+
+  Widget _form() {
+    final me = widget.me;
+    final pending = _rows
+        .where((r) => r['mine'] == true && r['status'] == 'pending')
+        .fold<num>(0, (a, r) => a + (_PtoTabState._num(r['total']) ?? 0));
+    return _RequestForm(
+      key: const Key('pto-req-form'),
+      api: widget.api,
+      left: me == null ? null : _PtoTabState._num(me['left']),
+      pending: pending,
+      recorded: {
+        for (final d in me?['days_off'] as List? ?? const [])
+          if (d is Map) ?PtoMaths.day(d['date']),
+      },
+      allowNegative: widget.allowNegative,
+      phone: widget.phone,
+      onCancel: () => _openForm(false),
+      onSent: (row) {
+        setState(() => _rows = [row, ..._rows]);
+        _openForm(false);
+        _report();
+      },
+    );
+  }
+}
+
+/// The server's sentence for a refusal, when it sent one.
+String _sentence(ApiResponse response) {
+  final message = response.body['message'];
+  return response.statusCode == 422 &&
+          message is String &&
+          message.isNotEmpty &&
+          message != 'The given data was invalid.'
+      ? message
+      : response.reason;
+}
+
+/// The calendar from Record days off, a balance strip, a note, Send.
+class _RequestForm extends StatefulWidget {
+  const _RequestForm({
+    super.key,
+    required this.api,
+    required this.left,
+    required this.pending,
+    required this.recorded,
+    required this.allowNegative,
+    required this.phone,
+    required this.onCancel,
+    required this.onSent,
+  });
+
+  final ApiClient api;
+  final num? left;
+
+  /// Days in the reader's requests still waiting, which the server counts
+  /// against what is left.
+  final num pending;
+  final Set<DateTime> recorded;
+  final bool? allowNegative;
+  final bool phone;
+  final VoidCallback onCancel;
+  final ValueChanged<Map<String, dynamic>> onSent;
+
+  @override
+  State<_RequestForm> createState() => _RequestFormState();
+}
+
+class _RequestFormState extends State<_RequestForm> {
+  late DateTime _month = DateTime(
+    PtoMaths.today().year,
+    PtoMaths.today().month,
+  );
+  final Map<DateTime, double> _picked = {};
+  final _note = TextEditingController();
+  bool _sending = false;
+  String? _refused;
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  num get _total => _picked.values.fold<num>(0, (a, b) => a + b);
+
+  num? get _leftNow =>
+      widget.left == null ? null : widget.left! - widget.pending;
+
+  Future<void> _send() async {
+    final days = _picked.keys.toList()..sort();
+    final note = _note.text.trim();
+    setState(() {
+      _sending = true;
+      _refused = null;
+    });
+    final response = await widget.api.post('/hr/pto/requests', {
+      'days': [
+        for (final d in days)
+          {'date': PtoMaths.iso(d), 'portion': _picked[d] == 1 ? 1 : 0.5},
+      ],
+      if (note.isNotEmpty) 'note': note,
+    });
+    if (!mounted) return;
+    if (response.ok && response.data is Map) {
+      widget.onSent(Map<String, dynamic>.from(response.data as Map));
+      return;
+    }
+    setState(() {
+      _sending = false;
+      _refused = _sentence(response);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final leftNow = _leftNow;
+    final after = leftNow == null ? null : leftNow - _total;
+    final over = widget.allowNegative == false && after != null && after < 0;
+
+    final calendar = _Calendar(
+      month: _month,
+      picked: _picked,
+      recorded: widget.recorded,
+      phone: widget.phone,
+      onMonth: (m) => setState(() => _month = m),
+      onTap: (d) => setState(() {
+        final next = PtoMaths.cycle(_picked[d]);
+        if (next == null) {
+          _picked.remove(d);
+        } else {
+          _picked[d] = next;
+        }
+      }),
+    );
+
+    Widget figure(String label, String value, Key key, {Color? colour}) =>
+        Expanded(
+          child: Column(
+            key: key,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.outline,
+                ),
+              ),
+              Text(
+                value,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colour,
+                ),
+              ),
+            ],
+          ),
+        );
+
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!widget.phone)
+          Text('Request time off', style: theme.textTheme.titleSmall),
+        Text(
+          'Tap the days. Tap again for a half day, a third time to clear.',
+          style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          key: const Key('pto-req-balance'),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              figure(
+                'Left now',
+                leftNow == null ? '—' : PtoRequestMaths.half(leftNow),
+                const Key('pto-req-left-now'),
+              ),
+              figure(
+                'This request',
+                PtoRequestMaths.half(_total),
+                const Key('pto-req-this'),
+              ),
+              figure(
+                'Left after',
+                after == null ? '—' : PtoRequestMaths.half(after),
+                const Key('pto-req-left-after'),
+                colour: after != null && after < 0 ? scheme.error : null,
+              ),
+            ],
+          ),
+        ),
+        if (widget.pending > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Left now counts the requests still waiting.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.outline,
+              ),
+            ),
+          ),
+        if (over) ...[
+          const SizedBox(height: 8),
+          Text(
+            'That is more than you have left, so it cannot be sent. Pick '
+            'fewer days.',
+            key: const Key('pto-req-over'),
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('pto-req-note'),
+          controller: _note,
+          decoration: const InputDecoration(
+            labelText: 'Note',
+            hintText: 'Optional',
+            isDense: true,
+          ),
+        ),
+        if (_refused != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            _refused!,
+            key: const Key('pto-req-refused'),
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Wrap(
+            spacing: 8,
+            children: [
+              TextButton(
+                key: const Key('pto-req-cancel-form'),
+                onPressed: _sending ? null : widget.onCancel,
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                key: const Key('pto-req-send'),
+                onPressed: _sending || _picked.isEmpty || over ? null : _send,
+                child: const Text('Send request'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (widget.phone) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [calendar, const SizedBox(height: 16), details],
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.primary, width: 2),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          calendar,
+          const SizedBox(width: 20),
+          Expanded(child: details),
+        ],
+      ),
+    );
+  }
+}
+
+/// Request figures, kept out of the widgets so a test can hold them.
+abstract final class PtoRequestMaths {
+  /// 2½, ½, 3, −1 — the way the design writes days.
+  static String half(num value) {
+    final negative = value < 0;
+    final v = value.abs();
+    final whole = v.floor();
+    final frac = v - whole;
+    final body = frac >= 0.25 && frac < 0.75
+        ? (whole == 0 ? '½' : '$whole½')
+        : '${v.round()}';
+    return negative && body != '0' ? '−$body' : body;
+  }
+
+  /// "Nov 11–12 · Nov 14 (½)": consecutive full days as one run, a half
+  /// day on its own.
+  static String daysLabel(Object? days) {
+    final list = <(DateTime, num)>[
+      for (final d in days as List? ?? const [])
+        if (d is Map)
+          if (PtoMaths.day(d['date']) case final at?)
+            (at, _PtoTabState._num(d['portion']) ?? 1),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+
+    String one(DateTime at) => '${PtoMaths.month(at)} ${at.day}';
+    final parts = <String>[];
+    var i = 0;
+    while (i < list.length) {
+      final (start, portion) = list[i];
+      if (portion != 1) {
+        parts.add('${one(start)} (½)');
+        i++;
+        continue;
+      }
+      var end = start;
+      var j = i + 1;
+      while (j < list.length &&
+          list[j].$2 == 1 &&
+          PtoMaths.daysBetween(end, list[j].$1) == 1) {
+        end = list[j].$1;
+        j++;
+      }
+      parts.add(
+        end == start
+            ? one(start)
+            : end.month == start.month
+            ? '${one(start)}–${end.day}'
+            : '${one(start)}–${one(end)}',
+      );
+      i = j;
+    }
+    return parts.join(' · ');
   }
 }

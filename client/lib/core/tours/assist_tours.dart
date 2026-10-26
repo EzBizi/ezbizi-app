@@ -423,7 +423,7 @@ const Map<String, Tour> assistTours = {
     ],
   ),
   'work_hours/Paid Time Off': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'tour-work_hours-pto',
@@ -455,6 +455,30 @@ const Map<String, Tour> assistTours = {
         body:
             'Now, or the date they open, counted from the day the person '
             'started. With no start date on record, it says it cannot tell.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-pto-segment',
+        title: 'Balances and Requests',
+        body:
+            'Requests is where people ask for days off and approvers decide. '
+            'The number is how many are waiting for you.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-pto-requests-waiting',
+        title: 'Waiting for you',
+        body:
+            'Each request with its days and what approving would leave. Deny '
+            'asks for a reason on the same row.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-pto-requests-mine',
+        title: 'My requests',
+        body:
+            'What you asked for and what was decided. Cancel takes a request '
+            'back while it is still waiting.',
+        since: 2,
       ),
     ],
   ),
