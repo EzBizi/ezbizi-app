@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 147 · Scheduling › Booked vs available + earlier-opening offers — **sent 2026-10-26** (`docs/previews/scheduling-booked-vs-available-layouts.html`)
+### 147 · Scheduling › Booked vs available + earlier-opening offers — **sent 2026-10-26 — no answer in 10 min, went with 1 and 4** (`docs/previews/scheduling-booked-vs-available-layouts.html`)
 
 Scheduling relayed Jose and Shoval (server d9efd6504). **1** (recommended) day picker (tomorrow default) + search + summary (over / open spots / full); one row per area (Company · Branch) with a booked-vs-capacity bar (overflow red), count, chip, time-window blocks; over first; row opens its jobs; "Offer openings" panel under the row: open windows, later-booked candidates ticked up to max_sends, message preview, Send with per-job results; send hours respected. **2** week heat map. **3** cards. Phone **4** / **5** / **6**.
 
