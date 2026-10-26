@@ -1405,6 +1405,9 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
           'read the mail in this mailbox',
         'https://www.googleapis.com/auth/gmail.send' =>
           'send replies from this address',
+        'https://www.googleapis.com/auth/gmail.modify' =>
+          'read the mail in this mailbox, send replies from this address, and keep '
+              'read, starred and Trash in step with Gmail',
         _ => scope,
       },
   ];
