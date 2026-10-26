@@ -2,10 +2,13 @@
 
 namespace App\Support\Settings\Pending;
 
+use App\Models\BusinessLocation;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
+use App\Models\Organization;
+use App\Support\Memberships\CustomerLinks;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -124,6 +127,31 @@ final class PendingRegistry
                 missing: fn (Franchise $f) => ServiceArea::query()->where('franchise_id', $f->id)->whereNull('shares_with_id')->get()
                     ->contains(fn (ServiceArea $a) => ! Openings::hasCapacity($a)),
                 fill: $openScheduling,
+            ),
+            // Customer Experience (2026-10-26). A branch whose review texts would
+            // carry no link: nothing to tap, so no review and no Review links count.
+            new PendingCheck(
+                key: 'branch.review_link',
+                label: 'Review link for the review texts',
+                module: 'reviews',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['web_management.edit'],
+                missing: fn (Franchise $f) => CustomerLinks::branchReviewLink($f) === null,
+                fill: fn () => ['kind' => 'open', 'destination' => 'web_management',
+                    'hint' => "Open Web Management, then the branch's website, and fill in Review link."],
+            ),
+            // A Business Profile listing with no branch shows only at the company
+            // and organization views, and its reviews and complaints with it.
+            new PendingCheck(
+                key: 'business_profile.unassigned',
+                label: 'Business Profile listings without a branch',
+                module: 'business_profile',
+                scopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                permissions: ['business_profile.edit'],
+                missing: fn (Organization $o) => BusinessLocation::query()->where('organization_id', $o->getKey())
+                    ->whereNull('franchise_id')->whereNull('not_listed_since')->exists(),
+                fill: fn () => ['kind' => 'open', 'destination' => 'customer_experience',
+                    'hint' => 'Open Customer Experience, then GBP Listings, and give each listing its branch.'],
             ),
         ];
     }
