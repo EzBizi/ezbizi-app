@@ -1049,6 +1049,10 @@ class HrPeopleController extends Controller
                     'waiting', 'waiting_unit', 'carry_over', 'reset',
                     'accrue_after', 'accrue_after_unit',
                 ])
+                // Whether the reader's own request may go below zero, at their
+                // place, so the form can say so before Send (UI/UX, 2026-10-26).
+                ->put('allow_negative', (bool) app(SettingsResolver::class)
+                    ->get('pto.allow_negative', app(TimeClock::class)->placeOf($actor)))
                 ->all(),
 
             // Which row is the reader's, so the phone layout leads with it
