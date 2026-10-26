@@ -43,7 +43,7 @@ class GlanceRegistry
      */
     public const ORDER = [
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
-        'hr', 'work_hours', 'customers', 'jobs', 'project_management', 'scheduling', 'inspection', 'marketing',
+        'hr', 'work_hours', 'customers', 'jobs', 'project_management', 'project_management_2', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         // Sales before Leads, where its sidebar entry sits (2026-10-14).
         'services', 'sales', 'leads',
@@ -182,8 +182,12 @@ class GlanceRegistry
             'sentence' => 'Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.',
         ],
         'project_management' => [
-            'label' => 'Project Management',
-            'sentence' => 'Project Management keeps its own list: every job waiting on an estimate, with its cancel clock. Open the Project Management tab for it.',
+            'label' => 'Project Management - 1',
+            'sentence' => 'Project Management keeps its own list: every job waiting on an estimate, with its cancel clock. Open the Project Management - 1 tab for it.',
+        ],
+        'project_management_2' => [
+            'label' => 'Project Management - 2',
+            'sentence' => 'Project Management - 2 lists every job done pending approval. Open the Project Management - 2 tab for it.',
         ],
         'newsletter' => [
             'label' => 'Newsletter',

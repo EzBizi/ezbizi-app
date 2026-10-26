@@ -895,6 +895,7 @@ Route::prefix('v1')
         Route::get('jobs/project-management/rules', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'rules']);
         Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
+        Route::get('project-management-2/jobs', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'jobs']);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.
