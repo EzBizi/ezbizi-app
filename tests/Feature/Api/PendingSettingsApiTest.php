@@ -36,6 +36,22 @@ class PendingSettingsApiTest extends TestCase
         $this->assertContains('company.logo', $this->keysFor('Alpha Co'), 'control: other gaps stay');
     }
 
+    /** Scheduling: a branch with no service area, then one whose area has no week. */
+    public function test_a_branch_without_a_bookable_area_is_a_gap(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->signedInAs($tenant['admin']);
+        $branch = $tenant['franchise']->name;
+
+        $this->assertContains('scheduling.service_area', $this->keysFor($branch));
+        $area = $this->inTenant($tenant['org'], fn () => \App\Models\ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Dallas']));
+        $this->assertNotContains('scheduling.service_area', $this->keysFor($branch));
+        $this->assertContains('scheduling.area_slots', $this->keysFor($branch));
+
+        $this->inTenant($tenant['org'], fn () => \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 2]));
+        $this->assertNotContains('scheduling.area_slots', $this->keysFor($branch));
+    }
+
     public function test_an_expected_setting_with_no_value_anywhere_is_a_gap(): void
     {
         $registry = new SettingRegistry();
