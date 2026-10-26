@@ -198,7 +198,7 @@ const _me = {
 
 const _hits = '''
 {"data":[
- {"type":"customer","id":"c-1","label":"Marta Lopez","customer_id":"c-1","job_id":null,"customer_name":"Marta Lopez","job_number":null,"address":"14 Maple St, Trumbull CT","franchise_id":"fr-a1"},
+ {"type":"customer","id":"c-1","label":"Marta Lopez","customer_id":"c-1","job_id":null,"customer_name":"Marta Lopez","job_number":null,"address":"14 Maple St, Trumbull CT","franchise":{"id":"fr-a1","name":"Main"}},
  {"type":"job","id":"j-1","label":"J-1042 · Marta Lopez","customer_id":"c-1","job_id":"j-1","customer_name":"Marta Lopez","job_number":"J-1042","address":"14 Maple St, Trumbull CT","franchise_id":"fr-a1"}
 ]}
 ''';
