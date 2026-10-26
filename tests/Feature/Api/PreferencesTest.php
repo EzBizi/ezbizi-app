@@ -131,6 +131,16 @@ class PreferencesTest extends TestCase
         $this->assertSame('blocks', $data['navigation.style']);
     }
 
+    /** UI queue 148: the Services catalogue's Grid | List is remembered per person. */
+    public function test_the_services_catalogue_view_is_remembered(): void
+    {
+        $data = $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['services.catalogue_view' => 'list'],
+        ])->assertOk()->json('data');
+
+        $this->assertSame('list', $data['services.catalogue_view']);
+    }
+
     /** UI queue 100: Social's List | Board is remembered per person. */
     public function test_the_social_posts_view_is_remembered(): void
     {
