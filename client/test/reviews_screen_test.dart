@@ -59,7 +59,7 @@ void main() {
     expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
   });
 
-  testWidgets('Publish is not offered until something is drafted', (
+  testWidgets('Post reply is not offered while the box is empty', (
     tester,
   ) async {
     await _pump(
@@ -69,20 +69,24 @@ void main() {
       open: true,
     );
 
-    await tester.tap(find.text('Write a reply'));
-    await tester.pumpAndSettle();
-
-    final publish = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Publish'),
+    FilledButton post() => tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Post reply'),
     );
 
     expect(
-      publish.onPressed,
+      post().onPressed,
       isNull,
       reason:
-          'Publishing an empty reply would put nothing, or worse something '
-          'half-written, on Google under the business name.',
+          'Posting an empty reply would put nothing on Google under the '
+          'business name.',
     );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('review-reply-box')),
+      'Sorry, Dana.',
+    );
+    await tester.pumpAndSettle();
+    expect(post().onPressed, isNotNull);
   });
 
   /// Jose, 2026-10-12, AI item 11: AI drafts, a person edits and publishes.
@@ -95,8 +99,6 @@ void main() {
       connections: _connected,
       open: true,
     );
-    await tester.tap(find.text('Write a reply'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Draft with AI'));
     await tester.pumpAndSettle();
 
@@ -134,9 +136,9 @@ void main() {
       open: true,
     );
 
-    expect(find.text('Your published reply'), findsOneWidget);
-    expect(find.text('Write a reply'), findsNothing);
-    expect(find.text('Edit draft'), findsNothing);
+    expect(find.textContaining('Your published reply'), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-reply-box')), findsNothing);
+    expect(find.text('Post reply'), findsNothing);
   });
 
   testWidgets(
@@ -154,10 +156,11 @@ void main() {
   );
 }
 
-// UI queue 101 (Jose, 2026-10-16): "table should be the default though not
-// board", and a review is worked as a case in its panel.
+// UI queue 101 (Jose, 2026-10-16) put a review in a panel to be worked as a
+// case; UI queue 145 (2026-10-26) made the inbox the default view and dropped
+// the "Unverified · no customer match" line from every row.
 void _queue101() {
-  testWidgets('the table is the default, and a review opens in its panel', (
+  testWidgets('the inbox is the default, and a review opens in its panel', (
     tester,
   ) async {
     await _pump(
@@ -166,13 +169,13 @@ void _queue101() {
       connections: _connected,
     );
 
-    expect(find.text('REVIEW'), findsOneWidget);
+    expect(find.text('REVIEW'), findsNothing);
     expect(find.byKey(const ValueKey('review-panel')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('review-row-rev-1')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('review-panel')), findsOneWidget);
-    expect(find.text('Unverified · no customer match'), findsWidgets);
+    expect(find.textContaining('Unverified'), findsNothing);
   });
 
   testWidgets('with reviews.manage a note is added to the review', (
@@ -332,7 +335,9 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 
   if (!onlyUnanswered) {
-    await tester.tap(find.textContaining('Unanswered'));
+    await tester.tap(
+      find.byKey(const ValueKey('tour-customer_experience-unanswered')),
+    );
     await tester.pumpAndSettle();
   }
   if (open) {
