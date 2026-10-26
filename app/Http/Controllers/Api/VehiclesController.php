@@ -130,6 +130,13 @@ class VehiclesController extends Controller
             $query->whereDoesntHave('insurancePolicies', fn (Builder $p) => $p->whereNull('ended_on'));
         }
 
+        // The open policy has expired or expires within 30 days: "Renew insurance".
+        if ($request->boolean('insurance_expiring')) {
+            $by = now()->addDays(30)->toDateString();
+            $query->whereHas('insurancePolicies', fn (Builder $p) => $p->whereNull('ended_on')
+                ->whereNotNull('expires_on')->whereDate('expires_on', '<=', $by));
+        }
+
         if ($request->boolean('due_soon')) {
             $within = now()->addDays(30)->toDateString();
             $query->where(function (Builder $inner) use ($within): void {

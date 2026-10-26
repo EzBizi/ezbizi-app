@@ -153,5 +153,12 @@ class FleetSummaryTest extends TestCase
         $this->assertSame('uninsured=1', collect($body['warnings'])->keyBy('key')['no_insurance']['link']);
         $listed = $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles?uninsured=1')->assertOk()->json('data');
         $this->assertSame([$van->id], array_column($listed, 'id'));
+
+        $this->inTenant($t['org'], fn () => VehicleInsurancePolicy::create([
+            'organization_id' => $t['org']->id, 'vehicle_id' => $van->id,
+            'carrier' => 'Acme', 'started_on' => '2025-01-01', 'expires_on' => '2027-01-01',
+        ]));
+        $renew = $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles?insurance_expiring=1')->assertOk()->json('data');
+        $this->assertSame([$truck->id], array_column($renew, 'id'), 'expiring in 17 days is in; a year out is not');
     }
 }
