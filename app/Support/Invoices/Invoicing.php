@@ -131,6 +131,7 @@ final class Invoicing
 
                     continue;
                 }
+                $contact = $row->franchise ? (string) $this->settings->get('invoicing.billing_contact', $row->franchise) : '';
                 $invoice = Invoice::create([
                     'company_id' => $issuer?->id,
                     'number' => $this->numbers->next(RecordNumberGenerator::INVOICES, $scope),
@@ -140,6 +141,8 @@ final class Invoicing
                     'bill_to_id' => $row->franchise_id,
                     'bill_to_name' => $row->label,
                     'bill_to_address' => $this->addressOf($row->franchise?->company),
+                    'bill_to_emails' => $this->addresses($contact) ?: null,
+                    'bill_to_phones' => $this->phones($contact) ?: null,
                     'source_type' => 'charge_sheet_row',
                     'source_id' => $row->id,
                     'summary' => $row->jobs !== null ? "Total Jobs Created: {$row->jobs}" : null,
@@ -382,6 +385,13 @@ final class Invoicing
     }
 
     /** @return list<string> */
+    /** The phone numbers in a comma-separated contact list (anything with 7+ digits and no @). */
+    private function phones(string $list): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', $list)),
+            fn ($p) => ! str_contains($p, '@') && strlen(preg_replace('/\D/', '', $p)) >= 7));
+    }
+
     private function addresses(string $list): array
     {
         return array_values(array_filter(array_map('trim', preg_split('/[,;\s]+/', $list)), fn ($a) => filter_var($a, FILTER_VALIDATE_EMAIL)));

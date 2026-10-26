@@ -6,6 +6,7 @@ use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -38,7 +39,7 @@ class PendingSettingsApiTest extends TestCase
 
     public function test_an_expected_setting_with_no_value_anywhere_is_a_gap(): void
     {
-        $registry = new SettingRegistry();
+        $registry = new SettingRegistry;
         $registry->register(new SettingDefinition(
             key: 'test.expected', label: 'Something expected', type: SettingDefinition::TYPE_STRING,
             default: '', allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION], expected: true,
@@ -83,5 +84,26 @@ class PendingSettingsApiTest extends TestCase
 
         $this->assertNotContains('Alpha', $types);
         $this->assertNotContains('Beta Co', $types);
+    }
+
+    public function test_a_branch_without_a_billing_contact_is_a_gap_and_its_invoices_start_with_it_once_filled(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->signedInAs($tenant['admin']);
+        $branch = $tenant['franchise'];
+
+        $this->assertContains('setting:invoicing.billing_contact', $this->keysFor($branch->name));
+        $this->assertNotContains('setting:invoicing.billing_contact', $this->keysFor('Alpha Co'), 'asked of branches only');
+
+        $this->patchJson("/api/v1/settings/invoicing.billing_contact?scope_type=franchise&scope_id={$branch->id}",
+            ['value' => 'ap@branch.test, (203) 555-0111'])->assertOk();
+        $this->assertNotContains('setting:invoicing.billing_contact', $this->keysFor($branch->name));
+
+        Storage::fake(config('filesystems.default'));
+        $col = $this->putJson('/api/v1/invoices/charge-columns', ['columns' => [['name' => 'Royalties']]])->json('data.0.id');
+        $sheet = $this->postJson('/api/v1/invoices/sheets', ['period_from' => '2026-09-01', 'period_to' => '2026-09-30'])->json('data');
+        $this->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 1000]]]])->assertOk();
+        $invoice = $this->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.made.0');
+        $this->assertSame([['ap@branch.test'], ['(203) 555-0111']], [$invoice['bill_to']['emails'], $invoice['bill_to']['phones']]);
     }
 }
