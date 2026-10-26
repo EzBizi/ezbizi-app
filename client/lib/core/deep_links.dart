@@ -51,7 +51,9 @@ class DeepLinks {
 
   /// The link waiting to be opened, or null. Listen to it to hear new ones
   /// while a screen is already showing.
-  static final ValueNotifier<DeepLink?> pending = ValueNotifier<DeepLink?>(null);
+  static final ValueNotifier<DeepLink?> pending = ValueNotifier<DeepLink?>(
+    null,
+  );
 
   /// Hand a link to whichever screen owns [link.module].
   static void open(DeepLink link) => pending.value = link;
@@ -70,8 +72,8 @@ class DeepLinks {
 
   /// A web address that names a record, or null. `/scheduling/overbooking?
   /// date=Y-m-d` is the link in the day-before under-filled email
-  /// (SchedulingWarnUnderfilled): Scheduling › Overbooking › Booked vs
-  /// available on that day. Takes the URI so a test can hand it one.
+  /// (SchedulingWarnUnderfilled): Scheduling › Re-Scheduling › Rescheduling
+  /// Availability on that day. The path stays as sent in old emails. Takes the URI so a test can hand it one.
   static DeepLink? fromUri(Uri uri) {
     final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
     if (segments.length != 2 ||
