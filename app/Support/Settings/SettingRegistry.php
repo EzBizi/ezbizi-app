@@ -505,6 +505,15 @@ class SettingRegistry
                 help: 'The email body is the summary table either way.',
             ),
             new SettingDefinition(
+                key: 'invoicing.billing_contact', label: 'Billing contact',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                allowedScopes: [SettingDefinition::SCOPE_FRANCHISE],
+                editPermission: 'invoices.edit',
+                // Settings › Pending lists a branch without one: its invoices have nowhere to go.
+                expected: true,
+                help: 'Where this branch\'s invoices go: email addresses and phone numbers, separated by commas. New invoices start with them.',
+            ),
+            new SettingDefinition(
                 key: 'invoicing.summary_to', label: 'Summary email goes to',
                 type: SettingDefinition::TYPE_STRING, default: '',
                 editPermission: 'invoices.edit',
