@@ -718,10 +718,10 @@ const Map<String, Tour> tabTours = {
       ),
       TourStep(
         anchor: 'inventory-general-items',
-        title: 'Inventory in figures',
+        title: 'Stock status',
         body:
-            'Items, stock value, below reorder, out of stock, locations and '
-            'open purchase orders. Click a figure for what is behind it.',
+            'In stock, below reorder and out of stock in one bar, with the '
+            'stock value and how many locations hold it.',
       ),
       TourStep(
         anchor: 'tour-inventory-movement',
@@ -736,7 +736,7 @@ const Map<String, Tour> tabTours = {
       TourStep(
         anchor: 'tour-inventory-attention',
         title: 'Needs attention',
-        body: 'Anything in stock that wants a look.',
+        body: 'Only what applies, each with the button that fixes it.',
       ),
       TourStep(
         anchor: 'inventory-list',
