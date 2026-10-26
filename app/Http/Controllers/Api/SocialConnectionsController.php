@@ -18,6 +18,7 @@ use App\Support\Social\Publishing\TikTokPublisher;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Social\ThumbtackAccount;
+use App\Support\Telegram\TelegramBotStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +73,12 @@ class SocialConnectionsController extends Controller
                     || ! in_array($c->providerEnum(), SocialProvider::dataSources(), true)))
             ->values();
 
+        // A Telegram bot whose webhook Telegram cannot deliver to "needs
+        // attention", with Telegram's own last error as the reason.
+        $telegramError = $rows
+            ->filter(fn (SocialConnection $c) => $c->provider === SocialProvider::Telegram->value && $c->status === SocialConnection::STATUS_CONNECTED)
+            ->mapWithKeys(fn (SocialConnection $c) => [$c->getKey() => TelegramBotStatus::webhookError($c)]);
+
         return response()->json([
             'data' => $rows->map(fn (SocialConnection $c) => [
                 'id' => $c->getKey(),
@@ -96,11 +103,15 @@ class SocialConnectionsController extends Controller
                 'handle' => $c->handle,
                 'scope_type' => $c->scope_type,
                 'scope_id' => $c->scope_id,
-                'status' => $c->status,
-                'status_reason' => $c->status_reason,
+                'status' => ($telegramError[$c->getKey()] ?? null) !== null ? SocialConnection::STATUS_BROKEN : $c->status,
+                'status_reason' => $telegramError[$c->getKey()] ?? $c->status_reason,
                 // Which Workiz API the key speaks, and how far its history import
                 // has got (Jose, 2026-10-19: the card said neither).
-                'detail' => $c->provider === SocialProvider::Workiz->value ? self::workizDetail($c) : null,
+                'detail' => match ($c->provider) {
+                    SocialProvider::Workiz->value => self::workizDetail($c),
+                    SocialProvider::Telegram->value => TelegramBotStatus::detail($c),
+                    default => null,
+                },
                 // The same, as fields for the Workiz card's own controls.
                 'workiz' => $c->provider === SocialProvider::Workiz->value ? [
                     'method' => WorkizV2::uses($c) ? 'v2' : 'v1',
@@ -547,6 +558,12 @@ class SocialConnectionsController extends Controller
         $problems = SocialProvider::tryFrom($row->provider) === SocialProvider::Thumbtack
             ? ThumbtackAccount::tidyUp($row, revoke: $revoke)
             : [];
+
+        // A Telegram bot stops calling EzBizi (best effort). Its staff links
+        // stay: reconnecting the same bot brings them straight back.
+        if ($row->provider === SocialProvider::Telegram->value) {
+            TelegramBotStatus::deleteWebhook($row);
+        }
 
         $this->audit->log('social.disconnected', $row, [
             'provider' => $row->provider,

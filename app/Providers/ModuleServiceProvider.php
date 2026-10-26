@@ -893,7 +893,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('staff_bot', 'Staff bot'),
                     new TabDefinition('settings', 'Settings'),
                 ],
-                auditActionPrefixes: ['assistant_entry', 'assistant_part', 'assistant_manual', 'assistant_answer', 'whatsapp_group', 'staff_bot'],
+                auditActionPrefixes: ['assistant_entry', 'assistant_part', 'assistant_manual', 'assistant_answer', 'whatsapp_group', 'staff_bot', 'telegram_link'],
                 automationExemptBecause: 'The Library is reference material an administrator '
                     .'writes, like a training guide: editing an answer is not something that happened '
                     .'to the business, and a rule firing on it would act on a reworded sentence. The '
