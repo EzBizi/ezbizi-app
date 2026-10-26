@@ -743,9 +743,17 @@ const Map<String, Tour> leadsTours = {
     ],
   ),
   'customer_experience/Reviews': Tour(
-    // 2: the A1Leads GBP takeover (UI queue 101).
-    version: 2,
+    // 2: the A1Leads GBP takeover (UI queue 101). 3: the inbox (UI queue 145).
+    version: 3,
     steps: [
+      TourStep(
+        anchor: 'reviews-summary',
+        since: 3,
+        title: 'The summary',
+        body:
+            'Average rating this month against last, new this month, '
+            'unanswered, and 1–2 stars still to answer. Click one to filter.',
+      ),
       TourStep(
         anchor: 'tour-customer_experience-unanswered',
         title: 'Unanswered',
@@ -755,23 +763,26 @@ const Map<String, Tour> leadsTours = {
       ),
       TourStep(
         anchor: 'tour-customer_experience-rating',
-        title: 'Rating',
-        body: 'Negative (1–3★), positive, one star rating, or any.',
+        since: 3,
+        title: '1–2 stars',
+        body: 'Only the one- and two-star reviews.',
       ),
       TourStep(
-        anchor: 'reviews-matched',
-        since: 2,
-        title: 'Time, sort, location, match, status',
+        anchor: 'reviews-more-filters',
+        since: 3,
+        title: 'More filters',
         body:
-            'Narrow the list further: how recent, the order, which location, '
+            'Rating, how recent, the order, which location, '
             'whether the reviewer is matched to a customer, and where working '
             'it has got to.',
       ),
       TourStep(
         anchor: 'reviews-view',
-        since: 2,
-        title: 'Table or Board',
-        body: 'Table is one line a review; Board shows each review whole.',
+        since: 3,
+        title: 'Inbox, Table or Board',
+        body:
+            'Inbox lists the reviews with the open one beside them; Table is '
+            'one line a review; Board shows each review whole.',
       ),
       TourStep(
         anchor: 'tour-customer_experience-fetch',
@@ -789,9 +800,10 @@ const Map<String, Tour> leadsTours = {
         anchor: 'tour-customer_experience-reviews',
         title: 'The reviews',
         body:
-            'Click a review to open it beside the list: the reply, the matched '
-            'customer and their job, its status, notes, and Report to Google.',
-        since: 2,
+            'Click a review, or arrow up and down, to open it beside the list: '
+            'the reply box with Draft with AI, the matched customer and their '
+            'job, its status, notes, and Report to Google.',
+        since: 3,
       ),
       TourStep(
         anchor: 'tour-reviews-empty',
