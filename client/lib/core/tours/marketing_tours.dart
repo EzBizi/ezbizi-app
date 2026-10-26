@@ -890,4 +890,40 @@ const Map<String, Tour> marketingTours = {
       ),
     ],
   ),
+  'monitoring/Lighting': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-lighting-bulk',
+        title: 'Set many at once',
+        body:
+            'Pick all PCs in view or the ticked ones, a mode, a colour and a '
+            'brightness, then Apply.',
+      ),
+      TourStep(
+        anchor: 'lighting-search',
+        title: 'Find a PC',
+        body:
+            'Searches PCs and people; the chips show Ready or the ones that '
+            'need attention.',
+      ),
+      TourStep(
+        anchor: 'tour-lighting-list',
+        title: 'PCs',
+        body:
+            'Each PC with its lighting now, who set it and whether it is '
+            'ready. Only Ready PCs can be ticked. Click one to set it alone.',
+      ),
+      TourStep(
+        anchor: 'tour-lighting-pane',
+        title: 'One PC',
+        body: 'The same controls for this PC, and the lights it found.',
+      ),
+      TourStep(
+        anchor: 'tour-lighting-empty',
+        title: 'No PCs yet',
+        body: 'PCs running the desktop app show here.',
+      ),
+    ],
+  ),
 };

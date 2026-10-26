@@ -4241,6 +4241,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('files', 'Files', action: 'files.view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
+                    new TabDefinition('lighting', 'Lighting', action: 'lighting.manage'),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
                 sidebar: true,

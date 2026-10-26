@@ -7,6 +7,7 @@ import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
 import 'files_tab.dart';
 import 'general_tab.dart';
+import 'lighting_tab.dart';
 import 'ownership_tab.dart';
 import 'pc_specs_tab.dart';
 
@@ -40,7 +41,7 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { general, map, pcSpecs, files, cameraMonitoring, desktopMonitoring }
+enum _SubTab { general, map, pcSpecs, files, cameraMonitoring, desktopMonitoring, lighting }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
   /// Opens on General — the ownership chart — rather than PC Specs.
@@ -80,6 +81,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
           'Desktop Monitoring',
           Icons.screenshot_monitor_outlined,
         ),
+      if (can('monitoring.lighting.manage'))
+        (_SubTab.lighting, 'Lighting', Icons.light_mode_outlined),
     ];
   }
 
@@ -142,6 +145,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         return CameraMonitoringTab(api: widget.api, session: widget.session);
       case _SubTab.files:
         return FilesTab(api: widget.api, session: widget.session);
+      case _SubTab.lighting:
+        return LightingTab(api: widget.api, session: widget.session);
       case _SubTab.pcSpecs:
         return PcSpecsTab(api: widget.api, session: widget.session);
     }
