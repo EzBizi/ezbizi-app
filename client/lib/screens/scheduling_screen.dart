@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/deep_links.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'scheduling/area_map_pane.dart';
 import 'scheduling/availability_pane.dart';
+import 'scheduling/booked_available_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/helpers_pane.dart';
 import 'scheduling/locations_pane.dart';
-import 'scheduling/overbooking_pane.dart';
 import 'scheduling/rescheduling_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
@@ -31,6 +32,37 @@ class SchedulingScreen extends StatefulWidget {
 class _SchedulingScreenState extends State<SchedulingScreen> {
   int _tab = 0;
   final Set<int> _shown = {0};
+
+  /// The day the last `/scheduling/overbooking?date=` link named, and how many
+  /// have arrived, so the same day linked twice still opens.
+  String? _linkDate;
+  int _linkSerial = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _takeLink();
+    DeepLinks.pending.addListener(_linkArrived);
+  }
+
+  @override
+  void dispose() {
+    DeepLinks.pending.removeListener(_linkArrived);
+    super.dispose();
+  }
+
+  void _linkArrived() => setState(_takeLink);
+
+  void _takeLink() {
+    final link = DeepLinks.take('scheduling');
+    if (link?.type != 'booked_vs_available') return;
+    final at = _tabs.indexWhere((t) => t.$1 == 'overbooking');
+    if (at < 0) return;
+    _linkDate = link!.date;
+    _linkSerial++;
+    _tab = at;
+    _shown.add(at);
+  }
 
   /// Every tab this screen has, with the permission key that opens it.
   ///
@@ -69,7 +101,14 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'overbooking',
       'Overbooking',
       Icons.warning_amber_outlined,
-      () => OverbookingPane(api: widget.api, visible: _visible('overbooking')),
+      // Overbooked days, and Booked vs available (UI queue 147).
+      () => OverbookingTab(
+        api: widget.api,
+        visible: _visible('overbooking'),
+        canEdit: widget.session.me?.can('scheduling.edit') ?? false,
+        linkDate: _linkDate,
+        linkSerial: _linkSerial,
+      ),
     ),
     (
       'rescheduling',
