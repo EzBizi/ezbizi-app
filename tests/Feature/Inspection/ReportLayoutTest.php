@@ -230,6 +230,29 @@ class ReportLayoutTest extends TestCase
         $this->assertStringContainsString('1 of 1 item did not meet standards', $html);
     }
 
+    /**
+     * A1's report shape: an overall result, a PASS/FAIL/N/A badge on every
+     * finding, and a closing summary table with the counts.
+     */
+    public function test_the_result_badges_and_summary_table_print(): void
+    {
+        $options = [['value' => 'na', 'label' => 'No crown', 'variant' => 'not_applicable'],
+            ['value' => 'ok', 'label' => 'Meets', 'variant' => 'pass'],
+            ['value' => 'bad', 'label' => 'Cracked', 'variant' => 'fail']];
+
+        $html = $this->render([['fields' => [
+            ['key' => 'crown', 'label' => 'Crown', 'type' => 'choice', 'print' => 'root', 'options' => $options],
+            ['key' => 'cap', 'label' => 'Cap', 'type' => 'choice', 'print' => 'root', 'options' => $options],
+            ['key' => 'liner', 'label' => 'Liner', 'type' => 'choice', 'print' => 'root', 'options' => $options],
+        ]]], ['crown' => 'bad', 'cap' => 'ok', 'liner' => 'na']);
+
+        $this->assertStringContainsString('Inspection result: Fail.', $html);
+        $this->assertStringContainsString('<span class="b fail">FAIL</span>', $html);
+        $this->assertStringContainsString('<span class="b not_applicable">N/A</span>', $html);
+        $this->assertStringContainsString('Total: 3 &nbsp; Pass: 1 &nbsp; Fail: 1 &nbsp; N/A: 1', $html);
+        $this->assertStringContainsString('<td>Crown</td><td><span class="b fail">FAIL</span></td><td>Cracked</td>', $html);
+    }
+
     /** @param list<array<string, mixed>> $screens */
     private function render(array $screens, array $answers): string
     {
