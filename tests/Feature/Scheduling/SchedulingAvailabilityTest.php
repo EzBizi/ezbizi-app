@@ -694,6 +694,24 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertContains(['2026-10-06', 'area', 'Dallas', 1, 0, 1, true], $rows);
     }
 
+    /** Booked vs available, every area on one day (Shoval, 2026-10-26). */
+    public function test_the_fill_view_lists_every_area_with_booked_capacity_and_gap(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        foreach (['08:00', '09:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+
+        $body = $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/overbooking/fill?date=2026-10-05')->assertOk()->json('data');
+        $dallas = collect($body['areas'])->firstWhere('name', 'Dallas');
+        $this->assertSame([4, 3, -1, 133, $tenant['company']->name], [$dallas['booked'], $dallas['capacity'], $dallas['gap'], $dallas['fill_pct'], $dallas['company_name']]);
+        $this->assertSame('2026-09-30', $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/overbooking/fill')->json('data.date'));
+
+        $viewer = $this->userWithRole($tenant, 'Caller', ['scheduling.view']);
+        $this->signedInAs($viewer)->getJson('/api/v1/scheduling/overbooking/fill')->assertForbidden();
+    }
+
     /**
      * The warning as a row in Reports' library (Jose, 2026-10-01). Rule names
      * are Automations' data: a reader without automations.view learns only

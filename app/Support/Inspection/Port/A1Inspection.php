@@ -133,6 +133,7 @@ final class A1Inspection
         string $failLabel = 'Does not meet industry standards',
         ?string $naLabel = null,
         array $extra = [],
+        array $moreFails = [],
     ): array {
         $fail = [
             'value' => 'not-ok',
@@ -175,6 +176,17 @@ final class A1Inspection
                 ],
                 ['value' => 'ok', 'label' => $okLabel, 'variant' => 'pass'],
                 $fail,
+                // A second way to fail ("Crown Does Not Exist", "Soot - Level 2")
+                // demands the same evidence as the first.
+                ...array_map(static fn (string $label, int $i) => [
+                    'value' => 'not-ok-'.($i + 2),
+                    'label' => $label,
+                    'variant' => 'fail',
+                    'fields' => array_map(
+                        static fn (array $f) => ['key' => $f['key'].'_'.($i + 2)] + $f,
+                        $fail['fields'],
+                    ),
+                ], $moreFails, array_keys($moreFails)),
             ])),
             ...($codeId === null ? [] : ['code_id' => $codeId]),
             ...$extra,
@@ -230,193 +242,211 @@ final class A1Inspection
         ];
     }
 
-    /** @param array<string, string> $codes */
+    /**
+     * The system screen, re-cut 2026-10-26 to the form A1's technicians file
+     * today: system types, items and option wording read off 140 of their
+     * reports uploaded to Workiz in October 2026, not invented here.
+     *
+     * Each system type is a row in SYSTEMS: its measurements, its yes/no
+     * questions, and its findings. A finding's key is "<type>_<item>", so the
+     * same item on two types never shares an answer.
+     *
+     * @param  array<string, string>  $codes
+     */
     private static function systemScreen(array $codes): array
     {
-        return [
-            'name' => 'The system',
-            'fields' => [
-                [
-                    'key' => 'system_type',
-                    'label' => 'System type',
-                    'type' => 'choice',
-                    'required' => true,
-                    // Answered to steer eleven branches; printing "masonry"
-                    // eleven times tells the customer nothing.
-                    'print' => 'ignore',
-                    'options' => [
-                        ['value' => 'masonry', 'label' => 'Masonry fireplace'],
-                        ['value' => 'built-in', 'label' => 'Built-in / gas fireplace'],
-                        ['value' => 'wood', 'label' => 'Wood stove or insert'],
-                        ['value' => 'furnace', 'label' => 'Furnace or boiler'],
-                        ['value' => 'electric', 'label' => 'Electric fireplace'],
-                    ],
-                ],
-                ['key' => 'system_image', 'label' => 'Photograph of the system', 'type' => 'photo',
-                 'max_count' => 4],
-
-                ['type' => 'divider', 'label' => 'Dimensions',
-                 'visible_if' => self::forSystems('masonry', 'built-in')],
-                ['key' => 'dimensions_width', 'label' => 'Width (inches)', 'type' => 'number',
-                 'print' => 'text', 'visible_if' => self::forSystems('masonry', 'built-in')],
-                ['key' => 'dimensions_height', 'label' => 'Height (inches)', 'type' => 'number',
-                 'print' => 'text', 'visible_if' => self::forSystems('masonry', 'built-in')],
-                ['key' => 'dimensions_depth', 'label' => 'Depth (inches)', 'type' => 'number',
-                 'print' => 'text', 'visible_if' => self::forSystems('masonry', 'built-in'),
-                 'code_id' => $codes['R1001.6'] ?? null],
-
-                ['type' => 'divider', 'label' => 'Model',
-                 'visible_if' => self::forSystems('built-in', 'wood', 'furnace', 'electric')],
-                ['key' => 'model_brand', 'label' => 'Brand', 'type' => 'text', 'print' => 'text',
-                 'visible_if' => self::forSystems('built-in', 'wood', 'furnace', 'electric')],
-                ['key' => 'model_number', 'label' => 'Model number', 'type' => 'text',
-                 'print' => 'text',
-                 'visible_if' => self::forSystems('built-in', 'wood', 'furnace', 'electric')],
-                ['key' => 'model_image', 'label' => 'Photograph of the plate', 'type' => 'photo',
-                 'visible_if' => self::forSystems('built-in', 'wood', 'furnace', 'electric')],
-
-                // ── masonry ──
-                ['type' => 'divider', 'label' => 'Masonry fireplace',
-                 'visible_if' => self::forSystems('masonry')],
-                self::finding('masonry_clearance_to_combustible', 'Clearance to combustibles',
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-                self::finding('masonry_firebox_condition', 'Firebox condition',
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-                self::finding('masonry_damper', 'Damper',
-                    naLabel: 'No damper fitted',
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-                self::finding('masonry_smoke_chamber', 'Smoke chamber',
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-                self::finding('masonry_soot_condition', 'Soot condition',
-                    codeId: $codes['NFPA211'] ?? null,
-                    okLabel: 'Clean', failLabel: 'Needs sweeping',
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-                self::finding('masonry_chimney_liner', 'Chimney liner',
-                    codeId: $codes['R1003.11'] ?? null,
-                    extra: ['visible_if' => self::forSystems('masonry')]),
-
-                // ── built-in / gas ──
-                ['type' => 'divider', 'label' => 'Built-in fireplace',
-                 'visible_if' => self::forSystems('built-in')],
-                self::finding('built_in_clearance_to_combustibles', 'Clearance to combustibles',
-                    extra: ['visible_if' => self::forSystems('built-in')]),
-                self::finding('built_in_refractory_panels_condition', 'Refractory panels',
-                    extra: ['visible_if' => self::forSystems('built-in')]),
-                self::finding('built_in_glass_door_condition', 'Glass door',
-                    naLabel: 'No glass door',
-                    extra: ['visible_if' => self::forSystems('built-in')]),
-                [
-                    'key' => 'built_in_gas_connection',
-                    'label' => 'Gas connection',
-                    'type' => 'choice',
-                    'print' => 'ignore',
-                    'visible_if' => self::forSystems('built-in'),
-                    'options' => [
-                        ['value' => 'yes', 'label' => 'Connected to gas'],
-                        ['value' => 'no', 'label' => 'No gas connection'],
-                    ],
-                ],
-                self::finding('built_in_gas_valve_condition', 'Gas valve',
-                    extra: ['visible_if' => ['field' => 'built_in_gas_connection',
-                                             'op' => 'eq', 'value' => 'yes']]),
-                self::finding('built_in_gas_pilot_light_condition', 'Pilot light',
-                    extra: ['visible_if' => ['field' => 'built_in_gas_connection',
-                                             'op' => 'eq', 'value' => 'yes']]),
-                self::finding('built_in_chimney_liner_condition', 'Chimney liner',
-                    codeId: $codes['R1003.11'] ?? null,
-                    extra: ['visible_if' => self::forSystems('built-in')]),
-
-                // ── wood stove ──
-                ['type' => 'divider', 'label' => 'Wood stove',
-                 'visible_if' => self::forSystems('wood')],
-                [
-                    'key' => 'wood_stove_type',
-                    'label' => 'Stove type',
-                    'type' => 'choice',
-                    'print' => 'text',
-                    'visible_if' => self::forSystems('wood'),
-                    'options' => [
-                        ['value' => 'insert', 'label' => 'Insert'],
-                        ['value' => 'freestanding', 'label' => 'Freestanding'],
-                    ],
-                ],
-                self::finding('wood_clearance_to_combustible', 'Clearance to combustibles',
-                    extra: ['visible_if' => self::forSystems('wood')]),
-                self::finding('wood_stove_condition', 'Stove condition',
-                    extra: ['visible_if' => self::forSystems('wood')]),
-                self::finding('wood_pipe_connection', 'Pipe connection',
-                    extra: ['visible_if' => self::forSystems('wood')]),
-                self::finding('wood_soot_condition', 'Soot condition',
-                    codeId: $codes['NFPA211'] ?? null,
-                    okLabel: 'Clean', failLabel: 'Needs sweeping',
-                    extra: ['visible_if' => self::forSystems('wood')]),
-                self::finding('wood_chimney_liner', 'Chimney liner',
-                    codeId: $codes['R1003.11'] ?? null,
-                    extra: ['visible_if' => self::forSystems('wood')]),
-
-                // ── furnace / boiler ──
-                ['type' => 'divider', 'label' => 'Furnace or boiler',
-                 'visible_if' => self::forSystems('furnace')],
-                [
-                    'key' => 'furnace_burning_type',
-                    'label' => 'Fuel',
-                    'type' => 'choice',
-                    'print' => 'text',
-                    'visible_if' => self::forSystems('furnace'),
-                    'options' => [
-                        ['value' => 'gas', 'label' => 'Gas'],
-                        ['value' => 'oil', 'label' => 'Oil'],
-                    ],
-                ],
-                self::finding('furnace_clearance_to_combustibles', 'Clearance to combustibles',
-                    extra: ['visible_if' => self::forSystems('furnace')]),
-                [
-                    'key' => 'furnace_venting_piping_type',
-                    'label' => 'Vent pipe type',
-                    'type' => 'choice',
-                    'print' => 'text',
-                    'visible_if' => self::forSystems('furnace'),
-                    'options' => [
-                        ['value' => 'b-vent', 'label' => 'Type B vent'],
-                        ['value' => 'l-vent', 'label' => 'Type L vent'],
-                        ['value' => 'direct-vent', 'label' => 'Direct vent'],
-                        ['value' => 'single-wall', 'label' => 'Single wall'],
-                    ],
-                ],
-                [
-                    'type' => 'alert',
-                    'title' => 'M1803.3.4 CLEARANCE',
-                    'body' => 'Type B vents shall be installed with a minimum clearance of '
-                        .'1 inch (25 mm) from combustible material, in accordance with the '
-                        .'manufacturer\'s installation instructions.',
-                    'visible_if' => ['field' => 'furnace_venting_piping_type',
-                                     'op' => 'eq', 'value' => 'b-vent'],
-                ],
-                self::finding('furnace_venting_pipes_condition', 'Vent pipe condition',
-                    extra: ['visible_if' => self::forSystems('furnace')]),
-                self::finding('furnace_venting_chimney_liner', 'Chimney liner',
-                    codeId: $codes['R1003.11'] ?? null,
-                    extra: ['visible_if' => self::forSystems('furnace')]),
-
-                // ── electric ──
-                ['type' => 'divider', 'label' => 'Electric fireplace',
-                 'visible_if' => self::forSystems('electric')],
-                [
-                    'key' => 'electric_is_fireplace_working',
-                    'label' => 'Is it working?',
-                    'type' => 'choice',
-                    'print' => 'text',
-                    'visible_if' => self::forSystems('electric'),
-                    'options' => [
-                        ['value' => 'yes', 'label' => 'Working'],
-                        ['value' => 'no', 'label' => 'Not working'],
-                    ],
-                ],
-                self::finding('electric_fireplace_condition', 'Fireplace condition',
-                    extra: ['visible_if' => self::forSystems('electric')]),
+        $fields = [
+            [
+                'key' => 'system_type',
+                'label' => 'System type',
+                'type' => 'choice',
+                'required' => true,
+                'print' => 'text',
+                'options' => array_map(
+                    static fn (string $value, array $system) => ['value' => $value, 'label' => $system['label']],
+                    array_keys(self::SYSTEMS),
+                    self::SYSTEMS,
+                ),
             ],
+            ['key' => 'system_image', 'label' => 'System image', 'type' => 'photo', 'max_count' => 4],
         ];
+
+        foreach (self::SYSTEMS as $type => $system) {
+            $only = self::forSystems($type);
+            $fields[] = ['type' => 'divider', 'label' => $system['label'], 'visible_if' => $only];
+
+            foreach ($system['measure'] ?? [] as $key => $label) {
+                $fields[] = ['key' => "{$type}_{$key}", 'label' => $label.' (inches)', 'type' => 'number',
+                    'print' => 'text', 'visible_if' => $only];
+            }
+
+            foreach ($system['ask'] ?? [] as $key => [$label, $options, $when]) {
+                $fields[] = [
+                    'key' => "{$type}_{$key}", 'label' => $label, 'type' => 'choice', 'print' => 'text',
+                    'visible_if' => $when === null ? $only
+                        : ['field' => "{$type}_{$when[0]}", 'op' => 'eq', 'value' => $when[1]],
+                    'options' => array_map(static fn ($o) => ['value' => $o, 'label' => $o], $options),
+                ];
+            }
+
+            foreach ($system['find'] as $key => $spec) {
+                [$label, $ok, $fails, $na] = $spec + [1 => null, 2 => null, 3 => null];
+                $when = $spec['when'] ?? null;
+                $fields[] = self::finding(
+                    "{$type}_{$key}",
+                    $label,
+                    codeId: isset($spec['code']) ? ($codes[$spec['code']] ?? null) : null,
+                    okLabel: $ok ?? 'Meets Industry Standards',
+                    failLabel: ($fails ?? ['Does Not Meet Industry Standards'])[0],
+                    naLabel: $na,
+                    extra: ['visible_if' => $when === null ? $only
+                        : ['field' => "{$type}_{$when[0]}", 'op' => 'eq', 'value' => $when[1]]],
+                    moreFails: array_slice($fails ?? [], 1),
+                );
+            }
+        }
+
+        return ['name' => 'The system', 'fields' => $fields];
     }
+
+    private const SOOT = ['Soot Condition', 'Cleaned / Swept',
+        ['Soot - Level 1', 'Creosote Buildup - Level 2', 'Glazed Creosote - Level 3'], null, 'code' => 'NFPA211'];
+
+    private const LINER = ['Chimney Liner', null, null, null, 'code' => 'R1003.11'];
+
+    private const DIRECT_VENT = 'Not Applicable (Direct Vent / B vent)';
+
+    private const FLUE_TYPES = ['Masonry / Bricks', 'Single Wall Metal Pipe', 'Roof Metal Pipe',
+        'Side Wall Metal Pipe', 'Siding Covered'];
+
+    private const GAS_VENTING = [
+        'burning_type' => ['Burning Type', ['Gas / Oil Burner', 'Other'], null],
+        'venting' => ['Venting', ['Vented', 'Not Vented', 'Direct Vent', 'Single Wall Vent'], null],
+        'flue_type' => ['Flue Ventilation Type', self::FLUE_TYPES, null],
+    ];
+
+    /**
+     * Every system type: label, measurements, questions, findings.
+     *
+     * A finding is [label, ok wording, fail wordings, not-applicable wording],
+     * nulls meaning the house default, plus optional 'code' and 'when'
+     * ([question, answer] that must hold for it to be asked).
+     */
+    private const SYSTEMS = [
+        'masonry' => [
+            'label' => 'Masonry Fireplace',
+            'measure' => ['width' => 'Width', 'height' => 'Height', 'depth' => 'Depth',
+                'hearth_side' => 'Hearth Extension Side'],
+            'find' => [
+                'clearance' => ['Clearance To Combustible'],
+                'firebox' => ['Firebox Condition', null, null, null, 'code' => 'R1001.6'],
+                'damper' => ['Damper', null, null, self::DIRECT_VENT],
+                'smoke_chamber' => ['Smoke Chamber', null, ['Does Not Parged Smooth', 'Does Not Meet Industry Standards']],
+                'soot' => self::SOOT,
+                'liner' => self::LINER,
+                'ash_dump' => ['Ash Dump', null, null, 'Ash Dump does not exist'],
+                'gas_line' => ['Gas Line', null, null, 'Gas Line Does Not Exist'],
+                'glass_door' => ['Glass Door Condition', null, null, 'No glass door'],
+                'hearth' => ['Hearth Extension Dimensions'],
+            ],
+        ],
+        'prefab' => [
+            'label' => 'Pre-Fabricated Fireplace',
+            'measure' => ['width' => 'Width', 'height' => 'Height', 'depth' => 'Depth'],
+            'ask' => [
+                'gas' => ['System has a gas connection?', ['Yes', 'No'], null],
+                'gas_starter' => ['Gas Starter Type', ['Remote / Pilot Light', 'Key Starter'], ['gas', 'Yes']],
+                'vented' => ['Is the system vented?', ['Yes', 'No'], null],
+            ],
+            'find' => [
+                'clearance' => ['Clearance to Combustibles'],
+                'refractory' => ['Refractory Panels Condition', null, ['Cracked / Missing', 'Does Not Meet Industry Standards']],
+                'glass_door' => ['Glass Door Condition', null, null, 'No glass door'],
+                'hearth' => ['Hearth Extensions'],
+                'gas_burner' => ['Gas Line Burner Condition', 'when' => ['gas', 'Yes']],
+                'gas_valve' => ['Gas Valve Condition', 'when' => ['gas', 'Yes']],
+                'pilot' => ['Pilot Light Condition', 'when' => ['gas', 'Yes']],
+                'thermocouple' => ['Thermocouple Condition', 'when' => ['gas', 'Yes']],
+                'remote' => ['Remote System Condition', 'Working', ['Needs Attention'], null, 'when' => ['gas_starter', 'Remote / Pilot Light']],
+                'damper' => ['Damper', null, null, self::DIRECT_VENT],
+                'soot' => self::SOOT,
+                'liner' => self::LINER,
+            ],
+        ],
+        'gas' => [
+            'label' => 'Gas Fireplace',
+            'measure' => ['pipe' => 'Pipe Circumference'],
+            'ask' => self::GAS_VENTING,
+            'find' => [
+                'burner' => ['Burner Condition'],
+                'logs' => ['Logs Condition'],
+                'pilot' => ['Pilot Assembly Condition'],
+                'gas_valve' => ['Gas Valve Condition'],
+                'visual' => ['Visual Inspection'],
+                'clearance' => ['Clearance to Combustibles'],
+                'pipe_clearance' => ['Pipe Clearance to Combustibles'],
+                'pipes' => ['Pipes Condition', 'Sealed / Connected', ['Unsealed / Disconnected']],
+                'pipes_soot' => ['Furnace Pipes Soot Condition', 'Cleaned / Swept', ['Soot - Level 1', 'Creosote Buildup - Level 2']],
+                'clean_out' => ['Clean-Out Door', 'Tight-Fitting / Noncombustible Cover', ['Loose-Fitting / Combustible Cover'], 'No clean-out door'],
+                'liner' => self::LINER,
+            ],
+        ],
+        'masonry_ventless' => [
+            'label' => 'Masonry Ventless Fireplace',
+            'find' => [
+                'burner' => ['Burner Condition'],
+                'logs' => ['Logs Condition'],
+                'pilot' => ['Pilot Assembly Condition'],
+                'gas_valve' => ['Gas Valve Condition'],
+                'gas_line' => ['Gas Line'],
+                'clearance' => ['Clearance To Combustible'],
+                'firebox' => ['Firebox Condition', null, null, null, 'code' => 'R1001.6'],
+                'hearth' => ['Hearth Extensions'],
+            ],
+        ],
+        'wood' => [
+            'label' => 'Wood Stove',
+            'measure' => ['pipe' => 'Pipe Circumference'],
+            'ask' => [
+                'stove_type' => ['Wood Stove Type', ['Free Standing', 'Insert'], null],
+                'flue_type' => ['Flue Ventilation Type', self::FLUE_TYPES, null],
+            ],
+            'find' => [
+                'clearance' => ['Clearance To Combustible'],
+                'stove' => ['Stove Condition'],
+                'pipe_connection' => ['Pipe Connection', 'Sealed / Connected', ['Unsealed / Not Connected']],
+                'soot' => self::SOOT,
+                'liner' => self::LINER,
+            ],
+        ],
+        'furnace' => [
+            'label' => 'Furnace',
+            'measure' => ['pipe' => 'Pipe Circumference'],
+            'ask' => self::GAS_VENTING,
+            'find' => [
+                'visual' => ['Visual Inspection'],
+                'clearance' => ['Clearance to Combustibles'],
+                'pipe_clearance' => ['Pipe Clearance to Combustibles'],
+                'pipes' => ['Pipes Condition', 'Sealed / Connected', ['Unsealed / Disconnected']],
+                'pipes_soot' => ['Furnace Pipes Soot Condition', 'Cleaned / Swept', ['Soot - Level 1', 'Creosote Buildup - Level 2']],
+                'boiler_pipes' => ['Boiler Pipes Condition'],
+                'boiler_connection' => ['Boiler Pipes Connection', 'Sealed / Connected', ['Unsealed / Disconnected'], 'No boiler'],
+                'clean_out' => ['Clean-Out Door', 'Tight-Fitting / Noncombustible Cover', ['Loose-Fitting / Combustible Cover'], 'No clean-out door'],
+                'liner' => self::LINER,
+            ],
+        ],
+        'electric' => [
+            'label' => 'Electric',
+            'measure' => ['width' => 'Width', 'height' => 'Height'],
+            'ask' => [
+                'working' => ['Is the electric fireplace working?', ['Yes', 'No'], null],
+            ],
+            'find' => [
+                'condition' => ['Fireplace Condition'],
+            ],
+        ],
+    ];
+
 
     /**
      * The exterior, asked only on a Level 2.
@@ -436,23 +466,16 @@ final class A1Inspection
                 ['key' => 'exterior_chimney_type_image', 'label' => 'Photograph of the chimney',
                  'type' => 'photo', 'max_count' => 4],
 
-                self::finding('chimney_height_from_roof_line', 'Height above the roof line',
+                self::finding('chimney_height_from_roof_line', 'Chimney Height From Roof Line',
                     codeId: $codes['R1003.9'] ?? null),
-                self::finding('chimney_cricket', 'Chimney cricket',
+                self::finding('chimney_cricket', 'Chimney Cricket',
                     codeId: $codes['R1003.20'] ?? null,
-                    naLabel: 'Does not need a cricket'),
-                self::finding('flashing_condition', 'Flashing',
+                    naLabel: 'Chimney Does Not Need Cricket',
+                    moreFails: ['Chimney Needs Cricket']),
+                self::finding('flashing_condition', 'Flashing Condition',
                     codeId: $codes['R903.2'] ?? null),
-                self::finding('chimney_siding_cover_condition', 'Siding or cover',
-                    naLabel: 'Not applicable'),
-                self::finding('chase_covering_condition', 'Chase cover',
-                    naLabel: 'No chase'),
-                self::finding('exterior_pipe_condition', 'Exterior pipe',
-                    okLabel: 'Sealed and connected',
-                    failLabel: 'Not sealed or not connected',
-                    naLabel: 'No exterior pipe'),
-                self::finding('masonry_work_condition', 'Masonry condition',
-                    codeId: $codes['1926.706(b)'] ?? null),
+                self::finding('masonry_work_condition', 'Masonry Work Condition',
+                    codeId: $codes['1926.706(b)'] ?? null, naLabel: 'No masonry'),
                 [
                     'key' => 'masonry_work_repair_needs',
                     'label' => 'What the masonry needs',
@@ -468,13 +491,24 @@ final class A1Inspection
                         ['value' => 'water-damage', 'label' => 'Water damage'],
                     ],
                 ],
-                self::finding('chimney_crown_condition', 'Chimney crown',
+                self::finding('chimney_crown_condition', 'Chimney Crown Condition',
                     codeId: $codes['R1003.9'] ?? null,
-                    naLabel: 'No crown'),
-                self::finding('chimney_rain_cap', 'Rain cap',
-                    naLabel: 'No rain cap fitted'),
-                self::finding('chimney_spark_arrestor', 'Spark arrestor',
-                    naLabel: 'No spark arrestor fitted'),
+                    naLabel: 'Not applicable',
+                    moreFails: ['Crown Does Not Exist']),
+                self::finding('chimney_rain_cap', 'Chimney Rain Cap',
+                    naLabel: 'Not applicable',
+                    moreFails: ['Rain Cap Does Not Exist']),
+                self::finding('chimney_termination_cap', 'Chimney Termination Cap',
+                    naLabel: 'Not applicable',
+                    moreFails: ['Termination Cap Does Not Exist']),
+                self::finding('chase_condition', 'Chase Condition',
+                    naLabel: self::DIRECT_VENT),
+                self::finding('chase_covering_condition', 'Chase Cover Condition',
+                    naLabel: self::DIRECT_VENT),
+                self::finding('exterior_pipe_condition', 'Exterior Pipe Condition',
+                    okLabel: 'Sealed / Connected',
+                    failLabel: 'Unsealed / Not Connected',
+                    naLabel: 'No exterior pipe'),
             ],
         ];
     }

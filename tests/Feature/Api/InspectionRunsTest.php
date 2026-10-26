@@ -74,6 +74,21 @@ class InspectionRunsTest extends TestCase
         $this->assertSame('14 Maple St, Miami, FL 33180', $byName[0]['address'] ?? null);
     }
 
+    /**
+     * The Builder's Testing tab picks a test client through search, so a
+     * Builder-only role may search; it still may not start a real run.
+     */
+    public function test_a_builder_only_role_may_search_but_not_start(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $builder = $this->userWithRole($tenant, 'Builder', ['inspection.view', 'inspection.builder.view']);
+        $nobody = $this->userWithRole($tenant, 'Viewer', ['inspection.view']);
+
+        $this->signedInAs($builder)->getJson('/api/v1/inspections/search?q=Marta')->assertOk();
+        $this->signedInAs($builder)->postJson('/api/v1/inspections/runs', [])->assertForbidden();
+        $this->signedInAs($nobody)->getJson('/api/v1/inspections/search?q=Marta')->assertForbidden();
+    }
+
     public function test_a_second_start_offers_resume_instead_of_a_unique_index_error(): void
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -1298,6 +1298,31 @@ class SettingRegistry
             $enum('scheduling.reschedule_max_after_miles', 'Re-Scheduling: nearest job after the move within', 10, [2, 5, 10, 15, 20, 30],
                 fn ($v) => "{$v} miles",
                 'A move is suggested only when it puts the job this close to other booked work.'),
+            // "An earlier opening" texts from Scheduling › Overbooking (Shoval, 2026-10-26).
+            new SettingDefinition(
+                key: 'scheduling.offer_message', label: 'Earlier-opening text',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Hi {name}, {company} has an earlier opening on {date}, {window}. Reply YES if you would like it and we will move your appointment.',
+                help: 'Sent to customers booked later when an area has room. {name}, {company}, {date} and {window} are filled in.',
+            ),
+            $enum('scheduling.underfilled_min_empty', 'Tomorrow under-filled: list areas with at least', 2, [1, 2, 3, 5, 10],
+                fn ($v) => $v === 1 ? '1 empty spot' : "{$v} empty spots",
+                'Areas with fewer empty spots tomorrow are left out of the Tomorrow under-filled trigger and its email.'),
+            $enum('scheduling.underfilled_hour', 'Tomorrow under-filled: check at', 16, range(6, 21),
+                fn ($v) => \Carbon\CarbonImmutable::createFromTime($v)->format('g A').' the day before',
+                'When Tomorrow under-filled is raised. Who gets the email is the automation rule on it.'),
+            $enum('scheduling.offer_min_days_out', 'Earlier-opening text: offer to jobs booked at least', 2, [1, 2, 3, 5, 7],
+                fn ($v) => $v === 1 ? '1 day after the open day' : "{$v} days after the open day",
+                'Jobs closer than this to the open day are not offered it.'),
+            $enum('scheduling.offer_max_sends', 'Earlier-opening text: at most', 10, [3, 5, 10, 20, 30],
+                fn ($v) => "{$v} texts per open day",
+                'How many customers one send may text.'),
+            new SettingDefinition(
+                key: 'scheduling.offer_hours', label: 'Earlier-opening text: send between',
+                type: SettingDefinition::TYPE_TIME_RANGE,
+                default: ['start' => '09:00', 'end' => '19:00'],
+                help: 'Texts go out only in these hours, in the organization time zone.',
+            ),
         ];
     }
 

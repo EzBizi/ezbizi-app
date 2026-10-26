@@ -2621,9 +2621,13 @@ class _PtoRequestsViewState extends State<PtoRequestsView> {
       _busy.add(id);
       _rowError.remove(id);
     });
-    final response = await widget.api.post('/hr/pto/requests/$id/$verb', {
-      if (verb == 'deny') 'reason': reason,
-    });
+    // Literal paths, so ClientCallsRealRoutesTest can see each route.
+    final body = {if (verb == 'deny') 'reason': reason};
+    final response = await switch (verb) {
+      'approve' => widget.api.post('/hr/pto/requests/$id/approve', body),
+      'deny' => widget.api.post('/hr/pto/requests/$id/deny', body),
+      _ => widget.api.post('/hr/pto/requests/$id/cancel', body),
+    };
     if (!mounted) return;
     setState(() => _busy.remove(id));
     if (response.ok && response.data is Map) {
