@@ -237,9 +237,9 @@ class TechAssistantController extends Controller
                 'incorrect' => AssistantAnswer::query()->where('review', 'incorrect')->count(),
                 'do_not_order' => (clone $month)->where('order_check', 'not_yet')->count(),
             ],
-            // Whether the Telegram bot is set up on this server. A boolean only, never the token.
-            'telegram_configured' => \App\Support\Telegram\TelegramApi::configured()
-                && (string) config('services.telegram.org_id') === (string) $request->user()->organization_id,
+            // Whether this organization has a Telegram bot (its own connection, or
+            // the env bot for TELEGRAM_ORG_ID). A boolean only, never the token.
+            'telegram_configured' => \App\Support\Telegram\TelegramApi::configuredFor((string) $request->user()->organization_id),
         ]);
     }
 
