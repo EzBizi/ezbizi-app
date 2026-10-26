@@ -838,4 +838,19 @@ class MailboxesApiTest extends TestCase
         $this->assertCount(1, $this->signedInAs($bravo['admin'])
             ->getJson(self::ENDPOINT)->assertOk()->json('data'));
     }
+
+    /** The same address twice in one organization is a sentence, not a 500 (2026-10-26). */
+    public function test_adding_an_address_the_organization_already_has_is_refused_in_words(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->signedInAs($t['admin']);
+        $body = ['scope_type' => 'organization', 'scope_id' => $t['org']->id, 'address' => 'info@a-1chimney.com',
+            'display_name' => 'Info', 'provider' => 'imap', 'mail_server' => [
+                'imap_host' => 'imap.example.com', 'imap_port' => 993, 'smtp_host' => 'smtp.example.com', 'smtp_port' => 465]];
+
+        $this->postJson('/api/v1/email/mailboxes', $body)->assertCreated();
+        $this->postJson('/api/v1/email/mailboxes', [...$body, 'address' => 'INFO@a-1chimney.com'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn ($m) => str_contains($m, 'already a shared inbox'));
+    }
 }

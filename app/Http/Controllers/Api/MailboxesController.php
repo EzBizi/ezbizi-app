@@ -293,6 +293,14 @@ class MailboxesController extends Controller
 
         $this->assertReaches($user, $scope, $input['scope_type'], 'add a shared inbox here');
 
+        // One address once per organization (a unique index). Said in a sentence
+        // rather than left to the index, which answered "Server Error" (2026-10-26).
+        if (Mailbox::query()->where('address', strtolower($input['address']))->exists()) {
+            return response()->json(['message' => strtolower($input['address']).' is already a shared inbox in '
+                .'this organization, so it cannot be added a second time. Give people access to the existing '
+                .'one from its card instead.'], 422);
+        }
+
         $provider = MailboxProvider::from($input['provider']);
         $server   = $this->mailServerFor($provider, $input['mail_server'] ?? []);
 
