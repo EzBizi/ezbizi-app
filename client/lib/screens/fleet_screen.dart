@@ -56,6 +56,7 @@ class _FleetScreenState extends State<FleetScreen> {
   bool _rented = false;
   bool _unassigned = false;
   bool _dueSoon = false;
+  bool _uninsured = false;
 
   /// The open state (franchise id, or 'general'), or null for all of them.
   /// The first load opens the first state rather than every state at once —
@@ -106,6 +107,7 @@ class _FleetScreenState extends State<FleetScreen> {
       'ownership': ?ownership,
       if (_unassigned) 'unassigned': '1',
       if (_dueSoon) 'due_soon': '1',
+      if (_uninsured) 'uninsured': '1',
       'franchise_id': ?_place,
     });
 
@@ -179,6 +181,7 @@ class _FleetScreenState extends State<FleetScreen> {
       _rented = query['ownership'] == 'rented';
       _unassigned = query['unassigned'] == '1';
       _dueSoon = query['due_soon'] == '1';
+      _uninsured = query['uninsured'] == '1';
       _tab = 1;
     });
     _load();
@@ -203,7 +206,8 @@ class _FleetScreenState extends State<FleetScreen> {
         _owned ||
         _rented ||
         _unassigned ||
-        _dueSoon) {
+        _dueSoon ||
+        _uninsured) {
       final term = _search.text.trim();
       return term.isEmpty
           ? 'Nothing matches those filters.'
@@ -378,6 +382,11 @@ class _FleetScreenState extends State<FleetScreen> {
     },
     onToggleDueSoon: () {
       setState(() => _dueSoon = !_dueSoon);
+      _load();
+    },
+    uninsured: _uninsured,
+    onToggleUninsured: () {
+      setState(() => _uninsured = !_uninsured);
       _load();
     },
     emptyLabel: _emptyCopy(),

@@ -51,6 +51,11 @@ void main() {
               'amount_minor': total ~/ 4,
             },
           ],
+    'previous_total_minor': total == 0 ? 0 : 320000,
+    'vehicles': [
+      for (var i = 1; i <= 6; i++)
+        {'id': 'v-$i', 'label': 'Van $i', 'amount_minor': 70000 - i * 1000},
+    ],
     'buckets': <String>[],
     'points': <int>[],
   };
@@ -66,6 +71,7 @@ void main() {
       'key': 'no_insurance',
       'count': 1,
       'sentence': '1 vehicle has no insurance on file.',
+      'link': 'uninsured=1',
     },
     {
       'key': 'active_unassigned',
@@ -75,20 +81,42 @@ void main() {
     },
   ];
 
-  final vehicles = [
+  // The server's order: soonest first, mileage after the dates.
+  final dates = [
     {
-      'id': 'v-1',
+      'vehicle_id': 'v-1',
       'label': 'Ford Transit',
-      'registration_expires_on': day(12),
-      'inspection_expires_on': day(90),
-      'next_service_on': day(-3),
+      'kind': 'service',
+      'on': day(-3),
+      'overdue': true,
     },
     {
-      'id': 'v-2',
+      'vehicle_id': 'v-2',
       'label': 'Ram ProMaster',
-      'registration_expires_on': null,
-      'inspection_expires_on': day(5),
-      'next_service_on': null,
+      'kind': 'insurance',
+      'on': day(5),
+      'overdue': false,
+    },
+    {
+      'vehicle_id': 'v-1',
+      'label': 'Ford Transit',
+      'kind': 'registration',
+      'on': day(12),
+      'overdue': false,
+    },
+    {
+      'vehicle_id': 'v-3',
+      'label': 'Toyota Tacoma',
+      'kind': 'service_miles',
+      'miles_left': -120,
+      'overdue': true,
+    },
+    {
+      'vehicle_id': 'v-2',
+      'label': 'Ram ProMaster',
+      'kind': 'service_miles',
+      'miles_left': 340,
+      'overdue': false,
     },
   ];
 
@@ -115,10 +143,8 @@ void main() {
             'health': healthBody ?? health(),
             'warnings': warningRows ?? warnings,
             'spending': spending(period, totals[period] ?? 0),
+            'dates': dates,
           });
-        }
-        if (path.endsWith('/vehicles')) {
-          return _json({'data': vehicles, 'meta': {}});
         }
         return _json({'message': 'no'}, 500);
       }),
@@ -201,7 +227,7 @@ void main() {
     expect(find.text('Book service'), findsOneWidget);
     expect(find.text('Assign keys'), findsOneWidget);
     expect(find.text('Add insurance'), findsOneWidget);
-    expect(opened, ['due_soon=1', 'unassigned=1', '']);
+    expect(opened, ['due_soon=1', 'unassigned=1', 'uninsured=1']);
   });
 
   testWidgets('no warnings is one sentence', (tester) async {
@@ -211,8 +237,11 @@ void main() {
     expect(find.byType(OutlinedButton), findsNothing);
   });
 
-  testWidgets('coming up is in date order with overdue in red', (tester) async {
-    await pump(tester);
+  testWidgets('coming up keeps the server order, overdue in red, miles', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await pump(tester, asked: asked);
 
     String row(int i) => tester
         .widget<Text>(
@@ -224,22 +253,62 @@ void main() {
           ),
         )
         .data!;
+    String when(int i) =>
+        tester.widget<Text>(find.byKey(Key('fleet-coming-when-$i'))).data!;
 
     expect(row(0), 'Service · Ford Transit');
-    expect(row(1), 'Inspection · Ram ProMaster');
+    expect(row(1), 'Insurance · Ram ProMaster');
     expect(row(2), 'Registration · Ford Transit');
-    // 90 days out is not "coming up".
-    expect(find.byKey(const Key('fleet-coming-3')), findsNothing);
+    expect(row(3), 'Service · Toyota Tacoma');
+    expect(when(3), '120 mi past');
+    expect(row(4), 'Service · Ram ProMaster');
+    expect(when(4), '340 mi left');
 
     final red = ToneColours.of(
       tester.element(find.byKey(const Key('fleet-coming-0'))),
       Tone.bad,
     ).ink;
-    final overdue = tester.widget<Text>(
-      find.byKey(const Key('fleet-coming-overdue-0')),
+    for (final i in [0, 3]) {
+      expect(
+        tester
+            .widget<Text>(find.byKey(Key('fleet-coming-overdue-$i')))
+            .style
+            ?.color,
+        red,
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(Key('fleet-coming-when-$i')))
+            .style
+            ?.color,
+        red,
+      );
+    }
+    for (final i in [1, 2, 4]) {
+      expect(find.byKey(Key('fleet-coming-overdue-$i')), findsNothing);
+    }
+
+    // One request: the dates come with the summary, not from the register.
+    expect(asked.where((u) => u.path.endsWith('/vehicles')), isEmpty);
+  });
+
+  testWidgets('spending compares with last period and lists the top 5', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('fleet-general-spending-versus')))
+          .data,
+      '▲ 25% vs the same days last period',
     );
-    expect(overdue.style?.color, red);
-    expect(find.byKey(const Key('fleet-coming-overdue-1')), findsNothing);
+    expect(find.text('Top vehicles'), findsOneWidget);
+    expect(find.byKey(const Key('fleet-top-4')), findsOneWidget);
+    expect(find.byKey(const Key('fleet-top-5')), findsNothing);
+    expect(find.text('Van 1'), findsOneWidget);
+    expect(find.text('\$690.00'), findsOneWidget);
+    expect(find.text('Van 6'), findsNothing);
   });
 
   testWidgets('spending switches period and has an empty state', (

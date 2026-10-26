@@ -93,6 +93,24 @@ void main() {
     expect(find.text('Needs attention'), findsOneWidget);
   });
 
+  testWidgets('the No insurance chip asks the register for uninsured', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pumpScreen(
+      tester,
+      onRequest: (request) {
+        if (request.url.path.endsWith('/vehicles')) asked.add(request.url);
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('No insurance'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last.queryParameters['uninsured'], '1');
+  });
+
   testWidgets('In shop on General opens the register filtered to it', (
     tester,
   ) async {
@@ -820,9 +838,7 @@ void main() {
       onRequest: (request) {
         if (!request.url.path.endsWith('/vehicles')) return null;
         final place = request.url.queryParameters['franchise_id'];
-        // General's Coming up reads the whole register (per_page=200); this
-        // test is about the register's own requests.
-        if (request.url.queryParameters['per_page'] != '200') asked.add(place);
+        asked.add(place);
 
         final rows = switch (place) {
           'fr-ct' => [

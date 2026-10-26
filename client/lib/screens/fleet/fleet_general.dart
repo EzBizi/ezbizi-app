@@ -10,11 +10,9 @@ import '../../widgets/module_overview.dart';
 /// 30 days, and - with financials - what it cost. Two columns on a desktop,
 /// one on a phone.
 ///
-/// Status, attention and spending come from `GET /vehicles/summary`; the
-/// dates in Coming up are the register's own (`GET /vehicles`), because the
-/// summary sends counts, not dates. Insurance expiry dates, a previous-period
-/// total and per-vehicle spending are not sent by the server, so they are
-/// not drawn.
+/// Everything comes from one `GET /vehicles/summary`: health, warnings, the
+/// dates falling due (`dates`, soonest first, mileage last) and - with
+/// financials - spending with the previous period and the top vehicles.
 class FleetGeneral extends StatefulWidget {
   const FleetGeneral({
     super.key,
@@ -48,7 +46,7 @@ const _fixes = <String, (String, String)>{
   'service_due_soon': ('Book service', 'due_soon=1'),
   'insurance_expired': ('Renew insurance', ''),
   'insurance_expiring': ('Renew insurance', ''),
-  'no_insurance': ('Add insurance', ''),
+  'no_insurance': ('Add insurance', 'uninsured=1'),
   'out_of_service': ('Show them', 'status=out_of_service'),
   'active_unassigned': ('Assign keys', 'unassigned=1'),
 };
@@ -57,7 +55,6 @@ class _FleetGeneralState extends State<FleetGeneral> {
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _data;
-  List<Map<String, dynamic>>? _vehicles;
   String _period = 'month';
   int _request = 0;
 
@@ -73,19 +70,16 @@ class _FleetGeneralState extends State<FleetGeneral> {
     if (widget.visible && !oldWidget.visible) _load();
   }
 
-  Future<void> _load({bool withDates = true}) async {
+  Future<void> _load() async {
     final request = ++_request;
     setState(() {
       _loading = _data == null;
       _error = null;
     });
 
-    final summary = widget.api.get('/vehicles/summary', {'period': _period});
-    final list = withDates
-        ? widget.api.get('/vehicles', {'per_page': '200'})
-        : null;
-    final response = await summary;
-    final listed = await list;
+    final response = await widget.api.get('/vehicles/summary', {
+      'period': _period,
+    });
 
     if (!mounted || request != _request) return;
 
@@ -95,16 +89,6 @@ class _FleetGeneralState extends State<FleetGeneral> {
         _data = response.body;
       } else {
         _error = response.message;
-      }
-      if (listed != null) {
-        final rows = listed.ok ? listed.body['data'] : null;
-        // A failed list hides Coming up rather than claiming nothing is due.
-        _vehicles = rows is List
-            ? [
-                for (final row in rows)
-                  if (row is Map) row.cast<String, dynamic>(),
-              ]
-            : null;
       }
     });
   }
@@ -157,7 +141,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
         _attention(context, data['warnings'] as List? ?? const []),
       ],
       [
-        if (_vehicles != null) _comingUp(context, _vehicles!),
+        if (data['dates'] is List) _comingUp(context, data['dates'] as List),
         if (spending != null) _spending(context, spending),
       ],
     ];
@@ -354,28 +338,33 @@ class _FleetGeneralState extends State<FleetGeneral> {
 
   // --- Coming up ----------------------------------------------------------
 
-  Widget _comingUp(BuildContext context, List<Map<String, dynamic>> vehicles) {
-    final theme = Theme.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final until = today.add(const Duration(days: FleetGeneral.soonDays));
+  static const _kinds = {
+    'registration': 'Registration',
+    'inspection': 'Inspection',
+    'insurance': 'Insurance',
+    'service': 'Service',
+    'service_miles': 'Service',
+  };
 
-    final items = <(DateTime, String, String)>[];
-    for (final vehicle in vehicles) {
-      final label = '${vehicle['label'] ?? vehicle['number'] ?? ''}';
-      for (final (field, what) in const [
-        ('registration_expires_on', 'Registration'),
-        ('inspection_expires_on', 'Inspection'),
-        ('next_service_on', 'Service'),
-      ]) {
-        final day = DateTime.tryParse('${vehicle[field] ?? ''}');
-        if (day != null && !day.isAfter(until)) items.add((day, what, label));
-      }
-    }
-    items.sort((a, b) => a.$1.compareTo(b.$1));
+  Widget _comingUp(BuildContext context, List<dynamic> dates) {
+    final theme = Theme.of(context);
+    // The server's order: soonest first, mileage after the dates.
+    final items = [
+      for (final raw in dates)
+        if (raw is Map) raw.cast<String, dynamic>(),
+    ];
 
     const shown = 8;
     final bad = ToneColours.of(context, Tone.bad).ink;
+
+    String when(Map<String, dynamic> item) {
+      if (item['kind'] == 'service_miles') {
+        final left = (item['miles_left'] as num?)?.toInt() ?? 0;
+        return left < 0 ? '${-left} mi past' : '$left mi left';
+      }
+      final day = DateTime.tryParse('${item['on'] ?? ''}');
+      return day == null ? '' : _date(day);
+    }
 
     return OverviewSection(
       key: const Key('fleet-general-coming-up'),
@@ -390,7 +379,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final (i, (day, what, label)) in items.take(shown).indexed)
+                for (final (i, item) in items.take(shown).indexed)
                   Padding(
                     key: Key('fleet-coming-$i'),
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -399,20 +388,22 @@ class _FleetGeneralState extends State<FleetGeneral> {
                         SizedBox(
                           width: 96,
                           child: Text(
-                            _date(day),
+                            when(item),
+                            key: Key('fleet-coming-when-$i'),
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: day.isBefore(today) ? bad : null,
+                              color: item['overdue'] == true ? bad : null,
                             ),
                           ),
                         ),
                         Expanded(
                           child: Text(
-                            '$what · $label',
+                            '${_kinds[item['kind']] ?? item['kind']} · '
+                            '${item['label'] ?? ''}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (day.isBefore(today))
+                        if (item['overdue'] == true)
                           Text(
                             'Overdue',
                             key: Key('fleet-coming-overdue-$i'),
@@ -454,6 +445,14 @@ class _FleetGeneralState extends State<FleetGeneral> {
             (c['amount_minor'] as num?)?.toInt() ?? 0,
           ),
     ];
+    final top = [
+      for (final v in (spending['vehicles'] as List? ?? const []).take(5))
+        if (v is Map)
+          (
+            '${v['label'] ?? v['id']}',
+            (v['amount_minor'] as num?)?.toInt() ?? 0,
+          ),
+    ];
     final most = categories.fold<int>(0, (m, c) => c.$2 > m ? c.$2 : m);
 
     return OverviewSection(
@@ -464,7 +463,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
         period: _period,
         onChanged: (period) {
           setState(() => _period = period);
-          _load(withDates: false);
+          _load();
         },
       ),
       child: total == 0
@@ -495,6 +494,14 @@ class _FleetGeneralState extends State<FleetGeneral> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (_versus(spending, total) case final versus?)
+                  Text(
+                    versus.$1,
+                    key: const Key('fleet-general-spending-versus'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: ToneColours.of(context, versus.$2).ink,
+                    ),
+                  ),
                 const SizedBox(height: 12),
                 for (final (label, amount) in categories)
                   Padding(
@@ -536,8 +543,41 @@ class _FleetGeneralState extends State<FleetGeneral> {
                       ],
                     ),
                   ),
+                if (top.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('Top vehicles', style: theme.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  for (final (i, (label, amount)) in top.indexed)
+                    Padding(
+                      key: Key('fleet-top-$i'),
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(label, overflow: TextOverflow.ellipsis),
+                          ),
+                          Text(_money(amount)),
+                        ],
+                      ),
+                    ),
+                ],
               ],
             ),
+    );
+  }
+
+  /// "▲ 12% vs the same days last period", or null with nothing to compare.
+  /// More spent is caution, less is ok.
+  static (String, Tone)? _versus(Map<String, dynamic> spending, int total) {
+    final previous = (spending['previous_total_minor'] as num?)?.toInt();
+    if (previous == null || previous <= 0) return null;
+    final change = ((total - previous) * 100 / previous).round();
+    if (change == 0) {
+      return ('Same as the same days last period', Tone.neutral);
+    }
+    return (
+      '${change > 0 ? '▲' : '▼'} ${change.abs()}% vs the same days last period',
+      change > 0 ? Tone.caution : Tone.ok,
     );
   }
 
