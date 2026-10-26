@@ -9,6 +9,7 @@ use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Models\Organization;
 use App\Support\Memberships\CustomerLinks;
+use App\Models\Mailbox;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -152,6 +153,26 @@ final class PendingRegistry
                     ->whereNull('franchise_id')->whereNull('not_listed_since')->exists(),
                 fill: fn () => ['kind' => 'open', 'destination' => 'customer_experience',
                     'hint' => 'Open Customer Experience, then GBP Listings, and give each listing its branch.'],
+            ),
+            // Email: a company with no connected inbox, at its own level or the
+            // organization's, cannot send or receive from EzBizi.
+            new PendingCheck(
+                key: 'email.mailbox',
+                label: 'Connected email inbox',
+                module: 'email',
+                scopes: [SettingDefinition::SCOPE_COMPANY],
+                permissions: ['email.edit'],
+                missing: fn (Company $c) => ! Mailbox::query()
+                    ->where('status', Mailbox::STATUS_CONNECTED)
+                    ->where(fn ($q) => $q
+                        ->where(fn ($q) => $q->where('scope_type', Mailbox::SCOPE_COMPANY)->where('scope_id', $c->id))
+                        ->orWhere(fn ($q) => $q->where('scope_type', Mailbox::SCOPE_ORGANIZATION)->where('scope_id', $c->organization_id)))
+                    ->exists(),
+                fill: fn () => [
+                    'kind'        => 'open',
+                    'destination' => 'settings',
+                    'hint'        => 'Open Settings, then Integrations, then Email.',
+                ],
             ),
         ];
     }
