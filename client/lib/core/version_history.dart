@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0495',
+      date: '26 Oct 2026',
+      items: [
+        'Monitoring › Lighting: set the RGB lighting of the office PCs, all at once or one by one, with colour and brightness; each PC lists the lights it has and says why one cannot be set. Works through the Windows app.',
+        'AI Assistance answers questions like how many jobs tomorrow at a company from everything you can see, not only the company last selected, and keeps branches with the same name in different companies apart.',
+        'Email: adding an inbox address the company already has says so instead of showing Server Error.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0494',
       date: '26 Oct 2026',
       items: [
