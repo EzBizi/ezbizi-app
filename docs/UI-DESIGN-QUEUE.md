@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 146 · Work Hours › Paid Time Off › Requests — **sent 2026-10-26** (`docs/previews/pto-requests-layouts.html`)
+### 146 · Work Hours › Paid Time Off › Requests — **sent 2026-10-26 — Jose: "looks good" (1 and 4)** (`docs/previews/pto-requests-layouts.html`)
 
 HR relayed Jose (staff request PTO, approvers decide). **1** (recommended) a Balances · Requests segment inside Paid Time Off with a waiting count; Waiting for you (approvers): person, grouped days with ½, total, note, "Approving leaves N", Approve / Deny with an inline required reason; Request time off inline: the Record-days-off calendar, balance before/after, note, Send (blocked with a sentence when over the balance unless allowed); My requests with status chips and Cancel while waiting; search + status filter. **2** own tab. **3** per-person panel. Phone **4** / **5** / **6**.
 
