@@ -3235,6 +3235,10 @@ Route::prefix('v1')
         Route::post('alerts', [\App\Http\Controllers\Api\AlertsController::class, 'send']);
 
         // ── Settings (§6) ────────────────────────────────────────
+        // Settings › Pending: what each place in view is missing (2026-10-26).
+        // Gated on organizations.edit, which every fill-in needs at the least.
+        Route::get('settings/pending', [\App\Http\Controllers\Api\PendingSettingsController::class, 'index'])
+            ->middleware('permission:organizations.edit');
         Route::get('settings', [SettingsController::class, 'index']);
         Route::patch('settings/{key}', [SettingsController::class, 'update']);
         Route::delete('settings/{key}', [SettingsController::class, 'destroy']);

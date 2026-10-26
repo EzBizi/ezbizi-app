@@ -213,6 +213,13 @@ final class SettingDefinition
         public readonly int|float|null $max = null,
 
         /**
+         * Settings › Pending lists this at a place where it resolves to nothing
+         * (no value there, none inherited). For values a business is expected
+         * to fill in, not for optional ones; see PendingRegistry.
+         */
+        public readonly bool $expected = false,
+
+        /**
          * A sub-heading inside the registry group, for a group long enough to
          * need one (Work Hours, 2026-10-22: "could be separated in their
          * respective categories"). Null means no sub-heading. Called section
