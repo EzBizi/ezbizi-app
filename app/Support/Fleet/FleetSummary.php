@@ -119,7 +119,7 @@ final class FleetSummary
             ['insurance_expired', $insuranceExpired, 'has insurance that has expired', 'have insurance that has expired', null],
             ['service_due_soon', $serviceDue, 'needs service within 30 days', 'need service within 30 days', 'due_soon=1'],
             ['insurance_expiring', $insuranceExpiring, 'has insurance expiring within 30 days', 'have insurance expiring within 30 days', null],
-            ['no_insurance', $uninsured, 'has no insurance on file', 'have no insurance on file', null],
+            ['no_insurance', $uninsured, 'has no insurance on file', 'have no insurance on file', 'uninsured=1'],
             ['out_of_service', $outOfService, 'is out of service', 'are out of service', 'status=out_of_service'],
             ['active_unassigned', $unassignedActive, 'is in use with nobody holding the keys', 'are in use with nobody holding the keys', 'unassigned=1'],
         ];
@@ -156,11 +156,18 @@ final class FleetSummary
     public static function spending(User $user, ViewScope $scope, DashboardPeriod $period): array
     {
         $visible = InventoryVisibility::constrain(Vehicle::query(), $user, $scope)->select('vehicles.id');
-
-        $payments = VehiclePayment::query()
+        $within = fn (DashboardPeriod $p) => VehiclePayment::query()
             ->whereIn('vehicle_id', $visible)
-            ->whereBetween('occurred_on', [$period->startsOn->toDateString(), $period->endsOn->toDateString()])
-            ->get(['category', 'amount_cents', 'occurred_on']);
+            ->whereBetween('occurred_on', [$p->startsOn->toDateString(), $p->endsOn->toDateString()]);
+
+        $payments = $within($period)->get(['vehicle_id', 'category', 'amount_cents', 'occurred_on']);
+
+        // Top five vehicles by what they cost this period.
+        $byVehicle = $payments->groupBy('vehicle_id')
+            ->map(fn ($rows) => (int) $rows->sum('amount_cents'))
+            ->sortDesc()
+            ->take(5);
+        $labels = Vehicle::query()->whereIn('id', $byVehicle->keys())->pluck('label', 'id');
 
         $buckets = array_keys($period->emptyBuckets());
         $slot = array_flip($buckets);
@@ -185,6 +192,13 @@ final class FleetSummary
             'period' => $period->key,
             'currency' => 'USD',
             'total_minor' => array_sum($byCategory),
+            // The same span one period back ("vs last month").
+            'previous_total_minor' => (int) $within($period->previous())->sum('amount_cents'),
+            'vehicles' => $byVehicle->map(fn (int $amount, string $id) => [
+                'id' => $id,
+                'label' => $labels[$id] ?? null,
+                'amount_minor' => $amount,
+            ])->values()->all(),
             'categories' => array_map(fn (string $key, int $amount) => [
                 'key' => $key,
                 'label' => ucfirst($key),
@@ -193,6 +207,59 @@ final class FleetSummary
             'buckets' => $buckets,
             'points' => $points,
         ];
+    }
+
+    /**
+     * Every date falling due in the next 30 days or already past, soonest
+     * first: registration, inspection, the open policy's expiry, and service
+     * by date. Service by mileage has no date, so it comes after them with
+     * `miles_left` (negative when past). Read straight from the register so
+     * the General tab need not page through /vehicles.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function dates(User $user, ViewScope $scope): array
+    {
+        $tz = ViewTimezone::forUser($user);
+        $today = Carbon::now($tz)->toDateString();
+        $soon = Carbon::now($tz)->addDays(self::SOON_DAYS)->toDateString();
+
+        $vehicles = self::onRoad($user, $scope)
+            ->with(['insurancePolicies' => fn ($p) => $p->whereNull('ended_on')])
+            ->get();
+
+        $dated = [];
+        $miles = [];
+
+        foreach ($vehicles as $v) {
+            $add = function (string $kind, ?Carbon $on) use (&$dated, $v, $today, $soon): void {
+                $day = $on?->toDateString();
+                if ($day !== null && $day <= $soon) {
+                    $dated[] = ['vehicle_id' => $v->id, 'label' => $v->label, 'kind' => $kind,
+                        'on' => $day, 'overdue' => $day < $today];
+                }
+            };
+
+            $add('registration', $v->registration_expires_on);
+            $add('inspection', $v->inspection_expires_on);
+            $add('service', $v->next_service_on);
+            foreach ($v->insurancePolicies as $policy) {
+                $add('insurance', $policy->expires_on);
+            }
+
+            if ($v->next_service_miles !== null && $v->odometer_miles !== null) {
+                $left = $v->next_service_miles - $v->odometer_miles;
+                if ($left <= self::SOON_MILES) {
+                    $miles[] = ['vehicle_id' => $v->id, 'label' => $v->label, 'kind' => 'service_miles',
+                        'miles_left' => $left, 'overdue' => $left <= 0];
+                }
+            }
+        }
+
+        usort($dated, fn ($a, $b) => [$a['on'], $a['label']] <=> [$b['on'], $b['label']]);
+        usort($miles, fn ($a, $b) => $a['miles_left'] <=> $b['miles_left']);
+
+        return [...$dated, ...$miles];
     }
 
     /** In the register: not sold, not returned. */

@@ -107,4 +107,51 @@ class FleetSummaryTest extends TestCase
             ->assertJsonPath('health.empty', true)
             ->assertJsonPath('health.sentence', 'No vehicles to show.');
     }
+    public function test_dates_spending_comparison_and_the_uninsured_filter(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-15 16:00:00', 'UTC'));
+        $t = $this->provisionTenant('Alpha');
+
+        [$van, $truck] = $this->inTenant($t['org'], function () use ($t) {
+            $van = Vehicle::factory()->create([
+                'company_id' => $t['company']->id, 'status' => 'active', 'label' => 'Van',
+                'registration_expires_on' => '2026-10-10', 'inspection_expires_on' => '2027-06-01',
+                'next_service_on' => null, 'next_service_miles' => 50200, 'odometer_miles' => 50000,
+            ]);
+            $truck = Vehicle::factory()->create([
+                'company_id' => $t['company']->id, 'status' => 'active', 'label' => 'Truck',
+                'registration_expires_on' => null, 'inspection_expires_on' => null,
+                'next_service_on' => null, 'next_service_miles' => null,
+            ]);
+            VehicleInsurancePolicy::create([
+                'organization_id' => $t['org']->id, 'vehicle_id' => $truck->id,
+                'carrier' => 'Acme', 'started_on' => '2025-11-01', 'expires_on' => '2026-11-01',
+            ]);
+            foreach ([[$van, 3000, '2026-10-05'], [$truck, 9000, '2026-10-06'], [$van, 4000, '2026-09-10']] as [$v, $c, $on]) {
+                VehiclePayment::create([
+                    'organization_id' => $t['org']->id, 'vehicle_id' => $v->id,
+                    'category' => 'maintenance', 'amount_cents' => $c, 'occurred_on' => $on, 'method' => 'credit_card',
+                ]);
+            }
+
+            return [$van, $truck];
+        });
+
+        $body = $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles/summary?period=month')->assertOk()->json();
+
+        $this->assertSame([
+            ['vehicle_id' => $van->id, 'label' => $van->label, 'kind' => 'registration', 'on' => '2026-10-10', 'overdue' => true],
+            ['vehicle_id' => $truck->id, 'label' => $truck->label, 'kind' => 'insurance', 'on' => '2026-11-01', 'overdue' => false],
+            ['vehicle_id' => $van->id, 'label' => $van->label, 'kind' => 'service_miles', 'miles_left' => 200, 'overdue' => false],
+        ], $body['dates']);
+
+        $this->assertSame(12000, $body['spending']['total_minor']);
+        $this->assertSame(4000, $body['spending']['previous_total_minor']);
+        $this->assertSame([$truck->id, $van->id], array_column($body['spending']['vehicles'], 'id'));
+        $this->assertSame(3000, $body['spending']['vehicles'][1]['amount_minor']);
+
+        $this->assertSame('uninsured=1', collect($body['warnings'])->keyBy('key')['no_insurance']['link']);
+        $listed = $this->signedInAs($t['admin'])->getJson('/api/v1/vehicles?uninsured=1')->assertOk()->json('data');
+        $this->assertSame([$van->id], array_column($listed, 'id'));
+    }
 }

@@ -35,6 +35,7 @@ class FleetSummaryController extends Controller
         $body = [
             'health' => FleetSummary::health($user, $scope),
             'warnings' => FleetSummary::warnings($user, $scope),
+            'dates' => FleetSummary::dates($user, $scope),
         ];
 
         if ($user->hasPermission('fleet_management.financials')) {

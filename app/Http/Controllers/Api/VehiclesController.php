@@ -125,6 +125,11 @@ class VehiclesController extends Controller
             $query->whereDoesntHave('assignments', fn (Builder $a) => $a->whereNull('released_at'));
         }
 
+        // No open policy: what the General tab's "Add insurance" opens.
+        if ($request->boolean('uninsured')) {
+            $query->whereDoesntHave('insurancePolicies', fn (Builder $p) => $p->whereNull('ended_on'));
+        }
+
         if ($request->boolean('due_soon')) {
             $within = now()->addDays(30)->toDateString();
             $query->where(function (Builder $inner) use ($within): void {
