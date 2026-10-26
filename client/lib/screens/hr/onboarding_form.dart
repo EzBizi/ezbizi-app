@@ -2261,6 +2261,9 @@ class _OnboardingFormState extends State<OnboardingForm> {
       inputFormatters: numeric ? _decimal : null,
       decoration: InputDecoration(
         border: const OutlineInputBorder(),
+        // An example of what goes in, inside the empty box (Jose, 2026-10-26:
+        // "what do i fill? you made it very confusing").
+        hintText: fieldExamples[question.key],
         // What an empty box MEANS when there is a stored answer behind it.
         // Without this sentence a masked field reads as unanswered, and the
         // obvious response to that is to type it again.
@@ -3605,3 +3608,23 @@ class _CommissionTiersState extends State<CommissionTiers> {
     );
   }
 }
+
+/// Examples shown inside an empty box, by question key. Numbers are typed
+/// bare: the contract prints the "\$" and "%" around them.
+const fieldExamples = <String, String>{
+  'salary_amount': 'e.g. 120000',
+  'hourly_rate': 'e.g. 25',
+  'daily_deduction': 'e.g. 150',
+  'commission_pct': 'e.g. 10',
+  'raise_amount': 'e.g. 1',
+  'raise_period': 'e.g. 3 months',
+  'incentive_year': 'e.g. 2026',
+  'incentive_division': 'e.g. A1 Roofing',
+  'incentive_pct': 'e.g. 1  (one percent of that division’s revenue)',
+  'incentive_minimum': 'e.g. 3000  (the least it pays, in dollars)',
+  'perf_comp_year': 'e.g. 2027',
+  'perf_comp_minimum': 'e.g. 30000  (the least it pays that year, in dollars)',
+  'pto_days': 'e.g. 6',
+  'paid_holidays': 'e.g. Company-designated Jewish and American holidays',
+  'job_title': 'e.g. Chief Operating Officer',
+};
