@@ -22,12 +22,6 @@ class VersionHistory {
         'Inspection › Testing: try any form, even an unpublished draft, as a technician would, with a Why panel for every screen and question and a report preview. Nothing is saved.',
         'Inspection reports look like A1\'s: a logo header, an overall Pass or Fail, a badge on every finding and a summary page; the A1 form matches the one technicians use today.',
         'Customer Experience › Reviews: this month and last month\'s average and count, and a Low rating filter.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0492',
-      date: '26 Oct 2026',
-      items: [
         'Inspection › New Inspection opens on one search bar that suggests customers, jobs and addresses as you type, with their branch.',
         'Human Resources: each empty pay or terms box on an onboarding shows an example of what goes in it.',
         'Email: All inboxes loads again. With many inboxes it shows the newest from each straight away and leaves the rest for Older, instead of timing out.',

@@ -1949,6 +1949,7 @@ class SettingRegistry
             // organization, company or branch, like the other per-place rules.
             new SettingDefinition(
                 key: 'pto.allow_negative',
+                section: 'Paid time off',
                 label: 'Requests may go below zero',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
