@@ -116,7 +116,10 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
   SuggestItem _suggestion(Map<String, dynamic> hit) {
     final isJob = hit['type'] == 'job';
     final name = '${hit['customer_name'] ?? hit['label'] ?? ''}';
-    final branchId = hit['franchise_id'];
+    // The server sends franchise {id, name} (6256d9a77); franchise_id is kept
+    // for older responses.
+    final franchise = hit['franchise'];
+    final branchId = franchise is Map ? franchise['id'] : hit['franchise_id'];
     final branch = branchId is String && branchId.isNotEmpty
         ? branchLabelOf(widget.session.me, branchId, '')
         : '';
