@@ -1,0 +1,268 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Paid Time Off: Requests</title>
+<style>
+/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
+   window and phone frames are frames, not cards. Every name, message and number is invented. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
+ --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+.cap b{color:var(--ink)}
+.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
+.need b{color:var(--ink)}
+code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
+.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+/* the window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+.top .logo{color:var(--pri);font-size:15px}
+.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
+.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0;position:relative}
+.nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
+.nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
+.nav i.on{background:var(--pri)}
+.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
+.page .t{font-size:20px;font-weight:800;line-height:1.2}
+.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs span.on{color:var(--pri);border-color:var(--pri)}
+.cols{display:flex;gap:16px;min-height:0;flex:1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
+/* cards and controls */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
+.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .lead{font-size:12px;color:var(--muted);margin:0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
+.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
+.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fld label{font-size:11px;color:var(--muted);font-weight:600}
+.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
+.in .ph{color:#8a969e}
+.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
+.chip .av{width:18px;height:18px;font-size:9px}
+.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.foot{display:flex;align-items:center;gap:10px}
+/* sent alerts */
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
+.srow:first-of-type{border-top:0}
+.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.srow .w{font-size:11px;color:var(--muted)}
+.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
+.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
+.who .av{width:20px;height:20px;font-size:9px}
+.who .when{margin-left:auto;color:var(--muted)}
+.who .when.no{color:var(--cau);font-weight:700}
+/* what the recipient is looking at, behind the alert */
+.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
+.jobs .jr:first-child{border-top:0}
+.bar{height:8px;border-radius:4px;background:#dfe6ea}
+/* the alert itself */
+.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
+.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
+.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
+.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
+.alert .ft{display:flex;align-items:center;gap:8px}
+.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
+.scrim .alert{width:460px;padding:18px 20px}
+.scrim .alert .msg{font-size:16px}
+.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
+.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
+/* side panel */
+.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
+.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.panel .phd b{font-size:16px}
+.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.pcol .pl{font-size:12px;font-weight:700}
+.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
+.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
+.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
+.phn .ab .t{font-size:15px;font-weight:800}
+.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
+.phn .pb > *{flex:0 0 auto}
+.phn .tabs span{padding:7px 9px;font-size:12px}
+.phn .alert{width:auto}
+.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
+.phn .scrim .alert{width:290px;padding:16px}
+.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
+.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
+.li:first-child{border-top:0}
+.li .g{flex:1;min-width:0}
+.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.li .g span{display:block;font-size:11px;color:var(--muted)}
+</style>
+<style>
+.pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
+.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
+.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
+.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.under span.on{color:var(--pri);border-color:var(--pri)}
+.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
+.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
+.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
+.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
+.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
+.side2 span.on{background:var(--pric);color:var(--prid)}
+.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
+.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
+</style>
+<style>
+.win.tall{height:720px}
+.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
+.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
+.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
+.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
+.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
+.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
+.zoom span:first-child{border-top:0}
+.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.tip b{font-size:13px}
+.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
+.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
+.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
+.mv:first-child{border-top:0}
+.mv.sel{background:var(--pric);border-radius:8px}
+.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.arrow .from{color:var(--muted);text-decoration:line-through}
+.arrow .to{font-weight:700;color:var(--prid)}
+.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
+.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
+.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
+.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.day.to{background:var(--okc)}
+.day b{font-size:13px}
+.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
+.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
+.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
+.rc .hd{display:flex;align-items:center;gap:8px}
+.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
+.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
+.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
+.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
+.jb.new{border-color:var(--ok);background:var(--okc)}
+.jb .t{font-weight:700;width:62px;flex:0 0 auto}
+</style>
+<style>
+.pr-help{font-size:11px;color:var(--muted)}
+.pr-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pr-tb{display:flex;gap:6px}.pr-tb span{border:1px solid #b9c7cd;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;background:#fff}.pr-tb span.on{background:var(--pric);color:var(--prid);border-color:var(--pri)}
+.pr-seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:8px;overflow:hidden;font-size:11.5px;font-weight:700}.pr-seg span{padding:5px 11px;border-left:1px solid #b9c7cd}.pr-seg span:first-child{border-left:0}.pr-seg span.on{background:var(--pric);color:var(--prid)}
+.pr-fld{border:1px solid #b9c7cd;border-radius:8px;padding:5px 9px;font-size:11.5px;background:#fff;white-space:nowrap}
+.pr-btn{height:28px;padding:0 11px;border-radius:8px;border:1px solid #b9c7cd;display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;background:#fff}.pr-btn.p{background:var(--pri);color:#fff;border-color:var(--pri)}.pr-btn.d{color:#9f1d1d;border-color:#e4b3b3}
+.pr-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:12px}
+.pr-cal{display:grid;grid-template-columns:repeat(7,28px);gap:3px;font-size:10.5px;text-align:center}.pr-cal b{font-size:9.5px;color:var(--muted)}.pr-cal span{height:26px;line-height:26px;border-radius:6px}.pr-cal .on{background:var(--pri);color:#fff;font-weight:800}.pr-cal .half{background:linear-gradient(135deg,var(--pri) 50%,#dbeafe 50%);color:#fff;font-weight:800}.pr-cal .used{background:#dbeafe;color:#1e3a8a}
+.pr-bal{display:flex;gap:6px}.pr-bal div{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:10.5px;color:var(--muted)}.pr-bal b{display:block;font-size:17px;color:#1b2730}
+.pr-st{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap}.pr-w{background:#fef3c7;color:#78350f}.pr-ok{background:var(--okc);color:var(--ok)}.pr-no{background:#fbe3e3;color:#9f1d1d}.pr-gr{background:#eef2f4;color:#33404a}
+table.pr-t{border-collapse:collapse;width:100%;font-size:11.5px;background:#fff}table.pr-t td,table.pr-t th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}table.pr-t th{font-size:10px;color:var(--muted)}
+.pr-lbl{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+</style>
+<div class="wrap">
+<h1>Work Hours › Paid Time Off › Requests</h1>
+<p class="subt">Jose's new feature, via HR: staff request their own paid time off and approvers decide.</p>
+<ul class="subt">
+ <li>A request for more days than are left is refused, unless the place allows going negative.</li>
+ <li>Approving puts the days into "Used".</li>
+ <li>Nobody decides their own request.</li>
+ <li>Approvers are notified of each new request, and the requester of the decision.</li>
+</ul>
+<p class="subt">Every name and date here is invented.</p>
+
+<h2><span class="n">1</span> A Requests view inside Paid Time Off: "Waiting for you" on top, your own requests below <span class="rec">RECOMMENDED</span></h2>
+<ul class="cap">
+ <li><b>Where it lives:</b> Paid Time Off gets a segment, <b>Balances · Requests</b>, so it isn't a new tab. A count of requests waiting for you appears on Requests, and the notification opens it.</li>
+ <li><b>Waiting for you</b> is for approvers only. Each row shows the person, the dates (consecutive days grouped, ½ marked), the total, their note, and "Approving leaves N". The buttons are Approve and Deny; Deny asks for the reason on the same row, with no pop-up.</li>
+ <li><b>Request time off</b> opens a box under it, with no pop-up. It has:
+  <ul>
+   <li>the same calendar as Record days off: tap a day for a full day, again for a half, a third time to clear, with already-taken days tinted;</li>
+   <li>your balance before and after;</li>
+   <li>a note;</li>
+   <li>Send request.</li>
+  </ul>
+  If it's more than you have left, it says so in one sentence and Send stays off (unless your place allows going negative).
+ </li>
+ <li><b>My requests:</b> each one with a status chip (Waiting, Approved by X, Denied by X with the reason, Cancelled), and Cancel while it's still waiting.</li>
+ <li><b>Search and filters:</b> search plus a status filter for everything else.</li>
+</ul>
+<div class="win" style="height:600px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span></div>
+<div class="page" style="gap:8px">
+ <div class="pr-tb"><span>General</span><span class="on">Paid Time Off</span><span>Daily approval</span><span>Settings</span></div>
+ <div class="pr-row"><span class="pr-seg"><span>Balances</span><span class="on">Requests · 2 waiting</span></span><span class="pr-fld" style="width:220px">🔍 Search people</span><span class="pr-fld">Any status ▾</span><span class="pr-btn p" style="margin-left:auto">+ Request time off</span></div>
+ <div class="pr-card"><span class="pr-lbl">Waiting for you · 2</span>
+  <table class="pr-t"><tr><th>PERSON</th><th>DAYS</th><th>TOTAL</th><th>NOTE</th><th>AFTER</th><th></th></tr>
+   <tr><td><b>Dana Reyes</b><br><span class="pr-help">asked Oct 24</span></td><td>Nov 11–12 · Nov 14 (½)</td><td>2½</td><td>Family trip</td><td>leaves 3½</td><td><span class="pr-btn d">Deny</span> <span class="pr-btn p">Approve</span></td></tr>
+   <tr><td><b>Pat Lin</b><br><span class="pr-help">asked today</span></td><td>Dec 23–24</td><td>2</td><td>—</td><td style="color:#9f1d1d">leaves −1</td><td><span class="pr-fld" style="width:180px">Reason: over the balance</span> <span class="pr-btn d">Deny</span></td></tr>
+  </table></div>
+ <div class="pr-row" style="align-items:stretch;flex-wrap:nowrap">
+  <div class="pr-card" style="flex:1"><span class="pr-lbl">Request time off</span>
+   <div class="pr-row" style="align-items:flex-start;flex-wrap:nowrap;gap:14px">
+    <div><b>November 2026</b><div class="pr-cal"><b>S</b><b>M</b><b>T</b><b>W</b><b>T</b><b>F</b><b>S</b><span></span><span></span><span></span><span></span><span></span><span></span><span>1</span><span>2</span><span class="used">3</span><span class="used">4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span class="on">11</span><span class="on">12</span><span>13</span><span class="half">14</span><span>15</span></div></div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div class="pr-bal"><div>Left now<b>6</b></div><div>This request<b>2½</b></div><div>Left after<b style="color:var(--pri)">3½</b></div></div>
+     <span class="pr-fld">Note: Family trip</span><div class="pr-row"><span class="pr-btn">Cancel</span><span class="pr-btn p" style="margin-left:auto">Send request</span></div></div>
+   </div></div>
+  <div class="pr-card" style="flex:1"><span class="pr-lbl">My requests</span>
+   <div class="pr-row"><b>Nov 11–14</b><span class="pr-help">2½ days</span><span class="pr-st pr-w" style="margin-left:auto">Waiting</span><span class="pr-btn">Cancel</span></div>
+   <div class="pr-row"><b>Sep 2–3</b><span class="pr-help">2 days</span><span class="pr-st pr-ok" style="margin-left:auto">Approved by Shoval · Aug 28</span></div>
+   <div class="pr-row"><b>Jul 4</b><span class="pr-help">1 day</span><span class="pr-st pr-no" style="margin-left:auto">Denied · "short-staffed that week"</span></div>
+  </div>
+ </div>
+</div></div>
+
+<h2><span class="n">2</span> A separate "Requests" tab in Work Hours</h2>
+<p class="cap">The same content, but as its own tab beside Paid Time Off and Daily approval. It's easier to find for approvers, but it adds another tab, and staff look for their balance and their requests in two places.</p>
+
+<h2><span class="n">3</span> Requests inside each person's panel</h2>
+<p class="cap">Requests show on each person's balance panel, and approvers review them person by person. It keeps everything together per person, but an approver has to open each person to find what's waiting.</p>
+
+<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
+<div class="phones">
+ <div class="pcol"><span class="pl">4 · goes with 1 (recommended)</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Paid Time Off</span></div><div class="pb">
+  <span class="pr-seg"><span>Balances</span><span class="on">Requests · 2</span></span>
+  <div class="pr-card"><b>Dana Reyes · 2½ days</b><span class="pr-help">Nov 11–12 · Nov 14 (½) · leaves 3½</span><div class="pr-row"><span class="pr-btn d">Deny</span><span class="pr-btn p">Approve</span></div></div>
+  <span class="pr-btn p">+ Request time off</span>
+  <span class="pr-help">The form and calendar open full screen with ←.</span>
+ </div></div></div>
+ <div class="pcol"><span class="pl">5 · goes with 2</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Requests</span></div><div class="pb"><span class="pr-help">Its own tab.</span></div></div></div>
+ <div class="pcol"><span class="pl">6 · goes with 3</span><div class="phn"><div class="sb"></div><div class="ab"><span>←</span><span class="t">Dana Reyes</span></div><div class="pb"><span class="pr-help">Requests in her panel.</span></div></div></div>
+</div>
+</div>
+
+</body>
+</html>

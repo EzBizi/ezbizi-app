@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 146 · Work Hours › Paid Time Off › Requests — **sent 2026-10-26** (`docs/previews/pto-requests-layouts.html`)
+
+HR relayed Jose (staff request PTO, approvers decide). **1** (recommended) a Balances · Requests segment inside Paid Time Off with a waiting count; Waiting for you (approvers): person, grouped days with ½, total, note, "Approving leaves N", Approve / Deny with an inline required reason; Request time off inline: the Record-days-off calendar, balance before/after, note, Send (blocked with a sentence when over the balance unless allowed); My requests with status chips and Cancel while waiting; search + status filter. **2** own tab. **3** per-person panel. Phone **4** / **5** / **6**.
+
 ### 145 · Customer Experience › Reviews as an inbox — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/reviews-inbox-layouts.html`)
 
 Jose: "I feel this screen can look better." **1** (recommended) summary strip (average rating vs last month, new this month, unanswered, 1-2 star to answer; each filters); search + quick chips (Unanswered, 1-2 stars, This week) + More filters; list (avatar, name, stars red when low, unanswered dot, location tag, time, one line; match shown only when useful); right pane (full review, match/link, technician named, reply box with Draft with AI + Post, notes, status). Board stays a toggle. **2** card grid. **3** cleaned table. Phone **4** / **5** / **6**.
