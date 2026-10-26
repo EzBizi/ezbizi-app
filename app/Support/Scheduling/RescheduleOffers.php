@@ -1,0 +1,176 @@
+<?php
+
+namespace App\Support\Scheduling;
+
+use App\Models\Company;
+use App\Models\Customer;
+use App\Models\Franchise;
+use App\Models\Lead;
+use App\Models\Organization;
+use App\Models\SchedulingRescheduleOffer;
+use App\Models\ServiceArea;
+use App\Models\User;
+use App\Support\Audit\AuditLogger;
+use App\Support\Leads\LeadTexts;
+use App\Support\Settings\SettingsResolver;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Throwable;
+
+/**
+ * "An earlier opening is available" texts (Shoval, 2026-10-26: "last friday
+ * we had empty spots, when we are usually overbooked"). For an area with room
+ * on a day, the customers booked later in the same area are texted from the
+ * company's own line. Each text opens a lead tagged Reschedule (`lead_type`),
+ * so the reply lands in Leads and the office moves the job.
+ *
+ * Who is offered: jobs in the area's pool booked at least `offer_min_days_out`
+ * days after the open day and within three weeks of it, with a customer
+ * phone, not offered in the last 30 days. Soonest first, at most
+ * `offer_max_sends`, and only inside `offer_hours`.
+ */
+final class RescheduleOffers
+{
+    public const MESSAGE = 'scheduling.offer_message';
+
+    public const MIN_DAYS_OUT = 'scheduling.offer_min_days_out';
+
+    public const MAX_SENDS = 'scheduling.offer_max_sends';
+
+    public const HOURS = 'scheduling.offer_hours';
+
+    private const HORIZON_DAYS = 21;
+
+    private const NOT_AGAIN_DAYS = 30;
+
+    public function __construct(
+        private readonly Openings $openings,
+        private readonly SettingsResolver $settings,
+        private readonly LeadTexts $texts,
+        private readonly AuditLogger $audit,
+    ) {}
+
+    /**
+     * The day's open windows and who would be texted.
+     *
+     * @return array{open: list<array{start_time: string, end_time: string, remaining: int}>, candidates: list<array<string, mixed>>, max_sends: int, message: string}
+     */
+    public function preview(ServiceArea $area, CarbonImmutable $date): array
+    {
+        $franchise = Franchise::findOrFail($area->franchise_id);
+        $open = collect($this->openings->days($area, $date, 1)[0]['windows'])
+            ->filter(fn ($w) => $w['remaining'] > 0)
+            ->map(fn ($w) => ['start_time' => $w['start_time'], 'end_time' => $w['end_time'], 'remaining' => $w['remaining']])
+            ->values()->all();
+        $max = (int) $this->setting(self::MAX_SENDS, $franchise);
+
+        return [
+            'open' => $open,
+            'candidates' => $open === [] ? [] : $this->candidates($area, $date, $franchise)->take($max)->values()->all(),
+            'max_sends' => $max,
+            'message' => (string) $this->setting(self::MESSAGE, $franchise),
+        ];
+    }
+
+    /**
+     * Texts the chosen jobs, which must be among preview()'s candidates.
+     *
+     * @param  list<string>  $jobIds
+     * @return array{sent: list<string>, failed: list<array{job_id: string, reason: string}>}
+     */
+    public function send(ServiceArea $area, CarbonImmutable $date, array $jobIds, User $by): array
+    {
+        $franchise = Franchise::findOrFail($area->franchise_id);
+        $this->assertInHours($franchise);
+        $plan = $this->preview($area, $date);
+        abort_if($plan['open'] === [], 422, 'That day has no open spot left to offer.');
+
+        $chosen = collect($plan['candidates'])->whereIn('job_id', $jobIds);
+        $company = Company::find($franchise->company_id);
+        $window = $plan['open'][0];
+        $sent = [];
+        $failed = [];
+
+        foreach ($chosen as $c) {
+            $body = strtr($plan['message'], [
+                '{name}' => trim(explode(' ', (string) $c['customer_name'])[0]) ?: 'there',
+                '{company}' => (string) ($company?->name ?? ''),
+                '{date}' => $date->format('l, M j'),
+                '{window}' => self::time($window['start_time']).'–'.self::time($window['end_time']),
+            ]);
+            $lead = Lead::create([
+                'company_id' => $franchise->company_id,
+                'franchise_id' => $franchise->id,
+                'job_id' => $c['job_id'],
+                'source' => Lead::SOURCE_EZ_TEXTS,
+                'remote_id' => 'offer_'.$c['job_id'].'_'.$date->toDateString(),
+                'contact_name' => $c['customer_name'],
+                'phone' => $c['phone'],
+                'phone_digits' => Lead::digits($c['phone']),
+                'lead_type' => 'Reschedule',
+                'summary' => 'Offered '.$date->format('D M j').' instead of '.CarbonImmutable::parse($c['scheduled_for'])->format('D M j'),
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ]);
+            try {
+                $this->texts->send($lead, $body, $by);
+            } catch (Throwable $e) {
+                $lead->delete();
+                $failed[] = ['job_id' => $c['job_id'], 'reason' => $e->getMessage()];
+
+                continue;
+            }
+            SchedulingRescheduleOffer::create([
+                'franchise_id' => $franchise->id, 'service_area_id' => $area->id, 'job_id' => $c['job_id'],
+                'lead_id' => $lead->id, 'open_date' => $date->toDateString(), 'booked_for' => $c['scheduled_for'], 'sent_by' => $by->id,
+            ]);
+            $sent[] = $c['job_id'];
+        }
+
+        $this->audit->log('scheduling.reschedule_offers_sent', $area, metadata: [
+            'date' => $date->toDateString(), 'sent' => count($sent), 'failed' => count($failed),
+        ]);
+
+        return ['sent' => $sent, 'failed' => $failed];
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function candidates(ServiceArea $area, CarbonImmutable $date, Franchise $franchise): Collection
+    {
+        $from = $date->addDays((int) $this->setting(self::MIN_DAYS_OUT, $franchise));
+        $jobs = $this->openings->jobsBetween($area, $from, $date->addDays(self::HORIZON_DAYS + 1))
+            ->filter(fn ($j) => $j->kind === 'job' && $j->customer_id !== null);
+        $offered = SchedulingRescheduleOffer::query()->whereIn('job_id', $jobs->pluck('job_id'))
+            ->where('created_at', '>=', now()->subDays(self::NOT_AGAIN_DAYS))->pluck('job_id')->flip();
+        $customers = Customer::query()->whereIn('id', $jobs->pluck('customer_id'))->get(['id', 'name', 'phone'])->keyBy('id');
+
+        return $jobs->reject(fn ($j) => isset($offered[$j->job_id]))
+            ->map(fn ($j) => [
+                'job_id' => $j->job_id,
+                'scheduled_for' => (string) $j->scheduled_for,
+                'customer_name' => $customers[$j->customer_id]?->name,
+                'phone' => $customers[$j->customer_id]?->phone,
+            ])
+            ->filter(fn ($c) => Lead::e164($c['phone']) !== null)
+            ->sortBy('scheduled_for')->values();
+    }
+
+    private function assertInHours(Franchise $franchise): void
+    {
+        $hours = (array) $this->setting(self::HOURS, $franchise);
+        $zone = (string) $this->settings->get('timezone', Organization::find($franchise->organization_id));
+        $now = CarbonImmutable::now($zone)->format('H:i');
+        abort_if(($hours['start'] ?? null) !== null && ($now < $hours['start'] || $now >= ($hours['end'] ?? '24:00')), 422,
+            "Offers go out between {$hours['start']} and {$hours['end']}; it is {$now} now.");
+    }
+
+    private function setting(string $key, Franchise $franchise): mixed
+    {
+        return $this->settings->get($key, $franchise);
+    }
+
+    private static function time(string $hhmm): string
+    {
+        return CarbonImmutable::createFromFormat('H:i', substr($hhmm, 0, 5))->format('g:i A');
+    }
+}

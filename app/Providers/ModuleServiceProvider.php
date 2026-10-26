@@ -1553,6 +1553,13 @@ class ModuleServiceProvider extends ServiceProvider
                         // What the event is about (builder audit, 2026-10-22).
                         subjects: [Organization::class],
                     ),
+                    new TriggerDefinition(
+                        'scheduling.area_underfilled',
+                        'Tomorrow under-filled',
+                        'The day before, at the hour set in Settings › Scheduling, when a service area has empty spots tomorrow. Its summary lists them per branch with totals and a link to Booked vs available.',
+                        composedFields: ['summary'],
+                        subjects: [Organization::class],
+                    ),
                 ],
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
             ),

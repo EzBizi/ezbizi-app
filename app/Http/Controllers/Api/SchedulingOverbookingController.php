@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
+use App\Support\Scheduling\RescheduleOffers;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
@@ -65,6 +66,58 @@ class SchedulingOverbookingController extends Controller
                 'fully_booked' => $check->fullyBooked($areas, $tomorrow, self::FULL_DAYS),
             ],
         ]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/overbooking/fill[?date=Y-m-d]: every area's day,
+     * booked against capacity (default today). The jobs behind a row are
+     * `overbooking/jobs?date=&area_id=`.
+     */
+    public function fill(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+        $today = Openings::tomorrow((string) app(SettingsResolver::class)
+            ->get('timezone', $request->user()->organization))->subDay();
+        $date = isset($data['date']) ? CarbonImmutable::parse($data['date']) : $today;
+
+        $areas = ServiceArea::query()
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->get();
+
+        return response()->json(['data' => [
+            'date' => $date->toDateString(),
+            'today' => $today->toDateString(),
+            'areas' => app(Overbooking::class)->fill($areas, $date),
+        ]]);
+    }
+
+    /** POST /scheduling/overbooking/offers/preview {area_id, date}: who an earlier-opening text would reach */
+    public function previewOffers(Request $request, RescheduleOffers $offers): JsonResponse
+    {
+        [$area, $date] = $this->offerTarget($request);
+
+        return response()->json(['data' => $offers->preview($area, $date)]);
+    }
+
+    /** POST /scheduling/overbooking/offers/send {area_id, date, job_ids} (scheduling.edit) */
+    public function sendOffers(Request $request, RescheduleOffers $offers): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('scheduling.edit'), 403, 'Sending offers needs the right to edit Scheduling.');
+        [$area, $date] = $this->offerTarget($request);
+        $ids = $request->validate(['job_ids' => ['required', 'array', 'min:1'], 'job_ids.*' => ['uuid']])['job_ids'];
+
+        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user())]);
+    }
+
+    /** @return array{0: ServiceArea, 1: CarbonImmutable} */
+    private function offerTarget(Request $request): array
+    {
+        $data = $request->validate(['area_id' => ['required', 'uuid'], 'date' => ['required', 'date_format:Y-m-d']]);
+        $area = ServiceArea::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->findOrFail($data['area_id']);
+        $this->authorize('view', $area);
+
+        return [$area, CarbonImmutable::parse($data['date'])];
     }
 
     /**
