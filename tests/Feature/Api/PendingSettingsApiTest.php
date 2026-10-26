@@ -84,4 +84,20 @@ class PendingSettingsApiTest extends TestCase
         $this->assertNotContains('Alpha', $types);
         $this->assertNotContains('Beta Co', $types);
     }
+
+    /** A company with no connected inbox is listed until one is connected. */
+    public function test_a_company_without_a_connected_inbox_is_a_gap(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->signedInAs($tenant['admin']);
+
+        $this->assertContains('email.mailbox', $this->keysFor('Alpha Co'));
+
+        $this->inTenant($tenant['org'], fn () => \App\Models\Mailbox::create([
+            'organization_id' => $tenant['org']->id, 'scope_type' => 'company', 'scope_id' => $tenant['company']->id,
+            'address' => 'info@alpha.test', 'display_name' => 'Info', 'provider' => 'gmail_oauth',
+        ])->forceFill(['status' => \App\Models\Mailbox::STATUS_CONNECTED])->save());
+
+        $this->assertNotContains('email.mailbox', $this->keysFor('Alpha Co'));
+    }
 }
