@@ -71,7 +71,12 @@ class TabBackfillDoesNotWidenTest extends TestCase
                 // declares exactly that. Leaving it in made the suite fail on
                 // the one case that cannot distinguish, before reaching the two
                 // that can.
-                if ($tab->namesExistingAction() && $tab->action() !== 'view') {
+                // A named action that is ALSO another tab's own pane (Inspection's Testing
+                // names builder.view, the Builder tab's) is granted by that tab on purpose.
+                $siblingPane = collect($module->tabs)->contains(
+                    fn ($other) => $other !== $tab && ! $other->namesExistingAction() && $other->action() === $tab->action(),
+                );
+                if ($tab->namesExistingAction() && $tab->action() !== 'view' && ! $siblingPane) {
                     $named[] = [$module->key, $tab->action()];
                 }
             }
