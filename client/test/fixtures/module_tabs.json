@@ -540,6 +540,7 @@
         "monitoring.control",
         "monitoring.files.view",
         "monitoring.general.view",
+        "monitoring.lighting.manage",
         "monitoring.map.manage",
         "monitoring.map.view",
         "monitoring.screenshots.view",

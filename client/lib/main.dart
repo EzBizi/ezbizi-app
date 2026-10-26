@@ -50,6 +50,7 @@ import 'screens/staff/staff_shell.dart';
 import 'screens/suggestions_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'core/camera_bridge/bridge_boot.dart';
+import 'core/lighting/lighting_boot.dart';
 import 'core/token_store.dart';
 import 'widgets/build_stamp.dart';
 import 'widgets/module_page_header.dart';
@@ -550,6 +551,10 @@ class _HomeShellState extends State<HomeShell> {
       screenMonitoringExempt: exempt,
     );
 
+    // RGB lighting a manager sets in Monitoring, and the hardware inventory
+    // (motherboard, RAM, monitors…) that rides in specs. Windows only.
+    startLighting(widget.api);
+
     // The availability icon, given a minute hand.
     //
     // Do Not Disturb set on the web now reaches the desktop's SERVER state
@@ -694,6 +699,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _stopListening?.call();
     _heartbeat.dispose();
+    stopLighting();
     _fieldTracker?.dispose();
     // Null for an exempt session, where they were never constructed.
     _screenshots?.dispose();

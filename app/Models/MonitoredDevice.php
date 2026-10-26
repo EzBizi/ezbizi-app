@@ -30,12 +30,13 @@ class MonitoredDevice extends Model implements HoldsPersonalData
         'capabilities', 'user_agent', 'ip_address', 'last_seen_at',
         'current_module', 'specs', 'screen_context', 'offline_alerted_at',
         'security_alerted_at',
-        'capture_last_attempt_at', 'capture_last_error',
+        'capture_last_attempt_at', 'capture_last_error', 'lighting',
     ];
 
     protected $casts = [
         'capabilities'       => 'array',
         'specs'              => 'array',
+        'lighting'           => 'array',
         'screen_context'     => 'array',
         'security_alerted_at' => 'datetime',
         'last_seen_at'       => 'datetime',

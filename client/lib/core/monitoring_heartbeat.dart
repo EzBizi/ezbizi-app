@@ -105,6 +105,11 @@ class MonitoringHeartbeat {
     );
   }
 
+  /// Keys other agents add to every specs read: the hardware inventory and
+  /// the RGB lighting service (core/lighting/). Read slowly elsewhere and
+  /// carried here, so specs stay one object on one beat.
+  static final Map<String, Object?> extraSpecs = {};
+
   final ApiClient _api;
   final Duration _interval;
   final SpecsRead _readSpecs;
@@ -134,6 +139,7 @@ class MonitoringHeartbeat {
   Future<void> refreshSpecs() async {
     final specs = await _readSpecs();
     if (specs == null) return;
+    specs.addAll(extraSpecs);
 
     // SECURITY exemption: some of what the agent reads is screen CONTENT
     // rather than anything about the machine — the title of the window in

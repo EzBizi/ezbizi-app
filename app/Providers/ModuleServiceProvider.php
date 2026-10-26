@@ -4160,7 +4160,7 @@ class ModuleServiceProvider extends ServiceProvider
                 // downloading a machine's files is its own authority, neither
                 // watching the screen nor driving it — see FilesController
                 // (2026-10-01-monitoring-files).
-                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view'],
+                actions: ['view', 'specs.view', 'screenshots.view', 'cameras.view', 'cameras.manage', 'map.manage', 'control', 'files.view', 'lighting.manage'],
                 // cameras.manage and control write records / drive a machine, so
                 // §2.2 requires an audit trail (writesRecords() flags them as
                 // writes since 2026-09-09). CamerasController logs
