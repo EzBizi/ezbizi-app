@@ -1551,6 +1551,7 @@ Route::prefix('v1')
         Route::middleware('permission:scheduling.overbooking.view')->group(function () {
             Route::get('scheduling/overbooking', [SchedulingOverbookingController::class, 'show']);
             Route::get('scheduling/overbooking/jobs', [SchedulingOverbookingController::class, 'jobs']);
+            Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::get('scheduling/reports', [SchedulingOverbookingController::class, 'reports']);
         });
 

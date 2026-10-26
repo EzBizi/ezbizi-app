@@ -2,6 +2,7 @@
 
 namespace App\Support\Scheduling;
 
+use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\ServiceArea;
 use Carbon\CarbonImmutable;
@@ -88,6 +89,58 @@ final class Overbooking
 
         usort($rows, fn ($a, $b) => [$a['date'], $a['franchise_name'], $a['level'], $a['name']]
             <=> [$b['date'], $b['franchise_name'], $b['level'], $b['name']]);
+
+        return $rows;
+    }
+
+    /**
+     * Every area's day, booked against what it takes: the "booked vs
+     * available" list (Shoval, 2026-10-26: "last friday we had empty spots,
+     * when we are usually overbooked"). Areas with no capacity that day are
+     * left out; a shared pool is one row, under its lead.
+     *
+     * @param  Collection<int, ServiceArea>  $areas
+     * @return list<array<string, mixed>> sorted by company, branch, area
+     */
+    public function fill(Collection $areas, CarbonImmutable $date): array
+    {
+        $openings = app(Openings::class);
+        $franchises = Franchise::whereIn('id', $areas->pluck('franchise_id')->unique())->get(['id', 'name', 'company_id'])->keyBy('id');
+        $companies = Company::whereIn('id', $franchises->pluck('company_id')->unique())->pluck('name', 'id');
+        $rows = [];
+
+        foreach ($areas->whereNull('shares_with_id') as $area) {
+            $day = $openings->days($area, $date, 1)[0];
+            $capacity = array_sum(array_column($day['windows'], 'capacity'));
+            if ($day['area_limit'] !== null) {
+                $capacity = min($capacity, $day['area_limit']);
+            }
+            $booked = array_sum(array_column($day['windows'], 'taken')) + $day['no_time'];
+            if ($capacity === 0 && $booked === 0) {
+                continue;
+            }
+            $franchise = $franchises[$area->franchise_id] ?? null;
+            $rows[] = [
+                'date' => $day['date'],
+                'area_id' => $area->id,
+                'name' => $area->name,
+                'franchise_id' => $area->franchise_id,
+                'franchise_name' => $franchise?->name,
+                'company_id' => $franchise?->company_id,
+                'company_name' => $companies[$franchise?->company_id] ?? null,
+                'capacity' => $capacity,
+                'booked' => $booked,
+                // Positive is open spots, negative is overbooked.
+                'gap' => $capacity - $booked,
+                'fill_pct' => $capacity === 0 ? null : (int) round(100 * $booked / $capacity),
+                'windows' => array_map(fn ($w) => [
+                    'start_time' => $w['start_time'], 'end_time' => $w['end_time'],
+                    'capacity' => $w['capacity'], 'taken' => $w['taken'],
+                ], $day['windows']),
+            ];
+        }
+
+        usort($rows, fn ($a, $b) => [$a['company_name'], $a['franchise_name'], $a['name']] <=> [$b['company_name'], $b['franchise_name'], $b['name']]);
 
         return $rows;
     }

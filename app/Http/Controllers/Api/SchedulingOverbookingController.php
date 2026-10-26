@@ -68,6 +68,30 @@ class SchedulingOverbookingController extends Controller
     }
 
     /**
+     * GET /api/v1/scheduling/overbooking/fill[?date=Y-m-d]: every area's day,
+     * booked against capacity (default today). The jobs behind a row are
+     * `overbooking/jobs?date=&area_id=`.
+     */
+    public function fill(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+        $data = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
+        $today = Openings::tomorrow((string) app(SettingsResolver::class)
+            ->get('timezone', $request->user()->organization))->subDay();
+        $date = isset($data['date']) ? CarbonImmutable::parse($data['date']) : $today;
+
+        $areas = ServiceArea::query()
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->get();
+
+        return response()->json(['data' => [
+            'date' => $date->toDateString(),
+            'today' => $today->toDateString(),
+            'areas' => app(Overbooking::class)->fill($areas, $date),
+        ]]);
+    }
+
+    /**
      * GET /api/v1/scheduling/overbooking/jobs?date=Y-m-d&area_id= | &franchise_id=
      *
      * The jobs behind one overbooked row, each with its client and its
