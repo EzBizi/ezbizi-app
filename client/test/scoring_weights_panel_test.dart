@@ -122,6 +122,27 @@ void main() {
     expect(popped, isTrue);
   });
 
+  testWidgets('the split bar paints every segment the full bar height', (
+    tester,
+  ) async {
+    await pump(tester, {...defaults, 'conversion': 40});
+
+    final bar = find.byKey(const Key('scoring-weights-bar'));
+    final segments = find.descendant(
+      of: bar,
+      matching: find.byType(ColoredBox),
+    );
+    // Nine weights and the 10 short of 100 as the track.
+    expect(segments, findsNWidgets(10));
+    for (final e in segments.evaluate()) {
+      expect(e.size!.height, 16, reason: 'a 0 px segment paints nothing');
+    }
+    expect(
+      tester.widget<ColoredBox>(segments.last).color,
+      EzBiziTheme.light().colorScheme.surfaceContainerHighest,
+    );
+  });
+
   testWidgets('Back to the defaults puts the defaults back', (tester) async {
     await pump(tester, {
       ...defaults,

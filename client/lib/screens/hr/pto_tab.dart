@@ -968,11 +968,6 @@ class _PtoTabState extends State<PtoTab> {
     }
 
     final elapsed = PtoMaths.elapsed(start: start, end: end, today: today);
-    final shares = PtoMaths.shares(
-      total: _num(person['total']),
-      used: _num(person['used']),
-      wouldExpire: wouldExpire,
-    );
 
     final resets = _resets(person);
     final quiet = theme.textTheme.bodySmall?.copyWith(color: scheme.outline);
@@ -985,10 +980,15 @@ class _PtoTabState extends State<PtoTab> {
           Text(line, style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
         ],
-        if (end != null) ...[
-          _periodBar(context, elapsed: elapsed ?? 0, shares: shares),
-          const SizedBox(height: 4),
-          _barEnds(context, start: start, end: end, elapsed: elapsed),
+        if (end != null && start != null) ...[
+          _periodBar(
+            context,
+            person,
+            start: start,
+            end: end,
+            elapsed: elapsed ?? 0,
+            earnings: _earnings(person, start: start, end: end, today: today),
+          ),
           const SizedBox(height: 8),
         ],
         Text(_policyLine(), style: quiet),
@@ -1106,108 +1106,225 @@ class _PtoTabState extends State<PtoTab> {
     );
   }
 
-  /// The period from the last reset to the next: the days used in the brand
-  /// colour, the days that would expire in the warning tone after them, and a
-  /// marker where today falls in the period.
+  /// The period from the last reset to the next as one timeline: the part
+  /// already behind us filled, a "Today" pin, a dot at each day days are
+  /// earned (filled once earned, hollow while expected), then what happens at
+  /// the reset.
+  ///
+  /// The track and the fill are boxes with an explicit height. The bar this
+  /// replaces drew childless ColoredBoxes in a Row with the default
+  /// cross-axis alignment, so every segment was laid out 0 px tall and only
+  /// the today marker painted (Jose, 2026-10-26: "theres a floating line").
   Widget _periodBar(
-    BuildContext context, {
-    required double elapsed,
-    required ({double used, double wouldExpire}) shares,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    final caution = ToneColours.of(context, Tone.caution).ink;
-
-    return ClipRect(
-      child: SizedBox(
-      key: const Key('pto-period-bar'),
-      height: 16,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            top: 2,
-            bottom: 2,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Row(
-                children: [
-                  if (shares.used > 0)
-                    Expanded(
-                      key: const Key('pto-bar-used'),
-                      flex: (shares.used * 1000).round(),
-                      child: ColoredBox(color: scheme.primary),
-                    ),
-                  if (shares.wouldExpire > 0)
-                    Expanded(
-                      key: const Key('pto-bar-would-expire'),
-                      flex: (shares.wouldExpire * 1000).round(),
-                      child: ColoredBox(color: caution),
-                    ),
-                  if (shares.used + shares.wouldExpire < 1)
-                    Expanded(
-                      flex: ((1 - shares.used - shares.wouldExpire) * 1000)
-                          .round(),
-                      child: ColoredBox(color: scheme.surfaceContainerHighest),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          Align(
-            key: const Key('pto-bar-today'),
-            alignment: Alignment(elapsed * 2 - 1, 0),
-            child: Container(width: 3, height: 16, color: scheme.onSurface),
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-
-  Widget _barEnds(
-    BuildContext context, {
-    required DateTime? start,
+    BuildContext context,
+    Map<String, dynamic> person, {
+    required DateTime start,
     required DateTime end,
-    required double? elapsed,
+    required double elapsed,
+    required List<({DateTime on, num days, bool earned})> earnings,
   }) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.labelSmall?.copyWith(
-      color: theme.colorScheme.outline,
+    final scheme = theme.colorScheme;
+    final style = theme.textTheme.labelSmall?.copyWith(color: scheme.outline);
+    final span = PtoMaths.daysBetween(start, end);
+    double at(DateTime d) => span <= 0
+        ? 0
+        : (PtoMaths.daysBetween(start, d) / span).clamp(0.0, 1.0).toDouble();
+
+    // What happens at the reset if nothing more is used: what is left now
+    // plus what is still to be earned, carried or lost per the policy.
+    final carry = _policy['carry_over'] == true;
+    final still = earnings
+        .where((e) => !e.earned)
+        .fold<num>(0, (sum, e) => sum + e.days);
+    final atReset =
+        (carry
+            ? (_num(person['left']) ?? 0)
+            : (_num(person['would_expire']) ?? 0)) +
+        still;
+    final endLabel = [
+      'Resets ${_formats.formatDate(end)}',
+      if (atReset > 0)
+        '${_days(atReset)} would ${carry ? 'carry over' : 'expire'}',
+    ].join(' · ');
+
+    const track = 8.0;
+    const top = 18.0; // room for the "Today" label above the track
+    const dot = 10.0;
+    const labelWidth = 44.0;
+
+    // The fixed height sits outside the LayoutBuilder: the desk card is in
+    // an IntrinsicHeight, and a tight SizedBox answers its height without
+    // running the builder.
+    final bar = SizedBox(
+      key: const Key('pto-period-bar'),
+      height: top + track + 6,
+      child: LayoutBuilder(
+      builder: (context, box) {
+        final w = box.maxWidth;
+        final todayX = elapsed * w;
+        return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: top,
+                height: track,
+                child: DecoratedBox(
+                  key: const Key('pto-bar-track'),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(track / 2),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: top,
+                height: track,
+                width: todayX,
+                child: DecoratedBox(
+                  key: const Key('pto-bar-fill'),
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: BorderRadius.circular(track / 2),
+                  ),
+                ),
+              ),
+              for (final e in earnings)
+                Positioned(
+                  key: Key('pto-earn-${PtoMaths.iso(e.on)}'),
+                  left: (at(e.on) * w - dot / 2).clamp(0.0, w - dot),
+                  top: top + track / 2 - dot / 2,
+                  width: dot,
+                  height: dot,
+                  child: Tooltip(
+                    message: e.earned
+                        ? '+${_days(e.days)} · ${_formats.formatDate(e.on)}'
+                        : '+${_days(e.days)} expected · '
+                              '${_formats.formatDate(e.on)}',
+                    child: DecoratedBox(
+                      key: Key(
+                        e.earned ? 'pto-earn-earned' : 'pto-earn-upcoming',
+                      ),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: e.earned ? scheme.primary : scheme.surface,
+                        border: Border.all(
+                          color: e.earned ? scheme.surface : scheme.primary,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // The pin: a label above, a stem through the track.
+              Positioned(
+                key: const Key('pto-bar-today'),
+                left: (todayX - labelWidth / 2).clamp(0.0, w - labelWidth),
+                top: 0,
+                width: labelWidth,
+                height: top - 2,
+                child: Center(
+                  child: Text(
+                    'Today',
+                    style: style?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: (todayX - 1.5).clamp(0.0, w - 3),
+                top: top - 4,
+                width: 3,
+                height: track + 8,
+                child: DecoratedBox(
+                  key: const Key('pto-bar-today-pin'),
+                  decoration: BoxDecoration(
+                    color: scheme.onSurface,
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+              ),
+            ],
+          );
+      },
+      ),
     );
 
-    return ClipRect(
-      child: Stack(
+    final next = earnings.where((e) => !e.earned).firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Each end may shrink: two long date formats in a phone's card are
-        // wider than the card.
+        bar,
+        const SizedBox(height: 2),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: start == null
-                  ? const SizedBox.shrink()
-                  : Text(
-                      _formats.formatDate(start),
-                      style: style,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-            ),
-            Expanded(
+            Flexible(
               child: Text(
-                _formats.formatDate(end),
+                _formats.formatDate(start),
+                style: style,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 3,
+              child: Text(
+                endLabel,
+                key: const Key('pto-bar-end'),
                 style: style,
                 textAlign: TextAlign.end,
-                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        if (elapsed != null && elapsed > 0.3 && elapsed < 0.7)
-          Align(
-            alignment: Alignment(elapsed * 2 - 1, 0),
-            child: Text('today', style: style),
+        if (next != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Next: +${next.days == 1 ? '1 day' : '${_days(next.days)} days'} '
+            'on ${_formats.formatDate(next.on)}',
+            key: const Key('pto-next-earning'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
+        ],
       ],
-      ),
     );
+  }
+
+  /// This period's earn days: HR's `earned` rows that fall in it, then the
+  /// expected ones derived from the policy up to the reset.
+  List<({DateTime on, num days, bool earned})> _earnings(
+    Map<String, dynamic> person, {
+    required DateTime start,
+    required DateTime end,
+    required DateTime today,
+  }) {
+    final perPeriod = (_policy['reset'] ?? 'jan_1') == 'period';
+    bool inPeriod(DateTime d) => perPeriod
+        ? !d.isBefore(start) && d.isBefore(end)
+        : d.isAfter(start) && !d.isAfter(end);
+    return [
+      for (final e in (person['earned'] as List? ?? const []).reversed)
+        if (e is Map)
+          if (PtoMaths.day(e['on']) case final on?)
+            if (inPeriod(on) && !on.isAfter(today))
+              (on: on, days: _num(e['days']) ?? 0, earned: true),
+      for (final e in PtoMaths.expected(
+        policy: _policy,
+        person: person,
+        today: today,
+        end: end,
+      ))
+        (on: e.on, days: e.days, earned: false),
+    ];
   }
 
   /// `resets` from HR when it sends them (newest first), or null when the
@@ -1322,6 +1439,16 @@ class _PtoTabState extends State<PtoTab> {
     final theme = Theme.of(context);
     final canEdit = person['can_edit_used'] == true;
     final entries = PtoMaths.timeline(person);
+    final end = PtoMaths.day(person['resets_on']);
+    final expected = end == null
+        ? const <({DateTime on, num days})>[]
+        : PtoMaths.expected(
+            policy: _policy,
+            person: person,
+            today: PtoMaths.today(),
+            end: end,
+          );
+    final okInk = ToneColours.of(context, Tone.ok).ink;
 
     return Column(
       key: const Key('pto-timeline'),
@@ -1345,8 +1472,48 @@ class _PtoTabState extends State<PtoTab> {
           ),
           const SizedBox(height: 6),
         ],
-        if (entries.isEmpty)
+        // What is still to be earned before the reset, furthest first so the
+        // next one sits just above what already happened.
+        for (final e in expected.reversed)
+          Padding(
+            key: Key('pto-expected-${PtoMaths.iso(e.on)}'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 18,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Center(
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: okInk, width: 2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Expected · +${e.days == 1 ? '1 day' : '${_days(e.days)} days'}'
+                    ' on ${_formats.formatDate(e.on)}',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (entries.isEmpty && expected.isEmpty)
           Text('Nothing yet.', style: theme.textTheme.bodySmall)
+        else if (entries.isEmpty)
+          const SizedBox.shrink()
         else
           for (var i = 0; i < entries.length; i++)
             _timelineEntry(
@@ -1790,6 +1957,60 @@ abstract final class PtoMaths {
     final u = ((used ?? 0) / total).clamp(0.0, 1.0).toDouble();
     final w = ((wouldExpire ?? 0) / total).clamp(0.0, 1.0 - u).toDouble();
     return (used: u, wouldExpire: w);
+  }
+
+  /// The days still to be earned after [today] up to the reset on [end],
+  /// derived from the policy because HR sends only the grants that have
+  /// already landed (`earned`).
+  ///
+  /// The same rule as HR's PtoPolicy: earning starts `accrue_after` (days,
+  /// weeks or months, never overflowing a short month) after `started_on`,
+  /// and one allowance lands every `allowance_period` after that. A policy
+  /// that resets each period puts the allowance on the period's first day, so
+  /// the one on [end] belongs to the next period; every other reset counts a
+  /// grant on the reset day in this one.
+  static List<({DateTime on, num days})> expected({
+    required Map<String, dynamic> policy,
+    required Map<String, dynamic> person,
+    required DateTime today,
+    required DateTime end,
+  }) {
+    final started = day(person['started_on']);
+    final allowance =
+        _PtoTabState._num(person['allowance']) ??
+        _PtoTabState._num(policy['allowance']) ??
+        0;
+    if (started == null || allowance <= 0) return const [];
+
+    final wait = (policy['accrue_after'] as num? ?? 0).toInt();
+    final origin = switch (policy['accrue_after_unit']) {
+      'week' => DateTime(started.year, started.month, started.day + 7 * wait),
+      'month' => addMonths(started, wait),
+      _ => DateTime(started.year, started.month, started.day + wait),
+    };
+    DateTime step(int n) => switch (policy['allowance_period']) {
+      'week' => DateTime(origin.year, origin.month, origin.day + 7 * n),
+      'month' => addMonths(origin, n),
+      'quarter' => addMonths(origin, 3 * n),
+      _ => addMonths(origin, 12 * n),
+    };
+    final perPeriod = (policy['reset'] ?? 'jan_1') == 'period';
+
+    final out = <({DateTime on, num days})>[];
+    for (var n = perPeriod ? 0 : 1; n < 5000; n++) {
+      final at = step(n);
+      if (perPeriod ? !at.isBefore(end) : at.isAfter(end)) break;
+      if (at.isAfter(today)) out.add((on: at, days: allowance));
+    }
+    return out;
+  }
+
+  /// [months] after [from], keeping the day unless the month is shorter:
+  /// three months from 31 January is 30 April, as HR counts it.
+  static DateTime addMonths(DateTime from, int months) {
+    final first = DateTime(from.year, from.month + months);
+    final last = DateTime(first.year, first.month + 1, 0).day;
+    return DateTime(first.year, first.month, from.day > last ? last : from.day);
   }
 
   /// Tap once for a full day, again for a half, a third time to clear.

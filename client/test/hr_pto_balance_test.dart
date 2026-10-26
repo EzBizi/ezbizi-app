@@ -646,6 +646,8 @@ Map<String, dynamic> _body({Map<String, dynamic> policy = const {}}) => {
       'used': 5,
       'left': 7,
       'carried': 2,
+      // HR sends the two together: the window is from one to the other.
+      'period_start': _iso(_inDays(-192)),
       'resets_on': _iso(_inDays(173)),
       'can_edit_used': true,
       'used_changes': [
