@@ -632,6 +632,7 @@
         "work_hours.general.view",
         "work_hours.manage",
         "work_hours.pto.edit",
+        "work_hours.pto.request",
         "work_hours.pto.view",
         "work_hours.reports.view",
         "work_hours.settings.view",

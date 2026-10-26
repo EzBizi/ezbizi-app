@@ -1920,6 +1920,15 @@ class SettingRegistry
             // Earned per month and used up by the work anniversary (Jose,
             // 2026-10-21: started 1 Apr 2025, "until 1 Apr 2026 to use the
             // days"). 1 January is what this did before the setting existed.
+            // Asking for more than is left (Jose, 2026-10-26). Per place:
+            // organization, company or branch, like the other per-place rules.
+            new SettingDefinition(
+                key: 'pto.allow_negative',
+                label: 'Requests may go below zero',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                help: 'When on, staff can ask for paid time off they have not earned yet, and their balance goes negative. When off, a request for more than is left is refused.',
+            ),
             new SettingDefinition(
                 key: 'pto.reset',
                 section: 'Paid time off',
