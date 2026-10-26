@@ -42,12 +42,18 @@ final class InventorySummary
         $items = (int) (clone $itemQuery)->count();
         $locations = (int) InventoryVisibility::constrain(InventoryLocation::query(), $user, $scope)->count();
 
-        $openPurchaseOrders = (int) InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope)
+        $orders = InventoryVisibility::constrain(InventoryPurchaseOrder::query(), $user, $scope)
             ->whereIn('status', [
                 InventoryPurchaseOrderStatus::Draft,
                 InventoryPurchaseOrderStatus::Open,
             ])
-            ->count();
+            ->toBase()
+            ->groupBy('status')
+            ->selectRaw('status, COUNT(*) as n')
+            ->pluck('n', 'status');
+        $openOrders = (int) ($orders[InventoryPurchaseOrderStatus::Open->value] ?? 0);
+        $draftOrders = (int) ($orders[InventoryPurchaseOrderStatus::Draft->value] ?? 0);
+        $openPurchaseOrders = $openOrders + $draftOrders;
 
         $inStock = 0;
         $low = 0;
@@ -85,6 +91,8 @@ final class InventorySummary
             'items' => $items,
             'locations' => $locations,
             'open_purchase_orders' => $openPurchaseOrders,
+            'open_orders' => $openOrders,
+            'draft_orders' => $draftOrders,
             'in_stock' => $inStock,
             'low' => $low,
             'out' => $out,
@@ -288,6 +296,102 @@ final class InventorySummary
                 ['key' => 'transferred', 'label' => 'Transferred', 'internal' => true,
                     'points' => self::points($transferred, $period, $slot, count($buckets))],
             ],
+        ];
+    }
+
+    /**
+     * Each line of movement() summed over the same span one period back, for
+     * the "vs last period" on the General tab's cards.
+     *
+     * @return array{received: float, issued_sold: float, adjusted: float, moved: float}
+     */
+    public static function previousTotals(User $user, ViewScope $scope, DashboardPeriod $period): array
+    {
+        $lines = collect(self::movement($user, $scope, $period->previous())['lines'])
+            ->mapWithKeys(fn (array $line) => [$line['key'] => (float) array_sum($line['points'])]);
+
+        return [
+            'received' => $lines['in'],
+            'issued_sold' => $lines['out'],
+            'adjusted' => $lines['adjusted'],
+            'moved' => $lines['transferred'],
+        ];
+    }
+
+    /**
+     * What sits where, from the shelves this caller can see: every visible
+     * open place with how many items it holds and, with money, their worth;
+     * and the five items holding the most (by value with money, by quantity
+     * without, so a role without financials cannot read a ranking by worth).
+     * A value is null where nothing is priced — never 0.
+     *
+     * ponytail: loads every positive balance in reach per request; move the
+     * sums to SQL if a tenant's balances outgrow that.
+     *
+     * @return array{by_location: list<array<string, mixed>>, top_items: list<array<string, mixed>>}
+     */
+    public static function holdings(User $user, ViewScope $scope, bool $withMoney): array
+    {
+        $places = InventoryVisibility::constrain(InventoryLocation::query(), $user, $scope)
+            ->where('status', InventoryLocationStatus::Active)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $balances = InventoryBalance::query()
+            ->where('qty_on_hand', '>', 0)
+            ->whereIn('location_id', $places->pluck('id')->all())
+            ->whereHas('item', fn ($q) => InventoryVisibility::constrain($q, $user, $scope))
+            ->with('item:id,name,number,last_cost_minor')
+            ->get(['id', 'item_id', 'location_id', 'qty_on_hand']);
+
+        $worth = fn (InventoryBalance $b): ?int => $b->item->last_cost_minor === null
+            ? null
+            : (int) round(((float) $b->qty_on_hand) * (int) $b->item->last_cost_minor);
+        $sum = function (Collection $rows) use ($worth): ?int {
+            $values = $rows->map($worth)->filter(fn ($v) => $v !== null);
+
+            return $values->isEmpty() ? null : (int) $values->sum();
+        };
+
+        $byPlace = $balances->groupBy('location_id');
+        $byLocation = $places->map(function (InventoryLocation $place) use ($byPlace, $sum, $withMoney) {
+            $rows = $byPlace->get($place->id, new Collection);
+            $row = [
+                'location' => ['id' => $place->id, 'name' => $place->name],
+                'items' => $rows->pluck('item_id')->unique()->count(),
+            ];
+            if ($withMoney) {
+                $row['value_minor'] = $sum($rows);
+            }
+
+            return $row;
+        });
+
+        $byItem = $balances->groupBy('item_id')->map(function (Collection $rows) use ($sum, $withMoney) {
+            $item = $rows->first()->item;
+            $row = [
+                'item' => ['id' => $item->id, 'name' => $item->name, 'number' => $item->number],
+                'qty' => $rows->reduce(fn (string $c, $b) => bcadd($c, (string) $b->qty_on_hand, 3), '0.000'),
+            ];
+            if ($withMoney) {
+                $row['value_minor'] = $sum($rows);
+            }
+
+            return $row;
+        });
+
+        // Most valuable first with money; most held without. Ties fall to
+        // the larger count, so an unpriced place that holds things outranks
+        // an empty one.
+        $desc = fn (string $size) => fn (array $a, array $b) => [
+            $withMoney ? ($b['value_minor'] ?? -1) : 0, (float) $b[$size],
+        ] <=> [
+            $withMoney ? ($a['value_minor'] ?? -1) : 0, (float) $a[$size],
+        ];
+
+        return [
+            'by_location' => $byLocation->sort($desc('items'))->values()->all(),
+            'top_items' => $byItem->sort($desc('qty'))->take(5)->values()->all(),
         ];
     }
 
