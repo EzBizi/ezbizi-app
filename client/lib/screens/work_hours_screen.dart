@@ -47,6 +47,12 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
       _tab = 'approval';
       _shown.add('approval');
     }
+    // A PTO request (design 146) opens Paid Time Off, which shows Requests.
+    if (waiting?.module == 'work_hours' &&
+        waiting?.type == ptoRequestLinkType) {
+      _tab = 'pto';
+      _shown.add('pto');
+    }
     // Before the tabs' own listeners: a tapped notification brings its tab
     // to the front (a correction is General's, a day to approve is Daily
     // approval's), and that tab then takes the link.
@@ -62,7 +68,11 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
   void _toLinkedTab() {
     final link = DeepLinks.pending.value;
     if (link?.module != 'work_hours') return;
-    final tab = link?.type == approvalLinkType ? 'approval' : 'general';
+    final tab = switch (link?.type) {
+      approvalLinkType => 'approval',
+      ptoRequestLinkType => 'pto',
+      _ => 'general',
+    };
     if (_tab == tab) return;
     setState(() {
       _tab = tab;
