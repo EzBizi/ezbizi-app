@@ -2,12 +2,14 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/branch_options.dart';
 import '../../core/timestamps.dart';
 import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/suggest_search.dart';
 import 'condition.dart';
 import 'option.dart';
 import 'photo_field.dart';
@@ -72,8 +74,12 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     super.dispose();
   }
 
-  Future<void> _doSearch() async {
-    final q = _search.text.trim();
+  int _searchTicket = 0;
+
+  /// Asked as the technician types (debounced by the box), and again on Enter.
+  Future<void> _doSearch([String? raw]) async {
+    final q = (raw ?? _search.text).trim();
+    final ticket = ++_searchTicket;
     setState(() {
       _error = null;
       _run = null;
@@ -89,7 +95,7 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       return;
     }
     final response = await widget.api.get('/inspections/search', {'q': q});
-    if (!mounted) return;
+    if (!mounted || ticket != _searchTicket) return;
     if (!response.ok) {
       setState(() => _error = response.reason);
       return;
@@ -106,8 +112,33 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
     });
   }
 
+  /// One suggestion row: what it is, who, where, and "Company · Branch".
+  SuggestItem _suggestion(Map<String, dynamic> hit) {
+    final isJob = hit['type'] == 'job';
+    final name = '${hit['customer_name'] ?? hit['label'] ?? ''}';
+    final branchId = hit['franchise_id'];
+    final branch = branchId is String && branchId.isNotEmpty
+        ? branchLabelOf(widget.session.me, branchId, '')
+        : '';
+    final address = hit['address'];
+    final detail = [
+      if (isJob && hit['job_number'] != null) '${hit['job_number']}',
+      if (address is String && address.isNotEmpty) address,
+      if (branch.isNotEmpty) branch,
+    ].join('  ·  ');
+
+    return SuggestItem(
+      kind: isJob ? 'Job' : 'Client',
+      icon: isJob ? Icons.work_outline : Icons.person_outline,
+      title: name,
+      subtitle: detail.isEmpty ? null : detail,
+    );
+  }
+
   Future<void> _pickHit(Map<String, dynamic> hit) async {
+    _searchTicket++;
     setState(() {
+      _hits = const [];
       _scope = hit;
       _error = null;
     });
@@ -472,40 +503,39 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
       return _resumePanel(context);
     }
 
+    if (_scope == null) return _searchPage(context);
+
     return Padding(
       padding: const EdgeInsets.all(DashboardCard.padding),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            key: const ValueKey('tour-inspection-search'),
-            controller: _search,
-            decoration: const InputDecoration(
-              hintText: 'Client name or job number',
-              prefixIcon: Icon(Icons.search),
-            ),
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _doSearch(),
+          Row(
+            children: [
+              IconButton(
+                key: const Key('inspection-search-again'),
+                tooltip: 'Search again',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() {
+                  _scope = null;
+                  _picker = const [];
+                  _empty = null;
+                  _error = null;
+                }),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '${_scope!['label'] ?? _scope!['customer_name'] ?? ''}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           if (_error != null) ErrorNote(_error!),
           if (_empty != null) DashboardNote(_empty!),
-          if (_hits.isEmpty && _picker.isEmpty && _empty == null && _error == null)
-            const DashboardNote(
-              'Search for a client by name, or a job by its number, to start.',
-            ),
-          if (_hits.isNotEmpty && _picker.isEmpty)
-            Expanded(
-              child: ListView(
-                children: [
-                  for (final hit in _hits)
-                    ListTile(
-                      title: Text('${hit['label'] ?? hit['customer_name']}'),
-                      onTap: () => _pickHit(hit),
-                    ),
-                ],
-              ),
-            ),
           if (_picker.isNotEmpty)
             Expanded(
               child: ListView(
@@ -520,6 +550,71 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Nothing chosen yet: one search bar, centred, that suggests as you type.
+  ///
+  /// Jose, 2026-10-26: "as simple as possible, sort of like the scheduling
+  /// one". Centred on a desk; on a phone it sits in the top third, clear of
+  /// the keyboard. The bar stays put while suggestions open beneath it.
+  Widget _searchPage(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final phone = constraints.maxWidth < 600;
+        // The bar's centre on the line: half-way down, or a third on a phone.
+        // 28 is half the bar's height.
+        final top = (constraints.maxHeight * (phone ? 1 / 3 : 1 / 2) - 28)
+            .clamp(16.0, double.infinity);
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, top, 16, 24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SuggestSearchField(
+                    key: const Key('inspection-search-bar'),
+                    fieldKey: const ValueKey('tour-inspection-search'),
+                    controller: _search,
+                    hintText: 'Client name, phone or job number',
+                    prefixIcon: const Icon(Icons.search),
+                    debounce: const Duration(milliseconds: 250),
+                    enterPicksFirst: true,
+                    suggestions: [for (final hit in _hits) _suggestion(hit)],
+                    onChanged: _doSearch,
+                    onSubmitted: _doSearch,
+                    onPick: (i) => _pickHit(_hits[i]),
+                    onDismiss: () => setState(() => _hits = const []),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_hits.isEmpty)
+                    Text(
+                      "Type a client's name, a phone or a job number",
+                      key: const Key('inspection-search-hint'),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    ErrorNote(_error!),
+                  ],
+                  if (_empty != null) ...[
+                    const SizedBox(height: 8),
+                    DashboardNote(_empty!),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
