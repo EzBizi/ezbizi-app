@@ -29,6 +29,7 @@ class VersionHistory {
         'Customer Experience › Reviews works like an inbox: a summary strip, quick filters with More filters, and the review opening beside the list.',
         'AI Assistance on WhatsApp and Telegram answers from the same place as in the app, with the asker\'s own access, and sends one reply per question. Only clear parts questions go to the Tech Assistant.',
         'Marketing › Compose: one Post to all Business Profile listings switch with a count, and Expand to pick listings by Company · Branch with search.',
+        'Email: connecting a Google inbox asks only for permission to read and manage its mail (one Gmail permission instead of three). Inboxes already connected keep working.',
       ],
     ),
     VersionRelease(
