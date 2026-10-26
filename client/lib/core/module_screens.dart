@@ -23,6 +23,7 @@ import '../screens/sales_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
+import '../screens/project_management_2_screen.dart';
 import '../screens/project_management_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
@@ -80,6 +81,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'project_management': ModuleScreen(
     Icons.timeline_outlined,
     (api, session) => ProjectManagementScreen(api: api, session: session),
+  ),
+  // Project Management rebuilt from scratch beside the first (Jose, 2026-10-26).
+  'project_management_2': ModuleScreen(
+    Icons.view_timeline_outlined,
+    (api, session) => ProjectManagement2Screen(api: api, session: session),
   ),
   'scheduling': ModuleScreen(
     Icons.calendar_month_outlined,

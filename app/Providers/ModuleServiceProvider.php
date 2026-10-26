@@ -1439,7 +1439,8 @@ class ModuleServiceProvider extends ServiceProvider
              */
             new ModuleDefinition(
                 key: 'project_management',
-                label: 'Project Management',
+                // "- 1" beside its rebuild, Project Management - 2 (Jose, 2026-10-26).
+                label: 'Project Management - 1',
                 actions: ['view'],
                 /*
                  * Overview | Jobs | Assignments | Repair team | Rules | Logs |
@@ -1467,6 +1468,19 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
                 auditExemptBecause: 'It changes nothing; every change it shows was audited by Jobs.',
+            ),
+
+            /*
+             * Project Management - 2 (Jose, 2026-10-26): Project Management
+             * rebuilt from scratch beside the first, to compare the two. For
+             * now one list, the jobs done pending approval.
+             */
+            new ModuleDefinition(
+                key: 'project_management_2',
+                label: 'Project Management - 2',
+                actions: ['view'],
+                automationExemptBecause: 'It reads jobs; Jobs raises every event a rule could use.',
+                auditExemptBecause: 'It changes nothing.',
             ),
 
             /*
