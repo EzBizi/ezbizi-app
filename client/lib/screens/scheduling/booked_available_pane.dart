@@ -11,10 +11,10 @@ import 'rescheduling_pane.dart';
 /// 2026-10-26: moved here from Overbooking, which keeps overbooked days only).
 ///
 /// design: docs/previews/scheduling-booked-vs-available-layouts.html — #1, phone #4
-/// (UI queue 147). The availability endpoints read `scheduling.overbooking.view`
-/// on the server, not the Re-Scheduling grant, so [showAvailability] is false
-/// for someone who may open Re-Scheduling without it and its sub-tab is not
-/// drawn: a tab that answers 403 is a tab nobody can use.
+/// (UI queue 147). The availability endpoints take `scheduling.overbooking.view`
+/// or `scheduling.rescheduling.view` (a3f200840); [showAvailability] is false
+/// only with neither, and the sub-tab is not drawn. Offers still need
+/// `scheduling.edit` ([canEdit]).
 class ReschedulingTab extends StatefulWidget {
   const ReschedulingTab({
     super.key,
