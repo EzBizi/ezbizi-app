@@ -47,11 +47,8 @@ void main() {
 
     expect(find.text('Dana Whitfield'), findsOneWidget);
     expect(find.text('Omar Castillo'), findsOneWidget);
-    _sameHeight(
-      tester,
-      const Key('reviews-search'),
-      const ValueKey('tour-customer_experience-rating'),
-    );
+    // UI queue 145 moved the rating picker into More filters; the search
+    // box's neighbours are chips now, which have no InputDecorator to match.
 
     await _search(tester, const Key('reviews-search'), 'omar');
 

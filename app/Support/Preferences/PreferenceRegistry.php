@@ -255,6 +255,14 @@ class PreferenceRegistry
                 'help' => 'Pick List or Board above the posts.',
             ],
 
+            // Social › Compose: the Business Profile listings list open or shut.
+            'marketing.social.listings_expanded' => [
+                'label' => 'Show every Business Profile listing',
+                'type' => 'bool',
+                'default' => false,
+                'help' => 'Press Expand or Collapse beside the listings.',
+            ],
+
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',

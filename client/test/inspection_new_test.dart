@@ -227,6 +227,34 @@ void main() {
     );
   });
 
+  /// Each screen the inspection asks is a step; a screen its condition hides
+  /// is not one. Next moves the highlight on and ticks the step behind it,
+  /// and tapping an earlier step goes back (Jose, 2026-10-26).
+  testWidgets('the steps follow the screens asked and go back', (tester) async {
+    await _pump(tester, startBody: _steppedRun);
+    await tester.tap(find.text('14 Maple'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Level 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('inspection-step-0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('inspection-step-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('inspection-step-2')), findsNothing,
+        reason: 'the hidden Wood stove screen is not a step');
+    expect(find.text('Wood stove'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.check), findsOneWidget, reason: 'Client is done');
+    expect(find.widgetWithText(FilledButton, 'Submit'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('inspection-step-0')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, 'Next'), findsOneWidget,
+        reason: 'back on the first screen');
+    expect(find.byIcon(Icons.check), findsNothing);
+  });
+
   testWidgets('resume vs start again is a panel, not a modal', (tester) async {
     await _pump(tester, startStatus: 409, startBody: _resume);
 
@@ -448,6 +476,24 @@ const _resume = '''
       "answers": {},
       "screens": []
     }
+  }
+}
+''';
+
+const _steppedRun = '''
+{
+  "data": {
+    "id": "run-1",
+    "definition_name": "Level 1",
+    "customer_name": "14 Maple",
+    "layout_preset": "step_strip",
+    "answers": {},
+    "screens": [
+      {"name": "Client", "fields": [{"key": "note", "label": "Note", "type": "text"}]},
+      {"name": "Wood stove", "visible_if": {"field": "note", "op": "eq", "value": "wood"},
+       "fields": [{"key": "stove", "label": "Stove", "type": "text"}]},
+      {"name": "Sign off", "fields": [{"key": "end", "label": "End", "type": "text"}]}
+    ]
   }
 }
 ''';

@@ -790,6 +790,9 @@ class SocialPostsController extends Controller
             // to group under (Jose, 2026-10-19).
             'label' => $l->label(),
             'branch' => $l->branchName(),
+            // The company the branch belongs to, for "Company · Branch"
+            // group headings in Compose (Jose, 2026-10-26).
+            'company' => $l->company?->name ?? $l->franchise?->company?->name,
             'address' => $l->addressLine(),
             'connection_id' => $l->connection_id,
             'state' => $l->verification_state,
@@ -800,7 +803,7 @@ class SocialPostsController extends Controller
     /** @return Collection<int, BusinessLocation> */
     private function placesInView(User $user): Collection
     {
-        return BusinessLocation::query()->with(['connection', 'franchise', 'company'])->orderBy('title')->get()
+        return BusinessLocation::query()->with(['connection', 'franchise.company', 'company'])->orderBy('title')->get()
             ->filter(fn (BusinessLocation $l) => $l->connection !== null
                 && $l->connection->providerEnum() === SocialProvider::GoogleBusinessProfile
                 && $this->access->inView($user, $l->connection))

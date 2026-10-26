@@ -128,6 +128,66 @@ class InspectionDefinitionsController extends Controller
         ]);
     }
 
+    /**
+     * The Test tab: walk a version — or the unpublished draft — with test
+     * answers, and see every show/skip decision and the report it would make.
+     *
+     * NOTHING is written: no run, no report, no event, no audit row, so no
+     * automation fires and no customer hears of it. The report preview is
+     * drawn from an unsaved model by the same ReportDocument real reports use.
+     * A test customer (optional) fills the bound fields as a real start would.
+     */
+    public function rehearse(Request $request, InspectionDefinition $inspectionDefinition): JsonResponse
+    {
+        $this->authorize('update', $inspectionDefinition);
+
+        $input = $request->validate([
+            'version' => ['nullable', 'string'],
+            'answers' => ['present', 'array'],
+            'customer_id' => ['nullable', 'uuid'],
+            'job_id' => ['nullable', 'uuid'],
+        ]);
+
+        $versionId = $input['version'] ?? 'draft';
+        $version = $versionId === 'draft'
+            ? new \App\Models\InspectionDefinitionVersion([
+                'version' => 0,
+                'screens' => $inspectionDefinition->screens ?? [],
+                'layout_preset' => $inspectionDefinition->layout_preset ?: LayoutPreset::DEFAULT,
+            ])
+            : InspectionDefinitionVersion::query()
+                ->where('inspection_definition_id', $inspectionDefinition->id)
+                ->findOrFail($versionId);
+
+        $screens = $version->screens ?? [];
+        $customer = isset($input['customer_id']) ? \App\Models\Customer::query()->find($input['customer_id']) : null;
+        $job = isset($input['job_id']) ? \App\Models\Job::query()->find($input['job_id']) : null;
+
+        // Bound fields fill from the test customer and job exactly as a real
+        // start would, then freeze drops what this form would not have asked.
+        $answers = \App\Support\Inspection\BoundAnswers::freeze($customer, $job, $screens, $input['answers']);
+
+        $report = new \App\Models\InspectionReport([
+            'answers' => $answers,
+            'definition_name' => $inspectionDefinition->name,
+            'layout_preset' => $version->layout_preset,
+            'submitted_at' => now(),
+        ]);
+        $report->setRelation('version', $version);
+        $report->setRelation('customer', $customer);
+        $report->setRelation('job', $job);
+        $report->setRelation('submittedBy', $request->user());
+        $report->setRelation('attachments', collect());
+
+        return response()->json(['data' => [
+            // The walk uses the answers as typed, before freezing, so a
+            // question shows its answer even on a screen that is skipped.
+            ...\App\Support\Inspection\Rehearsal::walk($screens, $input['answers']),
+            'answers' => $answers,
+            'preview_html' => app(\App\Support\Inspection\ReportDocument::class)->html($report),
+        ]]);
+    }
+
     public function update(Request $request, InspectionDefinition $inspectionDefinition): JsonResponse
     {
         $this->authorize('update', $inspectionDefinition);

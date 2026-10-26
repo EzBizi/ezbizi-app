@@ -1,3 +1,4 @@
+import '../../widgets/step_timeline.dart';
 import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
@@ -881,6 +882,24 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          // Where the technician is: one step per screen this inspection
+          // asks, given the answers so far — a hidden screen is not a step.
+          // Earlier steps go back; later ones wait for Next and its checks.
+          if (screens.length > 1) ...[
+            StepTimeline(
+              keyPrefix: 'inspection-step',
+              labels: [
+                for (final (i, s) in screens.indexed)
+                  '${s['name'] ?? 'Step ${i + 1}'}',
+              ],
+              current: _screen.clamp(0, screens.length - 1),
+              onTap: (step) => setState(() {
+                _blocked = null;
+                _screen = step;
+              }),
+            ),
+            const SizedBox(height: 16),
+          ],
           if (screen == null)
             const DashboardNote('This inspection has no screens yet.')
           else

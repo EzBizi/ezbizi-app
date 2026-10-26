@@ -2634,6 +2634,9 @@ Route::prefix('v1')
             ->middleware('permission:inspection.builder.view');
         Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover'])
             ->middleware('permission:inspection.builder.view');
+        // The Test tab: a dry run that saves nothing (InspectionDefinitionsController::rehearse).
+        Route::post('inspections/{inspection_definition}/rehearse', [InspectionDefinitionsController::class, 'rehearse'])
+            ->middleware('permission:inspection.builder.view');
         Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish'])
             ->middleware('permission:inspection.builder.view');
         Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish'])
