@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
+use App\Support\Scheduling\RescheduleOffers;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Carbon\CarbonImmutable;
@@ -89,6 +90,34 @@ class SchedulingOverbookingController extends Controller
             'today' => $today->toDateString(),
             'areas' => app(Overbooking::class)->fill($areas, $date),
         ]]);
+    }
+
+    /** POST /scheduling/overbooking/offers/preview {area_id, date}: who an earlier-opening text would reach */
+    public function previewOffers(Request $request, RescheduleOffers $offers): JsonResponse
+    {
+        [$area, $date] = $this->offerTarget($request);
+
+        return response()->json(['data' => $offers->preview($area, $date)]);
+    }
+
+    /** POST /scheduling/overbooking/offers/send {area_id, date, job_ids} (scheduling.edit) */
+    public function sendOffers(Request $request, RescheduleOffers $offers): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('scheduling.edit'), 403, 'Sending offers needs the right to edit Scheduling.');
+        [$area, $date] = $this->offerTarget($request);
+        $ids = $request->validate(['job_ids' => ['required', 'array', 'min:1'], 'job_ids.*' => ['uuid']])['job_ids'];
+
+        return response()->json(['data' => $offers->send($area, $date, $ids, $request->user())]);
+    }
+
+    /** @return array{0: ServiceArea, 1: CarbonImmutable} */
+    private function offerTarget(Request $request): array
+    {
+        $data = $request->validate(['area_id' => ['required', 'uuid'], 'date' => ['required', 'date_format:Y-m-d']]);
+        $area = ServiceArea::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->findOrFail($data['area_id']);
+        $this->authorize('view', $area);
+
+        return [$area, CarbonImmutable::parse($data['date'])];
     }
 
     /**

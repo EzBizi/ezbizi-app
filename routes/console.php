@@ -251,6 +251,7 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  * booked in the next 7 days. The email itself is an automation on it.
  */
 Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
+Schedule::command('scheduling:warn-underfilled')->hourlyAt(2);
 // job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
 // The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
