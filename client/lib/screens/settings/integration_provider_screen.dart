@@ -675,7 +675,7 @@ class IntegrationConnection {
     'airtable' || 'workiz' || 'workiz_web' || 'ringcentral' => 'reporting',
     'google_workspace' || 'sending_server' => 'email',
     'phone_numbers' => 'phone',
-    'whatsapp' => 'messaging',
+    'whatsapp' || 'telegram' => 'messaging',
     _ => 'social',
   };
 

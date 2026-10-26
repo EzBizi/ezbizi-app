@@ -126,6 +126,13 @@ class SocialPostsController extends Controller
             $this->inStatus($query, $status, $visible->keys()->all());
         }
 
+        // The search bar narrows the list like `status` does: after the tiles.
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('title', 'like', $like)->orWhere('body', 'like', $like));
+        }
+
         $posts = $query
             ->with(['targets', 'author:id,name'])
             ->latest()

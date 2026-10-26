@@ -428,6 +428,29 @@ void main() {
     expect(tester.widget<SwitchListTile>(alertMe).value, isFalse);
   });
 
+  testWidgets('a person can choose to hear only from one company', (tester) async {
+    // Bar, 2026-10-22: "only the Everdoors notifications".
+    final patches = <Object?>[];
+    await _pumpWithSession(tester, preferences: {}, items: () => [], patches: patches);
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+    expect(find.text('All companies'), findsOneWidget, reason: 'nobody has chosen: all');
+
+    await tester.tap(find.text('Notify me about'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Everdoors'));
+    await tester.pumpAndSettle();
+
+    expect(patches, [
+      {
+        'preferences': {
+          'notifications.companies': ['c-ever'],
+        },
+      },
+    ]);
+  });
+
   testWidgets('with alerts on, a new notification pops up (the control)', (tester) async {
     expect(await _popUpsAfterAnArrival(tester, alerts: true), ['New Live Chat Lead']);
   });
@@ -508,6 +531,14 @@ Future<void> _pumpWithSession(
             'companies': <Map<String, Object?>>[],
             'franchises': <Map<String, Object?>>[],
           },
+        });
+      }
+      if (path.endsWith('/companies')) {
+        return _json({
+          'companies': [
+            {'id': 'c-ever', 'name': 'Everdoors', 'sub_companies': <Object>[]},
+            {'id': 'c-a1', 'name': 'A-1 Chimney', 'sub_companies': <Object>[]},
+          ],
         });
       }
       if (request.method == 'PATCH') {

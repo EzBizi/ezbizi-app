@@ -24,6 +24,8 @@ Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
 
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 // Paid time off that opens today or resets in 30 days (Jose, 2026-10-21).
+// Work Hours › Daily approval reminders (2026-10-22); each approver once a day.
+Schedule::command('ezbizi:time-clock-approval-reminders')->everyFifteenMinutes()->withoutOverlapping(10);
 Schedule::command('ezbizi:pto-daily-triggers')->dailyAt('07:10')->withoutOverlapping(30);
 
 // Yesterday's RingCentral call log into the Experimental report's cache, so a
@@ -251,6 +253,8 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
 Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
 // job.estimate_aging, once a day (Jose's Project Management rule 2, 2026-10-21).
 Schedule::command('jobs:emit-estimate-aging')->dailyAt('08:10')->timezone('America/New_York')->withoutOverlapping(60);
+// The paid-not-started warning (Jose, 2026-10-22): daily, to each company's address.
+Schedule::command('jobs:warn-paid-not-started')->dailyAt('08:20')->timezone('America/New_York')->withoutOverlapping(60);
 
 // A month before a membership year ends (Customers › Memberships).
 Schedule::command('memberships:remind-renewals')->dailyAt('09:00')->timezone('America/New_York');

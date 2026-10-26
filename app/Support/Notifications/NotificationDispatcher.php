@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\Assignment;
+use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\Company;
 use App\Models\Franchise;
@@ -116,6 +117,7 @@ class NotificationDispatcher
         );
 
         $recipients = $this->withoutFlooded($recipients, $automationId);
+        $recipients = $this->onlyThoseFollowing($recipients, $subject, $source, $eventId);
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -498,6 +500,60 @@ class NotificationDispatcher
     private const FLOOD_CAP = 20;
 
     private const FLOOD_WINDOW_MINUTES = 10;
+
+    /**
+     * Drop people who chose other companies (`notifications.companies`).
+     *
+     * Bar, 2026-10-22: "only Everdoors" means Everdoors, its sub companies
+     * and their branches — so a record counts when ANY company above it is
+     * chosen. A record in no company is organization-wide and reaches all.
+     */
+    private function onlyThoseFollowing(Collection $recipients, ?Model $subject, string $source, ?string $eventId): Collection
+    {
+        $choosers = $recipients->filter(fn (User $user) => ($user->preferences['notifications.companies'] ?? []) !== []);
+        if ($choosers->isEmpty()) {
+            return $recipients;
+        }
+
+        $chain = $this->companyChain($subject, $eventId);
+
+        // No company known. An alert or system notice is organization-wide and
+        // reaches everyone; an automation's (a missed call on an unmapped line)
+        // is not "from Everdoors" for someone who chose only Everdoors —
+        // measured 2026-10-23, Bar still got every company's missed calls.
+        if ($chain === []) {
+            return in_array($source, ['alert', 'system'], true)
+                ? $recipients
+                : $recipients->diff($choosers)->values();
+        }
+
+        return $recipients->filter(fn (User $user) => ($chosen = $user->preferences['notifications.companies'] ?? []) === []
+            || array_intersect($chosen, $chain) !== [])->values();
+    }
+
+    /** The record's company and every company above it, nearest first. */
+    private function companyChain(?Model $subject, ?string $eventId = null): array
+    {
+        $companyId = match (true) {
+            $subject instanceof Company => $subject->getKey(),
+            // A record-less event (a missed call) names its company in the payload.
+            $subject === null => $eventId === null ? null
+                : data_get(AutomationEvent::query()->find($eventId)?->payload, 'company_id'),
+            default => $subject->getAttribute('company_id')
+                ?? (($franchiseId = $this->franchiseIdFor($subject)) === null
+                    ? null
+                    : Franchise::query()->whereKey($franchiseId)->value('company_id')),
+        };
+
+        $chain = [];
+        // ponytail: one query per level; company trees are a few levels deep.
+        while (is_string($companyId) && ! in_array($companyId, $chain, true)) {
+            $chain[] = $companyId;
+            $companyId = Company::query()->whereKey($companyId)->value('parent_company_id');
+        }
+
+        return $chain;
+    }
 
     private function withoutFlooded(Collection $recipients, ?string $automationId): Collection
     {

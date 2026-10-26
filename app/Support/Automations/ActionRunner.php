@@ -715,8 +715,9 @@ class ActionRunner
         $status = trim((string) ($action['status'] ?? ''));
         $sub = trim((string) ($action['sub_status'] ?? ''));
         $tags = array_values(array_filter(array_map('trim', is_array($action['tags'] ?? null) ? $action['tags'] : explode(',', (string) ($action['tags'] ?? '')))));
-        if ($status === '' && $tags === []) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status or tags to set.'];
+        $unschedule = filter_var($action['unschedule'] ?? false, FILTER_VALIDATE_BOOL);
+        if ($status === '' && $tags === [] && ! $unschedule) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status, tags to set, or to remove the scheduled time.'];
         }
 
         $done = [];
@@ -727,8 +728,12 @@ class ActionRunner
                 $done[] = 'status '.$status.($sub === '' ? '' : ' / '.$sub);
             }
             if ($tags !== []) {
-                $writer->setTags($mirror, $tags);
+                $mirror = $writer->setTags($mirror, $tags);
                 $done[] = 'tags '.implode(', ', $tags);
+            }
+            if ($unschedule) {
+                $writer->unschedule($mirror);
+                $done[] = 'no scheduled time';
             }
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => ($done === [] ? '' : 'Set '.implode('; ', $done).', then: ').$refusal->getMessage()];
@@ -3547,6 +3552,25 @@ class ActionRunner
         $group = trim((string) ($action['group'] ?? ''));
 
         return $this->onTaskBoard('task.create', $automation, $board, function (User $actor) use ($board, $title, $owners, $about, $subject, $automation, $values, $group) {
+            // A rule's group is made on the branch's board the first time it is
+            // needed (2026-10-22: PM Action 1's "Project Management" group was on
+            // no board). By name, any case; a person's API call still refuses an unknown one.
+            if ($group !== '' && ! $board->groups()->get()->contains(fn ($g) => mb_strtolower(trim($g->name)) === mb_strtolower($group))) {
+                $board->groups()->create(['organization_id' => $board->organization_id, 'name' => $group,
+                    'position' => (int) $board->groups()->max('position') + 1]);
+            }
+            // A blank value writes nothing; a column the board lacks is made, a
+            // person's column when the value is somebody on the board (Jose,
+            // 2026-10-22: "tag the Technician in another column").
+            $values = array_filter($values, fn ($v) => trim((string) $v) !== '');
+            $people = null;
+            foreach ($values as $name => $value) {
+                if (! $board->columns()->get()->contains(fn ($c) => mb_strtolower(trim($c->name)) === mb_strtolower(trim((string) $name)))) {
+                    $people ??= app(TaskBoards::class)->assignable($board)->pluck('id')->all();
+                    $board->columns()->create(['organization_id' => $board->organization_id, 'name' => trim((string) $name),
+                        'type' => in_array($value, $people, true) ? 'person' : 'text', 'position' => (int) $board->columns()->max('position') + 1]);
+                }
+            }
             app(TaskWriter::class)->create($board, [
                 'title' => mb_substr($title, 0, 255),
                 'assignee_user_ids' => $owners->map->getKey()->all(),

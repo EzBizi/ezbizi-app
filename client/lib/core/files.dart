@@ -8,8 +8,14 @@ import 'files_io.dart' if (dart.library.js_interop) 'files_web.dart' as impl;
 /// non-web build can do these things.
 class Files {
   /// Offer [content] to the user as a download named [filename].
-  static void download(String filename, List<int> content) =>
-      impl.download(filename, content);
+  static void download(String filename, List<int> content) {
+    final hook = debugOnDownload;
+    if (hook != null) return hook(filename, content);
+    impl.download(filename, content);
+  }
+
+  /// Tests set this to see what would have been saved, and under what name.
+  static void Function(String filename, List<int> content)? debugOnDownload;
 
   /// Remove the query string from the address bar, on web. A no-op elsewhere.
   static void clearQuery() => impl.clearQuery();

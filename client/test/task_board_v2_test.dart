@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -15,6 +17,12 @@ import 'package:http/testing.dart';
 /// {id, name, colour, is_done}, a task's `status_id`, `parent_task_id`,
 /// columns {id, name, type, position, hidden, settings}, `values`.
 void main() {
+  // The board last opened is remembered on disk: keep it out of the real one.
+  setUp(() {
+    store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tb');
+  });
+  tearDown(() => store.debugStoreDirOverride = null);
+
   late List<(String, String, Object?)> log;
   late List<Map<String, dynamic>> tasks;
 
@@ -23,6 +31,9 @@ void main() {
   Map<String, dynamic>? builtins;
   var canEdit = true;
   var refuseBoardPatch = false;
+
+  /// Top-level tasks added after the three every test has.
+  var extra = <Map<String, dynamic>>[];
 
   ApiClient fakeServer({int columns = 3}) {
     log = [];
@@ -74,6 +85,7 @@ void main() {
         'updates_count': 0,
         'values': <String, dynamic>{},
       },
+      ...extra,
     ];
     var next = 10;
     http.Response json(Object body, [int code = 200]) => http.Response(
@@ -331,6 +343,7 @@ void main() {
     builtins = null;
     canEdit = true;
     refuseBoardPatch = false;
+    extra = [];
   });
 
   Future<void> pump(
@@ -709,5 +722,53 @@ void main() {
       'assignee_user_ids': ['u-1', 'u-2', 'u-3', 'u-4'],
     });
     expect(find.byKey(const ValueKey('task-panel-owner-u-4')), findsOneWidget);
+  });
+
+  testWidgets('Created comes before Due in the header', (tester) async {
+    builtins = customised();
+    builtins!['created'] = {'label': 'Created', 'visible': true};
+    builtins!['due'] = {'label': 'Due', 'visible': true};
+    await pump(tester);
+
+    final created = tester.getTopLeft(find.text('CREATED').first).dx;
+    final due = tester.getTopLeft(find.text('DUE').first).dx;
+    expect(created, lessThan(due));
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('task-created-t1'))).dx,
+      lessThan(due + 1),
+    );
+  });
+
+  testWidgets("a card a rule made with no owner is EzBizi's, the rule on "
+      "hover; a person's card is unchanged", (tester) async {
+    extra = [
+      {
+        'id': 't9',
+        'board_id': 'b-1',
+        'group_id': 'g1',
+        'parent_task_id': null,
+        'title': 'Call back about the cap',
+        'status_id': 's-stuck',
+        'owner': null,
+        'owners': <dynamic>[],
+        'created_by': {'type': 'automation', 'label': 'New lead follow-up'},
+        'due_on': null,
+        'about': null,
+        'updates_count': 0,
+        'values': <String, dynamic>{},
+      },
+    ];
+    await pump(tester);
+
+    final mark = find.byKey(const ValueKey('task-owner-ezbizi-t9'));
+    expect(mark, findsOneWidget);
+    expect(
+      find.descendant(of: mark, matching: find.text('EzBizi')),
+      findsOneWidget,
+    );
+    expect(tester.widget<Tooltip>(mark).message, 'New lead follow-up');
+
+    expect(find.byKey(const ValueKey('task-owner-ezbizi-t1')), findsNothing);
+    expect(find.text('Omar'), findsWidgets);
   });
 }

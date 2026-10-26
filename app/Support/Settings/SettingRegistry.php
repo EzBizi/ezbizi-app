@@ -979,6 +979,96 @@ class SettingRegistry
                     .'cancelling after 30 days with nothing paid.',
             ),
             /*
+             * Project Management's stages (Jose, 2026-10-22: "as you
+             * recommend"): each one statuses, plus whether it is scheduled
+             * and whether money is due. Unmapped stages hold nothing.
+             * [{key, statuses[], scheduled: bool|null, due: bool|null}].
+             */
+            new SettingDefinition(
+                key: 'jobs.pm_stages', label: 'Project Management stages',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Which statuses, scheduled or not, money due or not, make each stage.',
+            ),
+            /*
+             * Which jobs Project Management is about at all (Shoval, 2026-10-22:
+             * "Only open jobs ... and only ones that are partly paid deposits").
+             */
+            new SettingDefinition(
+                key: 'jobs.pm_scope_statuses', label: 'Project Management shows jobs in these statuses',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Empty: every status.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_partly_paid_only', label: 'Project Management shows only partly paid jobs',
+                type: SettingDefinition::TYPE_BOOL, default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Something paid and money still due: a deposit.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_task_group', label: 'Task Board group Project Management shows',
+                type: SettingDefinition::TYPE_STRING, default: 'Project Management',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'The group, by name, on each branch board where rules leave project cards.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_redo_words', label: 'Tags or job types that mean a redo',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Any case. A job with one of these as a tag or as its type is a redo.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_dispute_words', label: 'Tags that mean a dispute',
+                type: SettingDefinition::TYPE_JSON,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Any case. A job with one of these as a tag is in dispute.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_stopped_days', label: 'Payments count as stopped after (days)',
+                type: SettingDefinition::TYPE_INT, default: 30,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'A partly paid job with money still due and no payment for this many days.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_warn_days', label: 'Warn when a paid job has not started after (days)',
+                type: SettingDefinition::TYPE_INT, default: 10,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Counted from the first payment while the job is still waiting to start.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_warning_email', label: 'Send the paid-not-started warning to',
+                type: SettingDefinition::TYPE_STRING, default: '',
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'One email address. Empty sends nothing.',
+            ),
+            new SettingDefinition(
+                key: 'jobs.pm_cost_alert_percent', label: 'Highlight cost from gross sales above (%)',
+                type: SettingDefinition::TYPE_INT, default: 15,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'The repair-team report shows the percentage in red above this.',
+            ),
+            /*
+             * Why a job waits for review, for Project Management (Jose,
+             * 2026-10-22: "need to order parts, need measurements, looking
+             * for contractor"). The organization's own list.
+             */
+            new SettingDefinition(
+                key: 'jobs.review_reasons', label: 'Reasons a job waits for review',
+                type: SettingDefinition::TYPE_LIST,
+                default: [
+                    ['value' => 'order_parts', 'label' => 'Need to order parts'],
+                    ['value' => 'measurements', 'label' => 'Need measurements'],
+                    ['value' => 'contractor', 'label' => 'Looking for a contractor'],
+                ],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Shown on a job in Project Management, and a filter there.',
+            ),
+            /*
              * Which statuses mean cancelled, for Project Management's
              * "Cancellations" (2026-10-22). Empty: none counted, nothing guessed.
              */
@@ -987,7 +1077,7 @@ class SettingRegistry
                 type: SettingDefinition::TYPE_SUBSET,
                 choicesFrom: 'jobs.statuses',
                 default: [],
-                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
                 help: 'Project Management counts a job as cancelled when it moves into one of these.',
             ),
             new SettingDefinition(
@@ -1090,6 +1180,27 @@ class SettingRegistry
                 editPermission: 'ai_assistance.manage',
                 help: 'Somebody with "Correct reports" can reply to a report draft in their own words, such as '
                     .'"leave out job 4512". AI reads it, the bot repeats the change back, and nothing changes until they answer YES.',
+            ),
+            // The Chimney Tech Assistant (2026-10-23, tech-assistant.html).
+            new SettingDefinition(
+                key: 'ai_assistance.tech_mode',
+                label: 'Tech assistant',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Staff parts and unit questions, and rating-plate photos, are answered from the Parts list and Manuals, '
+                    .'with an ORDER CHECK. Off, the assistant answers from the Library only.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.tech_prompt',
+                label: 'Tech assistant instructions',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Extra instructions added to the tech assistant\'s rules, such as preferred suppliers. '
+                    .'They cannot switch off its no-guessing rule.',
             ),
         ];
     }
@@ -1504,6 +1615,7 @@ class SettingRegistry
         return [
             new SettingDefinition(
                 key: 'time_clock.enabled',
+                section: 'Clock in and lock screen',
                 label: 'Clock in',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1512,6 +1624,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.lock_screen',
+                section: 'Clock in and lock screen',
                 label: 'Lock screen',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1524,6 +1637,7 @@ class SettingRegistry
             // 0-minute warning or a 9-hour extension is a support ticket.
             new SettingDefinition(
                 key: 'time_clock.warning_minutes',
+                section: 'Shift timing',
                 label: 'Minutes of warning before a shift ends',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 5,
@@ -1533,6 +1647,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.extension_minutes',
+                section: 'Shift timing',
                 label: 'Extension length, minutes',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 30,
@@ -1545,6 +1660,7 @@ class SettingRegistry
             // clock-out may be and not count as leaving early.
             new SettingDefinition(
                 key: 'time_clock.grace_minutes',
+                section: 'Shift timing',
                 label: 'Grace period, minutes',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 5,
@@ -1577,8 +1693,39 @@ class SettingRegistry
              * the franchise (or higher, and it cascades). Off, or no centre,
              * and nothing is checked.
              */
+            // Daily approval (Shoval via Jose, 2026-10-22): off until a place
+            // asks for it. Who approves is whoever holds "Approve daily hours".
+            new SettingDefinition(
+                key: 'time_clock.approval_enabled',
+                section: 'Daily approval',
+                label: 'Daily approval of hours',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'When on, people whose role can "Approve daily hours" get yesterday\'s clock-ins each morning to approve or adjust.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.approval_roles',
+                section: 'Daily approval',
+                label: 'Roles whose hours need daily approval',
+                type: SettingDefinition::TYPE_ROLES,
+                default: [],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'Leave empty for everybody. The approver is never in their own list.',
+            ),
+            new SettingDefinition(
+                key: 'time_clock.approval_time',
+                section: 'Daily approval',
+                label: 'Daily approval reminder time',
+                type: SettingDefinition::TYPE_ENUM,
+                default: '08:00',
+                options: ['06:00', '07:00', '08:00', '09:00', '10:00', '12:00'],
+                allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY, SettingDefinition::SCOPE_FRANCHISE],
+                help: 'When the approver is told yesterday\'s hours are waiting, in the place\'s own time.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.geofence_enabled',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1587,6 +1734,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.geofence_center',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone centre',
                 type: SettingDefinition::TYPE_LOCATION,
                 default: '',
@@ -1595,6 +1743,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.geofence_radius_m',
+                section: 'Clock-in zone',
                 label: 'Clock-in zone size, metres',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 100,
@@ -1604,6 +1753,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.max_hours',
+                section: 'Shift timing',
                 label: 'Longest a shift may run, hours',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 16,
@@ -1615,6 +1765,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.week_starts_on',
+                section: 'Shift timing',
                 label: 'Week starts on',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'sunday',
@@ -1637,6 +1788,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'time_clock.self_schedule',
+                section: 'Clock in and lock screen',
                 label: 'People can edit their own schedule',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1664,6 +1816,7 @@ class SettingRegistry
              */
             new SettingDefinition(
                 key: 'pto.enabled',
+                section: 'Paid time off',
                 label: 'Paid time off',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1672,6 +1825,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.allowance',
+                section: 'Paid time off',
                 label: 'Paid days off',
                 type: SettingDefinition::TYPE_INT,
                 default: 0,
@@ -1680,6 +1834,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.allowance_period',
+                section: 'Paid time off',
                 label: 'Earned per',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'year',
@@ -1693,7 +1848,36 @@ class SettingRegistry
                 help: 'Most written policies say a number of days a year. Per month or per week is for policies that accrue as somebody works.',
             ),
             new SettingDefinition(
+                key: 'pto.accrue_after',
+                section: 'Paid time off',
+                // The number only, same split as "Can be used after": 3 here
+                // with Days below is three days, not three months.
+                label: 'Starts accumulating after (number — its unit is the next setting)',
+                type: SettingDefinition::TYPE_INT,
+                default: 0,
+                allowedScopes: $orgOnly,
+                help: 'Counted from the day somebody started, in the unit set just below. Zero means days start accumulating on their first day. This wait happens once and is not applied again at the next reset. It does not decide when those days may be used — that is "Can be used after".',
+            ),
+            new SettingDefinition(
+                key: 'pto.accrue_after_unit',
+                section: 'Paid time off',
+                label: 'UNIT of "Starts accumulating after": days, weeks or months',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'day',
+                options: ['day', 'week', 'month'],
+                optionLabels: [
+                    'day' => 'Days',
+                    'week' => 'Weeks',
+                    'month' => 'Months',
+                ],
+                allowedScopes: $orgOnly,
+                // Three months from 31 January is 30 April; ninety days is
+                // 1 May. The earning clock has to land on the one they chose.
+                help: 'Three months and ninety days are not the same date. Say it the way the policy says it. Check the unit: 3 with Days is three days, not three months.',
+            ),
+            new SettingDefinition(
                 key: 'pto.waiting',
+                section: 'Paid time off',
                 // The number only: 90 here with Months below is seven and a half
                 // years (Jose's screenshot, 2026-10-21), so both labels say so.
                 label: 'Can be used after (number — its unit is the next setting)',
@@ -1704,6 +1888,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.waiting_unit',
+                section: 'Paid time off',
                 label: 'UNIT of "Can be used after": days, weeks, months or years',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'day',
@@ -1725,6 +1910,7 @@ class SettingRegistry
             ),
             new SettingDefinition(
                 key: 'pto.carry_over',
+                section: 'Paid time off',
                 label: 'Unused days carry over',
                 type: SettingDefinition::TYPE_BOOL,
                 default: false,
@@ -1736,6 +1922,7 @@ class SettingRegistry
             // days"). 1 January is what this did before the setting existed.
             new SettingDefinition(
                 key: 'pto.reset',
+                section: 'Paid time off',
                 label: 'Use by / resets every',
                 type: SettingDefinition::TYPE_ENUM,
                 default: 'jan_1',

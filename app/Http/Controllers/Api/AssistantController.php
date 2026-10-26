@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AssistantEntry;
 use App\Support\Ai\AppAsk;
+use App\Support\Ai\GrokCli;
 use App\Support\Assistant\AssistantBrain;
+use App\Support\Assistant\TechAssistant;
 use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -67,6 +69,24 @@ class AssistantController extends Controller
         // Both fit nginx's 120 s with 20 s spare: 35 s for the Library, up to 95 s in all.
         $started = microtime(true);
         $failed = false;
+
+        // The Chimney Tech Assistant (2026-10-23): a parts or unit question
+        // goes to it first, the same brain as WhatsApp, on channel "app".
+        $tech = app(TechAssistant::class);
+        if (GrokCli::configured() && $tech->enabled($user->organization) && TechAssistant::looksTechnical($q)) {
+            try {
+                $result = $tech->answer($user, $user->organization, $q, 'app', [], 60);
+                if ($result !== null) {
+                    return response()->json(['data' => [
+                        'reply' => $result['reply'], 'entry_ids' => [], 'tech' => true,
+                        'answer_id' => $result['answer']?->getKey(), 'order_check' => $result['answer']?->order_check,
+                    ]]);
+                }
+            } catch (\RuntimeException) {
+                $failed = true;
+            }
+        }
+
         try {
             $answer = $this->brain->aiAnswer($user, $user->organization, $q, 35, forWhatsApp: true);
         } catch (\RuntimeException) {

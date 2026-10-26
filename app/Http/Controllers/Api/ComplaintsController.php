@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
-use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -193,19 +192,8 @@ class ComplaintsController extends Controller
     /** Reach, then the current view: what the list shows and what may be opened. */
     private function visible(User $user): Builder
     {
-        $query = Complaint::query();
-        if (! $user->canActOnOrganization($user->organization)) {
-            $companies = $user->reachableCompanies()->pluck('id')->all();
-            $franchises = $user->reachableFranchises()->pluck('id')->all();
-            $query->where(fn ($q) => $q->whereIn('company_id', $companies)->orWhereIn('franchise_id', $franchises)
-                ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id')));
-        }
-        $view = ViewScope::forUser($user);
-        if (! $view->isOrganization()) {
-            $query->where(fn ($q) => $q->whereIn('franchise_id', $view->franchiseIds())
-                ->orWhere(fn ($w) => $w->whereNull('franchise_id')->whereIn('company_id', $view->companyIds()))
-                ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id')));
-        }
+        // Reach, then the view (Places): the same cut every Customer Experience list makes.
+        $query = \App\Support\CustomerExperience\Places::scope(Complaint::query(), $user);
 
         return $query;
     }

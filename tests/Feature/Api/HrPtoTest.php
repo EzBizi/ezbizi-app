@@ -157,6 +157,8 @@ class HrPtoTest extends TestCase
             'pto.allowance_period' => 'month',
             'pto.waiting' => 3,
             'pto.waiting_unit' => 'month',
+            'pto.accrue_after' => 3,
+            'pto.accrue_after_unit' => 'month',
         ]);
 
         $body = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json();
@@ -165,6 +167,8 @@ class HrPtoTest extends TestCase
         $this->assertSame('month', $body['policy']['waiting_unit']);
         $this->assertSame(1, $body['policy']['allowance'], 'Twelve would be the server annualising it.');
         $this->assertSame(3, $body['policy']['waiting'], 'Ninety would be the server converting months to days.');
+        $this->assertSame(3, $body['policy']['accrue_after']);
+        $this->assertSame('month', $body['policy']['accrue_after_unit']);
     }
 
     /** The policy block carries the defaults when nothing was chosen. */
@@ -177,6 +181,8 @@ class HrPtoTest extends TestCase
 
         $this->assertSame('year', $body['policy']['allowance_period']);
         $this->assertSame('day', $body['policy']['waiting_unit']);
+        $this->assertSame(0, $body['policy']['accrue_after']);
+        $this->assertSame('day', $body['policy']['accrue_after_unit']);
     }
 
     /**

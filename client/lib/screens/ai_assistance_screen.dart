@@ -23,6 +23,7 @@ import '../widgets/ai_mark.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import 'ai_assistance/staff_bot_tab.dart';
+import 'ai_assistance/tech_tabs.dart';
 import 'ai_assistance/whatsapp_groups_tab.dart';
 import 'settings_screen.dart';
 
@@ -69,6 +70,30 @@ class _AiAssistanceScreenState extends State<AiAssistanceScreen> {
           session: widget.session,
           canEdit: _may('ai_assistance.manage'),
         ),
+      ),
+    // The Chimney Tech Assistant (2026-10-23, tech-assistant.html).
+    if (_may('ai_assistance.parts.view'))
+      (
+        'parts',
+        'Parts',
+        Icons.build_outlined,
+        () => PartsTab(api: widget.api, canEdit: _may('ai_assistance.manage')),
+      ),
+    if (_may('ai_assistance.manuals.view'))
+      (
+        'manuals',
+        'Manuals',
+        Icons.picture_as_pdf_outlined,
+        () =>
+            ManualsTab(api: widget.api, canEdit: _may('ai_assistance.manage')),
+      ),
+    if (_may('ai_assistance.answers.view'))
+      (
+        'answers',
+        'Answers',
+        Icons.fact_check_outlined,
+        () =>
+            AnswersTab(api: widget.api, canEdit: _may('ai_assistance.manage')),
       ),
     // Where the reports replacing the Rodrigo bot's are sent (UI queue 61).
     // Its own grant, and manage: every endpoint behind it asks for manage, so
@@ -195,9 +220,7 @@ final _footnote = RegExp(r'^_(.+)_$');
 /// A branch card's three buttons on one line in the 340 column.
 final _compact = ButtonStyle(
   visualDensity: VisualDensity.compact,
-  padding: WidgetStateProperty.all(
-    const EdgeInsets.symmetric(horizontal: 12),
-  ),
+  padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 12)),
 );
 
 /// The assistant, in the app, as a conversation (UI queue 91, Jose's 1, 4 and
@@ -284,8 +307,8 @@ class _AssistantTabState extends State<AssistantTab> {
     final data = response.data;
     setState(() {
       _topics = [
-        for (final s in (data is Map ? data['sections'] : null) as List? ??
-            const [])
+        for (final s
+            in (data is Map ? data['sections'] : null) as List? ?? const [])
           if (s is Map && s['section'] is String) s['section'] as String,
       ].take(4).toList();
     });
@@ -809,10 +832,24 @@ class _LibraryTabState extends State<LibraryTab> {
   List<Map<String, dynamic>>? _entries;
   String? _error;
 
+  /// What the search bar holds; matched against what each answer's row shows.
+  String _query = '';
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  bool _matches(Map<String, dynamic> e) {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return true;
+    return [
+      e['title'],
+      e['section'],
+      _place(e),
+      e['audience'] == 'staff' ? 'Staff only' : 'Everyone',
+    ].any((v) => v != null && '$v'.toLowerCase().contains(needle));
   }
 
   Future<void> _load() async {
@@ -890,42 +927,70 @@ class _LibraryTabState extends State<LibraryTab> {
         key: const ValueKey('tour-ai_assistance-library'),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            // As tall as the buttons beside it (Jose, 2026-10-20).
+            child: SizedBox(
+              width: 240,
+              height: 40,
+              child: TextField(
+                key: const Key('ai-library-search'),
+                textAlignVertical: TextAlignVertical.center,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find an answer',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           if (entries.isEmpty)
             const Text(
               'No answers yet. Each answer appears in the WhatsApp menu and on '
               'the AI tab, grouped by its section.',
             ),
-          for (final section in bySection.entries) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 4),
-              child: Text(
-                section.value.length > 10
-                    ? '${section.key} — WhatsApp shows the first 10'
-                    : section.key,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+          if (entries.isNotEmpty && !entries.any(_matches))
+            Text(
+              'No answers match "${_query.trim()}".',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            for (final e in section.value)
-              Card(
-                child: ListTile(
-                  title: Text(e['title'] as String),
-                  subtitle: Text(
-                    [
-                      _place(e),
-                      e['audience'] == 'staff' ? 'Staff only' : 'Everyone',
-                    ].join(' · '),
-                  ),
-                  trailing: Icon(
-                    widget.canEdit
-                        ? Icons.edit_outlined
-                        : Icons.chevron_right,
-                  ),
-                  // The topics the AI tab had down its side live here now
-                  // (UI queue 91): anybody reads an answer, editors edit it.
-                  onTap: () => widget.canEdit ? _edit(e) : _read(e),
+          for (final section in bySection.entries)
+            if (section.value.any(_matches)) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 12, bottom: 4),
+                child: Text(
+                  section.value.length > 10
+                      ? '${section.key} — WhatsApp shows the first 10'
+                      : section.key,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
-          ],
+              for (final e in section.value.where(_matches))
+                Card(
+                  child: ListTile(
+                    title: Text(e['title'] as String),
+                    subtitle: Text(
+                      [
+                        _place(e),
+                        e['audience'] == 'staff' ? 'Staff only' : 'Everyone',
+                      ].join(' · '),
+                    ),
+                    trailing: Icon(
+                      widget.canEdit
+                          ? Icons.edit_outlined
+                          : Icons.chevron_right,
+                    ),
+                    // The topics the AI tab had down its side live here now
+                    // (UI queue 91): anybody reads an answer, editors edit it.
+                    onTap: () => widget.canEdit ? _edit(e) : _read(e),
+                  ),
+                ),
+            ],
         ],
       ),
     );

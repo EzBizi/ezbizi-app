@@ -299,7 +299,83 @@ void main() {
     await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsNothing);
   });
+
+  testWidgets('Telegram is a Messaging card with a bot token form', (
+    tester,
+  ) async {
+    // Jose, 2026-10-26: Telegram worked but nothing in the app set it up.
+    await _pump(
+      tester,
+      permissions: const ['ai_assistance.manage'],
+      moreProviders: _telegram,
+    );
+
+    expect(find.byKey(const ValueKey('provider:telegram')), findsOneWidget);
+    expect(find.textContaining('Messaging ·'), findsOneWidget);
+
+    await _open(tester, 'telegram');
+    expect(find.text('Connect bot'), findsOneWidget);
+    expect(find.text('Bot token'), findsOneWidget);
+  });
+
+  testWidgets('the Telegram form is not offered without ai_assistance.manage', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      permissions: const ['marketing.edit'],
+      moreProviders: _telegram,
+    );
+
+    expect(find.byKey(const ValueKey('ask:telegram')), findsOneWidget);
+    await _open(tester, 'telegram');
+    expect(find.text('Connect bot'), findsNothing);
+  });
+
+  testWidgets('a connected bot lists its linked staff with Unlink', (
+    tester,
+  ) async {
+    final sent = <http.Request>[];
+    await _pump(
+      tester,
+      permissions: const ['ai_assistance.manage'],
+      moreProviders: _telegram,
+      sent: sent,
+      connections: const [
+        {
+          'id': 'tg-1',
+          'provider': 'telegram',
+          'display_name': 'A1 Tech',
+          'scope_type': 'organization',
+          'scope_id': 'org-1',
+          'status': 'broken',
+          'status_reason': 'Telegram could not deliver messages: 502',
+          'detail': '@a1_tech_bot · 1 staff member linked',
+        },
+      ],
+    );
+
+    expect(find.text('Needs attention'), findsOneWidget);
+    await _open(tester, 'telegram');
+    expect(find.text('Connect bot'), findsNothing);
+    expect(find.textContaining('@a1_tech_bot'), findsOneWidget);
+    expect(find.text('Pat Tech'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('telegram-unlink:l-1')));
+    await tester.pumpAndSettle();
+    final delete = sent.lastWhere((r) => r.method == 'DELETE');
+    expect(delete.url.path, '/api/v1/social/telegram/links/l-1');
+  });
 }
+
+const _telegram = [
+  {
+    'value': 'telegram',
+    'label': 'Telegram',
+    'connects_by': 'api_key',
+    'permission': 'ai_assistance.manage',
+  },
+];
 
 /// Open a provider's card, which is where the forms live since 2026-09-22.
 ///
@@ -383,6 +459,14 @@ Future<void> _pump(
             },
             const {'value': 'ringcentral', 'label': 'RingCentral'},
             ...moreProviders,
+          ],
+        });
+      }
+
+      if (path.endsWith('/social/telegram/links')) {
+        return _json({
+          'data': const [
+            {'id': 'l-1', 'name': 'Pat Tech', 'email': 'pat@example.com'},
           ],
         });
       }

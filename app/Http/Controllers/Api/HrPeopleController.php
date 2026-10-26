@@ -9,6 +9,8 @@ use App\Models\EmploymentEvent;
 use App\Models\Franchise;
 use App\Models\HeldEquipment;
 use App\Models\HrNote;
+use App\Models\Onboarding;
+use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
 use App\Models\PtoUsed;
 use App\Models\Role;
@@ -33,6 +35,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -325,6 +328,145 @@ class HrPeopleController extends Controller
             ? 'They are the only administrator of this organization, so deleting them would leave it '
                 .'with nobody able to run it. Make somebody else an administrator first.'
             : null;
+    }
+
+    /**
+     * Everyone, one row each, for the Payroll tab (Jose, 2026-10-22: "Employee
+     * - Salary - W2 (checkbox if signed + download) - Start Date - Date of
+     * Termination - Role - Contract (+ download)", filtered by signed W-4,
+     * role or contract).
+     *
+     * Salary is the current pay rate, and only for `hr.pay.view`; changing it
+     * adds a rate to the history (POST details/pay-rates), so a raise keeps
+     * the old one. The tax form is the signed W-4 (or W-9 for a contractor)
+     * from their onboarding, downloaded as its attachment; the contract is
+     * their latest onboarding, downloaded as its PDF.
+     */
+    public function payroll(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $seesPay = $actor->hasPermission('hr.pay.view');
+        $today = now()->toDateString();
+
+        $people = User::query()->with('role:id,name')
+            ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->when($request->query('role_id'), fn ($q, $role) => $q->where('role_id', $role))
+            ->orderBy('name')->get();
+        $ids = $people->map->getKey()->all();
+
+        $rates = $seesPay ? PayRate::query()->whereIn('user_id', $ids)->where('effective_on', '<=', $today)
+            ->orderByDesc('effective_on')->get()->unique('user_id')->keyBy('user_id') : collect();
+        $events = EmploymentEvent::query()->whereIn('user_id', $ids)
+            ->whereIn('kind', [EmploymentEvent::STARTED, EmploymentEvent::LEFT])->orderBy('occurred_on')->get()
+            ->groupBy('user_id');
+        $onboardings = Onboarding::query()->with('contractVersion.contract:id,name')
+            ->whereIn('user_id', $ids)->where('status', '!=', Onboarding::CANCELLED)
+            ->orderByDesc('started_at')->get()->unique('user_id')->keyBy('user_id');
+        $taxForms = OnboardingAnswer::query()
+            ->whereIn('onboarding_id', $onboardings->map->getKey()->all())->where('field_key', 'tax_form')
+            ->get()->keyBy('onboarding_id');
+
+        $rows = $people->map(function (User $person) use ($rates, $events, $onboardings, $taxForms, $seesPay) {
+            $mine = $events->get($person->getKey(), collect());
+            $left = $mine->where('kind', EmploymentEvent::LEFT)->last();
+            $started = $mine->where('kind', EmploymentEvent::STARTED)->first();
+            $lastStart = $mine->where('kind', EmploymentEvent::STARTED)->last();
+            $onboarding = $onboardings->get($person->getKey());
+            $taxForm = $onboarding === null ? null : $taxForms->get($onboarding->getKey());
+            $attachment = $taxForm === null ? null : (string) $taxForm->value;
+            $rate = $rates->get($person->getKey());
+
+            return [
+                'id' => $person->getKey(),
+                'name' => $person->name,
+                'is_active' => (bool) $person->is_active,
+                'salary' => ! $seesPay ? null : ($rate === null ? null : [
+                    'amount' => $rate->amount, 'period' => $rate->period, 'basis' => $rate->basis,
+                    'effective_on' => $rate->effective_on?->toDateString(),
+                ]),
+                'w2' => [
+                    'signed' => $attachment !== null && $attachment !== '' && $attachment !== 'N/A',
+                    'attachment_id' => $attachment !== null && Str::isUuid($attachment) ? $attachment : null,
+                ],
+                'started_on' => $started?->occurred_on?->toDateString(),
+                // The last time they left, unless they started again after it.
+                'terminated_on' => $left !== null && ($lastStart === null || $left->occurred_on->gte($lastStart->occurred_on))
+                    ? $left->occurred_on->toDateString() : null,
+                'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
+                'contract' => $onboarding === null ? null : [
+                    'id' => $onboarding->contractVersion?->contract?->getKey(),
+                    'name' => $onboarding->contractVersion?->contract?->name,
+                    'onboarding_id' => $onboarding->getKey(),
+                    'status' => $onboarding->status,
+                ],
+            ];
+        });
+
+        $rows = $rows
+            ->when($request->query('w2') === 'signed', fn ($c) => $c->where('w2.signed', true))
+            ->when($request->query('w2') === 'unsigned', fn ($c) => $c->where('w2.signed', false))
+            ->when($request->query('contract_id'), fn ($c, $id) => $c->where('contract.id', $id))
+            ->values();
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'can_see_salary' => $seesPay,
+                'can_edit_salary' => $actor->hasPermission('hr.pay.edit'),
+            ],
+        ]);
+    }
+
+    /**
+     * Record the days somebody was off (Jose, 2026-10-22: "pick which days
+     * were used, remember that it can be different days"). Each a full or
+     * half day; a date already recorded is refused rather than counted twice.
+     */
+    public function addPtoDays(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('editPtoUsed', $user);
+        $input = $request->validate([
+            'days' => ['required', 'array', 'min:1', 'max:366'],
+            'days.*.date' => ['required', 'date_format:Y-m-d', 'distinct'],
+            'days.*.portion' => ['required', 'numeric', 'in:0.5,1'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+        $dates = array_column($input['days'], 'date');
+        $taken = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+            ->whereIn('used_on', $dates)->pluck('used_on')->map->toDateString()->all();
+        if ($taken !== []) {
+            return response()->json(['message' => 'Already recorded as a day off: '.implode(', ', $taken)
+                .'. Nothing was added.', 'errors' => ['days' => $taken]], 422);
+        }
+
+        DB::transaction(function () use ($user, $request, $input) {
+            foreach ($input['days'] as $day) {
+                PtoUsed::create([
+                    'organization_id' => $user->organization_id, 'user_id' => $user->getKey(),
+                    'days' => (float) $day['portion'], 'used_on' => $day['date'], 'note' => $input['reason'] ?? null,
+                    'created_by_user_id' => $request->user()->getKey(),
+                ]);
+            }
+            $this->audit->log('pto.days_added', $user, ['dates' => count($input['days'])]);
+            $after = app(PtoPolicy::class)->for($user);
+            $this->events->emit('user.pto_used_changed', $user, ['person' => ['id' => $user->getKey(), 'name' => $user->name],
+                'total' => $after['total'], 'used' => $after['used'], 'left' => $after['left'], 'reason' => $input['reason'] ?? null]);
+        });
+
+        return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
+            ->only(['total', 'used', 'left', 'would_expire'])->all()], 201);
+    }
+
+    public function removePtoDay(Request $request, User $user, string $day): JsonResponse
+    {
+        $this->authorize('editPtoUsed', $user);
+        $row = PtoUsed::query()->where('user_id', $user->getKey())->whereNull('set_to')
+            ->whereNotNull('used_on')->whereKey($day)->firstOrFail();
+        $row->delete();
+        $this->audit->log('pto.day_removed', $user, ['id' => $day]);
+
+        return response()->json(['data' => collect(app(PtoPolicy::class)->for($user))
+            ->only(['total', 'used', 'left', 'would_expire'])->all()]);
     }
 
     /**
@@ -767,7 +909,7 @@ class HrPeopleController extends Controller
             'pto' => $pto->enabledFor($user->organization)
                 ? collect($answer)->only([
                     'allowance', 'allowance_period', 'eligible_from', 'eligible',
-                    'total', 'used', 'left', 'carried', 'resets_on',
+                    'total', 'used', 'left', 'carried', 'expired', 'resets_on',
                 ])->all()
                 : null,
         ]]);
@@ -875,6 +1017,10 @@ class HrPeopleController extends Controller
             // answer by a reach rule that was never about them.
             : collect([$actor]);
 
+        $days = PtoUsed::query()->with('createdBy:id,name')
+            ->whereIn('user_id', $people->map->getKey()->all())->whereNull('set_to')->whereNotNull('used_on')
+            ->orderBy('used_on')->get()->groupBy('user_id');
+
         // Every change to Used, newest first, for the history under the row.
         $changes = PtoUsed::query()->with('createdBy:id,name')
             ->whereIn('user_id', $people->map->getKey()->all())->whereNotNull('set_to')
@@ -894,13 +1040,14 @@ class HrPeopleController extends Controller
             // the whole screen. The settings are organization-scoped, so it can
             // never be one person's state beside somebody else's.
             // Read off one person's answer rather than the settings
-            // directly: these six are organization-scoped, so every row carries
+            // directly: these are organization-scoped, so every row carries
             // the same ones, and one reader means the units cannot disagree
             // with the dates computed from them.
             'policy' => collect($policy->for($actor))
                 ->only([
                     'enabled', 'allowance', 'allowance_period',
                     'waiting', 'waiting_unit', 'carry_over', 'reset',
+                    'accrue_after', 'accrue_after_unit',
                 ])
                 ->all(),
 
@@ -908,7 +1055,7 @@ class HrPeopleController extends Controller
             // instead of the client guessing from a name.
             'me' => $actor->getKey(),
 
-            'data' => $people->map(function (User $person) use ($policy, $actor, $changes) {
+            'data' => $people->map(function (User $person) use ($policy, $actor, $changes, $days) {
                 $answer = $policy->for($person);
 
                 return [
@@ -920,10 +1067,21 @@ class HrPeopleController extends Controller
                     'used' => $answer['used'],
                     'left' => $answer['left'],
                     'carried' => $answer['carried'],
+                    'expired' => $answer['expired'],
+                    'would_expire' => $answer['would_expire'],
+                    'resets' => $answer['resets'],
+                    'earned' => $answer['earned'],
+                    'period_start' => $answer['window_from'],
+                    'role' => $person->role === null ? null : ['id' => $person->role->getKey(), 'name' => $person->role->name],
+                    // The dated days off in this period (Jose, 2026-10-22).
+                    'days_off' => $days->get($person->getKey(), collect())
+                        ->filter(fn ($d) => $answer['window_from'] === null || $d->used_on->toDateString() >= $answer['window_from'])
+                        ->map(fn ($d) => ['id' => $d->id, 'date' => $d->used_on->toDateString(), 'portion' => (float) $d->days,
+                            'reason' => $d->note, 'by_name' => $d->createdBy?->name, 'at' => $d->created_at?->toIso8601String()])
+                        ->values(),
                     'resets_on' => $answer['resets_on'],
                     'can_edit_used' => $actor->can('editPtoUsed', $person),
                     'used_changes' => $changes->get($person->getKey(), collect())->values(),
-                    'role' => $person->role?->name,
                     'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],

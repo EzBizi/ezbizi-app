@@ -72,6 +72,29 @@ class _OwnershipTabState extends State<OwnershipTab> {
 
   Timer? _refresh;
 
+  String _query = '';
+
+  /// The rows the search keeps: case-insensitive over the text a row shows.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return [
+      for (final r in _rows)
+        if ([
+          _name(r),
+          r['role'],
+          r['desk'],
+          r['computer_name'],
+          r['work_days'],
+          r['shift'],
+          r['assignment'],
+          r['office'],
+          r['online'] == true ? 'Online' : 'Offline',
+        ].any((v) => (v?.toString() ?? '').toLowerCase().contains(q)))
+          r,
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -140,15 +163,55 @@ class _OwnershipTabState extends State<OwnershipTab> {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             )
-          // Below ~600 a table of eight columns is cut off at the right edge
-          // of a phone — the UI/UX Android audit, 2026-09-28. There it is a
-          // list: a name line and a detail line, the shape a phone reads.
-          : LayoutBuilder(
-              key: const ValueKey('tour-monitoring-ownership'),
-              builder: (context, constraints) =>
-                  constraints.maxWidth < OwnershipTab.narrowBelow
-                  ? _list(context)
-                  : _table(context),
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    // As tall as the buttons beside it (Jose, 2026-10-20).
+                    child: SizedBox(
+                      width: 240,
+                      height: 40,
+                      child: TextField(
+                        key: const Key('ownership-search'),
+                        textAlignVertical: TextAlignVertical.center,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                          prefixIconConstraints: BoxConstraints(minWidth: 36),
+                          prefixIcon: Icon(Icons.search, size: 18),
+                          hintText: 'Find a person',
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (v) => setState(() => _query = v),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _shown.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'No people match "${_query.trim()}".',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        )
+                      // Below ~600 a table of eight columns is cut off at the
+                      // right edge of a phone — the UI/UX Android audit,
+                      // 2026-09-28. There it is a list: a name line and a
+                      // detail line, the shape a phone reads.
+                      : LayoutBuilder(
+                          key: const ValueKey('tour-monitoring-ownership'),
+                          builder: (context, constraints) =>
+                              constraints.maxWidth < OwnershipTab.narrowBelow
+                              ? _list(context)
+                              : _table(context),
+                        ),
+                ),
+              ],
             ),
     );
   }
@@ -188,7 +251,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
                 const DataColumn(label: Text('Office')),
               ],
               rows: [
-                for (final row in _rows)
+                for (final row in _shown)
                   DataRow(
                     cells: [
                       DataCell(Text(_name(row))),
@@ -248,12 +311,14 @@ class _OwnershipTabState extends State<OwnershipTab> {
       return t == null || t.isEmpty ? null : t;
     }
 
+    final shown = _shown;
+
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _rows.length,
+      itemCount: shown.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
-        final row = _rows[i];
+        final row = shown[i];
         final hours = showHours
             ? [text(row['work_days']), text(row['shift'])].nonNulls.join(', ')
             : '';

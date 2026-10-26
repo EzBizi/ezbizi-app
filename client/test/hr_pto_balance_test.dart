@@ -62,9 +62,8 @@ void main() {
     expect(find.text('7 left'), findsNothing);
   });
 
-  testWidgets('the panel: three tiles, carried in the Total, and the bar', (
-    tester,
-  ) async {
+  testWidgets('the panel: four tiles, carried in the Total, and the period '
+      'bar', (tester) async {
     await _pump(tester, _body(), width: 1200);
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
@@ -77,7 +76,7 @@ void main() {
     expect(
       find.descendant(
         of: total,
-        matching: find.text('10 this year + 2 carried'),
+        matching: find.text('10 this period + 2 carried'),
       ),
       findsOneWidget,
     );
@@ -96,26 +95,21 @@ void main() {
       findsOneWidget,
     );
 
-    // Three EQUAL tiles.
+    // Four EQUAL tiles.
     final widths = [
-      for (final k in ['total', 'used', 'left'])
+      for (final k in ['total', 'used', 'left', 'expired'])
         tester.getSize(find.byKey(Key('pto-tile-$k'))).width,
     ];
     expect(widths.toSet(), hasLength(1));
 
-    final bar = tester.widget<LinearProgressIndicator>(
-      find.byKey(const Key('pto-used-bar')),
-    );
-    expect(bar.value, closeTo(5 / 12, 1e-9));
+    expect(find.byKey(const Key('pto-period-bar')), findsOneWidget);
 
     expect(find.text('Can use now'), findsOneWidget);
     expect(find.text('Started ${_fmt(_inDays(-900))}'), findsOneWidget);
 
-    expect(find.text('Changes to Used'), findsOneWidget);
+    expect(find.text('Total corrected 3 → 5'), findsOneWidget);
     expect(
-      find.text(
-        '${_fmt(_inDays(-19))} · Pat Lin · 3 → 5 · “Two sick days, Sep 29–30”',
-      ),
+      find.text('Pat Lin · ${_fmt(_inDays(-19))} · “Two sick days, Sep 29–30”'),
       findsOneWidget,
     );
 
@@ -132,7 +126,7 @@ void main() {
 
     // Pat's own panel is open: total 12, nothing carried.
     expect(find.textContaining('carried'), findsNothing);
-    expect(find.text('Changes to Used'), findsNothing);
+    expect(find.byKey(const Key('pto-event-correction')), findsNothing);
   });
 
   testWidgets('the reset line: the date, the anniversary, and how far away', (
@@ -143,8 +137,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(173))}, their work anniversary · 173 days away',
+      find.text('Resets ${_fmt(_inDays(173))}, their work anniversary'),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pto-ring')),
+        matching: find.text('173'),
       ),
       findsOneWidget,
     );
@@ -165,9 +164,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(173))}, every January 1 · 173 days away',
-      ),
+      find.text('Resets ${_fmt(_inDays(173))}, every January 1'),
       findsOneWidget,
     );
     expect(find.textContaining('work anniversary'), findsNothing);
@@ -180,10 +177,7 @@ void main() {
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(173))}, at the start of each quarter · '
-        '173 days away',
-      ),
+      find.text('Resets ${_fmt(_inDays(173))}, at the start of each quarter'),
       findsOneWidget,
     );
   });
@@ -200,9 +194,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(173))}, every January 1 · 173 days away',
-      ),
+      find.text('Resets ${_fmt(_inDays(173))}, every January 1'),
       findsOneWidget,
     );
   });
@@ -222,6 +214,31 @@ void main() {
     expect(find.textContaining('carried'), findsNothing);
   });
 
+  testWidgets('a wait before earning is said in the policy line', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _body(
+        policy: {
+          'allowance_period': 'quarter',
+          'carry_over': false,
+          'accrue_after': 3,
+          'accrue_after_unit': 'month',
+        },
+      ),
+      width: 1200,
+    );
+
+    expect(
+      find.text(
+        'Earns 10 days a quarter · starts accumulating 3 months after starting · '
+        'usable from 90 days after starting',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a quarterly policy says a quarter', (tester) async {
     await _pump(
       tester,
@@ -235,33 +252,31 @@ void main() {
     );
   });
 
-  testWidgets('Change is only on the Used tile when can_edit_used is true', (
+  testWidgets('Record days off is only there when can_edit_used is true', (
     tester,
   ) async {
     await _pump(tester, _body(), width: 1200);
 
     // Pat's own panel: the server did not say Pat may edit it.
     expect(find.byKey(const Key('pto-tile-used')), findsOneWidget);
-    expect(find.byKey(const Key('pto-change-used')), findsNothing);
-    expect(find.text('Change'), findsNothing);
+    expect(find.byKey(const Key('pto-record-days')), findsNothing);
+    expect(find.text('Record days off'), findsNothing);
 
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('pto-change-used')), findsOneWidget);
+    expect(find.byKey(const Key('pto-record-days')), findsOneWidget);
   });
 
-  testWidgets('Change opens a side panel, needs a reason, and PUTs both', (
-    tester,
-  ) async {
+  testWidgets('Correct the total instead opens inline, needs a reason, and '
+      'PUTs both', (tester) async {
     final requests = <http.Request>[];
     await _pump(tester, _body(), width: 1200, requests: requests);
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('pto-change-used')));
-    await tester.pumpAndSettle();
+    await _openCorrect(tester);
 
-    expect(find.text('Change Used'), findsOneWidget);
+    expect(find.text('Correct the total used'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(AlertDialog), findsNothing);
 
@@ -289,7 +304,7 @@ void main() {
 
     // Closed, and the tiles take the server's answer without reading the
     // list again.
-    expect(find.text('Change Used'), findsNothing);
+    expect(find.text('Correct the total used'), findsNothing);
     expect(
       requests.where(
         (r) => r.method == 'GET' && r.url.path.endsWith('/hr/pto'),
@@ -312,9 +327,7 @@ void main() {
     );
     expect(find.text('6 left'), findsOneWidget, reason: 'The row too.');
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(170))}, their work anniversary · 170 days away',
-      ),
+      find.text('Resets ${_fmt(_inDays(170))}, their work anniversary'),
       findsOneWidget,
     );
   });
@@ -335,8 +348,7 @@ void main() {
     );
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('pto-change-used')));
-    await tester.pumpAndSettle();
+    await _openCorrect(tester);
 
     await tester.enterText(find.byKey(const Key('pto-used-number')), '40');
     await tester.enterText(find.byKey(const Key('pto-used-reason')), 'Typo');
@@ -344,7 +356,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Used cannot be more than the total.'), findsOneWidget);
-    expect(find.text('Change Used'), findsOneWidget, reason: 'Still open.');
+    expect(
+      find.text('Correct the total used'),
+      findsOneWidget,
+      reason: 'Still open.',
+    );
   });
 
   testWidgets('a 403 shows the server’s sentence too', (tester) async {
@@ -358,8 +374,7 @@ void main() {
     );
     await tester.tap(find.text('Dana Reyes'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('pto-change-used')));
-    await tester.pumpAndSettle();
+    await _openCorrect(tester);
 
     await tester.enterText(find.byKey(const Key('pto-used-number')), '6');
     await tester.enterText(find.byKey(const Key('pto-used-reason')), 'Fix');
@@ -370,7 +385,11 @@ void main() {
       find.text('You cannot change paid time off for this person.'),
       findsOneWidget,
     );
-    expect(find.text('Change Used'), findsOneWidget, reason: 'Still open.');
+    expect(
+      find.text('Correct the total used'),
+      findsOneWidget,
+      reason: 'Still open.',
+    );
   });
 
   testWidgets('phone at 390×844: your tiles first, everyone below, a person '
@@ -381,10 +400,7 @@ void main() {
     expect(find.text('You'), findsOneWidget);
     expect(find.byKey(const Key('pto-tile-total')), findsOneWidget);
     expect(
-      find.text(
-        'Resets ${_fmt(_inDays(80))}, your work anniversary · '
-        '80 days away',
-      ),
+      find.text('Resets ${_fmt(_inDays(80))}, your work anniversary'),
       findsOneWidget,
     );
     expect(
@@ -404,8 +420,8 @@ void main() {
 
     expect(find.byKey(const Key('pto-phone-person')), findsOneWidget);
     expect(find.text('Everyone you can see'), findsNothing);
-    expect(find.text('10 this year + 2 carried'), findsOneWidget);
-    expect(find.byKey(const Key('pto-change-used')), findsOneWidget);
+    expect(find.text('10 this period + 2 carried'), findsOneWidget);
+    expect(find.byKey(const Key('pto-record-days')), findsOneWidget);
     expect(tester.takeException(), isNull);
     expect(
       find.byType(Navigator).evaluate().length,
@@ -419,6 +435,85 @@ void main() {
     expect(find.text('You'), findsOneWidget);
   });
 
+  testWidgets('Expired: always a fourth equal tile, and "· N expired" on the '
+      'row only when days were lost', (tester) async {
+    await _pump(tester, _expiredBody(me: 0), width: 1200);
+
+    // Sam lost 3; Pat's is 0 (carry-over on) and Dana's is null.
+    expect(find.text('0 left · 3 expired'), findsOneWidget);
+    expect(find.text('12 left'), findsOneWidget);
+    expect(find.text('7 left'), findsOneWidget);
+    expect(find.textContaining('expired'), findsOneWidget);
+
+    // Pat's own panel: 0 is no loss, drawn as a muted 0.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pto-tile-expired')),
+        matching: find.text('0'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Dana Reyes'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('pto-tile-expired')),
+        matching: find.text('—'),
+      ),
+      findsOneWidget,
+      reason: 'null is no start date, not a loss: a dash, and still a tile.',
+    );
+
+    await tester.tap(find.text('Sam Ortiz'));
+    await tester.pumpAndSettle();
+    final tile = find.byKey(const Key('pto-tile-expired'));
+    expect(
+      find.descendant(of: tile, matching: find.text('Expired')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: tile, matching: find.text('3')), findsOneWidget);
+    expect(
+      find.descendant(of: tile, matching: find.text('lost at past resets')),
+      findsOneWidget,
+    );
+
+    // Same row, same size as the other three.
+    final widths = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getSize(find.byKey(Key('pto-tile-$k'))).width,
+    };
+    expect(widths, hasLength(1));
+    final tops = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getTopLeft(find.byKey(Key('pto-tile-$k'))).dy,
+    };
+    expect(tops, hasLength(1));
+  });
+
+  testWidgets('Expired on the phone: four tiles fit at 390×844 and the row '
+      'says it', (tester) async {
+    await _pump(tester, _expiredBody(me: 2), width: 390, height: 844);
+    expect(tester.takeException(), isNull);
+
+    expect(find.byKey(const Key('pto-tile-expired')), findsOneWidget);
+    final widths = {
+      for (final k in ['total', 'used', 'left', 'expired'])
+        tester.getSize(find.byKey(Key('pto-tile-$k'))).width,
+    };
+    expect(widths, hasLength(1));
+
+    await tester.scrollUntilVisible(find.text('0 left · 3 expired'), 200);
+    expect(find.text('0 left · 3 expired'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('Dana Reyes'));
+    await tester.tap(find.text('Dana Reyes'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pto-tile-expired')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('without the new fields the screen draws what it drew before', (
     tester,
   ) async {
@@ -427,7 +522,7 @@ void main() {
     expect(find.byKey(const Key('pto-tile-total')), findsNothing);
     expect(find.byKey(const Key('pto-resets')), findsNothing);
     expect(find.textContaining('left'), findsNothing);
-    expect(find.text('Change'), findsNothing);
+    expect(find.text('Record days off'), findsNothing);
 
     // The allowance headline and the when box, as before.
     expect(
@@ -435,7 +530,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('6 days a year'), findsWidgets);
-    expect(find.text('When you can use them'), findsOneWidget);
+    expect(find.text('When they can be used'), findsOneWidget);
     expect(find.text('Start date unknown'), findsOneWidget);
 
     await _pump(tester, _legacyBody(), width: 390, height: 844);
@@ -444,6 +539,15 @@ void main() {
     expect(find.byKey(const Key('pto-tile-total')), findsNothing);
     expect(find.text('Everyone you can see'), findsOneWidget);
   });
+}
+
+/// Record days off, then the link to the old number form.
+Future<void> _openCorrect(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('pto-record-days')));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(const Key('pto-correct-total')));
+  await tester.tap(find.byKey(const Key('pto-correct-total')));
+  await tester.pumpAndSettle();
 }
 
 DateTime _inDays(int days) {
@@ -607,6 +711,29 @@ Map<String, dynamic> _body({Map<String, dynamic> policy = const {}}) => {
     },
   ],
 };
+
+/// [_body] with HR's `expired` (80655a5da): Sam lost 3 days, Pat [me],
+/// Dana null.
+Map<String, dynamic> _expiredBody({required num me}) {
+  final body = _body(policy: {'carry_over': false});
+  // Copied, because the literals in [_body] are typed to hold no null.
+  final rows = [
+    for (final row in body['data'] as List)
+      Map<String, dynamic>.from(row as Map),
+  ];
+  body['data'] = rows;
+  for (final person in rows) {
+    switch (person['name']) {
+      case 'Sam Ortiz':
+        person['expired'] = 3;
+      case 'Pat Lin':
+        person['expired'] = me;
+      case 'Dana Reyes':
+        person['expired'] = null;
+    }
+  }
+  return body;
+}
 
 /// Exactly the fields `HrPeopleController::pto` sends today.
 Map<String, dynamic> _legacyBody() => {

@@ -214,9 +214,16 @@ class StaffController extends Controller
      */
     public function impersonations(Request $request): JsonResponse
     {
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
         $sessions = StaffImpersonation::with(['staff:id,name,email', 'organization:id,name'])
             ->when($request->query('organization_id'), fn ($q, $id) => $q->where('organization_id', $id))
             ->when($request->boolean('active'), fn ($q) => $q->whereNull('ended_at')->where('expires_at', '>', now()))
+            // Which client, who went in, and why.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('reason', 'like', $like)
+                ->orWhereHas('organization', fn ($o) => $o->where('name', 'like', $like))
+                ->orWhereHas('staff', fn ($s) => $s->where('name', 'like', $like)->orWhere('email', 'like', $like))))
             ->latest('started_at')
             ->limit(200)
             ->get()

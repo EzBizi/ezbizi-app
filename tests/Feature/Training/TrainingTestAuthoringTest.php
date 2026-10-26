@@ -620,4 +620,20 @@ class TrainingTestAuthoringTest extends TestCase
             ->getJson('/api/v1/training/tests')
             ->assertOk();
     }
+
+    /** The search bar: `q` narrows by title; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], function () {
+            foreach (['Ladder Safety Test', 'Booking Test'] as $title) {
+                TrainingTest::create(['title' => $title, 'status' => TrainingTest::PUBLISHED, 'questions' => [], 'pass_mark' => 80]);
+            }
+        });
+        $as = $this->signedInAs($tenant['admin']);
+
+        $as->getJson('/api/v1/training/tests?q=ladder')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'Ladder Safety Test');
+        $as->getJson('/api/v1/training/tests?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/training/tests')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

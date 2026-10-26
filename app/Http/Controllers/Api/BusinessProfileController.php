@@ -47,20 +47,7 @@ class BusinessProfileController extends Controller
             ->with(['company:id,name', 'franchise:id,name'])
             ->orderBy('title');
 
-        if (! $user->canActOnOrganization($user->organization)) {
-            $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-            $companyIds   = $user->reachableCompanies()->pluck('id')->all();
-
-            $query->where(function ($q) use ($companyIds, $franchiseIds) {
-                $q->whereIn('company_id', $companyIds)
-                    ->orWhereIn('franchise_id', $franchiseIds)
-                    // An organization-wide listing belongs to everybody who can
-                    // see this tab. Filtering on the two columns alone would
-                    // hide every listing connected at the top — which, for a
-                    // single-company tenant, is all of them.
-                    ->orWhere(fn ($w) => $w->whereNull('company_id')->whereNull('franchise_id'));
-            });
-        }
+        \App\Support\CustomerExperience\Places::scope($query, $user);
 
         // The filter somebody actually wants: what is Google NOT showing.
         if ($request->query('live') === 'no') {
@@ -134,6 +121,9 @@ class BusinessProfileController extends Controller
             $this->audit->logChange('business_location.franchise_set', $location);
 
             $location->save();
+
+            // Its reviews, and their complaints, sit where the listing sits (2026-10-22).
+            \App\Support\CustomerExperience\Places::fileReviewsOf($location);
 
             // Raised, not merely audited. Somebody deciding which branch answers
             // for a shop front is exactly the kind of deliberate act a rule

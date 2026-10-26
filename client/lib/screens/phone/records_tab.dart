@@ -106,6 +106,10 @@ class _RecordsTabState extends State<RecordsTab> {
 
   late RecordsFilter _filter = widget.initialFilter;
 
+  /// What is typed in the search box. Filtered here: /phone/calls (no
+  /// per_page) and /phone/messages return every row, so nothing is unloaded.
+  String _query = '';
+
   /// The tile picked, null for all. Its keys depend on the view: an [_Outcome]
   /// name or `untagged` for calls, `waiting`/`answered`/`today` for texts.
   String? _tile;
@@ -150,20 +154,37 @@ class _RecordsTabState extends State<RecordsTab> {
       case RecordsFilter.calls:
         return [
           for (final call in _calls)
-            if (_callMatches(call, _tile)) call,
+            if (_callMatches(call, _tile) && _callHit(call)) call,
         ];
       case RecordsFilter.voicemail:
         return [
           for (final call in _calls)
-            if (call.voicemail) call,
+            if (call.voicemail && _callHit(call)) call,
         ];
       case RecordsFilter.sms:
         return [
           for (final thread in _threads)
-            if (_threadMatches(thread, _tile)) thread,
+            if (_threadMatches(thread, _tile) && _threadHit(thread)) thread,
         ];
     }
   }
+
+  bool _callHit(_Call call) => _searchHit(_query, [
+    call.customerName,
+    call.peerName,
+    call.answeredByName,
+    call.fromE164,
+    call.toE164,
+    _labels[call.numberId],
+    call.tag,
+    call.voicemailTranscript,
+  ]);
+
+  bool _threadHit(_Thread thread) => _searchHit(_query, [
+    thread.peer,
+    thread.name,
+    for (final message in thread.messages) message.body,
+  ]);
 
   bool _callMatches(_Call call, String? tile) {
     if (tile == null) return true;
@@ -418,34 +439,18 @@ class _RecordsTabState extends State<RecordsTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        // The whole row goes, not each chip: a sub-tab that IS the filter must
-        // not also offer a way to switch away from itself.
-        if (widget.showFilters)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Wrap(
-              key: const ValueKey('tour-phone-records-filter'),
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ChoiceChip(
-                  label: const Text('Calls'),
-                  selected: _filter == RecordsFilter.calls,
-                  onSelected: (_) => _setFilter(RecordsFilter.calls),
-                ),
-                ChoiceChip(
-                  label: const Text('Voicemail'),
-                  selected: _filter == RecordsFilter.voicemail,
-                  onSelected: (_) => _setFilter(RecordsFilter.voicemail),
-                ),
-                ChoiceChip(
-                  label: const Text('SMS'),
-                  selected: _filter == RecordsFilter.sms,
-                  onSelected: (_) => _setFilter(RecordsFilter.sms),
-                ),
-              ],
-            ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (widget.showFilters) _filterChips(),
+              _searchField(),
+            ],
           ),
+        ),
         if (_filter == RecordsFilter.calls) ...[
           _callTiles(),
           const SizedBox(height: 12),
@@ -458,7 +463,9 @@ class _RecordsTabState extends State<RecordsTab> {
           Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
-              'Nothing matches that filter.',
+              _query.trim().isNotEmpty
+                  ? 'Nothing matches "${_query.trim()}".'
+                  : 'Nothing matches that filter.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium,
             ),
@@ -470,6 +477,57 @@ class _RecordsTabState extends State<RecordsTab> {
       ],
     );
   }
+
+  // The chip row goes whole, not each chip: a sub-tab that IS the filter
+  // must not also offer a way to switch away from itself.
+  Widget _filterChips() => Wrap(
+    key: const ValueKey('tour-phone-records-filter'),
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      ChoiceChip(
+        label: const Text('Calls'),
+        selected: _filter == RecordsFilter.calls,
+        onSelected: (_) => _setFilter(RecordsFilter.calls),
+      ),
+      ChoiceChip(
+        label: const Text('Voicemail'),
+        selected: _filter == RecordsFilter.voicemail,
+        onSelected: (_) => _setFilter(RecordsFilter.voicemail),
+      ),
+      ChoiceChip(
+        label: const Text('SMS'),
+        selected: _filter == RecordsFilter.sms,
+        onSelected: (_) => _setFilter(RecordsFilter.sms),
+      ),
+    ],
+  );
+
+  /// One box for all three views, keyed per view so a test (and the tour) can
+  /// tell which list it searches. 40 high: the height of the chips' row.
+  Widget _searchField() => SizedBox(
+    width: 280,
+    height: 40,
+    child: TextField(
+      key: ValueKey(switch (_filter) {
+        RecordsFilter.calls => 'comm-records-calls-search',
+        RecordsFilter.voicemail => 'comm-records-voicemail-search',
+        RecordsFilter.sms => 'comm-records-messages-search',
+      }),
+      onChanged: (value) => setState(() => _query = value),
+      textAlignVertical: TextAlignVertical.center,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: _filter == RecordsFilter.sms
+            ? 'Search name, number or text'
+            : 'Search name, number or tag',
+        prefixIcon: const Icon(Icons.search, size: 18),
+        prefixIconConstraints: const BoxConstraints(minWidth: 36),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        border: const OutlineInputBorder(),
+      ),
+    ),
+  );
 
   void _pickTile(String? key) {
     _player.stop();
@@ -1246,4 +1304,23 @@ class _Message {
     customerName: json['customer_name'] as String?,
     peerName: json['peer_name'] as String?,
   );
+}
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

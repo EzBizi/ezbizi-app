@@ -4,20 +4,34 @@ namespace Tests\Feature\Api;
 
 use App\Models\Attachment;
 use App\Models\AuditEvent;
+use App\Models\Company;
 use App\Models\ContractSignature;
+use App\Models\Customer;
 use App\Models\EmploymentEvent;
+use App\Models\Franchise;
+use App\Models\HeldEquipment;
 use App\Models\Invitation;
+use App\Models\Job;
 use App\Models\Onboarding;
 use App\Models\OnboardingAnswer;
 use App\Models\OnboardingDocument;
+use App\Models\PayRate;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\InvitationLink;
+use App\Notifications\PaperworkReadyToFinish;
+use App\Services\Hr\OnboardingDocuments;
 use App\Support\Contracts\DocumentFingerprint;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Privacy\SensitiveValues;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
@@ -108,7 +122,7 @@ class HrOnboardingTest extends TestCase
         $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", [
             'answers' => [
                 'emergency_contact' => 'Ana, 600 111 222',   // theirs
-                'wage'              => '99.00',              // not theirs
+                'wage' => '99.00',              // not theirs
             ],
         ])->assertStatus(422)->assertJsonValidationErrors('answers.wage');
 
@@ -345,8 +359,8 @@ class HrOnboardingTest extends TestCase
 
         $upload = $this->as($employee)->postJson('/api/v1/attachments', [
             'attachable_type' => 'onboardings',
-            'attachable_id'   => $id,
-            'file'            => UploadedFile::fake()->createWithContent('licence.pdf', "%PDF-1.4\n%%EOF\n"),
+            'attachable_id' => $id,
+            'file' => UploadedFile::fake()->createWithContent('licence.pdf', "%PDF-1.4\n%%EOF\n"),
         ])->assertCreated();
 
         $attachmentId = $upload->json('data.id');
@@ -365,8 +379,8 @@ class HrOnboardingTest extends TestCase
         // not cite a document its own authorization does not cover.
         $other = $this->as($alpha['admin'])->postJson('/api/v1/attachments', [
             'attachable_type' => 'jobs',
-            'attachable_id'   => $this->aJob($alpha),
-            'file'            => UploadedFile::fake()->createWithContent('other.pdf', "%PDF-1.4\n%%EOF\n"),
+            'attachable_id' => $this->aJob($alpha),
+            'file' => UploadedFile::fake()->createWithContent('other.pdf', "%PDF-1.4\n%%EOF\n"),
         ])->assertCreated()->json('data.id');
 
         $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", [
@@ -388,9 +402,9 @@ class HrOnboardingTest extends TestCase
         $hash = $this->documentHash($alpha['admin'], $id);
 
         $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => 'employer_sign',
-            'affirmation'   => 'Alpha Admin',
-            'consent'       => true,
+            'field_key' => 'employer_sign',
+            'affirmation' => 'Alpha Admin',
+            'consent' => true,
             'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertStatus(422)->assertJsonValidationErrors('answers');
@@ -432,7 +446,7 @@ class HrOnboardingTest extends TestCase
 
         // The bytes on the disk, read past the application entirely.
         $attachment = $this->inTenant($alpha['org'], fn () => Attachment::findOrFail($document->attachment_id));
-        $stored     = Storage::disk($attachment->disk)->get($attachment->path);
+        $stored = Storage::disk($attachment->disk)->get($attachment->path);
 
         $this->assertSame(DocumentFingerprint::of($stored), $document->content_hash);
         $this->assertSame($document->content_hash, $signature->content_hash);
@@ -510,8 +524,7 @@ class HrOnboardingTest extends TestCase
             ['key' => 'employee_sign', 'label' => 'Your signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
         ]);
         $this->inTenant($alpha['org'], function () use ($id) {
-            DB::table('contract_versions')->where('id', Onboarding::findOrFail($id)->contract_version_id)->update(['body' =>
-                "Pay: {{hourly_rate}} an hour.\n\n{{#raise_amount}}Scheduled increases: {{raise_amount}}.{{/raise_amount}}\n\n"
+            DB::table('contract_versions')->where('id', Onboarding::findOrFail($id)->contract_version_id)->update(['body' => "Pay: {{hourly_rate}} an hour.\n\n{{#raise_amount}}Scheduled increases: {{raise_amount}}.{{/raise_amount}}\n\n"
                 ."Deduction: {{daily_deduction}} a day.\n\n(f) Absences\n\nAbsence costs {{daily_deduction}}.\n\n5. TERMINATION\n\nThe end."]);
         });
 
@@ -764,7 +777,7 @@ class HrOnboardingTest extends TestCase
             ->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->as($alpha['admin'])->postJson($section2, ['values' => ['a_title' => 'U.S. Passport', 'title' => 'Manager'], 'drawing' => $png])
             ->assertOk()->assertJsonPath('data.i9.section2', true);
-        $this->assertSame(\App\Services\Hr\OnboardingDocuments::I9_COMPLETE, $name('i9_form'));
+        $this->assertSame(OnboardingDocuments::I9_COMPLETE, $name('i9_form'));
 
         // A contractor (W-9) has no I-9 to sign.
         $this->as($employee)->patchJson("/api/v1/hr/onboardings/{$id}", ['answers' => ['tax_id_type' => 'EIN']])->assertOk();
@@ -824,7 +837,7 @@ class HrOnboardingTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $role = $this->roleFor($alpha);
         $contract = $this->aContract($alpha);
-        $company = $this->inTenant($alpha['org'], fn () => \App\Models\Company::create([
+        $company = $this->inTenant($alpha['org'], fn () => Company::create([
             'organization_id' => $alpha['org']->id, 'name' => 'A-1 Chimney', 'is_active' => true,
             'address_line1' => '9 Flue Rd', 'city' => 'Miami', 'state' => 'FL', 'postal_code' => '33101',
         ]));
@@ -890,7 +903,7 @@ class HrOnboardingTest extends TestCase
      */
     public function test_the_employer_signs_first_and_the_employee_is_sent_their_half(): void
     {
-        \Illuminate\Support\Facades\Notification::fake();
+        Notification::fake();
         [$alpha, $employee, $id] = $this->scenario();
 
         $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
@@ -899,7 +912,7 @@ class HrOnboardingTest extends TestCase
 
         // The employee's question is still empty, and the employer can sign.
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin')->assertCreated();
-        \Illuminate\Support\Facades\Notification::assertSentTo($employee, \App\Notifications\PaperworkReadyToFinish::class);
+        Notification::assertSentTo($employee, PaperworkReadyToFinish::class);
 
         // What the employer signed is fixed; the employee's half is not.
         $this->as($alpha['admin'])->patchJson("/api/v1/hr/onboardings/{$id}", [
@@ -952,7 +965,7 @@ class HrOnboardingTest extends TestCase
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
 
         // Nothing moves while it is only half signed.
-        $this->assertFalse($this->inTenant($alpha['org'], fn () => \App\Models\PayRate::where('user_id', $employee->id)->exists()));
+        $this->assertFalse($this->inTenant($alpha['org'], fn () => PayRate::where('user_id', $employee->id)->exists()));
 
         $this->signAs($employee, $id, 'employee_sign', 'Marta Ruiz');
 
@@ -961,11 +974,11 @@ class HrOnboardingTest extends TestCase
                 ->where('kind', EmploymentEvent::STARTED)->orderBy('occurred_on')->first()->occurred_on->toDateString(),
                 'The start date stayed the day they accepted.');
 
-            $rate = \App\Models\PayRate::where('user_id', $employee->id)->sole();
+            $rate = PayRate::where('user_id', $employee->id)->sole();
             $this->assertSame(['hourly', '18.50', 'hour'], [$rate->basis, (string) $rate->amount, $rate->period]);
 
             $this->assertEquals(['start' => '08:00', 'end' => '17:00'], $employee->fresh()->work_schedule['days']['monday']);
-            $this->assertSame('Hammer', \App\Models\HeldEquipment::where('user_id', $employee->id)->sole()->name);
+            $this->assertSame('Hammer', HeldEquipment::where('user_id', $employee->id)->sole()->name);
         });
     }
 
@@ -982,9 +995,9 @@ class HrOnboardingTest extends TestCase
         [$alpha, $employee, $id] = $this->completeForm();
 
         $this->as($alpha['admin'])->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => 'employer_sign',
-            'affirmation'   => 'Alpha Admin',
-            'consent'       => true,
+            'field_key' => 'employer_sign',
+            'affirmation' => 'Alpha Admin',
+            'consent' => true,
             'drawing' => self::SIGNATURE_PNG,
             'document_hash' => DocumentFingerprint::of('a document nobody rendered'),
         ])->assertStatus(422)->assertJsonValidationErrors('document_hash');
@@ -1000,18 +1013,18 @@ class HrOnboardingTest extends TestCase
         $hash = $this->documentHash($employee, $id);
 
         $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => 'employer_sign',
-            'affirmation'   => 'Marta Ruiz',
-            'consent'       => true,
+            'field_key' => 'employer_sign',
+            'affirmation' => 'Marta Ruiz',
+            'consent' => true,
             'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $hash,
         ])->assertStatus(422)->assertJsonValidationErrors('field_key');
 
         // And consent is not optional, because it is a separate agreement.
         $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => 'employee_sign',
-            'affirmation'   => 'Marta Ruiz',
-            'consent'       => false,
+            'field_key' => 'employee_sign',
+            'affirmation' => 'Marta Ruiz',
+            'consent' => false,
             'document_hash' => $hash,
         ])->assertStatus(422)->assertJsonValidationErrors('consent');
     }
@@ -1050,7 +1063,7 @@ class HrOnboardingTest extends TestCase
 
         $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/amendments", [
             'answers' => ['iban' => self::IBAN],
-            'reason'  => 'The first two digits of the account number were transposed.',
+            'reason' => 'The first two digits of the account number were transposed.',
         ])->assertCreated()
             ->assertJsonPath('document.revision', 2)
             ->assertJsonPath('document.changed_keys', ['iban'])
@@ -1110,8 +1123,8 @@ class HrOnboardingTest extends TestCase
 
         $answerFile = $this->as($employee)->postJson('/api/v1/attachments', [
             'attachable_type' => 'onboardings',
-            'attachable_id'   => $id,
-            'file'            => UploadedFile::fake()->createWithContent('licence.pdf', "%PDF-1.4\n%%EOF\n"),
+            'attachable_id' => $id,
+            'file' => UploadedFile::fake()->createWithContent('licence.pdf', "%PDF-1.4\n%%EOF\n"),
         ])->assertCreated()->json('data.id');
 
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Alpha Admin');
@@ -1148,7 +1161,7 @@ class HrOnboardingTest extends TestCase
 
         $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/amendments", [
             'answers' => ['iban' => self::IBAN],
-            'reason'  => 'No change at all, just checking.',
+            'reason' => 'No change at all, just checking.',
         ])->assertStatus(422)->assertJsonValidationErrors('answers');
     }
 
@@ -1159,7 +1172,7 @@ class HrOnboardingTest extends TestCase
 
         $this->as($employee)->postJson("/api/v1/hr/onboardings/{$id}/amendments", [
             'answers' => ['iban' => 'ES11 1111 1111 1111 1111 1111'],
-            'reason'  => 'Correcting the account number before anybody signs.',
+            'reason' => 'Correcting the account number before anybody signs.',
         ])->assertStatus(422)->assertJsonValidationErrors('answers');
     }
 
@@ -1182,34 +1195,34 @@ class HrOnboardingTest extends TestCase
 
         $sound = [
             'contract_version_id' => $version,
-            'field_key'           => 'employee_sign',
-            'subject_user_id'     => $subject,
-            'signer_user_id'      => $subject,
-            'signer_label'        => 'Alpha Admin <alpha@example.test>',
-            'signer_party'        => 'employee',
-            'content_hash'        => DocumentFingerprint::of('x'),
-            'hash_algorithm'      => DocumentFingerprint::ALGORITHM,
-            'content_length'      => 1,
-            'consent_statement'   => 'I agree to sign electronically.',
-            'consented_at'        => now(),
-            'intent_statement'    => 'I am signing this contract.',
-            'affirmation'         => 'Alpha Admin',
-            'signed_at'           => now(),
+            'field_key' => 'employee_sign',
+            'subject_user_id' => $subject,
+            'signer_user_id' => $subject,
+            'signer_label' => 'Alpha Admin <alpha@example.test>',
+            'signer_party' => 'employee',
+            'content_hash' => DocumentFingerprint::of('x'),
+            'hash_algorithm' => DocumentFingerprint::ALGORITHM,
+            'content_length' => 1,
+            'consent_statement' => 'I agree to sign electronically.',
+            'consented_at' => now(),
+            'intent_statement' => 'I am signing this contract.',
+            'affirmation' => 'Alpha Admin',
+            'signed_at' => now(),
         ];
 
         $nonsense = [
             'a key the version never declared' => ['field_key' => 'not_a_field_at_all'],
-            'a key that is not a signature'    => ['field_key' => 'wage'],
-            'a party nobody can be'            => ['signer_party' => 'martian'],
-            'the other side’s party'           => ['signer_party' => 'employer'],
-            'a hash that is not one'           => ['content_hash' => 'not-a-hash'],
-            'an algorithm nothing can verify'  => ['hash_algorithm' => 'crc32b'],
-            'a document of no length'          => ['content_length' => 0],
-            'no consent statement'             => ['consent_statement' => '   '],
-            'no intent statement'              => ['intent_statement' => ''],
-            'no affirmative act'               => ['affirmation' => ''],
-            'nobody it is about'               => ['subject_user_id' => null],
-            'nobody who signed it'             => ['signer_user_id' => null],
+            'a key that is not a signature' => ['field_key' => 'wage'],
+            'a party nobody can be' => ['signer_party' => 'martian'],
+            'the other side’s party' => ['signer_party' => 'employer'],
+            'a hash that is not one' => ['content_hash' => 'not-a-hash'],
+            'an algorithm nothing can verify' => ['hash_algorithm' => 'crc32b'],
+            'a document of no length' => ['content_length' => 0],
+            'no consent statement' => ['consent_statement' => '   '],
+            'no intent statement' => ['intent_statement' => ''],
+            'no affirmative act' => ['affirmation' => ''],
+            'nobody it is about' => ['subject_user_id' => null],
+            'nobody who signed it' => ['signer_user_id' => null],
             /*
              * The case the OLD condition let through, and the reason this line
              * is not a duplicate of the one above it.
@@ -1223,10 +1236,10 @@ class HrOnboardingTest extends TestCase
              * that no longer exists and has no vendor to bring it back.
              */
             'a signer nobody, under some other provider' => [
-                'provider'       => 'some-vendor',
+                'provider' => 'some-vendor',
                 'signer_user_id' => null,
             ],
-            'no name for the signer'           => ['signer_label' => ' '],
+            'no name for the signer' => ['signer_label' => ' '],
         ];
 
         foreach ($nonsense as $what => $broken) {
@@ -1258,15 +1271,15 @@ class HrOnboardingTest extends TestCase
     public function test_an_invitation_reports_in_progress_once_an_onboarding_starts(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $role  = $this->roleFor($alpha);
+        $role = $this->roleFor($alpha);
 
         $invitation = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
-            'email'      => 'newstarter@example.test',
+            'email' => 'newstarter@example.test',
             'first_name' => 'Marta',
-            'last_name'  => 'Ruiz',
-            'role_id'    => $role->id,
+            'last_name' => 'Ruiz',
+            'role_id' => $role->id,
             'scope_type' => 'franchise',
-            'scope_id'   => $alpha['franchise']->id,
+            'scope_id' => $alpha['franchise']->id,
         ])->assertCreated();
 
         $this->assertSame('sent', $invitation->json('data.status'));
@@ -1275,7 +1288,7 @@ class HrOnboardingTest extends TestCase
 
         $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitation->json('data.id'),
-            'contract_id'   => $contractId,
+            'contract_id' => $contractId,
         ])->assertCreated();
 
         $this->assertSame('in_progress', $this->invitationStatus($alpha));
@@ -1334,10 +1347,10 @@ class HrOnboardingTest extends TestCase
             ->assertOk()->assertJsonPath('meta.total', 0);
 
         // Narrows what the reader may reach, never widens it (HR, 2026-10-14).
-        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+        $second = $this->inTenant($alpha['org'], fn () => Franchise::create([
             'organization_id' => $alpha['org']->id,
-            'company_id'      => $alpha['company']->id,
-            'name'            => 'Alpha F2',
+            'company_id' => $alpha['company']->id,
+            'name' => 'Alpha F2',
         ]));
         $elsewhere = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.edit'], onlyAt: $second);
         $this->as($elsewhere)->getJson('/api/v1/hr/onboardings?search=Ruiz')
@@ -1349,10 +1362,10 @@ class HrOnboardingTest extends TestCase
     {
         [$alpha, , $id] = $this->scenario();
 
-        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+        $second = $this->inTenant($alpha['org'], fn () => Franchise::create([
             'organization_id' => $alpha['org']->id,
-            'company_id'      => $alpha['company']->id,
-            'name'            => 'Alpha F2',
+            'company_id' => $alpha['company']->id,
+            'name' => 'Alpha F2',
         ]));
 
         $elsewhere = $this->userWithRole(
@@ -1379,10 +1392,10 @@ class HrOnboardingTest extends TestCase
 
         $alpha['org']->forceFill(['franchise_label' => 'Territory'])->save();
 
-        $second = $this->inTenant($alpha['org'], fn () => \App\Models\Franchise::create([
+        $second = $this->inTenant($alpha['org'], fn () => Franchise::create([
             'organization_id' => $alpha['org']->id,
-            'company_id'      => $alpha['company']->id,
-            'name'            => 'Alpha F2',
+            'company_id' => $alpha['company']->id,
+            'name' => 'Alpha F2',
         ]));
 
         $elsewhere = $this->userWithRole(
@@ -1402,17 +1415,17 @@ class HrOnboardingTest extends TestCase
     public function test_an_onboarding_cannot_start_against_a_template_with_no_signature(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $role  = $this->roleFor($alpha);
+        $role = $this->roleFor($alpha);
 
         $invitationId = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
-            'email'      => 'newstarter@example.test',
-            'role_id'    => $role->id,
+            'email' => 'newstarter@example.test',
+            'role_id' => $role->id,
             'scope_type' => 'franchise',
-            'scope_id'   => $alpha['franchise']->id,
+            'scope_id' => $alpha['franchise']->id,
         ])->assertCreated()->json('data.id');
 
         $contractId = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name'   => 'Unsignable',
+            'name' => 'Unsignable',
             'fields' => [[
                 'key' => 'wage', 'label' => 'Hourly wage', 'type' => 'number',
                 'filled_by' => 'employer', 'required' => true,
@@ -1421,7 +1434,7 @@ class HrOnboardingTest extends TestCase
 
         $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitationId,
-            'contract_id'   => $contractId,
+            'contract_id' => $contractId,
         ])->assertStatus(422)->assertJsonValidationErrors('contract_id');
     }
 
@@ -1432,7 +1445,7 @@ class HrOnboardingTest extends TestCase
     public function test_an_invitation_can_start_the_paperwork_and_a_bad_contract_refuses_both(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $role  = $this->roleFor($alpha);
+        $role = $this->roleFor($alpha);
         $invite = fn (string $email, ?string $contract) => $this->signedInAs($alpha['admin'])
             ->postJson('/api/v1/hr/invitations', [
                 'email' => $email, 'role_id' => $role->id,
@@ -1458,7 +1471,7 @@ class HrOnboardingTest extends TestCase
         $invite('refused@example.test', $unsignable)
             ->assertStatus(422)->assertJsonValidationErrors('contract_id');
         $this->assertFalse($this->inTenant($alpha['org'],
-            fn () => \App\Models\Invitation::where('email', 'refused@example.test')->exists()));
+            fn () => Invitation::where('email', 'refused@example.test')->exists()));
     }
 
     /** One arrival, one contract. */
@@ -1467,11 +1480,11 @@ class HrOnboardingTest extends TestCase
         [$alpha, , $id] = $this->scenario();
 
         $invitationId = $this->inTenant($alpha['org'], fn () => Onboarding::findOrFail($id)->invitation_id);
-        $contractId   = $this->aContract($alpha, 'Second template');
+        $contractId = $this->aContract($alpha, 'Second template');
 
         $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitationId,
-            'contract_id'   => $contractId,
+            'contract_id' => $contractId,
         ])->assertStatus(422)->assertJsonValidationErrors('invitation_id');
     }
 
@@ -1480,7 +1493,7 @@ class HrOnboardingTest extends TestCase
         [$alpha, $employee, $id] = $this->scenario();
 
         $invitationId = $this->inTenant($alpha['org'], fn () => Onboarding::findOrFail($id)->invitation_id);
-        $replacement  = $this->aContract($alpha, 'A different contract');
+        $replacement = $this->aContract($alpha, 'A different contract');
 
         $this->as($employee)->deleteJson("/api/v1/hr/onboardings/{$id}")
             ->assertForbidden();
@@ -1498,7 +1511,7 @@ class HrOnboardingTest extends TestCase
 
         $next = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitationId,
-            'contract_id'   => $replacement,
+            'contract_id' => $replacement,
         ])->assertCreated()->json('data.id');
 
         $this->assertNotSame($id, $next);
@@ -1529,7 +1542,7 @@ class HrOnboardingTest extends TestCase
     public function test_an_invitation_with_paperwork_goes_out_when_the_employer_signs(): void
     {
         config(['mail.default' => 'smtp', 'mail.mailers.smtp.username' => 'ezbizi', 'mail.from.address' => 'noreply@ezbizi.test']);
-        \Illuminate\Support\Facades\Notification::fake();
+        Notification::fake();
         $alpha = $this->provisionTenant('Alpha');
         $contractId = $this->aContract($alpha);
 
@@ -1539,7 +1552,7 @@ class HrOnboardingTest extends TestCase
             'scope_type' => 'franchise', 'scope_id' => $alpha['franchise']->id,
         ])->assertCreated()->assertJsonPath('data.held', true);
         $this->assertArrayNotHasKey('accept_url', $created->json('data'));
-        \Illuminate\Support\Facades\Notification::assertNothingSent();
+        Notification::assertNothingSent();
         $invitation = $created->json('data.id');
         $this->as($alpha['admin'])->postJson("/api/v1/hr/invitations/{$invitation}/resend")->assertStatus(422);
 
@@ -1550,7 +1563,7 @@ class HrOnboardingTest extends TestCase
         ])->assertOk();
         $this->signAs($alpha['admin'], $id, 'employer_sign', 'Jose Silva')->assertCreated();
 
-        \Illuminate\Support\Facades\Notification::assertSentOnDemand(\App\Notifications\InvitationLink::class);
+        Notification::assertSentOnDemand(InvitationLink::class);
         $this->assertFalse(collect($this->as($alpha['admin'])->getJson('/api/v1/hr/invitations')->json('data'))
             ->firstWhere('id', $invitation)['held']);
     }
@@ -1601,7 +1614,7 @@ class HrOnboardingTest extends TestCase
         [$alpha, $employee, $id] = $this->completeForm();
         $before = $this->as($employee)->getJson('/api/v1/me')->assertOk()->json('data.permissions');
         $this->assertNotSame([], $before, 'The control: the starter holds something before the switch.');
-        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)
             ->set(Onboarding::APPROVAL_SETTING, $alpha['org'], true));
         $me = fn () => $this->as($employee)->getJson('/api/v1/me')->assertOk()->json('data');
 
@@ -1648,9 +1661,9 @@ class HrOnboardingTest extends TestCase
         [$alpha, $employee, $id] = $this->scenario();
         $invitationId = $this->form($alpha['admin'], $id)['invitation_id'];
 
-        $this->expectException(\App\Support\Hr\CannotActOnInvitation::class);
+        $this->expectException(CannotActOnInvitation::class);
         try {
-            $this->inTenant($alpha['org'], fn () => app(\App\Support\Hr\InvitationActions::class)
+            $this->inTenant($alpha['org'], fn () => app(InvitationActions::class)
                 ->revoke(Invitation::findOrFail($invitationId)));
         } finally {
             $this->assertTrue((bool) $this->inTenant($alpha['org'], fn () => $employee->fresh()->is_active));
@@ -1787,19 +1800,59 @@ class HrOnboardingTest extends TestCase
         $this->assertSame(['answered' => 1, 'outstanding' => 1], $row()['progress']['employer']);
     }
 
+    /**
+     * Payroll: one row per person with salary, signed W-4, dates, role and
+     * contract, filtered by signed W-4, role or contract (Jose, 2026-10-22).
+     */
+    public function test_payroll_lists_salary_tax_form_dates_role_and_contract_with_filters(): void
+    {
+        [$alpha, $employee, $id, $contractId] = $this->scenario();
+        $this->inTenant($alpha['org'], function () use ($alpha, $employee, $id) {
+            PayRate::create(['organization_id' => $alpha['org']->id, 'user_id' => $employee->id,
+                'basis' => 'salary', 'amount' => '52000', 'period' => 'year', 'effective_on' => '2026-01-01']);
+            EmploymentEvent::create(['organization_id' => $alpha['org']->id, 'user_id' => $employee->id,
+                'kind' => EmploymentEvent::STARTED, 'occurred_on' => '2026-02-01']);
+            OnboardingAnswer::create(['organization_id' => $alpha['org']->id, 'onboarding_id' => $id,
+                'field_key' => 'tax_form', 'value' => (string) Str::uuid(), 'set_at' => now()]);
+        });
+
+        $rows = fn (string $q = '') => collect($this->as($alpha['admin'])->getJson('/api/v1/hr/payroll'.$q)
+            ->assertOk()->json('data'));
+        $row = $rows()->firstWhere('id', $employee->id);
+        $this->assertSame('52000', $row['salary']['amount']);
+        $this->assertTrue($row['w2']['signed']);
+        $this->assertNotNull($row['w2']['attachment_id']);
+        $this->assertSame('2026-02-01', $row['started_on']);
+        $this->assertNull($row['terminated_on']);
+        $this->assertSame($contractId, $row['contract']['id']);
+        $this->assertSame($id, $row['contract']['onboarding_id']);
+
+        // Only those with a signed W-4: the employee, not the administrator.
+        $this->assertSame([$employee->id], $rows('?w2=signed')->pluck('id')->all());
+        $this->assertSame([$employee->id], $rows('?contract_id='.$contractId)->pluck('id')->all());
+        $this->assertNotContains($employee->id, $rows('?w2=unsigned')->pluck('id')->all());
+
+        // The tab is its own grant, and salary is pay's.
+        $hr = $this->userWithRole($alpha, 'HR', ['hr.view', 'hr.edit']);
+        $this->as($hr)->getJson('/api/v1/hr/payroll')->assertForbidden();
+        $clerk = $this->userWithRole($alpha, 'Clerk', ['hr.view', 'hr.payroll.view']);
+        $seen = collect($this->as($clerk)->getJson('/api/v1/hr/payroll')->assertOk()->json('data'))->firstWhere('id', $employee->id);
+        $this->assertNull($seen['salary']);
+    }
+
     private function scenario(?array $fields = null): array
     {
-        $alpha      = $this->provisionTenant('Alpha');
+        $alpha = $this->provisionTenant('Alpha');
         $contractId = $this->aContract($alpha, 'Driver', $fields);
-        $role       = $this->roleFor($alpha);
+        $role = $this->roleFor($alpha);
 
         $invitation = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/invitations', [
-            'email'      => 'newstarter@example.test',
+            'email' => 'newstarter@example.test',
             'first_name' => 'Marta',
-            'last_name'  => 'Ruiz',
-            'role_id'    => $role->id,
+            'last_name' => 'Ruiz',
+            'role_id' => $role->id,
             'scope_type' => 'franchise',
-            'scope_id'   => $alpha['franchise']->id,
+            'scope_id' => $alpha['franchise']->id,
         ])->assertCreated();
 
         // Phone and date of birth are collected at acceptance, which is where
@@ -1814,7 +1867,7 @@ class HrOnboardingTest extends TestCase
 
         $id = $this->as($alpha['admin'])->postJson('/api/v1/hr/onboardings', [
             'invitation_id' => $invitation->json('data.id'),
-            'contract_id'   => $contractId,
+            'contract_id' => $contractId,
         ])->assertCreated()->json('data.id');
 
         return [$alpha, $employee, $id, $contractId];
@@ -1860,7 +1913,7 @@ class HrOnboardingTest extends TestCase
     private function aContract(array $tenant, string $name = 'Driver', ?array $fields = null): string
     {
         return $this->signedInAs($tenant['admin'])->postJson('/api/v1/hr/contracts', [
-            'name'   => $name,
+            'name' => $name,
             'fields' => $fields ?? $this->defaultFields(),
         ])->assertCreated()->json('data.id');
     }
@@ -1868,18 +1921,18 @@ class HrOnboardingTest extends TestCase
     private function aJob(array $tenant): string
     {
         return $this->inTenant($tenant['org'], function () use ($tenant) {
-            $customer = \App\Models\Customer::create([
+            $customer = Customer::create([
                 'owning_franchise_id' => $tenant['franchise']->id,
-                'number'              => 'C-'.bin2hex(random_bytes(3)),
-                'name'                => 'A Customer',
+                'number' => 'C-'.bin2hex(random_bytes(3)),
+                'name' => 'A Customer',
             ]);
 
-            return \App\Models\Job::create([
+            return Job::create([
                 'franchise_id' => $tenant['franchise']->id,
-                'customer_id'  => $customer->id,
-                'number'       => 'J-'.bin2hex(random_bytes(3)),
-                'title'        => 'A job',
-                'status'       => 'scheduled',
+                'customer_id' => $customer->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'A job',
+                'status' => 'scheduled',
             ])->getKey();
         });
     }
@@ -1889,8 +1942,8 @@ class HrOnboardingTest extends TestCase
         return $this->inTenant($tenant['org'], function () use ($tenant) {
             $role = Role::create([
                 'organization_id' => $tenant['org']->id,
-                'name'            => 'Technician',
-                'is_system'       => false,
+                'name' => 'Technician',
+                'is_system' => false,
             ]);
 
             // Deliberately nothing from HR: the new starter must be able to fill
@@ -1908,9 +1961,9 @@ class HrOnboardingTest extends TestCase
     private function signAs(User $actor, string $id, string $field, string $name): TestResponse
     {
         return $this->as($actor)->postJson("/api/v1/hr/onboardings/{$id}/sign", [
-            'field_key'     => $field,
-            'affirmation'   => $name,
-            'consent'       => true,
+            'field_key' => $field,
+            'affirmation' => $name,
+            'consent' => true,
             'drawing' => self::SIGNATURE_PNG,
             'document_hash' => $this->documentHash($actor, $id),
         ])->assertCreated();
@@ -1983,10 +2036,10 @@ class HrOnboardingTest extends TestCase
         $this->app->forgetScopedInstances();
 
         $this->postJson('/api/v1/invitations/accept', [
-            'token'         => $token,
-            'password'      => 'a-real-password',
-            'phone'         => '+34 600 000 000',
-            'address'       => '1 Test Street',
+            'token' => $token,
+            'password' => 'a-real-password',
+            'phone' => '+34 600 000 000',
+            'address' => '1 Test Street',
             'date_of_birth' => '1990-04-03',
         ])->assertCreated();
     }

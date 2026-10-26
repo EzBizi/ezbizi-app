@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
@@ -1237,19 +1239,66 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
   /// facts and only the second tells somebody whether they have seen it all.
   int _total = 0;
 
+  String _query = '';
+  Timer? _debounce;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _search(String value) {
+    setState(() => _query = value);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  /// Until CustomersController@duplicates reads q, the loaded groups are
+  /// filtered here too: a group stays when its matched value or any member's
+  /// name, number or owner contains the query.
+  List<Map<String, dynamic>> get _matching {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _groups;
+    return [
+      for (final group in _groups)
+        if (_groupText(group).any((field) => field.toLowerCase().contains(q))) group,
+    ];
+  }
+
+  Iterable<String> _groupText(Map<String, dynamic> group) sync* {
+    final by = group['by'] as String? ?? '';
+    final value = group['value'] as String? ?? '';
+    yield by;
+    yield value;
+    if (by == 'phone') yield formatPhoneNumber(value);
+    for (final member in List<Map<String, dynamic>>.from(group['customers'] as List? ?? const [])) {
+      final owner = member['owning_franchise'] as Map<String, dynamic>?;
+      yield '${member['name'] ?? ''}';
+      yield '${member['number'] ?? ''}';
+      yield '${owner?['name'] ?? ''}';
+      yield '${(owner?['company'] as Map<String, dynamic>?)?['name'] ?? ''}';
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
-      _loading = true;
+      // Nothing on screen yet only on the first load; a search keeps the
+      // groups up while the next answer arrives (AsyncBody's contract).
+      _loading = _groups.isEmpty && _note == null;
       _error = null;
     });
 
-    final response = await widget.api.get('/customers/duplicates', const {});
+    final q = _query.trim();
+    final response = await widget.api.get('/customers/duplicates', {
+      if (q.isNotEmpty) 'q': q,
+    });
 
     if (!mounted) return;
 
@@ -1282,41 +1331,67 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
           child: const Text('Close'),
         ),
       ],
-      child: AsyncBody(
-        loading: _loading,
-        error: _error,
-        onRetry: _load,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_note != null)
-              Text(_note!, style: text.bodyMedium)
-            else if (_groups.isEmpty)
-              Text('Nothing looks duplicated.', style: text.bodyMedium)
-            else ...[
-              // Says only what a person can actually do. It used to say
-              // "correct or remove one", and a real duplicate always has jobs,
-              // which is exactly when removing is refused -- so the one action
-              // it offered was the one the server says no to.
-              Text(
-                'Nothing has been merged, and nothing will be automatically. '
-                'Open a customer to correct it. One with no jobs can be removed; '
-                'one with jobs cannot.',
-                style: text.bodyMedium,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // As tall as the buttons beside it (Jose, 2026-10-20).
+          SizedBox(
+            width: 240,
+            height: 40,
+            child: TextField(
+              key: const Key('customers-duplicates-search'),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a duplicate',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 16),
-              ..._groups.map(_group),
-              if (_limited)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Showing ${_groups.length} of $_total.',
-                    style: text.bodySmall,
+              onChanged: _search,
+            ),
+          ),
+          const SizedBox(height: 16),
+          AsyncBody(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_note != null)
+                  Text(_note!, style: text.bodyMedium)
+                else if (_groups.isEmpty && _query.trim().isEmpty)
+                  Text('Nothing looks duplicated.', style: text.bodyMedium)
+                else if (_matching.isEmpty)
+                  Text('No duplicates match "${_query.trim()}".', style: text.bodyMedium)
+                else ...[
+                  // Says only what a person can actually do. It used to say
+                  // "correct or remove one", and a real duplicate always has jobs,
+                  // which is exactly when removing is refused -- so the one action
+                  // it offered was the one the server says no to.
+                  Text(
+                    'Nothing has been merged, and nothing will be automatically. '
+                    'Open a customer to correct it. One with no jobs can be removed; '
+                    'one with jobs cannot.',
+                    style: text.bodyMedium,
                   ),
-                ),
-            ],
-          ],
-        ),
+                  const SizedBox(height: 16),
+                  ..._matching.map(_group),
+                  if (_limited)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Showing ${_groups.length} of $_total.',
+                        style: text.bodySmall,
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

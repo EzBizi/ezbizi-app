@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/device_key_store_io.dart'
+    if (dart.library.js_interop) '../core/device_key_store_web.dart'
+    as store;
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -173,8 +176,8 @@ String _createdLabel(Object? at, DisplayFormats formats) {
 const _builtinDefaults = {
   'owner': 'Owner',
   'status': 'Status',
-  'due': 'Due',
   'created': 'Created',
+  'due': 'Due',
   'about': 'About',
   'updates': 'Updates',
 };
@@ -288,11 +291,45 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       setState(() => _loading = false);
       return;
     }
-    await _open(_selected.clamp(0, _boards.length - 1));
+    await _open(_startIndex());
+  }
+
+  /// Where the last board opened is kept: per person, per place in view.
+  String get _lastKey {
+    final me = widget.session.me;
+    final scope = me?.scope;
+    return 'task_board_last_${me?.id ?? ''}_${scope?.type ?? ''}_${scope?.id ?? ''}';
+  }
+
+  /// A personal board someone else owns: never opened unasked.
+  bool _othersPersonal(_Json b) {
+    if (b['kind'] != 'user') return false;
+    final owner = (b['owner'] as Map?)?['id'];
+    if (owner != null) return owner != widget.session.me?.id;
+    return b['section'] != null && b['section'] != 'mine';
+  }
+
+  /// The board in view on a refresh; else the one last opened here, if it is
+  /// still listed; else My board. The server sorts personal boards by name,
+  /// so the first one listed can be another person's (it opened Adeline's).
+  int _startIndex() {
+    int find(Object? id) =>
+        id == null ? -1 : _boards.indexWhere((b) => b['id'] == id);
+    for (final id in [_board?['id'], store.readItem(_lastKey)]) {
+      final i = find(id);
+      if (i >= 0) return i;
+    }
+    final mine = _boards.indexWhere(
+      (b) => b['kind'] == 'user' && !_othersPersonal(b),
+    );
+    if (mine >= 0) return mine;
+    final other = _boards.indexWhere((b) => !_othersPersonal(b));
+    return other >= 0 ? other : 0;
   }
 
   Future<void> _open(int index) async {
     final id = _boards[index]['id'];
+    if (id is String) store.writeItem(_lastKey, id, persist: true);
     setState(() {
       _selected = index;
       _error = null;
@@ -1457,8 +1494,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             ),
             if (shown('owner')) b('owner', _widths.owner),
             if (shown('status')) b('status', _widths.status),
-            if (shown('due')) b('due', _widths.due),
             if (shown('created')) b('created', _widths.created),
+            if (shown('due')) b('due', _widths.due),
             for (final c in boardColumns(_board))
               _cell(
                 context,
@@ -1552,7 +1589,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   context,
                   _widths.owner,
                   owner == null
-                      ? const SizedBox.shrink()
+                      ? _automationOwner(t)
                       : Row(
                           children: [
                             _avatar(context, owner),
@@ -1569,6 +1606,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 ),
               if (shown('status'))
                 SizedBox(width: _widths.status, child: _statusCell(context, t)),
+              if (shown('created'))
+                _cell(
+                  context,
+                  _widths.created,
+                  Text(
+                    _createdLabel(t['created_at'], _formats),
+                    key: ValueKey('task-created-${t['id']}'),
+                    maxLines: 1,
+                  ),
+                ),
               if (shown('due'))
                 _cell(
                   context,
@@ -1582,16 +1629,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                             fontWeight: FontWeight.w700,
                           )
                         : null,
-                  ),
-                ),
-              if (shown('created'))
-                _cell(
-                  context,
-                  _widths.created,
-                  Text(
-                    _createdLabel(t['created_at'], _formats),
-                    key: ValueKey('task-created-${t['id']}'),
-                    maxLines: 1,
                   ),
                 ),
               for (final c in boardColumns(_board))
@@ -1665,6 +1702,33 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   /// "+2" after a task's primary owner, every name on hover.
+  /// A card a rule made with nobody on it is EzBizi's: the mark and the
+  /// name, with the rule's name on hover (Jose, 2026-10-22).
+  Widget _automationOwner(_Json t) {
+    final madeBy = t['created_by'];
+    if (madeBy is! Map || madeBy['type'] != 'automation') {
+      return const SizedBox.shrink();
+    }
+    return Tooltip(
+      key: ValueKey('task-owner-ezbizi-${t['id']}'),
+      message: '${madeBy['label'] ?? ''}',
+      child: Row(
+        children: [
+          Image.asset(
+            'assets/logo/app-icon-120.png',
+            width: 18,
+            height: 18,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+          const SizedBox(width: 6),
+          const Flexible(
+            child: Text('EzBizi', overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _moreOwners(_Json t, List<String> owners) => Tooltip(
     message: owners.join(', '),
     child: Padding(

@@ -42,6 +42,25 @@ class CameraSitesSettings extends StatefulWidget {
 
 class _CameraSitesSettingsState extends State<CameraSitesSettings> {
   List<Map<String, dynamic>> _sites = const [];
+
+  String _query = '';
+
+  /// The sites the search keeps: case-insensitive over what a row shows.
+  List<Map<String, dynamic>> get _shownSites {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _sites;
+    return [
+      for (final s in _sites)
+        if ([
+          s['name'],
+          s['device'] is Map ? (s['device'] as Map)['pc_name'] : null,
+          s['last_reason'],
+          s['online'] == true ? 'Online' : 'Offline',
+        ].any((v) => (v?.toString() ?? '').toLowerCase().contains(q)))
+          s,
+    ];
+  }
+
   bool _loading = true;
   String? _error;
 
@@ -425,6 +444,24 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        // As tall as the buttons beside it (Jose, 2026-10-20).
+        SizedBox(
+          width: 240,
+          height: 40,
+          child: TextField(
+            key: const Key('camera-sites-search'),
+            textAlignVertical: TextAlignVertical.center,
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12),
+              prefixIconConstraints: BoxConstraints(minWidth: 36),
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Find a site',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (v) => setState(() => _query = v),
+          ),
+        ),
         Refused(
           reason: _refusal('add a camera site'),
           child: FilledButton.icon(
@@ -477,8 +514,16 @@ class _CameraSitesSettingsState extends State<CameraSitesSettings> {
               style: muted,
             ),
           )
+        else if (_shownSites.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              'No sites match "${_query.trim()}".',
+              style: theme.textTheme.bodyMedium,
+            ),
+          )
         else
-          for (final s in _sites) _siteRow(context, s, narrow),
+          for (final s in _shownSites) _siteRow(context, s, narrow),
       ],
     );
   }

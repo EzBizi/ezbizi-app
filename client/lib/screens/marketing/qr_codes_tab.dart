@@ -41,6 +41,23 @@ class _QrCodesTabState extends State<QrCodesTab> {
   bool _loading = true;
   String? _error;
   List<QrCodeRow> _codes = const [];
+  String _query = '';
+
+  /// The codes the search keeps: name, the printed address and where it goes.
+  List<QrCodeRow> get _shown {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return _codes;
+    return [
+      for (final code in _codes)
+        if ([
+          code.name,
+          code.url,
+          code.destinationUrl,
+          code.active ? 'active' : 'deactivated',
+        ].any((text) => text.toLowerCase().contains(needle)))
+          code,
+    ];
+  }
 
   /// The code whose address is being changed, and the one asking to be
   /// deactivated. One at a time: a second card opening closes the first.
@@ -216,6 +233,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
     }
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
+    final shown = _shown;
 
     return ListView(
       padding: EdgeInsets.all(narrow ? 16 : 24),
@@ -236,6 +254,10 @@ class _QrCodesTabState extends State<QrCodesTab> {
                 ],
               ),
             ),
+            if (!narrow) ...[
+              _searchField(),
+              if (_canEdit) const SizedBox(width: 8),
+            ],
             if (_canEdit && !narrow)
               FilledButton.icon(
                 key: const Key('qr-new'),
@@ -245,17 +267,31 @@ class _QrCodesTabState extends State<QrCodesTab> {
               ),
           ],
         ),
-        if (_canEdit && narrow) ...[
+        if (narrow) ...[
           const SizedBox(height: 12),
-          FilledButton.icon(
-            key: const Key('qr-new'),
-            onPressed: _create,
-            icon: const Icon(Icons.add),
-            label: const Text('New QR code'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _searchField(),
+              if (_canEdit)
+                FilledButton.icon(
+                  key: const Key('qr-new'),
+                  onPressed: _create,
+                  icon: const Icon(Icons.add),
+                  label: const Text('New QR code'),
+                ),
+            ],
           ),
         ],
         const SizedBox(height: 16),
-        if (_codes.isEmpty)
+        if (_codes.isNotEmpty && shown.isEmpty)
+          Text(
+            'No QR codes match "${_query.trim()}".',
+            style: theme.textTheme.bodyMedium,
+          )
+        else if (_codes.isEmpty)
           Text(
             key: const ValueKey('tour-marketing-qr-empty'),
             _canEdit
@@ -276,7 +312,7 @@ class _QrCodesTabState extends State<QrCodesTab> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (var i = 0; i < _codes.length; i += across) ...[
+                  for (var i = 0; i < shown.length; i += across) ...[
                     if (i > 0) const SizedBox(height: gap),
                     IntrinsicHeight(
                       child: Row(
@@ -285,8 +321,8 @@ class _QrCodesTabState extends State<QrCodesTab> {
                           for (var j = i; j < i + across; j++) ...[
                             if (j > i) const SizedBox(width: gap),
                             Expanded(
-                              child: j < _codes.length
-                                  ? _card(theme, _codes[j], narrow)
+                              child: j < shown.length
+                                  ? _card(theme, shown[j], narrow)
                                   : const SizedBox(),
                             ),
                           ],
@@ -308,6 +344,25 @@ class _QrCodesTabState extends State<QrCodesTab> {
       ],
     );
   }
+
+  // As tall as the buttons beside it (Jose, 2026-10-20).
+  Widget _searchField() => SizedBox(
+    width: 240,
+    height: 40,
+    child: TextField(
+      key: const Key('qr-codes-search'),
+      textAlignVertical: TextAlignVertical.center,
+      decoration: const InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+        prefixIconConstraints: BoxConstraints(minWidth: 36),
+        prefixIcon: Icon(Icons.search, size: 18),
+        hintText: 'Find a QR code',
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (v) => setState(() => _query = v),
+    ),
+  );
 
   Widget _card(ThemeData theme, QrCodeRow code, bool narrow) {
     final editing = _editing == code.id;

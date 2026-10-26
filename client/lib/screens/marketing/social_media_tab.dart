@@ -128,6 +128,11 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   String? _filter;
   List<_SentPost>? _filtered;
 
+  /// The timeline's search box, sent to GET /social/posts as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _searchDebounce;
+  String _q = '';
+
   String get _viewName =>
       widget.session.me?.scope.label ??
       widget.session.me?.organization.name ??
@@ -142,7 +147,41 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   @override
   void dispose() {
     _poll?.cancel();
+    _searchDebounce?.cancel();
+    _search.dispose();
     super.dispose();
+  }
+
+  Map<String, String>? get _postsQuery => _q.isEmpty ? null : {'q': _q};
+
+  void _searched(String text) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() {
+        _q = text.trim();
+        _filtered = null;
+      });
+      _loadPosts();
+    });
+  }
+
+  /// SocialPostsController@index does not read `q` yet (it returns twenty
+  /// per tile), so the loaded posts are also narrowed here, by what they
+  /// say, who wrote them and where they went. Once the server honours `q`
+  /// this is a no-op.
+  List<_SentPost> _matching(List<_SentPost> posts) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return posts;
+    return [
+      for (final p in posts)
+        if ([
+          p.body,
+          p.author,
+          for (final t in p.targets) ...[t.account, t.providerLabel],
+        ].whereType<String>().join(' ').toLowerCase().contains(q))
+          p,
+    ];
   }
 
   Future<void> _load() async {
@@ -150,7 +189,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     final connections = await widget.api.get('/social/connections');
     // Not asked for without the Posts pane: the server would refuse it, and a
     // request made only to be refused is noise in every log that reads 403s.
-    final posts = _mayReadPosts ? await widget.api.get('/social/posts') : null;
+    final posts = _mayReadPosts
+        ? await widget.api.get('/social/posts', _postsQuery)
+        : null;
     if (!mounted) return;
 
     setState(() {
@@ -189,7 +230,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _loadPosts() async {
     if (!_mayReadPosts) return;
 
-    final posts = await widget.api.get('/social/posts');
+    final posts = await widget.api.get('/social/posts', _postsQuery);
     if (!mounted || !posts.ok) return;
 
     setState(() {
@@ -206,7 +247,10 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
     final filter = _filter;
     if (filter == null || !_mayReadPosts) return;
 
-    final posts = await widget.api.get('/social/posts', {'status': filter});
+    final posts = await widget.api.get('/social/posts', {
+      'status': filter,
+      ...?_postsQuery,
+    });
     if (!mounted || filter != _filter || !posts.ok) return;
 
     setState(() {
@@ -252,9 +296,15 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// matches until the server's answer arrives, rather than an empty table.
   List<_SentPost> get _rows {
     final filter = _filter;
-    if (filter == null) return _shown;
+    if (filter == null) return _matching(_shown);
 
-    return _filtered ?? [for (final p in _shown) if (p.tile == filter) p];
+    return _matching(
+      _filtered ??
+          [
+            for (final p in _shown)
+              if (p.tile == filter) p,
+          ],
+    );
   }
 
   /// Retry from the table: one failed account is retried there and then;
@@ -620,6 +670,9 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   connections: _connections,
                   posts: _shown,
                   rows: _rows,
+                  search: _search,
+                  onSearch: _searched,
+                  q: _q,
                   tiles: _tileCounts,
                   filter: _filter,
                   onFilter: _pickFilter,
@@ -730,6 +783,9 @@ class _PostsPane extends StatelessWidget {
     required this.connections,
     required this.posts,
     required this.rows,
+    required this.search,
+    required this.onSearch,
+    required this.q,
     required this.tiles,
     required this.filter,
     required this.onFilter,
@@ -763,6 +819,11 @@ class _PostsPane extends StatelessWidget {
 
   /// The timeline's posts: [posts], or the picked tile's.
   final List<_SentPost> rows;
+
+  /// The timeline's search box, and what it last searched.
+  final TextEditingController search;
+  final ValueChanged<String> onSearch;
+  final String q;
   final Map<String, int> tiles;
   final String? filter;
   final ValueChanged<String?> onFilter;
@@ -852,6 +913,9 @@ class _PostsPane extends StatelessWidget {
           viewName: viewName,
           connections: connections,
           rows: rows,
+          search: search,
+          onSearch: onSearch,
+          q: q,
           tiles: tiles,
           filter: filter,
           onFilter: onFilter,
@@ -933,6 +997,9 @@ class _PostsDashboard extends StatelessWidget {
     required this.viewName,
     required this.connections,
     required this.rows,
+    required this.search,
+    required this.onSearch,
+    required this.q,
     required this.tiles,
     required this.filter,
     required this.onFilter,
@@ -950,6 +1017,9 @@ class _PostsDashboard extends StatelessWidget {
   final String viewName;
   final List<_SocialConnection> connections;
   final List<_SentPost> rows;
+  final TextEditingController search;
+  final ValueChanged<String> onSearch;
+  final String q;
   final Map<String, int> tiles;
   final String? filter;
   final ValueChanged<String?> onFilter;
@@ -1096,26 +1166,60 @@ class _PostsDashboard extends StatelessWidget {
             _ => _shortDay(day),
           };
 
+    final field = TextField(
+      key: const Key('social-posts-search'),
+      controller: search,
+      onChanged: onSearch,
+      // bodyMedium for the text and the hint, as the dense pickers draw:
+      // 53 points tall, as they are; the theme's 16-point hint makes 56.
+      style: Theme.of(context).textTheme.bodyMedium,
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search, size: 18),
+        hintText: 'What it said, who or where',
+        hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+        ),
+      ),
+    );
+    final newPost = onNew == null
+        ? null
+        : FilledButton.icon(
+            key: const ValueKey('tour-marketing-new-post'),
+            onPressed: onNew,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New post'),
+          );
+
     return DashboardCard(
       key: const ValueKey('tour-marketing-timeline'),
       title: 'Timeline',
       icon: Icons.timeline,
-      controls: onNew == null
-          ? null
-          : FilledButton.icon(
-              key: const ValueKey('tour-marketing-new-post'),
-              onPressed: onNew,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('New post'),
+      // A phone has no room beside the title; the box sits above the rows.
+      controls: phone
+          ? newPost
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(width: 240, child: field),
+                if (newPost != null) ...[const SizedBox(width: 8), newPost],
+              ],
             ),
-      child: rows.isEmpty
-          ? DashboardNote(
-              filter == null
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (phone) ...[field, const SizedBox(height: 8)],
+          if (rows.isEmpty)
+            DashboardNote(
+              q.isNotEmpty
+                  ? 'No post matches "$q".'
+                  : filter == null
                   ? 'Nothing posted or scheduled yet. What you publish is '
                         'listed here.'
                   : 'No posts here.',
             )
-          : Column(
+          else
+            Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (ahead.isNotEmpty) ...[
@@ -1128,6 +1232,8 @@ class _PostsDashboard extends StatelessWidget {
                 ],
               ],
             ),
+        ],
+      ),
     );
   }
 

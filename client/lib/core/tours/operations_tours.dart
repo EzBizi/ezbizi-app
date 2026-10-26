@@ -541,6 +541,49 @@ const Map<String, Tour> operationsTours = {
   'hr/Onboarding/Form': _onboardingForm,
   'hr/Onboarding/Contract': _onboardingContract,
 
+  // ── Human Resources › Payroll ────────────────────────────────────────
+  'hr/Payroll': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-hr-payroll-filters',
+        title: 'Narrow it down',
+        body:
+            'Show only signed or unsigned W2s, one role, one contract, or a '
+            'name.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-left',
+        title: 'People who left',
+        body: 'They are listed last and greyed. Switch this off to hide them.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-table',
+        title: 'Everyone',
+        body:
+            'One row per person: salary, W2, start and end dates, role and '
+            'contract.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-salary',
+        title: 'Salary',
+        body:
+            'Click one to see its history and, if your role may, set a new '
+            'rate from a date. The old rate stays in the history.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-w2',
+        title: 'W2',
+        body: 'Signed or not. A signed one can be downloaded.',
+      ),
+      TourStep(
+        anchor: 'tour-hr-payroll-contract',
+        title: 'Contract',
+        body: 'Their latest contract and where it stands, with its PDF.',
+      ),
+    ],
+  ),
+
   // ── Inspection ───────────────────────────────────────────────────────
   'inspection/Generated Reports': Tour(
     version: 1,
@@ -796,64 +839,215 @@ const Map<String, Tour> operationsTours = {
     ],
   ),
   // ── Project Management ───────────────────────────────────────────────
-  // Its own module since 2026-10-21; Dashboard, Pending Jobs and Settings
-  // since UI queue 127. Pending Jobs' anchors kept their Jobs names.
+  // Its own module since 2026-10-21. Design 144: Overview (was Dashboard),
+  // Jobs, Assignments, Repair team (Reports and Table merged), Rules (new),
+  // Logs and Settings, all in one frame.
   'project_management': Tour(
-    version: 2,
+    version: 4,
     steps: [
       TourStep(
-        anchor: 'tour-pm-dash-range',
-        title: 'Dates',
-        body: 'Today, Yesterday, This week, This month, or dates you choose.',
-        since: 2,
+        anchor: 'tour-pm-dash-areas',
+        title: 'Service areas',
+        body: 'All, or one service area. Every number below follows it.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-flags',
+        title: 'Filters',
+        body:
+            'Redo or one go, disputes, stopped payments and external '
+            'companies.',
+        since: 3,
       ),
       TourStep(
         anchor: 'tour-pm-dash-tiles',
-        title: 'What happened',
+        title: 'The flow',
         body:
-            'Payments, status changes, tag changes, cancellations and '
-            'deadlines due in those dates. Click a number for its jobs.',
-        since: 2,
+            'The five stages in the order a job moves through them, each '
+            'with its rule and count. Click one to open exactly those jobs; '
+            'ⓘ says how it is counted.',
+        since: 4,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-attention',
+        title: 'Needs attention',
+        body:
+            'Paid but not started past the warning days, payments stopped, '
+            'and jobs waiting review with no reason. Red means something to '
+            'do.',
+        since: 4,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-review',
+        title: 'Waiting review',
+        body: 'Each service area, split by why its jobs wait.',
+        since: 3,
+      ),
+      TourStep(
+        anchor: 'tour-pm-dash-teams',
+        title: 'By technician',
+        body: 'How many open jobs each technician has.',
+        since: 4,
+      ),
+    ],
+  ),
+  'project_management/Repair team': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-report-mode',
+        title: 'Cards or Table',
+        body:
+            'Cards: one week, a card per technician. Table: eight weeks, a '
+            'row per technician per week, every field.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-report-week',
+        title: 'The week',
+        body: 'Monday to Sunday. The arrows go a week back or forward.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-report-cards',
+        title: 'The Repair Team report',
+        body:
+            'A card per technician and the repair team combined. Cost from '
+            'gross is red above the limit in Settings. Copy for WhatsApp '
+            'copies it as text.',
+      ),
+    ],
+  ),
+  'project_management/Rules': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-rules-scope',
+        title: 'Which jobs count',
+        body:
+            'Every number in Project Management counts only these jobs. '
+            'Change opens the card in Settings.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-rules-stages',
+        title: 'How a job moves',
+        body: 'Which statuses put a job in each stage, and how many are there.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-rules-automations',
+        title: 'What changes jobs',
+        body:
+            'Each rule as When, Only if and Then, whether it is on, and what '
+            'it did this week.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-rules-numbers',
+        title: 'How numbers are measured',
+        body: 'Every number on the other tabs, in plain words.',
       ),
     ],
   ),
   'project_management/Settings': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
-        anchor: 'tour-pm-settings-watched',
-        title: 'Watched statuses',
-        body: 'Jobs in these statuses show in Pending Jobs.',
+        anchor: 'tour-pm-settings-stages',
+        title: 'Stages',
+        body:
+            'The statuses that put a job in each stage, and whether it must be '
+            'scheduled or have money due.',
+        since: 2,
       ),
       TourStep(
-        anchor: 'tour-pm-settings-cancelled',
-        title: 'Cancelled',
-        body: 'A job moving into one of these counts as cancelled.',
+        anchor: 'tour-pm-settings-reasons',
+        title: 'Review reasons',
+        body: 'Why a job waits for review.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-settings-warn',
+        title: 'Paid but not started',
+        body:
+            'After how many days, and to which address, the daily warning goes.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-settings-watched',
+        title: 'Estimate clock',
+        body:
+            'Jobs in these statuses are checked daily for how long their estimate waited.',
       ),
     ],
   ),
-  'project_management/Pending Jobs': Tour(
+  // UI queue 139: what rules and people changed on jobs, and why a rule skipped.
+  'project_management/Logs': Tour(
     version: 1,
     steps: [
       TourStep(
-        anchor: 'tour-jobs-pm-stages',
-        title: 'Stage',
+        anchor: 'tour-pm-logs-range',
+        title: 'Dates',
+        body: 'Today, Yesterday, This week, This month, or dates you choose.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-logs-outcome',
+        title: 'What to show',
         body:
-            'Recently paid, the jobs with a payment in the dates you choose. '
-            'Then Waiting, Partly paid, Paid in full or Closed, each with how '
-            'many jobs are in it.',
+            'Changes a rule or a person made, runs that failed, runs a rule '
+            'skipped, or all of them.',
       ),
       TourStep(
-        anchor: 'tour-jobs-pm-filters',
-        title: 'Branch and days',
-        body: 'One branch, and only the jobs waiting at least so many days.',
+        anchor: 'tour-pm-logs-list',
+        title: 'What happened',
+        body:
+            'Each change, the job and who made it. Click a job number for its '
+            'timeline, or a rule to open it. Why? says why a rule skipped.',
+      ),
+    ],
+  ),
+  // Design 143: the cards Action 1 made when a payment arrived.
+  'project_management/Assignments': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-assign-filters',
+        title: 'Search',
+        body:
+            'A card title, or its job, customer, address or phone. The line '
+            'above says which jobs Project Management shows; Change opens '
+            'Settings.',
       ),
       TourStep(
-        anchor: 'tour-jobs-pm-list',
+        anchor: 'tour-pm-assign-board',
+        title: 'By technician',
+        body:
+            'Task Board cards the payment rule made on every branch board, '
+            'grouped by their Technician column, To assign first. Drag a card '
+            'to a technician, or set Technician on the card.',
+      ),
+    ],
+  ),
+  'project_management/Jobs': Tour(
+    version: 2,
+    steps: [
+      TourStep(
+        anchor: 'tour-pm-jobs-stages',
+        title: 'The flow',
+        body:
+            'Waiting review to Done, waiting payment, each with how many jobs '
+            'are in it. Click one to list it.',
+        since: 2,
+      ),
+      TourStep(
+        anchor: 'tour-pm-jobs-filters',
+        title: 'Filters and search',
+        body:
+            'A service area, redo or one go, disputes, stopped payments, '
+            'external companies and, in progress, a second visit.',
+      ),
+      TourStep(
+        anchor: 'tour-pm-jobs-list',
         title: 'The jobs',
         body:
-            'Closest to cancelling first. Click one for its timeline, and Open '
-            'the job from there.',
+            'Newest change first, 100 to a page. Click one for its timeline, '
+            'its review reason, external company and second visit.',
       ),
     ],
   ),

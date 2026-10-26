@@ -48,6 +48,24 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
   String? _deleting;
   String? _renaming;
 
+  /// What the search bar holds; matched against each card's name, report and
+  /// members.
+  String _query = '';
+
+  List<Map<String, dynamic>> get _shown {
+    final needle = _query.trim().toLowerCase();
+    if (needle.isEmpty) return _groups;
+    return [
+      for (final g in _groups)
+        if ([
+          '${g['subject'] ?? ''}',
+          _purposeLabel('${g['purpose'] ?? ''}'),
+          for (final m in _membersOf(g)) m.name,
+        ].any((text) => text.toLowerCase().contains(needle)))
+          g,
+    ];
+  }
+
   static const _path = '/ai-assistance/whatsapp-groups';
 
   @override
@@ -262,6 +280,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
 
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final unset = _unset;
+    final shown = _shown;
 
     return ListView(
       key: const ValueKey('tour-ai_assistance-whatsapp'),
@@ -277,8 +296,35 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
           _unsetStrip(context, unset, narrow),
           const SizedBox(height: 12),
         ],
+        Align(
+          alignment: Alignment.centerLeft,
+          // As tall as the buttons beside it (Jose, 2026-10-20).
+          child: SizedBox(
+            width: 240,
+            height: 40,
+            child: TextField(
+              key: const Key('whatsapp-groups-search'),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a group',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         if (_groups.isEmpty)
           Text('No groups yet.', style: theme.textTheme.bodyMedium)
+        else if (shown.isEmpty)
+          Text(
+            'No groups match "${_query.trim()}".',
+            style: theme.textTheme.bodyMedium,
+          )
         else
           LayoutBuilder(
             key: const ValueKey('tour-ai_assistance-whatsapp-groups'),
@@ -289,7 +335,7 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (var i = 0; i < _groups.length; i += across) ...[
+                  for (var i = 0; i < shown.length; i += across) ...[
                     if (i > 0) const SizedBox(height: gap),
                     IntrinsicHeight(
                       child: Row(
@@ -298,8 +344,8 @@ class _WhatsAppGroupsTabState extends State<WhatsAppGroupsTab> {
                           for (var j = i; j < i + across; j++) ...[
                             if (j > i) const SizedBox(width: gap),
                             Expanded(
-                              child: j < _groups.length
-                                  ? _card(context, _groups[j])
+                              child: j < shown.length
+                                  ? _card(context, shown[j])
                                   : const SizedBox(),
                             ),
                           ],

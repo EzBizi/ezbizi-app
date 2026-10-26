@@ -284,6 +284,62 @@ void main() {
     expect(tester.widget<Text>(title).data, 'from Google');
   });
 
+  testWidgets('a card that cannot set signatures offers Update permissions, '
+      'which opens Google Admin', (tester) async {
+    final opened = <Uri>[];
+    await _pump(
+      tester,
+      _Server(cards: [_ready, _notReady, _noTemplate]),
+      opened: opened,
+    );
+
+    expect(find.text('Update permissions'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workspace-update-permissions-ws-1')),
+      findsNothing,
+    );
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-update-permissions-ws-2')),
+    );
+    expect(opened, [Uri.parse(_authorize)]);
+    // The button, not the card: the Workspace did not open.
+    expect(find.byKey(const ValueKey('workspace-card-ws-1')), findsOne);
+  });
+
+  testWidgets('the not-ready banner carries Update permissions', (
+    tester,
+  ) async {
+    final opened = <Uri>[];
+    await _pump(tester, _Server(cards: [_notReady]), opened: opened);
+
+    final button = find.descendant(
+      of: find.byKey(const ValueKey('workspace-not-ready')),
+      matching: find.text('Update permissions'),
+    );
+    expect(button, findsOneWidget);
+    await _tap(tester, button);
+    expect(opened, [Uri.parse(_authorize)]);
+  });
+
+  testWidgets('a card with may_edit false is read-only even with email.edit', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _Server(
+        cards: [
+          {..._ready, 'may_edit': false},
+        ],
+      ),
+    );
+
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.byKey(const ValueKey('workspace-save-template')), findsNothing);
+    expect(find.text('Same email · Link'), findsNothing);
+    expect(find.text('Unlink'), findsNothing);
+  });
+
   testWidgets('without email.edit nothing can be changed', (tester) async {
     await _pump(
       tester,
@@ -448,6 +504,8 @@ void main() {
 // ── the server ──────────────────────────────────────────────────
 
 const _template = '<b>{{name}}</b><br>{{title}} · {{company}}';
+const _authorize =
+    'https://admin.google.com/ac/owl/domainwidedelegation?clientScopeToAdd=x';
 const _reason =
     'Signatures need one Google Admin step: allow EzBizi to change Gmail '
     'settings for your users.';
@@ -470,6 +528,7 @@ const _notReady = {
   'status': 'connected',
   'signatures_ready': false,
   'signatures_reason': _reason,
+  'authorize_url': _authorize,
   'has_template': true,
   'people_count': 6,
 };
@@ -700,6 +759,7 @@ Future<void> _pump(
     'email.workspace.view',
     'email.edit',
   ],
+  List<Uri>? opened,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -714,7 +774,11 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: WorkspaceTab(api: api, session: session),
+        body: WorkspaceTab(
+          api: api,
+          session: session,
+          openUrl: (uri) async => opened?.add(uri),
+        ),
       ),
     ),
   );

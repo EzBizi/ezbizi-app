@@ -14,7 +14,7 @@
   </url>
   <url>
     <loc>https://www.ezbizi.com/privacy/</loc>
-    <lastmod>2026-10-20</lastmod>
+    <lastmod>2026-10-23</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -32,6 +32,12 @@
   </url>
   <url>
     <loc>https://www.ezbizi.com/delete-account/</loc>
+    <lastmod>2026-08-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://www.ezbizi.com/support/</loc>
     <lastmod>2026-08-26</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>

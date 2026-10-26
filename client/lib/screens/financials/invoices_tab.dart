@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -130,6 +132,11 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
   String? _branch;
   late String? _openId = widget.initialOpenId;
 
+  /// The search box, sent as `q`, debounced.
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
+
   static const _statuses = [
     (null, 'Any status'),
     ('draft', 'Draft'),
@@ -147,10 +154,45 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _search.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
+  }
+
+  /// InvoicesController@index does not read `q` yet (it returns the newest
+  /// 500), so the loaded rows are also narrowed here. Once the server honours
+  /// `q` this is a no-op.
+  List<Map<String, dynamic>> _searchedRows(List<Map<String, dynamic>> rows) {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return rows;
+    return [
+      for (final r in rows)
+        if ([
+          r['number'],
+          (r['bill_to'] as Map?)?['name'],
+          (r['bill_to'] as Map?)?['email'],
+          r['status'],
+        ].whereType<Object>().join(' ').toLowerCase().contains(q))
+          r,
+    ];
+  }
+
   Future<void> _load() async {
     final query = <String, Object>{
       'status': ?_status,
       'franchise_id': ?_branch,
+      if (_q.isNotEmpty) 'q': _q,
     };
     if (_month case final m?) {
       final first = DateTime.parse('$m-01');
@@ -236,7 +278,7 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
                 ],
               ),
             ),
-            Expanded(child: _body(context, rows, phone: phone)),
+            Expanded(child: _body(context, _searchedRows(rows), phone: phone)),
           ],
         );
       },
@@ -277,6 +319,25 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
       runSpacing: 6,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
+        SizedBox(
+          width: phone ? double.infinity : 240,
+          child: TextField(
+            key: const Key('invoices-search'),
+            controller: _search,
+            onChanged: _searched,
+            // bodyMedium for the text and the hint, as the dense pickers draw:
+            // 53 points tall, as they are; the theme's 16-point hint makes 56.
+            style: Theme.of(context).textTheme.bodyMedium,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: 'Number or customer',
+              hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).inputDecorationTheme.hintStyle?.color,
+              ),
+            ),
+          ),
+        ),
         for (final (value, label) in _statuses)
           ChoiceChip(
             key: ValueKey('invoice-filter-${value ?? 'any'}'),
@@ -362,7 +423,9 @@ class _InvoiceListTabState extends State<InvoiceListTab> {
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            _status == null && _month == null && _branch == null
+            _q.isNotEmpty
+                ? 'No invoice matches "$_q".'
+                : _status == null && _month == null && _branch == null
                 ? 'No invoices yet. They are made from a charge sheet.'
                 : 'No invoices match.',
           ),

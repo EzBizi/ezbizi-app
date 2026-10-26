@@ -963,4 +963,25 @@ class SocialPostsApiTest extends TestCase
             ])->save();
         });
     }
+
+    /** The search bar: `q` narrows by title or words, after the tiles; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $mine = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
+        $this->inTenant($t['org'], function () use ($t, $mine) {
+            foreach (['Fall sweep special: 20% off', 'Meet our new crew'] as $body) {
+                SocialPost::create(['body' => $body, 'created_by' => $t['admin']->id])
+                    ->targets()->create(['social_connection_id' => $mine->getKey(), 'status' => 'sent']);
+            }
+        });
+
+        $as = $this->signedInAs($t['admin']);
+        $as->getJson(self::ENDPOINT.'?q=sweep')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.body', 'Fall sweep special: 20% off')
+            ->assertJsonPath('meta.tiles.sent', 2);
+        $as->getJson(self::ENDPOINT.'?q=20%25')->assertOk()->assertJsonCount(1, 'data');
+        $as->getJson(self::ENDPOINT.'?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson(self::ENDPOINT)->assertOk()->assertJsonCount(2, 'data');
+    }
 }

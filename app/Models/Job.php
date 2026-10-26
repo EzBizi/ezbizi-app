@@ -35,7 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
     'assigned_role_id', 'performed_by_user_id', 'service_area_id',
-    'job_type', 'sub_status', 'tags',
+    'job_type', 'sub_status', 'tags', 'review_reason', 'external_company', 'needs_second_visit',
 ])]
 class Job extends Model implements StatesRetention
 {
@@ -105,6 +105,7 @@ class Job extends Model implements StatesRetention
             // AutomationEvent::casts() for the same reasoning on delivered_at.
             'earned_at'        => 'datetime',
             'tags'             => 'array',
+            'needs_second_visit' => 'boolean',
             // Set only by a person's change; the Workiz projection leaves the
             // area alone once it is (see its migration).
             'service_area_chosen_at' => 'datetime',
@@ -140,9 +141,63 @@ class Job extends Model implements StatesRetention
 
     /** The Workiz mirror row this job was projected from, if any -- where its money lives. */
     /** The company the job's franchise belongs to, by name: the export's `company`. */
+    protected static function booted(): void
+    {
+        // The job's technician changing, by a person or the Workiz sync, rewrites its cards' Technician (Jose, 2026-10-22).
+        static::updated(function (Job $job) {
+            if ($job->wasChanged('performed_by_user_id')) {
+                \App\Support\Jobs\JobTechnicianSync::toCards($job);
+            }
+        });
+    }
+
     public function getCompanyAttribute(): ?string
     {
         return $this->franchise?->company?->name;
+    }
+
+    /*
+     * The job's people as words a rule can write (Jose, 2026-10-22: a task
+     * card's Client name and Phone number "should be available from the job").
+     * {{customer_name}}, {{customer_phone}}, {{customer_address}},
+     * {{technician_name}}, {{technician_user_id}}.
+     */
+    public function getCustomerNameAttribute(): ?string
+    {
+        return $this->customer?->name;
+    }
+
+    public function getCustomerPhoneAttribute(): ?string
+    {
+        return $this->customer?->phone;
+    }
+
+    public function getCustomerAddressAttribute(): ?string
+    {
+        $c = $this->customer;
+
+        return $c ? (trim(implode(', ', array_filter([$c->address_line1, $c->city, trim(($c->state ?? '').' '.($c->postal_code ?? ''))]))) ?: null) : null;
+    }
+
+    /** Who does the job: the EzBizi user it names, else the first Workiz team member linked to one. */
+    public function getTechnicianUserIdAttribute(): ?string
+    {
+        if ($this->performed_by_user_id) {
+            return $this->performed_by_user_id;
+        }
+        $team = collect($this->workizJob?->payload['Team'] ?? $this->workizJob?->payload['team'] ?? [])->pluck('id')->filter()->all();
+
+        return $team === [] ? null : WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->value('user_id');
+    }
+
+    public function getTechnicianNameAttribute(): ?string
+    {
+        $id = $this->technician_user_id;
+        if ($id) {
+            return User::query()->whereKey($id)->value('name');
+        }
+
+        return collect($this->workizJob?->payload['Team'] ?? [])->pluck('name')->filter()->first();
     }
 
     /** Trimmed, and blank is none: Workiz's own words arrive with stray spaces. */

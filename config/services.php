@@ -637,4 +637,15 @@ return [
         'home' => env('GROK_CLI_HOME', env('REPORT_TAG_GROK_CLI_HOME')),
     ],
 
+    /*
+    | Telegram - a second channel for the staff Tech Assistant. The bot serves
+    | ONE organization (as the WhatsApp bot number maps to one org); unset
+    | token or org means the webhook answers nothing.
+    */
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'org_id' => env('TELEGRAM_ORG_ID'),
+    ],
+
 ];

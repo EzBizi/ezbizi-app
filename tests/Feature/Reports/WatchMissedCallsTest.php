@@ -68,6 +68,32 @@ class WatchMissedCallsTest extends TestCase
         ], $events);
     }
 
+    /** Notifications, 2026-10-23: each missed call names its company, for a per-person company filter. */
+    public function test_a_missed_call_carries_the_accounts_company(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York']);
+        $tenant = $this->provisionTenant('Alpha');
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+            'experimental_reports.ringcentral.company_id' => $tenant['company']->id,
+        ]);
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/phone-number*' => Http::response(['records' => []]),
+            '*/call-log*' => Http::response(['records' => [$this->rc('own-line', 'Missed', 'Tiara Maranon', '18:45')], 'paging' => ['page' => 1]]),
+        ]);
+
+        $this->artisan('ezbizi:watch-missed-calls', ['--organization' => $tenant['org']->id])->assertSuccessful();
+
+        $payload = AutomationEvent::withoutGlobalScopes()->where('event_key', 'reports.call.missed')->sole()->payload;
+        $this->assertSame($tenant['company']->id, $payload['company_id']);
+        $this->assertSame($tenant['company']->name, $payload['company']);
+    }
+
     public function test_a_call_just_before_midnight_is_read_after_it(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-08 00:01', 'America/New_York'));

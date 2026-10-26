@@ -61,6 +61,29 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
 
   List<Map<String, dynamic>> _rows = [];
 
+  String _query = '';
+
+  /// The rows whose visible text contains the search, case-insensitively.
+  List<Map<String, dynamic>> get _shown {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((row) {
+      final platform = row['platform'] as String? ?? '';
+      final text = [
+        platform,
+        _label(platform),
+        row['minimum_version'],
+        row['download_url'],
+        row['note'],
+        row['changed_by'],
+        (row['is_enforced'] as bool? ?? false)
+            ? 'Builds older than ${row['minimum_version']} are refused.'
+            : 'No minimum set — every build gets through.',
+      ].whereType<String>().join(' ').toLowerCase();
+      return text.contains(q);
+    }).toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -158,10 +181,35 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
               'stops every older build on that platform immediately, for every '
               'customer — they are shown a screen telling them to update, and '
               'nothing they have saved is affected.',
-          action: IconButton(
-            tooltip: 'Refresh',
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // As tall as the buttons beside it (Jose, 2026-10-20).
+              SizedBox(
+                width: 240,
+                height: 40,
+                child: TextField(
+                  key: const Key('client-versions-search'),
+                  textAlignVertical: TextAlignVertical.center,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIconConstraints: BoxConstraints(minWidth: 36),
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Find a platform',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
           ),
         ),
         if (_saveError != null)
@@ -174,12 +222,20 @@ class _ClientVersionsScreenState extends State<ClientVersionsScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              itemCount: _rows.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _row(context, _rows[i]),
-            ),
+            child: _rows.isNotEmpty && _shown.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Text(
+                      'No platforms match "${_query.trim()}".',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    itemCount: _shown.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) => _row(context, _shown[i]),
+                  ),
           ),
         ),
       ],

@@ -211,6 +211,14 @@ final class SettingDefinition
         /** Bounds for a number (int, decimal, duration). Refused with a 422 outside them. */
         public readonly int|float|null $min = null,
         public readonly int|float|null $max = null,
+
+        /**
+         * A sub-heading inside the registry group, for a group long enough to
+         * need one (Work Hours, 2026-10-22: "could be separated in their
+         * respective categories"). Null means no sub-heading. Called section
+         * because `group` on the wire is already the registry group.
+         */
+        public readonly ?string $section = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");

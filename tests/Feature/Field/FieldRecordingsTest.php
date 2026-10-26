@@ -195,4 +195,17 @@ class FieldRecordingsTest extends TestCase
 
         $this->postJson("/api/v1/field/recordings/{$id}/flag", ['flagged' => true])->assertForbidden();
     }
+
+    /** The search bar: `q` narrows by who recorded it; a blank `q` is no filter. */
+    public function test_q_narrows_the_list_and_a_blank_q_changes_nothing(): void
+    {
+        $apprentice = $this->userWithRole($this->t, 'Apprentice', ['field.view', 'field.tracked', 'field.record']);
+        $this->record($this->tech);
+        $mine = $this->record($apprentice);
+
+        $as = $this->signedInAs($this->manager);
+        $as->getJson('/api/v1/field/recordings?q=apprent')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $mine);
+        $as->getJson('/api/v1/field/recordings?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/field/recordings')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

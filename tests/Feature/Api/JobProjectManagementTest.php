@@ -101,7 +101,8 @@ class JobProjectManagementTest extends TestCase
         $row = $get('ids[]='.$job)[0];
         $this->assertSame('Payment received, partly paid', $row['timeline'][1]['what']);
         $this->assertSame('+DEPOSIT RECEIVED', $row['timeline'][2]['what']);
-        $this->assertSame('Entered Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
+        // The entry is the status change it was (2026-10-22: a drill-down showed "—" for it), in labels.
+        $this->assertSame('Status Scheduled → Done, pending approval', $row['timeline'][0]['what'], 'the label, not the key');
     }
 
     /**
@@ -123,6 +124,85 @@ class JobProjectManagementTest extends TestCase
         $this->assertArrayHasKey('technician', $get('?event=tag_changes&from=2026-10-12&to=2026-10-12')[0]);
     }
 
+    /** 2026-10-22: with no watched statuses the stage lists are empty, but a stat's jobs and Recently Paid are not. */
+    public function test_drill_downs_stand_without_watched_statuses(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+        $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('jobs.estimate_aging_statuses', $alpha['org'], []));
+        $get = fn (string $q) => array_column($this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management?{$q}")->assertOk()->json('data'), 'id');
+
+        $this->assertSame([], $get(''));
+        $this->assertSame([$job], $get('event=payments&from=2026-10-10&to=2026-10-10'));
+        $this->assertSame([$job], $get('filter=recently_paid&from=2026-10-10&to=2026-10-10'));
+    }
+
+    /** Jose, 2026-10-22: what EzBizi itself did, and a Workiz step EzBizi caused named as EzBizi's. */
+    public function test_logs_list_ezbizis_own_changes_and_the_timeline_credits_the_rule(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
+        [$alpha, $job] = $this->world();
+
+        $this->inTenant($alpha['org'], function () use ($alpha, $job) {
+            $model = Job::query()->findOrFail($job);
+            $emit = function (string $key, array $payload, string $at) use ($model) {
+                $e = app(\App\Support\Automations\EventEmitter::class)->emit($key, $model, $payload);
+                $e->forceFill(['occurred_at' => $at])->save();
+
+                return $e;
+            };
+            $rule = \App\Models\Automation::create(['organization_id' => $alpha['org']->id, 'name' => 'Payment on DPA',
+                'trigger_key' => 'job.payment_received', 'is_active' => true]);
+            $actions = [['type' => 'workiz.job_update', 'status' => 'Submitted', 'tags' => 'Deposit Received']];
+            $version = \App\Models\AutomationVersion::create(['organization_id' => $alpha['org']->id, 'automation_id' => $rule->id,
+                'version' => 1, 'conditions' => null, 'actions' => $actions, 'created_at' => now()]);
+            $run = fn (string $at, string $status, array $extra) => \App\Models\AutomationRun::create($extra + [
+                'automation_id' => $rule->id, 'automation_version_id' => $version->id, 'status' => $status,
+                'event_id' => $emit('job.payment_received', [], $at)->id, 'started_at' => $at, 'finished_at' => Carbon::parse($at)->addSeconds(5),
+                'actions_snapshot' => $actions, 'action_count' => 1]);
+
+            $run('2026-10-14 10:00:00', 'succeeded', ['action_results' => [['type' => 'workiz.job_update', 'ok' => true, 'state' => 'succeeded',
+                'detail' => 'Set status Submitted; tags Deposit Received in Workiz.']]]);
+            // Workiz's sync reports the change ten minutes later, as its own.
+            $emit('job.status_changed', ['before' => ['status' => 'dpa'], 'after' => ['status' => 'submitted']], '2026-10-14 10:10:00');
+            $run('2026-10-15 09:00:00', 'skipped', ['action_results' => [], 'condition_trace' => ['type' => 'all', 'matched' => false,
+                'children' => [['type' => 'condition', 'field' => 'status', 'op' => 'eq', 'actual' => 'scheduled', 'expected' => 'dpa', 'matched' => false]]]]);
+            $emit('job.updated', ['before' => ['title' => 'A job'], 'after' => ['title' => 'Renamed']], '2026-10-15 11:00:00')
+                ->forceFill(['actor_id' => $alpha['admin']->id, 'actor_label' => 'Ada Admin <ada@example.test>'])->save();
+        });
+
+        $timeline = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?ids[]='.$job)->assertOk()->json('data.0.timeline'));
+        $this->assertSame('EzBizi · Payment on DPA', $timeline->firstWhere('to', 'submitted')['by']);
+        // Every step a rule took, skips with their reason (Jose, 2026-10-22).
+        $actions = $timeline->where('kind', 'action')->values();
+        $this->assertSame(['succeeded', 'skipped'], $actions->pluck('outcome')->all());
+        $this->assertSame('Workiz: Set status Submitted; tags Deposit Received in Workiz.', $actions[0]['what']);
+        $this->assertSame(['EzBizi · Payment on DPA', 'Status was Scheduled; the rule wants Done, pending approval.'], [$actions[1]['by'], $actions[1]['reason']]);
+
+        $logs = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC')
+            ->assertOk()->json('data');
+        $this->assertSame(['manual', 'skipped', 'succeeded'], array_column($logs, 'outcome'));
+        // Search: by the rule's name, by the job; a miss finds nothing.
+        $find = fn (string $q) => array_column($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&q='.urlencode($q))->json('data'), 'outcome');
+        $this->assertSame(['skipped', 'succeeded'], $find('Payment on'));
+        $this->assertSame(['manual', 'skipped', 'succeeded'], $find('J-1'));
+        $this->assertSame([], $find('nobody'));
+        $this->assertSame('Ada Admin', $logs[0]['by']);
+        $this->assertSame('Title: "Renamed"', $logs[0]['changes'][0]['detail']);
+        $this->assertSame('Status was Scheduled; the rule wants Done, pending approval.', $logs[1]['reason']);
+        $this->assertSame(['Payment on DPA', 'J-1', 'A Customer'], [$logs[2]['rule']['name'], $logs[2]['job']['number'], $logs[2]['job']['customer']]);
+        $this->assertSame('Set status Submitted; tags Deposit Received in Workiz.', $logs[2]['changes'][0]['detail']);
+
+        $skipped = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/jobs/project-management/logs?from=2026-10-14&to=2026-10-15&timezone=UTC&outcome=skipped')->json();
+        $this->assertSame(['skipped'], array_column($skipped['data'], 'outcome'));
+        // Counts for every outcome whatever is selected, and the skips folded per rule.
+        $this->assertSame(['succeeded' => 1, 'failed' => 0, 'skipped' => 1, 'manual' => 1], $skipped['meta']['counts']);
+        $this->assertSame([['reason' => 'Status was Scheduled; the rule wants Done, pending approval.', 'count' => 1]],
+            $skipped['meta']['skipped_by_rule'][0]['reasons']);
+    }
+
     public function test_filters_by_stage_branch_and_days(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-10-21 12:00:00', 'UTC'));
@@ -130,6 +210,11 @@ class JobProjectManagementTest extends TestCase
         $get = fn (string $q) => array_column($this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/project-management?{$q}")->assertOk()->json('data'), 'id');
 
         $this->assertSame([$job], $get('stage=partial'));
+        // Every chip's count on every call (UI/UX, 2026-10-22).
+        $this->assertSame(['recently_paid' => 1, 'waiting' => 0, 'partial' => 1, 'full' => 0, 'closed' => 0],
+            $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?stage=full&from=2026-10-10&to=2026-10-10')->json('meta.counts'));
+        $this->assertSame(['recently_paid' => 0, 'waiting' => 0, 'partial' => 0, 'full' => 0, 'closed' => 0],
+            $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management?min_days=25&from=2026-10-10&to=2026-10-10')->json('meta.counts'), 'min_days counts too');
         $this->assertSame([], $get('stage=full'));
         $this->assertSame([$job], $get('franchise_id='.$alpha['franchise']->id));
         $this->assertSame([], $get('min_days=25'));

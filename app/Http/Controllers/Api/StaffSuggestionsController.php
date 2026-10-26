@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Concerns\TenantScope;
 use App\Models\Notification;
 use App\Models\Suggestion;
 use App\Support\Files\FileStore;
@@ -27,11 +28,21 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class StaffSuggestionsController extends Controller
 {
     /** GET /api/v1/staff/suggestions */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
+
         $rows = Suggestion::query()
             ->withoutGlobalScopes()
             ->with(['organization:id,name', 'author:id,name'])
+            // Every tenant's, like the list itself: the related reads drop the
+            // tenant scope for the same reason the outer one does.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w->where('body', 'like', $like)
+                ->orWhere('module', 'like', $like)
+                ->orWhere('decision_note', 'like', $like)
+                ->orWhereHas('organization', fn ($o) => $o->where('name', 'like', $like))
+                ->orWhereHas('author', fn ($u) => $u->withoutGlobalScope(TenantScope::class)->where('name', 'like', $like))))
             // Undecided first, and among those the untouched ones — that is the
             // order somebody working the queue actually wants, rather than the
             // order things arrived.

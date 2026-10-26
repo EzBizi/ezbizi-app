@@ -30,6 +30,57 @@ const Map<String, Tour> assistTours = {
       ),
     ],
   ),
+  'ai_assistance/Parts': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'ai-parts-search',
+        title: 'Find a part',
+        body: 'Type a part name, model or number to narrow the list.',
+      ),
+      TourStep(
+        anchor: 'ai-parts-add',
+        title: 'Add part',
+        body:
+            'Its name, numbers and status. Click a part to change or delete '
+            'it.',
+      ),
+    ],
+  ),
+  'ai_assistance/Manuals': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'ai-manuals-search',
+        title: 'Find a manual',
+        body: 'Type a brand, model or title to narrow the list.',
+      ),
+      TourStep(
+        anchor: 'ai-manuals-upload',
+        title: 'Upload manual',
+        body:
+            'Pick the file, then its brand, models, title and revision. The '
+            'assistant reads its pages to answer.',
+      ),
+    ],
+  ),
+  'ai_assistance/Answers': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'ai-answers-telegram',
+        title: 'Telegram bot',
+        body: 'Whether the bot techs ask is set up.',
+      ),
+      TourStep(
+        anchor: 'ai-answers-search',
+        title: 'Find an answer',
+        body:
+            'Type a word to narrow the answers. Click one to read it, mark it '
+            'and send a correction.',
+      ),
+    ],
+  ),
   'ai_assistance/Library': Tour(
     version: 1,
     steps: [
@@ -428,6 +479,43 @@ const Map<String, Tour> assistTours = {
         body:
             'A saved report can be sent by hand, or by an automation rule on a '
             'schedule.',
+      ),
+    ],
+  ),
+  'work_hours/Daily approval': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-work_hours-approval',
+        title: 'Daily approval',
+        body:
+            'One day of clock-ins for the people in your view, yesterday '
+            'unless you pick another.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-day',
+        title: 'The day',
+        body: 'The arrows move a day; the calendar jumps to any day.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-summary',
+        title: 'Waiting, approved, no-shows',
+        body:
+            'A no-show was scheduled and never clocked in. Approve all leaves '
+            'them alone.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-all',
+        title: 'Approve all',
+        body: 'Approves every day still waiting, except the no-shows.',
+      ),
+      TourStep(
+        anchor: 'tour-work_hours-approval-rows',
+        title: 'Each person',
+        body:
+            'Their shifts, a bar of the day over the schedule (dashed), the '
+            'total against the schedule, and Late or Early. Adjust changes a '
+            'time with a reason and keeps the original; it does not approve.',
       ),
     ],
   ),

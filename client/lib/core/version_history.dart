@@ -14,6 +14,153 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0491',
+      date: '26 Oct 2026',
+      items: [
+        'Settings › Integrations › Messaging: connect your Telegram bot by pasting its token. EzBizi checks it, registers it and shows the bot\'s name, whether it needs attention, and which staff have linked it, each with Unlink. Disconnecting asks for your authenticator code.',
+        'Windows: the app and its installer are signed by EzBizi LLC.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0490',
+      date: '23 Oct 2026',
+      items: [
+        'Project Management: the No reason card lists exactly the waiting-review jobs with no reason, and Jobs can be filtered by review reason.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0489',
+      date: '23 Oct 2026',
+      items: [
+        'Project Management: one layout on every tab, the stages as one ordered flow with their own colours, and an ⓘ on every number saying how it is counted; clicking a number lists exactly those jobs. Reports and Table become one Repair team tab, and a new Rules tab shows how each stage and filter is decided.',
+        'Project Management: the Dashboard\'s bars are drawn again (they showed only their grey track), and labels are spelled out: Needs a second visit, Done in one visit, In dispute, Payments stopped, Our team.',
+        'Project Management: the paid-not-started warning email covers only the jobs Project Management includes, and Done waiting payment also takes jobs done pending approval with money still due.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0488',
+      date: '23 Oct 2026',
+      items: [
+        'AI Assistance: a Tech Assistant for technicians on WhatsApp. It answers part and manual questions from your own Parts and Manuals, remembers the job until "new job", says how sure it is, and says DO NOT ORDER YET when a part number is not from your data. New tabs: Parts, Manuals (upload PDFs) and Answers (mark each answer correct or incorrect).',
+        'WhatsApp staff messages: a plate photo goes to the Tech Assistant, and only a photo captioned bill or receipt goes to the bill reader. A voice note is answered with a request to type it.',
+        'Notifications: choosing companies under Notify me about also filters missed calls, and each missed call now says which company\'s line it rang.',
+        'Customer Experience: automatic replies to good reviews are spread over an hour or two rather than posted all at once.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0487',
+      date: '23 Oct 2026',
+      items: [
+        'Work Hours › Paid time off: the timeline lists each time days were earned. The countdown sits inside the ring, and remove sits beside the day it removes.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0486',
+      date: '23 Oct 2026',
+      items: [
+        'Work Hours › Paid time off: days can wait before they start accumulating, counted in days, weeks, or months from the start date. The wait happens once. Later years earn the full allowance. When the days can be used is still its own setting.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0485',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management › Assignments: the paid jobs Action 1 put on the Task Board, across every branch board, grouped by technician. Drag a card to another technician to reassign the job in Workiz; if Workiz refuses, the card goes back and says why.',
+        'Project Management: Dashboard, Jobs and Assignments share one toolbar and say which jobs they cover; Reports, Table, Logs and Settings read the same way.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0484',
+      date: '22 Oct 2026',
+      items: [
+        'Human Resources: Download draft on every contract and on onboardings not yet fully signed, a PDF stamped as a draft on every page. The signed copy stays a separate download.',
+        'Task Board opens on the board you used last there, or on your own board, never on another person\'s.',
+        'Task Board: a card\'s Technician and its job\'s technician follow each other; changing it on the card assigns the job in Workiz first.',
+        'Project Management › Settings is laid out as cards with one inherit header each and the stages in an aligned table; a new card chooses which jobs Project Management includes (statuses, and only partly paid). The Completed and Cancelled tabs are gone.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0483',
+      date: '22 Oct 2026',
+      items: [
+        'Notifications: choose which companies you hear from in the bell, under Notify me about. Picking one includes its sub companies and branches, and it applies to the bell, phone and email. Organization-wide notices always arrive.',
+        'Customer Experience follows the place you are viewing: a branch sees its own reviews, listings, performance and complaints. Assigning a listing to a branch under Business Profile moves its reviews and complaints with it.',
+        'Branch pickers everywhere read "Company · Branch" instead of "Main".',
+        'Project Management: the Dashboard\'s bars are coloured and show the top entries with Show all, many service areas fold into one picker, and each place chooses which statuses Project Management covers and whether only partly paid jobs show.',
+        'Task Board: a card a rule made shows EzBizi as its owner, with the rule\'s name on hover, and Created comes before Due.',
+        'Online booking: a branch can have a catch-all area that covers every ZIP code the branch has no listed area for, so companies without service areas can be booked.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0482',
+      date: '22 Oct 2026',
+      items: [
+        'Email inbox: a category tab keeps reading older mail until it has a page of conversations, instead of looking empty.',
+        'Work Hours › Settings is split into sections: Clock in and lock screen, Shift timing, Daily approval, Clock-in zone and Paid time off.',
+        'Automations: a Task Board card made by a rule can carry the job\'s customer name, phone, address and technician, and the columns it needs are added to the board.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0481',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management is rebuilt as Dashboard, Reports, Table, Jobs, Logs and Settings. The Dashboard counts jobs per team and stage, waiting review by location and reason, us vs external companies, second visits, redos, money in the pipeline and done-waiting-payment (total vs due), with a countdown for jobs paid but not started. Everything can be split by service area.',
+        'Project Management › Jobs: stage tabs (In progress, Waiting review, Ready to schedule, Scheduled, Done waiting payment, Completed, Cancelled) with counts, filters for service area, redo, dispute, stopped payments, external company and second visit, and a job\'s review reason, external company and second visit can be set from the list.',
+        'Project Management › Reports and Table: the weekly Repair Team report per company (hours, paycheck, helper, operation, gas, parts, shares, jobs and cost from gross sales per technician and combined), approved by someone with Approve financials, with missing fields highlighted and editable in the table.',
+        'Project Management: a daily email warns when a paid job has not started after a set number of days; the address and the days are set per company or branch.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0480',
+      date: '22 Oct 2026',
+      items: [
+        'Work Hours › Paid Time Off: a new person panel with Total, Used, Left and Expired always shown, a countdown to the next reset with past resets, when the days can be used, and the days off picked on a calendar (half days and scattered days). Days off, corrections and resets read as one timeline, and the list filters by role.',
+        'Work Hours › Daily approval: choose which roles\' hours need approval (Settings › Work Hours); the approver is never on their own list.',
+        'Monitoring: a camera opens full screen with Fit or Fill, Esc to close, and a bar that hides itself; the panel takes the camera\'s shape, so there are no grey bands.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0479',
+      date: '22 Oct 2026',
+      items: [
+        'Every list in EzBizi has a search bar: 57 more screens, including Communication, Reports, Monitoring, Inventory, Financials, Marketing, Training, Work Hours and Suggestions. Long lists such as calls, invoices, reviews and field recordings search on the server, so results include rows not yet loaded.',
+        'Automations: the Workiz job update step can also remove a job\'s scheduled time.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0478',
+      date: '22 Oct 2026',
+      items: [
+        'Email › Inbox looks like Gmail: folders and each company\'s inboxes on the left, category tabs, one row per conversation across all inboxes, and a reading pane. All inboxes no longer says an inbox is not connected when it is.',
+        'Leads › Manage › Office hours: every company and branch in one table, with the hours it uses, where they come from, its time zone, and the automatic replies that read them. Places with no hours at all are highlighted and counted.',
+        'Project Management: a job\'s timeline says "EzBizi" and the rule\'s name for a status or tag change one of your rules made, instead of "Workiz". Settings no longer lets you remove the last watched status by accident.',
+        'Project Management: a job that moved into a watched status shows the move in the Dashboard\'s Status changes list ("Status Submitted → Done pending approval") instead of empty columns.',
+        'Project Management › Logs: every change EzBizi\'s rules made to jobs (status, tags, Task Board cards, notifications), with the rule, the outcome and the reason for anything skipped or failed, searchable and filtered by dates, branch and rule. A job\'s timeline shows each of those steps too.',
+        'Project Management: Recently paid, Waiting, Partly paid, Paid in full and Closed always show their counts, and the Dashboard\'s lists have a search bar.',
+        'Email inbox: unread counts per inbox and company, who handled an email and when, Reply all with Cc, and Forward.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0477',
+      date: '22 Oct 2026',
+      items: [
+        'Project Management: the Dashboard\'s lists and Recently paid show their jobs even when no statuses are being watched. Before, emptying the watched statuses left every list blank while the tiles still counted. Recently paid lists every job paid in the dates, watched or not.',
+        'Work Hours › Daily approval: a manager approves or adjusts each day\'s clock-ins, with a morning reminder, and an adjustment keeps what it was before. It is off until switched on for a place, and approving needs the Approve daily hours permission.',
+        'Work Hours › Paid Time Off: an Expired tile, and the number expired on each person\'s row, when days were lost at a reset.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0476',
+      date: '22 Oct 2026',
+      items: [
+        'Automations: a new step-by-step builder: When (the trigger, with its last three real events to look at), Only if (conditions in plain words), Then (only the steps that fit the trigger), and a Review that shows what the rule would send before you save it.',
+        'Email › Google Workspace: a tab per Workspace to set each person\'s email signature. When Google has not given EzBizi permission yet, Update permissions opens Google Admin\'s page already filled in.',
+        'Human Resources › Payroll: a table of salaries, tax forms, dates, roles and contracts, with filters; a salary change adds to the person\'s pay history. The onboarding form is split into Employer and Employee tabs and opens on your side. Commission can have several rates, such as 15% when weekly sales are above an amount.',
+        'Paid time off: days lost at a reset when carryover is off now show as expired on the person\'s Time off card.',
+        'Leads: an automatic reply leaves out the booking link when no service area covers the customer\'s ZIP code, instead of sending a link with no days to book.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0475',
       date: '22 Oct 2026',
       items: [

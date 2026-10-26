@@ -376,7 +376,9 @@ void main() {
 
       expect(find.widgetWithText(ChoiceChip, 'Illinois'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Texas'));
+      // Named with its company from /me (branch_options.dart); Illinois is
+      // outside /me, so it keeps the server's name.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Everdoors · Texas'));
       await tester.pumpAndSettle();
 
       expect(asked, 'fr-tx');

@@ -310,6 +310,39 @@ class NotificationsTest extends TestCase
         $this->assertSame(1, $sent);
     }
 
+    public function test_a_person_who_chose_one_company_hears_only_from_it_and_below(): void
+    {
+        // Bar, 2026-10-22: assigned to the whole group, he wants only Everdoors
+        // — "everything under everdoors", sub companies and branches included.
+        [$sub, $other] = $this->inTenant(fn () => [
+            \App\Models\Company::create(['organization_id' => $this->org['organization']->id, 'name' => 'Sub', 'parent_company_id' => $this->org['company']->id]),
+            \App\Models\Company::create(['organization_id' => $this->org['organization']->id, 'name' => 'Other']),
+        ]);
+        $this->inTenant(fn () => $this->org['admin']->forceFill(['preferences' => ['notifications.companies' => [$this->org['company']->id]]])->save());
+
+        $send = fn (?Model $subject) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Heads up', subject: $subject, onlyTo: $this->org['admin'], source: 'system',
+        ));
+
+        $this->assertSame(0, $send($other), 'another company is muted');
+        $this->assertSame(1, $send($sub), 'a sub company of the chosen one counts');
+        $this->assertSame(1, $send($this->org['franchise']), 'so does a branch of it');
+        $this->assertSame(1, $send(null), 'organization-wide always arrives');
+
+        // A missed call has no record; its company rides the event (2026-10-23:
+        // Bar still got every company's missed calls).
+        $call = fn (?string $companyId) => $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Missed call', onlyTo: $this->org['admin'], source: 'automation',
+            eventId: AutomationEvent::create([
+                'organization_id' => $this->org['organization']->id, 'event_key' => 'reports.call.missed',
+                'payload' => ['company_id' => $companyId], 'occurred_at' => now(), 'available_at' => now(),
+            ])->id,
+        ));
+        $this->assertSame(1, $call($sub->id), 'a missed call on a chosen company arrives');
+        $this->assertSame(0, $call($other->id), 'one on another company does not');
+        $this->assertSame(0, $call(null), 'nor one whose company is unknown');
+    }
+
     public function test_a_looping_rule_cannot_flood_one_persons_bell(): void
     {
         // 2026-10-15: one "New reply" rule wrote 884 rows in 30 minutes.

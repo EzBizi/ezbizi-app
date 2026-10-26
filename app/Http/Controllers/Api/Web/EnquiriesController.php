@@ -10,7 +10,6 @@ use App\Models\Job;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
-use App\Models\ServiceAreaZip;
 use App\Models\User;
 use App\Models\WebBooking;
 use App\Models\WebChat;
@@ -523,7 +522,7 @@ class EnquiriesController extends Controller
         $company = Company::query()->find($site->company_id);
         $owner = $company?->parent_company_id ?? $site->company_id;
         $franchises = Franchise::query()->whereIn('company_id', array_unique([$site->company_id, $owner]))->pluck('id');
-        $area = ServiceAreaZip::query()->whereIn('franchise_id', $franchises)->where('zip', $zip)->first()?->serviceArea;
+        $area = ServiceArea::forZip($zip, $franchises);
 
         return $area !== null && Openings::hasCapacity($area) ? $area : null;
     }

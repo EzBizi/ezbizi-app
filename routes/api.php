@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\FieldRecordingsController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
+use App\Http\Controllers\Api\TechAssistantController;
 use App\Http\Controllers\Api\GuidelinesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
@@ -201,6 +202,8 @@ use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppGroupsController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
+use App\Http\Controllers\Api\TelegramConnectController;
+use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\WorkizWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Http\Controllers\Api\WorkizWebSessionController;
@@ -486,6 +489,14 @@ Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'ver
 Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.whatsapp.webhook');
+
+/*
+| Telegram - the staff Tech Assistant bot. Unauthenticated in the session
+| sense; the X-Telegram-Bot-Api-Secret-Token header is checked in the controller.
+*/
+Route::post('v1/telegram/webhook', TelegramWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('telegram.webhook');
 
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
@@ -878,6 +889,11 @@ Route::prefix('v1')
         // Before the resource, or 'project-management' reads as a job id.
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
+        Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
+        Route::get('jobs/project-management/overview', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'overview']);
+        Route::get('jobs/project-management/cards', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'cards']);
+        Route::get('jobs/project-management/rules', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'rules']);
+        Route::get('jobs/project-management/logs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'logs']);
         Route::apiResource('jobs', JobsController::class);
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
@@ -1020,6 +1036,13 @@ Route::prefix('v1')
         Route::get('leads/dashboard', [LeadDashboardController::class, 'show']);
         Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
         Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
+        // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
+        Route::middleware('permission:leads.manage')->group(function () {
+            Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);
+            // No whereIn on {scope}: the controller's match() refuses any other scope, and a
+            // route constraint hides the call from ClientCallsRealRoutesTest (failed the 0.0.0478 precheck).
+            Route::put('leads/office-hours/{scope}/{id}', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'update']);
+        });
         Route::get('leads/reply-templates', [LeadReplyTemplatesController::class, 'index']);
         Route::put('leads/reply-templates/{company}', [LeadReplyTemplatesController::class, 'update']);
         Route::get('leads', [LeadsController::class, 'index']);
@@ -1090,7 +1113,12 @@ Route::prefix('v1')
             Route::post('bases/{base}/tables', 'storeTable');
             Route::get('airtable-tables', 'airtableTables');
             Route::get('repair-split', 'repairSplit');
+            Route::get('repair-report', 'repairReport');
             Route::get('refunds', 'refunds');
+            Route::post('repair-report/approve', 'approveRepairReport');
+            Route::get('repair-report/table', 'repairTable');
+            Route::patch('repair-report/value', 'setRepairValue');
+            Route::get('production-cost', 'productionCost');
             Route::post('bases/{base}/airtable-links', 'linkAirtable');
             Route::post('airtable-links', 'mirrorAirtable');
             Route::post('tables/{table}/refresh', 'refreshAirtable');
@@ -1391,6 +1419,11 @@ Route::prefix('v1')
         Route::put('social/workiz-web/{connection}/accounts', [WorkizWebSessionController::class, 'map']);
         Route::put('social/workiz-web/{connection}/company', [WorkizWebSessionController::class, 'moveToCompany']);
         Route::post('social/ringcentral', [RingCentralConnectController::class, 'store']);
+        // The organization's own Telegram bot (Integrations › Messaging), and
+        // the staff linked to it. Gated in the controller on the connect grant.
+        Route::post('social/telegram', [TelegramConnectController::class, 'store']);
+        Route::get('social/telegram/links', [TelegramConnectController::class, 'links']);
+        Route::delete('social/telegram/links/{link}', [TelegramConnectController::class, 'unlink']);
 
         /*
          * Profit & Loss, read live from a tenant's own Airtable base. Before
@@ -1873,6 +1906,20 @@ Route::prefix('v1')
         Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
             ->except('show')
             ->parameters(['entries' => 'entry']);
+        // The Chimney Tech Assistant (2026-10-23): Parts, Manuals and Answers
+        // tabs - read on each tab, written under `ai_assistance.manage`.
+        Route::get('ai-assistance/parts', [TechAssistantController::class, 'parts'])->middleware('permission:ai_assistance.parts.view');
+        Route::get('ai-assistance/manuals', [TechAssistantController::class, 'manuals'])->middleware('permission:ai_assistance.manuals.view');
+        Route::get('ai-assistance/answers', [TechAssistantController::class, 'answers'])->middleware('permission:ai_assistance.answers.view');
+        Route::middleware('permission:ai_assistance.manage')->group(function () {
+            Route::post('ai-assistance/parts', [TechAssistantController::class, 'storePart']);
+            Route::patch('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::put('ai-assistance/parts/{part}', [TechAssistantController::class, 'updatePart']);
+            Route::delete('ai-assistance/parts/{part}', [TechAssistantController::class, 'destroyPart']);
+            Route::post('ai-assistance/manuals', [TechAssistantController::class, 'storeManual']);
+            Route::delete('ai-assistance/manuals/{manual}', [TechAssistantController::class, 'destroyManual']);
+            Route::post('ai-assistance/answers/{answer}/review', [TechAssistantController::class, 'review']);
+        });
         // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
         Route::middleware('permission:ai_assistance.manage')->group(function () {
             Route::apiResource('ai-assistance/whatsapp-groups', WhatsAppGroupsController::class)
@@ -1888,6 +1935,16 @@ Route::prefix('v1')
             Route::post('ai-assistance/staff-bot/menus/{menu}/items', [StaffBotMenusController::class, 'storeItem']);
             Route::put('ai-assistance/staff-bot/items/{item}', [StaffBotMenusController::class, 'updateItem']);
             Route::delete('ai-assistance/staff-bot/items/{item}', [StaffBotMenusController::class, 'destroyItem']);
+        });
+
+        // Work Hours › Daily approval (2026-10-22).
+        // Reading the day is the tab (view-only reads, UI/UX 2026-10-22);
+        // approving and adjusting need "Approve daily hours".
+        Route::get('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'index']);
+        Route::middleware('permission:work_hours.approve')->group(function () {
+            Route::post('hr/time-clock/approvals', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'store']);
+            Route::post('hr/time-clock/approvals/all', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'approveAll']);
+            Route::post('hr/time-clock/approvals/shifts/{shift}/adjust', [\App\Http\Controllers\Api\TimeClockApprovalsController::class, 'adjust']);
         });
 
         Route::middleware('permission:work_hours.manage')->group(function () {
@@ -1969,8 +2026,14 @@ Route::prefix('v1')
         // is what adds everybody else's. The controller makes that split —
         // see HrPeopleController::pto.
         Route::get('hr/pto', [HrPeopleController::class, 'pto']);
+        // The Payroll tab (Jose, 2026-10-22). Salary itself rides on hr.pay.view
+        // and is changed through the pay-rate history (details/pay-rates).
+        Route::get('hr/payroll', [HrPeopleController::class, 'payroll'])->middleware('permission:hr.payroll.view');
         // Used typed into Total / Used / Left (Jose, 2026-10-21); UserPolicy::editPtoUsed.
         Route::put('hr/people/{user}/pto/used', [HrPeopleController::class, 'setPtoUsed']);
+        // The days themselves (Jose, 2026-10-22: "it can be different days").
+        Route::post('hr/people/{user}/pto/days', [HrPeopleController::class, 'addPtoDays']);
+        Route::delete('hr/people/{user}/pto/days/{day}', [HrPeopleController::class, 'removePtoDay']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
@@ -2038,6 +2101,9 @@ Route::prefix('v1')
          * rather than `view` because it renders a draft of what people sign.
          */
         Route::post('hr/contracts/{contract}/preview', [HrContractsController::class, 'preview']);
+        // The current version as a PDF with sample values, stamped DRAFT
+        // (Jose, 2026-10-22: a Download on contracts).
+        Route::get('hr/contracts/{contract}/draft.pdf', [HrContractsController::class, 'draftPdf']);
         Route::get('hr/contracts/{contract}', [HrContractsController::class, 'show']);
         Route::patch('hr/contracts/{contract}', [HrContractsController::class, 'update']);
 

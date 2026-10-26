@@ -33,7 +33,13 @@ class ReplyPanel extends StatefulWidget {
     required this.mailboxId,
     required this.message,
     required this.replyAs,
+    this.all = false,
   });
+
+  /// Reply all: the server adds everybody the message was to and copied to
+  /// (`all: true`). Copies only work on Gmail inboxes; elsewhere the server
+  /// answers 422 with a sentence, shown here.
+  final bool all;
 
   final ApiClient api;
   final String mailboxId;
@@ -52,6 +58,9 @@ class ReplyPanel extends StatefulWidget {
 class _ReplyPanelState extends State<ReplyPanel> {
   final _body = TextEditingController();
 
+  /// Extra copies, comma separated. Sent as `cc` only when filled in.
+  final _cc = TextEditingController();
+
   bool _busy = false;
   String? _error;
 
@@ -65,6 +74,7 @@ class _ReplyPanelState extends State<ReplyPanel> {
   @override
   void dispose() {
     _body.dispose();
+    _cc.dispose();
     super.dispose();
   }
 
@@ -80,7 +90,11 @@ class _ReplyPanelState extends State<ReplyPanel> {
       // identity it leaves under are the server's to decide — sending them from
       // here would make this client a second place where a reply can be
       // addressed, and the wrong one would look exactly like the right one.
-      {'body': _body.text.trim()},
+      {
+        'body': _body.text.trim(),
+        if (_copies.isNotEmpty) 'cc': _copies,
+        if (widget.all) 'all': true,
+      },
     );
 
     if (!mounted) return;
@@ -107,13 +121,18 @@ class _ReplyPanelState extends State<ReplyPanel> {
     if (mounted) Navigator.of(context).pop(from);
   }
 
+  List<String> get _copies => [
+    for (final part in _cc.text.split(RegExp(r'[,;\s]+')))
+      if (part.trim().isNotEmpty) part.trim(),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final message = widget.message;
 
     return SidePanel(
-      title: 'Reply',
+      title: widget.all ? 'Reply all' : 'Reply',
       subtitle: 'To ${message.from}',
       actions: [
         TextButton(
@@ -170,9 +189,12 @@ class _ReplyPanelState extends State<ReplyPanel> {
           // Facts, not fields. The recipient and the subject are the server's,
           // and a box somebody can type into is a promise that what they type
           // will be used.
-          _fact(context, 'To', message.replyTo.isEmpty
-              ? message.fromAddress
-              : message.replyTo.join(', ')),
+          _fact(context, 'To', [
+            message.replyTo.isEmpty
+                ? message.fromAddress
+                : message.replyTo.join(', '),
+            if (widget.all) 'and everybody else on the message',
+          ].join(' ')),
           const SizedBox(height: 8),
           _fact(
             context,
@@ -180,6 +202,16 @@ class _ReplyPanelState extends State<ReplyPanel> {
             message.replySubject?.isNotEmpty == true
                 ? message.replySubject!
                 : (message.subject.isEmpty ? 'No subject' : message.subject),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('email-reply-cc'),
+            controller: _cc,
+            enabled: !_busy,
+            decoration: const InputDecoration(
+              labelText: 'Cc',
+              helperText: 'Addresses separated by commas. Copies work on Gmail inboxes.',
+            ),
           ),
           const SizedBox(height: 16),
           TextField(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -57,6 +59,11 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
   /// same shape `LearnShelves._selected` uses for its own two players.
   (String, String)? _open;
 
+  /// What the Settings search field holds. One field for both lists: they sit
+  /// under the one Settings header.
+  String _query = '';
+  Timer? _debounce;
+
   Me get _me => widget.session.me!;
 
   @override
@@ -65,13 +72,45 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _search(String value) {
+    setState(() => _query = value);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  /// Until GuidesController@index and TestsController@index read q, the
+  /// loaded rows are filtered here too.
+  List<Map<String, dynamic>> _matching(List<Map<String, dynamic>> rows, String countKey, String unit) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return rows;
+    return [
+      for (final row in rows)
+        if ([
+          row['title'] as String? ?? '',
+          row['status'] == 'published' ? 'Published' : 'Draft',
+          '${row[countKey] ?? 0} $unit',
+        ].any((field) => field.toLowerCase().contains(q)))
+          row,
+    ];
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = _guides.isEmpty && _tests.isEmpty;
       _error = null;
     });
 
-    final guides = await widget.api.get('/training/guides', {'per_page': '200'});
+    final q = _query.trim();
+    final guides = await widget.api.get('/training/guides', {
+      'per_page': '200',
+      if (q.isNotEmpty) 'q': q,
+    });
     if (!mounted) return;
     if (!guides.ok) {
       setState(() {
@@ -81,7 +120,10 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
       return;
     }
 
-    final tests = await widget.api.get('/training/tests', {'per_page': '200'});
+    final tests = await widget.api.get('/training/tests', {
+      'per_page': '200',
+      if (q.isNotEmpty) 'q': q,
+    });
     if (!mounted) return;
     if (!tests.ok) {
       setState(() {
@@ -194,12 +236,35 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
           : GuideBuilder(api: widget.api, session: widget.session, guideId: id, onLeave: _closeBuilder);
     }
 
+    final guides = _matching(_guides, 'screen_count', 'screens');
+    final tests = _matching(_tests, 'question_count', 'questions');
+    final query = _query.trim();
+    final bodyText = Theme.of(context).textTheme.bodyMedium;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const PanelHeader(
+        PanelHeader(
           title: 'Settings',
           note: 'Where a guide or a test gets written, screen by screen or question by question.',
+          // As tall as the buttons beside it (Jose, 2026-10-20).
+          action: SizedBox(
+            width: 240,
+            height: 40,
+            child: TextField(
+              key: const Key('training-settings-search'),
+              textAlignVertical: TextAlignVertical.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                prefixIconConstraints: BoxConstraints(minWidth: 36),
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a guide or test',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: _search,
+            ),
+          ),
         ),
         Expanded(
           child: AsyncBody(
@@ -217,12 +282,15 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                   onAdd: _creating ? null : _newGuide,
                 ),
                 const SizedBox(height: 8),
-                if (_guides.isEmpty)
+                // With a query, an empty load is "nothing matched", not "none yet".
+                if (_guides.isEmpty && query.isEmpty)
                   // Scope-filtered: "no guides YET" claims the organization has
                   // none, which this list cannot know. It says what showed up.
                   const _EmptySection('No guides to show — "New guide" starts one.')
+                else if (guides.isEmpty)
+                  Text('No guides match "$query".', style: bodyText)
                 else
-                  for (final guide in _guides)
+                  for (final guide in guides)
                     _SettingsRow(
                       key: ValueKey('training.settings-guide-${guide['id']}'),
                       title: guide['title'] as String? ?? '',
@@ -240,10 +308,13 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                   onAdd: _creating ? null : _newTest,
                 ),
                 const SizedBox(height: 8),
-                if (_tests.isEmpty)
+                // With a query, an empty load is "nothing matched", not "none yet".
+                if (_tests.isEmpty && query.isEmpty)
                   const _EmptySection('No tests to show — "New test" starts one.')
+                else if (tests.isEmpty)
+                  Text('No tests match "$query".', style: bodyText)
                 else
-                  for (final test in _tests)
+                  for (final test in tests)
                     _SettingsRow(
                       key: ValueKey('training.settings-test-${test['id']}'),
                       title: test['title'] as String? ?? '',

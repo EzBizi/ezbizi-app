@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/device_key_store_io.dart' as store;
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/task_board_screen.dart';
@@ -15,6 +17,12 @@ import 'package:http/testing.dart';
 /// role_name}]}, a board's `kind`, `visibility` (main|private), `my_role`,
 /// `members_count` and `can_manage`.
 void main() {
+  // The board last opened is remembered on disk: keep it out of the real one.
+  setUp(() {
+    store.debugStoreDirOverride = Directory.systemTemp.createTempSync('tb');
+  });
+  tearDown(() => store.debugStoreDirOverride = null);
+
   late List<(String, String, Object?)> log;
 
   ApiClient fakeServer({

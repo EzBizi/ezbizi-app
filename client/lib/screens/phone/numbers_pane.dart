@@ -215,14 +215,25 @@ class _NumbersPaneState extends State<NumbersPane> {
   /// Counted here - `/phone/numbers` is every line in one answer.
   String? _tile;
 
-  bool _matches(_Line line) => switch (_tile) {
-    'answered' => line.answers,
-    'silent' => !line.answers,
-    'recorded' => line.record,
-    'idle' => line.idle,
-    'unassigned' => line.assignedTo == null,
-    _ => true,
-  };
+  /// What is typed in the Lines search box, filtered here for the same reason.
+  String _query = '';
+
+  bool _matches(_Line line) =>
+      switch (_tile) {
+        'answered' => line.answers,
+        'silent' => !line.answers,
+        'recorded' => line.record,
+        'idle' => line.idle,
+        'unassigned' => line.assignedTo == null,
+        _ => true,
+      } &&
+      _searchHit(_query, [
+        line.label,
+        line.e164,
+        formatPhoneNumber(line.e164),
+        line.answerTitle,
+        _company(line),
+      ]);
 
   @override
   void initState() {
@@ -462,25 +473,39 @@ class _NumbersPaneState extends State<NumbersPane> {
   Widget _segments(ThemeData theme) {
     final waiting = _importable.length;
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: SegmentedButton<int>(
-        showSelectedIcon: false,
-        segments: [
-          ButtonSegment(value: 0, label: Text('Lines · ${_lines.length}')),
-          ButtonSegment(
-            value: 1,
-            label: Text(
-              waiting == 0 ? 'Import' : 'Import · $waiting waiting',
-            ),
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _segmentButtons(waiting),
+        if (_segment == 0 && _lines.isNotEmpty)
+          _searchBox(
+            key: const ValueKey('comm-numbers-search'),
+            hint: 'Search label or number',
+            onChanged: (value) => setState(() => _query = value),
           ),
-          if (_canEdit && _scope != null)
-            const ButtonSegment(value: 2, label: Text('Buy a number')),
-        ],
-        selected: {_segment},
-        onSelectionChanged: (picked) =>
-            setState(() => _segment = picked.first),
-      ),
+      ],
+    );
+  }
+
+  Widget _segmentButtons(int waiting) {
+    return SegmentedButton<int>(
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(value: 0, label: Text('Lines · ${_lines.length}')),
+        ButtonSegment(
+          value: 1,
+          label: Text(
+            waiting == 0 ? 'Import' : 'Import · $waiting waiting',
+          ),
+        ),
+        if (_canEdit && _scope != null)
+          const ButtonSegment(value: 2, label: Text('Buy a number')),
+      ],
+      selected: {_segment},
+      onSelectionChanged: (picked) =>
+          setState(() => _segment = picked.first),
     );
   }
 
@@ -724,9 +749,14 @@ class _NumbersPaneState extends State<NumbersPane> {
         shown.map(_company).toSet().length > 1;
 
     if (shown.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
-        child: Text('No lines like that.', textAlign: TextAlign.center),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          _query.trim().isNotEmpty
+              ? 'Nothing matches "${_query.trim()}".'
+              : 'No lines like that.',
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -1587,4 +1617,48 @@ class _Schedule {
         .map((r) => _Schedule(id: r['id'].toString(), name: r['name']?.toString() ?? 'Hours'))
         .toList(growable: false);
   }
+}
+
+/// The list's search box, sized to sit in the pane's header beside its
+/// buttons: 40 high, the height of the controls around it.
+Widget _searchBox({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 260,
+  height: 40,
+  child: TextField(
+    key: key,
+    onChanged: onChanged,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      hintText: hint,
+      prefixIcon: const Icon(Icons.search, size: 18),
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+      border: const OutlineInputBorder(),
+    ),
+  ),
+);
+
+
+/// Whether any of [fields] holds [query], ignoring case. A query of digits
+/// and phone punctuation also matches a number however it is stored, so
+/// "(203) 555" finds +12035550199.
+bool _searchHit(String query, Iterable<String?> fields) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  final digits = q.replaceAll(RegExp(r'\D'), '');
+  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
+  for (final field in fields) {
+    if (field == null || field.isEmpty) continue;
+    final value = field.toLowerCase();
+    if (value.contains(q)) return true;
+    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
+      return true;
+    }
+  }
+  return false;
 }

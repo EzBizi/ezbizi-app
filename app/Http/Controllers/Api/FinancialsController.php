@@ -16,6 +16,7 @@ use App\Support\Financials\AirtableWriter;
 use App\Support\Financials\CostSplit;
 use App\Support\Financials\FieldType;
 use App\Support\Financials\FinancialsHome;
+use App\Support\Financials\RepairReport;
 use App\Support\Financials\SourceFigures;
 use App\Support\Financials\Templates;
 use App\Support\Inventory\InventoryVisibility;
@@ -405,6 +406,108 @@ class FinancialsController extends Controller
         ]);
 
         return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::repairSplit($from, $to, $place));
+    }
+
+    /**
+     * The weekly repair-team report per place: each technician's hours, cost
+     * lines, shares ($ and %), jobs and jobs amount, and the teams combined.
+     * week_start gives a seven-day week; from/to any period up to two months.
+     */
+    public function repairReport(Request $request): JsonResponse
+    {
+        // Validated here, not in the helper, so the staff bot's catalogue can read the names.
+        $input = $request->validate([
+            'week_start' => ['required_without:from', 'nullable', 'date_format:Y-m-d'],
+            'from' => ['required_without:week_start', 'nullable', 'date_format:Y-m-d'],
+            'to' => ['required_with:from', 'nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
+        ]);
+        if (! empty($input['week_start'])) {
+            $input['from'] = $input['week_start'];
+            $input['to'] = now()->parse($input['week_start'])->addDays(6)->toDateString();
+        }
+        $company = $input['company_id'] ?? null;
+
+        return $this->sourceFigures($request, $input, fn ($from, $to, $place) => SourceFigures::repairReport($from, $to, $place, $company));
+    }
+
+    public function approveRepairReport(Request $request): JsonResponse
+    {
+        $input = $request->validate(['franchise_id' => ['required', 'uuid'], 'week_start' => ['required', 'date_format:Y-m-d']]);
+        abort_unless($request->user()->hasPermission('financials.approve'), Response::HTTP_FORBIDDEN, 'Your role cannot approve the Repair Team report.');
+        $place = $this->repairPlace($request, $input['franchise_id']);
+        RepairReport::approve($place, $input['week_start'], $request->user());
+        $this->audit->log('financials.repair_week_approved', $place, metadata: ['week_start' => RepairReport::weekStart($input['week_start'])], actor: $request->user());
+
+        return response()->json(['data' => $this->repairWeekOf($place, $input['week_start'])]);
+    }
+
+    /** Table: one row per team per week. */
+    public function repairTable(Request $request): JsonResponse
+    {
+        $input = $request->validate(['franchise_id' => ['required', 'uuid'], 'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from']]);
+        if (now()->parse($input['from'])->diffInDays(now()->parse($input['to'])) > 92) {
+            throw ValidationException::withMessages(['to' => 'Ask for at most three months at a time.']);
+        }
+        $place = $this->repairPlace($request, $input['franchise_id']);
+        $rows = [];
+        for ($w = now()->parse(RepairReport::weekStart($input['from'])); $w->toDateString() <= $input['to']; $w = $w->addWeek()) {
+            $week = $this->repairWeekOf($place, $w->toDateString());
+            foreach ($week['technicians'] ?? [] as $t) {
+                $rows[] = ['week_start' => $week['from'], 'week_end' => $week['to'], 'week_status' => $week['week_status']] + $t;
+            }
+        }
+
+        return response()->json(['data' => $rows, 'editable' => RepairReport::FIELDS]);
+    }
+
+    /** Types in a value the sheet left out (dollars; hours as hours). Reopens an approved week. */
+    public function setRepairValue(Request $request): JsonResponse
+    {
+        $input = $request->validate(['franchise_id' => ['required', 'uuid'], 'week_start' => ['required', 'date_format:Y-m-d'],
+            'team' => ['required', 'string', 'max:120'], 'field' => ['required', Rule::in(RepairReport::FIELDS)],
+            'value' => ['present', 'nullable', 'numeric', 'min:0', 'max:10000000']]);
+        abort_unless($request->user()->hasPermission('financials.edit'), Response::HTTP_FORBIDDEN, 'Your role cannot change Financials.');
+        $place = $this->repairPlace($request, $input['franchise_id']);
+        RepairReport::setValue($place, $input['week_start'], $input['team'], $input['field'], $input['value'] === null ? null : (float) $input['value']);
+        $this->audit->log('financials.repair_value_set', $place, metadata: array_intersect_key($input, array_flip(['week_start', 'team', 'field', 'value'])), actor: $request->user());
+
+        return response()->json(['data' => $this->repairWeekOf($place, $input['week_start'])]);
+    }
+
+    /** Average production cost per job by month, place and team. */
+    public function productionCost(Request $request): JsonResponse
+    {
+        $input = $request->validate(['from' => ['required', 'date_format:Y-m-d'], 'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'franchise_id' => ['nullable', 'uuid']]);
+        if (now()->parse($input['from'])->diffInDays(now()->parse($input['to'])) > 366) {
+            throw ValidationException::withMessages(['to' => 'Ask for at most a year at a time.']);
+        }
+        $scope = ViewScope::forUser($request->user());
+        $rows = array_values(array_filter(RepairReport::production($input['from'], $input['to'], $input['franchise_id'] ?? null),
+            fn (array $r) => $scope->coversFranchise($r['franchise_id'])));
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** The desk's report row for one place and week (empty when it has no repair sheet). */
+    private function repairWeekOf(Franchise $place, string $date): array
+    {
+        $from = RepairReport::weekStart($date);
+
+        return SourceFigures::repairReport($from, RepairReport::weekEnd($from), $place->id)[0]
+            ?? ['place' => $place->name, 'from' => $from, 'to' => RepairReport::weekEnd($from), 'week_status' => 'draft', 'technicians' => []];
+    }
+
+    private function repairPlace(Request $request, string $id): Franchise
+    {
+        $this->authorize('viewAny', FinancialBase::class);
+        $place = Franchise::query()->with('company:id,name')->find($id);
+        abort_if($place === null || ! ViewScope::forUser($request->user())->coversFranchise($place->id), Response::HTTP_NOT_FOUND);
+
+        return $place;
     }
 
     /** Refunds, disputes and returned checks per place and technician, from the mapped sources. */

@@ -1138,6 +1138,105 @@ void main() {
   /// The card belongs to this screen, so this is about it BEING here and
   /// obeying the screen's rules. What it says about inheritance, verification
   /// and refusals is test/sending_identity_test.dart.
+  // Jose, 2026-10-22: "the work hours setting could be separated in their
+  // respective categories". A row's `section` is a sub-heading in its group.
+  group('sections', () {
+    Future<void> pumpRows(
+      WidgetTester tester,
+      List<Map<String, dynamic>> rows,
+    ) {
+      tester.view.physicalSize = const Size(1280, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      return _pumpSettings(tester, (request) async {
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+        return _json({'data': rows});
+      }, onlyGroup: 'work_hours');
+    }
+
+    Map<String, dynamic> wh(String key, String label, String? section) => _row(
+      key,
+      label: label,
+      type: 'bool',
+      value: false,
+      source: _source('organization', 'org-1', 'Everdoors', false),
+      group: 'work_hours',
+      groupLabel: 'Work Hours',
+      section: section,
+    );
+
+    final rows = [
+      wh('time_clock.enabled', 'Clock in', 'Clock in and lock screen'),
+      wh(
+        'time_clock.approval_enabled',
+        'Daily approval of hours',
+        'Daily approval',
+      ),
+      wh('time_clock.max_hours', 'Longest shift', 'Clock in and lock screen'),
+      wh('pto.enabled', 'Paid days', 'Paid time off'),
+      wh('time_clock.odd', 'Unsorted one', null),
+    ];
+
+    double top(WidgetTester tester, String text) =>
+        tester.getTopLeft(find.text(text).first).dy;
+
+    testWidgets(
+      'headings render in first-seen order, ungrouped last as Other',
+      (tester) async {
+        await pumpRows(tester, rows);
+
+        final order = [
+          'Clock in and lock screen',
+          'Clock in',
+          'Longest shift',
+          'Daily approval',
+          'Daily approval of hours',
+          'Paid time off',
+          'Paid days',
+          'Other',
+          'Unsorted one',
+        ];
+        for (final text in order) {
+          expect(find.text(text), findsOneWidget, reason: text);
+        }
+        for (var i = 1; i < order.length; i++) {
+          expect(
+            top(tester, order[i - 1]) < top(tester, order[i]),
+            isTrue,
+            reason: '${order[i - 1]} above ${order[i]}',
+          );
+        }
+      },
+    );
+
+    testWidgets('search hides sections with no match', (tester) async {
+      await pumpRows(tester, rows);
+
+      await tester.enterText(find.byType(TextField).first, 'approval');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Daily approval'), findsOneWidget);
+      expect(find.text('Daily approval of hours'), findsOneWidget);
+      expect(find.text('Clock in and lock screen'), findsNothing);
+      expect(find.text('Paid time off'), findsNothing);
+      expect(find.text('Other'), findsNothing);
+      expect(find.text('Unsorted one'), findsNothing);
+    });
+
+    testWidgets('rows with no section draw with no sub-heading', (
+      tester,
+    ) async {
+      await pumpRows(tester, [
+        wh('time_clock.enabled', 'Clock in', null),
+        wh('pto.enabled', 'Paid days', null),
+      ]);
+
+      expect(find.text('Clock in'), findsOneWidget);
+      expect(find.text('Paid days'), findsOneWidget);
+      expect(find.text('Other'), findsNothing);
+      expect(find.byType(Card), findsOneWidget);
+    });
+  });
 }
 
 /// Is the button carrying this label pressable?
@@ -1352,12 +1451,14 @@ Map<String, dynamic> _row(
   /// Null means the setting does something. A sentence says what has to ship
   /// before it does — one field, so the flag and the reason cannot disagree.
   String? notYetInEffect,
+  String? section,
 }) => {
   'key': key,
   'label': label,
   'type': type,
   'group': group,
   'group_label': groupLabel,
+  'section': section,
   'value': value,
   'is_sensitive': isSensitive,
   'options': options,

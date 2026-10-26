@@ -11,6 +11,7 @@ import '../../widgets/airtable_token_connect.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/social_network_mark.dart';
+import '../../widgets/telegram_linked_staff.dart';
 import '../email/mailbox_panels.dart';
 import 'integration_provider_screen.dart';
 
@@ -484,7 +485,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           family: 'messaging',
           providers: providers,
           byProvider: byProvider,
-          empty: 'No WhatsApp number connected in $_viewName.',
+          empty: 'No messaging account connected in $_viewName.',
         ),
         const SizedBox(height: 12),
         _family(
@@ -655,8 +656,54 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'workiz' when _maySeeExperimental => _workizForm,
     'ringcentral' when _maySeeExperimental => _ringCentralForm,
     'google_workspace' when _mayManageWorkspace => _workspaceForm,
+    'telegram' when _mayConnectProvider('telegram') => _telegramForm,
     _ => null,
   };
+
+  /// The organization's own Telegram bot for the staff Tech Assistant (Jose,
+  /// 2026-10-26: Telegram worked but nothing in the app set it up). One bot
+  /// per organization: with one connected, the form gives way to its staff.
+  List<Widget> _telegramForm() {
+    final theme = Theme.of(context);
+    final connected = _connections.any((c) => c.provider == 'telegram');
+    final orgView =
+        (widget.session.me?.scope.type ?? 'organization') == 'organization';
+
+    return [
+      if (connected) ...[
+        TelegramLinkedStaff(api: widget.api),
+        const SizedBox(height: 16),
+        Text(
+          'To use a different bot, disconnect this one above first.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ] else if (!orgView)
+        const DashboardNote(
+          'A Telegram bot serves the whole organization. Switch to the '
+          'organization view to connect it.',
+        )
+      else ...[
+        Text('Telegram bot', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 4),
+        Text(
+          'In Telegram, message @BotFather, send /newbot and pick a name. '
+          'Paste the token it gives you here. Staff then open the bot and '
+          'share their phone number to link.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        ApiKeyConnectForm(
+          api: widget.api,
+          path: '/social/telegram',
+          submitLabel: 'Connect bot',
+          fields: const [
+            ('bot_token', 'Bot token', 'From @BotFather, like 123456:ABC-DEF…'),
+          ],
+          onConnected: _load,
+        ),
+      ],
+    ];
+  }
 
   /// The connect forms for the Reporting family.
   ///
@@ -880,6 +927,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     'airtable': 'A base read by Profit & Loss.',
     'ringcentral': 'Calls from RingCentral, for reports.',
     'whatsapp': 'Your own WhatsApp number, to message customers.',
+    'telegram': 'Your staff Tech Assistant bot on Telegram.',
     'google_workspace': 'Shared inboxes from your Google Workspace domain.',
     'phone_numbers': 'Calls and texts on your EzBizi numbers.',
     'sending_server':

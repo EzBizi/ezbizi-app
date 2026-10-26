@@ -834,6 +834,7 @@ class _FinancialsScreenState extends State<FinancialBases> {
               SizedBox(
                 width: 200,
                 child: TextField(
+                  key: const Key('financials-grid-search'),
                   decoration: const InputDecoration(
                     isDense: true,
                     prefixIcon: Icon(Icons.search),

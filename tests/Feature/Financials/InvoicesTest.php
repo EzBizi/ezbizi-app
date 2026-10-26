@@ -189,4 +189,34 @@ class InvoicesTest extends TestCase
         $this->get($link)->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->get("/api/v1/invoices/shared/{$invoice['id']}")->assertForbidden();
     }
+
+    /** The search bar on Invoices and on Charge sheets: `q` narrows; a blank `q` is no filter. */
+    public function test_q_narrows_invoices_and_charge_sheets_and_a_blank_q_changes_nothing(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            foreach ([['INV-00041', 'Alpha F1'], ['INV-00042', 'Brickell branch']] as [$number, $name]) {
+                (new Invoice)->forceFill([
+                    'organization_id' => $t['org']->id, 'number' => $number, 'issued_on' => '2026-10-01',
+                    'bill_to_type' => 'franchise', 'bill_to_id' => $t['franchise']->id, 'bill_to_name' => $name,
+                ])->save();
+            }
+            foreach (['September royalties', 'October parts'] as $title) {
+                (new \App\Models\FinancialChargeSheet)->forceFill([
+                    'organization_id' => $t['org']->id, 'period_from' => '2026-09-01', 'period_to' => '2026-09-30',
+                    'title' => $title, 'columns' => [],
+                ])->save();
+            }
+        });
+        $as = $this->signedInAs($t['admin']);
+
+        $as->getJson('/api/v1/invoices?q=brickell')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.number', 'INV-00042');
+        $as->getJson('/api/v1/invoices?q=00041')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.number', 'INV-00041');
+        $as->getJson('/api/v1/invoices?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/invoices')->assertOk()->assertJsonCount(2, 'data');
+
+        $as->getJson('/api/v1/invoices/sheets?q=royalties')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.title', 'September royalties');
+        $as->getJson('/api/v1/invoices/sheets?q=')->assertOk()->assertJsonCount(2, 'data');
+        $as->getJson('/api/v1/invoices/sheets')->assertOk()->assertJsonCount(2, 'data');
+    }
 }

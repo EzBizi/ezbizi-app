@@ -8,6 +8,7 @@ import 'hr/contracts_tab.dart';
 import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
+import 'hr/payroll_tab.dart';
 import 'hr/records_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
@@ -160,6 +161,14 @@ class _HrScreenState extends State<HrScreen> {
         session: widget.session,
         link: _onboardingLink,
       ),
+    ),
+    // Design 135 (Jose, 2026-10-22): everyone's salary, W2, dates, role and
+    // contract in one table.
+    (
+      'payroll',
+      'Payroll',
+      Icons.payments_outlined,
+      () => PayrollTab(api: widget.api, session: widget.session),
     ),
   ];
 

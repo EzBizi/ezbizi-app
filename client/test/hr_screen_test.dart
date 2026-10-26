@@ -890,6 +890,7 @@ void main() {
           'used': 2.5,
           'left': 3.5,
           'resets_on': null,
+          'expired': 4,
         },
         ptoUsed: [
           {'id': 'p-1', 'days': 1.5, 'used_on': null, 'note': 'Before'},
@@ -903,7 +904,7 @@ void main() {
 
     expect(find.text('2 days a quarter'), findsOneWidget);
     expect(
-      find.text('3.5 days left of 6 days, 2.5 days used.'),
+      find.text('3.5 days left of 6 days, 2.5 days used · 4 days expired.'),
       findsOneWidget,
     );
     expect(find.text('1.5 days used'), findsOneWidget);

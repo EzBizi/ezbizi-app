@@ -367,13 +367,13 @@ final class TimeClock
      * somebody is clocked out" on it would text a technician who went home
      * yesterday. The audit entry below is the trail.
      */
-    public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out, bool $requested = false): void
+    public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out, bool $requested = false, ?string $reason = null): void
     {
         $this->assertReaches($actor, $shift->user);
         // Unmarked own edits are Jose's alone (2026-10-05: "only to me").
         $own = $actor->is($shift->user) && $actor->time_clock_edits_unmarked;
 
-        DB::transaction(function () use ($shift, $in, $out, $requested, $own) {
+        DB::transaction(function () use ($actor, $shift, $in, $out, $requested, $own, $reason) {
             $shift = TimeClockShift::query()->whereKey($shift->getKey())->lockForUpdate()->firstOrFail();
 
             // Null means UNCHANGED in both arguments. The controller refuses
@@ -418,6 +418,9 @@ final class TimeClock
             $before = [
                 'clocked_in_at' => $this->instant($shift->clocked_in_at),
                 'clocked_out_at' => $this->instant($shift->clocked_out_at),
+                // Who ended it before the edit: "Was 4:05 PM (Auto)" stays
+                // true after ended_by becomes correction (UI/UX, 2026-10-22).
+                'ended_by' => $shift->ended_by,
             ];
 
             $shift->clocked_in_at = $in;
@@ -447,7 +450,20 @@ final class TimeClock
                     'clocked_in_at' => $this->instant($shift->clocked_in_at),
                     'clocked_out_at' => $this->instant($shift->clocked_out_at),
                 ],
-            ]);
+            ], metadata: $reason === null ? [] : ['reason' => $reason]);
+
+            // An ADJUSTMENT with a reason (Daily approval, 2026-10-22) is a
+            // decision a rule may act on; a plain correction stays silent
+            // (see the docblock above).
+            if ($reason !== null) {
+                $this->events->emit('time_clock.shift_adjusted', $shift->user, [
+                    'shift_id' => $shift->id,
+                    'before' => $before,
+                    'after' => ['clocked_in_at' => $this->instant($shift->clocked_in_at), 'clocked_out_at' => $this->instant($shift->clocked_out_at)],
+                    'reason' => $reason,
+                    'adjusted_by' => $actor->getKey(),
+                ], actor: $actor);
+            }
 
             $this->joinNeighbours($shift);
         });
@@ -888,7 +904,7 @@ final class TimeClock
     }
 
     /** Where somebody works: their first assignment's place, else the organization. */
-    private function placeOf(User $user): Model
+    public function placeOf(User $user): Model
     {
         $assignment = $user->assignments()->orderBy('created_at')->first();
 
@@ -1340,7 +1356,7 @@ final class TimeClock
      *     open: bool
      * }
      */
-    private function presentShift(TimeClockShift $shift, string $tz, string $timeFormat): array
+    public function presentShift(TimeClockShift $shift, string $tz, string $timeFormat): array
     {
         $open = $shift->clocked_out_at === null;
 
@@ -1376,7 +1392,7 @@ final class TimeClock
         ];
     }
 
-    private function wallClock(mixed $at, string $tz, string $timeFormat): string
+    public function wallClock(mixed $at, string $tz, string $timeFormat): string
     {
         $local = Carbon::parse($at)->timezone($tz);
 

@@ -569,6 +569,10 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('contracts', 'Contracts'),
                     new TabDefinition('invitations', 'Invitations'),
                     new TabDefinition('onboarding', 'Onboarding'),
+                    // Jose, 2026-10-22: everyone with salary, W-4, dates, role
+                    // and contract in one table. New, so held by no role until
+                    // ticked; administrators by identity.
+                    new TabDefinition('payroll', 'Payroll'),
                 ],
                 triggers: [
                     /*
@@ -808,16 +812,20 @@ class ModuleServiceProvider extends ServiceProvider
                 // `pto.edit` (Jose, 2026-10-21): changing somebody's used paid
                 // days is its own grant, not general HR or hours editing.
                 // Seeing balances is the Paid Time Off tab's own key.
-                actions: ['view', 'all', 'manage', 'pto.edit'],
+                // `approve` (Daily approval, 2026-10-22): sign off a day of the
+                // people one reaches. Implies seeing them.
+                actions: ['view', 'all', 'manage', 'pto.edit', 'approve'],
                 actionRequires: [
                     'all' => ['work_hours.general.view'],
                     'manage' => ['work_hours.all'],
+                    'approve' => ['work_hours.all'],
                     'pto.edit' => ['work_hours.pto.view'],
                 ],
                 actionLabels: [
                     'all' => "See everyone's hours",
                     'manage' => 'Edit hours and schedules',
                     'pto.edit' => 'Edit used paid time off',
+                    'approve' => 'Approve daily hours',
                 ],
                 tabs: [
                     new TabDefinition('general', 'General'),
@@ -825,6 +833,11 @@ class ModuleServiceProvider extends ServiceProvider
                     // Saved weekly hours reports (2026-09-28): sent by hand here,
                     // or on a schedule by the action below.
                     new TabDefinition('reports', 'Reports'),
+                    // Daily approval (design 136, 2026-10-22): a day of the
+                    // people one reaches, approved or adjusted. Approving and
+                    // adjusting are `work_hours.approve`; without it the tab
+                    // reads only.
+                    new TabDefinition('approval', 'Daily approval'),
                     // Registry order is the roles editor's order: keep it the
                     // screen's (work_hours_screen.dart).
                     new TabDefinition('settings', 'Settings'),
@@ -869,6 +882,10 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('ai', 'AI'),
                     new TabDefinition('library', 'Library'),
+                    // The Chimney Tech Assistant (2026-10-23, tech-assistant.html).
+                    new TabDefinition('parts', 'Parts'),
+                    new TabDefinition('manuals', 'Manuals'),
+                    new TabDefinition('answers', 'Answers'),
                     // Where each WhatsApp report goes (docs/REPLACING-RODRIGO-BOT.md).
                     new TabDefinition('whatsapp_groups', 'WhatsApp groups'),
                     // The staff line's menu for each role (Jose, 2026-10-13: "One
@@ -876,7 +893,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('staff_bot', 'Staff bot'),
                     new TabDefinition('settings', 'Settings'),
                 ],
-                auditActionPrefixes: ['assistant_entry', 'whatsapp_group', 'staff_bot'],
+                auditActionPrefixes: ['assistant_entry', 'assistant_part', 'assistant_manual', 'assistant_answer', 'whatsapp_group', 'staff_bot', 'telegram_link'],
                 automationExemptBecause: 'The Library is reference material an administrator '
                     .'writes, like a training guide: editing an answer is not something that happened '
                     .'to the business, and a rule firing on it would act on a reworded sentence. The '
@@ -962,6 +979,28 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Shift extended',
                         description: 'Somebody pushed their scheduled end out. It carries who, the new scheduled end, '
                             .'and how many times this shift has been extended.',
+                        isRaised: true,
+                    ),
+                    // Daily approval (2026-10-22).
+                    new TriggerDefinition(
+                        key: 'time_clock.day_awaiting_approval',
+                        subjects: [\App\Models\User::class],
+                        label: 'Day of hours waiting for approval',
+                        description: 'A person\'s clocked day went to their approver. It carries who and the day.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'time_clock.day_approved',
+                        subjects: [\App\Models\User::class],
+                        label: 'Day of hours approved',
+                        description: 'A manager approved a person\'s clocked day. It carries who, the day and the approver.',
+                        isRaised: true,
+                    ),
+                    new TriggerDefinition(
+                        key: 'time_clock.shift_adjusted',
+                        subjects: [\App\Models\User::class],
+                        label: 'Shift adjusted',
+                        description: 'A manager changed a shift\'s times with a reason. It carries the times before and after, and the reason.',
                         isRaised: true,
                     ),
                 ],
@@ -1299,7 +1338,7 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Update the job in Workiz',
                         description: 'Sets the status of the Workiz job (and sub-status) and/or replaces its tags '
                             .'with the ones listed, in the spelling of each Workiz account. Tags not '
-                            .'listed are removed. A job not linked to Workiz is left alone. If Workiz '
+                            .'listed are removed. It can also remove the job’s scheduled time. A job not linked to Workiz is left alone. If Workiz '
                             .'refuses, for example no technician on the job, its own words are shown.',
                         executionType: 'workiz.job_update',
                     ),
@@ -1384,14 +1423,27 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Project Management',
                 actions: ['view'],
                 /*
-                 * Dashboard | Pending Jobs | Settings (UI queue 127). All three
-                 * are the one grant the module always was: naming `view`
-                 * mints no permission, so no role gains or loses a tab, and
-                 * Settings' writes stay the settings API's to refuse.
+                 * Overview | Jobs | Assignments | Repair team | Rules | Logs |
+                 * Settings (UI queue 127, 139, 141, 143, 144). All are the one grant the
+                 * module always was: naming `view` mints no permission, so no role
+                 * gains or loses a tab, and Settings' writes stay the settings
+                 * API's to refuse. Overview was "Dashboard" and keeps its key; Jobs
+                 * was "Pending Jobs" and keeps `pending`. Repair team (design 144)
+                 * is Reports and Table merged, under Reports' key; `table` is
+                 * retired, and as it minted nothing no grant moves and no
+                 * migration is needed. It reads Financials' repair report, so the
+                 * client also hides it without financials.bases.view. Rules
+                 * (design 144) reads GET jobs/project-management/rules, the same grant.
                  */
                 tabs: [
-                    new TabDefinition('dashboard', 'Dashboard', action: 'view'),
-                    new TabDefinition('pending', 'Pending Jobs', action: 'view'),
+                    new TabDefinition('dashboard', 'Overview', action: 'view'),
+                    new TabDefinition('pending', 'Jobs', action: 'view'),
+                    // Assignments (design 143): Action 1's Task Board cards by technician, the same grant.
+                    new TabDefinition('assignments', 'Assignments', action: 'view'),
+                    new TabDefinition('reports', 'Repair team', action: 'view'),
+                    new TabDefinition('rules', 'Rules', action: 'view'),
+                    // Logs (UI queue 139): what rules and people changed, the same grant.
+                    new TabDefinition('logs', 'Logs', action: 'view'),
                     new TabDefinition('settings', 'Settings', action: 'view'),
                 ],
                 automationExemptBecause: 'It reads jobs and their events; Jobs raises every event a rule could use.',
@@ -2386,6 +2438,8 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'financials',
                 label: 'Financials',
+                // approve: sign off a week of the Repair Team report.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve'],
                 // Bases is the work; Settings is which Airtable table is which
                 // part of the books (organization configuration).
                 tabs: [

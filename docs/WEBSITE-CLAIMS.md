@@ -3008,3 +3008,86 @@ no 7th publisher. **The YouTube `sent` row is Triplex Group (formerly A1-Group),
 org.** "Newly built and not yet proven" stays for one checkable reason: an unaudited YouTube
 API project's uploads are locked to private. Invert only when that video is confirmed public. Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
 (LINE-split) ok - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461.
+
+## 2026-10-22: 0.0.0472-0.0.0483 live, invoices now on production, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0483 at `f72e0f361`. All 10 live `www/` files
+byte-identical to the repo, including the new **`/support/`** (`67d6a48ce`, another
+session, for the Google Workspace Marketplace listing: email, postal address, in-app
+Suggestions; in the sitemap). Its "Suggestions inside the app" line was left alone: the
+Suggestions row's hold was about selling it, and the feature is live and pinned
+(`client/lib/main.dart`); this is a support route, not a capability claim.
+
+- **Invoices are LIVE** (`5e98257a` is an ancestor of `f72e0f361`). The do-not-list
+  verdict still holds: gate terms, no real-tenant row count yet (asked in `0135`).
+  `InvoiceChannels` sends through what the company connected — its mailbox (Google /
+  Microsoft) or own mail server (`throughTenantProvider`, its first caller), its own
+  Twilio number, its WhatsApp number — so no new processor. `/privacy/`'s "Those leave
+  from EzBizi's own address" is about automation mail (`ActionRunner` still
+  `platformForTenant`) and stays true.
+- **Open, not a falsehood: `/privacy/` "Google user data" covers only Google Ads.**
+  Gmail (`gmail.readonly` / `.modify` / `.send`) and, since 0.0.0475, Workspace admin
+  (`admin.directory.user.readonly`, `gmail.settings.basic`) are Google user data too,
+  and mailbox contents can reach xAI via AppAsk. Nothing on the page is false, but a
+  Workspace Marketplace reviewer will look for a Gmail / Limited Use disclosure. Not
+  written by this run: a Limited Use attestation is a legal claim to Google about the
+  xAI path, which is Jose's call. Mail is read live (no message store; only
+  seen/dealt/snooze markers), which is the fact a section would start from.
+- Email reply/forward, PTO, Payroll API, Project Management, search bars, Scheduling
+  catch-all areas: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
+directory 1.10.0 (widgets row stays held). Counts asked as `0135`.
+
+## 2026-10-23: 0.0.0484-0.0.0489 live, and `/privacy/` did not name the tech assistant or Telegram
+
+Production `/download/windows.json` 0.0.0489 at `b28f1c9e8`. Before this edit all 15 live
+`www/` files were byte-identical to the repo. No answer to `0135` in the inbox.
+
+- **The finding: two new parties-and-paths shipped in 0.0.0488 and `/privacy/` named neither.**
+  `34ea9c3d2` (Tech Assistant) sends xAI the org's name, matching parts rows, manual pages,
+  up to five Library answers, the tech's unit memory (brand/model/serial/fuel/ignition,
+  parts discussed) and any photo (rating plate); `TechAssistantController` sends a manual PDF
+  to xAI when local extraction fails. `ai_assistance.tech_mode` **defaults to true**.
+  `eca6a6551` routes staff WhatsApp photos and parts questions to it — so the AppAsk
+  paragraph's "never audio, images or files" is true only of AppAsk, and now sits beside a
+  path that does send images. `35d9b46b9` adds a Telegram bot (`TELEGRAM_ORG_ID`, one
+  organization, staff link by sharing their own phone number) — **Telegram** was missing
+  from "these are all of them". Fixed: a "tech assistant" and a "Telegram" paragraph under
+  Calls and messages, the xAI list item extended, a Telegram list item, Last updated /
+  `dateModified` / sitemap lastmod 2026-10-23. Not measured: whether the bot token is set
+  on production (`TELEGRAM_BOT_TOKEN`) — the copy says "where it is set up", which holds
+  either way, matching the 10-06 precedent of disclosing before a switch-on.
+- PM overhaul, PTO accrual/timeline, HR contract drafts, review reply pacing, missed-call
+  focus: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461; WordPress
+directory 1.10.0 (widgets row stays held). Publish asked, and `0135`'s counts re-asked, as `0136`.
+
+## 2026-10-24: 0.0.0490 live, nothing on the site went false, `/privacy/` edit still unpublished
+
+Production `/download/windows.json` 0.0.0490 at `38beebb10` (only the PM review-reason
+filter: `ecba203c9`, `88a32efb0`; no sentence on the site touched). 13 of 15 live `www/`
+files byte-identical to the repo; `/privacy/` and `sitemap.xml` match `e8403d2f5^` exactly,
+so they are yesterday's tech-assistant/Telegram edit not yet published, not a revert:
+`e8403d2f5` was committed 23:06 UTC, after the 0.0.0490 publish (`Last-Modified` 22:11 UTC).
+No release since, and `0136` (publish + `0135` counts) is still unanswered in the inbox, so
+no new ask was filed; the next release of `main` publishes it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0461.
+
+## 2026-10-25: nothing shipped, `/privacy/` edit ~48h unpublished
+
+Production `/download/windows.json` still 0.0.0490 at `38beebb10`; `main` gained nothing
+since `3844c4096`. 13 of 15 live `www/` files byte-identical to the repo; `/privacy/` and
+`sitemap.xml` still exactly `e8403d2f5^` (`Last-Modified` 10-23 22:11 UTC) — the same
+unpublished tech-assistant/Telegram edit, not a revert. `0136` still unanswered in the
+inbox; not re-filed, the next release of `main` publishes it.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present; `index-landmines.sh` 0 stale, 0 live. Stores: Play `200`; Apple
+`resultCount` 1, 0.0.0461.

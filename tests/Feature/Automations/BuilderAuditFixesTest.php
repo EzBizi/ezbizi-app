@@ -31,5 +31,9 @@ class BuilderAuditFixesTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('actions.0.value');
         $api()->postJson('/api/v1/automations', $rule(['type' => 'voicemail.mark_dealt']))
             ->assertUnprocessable()->assertJsonValidationErrors('actions.0.type');
+        foreach (['resend', 'revoke', 'reply', 'time_clock.clock_in', 'inspection_report.email'] as $step) {
+            $api()->postJson('/api/v1/automations', $rule(['type' => $step, 'message' => 'x']))
+                ->assertUnprocessable()->assertJsonValidationErrors('actions.0.type');
+        }
     }
 }

@@ -73,8 +73,12 @@ class Mailbox {
     required this.canReply,
     required this.replyRefusal,
     this.provider = '',
-    this.discoveredFolders,
     this.mayRead = true,
+    this.scopeType = '',
+    this.scopeId = '',
+    this.status = '',
+    this.statusReason,
+    this.canBeOpened = true,
   });
 
   final String id;
@@ -92,7 +96,10 @@ class Mailbox {
   /// does not have to answer twice in two dialects.
   final String label;
 
-  final int unread;
+  /// Unread at the provider, or null while the server has not counted it
+  /// yet (`GET email/mailboxes` serves the last count and refreshes after).
+  /// Drawn as "—", never as 0.
+  final int? unread;
 
   /// Whether reads are shared, as the §6 cascade resolved it for this mailbox.
   ///
@@ -113,91 +120,36 @@ class Mailbox {
   /// only MANAGE (Settings needs those); the Inbox tab shows only these.
   final bool mayRead;
 
-  /// Gmail folders (Starred, Sent, …) exist on this mailbox.
-  bool get isGmail =>
-      provider == 'gmail_oauth' || provider == 'gmail_workspace';
+  /// The level the inbox hangs off (`organization`, `company`,
+  /// `franchise`) and its id. The rail groups inboxes under their company
+  /// with these; the names come from `/me`, which already holds them.
+  final String scopeType;
+  final String scopeId;
 
-  bool get isOutlook => provider == 'microsoft_oauth';
+  /// `connected`, `unconfigured` or `broken`, as the last attempt found it.
+  /// Empty when the server did not say, which is read as connected: an
+  /// older answer must not draw a working inbox as broken.
+  final String status;
 
-  /// The folders THIS provider can actually open, by the label the API takes.
-  ///
-  /// ── Not one list for everybody ───────────────────────────────
-  ///
-  /// The three providers do not have the same folders, and offering a folder
-  /// the server will refuse is the same failure as offering one it silently
-  /// substitutes — the person picks it and gets a sentence instead of mail.
-  ///
-  /// Outlook has no Starred: Graph has a flag filter over the inbox, which is
-  /// a different query rather than a folder. It does have Archive, which Gmail
-  /// does not offer here.
-  ///
-  /// IMAP is empty on purpose. The server refuses anything but the Inbox
-  /// because folder names differ per server and discovering them is real work
-  /// (`LIST`, SPECIAL-USE, a quoting guard) — so nothing is drawn rather than
-  /// drawing something that refuses.
-  /// What the SERVER said this mailbox has, once it has been asked.
-  ///
-  /// ── Why an asked answer beats the guess below ────────────────
-  ///
-  /// For Gmail and Outlook the guess is right and always will be — their
-  /// folders are fixed, and the server answers from the same constant. For
-  /// IMAP the guess cannot be right in principle: the answer depends on the
-  /// customer's own mail server, which may have no Archive, may call Sent
-  /// "Sent Items", and may have the whole lot in Portuguese.
-  ///
-  /// Null until asked, and NOT empty. Empty would mean "this mailbox has no
-  /// folders", which is a different claim and one this client is not entitled
-  /// to make before it has looked.
-  final Set<String>? discoveredFolders;
+  /// The server's sentence for why it is not working, when it is not.
+  final String? statusReason;
 
-  /// The same mailbox, with what the server said about its folders.
-  ///
-  /// A copy rather than a setter because [Mailbox] is immutable and should
-  /// stay so — the screen swaps the row in its list.
-  Mailbox withFolders(Set<String> folders) => Mailbox(
-    id: id,
-    address: address,
-    label: label,
-    unread: unread,
-    sharedRead: sharedRead,
-    canReply: canReply,
-    replyRefusal: replyRefusal,
-    provider: provider,
-    discoveredFolders: folders,
-    mayRead: mayRead,
-  );
+  /// Whether this installation can open it at all (`can_be_opened`).
+  final bool canBeOpened;
 
-  Set<String> get folderIds => discoveredFolders ?? _guessedFolderIds;
+  /// Connected and openable. The rail puts the others in "Not connected".
+  bool get connected =>
+      canBeOpened && (status.isEmpty || status == 'connected');
 
-  /// What this provider's folders are, before the server has been asked.
-  ///
-  /// Right for Gmail and Outlook by construction. For IMAP it is deliberately
-  /// only the Inbox: offering six folders that might not exist, and finding
-  /// out on the click, is the broken promise this module keeps refusing to
-  /// make.
-  Set<String> get _guessedFolderIds {
-    if (isGmail) {
-      return const {'INBOX', 'STARRED', 'SENT', 'DRAFT', 'TRASH', 'SPAM'};
-    }
-
-    if (isOutlook) {
-      return const {'INBOX', 'SENT', 'DRAFT', 'TRASH', 'SPAM', 'ARCHIVE'};
-    }
-
-    return const {'INBOX'};
-  }
-
-  /// Whether this mailbox can show the named folder at all.
-  bool opensFolder(String folder) => folderIds.contains(folder);
-
-  /// Worth drawing a folder list for — more than just an Inbox.
-  bool get hasFolders => folderIds.length > 1;
+  /// What to tell somebody standing in this inbox when it is not connected.
+  String get notConnectedSentence =>
+      statusReason ?? '$address is not connected yet.';
 
   factory Mailbox.fromJson(Map<String, dynamic> json) => Mailbox(
     id: '${json['id']}',
     address: json['address'] as String? ?? '',
     label: json['label'] as String? ?? json['display_name'] as String? ?? '',
-    unread: json['unread'] as int? ?? 0,
+    unread: json['unread'] as int?,
     // Absent means the server did not resolve the setting, and the safe
     // direction is private: drawing "Seen by Marta" in an organization that
     // asked for private read state would leak what somebody read, and not
@@ -211,6 +163,12 @@ class Mailbox {
         json['may_read_reason'] as String?,
     provider: json['provider'] as String? ?? '',
     mayRead: json['may_read'] != false,
+    scopeType: json['scope_type'] as String? ?? '',
+    scopeId: '${json['scope_id'] ?? ''}',
+    status: json['status'] as String? ?? '',
+    statusReason: json['status_reason'] as String? ??
+        json['unavailable_reason'] as String?,
+    canBeOpened: json['can_be_opened'] != false,
   );
 }
 
@@ -252,123 +210,6 @@ String? seenBySentence(List<SeenBy> seen, String meId) {
     // is that this one is already being handled, and by whom first.
     _ => 'Seen by ${others.first}, ${others[1]} and ${others.length - 2} others',
   };
-}
-
-/// A row in the list — a HEADER, which is all that is ever fetched for a list.
-///
-/// Nothing here is a body. The owner's line is *"we don't want to store
-/// thousands and thousands of emails on our database"*, and the shape of that
-/// decision at this end is that the list holds enough to choose from and the
-/// message is fetched when it is opened.
-@immutable
-class MessageHeader {
-  const MessageHeader({
-    required this.id,
-    required this.fromName,
-    required this.fromAddress,
-    required this.subject,
-    required this.preview,
-    required this.receivedAt,
-    required this.unread,
-    required this.hasAttachments,
-    required this.seenBy,
-    this.messageCount = 1,
-    this.mailboxId = '',
-    this.mailboxAddress = '',
-    this.authenticated,
-    this.threadId = '',
-  });
-
-  final String id;
-
-  /// The conversation this row is, as the server listed it. Sent back when
-  /// the message is opened so Gmail can fetch the conversation once instead
-  /// of fetching the message just to learn which conversation it is in.
-  /// Empty where the provider does not group.
-  final String threadId;
-  final String fromName;
-  final String fromAddress;
-  final String subject;
-  final String preview;
-
-  /// ISO-8601, as the server sent it. Formatted for display through
-  /// core/timestamps.dart against the organization's own §6 formats, never
-  /// here — a date written the way this file felt like writing it is the bug
-  /// that file exists to prevent.
-  final String? receivedAt;
-
-  final bool unread;
-  final bool hasAttachments;
-  final List<SeenBy> seenBy;
-
-  /// How many messages are in this conversation. 1 is a lone mail.
-  final int messageCount;
-
-  /// Which inbox this row belongs to. Set on every list, so All inboxes
-  /// can open, reply and delete against the right mailbox.
-  final String mailboxId;
-
-  /// The address of that inbox, for the combined list. Empty on a
-  /// single-inbox list, where the bar already names it.
-  final String mailboxAddress;
-
-  /// DMARC for this message, if the provider said. Null when it did not.
-  final bool? authenticated;
-
-  /// Who it is from, in one line: their name where there is one, and the
-  /// address where there is not. Never the name alone with the address thrown
-  /// away — in a shared inbox the address is half of knowing who is writing.
-  String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
-
-  MessageHeader copyWith({bool? unread}) => MessageHeader(
-    id: id,
-    fromName: fromName,
-    fromAddress: fromAddress,
-    subject: subject,
-    preview: preview,
-    receivedAt: receivedAt,
-    unread: unread ?? this.unread,
-    hasAttachments: hasAttachments,
-    seenBy: seenBy,
-    messageCount: messageCount,
-    mailboxId: mailboxId,
-    mailboxAddress: mailboxAddress,
-    authenticated: authenticated,
-    threadId: threadId,
-  );
-
-  factory MessageHeader.fromJson(
-    Map<String, dynamic> json, {
-    Mailbox? mailbox,
-  }) {
-    final from = json['from'] as Map<String, dynamic>? ?? const {};
-
-    return MessageHeader(
-      id: '${json['id']}',
-      fromName: from['name'] as String? ?? json['from_name'] as String? ?? '',
-      fromAddress:
-          from['address'] as String? ?? json['from_address'] as String? ?? '',
-      subject: json['subject'] as String? ?? '',
-      preview: json['preview'] as String? ?? json['snippet'] as String? ?? '',
-      receivedAt: json['received_at'] as String? ?? json['sent_at'] as String?,
-      unread: json['unread'] == true || json['unread_at_provider'] == true,
-      hasAttachments: json['has_attachments'] == true,
-      seenBy: readSeenBy(json['seen_by']),
-      messageCount: json['message_count'] is int
-          ? json['message_count'] as int
-          : int.tryParse('${json['message_count'] ?? 1}') ?? 1,
-      threadId: '${json['thread_id'] ?? ''}',
-      mailboxId: mailbox?.id ?? '${json['mailbox_id'] ?? ''}',
-      mailboxAddress: mailbox?.address ??
-          json['mailbox_address'] as String? ??
-          '',
-      authenticated: json['from_authenticated'] == true
-          ? true
-          : json['from_authenticated'] == false
-          ? false
-          : null,
-    );
-  }
 }
 
 /// A file that came with the message.
@@ -413,6 +254,7 @@ class MessageDetail {
     required this.replyTo,
     required this.replySubject,
     this.thread = const [],
+    this.dealt,
   });
 
   final String id;
@@ -450,6 +292,9 @@ class MessageDetail {
   /// this is the only one.
   final List<MessageDetail> thread;
 
+  /// Marked handled here, or null (`data.dealt`).
+  final Dealt? dealt;
+
   String get from => fromName.isEmpty ? fromAddress : '$fromName <$fromAddress>';
 
   factory MessageDetail.fromJson(Map<String, dynamic> json) {
@@ -480,7 +325,22 @@ class MessageDetail {
         for (final entry in (json['thread'] as List? ?? const []))
           if (entry is Map<String, dynamic>) MessageDetail.fromJson(entry),
       ],
+      dealt: Dealt.fromJson(json['dealt']),
     );
+  }
+}
+
+/// Somebody here marked it handled: when, and who (null for an automation).
+@immutable
+class Dealt {
+  const Dealt({required this.at, required this.by});
+
+  final String? at;
+  final String? by;
+
+  static Dealt? fromJson(Object? json) {
+    if (json is! Map) return null;
+    return Dealt(at: json['at'] as String?, by: json['by'] as String?);
   }
 }
 

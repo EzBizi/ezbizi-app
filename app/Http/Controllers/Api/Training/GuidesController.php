@@ -76,6 +76,12 @@ class GuidesController extends Controller
         // module's to change.
         $query = InventoryVisibility::constrain(TrainingGuide::query(), $user, $scope);
 
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        if ($term !== '') {
+            $like = '%'.addcslashes($term, '%_\\').'%';
+            $query->where(fn ($w) => $w->where('title', 'like', $like)->orWhere('summary', 'like', $like));
+        }
+
         $guides = $query
             ->orderBy('title')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
