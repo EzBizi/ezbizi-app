@@ -4,6 +4,7 @@ namespace App\Support\Ai;
 
 use App\Models\User;
 use App\Support\Http\InternalRequest;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RouteObject;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,7 @@ final class AppAsk
             // The CLI is an agent: without this line it planned "grep" calls on the codebase (prod, 2026-10-14).
             'You have NO tools and cannot read code or files: only choose from the ENDPOINTS list below. '
             .'You help a staff member of a home-services business get information from their CRM, EzBizi. '
+            .self::business($viewer, false)
             ."Today is {$today->toDateString()} ({$today->format('l')}), America/New_York. Pick at most "
             .self::MAX_CALLS.' GET endpoints (path relative to api/v1, with {placeholders} filled in, and '
             .'query parameters, using only the names listed in brackets after each endpoint, as a query '
@@ -85,7 +87,8 @@ final class AppAsk
         }
 
         $a = GrokCli::ask(
-            "Answer the staff member's question from this data from their CRM. Only state what the data "
+            "Answer the staff member's question from this data from their CRM. ".self::business($viewer, true)
+            .'Only state what the data '
             .'shows; if it does not answer the question, set answered to false. Never invent names, '
             ."numbers or dates.\n".GrokCli::WHATSAPP_STYLE."\n\nQUESTION: {$question}\n\nDATA:\n"
             .json_encode($results, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
@@ -101,6 +104,27 @@ final class AppAsk
         $reply = trim((string) ($a['reply'] ?? ''));
 
         return ($a['answered'] ?? false) === true && $reply !== '' ? $reply : null;
+    }
+
+    /**
+     * The companies and branches this person reaches, so a question naming
+     * one ("tomorrow at a-1 chimney") maps onto the branches the data lists
+     * by their own names (prod, 2026-10-26: Grok found no branch called
+     * "A-1 Chimney" and refused, though every A-1 branch was in the data).
+     */
+    private static function business(User $viewer, bool $ids): string
+    {
+        $lines = $viewer->reachableCompanies()->sortBy('name')
+            ->map(function ($company) use ($viewer, $ids) {
+                // With ids: two companies can each have a "Connecticut" (A-1's and
+                // Everdoors', prod 2026-10-26); the data's franchise_id tells them apart.
+                $branches = $viewer->reachableFranchises()->where('company_id', $company->id)->map(fn ($f) => $ids ? "{$f->name} [{$f->id}]" : $f->name);
+
+                return '- '.$company->name.($branches->isEmpty() ? '' : ': '.$branches->implode(', '));
+            })->take(60)->implode("\n");
+
+        return $lines === '' ? '' : 'Their companies and the branches (franchises) of each - a question naming a '
+            ."company means all of its branches together:\n{$lines}\n\n";
     }
 
     /** Every tenant GET endpoint, one per line. */
@@ -170,6 +194,11 @@ final class AppAsk
         $as = Request::create('/');
         $as->headers->set('Authorization', 'Bearer '.$token->plainTextToken);
         $as->setUserResolver(fn () => $viewer);
+        // The asker's whole reach, not the view their screen last stood in: a
+        // chat has no current view, and Jose's stored view (one company) read
+        // tomorrow's board as empty (prod, 2026-10-26). ViewScope resolves
+        // "organization" to the highest view they reach, never above it.
+        $as->headers->set('X-EzBizi-View', ViewScope::ORGANIZATION);
 
         try {
             $out = [];
@@ -229,6 +258,29 @@ final class AppAsk
         return strlen($json) > self::MAX_CHARS ? mb_strcut($json, 0, self::MAX_CHARS).' …(cut)' : $value;
     }
 
+    /**
+     * For a cut list of rows: how many per value of each short text field
+     * (branch, status, window...), so "how many at A-1" can still be counted
+     * after the rows themselves were cut (prod, 2026-10-26: Grok gave the
+     * board's 42 for every branch where A-1's own branches held 37).
+     *
+     * @return array<string, array<string, int>>
+     */
+    private static function countsBy(array $rows): array
+    {
+        $fields = [];
+        foreach ($rows as $row) {
+            foreach (is_array($row) ? $row : [] as $key => $v) {
+                if (is_string($v) && mb_strlen($v) <= 60 && ($key === 'franchise_id' || ! str_ends_with((string) $key, 'id'))) {
+                    $fields[$key][$v] = ($fields[$key][$v] ?? 0) + 1;
+                }
+            }
+        }
+
+        // ponytail: fields with few distinct values only; ids (but the branch's), names and addresses are not groupings.
+        return array_filter($fields, fn ($counts) => count($counts) > 1 && count($counts) <= 25);
+    }
+
     /** Long lists keep $keep items plus their total; long text is trimmed. */
     public static function shrink(mixed $value, int $keep): mixed
     {
@@ -239,7 +291,8 @@ final class AppAsk
             return $value;
         }
         if (array_is_list($value) && count($value) > $keep) {
-            return ['_total' => count($value), '_first' => array_map(fn ($v) => self::shrink($v, $keep), array_slice($value, 0, $keep))];
+            return ['_total' => count($value), '_counts' => self::countsBy($value),
+                '_first' => array_map(fn ($v) => self::shrink($v, $keep), array_slice($value, 0, $keep))];
         }
 
         return array_map(fn ($v) => self::shrink($v, $keep), $value);
