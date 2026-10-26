@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
+import 'core/deep_links.dart';
 import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
@@ -622,6 +623,9 @@ class _HomeShellState extends State<HomeShell> {
     widget.session.addListener(_followScope);
 
     _apply(widget.address?.path);
+    // The day-before email's "Open Booked vs available" link carries its day
+    // in the query, which the address bar's path drops (UI queue 147).
+    if (DeepLinks.fromUri(Uri.base) case final link?) DeepLinks.open(link);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));

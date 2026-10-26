@@ -2,7 +2,14 @@
 
 namespace App\Support\Settings\Pending;
 
+use App\Models\BusinessLocation;
 use App\Models\Company;
+use App\Models\Franchise;
+use App\Models\ServiceArea;
+use App\Support\Scheduling\Openings;
+use App\Models\Organization;
+use App\Support\Memberships\CustomerLinks;
+use App\Models\Mailbox;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
@@ -65,6 +72,13 @@ final class PendingRegistry
             'hint'        => 'Open Settings, then Organization, then the company.',
         ];
 
+        $openScheduling = fn () => [
+            'kind'        => 'open',
+            'destination' => 'scheduling',
+            'tab'         => 'settings',
+            'hint'        => 'Open Scheduling, then Settings, and add a service area with its time slots.',
+        ];
+
         return [
             new PendingCheck(
                 key: 'company.address',
@@ -92,6 +106,73 @@ final class PendingRegistry
                 permissions: ['organizations.edit'],
                 missing: fn (Company $c) => blank($c->logo_path),
                 fill: $openCompany,
+            ),
+            // Scheduling: a branch takes no bookings without an area that has a
+            // week. A sub-company's branch books on its parent's areas.
+            new PendingCheck(
+                key: 'scheduling.service_area',
+                label: 'Service area',
+                module: 'scheduling',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['scheduling.settings.view'],
+                missing: fn (Franchise $f) => Company::find($f->company_id)?->parent_company_id === null
+                    && ! ServiceArea::query()->where('franchise_id', $f->id)->exists(),
+                fill: $openScheduling,
+            ),
+            new PendingCheck(
+                key: 'scheduling.area_slots',
+                label: 'Time slots for every service area',
+                module: 'scheduling',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['scheduling.settings.view'],
+                missing: fn (Franchise $f) => ServiceArea::query()->where('franchise_id', $f->id)->whereNull('shares_with_id')->get()
+                    ->contains(fn (ServiceArea $a) => ! Openings::hasCapacity($a)),
+                fill: $openScheduling,
+            ),
+            // Customer Experience (2026-10-26). A branch whose review texts would
+            // carry no link: nothing to tap, so no review and no Review links count.
+            new PendingCheck(
+                key: 'branch.review_link',
+                label: 'Review link for the review texts',
+                module: 'reviews',
+                scopes: [SettingDefinition::SCOPE_FRANCHISE],
+                permissions: ['web_management.edit'],
+                missing: fn (Franchise $f) => CustomerLinks::branchReviewLink($f) === null,
+                fill: fn () => ['kind' => 'open', 'destination' => 'web_management',
+                    'hint' => "Open Web Management, then the branch's website, and fill in Review link."],
+            ),
+            // A Business Profile listing with no branch shows only at the company
+            // and organization views, and its reviews and complaints with it.
+            new PendingCheck(
+                key: 'business_profile.unassigned',
+                label: 'Business Profile listings without a branch',
+                module: 'business_profile',
+                scopes: [SettingDefinition::SCOPE_ORGANIZATION],
+                permissions: ['business_profile.edit'],
+                missing: fn (Organization $o) => BusinessLocation::query()->where('organization_id', $o->getKey())
+                    ->whereNull('franchise_id')->whereNull('not_listed_since')->exists(),
+                fill: fn () => ['kind' => 'open', 'destination' => 'customer_experience',
+                    'hint' => 'Open Customer Experience, then GBP Listings, and give each listing its branch.'],
+            ),
+            // Email: a company with no connected inbox, at its own level or the
+            // organization's, cannot send or receive from EzBizi.
+            new PendingCheck(
+                key: 'email.mailbox',
+                label: 'Connected email inbox',
+                module: 'email',
+                scopes: [SettingDefinition::SCOPE_COMPANY],
+                permissions: ['email.edit'],
+                missing: fn (Company $c) => ! Mailbox::query()
+                    ->where('status', Mailbox::STATUS_CONNECTED)
+                    ->where(fn ($q) => $q
+                        ->where(fn ($q) => $q->where('scope_type', Mailbox::SCOPE_COMPANY)->where('scope_id', $c->id))
+                        ->orWhere(fn ($q) => $q->where('scope_type', Mailbox::SCOPE_ORGANIZATION)->where('scope_id', $c->organization_id)))
+                    ->exists(),
+                fill: fn () => [
+                    'kind'        => 'open',
+                    'destination' => 'settings',
+                    'hint'        => 'Open Settings, then Integrations, then Email.',
+                ],
             ),
         ];
     }

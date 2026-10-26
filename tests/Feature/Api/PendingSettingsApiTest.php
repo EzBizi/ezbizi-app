@@ -37,6 +37,22 @@ class PendingSettingsApiTest extends TestCase
         $this->assertContains('company.logo', $this->keysFor('Alpha Co'), 'control: other gaps stay');
     }
 
+    /** Scheduling: a branch with no service area, then one whose area has no week. */
+    public function test_a_branch_without_a_bookable_area_is_a_gap(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->signedInAs($tenant['admin']);
+        $branch = $tenant['franchise']->name;
+
+        $this->assertContains('scheduling.service_area', $this->keysFor($branch));
+        $area = $this->inTenant($tenant['org'], fn () => \App\Models\ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Dallas']));
+        $this->assertNotContains('scheduling.service_area', $this->keysFor($branch));
+        $this->assertContains('scheduling.area_slots', $this->keysFor($branch));
+
+        $this->inTenant($tenant['org'], fn () => \App\Models\ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 2]));
+        $this->assertNotContains('scheduling.area_slots', $this->keysFor($branch));
+    }
+
     public function test_an_expected_setting_with_no_value_anywhere_is_a_gap(): void
     {
         $registry = new SettingRegistry;
@@ -105,5 +121,21 @@ class PendingSettingsApiTest extends TestCase
         $this->patchJson("/api/v1/invoices/sheets/{$sheet['id']}/rows", ['rows' => [['id' => $sheet['rows'][0]['id'], 'cells' => [$col => 1000]]]])->assertOk();
         $invoice = $this->postJson("/api/v1/invoices/sheets/{$sheet['id']}/invoice")->json('data.made.0');
         $this->assertSame([['ap@branch.test'], ['(203) 555-0111']], [$invoice['bill_to']['emails'], $invoice['bill_to']['phones']]);
+    }
+
+    /** A company with no connected inbox is listed until one is connected. */
+    public function test_a_company_without_a_connected_inbox_is_a_gap(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->signedInAs($tenant['admin']);
+
+        $this->assertContains('email.mailbox', $this->keysFor('Alpha Co'));
+
+        $this->inTenant($tenant['org'], fn () => \App\Models\Mailbox::create([
+            'organization_id' => $tenant['org']->id, 'scope_type' => 'company', 'scope_id' => $tenant['company']->id,
+            'address' => 'info@alpha.test', 'display_name' => 'Info', 'provider' => 'gmail_oauth',
+        ])->forceFill(['status' => \App\Models\Mailbox::STATUS_CONNECTED])->save());
+
+        $this->assertNotContains('email.mailbox', $this->keysFor('Alpha Co'));
     }
 }

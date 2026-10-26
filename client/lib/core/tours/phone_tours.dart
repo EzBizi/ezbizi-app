@@ -407,6 +407,31 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
+  'scheduling/Overbooking/Booked vs available': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-booked-day',
+        title: 'The day',
+        body:
+            'Tomorrow by default, the day the day-before email is about. '
+            '‹ and › move a day; Today and Tomorrow jump.',
+      ),
+      TourStep(
+        anchor: 'booked-available-search',
+        title: 'Find an area',
+        body: 'Search by area, company or branch.',
+      ),
+      TourStep(
+        anchor: 'tour-booked-summary',
+        title: 'Over, open and full',
+        body:
+            'Areas over capacity come first, then open spots, then full ones. '
+            'Click an area for its jobs; Offer openings texts customers '
+            'booked later. Replies land in Leads as "Reschedule".',
+      ),
+    ],
+  ),
   'scheduling/Re-Scheduling': Tour(
     version: 1,
     steps: [

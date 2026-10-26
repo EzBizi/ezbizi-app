@@ -166,9 +166,15 @@ final class CustomerLinks
      * Google profile), else the franchise's (the job's, else the customer's),
      * else its company's, else any site of the organization.
      */
-    private static function siteValue(Customer $customer, string $key, ?string $franchiseId = null, ?string $areaId = null): ?string
+    /** The review link a branch's texts would carry, or null when no site has one (Settings > Pending). */
+    public static function branchReviewLink(Franchise $franchise): ?string
     {
-        $franchise = Franchise::query()->find($franchiseId ?? $customer->owning_franchise_id);
+        return self::siteValue(null, 'review_link', $franchise->getKey());
+    }
+
+    private static function siteValue(?Customer $customer, string $key, ?string $franchiseId = null, ?string $areaId = null): ?string
+    {
+        $franchise = Franchise::query()->find($franchiseId ?? $customer?->owning_franchise_id);
         $sites = WebSite::query()
             ->when($areaId !== null, fn ($q) => $q->orderByRaw('COALESCE(JSON_CONTAINS(service_area_ids, JSON_QUOTE(?)), 0) desc', [$areaId]))
             ->orderByRaw('franchise_id = ? desc', [$franchise?->getKey()])
