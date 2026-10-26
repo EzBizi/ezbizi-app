@@ -87,17 +87,30 @@ void main() {
   );
 
   testWidgets(
-    'without scheduling.overbooking.view the Availability sub-tab is hidden',
+    'Re-Scheduling-only access still gets Rescheduling Availability',
     (tester) async {
       final gets = await _pump(tester, const [
         'scheduling.view',
         'scheduling.rescheduling.view',
       ]);
 
-      expect(find.text('Re-Scheduling'), findsOneWidget);
+      expect(find.text('Overbooking'), findsNothing);
+      expect(find.text('Rescheduling Availability'), findsOneWidget);
+      expect(find.text('AI Rescheduling Suggestion'), findsOneWidget);
+      expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isTrue);
+    },
+  );
+
+  testWidgets(
+    'with neither grant there is no Re-Scheduling and no availability',
+    (tester) async {
+      final gets = await _pump(tester, const [
+        'scheduling.view',
+        'scheduling.availability.view',
+      ]);
+
+      expect(find.text('Re-Scheduling'), findsNothing);
       expect(find.text('Rescheduling Availability'), findsNothing);
-      expect(find.text('AI Rescheduling Suggestion'), findsNothing);
-      expect(find.byType(ReschedulingPane), findsOneWidget);
       expect(gets.any((u) => u.path.endsWith('/overbooking/fill')), isFalse);
     },
   );

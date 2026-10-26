@@ -114,7 +114,8 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
         session: widget.session,
         visible: _visible('rescheduling'),
         canEdit: widget.session.me?.can('scheduling.edit') ?? false,
-        showAvailability: _mayOpen('overbooking'),
+        // The endpoints take either grant (a3f200840).
+        showAvailability: _mayOpen('overbooking') || _mayOpen('rescheduling'),
         linkDate: _linkDate,
         linkSerial: _linkSerial,
       ),
