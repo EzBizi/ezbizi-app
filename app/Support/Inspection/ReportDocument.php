@@ -46,7 +46,7 @@ final class ReportDocument
 
     public function html(InspectionReport $report): string
     {
-        $report->loadMissing(['customer', 'job', 'submittedBy', 'version', 'attachments']);
+        $report->loadMissing(['customer.owningFranchise.company', 'job.franchise.company', 'submittedBy', 'version', 'attachments']);
 
         $screens = $report->version?->screens ?? [];
         $answers = $report->answers ?? [];
@@ -128,7 +128,7 @@ final class ReportDocument
             $body = '<p class="empty">This inspection had no questions.</p>';
         }
 
-        return $this->page($report, $this->summary($screens, $answers).$body);
+        return $this->page($report, $this->summary($screens, $answers).$body.$this->table($screens, $answers));
     }
 
     /**
@@ -245,7 +245,7 @@ final class ReportDocument
         }
 
         return '<div class="finding '.$this->text($variant).'">'
-            .'<div class="fh">'.$this->text($label).'</div>'
+            .'<div class="fh">'.self::badge($variant).$this->text($label).'</div>'
             .($said === '' ? '' : '<div class="fs">'.$this->text($said).'</div>')
             .$this->citation($field)
             .$inner
@@ -343,6 +343,56 @@ final class ReportDocument
         return $out;
     }
 
+    /** PASS / FAIL / N/A, as A1's reports mark each finding. */
+    private static function badge(string $variant): string
+    {
+        $word = ['pass' => 'PASS', 'fail' => 'FAIL', 'not_applicable' => 'N/A'][$variant] ?? null;
+
+        return $word === null ? '' : '<span class="b '.$variant.'">'.$word.'</span>';
+    }
+
+    /**
+     * Every finding in one table at the end, with the counts — the page a
+     * customer reads first on A1's report ("Inspection Summary").
+     *
+     * @param  list<array<string, mixed>>  $screens
+     * @param  array<string, mixed>  $answers
+     */
+    private function table(array $screens, array $answers): string
+    {
+        $rows = '';
+        $count = ['pass' => 0, 'fail' => 0, 'not_applicable' => 0];
+
+        foreach ($screens as $screen) {
+            foreach ($screen['fields'] ?? [] as $field) {
+                if (! is_array($field) || PrintAs::of($field) !== PrintAs::ROOT) {
+                    continue;
+                }
+
+                $chosen = $this->chosenOption($field, $answers);
+                $variant = (string) ($chosen['variant'] ?? '');
+                if (isset($count[$variant])) {
+                    $count[$variant]++;
+                }
+
+                $rows .= '<tr><td>'.$this->text((string) ($field['label'] ?? '')).'</td>'
+                    .'<td>'.self::badge($variant).'</td>'
+                    .'<td>'.$this->text((string) ($chosen['label'] ?? 'Not answered')).'</td></tr>';
+            }
+        }
+
+        if ($rows === '') {
+            return '';
+        }
+
+        // Its own page, as on A1's report, so the table never starts as a
+        // stranded heading at the foot of the last finding.
+        return '<h2 style="page-break-before:always">Inspection summary</h2>'
+            .'<div class="cnt">Total: '.array_sum($count).' &nbsp; Pass: '.$count['pass']
+            .' &nbsp; Fail: '.$count['fail'].' &nbsp; N/A: '.$count['not_applicable'].'</div>'
+            .'<table class="st"><tr><th>Item</th><th>Status</th><th>Notes</th></tr>'.$rows.'</table>';
+    }
+
     private function summary(array $screens, array $answers): string
     {
         $total = 0;
@@ -367,6 +417,7 @@ final class ReportDocument
         }
 
         return '<div class="sum'.($failed > 0 ? ' bad' : '').'">'
+            .'Inspection result: '.($failed > 0 ? 'Fail' : 'Pass').'. '
             .$failed.' of '.$total.' item'.($total === 1 ? '' : 's')
             .' did not meet standards.</div>';
     }
@@ -540,6 +591,18 @@ final class ReportDocument
 
         $intro = trim((string) ($report->version?->intro ?? ''));
 
+        // The company the visit was for — the job's branch, else the client's
+        // — heads and foots every page with its logo and phone, as A1's own
+        // report does. Nothing found prints the page without them.
+        $company = $report->job?->franchise?->company ?? $report->customer?->owningFranchise?->company;
+        $logo = $this->logo($company?->logo_path);
+        $when = $report->job?->scheduled_for ?? $report->submitted_at;
+        $top = implode(' | ', array_filter([
+            $report->job?->number ? 'Job #: '.$report->job->number : null,
+            $when ? 'Date: '.$when->format('F j, Y') : null,
+            $report->submittedBy?->name ? 'Technician: '.$report->submittedBy->name : null,
+        ]));
+
         return '<!doctype html><html><head><meta charset="utf-8">'
             .'<title>'.$this->text($report->definition_name).'</title>'
             .'<style>'
@@ -575,12 +638,51 @@ final class ReportDocument
             .'.sum.bad{background:#fdecea}'
             .'.intro{margin:0 0 10pt}'
             .'img{max-width:220pt;max-height:220pt;margin:3pt 6pt 0 0}'
+            .'@page{margin:78pt 40pt 60pt 40pt}'
+            .'#ph{position:fixed;top:-62pt;left:0;right:0;height:48pt;border-bottom:1px solid #ccc;font-size:9pt;color:#444}'
+            .'#ph img{max-height:36pt;max-width:160pt;margin:0}'
+            .'#pf{position:fixed;bottom:-44pt;left:0;right:0;height:30pt;border-top:1px solid #ccc;font-size:8.5pt;color:#555}'
+            .'#pf .pn:after{content:"Page " counter(page)}'
+            .'.b{float:right;font-size:8pt;font-weight:bold;color:#fff;padding:1pt 5pt;margin-left:6pt}'
+            .'.b.pass{background:#2e7d32}.b.fail{background:#c62828}.b.not_applicable{background:#888}'
+            .'table.st{width:100%;border-collapse:collapse;font-size:9.5pt}'
+            .'table.st th{text-align:left;border-bottom:1px solid #999;padding:3pt}'
+            .'table.st td{border-bottom:1px solid #eee;padding:3pt}'
+            .'table.st .b{float:none;margin:0}'
+            .'.cnt{margin:0 0 6pt;padding:4pt 6pt;background:#f4f4f4;font-size:9.5pt}'
             .'</style></head><body>'
+            .'<div id="ph"><table style="width:100%"><tr>'
+            .'<td style="width:170pt">'.$logo.'</td>'
+            .'<td style="text-align:right;vertical-align:middle">'.$this->text($top).'</td>'
+            .'</tr></table></div>'
+            .'<div id="pf"><table style="width:100%"><tr>'
+            .'<td>'.$this->text(implode(' | ', array_filter([$company?->name, $company?->phone]))).'</td>'
+            .'<td class="pn" style="text-align:right"></td>'
+            .'</tr></table></div>'
             .'<h1>'.$this->text($report->definition_name).'</h1>'
             .'<table class="h">'.$header.'</table>'
             .($intro === '' ? '' : '<div class="intro">'.nl2br($this->text($intro)).'</div>')
             .$body
             .'</body></html>';
+    }
+
+    /** The company logo as an inline PNG/JPEG, or nothing. */
+    private function logo(?string $path): string
+    {
+        if ($path === null || $path === '') {
+            return '';
+        }
+
+        $bytes = $this->files->contents($path);
+        if ($bytes === null || $bytes === '') {
+            return '';
+        }
+
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
+
+        return in_array($mime, ['image/png', 'image/jpeg'], true)
+            ? '<img src="data:'.$mime.';base64,'.base64_encode($bytes).'" alt="">'
+            : '';
     }
 
     /**
