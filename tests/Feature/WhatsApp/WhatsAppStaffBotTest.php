@@ -20,6 +20,7 @@ use App\Models\WhatsAppReportBatch;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\ReportAsk;
+use App\Support\Ai\StaffAnswer;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppStaffBot;
 use Carbon\CarbonImmutable;
@@ -755,21 +756,35 @@ class WhatsAppStaffBotTest extends TestCase
     }
 
     /** Jose, 2026-10-13: Rodrigo's report-on-request, answered from Reports' figures. */
-    public function test_a_figures_question_from_someone_on_reports_is_answered_from_the_figures(): void
+    /**
+     * Jose, 2026-10-26: the Reports bot no longer intercepts free questions.
+     * "How much did we sell last week" is answered by the same brain as the
+     * AI tab (StaffAnswer): the Library, then the app's data as this person.
+     */
+    public function test_a_figures_question_from_someone_on_reports_is_answered_by_the_one_brain(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $this->configured();
         $this->number($t, self::BOT);
         config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
-        Process::fake(['*' => Process::sequence()
-            ->push(Process::result(json_encode(['structuredOutput' => ['is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null]])))
-            ->push(Process::result(json_encode(['structuredOutput' => ['reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.']])))]);
+        Process::fake(function ($process) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompt = $file && is_file($file) ? file_get_contents($file) : '';
+
+            return Process::result(json_encode(['structuredOutput' => match (true) {
+                str_contains($prompt, 'ENDPOINTS:') => ['calls' => [['path' => 'customers', 'query' => '']]],
+                str_contains($prompt, 'DATA:') => ['answered' => true, 'reply' => 'Oct 5-11: 12 jobs done, $4,310 gross.'],
+                default => ['answered' => false, 'reply' => '', 'entry_ids' => [], 'is_report' => true, 'from' => '2026-10-05', 'to' => '2026-10-11', 'branch' => null],
+            }]));
+        });
 
         $this->staff($t);
         $this->inbound(self::BOT, $this->text('how much did we sell last week'))->assertOk();
 
+        $this->assertCount(1, $this->sent);
         $this->assertStringContainsString('12 jobs done', $this->sent[0]['text']['body']);
-        $this->assertStringContainsString('From EzBizi Reports', $this->sent[0]['text']['body']);
+        $this->assertStringContainsString('read by AI with your access', $this->sent[0]['text']['body']);
+        $this->assertStringNotContainsString('From EzBizi Reports', json_encode($this->sent));
     }
 
     public function test_a_figures_question_from_someone_without_reports_goes_to_the_library(): void
@@ -1090,5 +1105,49 @@ class WhatsAppStaffBotTest extends TestCase
         $this->inbound(self::BOT, $this->text('leave out job 4512 from the report'))->assertOk();
 
         Queue::assertNotPushed(PlanReportCorrection::class);
+    }
+
+    /**
+     * Jose, 2026-10-26: "how many jobs scheduled for tomorrow at a-1 chimney"
+     * got AppAsk's answer in the app, a Reports summary and a parts template
+     * on WhatsApp. One brain: both channels answer from the same source, once.
+     */
+    public function test_the_app_and_whatsapp_answer_a_data_question_from_the_same_source(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->set('ai_assistance.tech_mode', $t['org'], true));
+        $asked = [];
+        Process::fake(function ($process) use (&$asked) {
+            $file = collect((array) $process->command)->first(fn ($a) => str_ends_with((string) $a, 'prompt.txt'));
+            $prompt = $file && is_file($file) ? file_get_contents($file) : '';
+            $asked[] = $prompt;
+            $out = match (true) {
+                str_contains($prompt, 'ENDPOINTS:') => ['calls' => [['path' => 'customers', 'query' => '']]],
+                str_contains($prompt, 'DATA:') => ['answered' => true, 'reply' => '*Tomorrow*: 9 scheduled'],
+                default => ['answered' => false, 'reply' => '', 'entry_ids' => []],
+            };
+
+            return Process::result(json_encode(['structuredOutput' => $out]));
+        });
+        $q = 'how many jobs scheduled for tomorrow at a-1 chimney';
+
+        $this->assertFalse(StaffAnswer::isPartsQuestion($q), 'a data question naming the company is not a parts question');
+        $this->assertTrue(StaffAnswer::isPartsQuestion('which pilot assembly for a Heat & Glo SL-750'));
+
+        $this->signedInAs($t['admin'])->getJson('/api/v1/ai-assistance/answer?q='.urlencode($q))
+            ->assertOk()->assertJsonPath('data.from_app', true);
+        $this->app['auth']->forgetGuards();
+
+        $this->inbound(self::BOT, $this->text($q))->assertOk();
+
+        $replies = collect($this->sent)->pluck('text.body')->filter()->values();
+        $this->assertCount(1, $replies, 'one reply, not two');
+        $this->assertStringContainsString('9 scheduled', $replies[0]);
+        $this->assertStringContainsString('read by AI with your access', $replies[0], 'the same source as the app: AppAsk');
+        $this->assertSame([], array_filter($asked, fn ($p) => str_contains($p, 'ORDER CHECK')), 'the parts template was never asked');
     }
 }

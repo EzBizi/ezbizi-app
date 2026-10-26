@@ -1299,10 +1299,12 @@ void main() {
         return inner(request);
       });
       await _openCompose(tester);
+      await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+      await tester.pumpAndSettle();
 
-      expect(find.textContaining('Riverton · suspended'), findsOneWidget);
+      expect(find.textContaining('Riverton · Suspended'), findsOneWidget);
       // Each listing says which it is, under its branch (Jose, 2026-10-19).
-      expect(find.text('Brightside Home · Springfield, IL'), findsOneWidget);
+      expect(find.text('Springfield, IL'), findsOneWidget);
       expect(find.text('Springfield'), findsOneWidget);
       expect(find.byKey(const ValueKey('social-place-cta')), findsNothing);
 
@@ -1326,6 +1328,169 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(_publishRefusal(tester), isNull);
+    });
+
+    // Jose, 2026-10-26: one switch for every listing, a count, and Expand.
+    group('the listings switch', () {
+      List<Map<String, Object?>> places() => [
+        for (final (i, city) in ['Stamford', 'Norwalk', 'Danbury'].indexed)
+          {
+            'id': 'ct-$i',
+            'title': 'A1 Chimney',
+            'label': 'A1 Chimney · $city, CT',
+            'branch': 'Connecticut',
+            'company': 'A1 Chimney',
+            'address': '1 Main St, $city, CT',
+            'state': 'verified',
+            'postable': true,
+          },
+        {
+          'id': 'ma-0',
+          'title': 'A1 Chimney',
+          'label': 'A1 Chimney · Boston, MA',
+          'branch': 'Massachusetts',
+          'company': 'A1 Chimney',
+          'address': '2 Elm St, Boston, MA',
+          'state': 'verified',
+          'postable': true,
+        },
+        {
+          'id': 'ma-1',
+          'title': 'A1 Chimney',
+          'label': 'A1 Chimney',
+          'branch': 'Massachusetts',
+          'company': 'A1 Chimney',
+          'address': '',
+          'state': 'unverified',
+          'postable': false,
+        },
+      ];
+
+      Map<String, dynamic>? sent;
+
+      Future<void> open(
+        WidgetTester tester, {
+        Size size = const Size(1400, 1600),
+      }) async {
+        sent = null;
+        final inner = _handler(canEdit: true, connections: const [_pinterestBoard]);
+        await _pumpSocial(tester, (request) async {
+          final path = request.url.path;
+          if (path.endsWith('/social/places')) return _json({'data': places()});
+          if (path.endsWith('/me/preferences')) return _json({'data': {}});
+          if (request.method == 'POST' && path.endsWith('/social/posts')) {
+            sent = jsonDecode(request.body) as Map<String, dynamic>;
+          }
+          return inner(request);
+        }, size: size);
+        await _openCompose(tester);
+      }
+
+      String count(WidgetTester tester) => tester
+          .widget<Text>(find.byKey(const ValueKey('social-places-count')))
+          .data!;
+      bool switchOn(WidgetTester tester) => tester
+          .widget<Switch>(find.byKey(const ValueKey('social-places-all')))
+          .value;
+
+      testWidgets('starts collapsed with nothing ticked; the switch ticks all and none', (
+        tester,
+      ) async {
+        await open(tester);
+
+        expect(find.byKey(const ValueKey('social-place-ct-0')), findsNothing);
+        expect(count(tester), '0 of 5 selected');
+        expect(switchOn(tester), isFalse);
+
+        await tester.tap(find.byKey(const ValueKey('social-places-all')));
+        await tester.pumpAndSettle();
+        // Every listing that can take a post; the unverified one stays off.
+        expect(count(tester), '4 of 5 selected');
+        expect(switchOn(tester), isTrue);
+
+        await tester.tap(find.byKey(const ValueKey('social-places-all')));
+        await tester.pumpAndSettle();
+        expect(count(tester), '0 of 5 selected');
+      });
+
+      testWidgets('expanded: groups, a group tick, partial state, city names', (
+        tester,
+      ) async {
+        await open(tester);
+        await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('A1 Chimney · Connecticut'), findsOneWidget);
+        expect(find.text('A1 Chimney · Massachusetts'), findsOneWidget);
+        expect(find.text('Collapse'), findsOneWidget);
+        // Named by where, not by the name they all share.
+        expect(find.text('Stamford, CT'), findsOneWidget);
+        expect(find.text('Boston, MA'), findsOneWidget);
+        expect(find.text('A1 Chimney · Unverified'), findsOneWidget);
+        expect(find.text('A1 Chimney · Stamford, CT'), findsNothing);
+
+        await tester.tap(find.byKey(const ValueKey('social-places-group-0')));
+        await tester.pumpAndSettle();
+        expect(count(tester), '3 of 5 selected');
+        expect(switchOn(tester), isFalse);
+        final groupBox = find.descendant(
+          of: find.byKey(const ValueKey('social-places-group-0')),
+          matching: find.byType(Checkbox),
+        );
+        expect(tester.widget<Checkbox>(groupBox).value, isTrue);
+
+        await tester.tap(find.byKey(const ValueKey('social-place-ct-1')));
+        await tester.pumpAndSettle();
+        expect(count(tester), '2 of 5 selected');
+        expect(tester.widget<Checkbox>(groupBox).value, isNull);
+      });
+
+      testWidgets('search narrows the listings', (tester) async {
+        await open(tester);
+        await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const ValueKey('social-places-search')),
+          'bost',
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Boston, MA'), findsOneWidget);
+        expect(find.text('Stamford, CT'), findsNothing);
+        expect(find.text('A1 Chimney · Connecticut'), findsNothing);
+      });
+
+      testWidgets('Publish sends the ticked listing ids as before', (tester) async {
+        await open(tester);
+        await tester.enterText(
+          find.widgetWithText(TextField, 'What should go out?'),
+          'Fall sweep special.',
+        );
+        await tester.tap(find.byKey(const ValueKey('social-places-all')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+        await tester.pumpAndSettle();
+
+        expect(
+          (sent?['places'] as List?)?.cast<String>(),
+          ['ct-0', 'ct-1', 'ct-2', 'ma-0'],
+        );
+      });
+
+      testWidgets('a phone draws the row and the expanded list without overflow', (
+        tester,
+      ) async {
+        await open(tester, size: const Size(390, 844));
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('social-places-expand')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('social-places-expand')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Stamford, CT'), findsOneWidget);
+      });
     });
 
     // UI queue 105: a picture from the library is sent by its id.

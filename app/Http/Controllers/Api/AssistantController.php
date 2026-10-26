@@ -3,10 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\AssistantEntry;
-use App\Support\Ai\AppAsk;
-use App\Support\Ai\GrokCli;
+use App\Support\Ai\StaffAnswer;
 use App\Support\Assistant\AssistantBrain;
-use App\Support\Assistant\TechAssistant;
 use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,51 +61,25 @@ class AssistantController extends Controller
         $q = (string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:200']])['q'];
         $user = $request->user();
 
-        // Jose, 2026-10-14: same voice as WhatsApp (line breaks, emojis), and
-        // a question the Library cannot answer ("How many jobs do we have for
-        // tomorrow") is read from the app as the asker, GET only (AppAsk).
-        // Both fit nginx's 120 s with 20 s spare: 35 s for the Library, up to 95 s in all.
-        $started = microtime(true);
-        $failed = false;
-
-        // The Chimney Tech Assistant (2026-10-23): a parts or unit question
-        // goes to it first, the same brain as WhatsApp, on channel "app".
-        $tech = app(TechAssistant::class);
-        if (GrokCli::configured() && $tech->enabled($user->organization) && TechAssistant::looksTechnical($q)) {
-            try {
-                $result = $tech->answer($user, $user->organization, $q, 'app', [], 60);
-                if ($result !== null) {
-                    return response()->json(['data' => [
-                        'reply' => $result['reply'], 'entry_ids' => [], 'tech' => true,
-                        'answer_id' => $result['answer']?->getKey(), 'order_check' => $result['answer']?->order_check,
-                    ]]);
-                }
-            } catch (\RuntimeException) {
-                $failed = true;
-            }
-        }
-
+        // One brain with WhatsApp and Telegram (StaffAnswer, Jose 2026-10-26):
+        // parts questions to the Tech Assistant, then the Library, then the
+        // app's data read as this person. 95 s, under nginx's 120.
         try {
-            $answer = $this->brain->aiAnswer($user, $user->organization, $q, 35, forWhatsApp: true);
+            $found = StaffAnswer::answer($user, $user->organization, $q, 'app', 95);
         } catch (\RuntimeException) {
-            [$answer, $failed] = [null, true];
-        }
-
-        if ($answer === null) {
-            try {
-                $reply = AppAsk::answer($user, $q, 95 - (int) ceil(microtime(true) - $started));
-                $answer = $reply === null ? null : ['reply' => $reply, 'entry_ids' => [], 'from_app' => true];
-            } catch (\RuntimeException) {
-                $failed = true;
-            }
-        }
-
-        if ($answer === null && $failed) {
             return response()->json(['message' => 'AI could not answer just now.'], 503);
         }
 
+        $answer = match ($found['source'] ?? null) {
+            null => null,
+            StaffAnswer::TECH => ['reply' => $found['reply'], 'entry_ids' => [], 'tech' => true,
+                'answer_id' => $found['tech']['answer']?->getKey(), 'order_check' => $found['tech']['answer']?->order_check],
+            StaffAnswer::APP => ['reply' => $found['reply'], 'entry_ids' => [], 'from_app' => true],
+            default => ['reply' => $found['reply'], 'entry_ids' => $found['entry_ids']],
+        };
+
         // Jose, 2026-10-14: the app's chat reads like the WhatsApp bot - capitals, emojis for dots.
-        if (is_array($answer) && isset($answer['reply'])) {
+        if (is_array($answer) && isset($answer['reply']) && empty($answer['tech'])) {
             $answer['reply'] = WhatsAppStaffBot::look((string) $answer['reply']);
         }
 
