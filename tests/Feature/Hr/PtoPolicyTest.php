@@ -108,6 +108,10 @@ class PtoPolicyTest extends TestCase
         $this->assertSame(12.0, $answer['total']);
         $this->assertSame(0.0, $answer['used']);
         $this->assertSame('2027-04-01', $answer['resets_on']);
+        // Still to land before the reset: 1 Nov 2026 to 1 Apr 2027, 2 days each.
+        $this->assertSame(['2026-11-01', '2026-12-01', '2027-01-01', '2027-02-01', '2027-03-01', '2027-04-01'],
+            array_column($answer['upcoming_earned'], 'on'));
+        $this->assertSame(2, $answer['upcoming_earned'][0]['days']);
         // Carryover off: last year's 24 earned less 5 used expired at the reset.
         $this->assertSame(19.0, $answer['expired']);
         $this->assertSame([['on' => '2026-04-01', 'expired' => 19.0, 'carried' => 0.0]], $answer['resets']);

@@ -173,7 +173,7 @@ class PtoPolicy
         $usedQuery = fn () => PtoUsed::query()->where('user_id', $user->getKey());
         if ($startedOn === null || $startedOn->isFuture()) {
             return ['total' => null, 'used' => (float) $usedQuery()->sum('days'), 'left' => null,
-                'carried' => null, 'expired' => null, 'resets' => [], 'earned' => [], 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
+                'carried' => null, 'expired' => null, 'resets' => [], 'earned' => [], 'upcoming_earned' => [], 'would_expire' => null, 'resets_on' => null, 'window_from' => null];
         }
 
         // Zero wait: accumulation starts on the start date, which is what every
@@ -269,6 +269,9 @@ class PtoPolicy
             // Every grant that has already landed, newest first. The timeline
             // says when the days arrived; a future period is not earned yet.
             'earned' => $this->grants($origin, $today, $allowance, $step, $reset),
+            // The grants still to land in this period, up to the reset, oldest
+            // first (UI/UX, 2026-10-26: "when the next days are earned").
+            'upcoming_earned' => $this->upcoming($origin, $today, $next, $allowance, $step, $reset),
             // Lost at the next reset if nothing more is used (carryover off).
             'would_expire' => $carryOver ? 0.0 : round(max(0.0, $total - $usedNow), 2),
             'resets_on' => $next->toDateString(),
@@ -303,6 +306,32 @@ class PtoPolicy
         }
 
         return array_reverse($rows);
+    }
+
+    /**
+     * The grants after today, up to and including the reset day, oldest first:
+     * the same steps grants() counts, looked at forward.
+     *
+     * @param  callable(Carbon, int): Carbon  $step
+     * @return list<array{on: string, days: int}>
+     */
+    private function upcoming(Carbon $origin, Carbon $today, Carbon $until, int $allowance, callable $step, string $reset): array
+    {
+        if ($allowance <= 0) {
+            return [];
+        }
+        $rows = [];
+        for ($n = $reset === 'period' ? 0 : 1; $n < 600; $n++) {
+            $at = $step($origin, $n);
+            if ($at->gt($until)) {
+                break;
+            }
+            if ($at->gt($today)) {
+                $rows[] = ['on' => $at->toDateString(), 'days' => $allowance];
+            }
+        }
+
+        return $rows;
     }
 
     /**
