@@ -42,14 +42,17 @@ final class BookJob
      * @param  string|null  $date  The day, `Y-m-d`, on the franchise's calendar.
      *                             Booked for nine that morning; null waits for dispatch.
      * @param  array<string, mixed>  $audit  What booked it (`source`, ids), for the audit row.
+     * @param  array<string, mixed>  $fields  The Book panel's own (2026-10-27): status, scheduled_for (exact wall
+     *                                       time), duration_minutes, service_area_id, job_type, job_source, description,
+     *                                       external_company, custom_fields, all_day, recurrence. Each wins over the default.
      */
-    public function __invoke(Customer $customer, Franchise $franchise, string $title, ?string $date, array $audit = []): Job
+    public function __invoke(Customer $customer, Franchise $franchise, string $title, ?string $date, array $audit = [], array $fields = []): Job
     {
-        $status = Job::allowedStatuses($franchise)[0]
+        $status = $fields['status'] ?? Job::allowedStatuses($franchise)[0]
             ?? throw new RuntimeException('This organization has no job statuses configured.');
 
-        return DB::transaction(function () use ($customer, $franchise, $title, $date, $audit, $status) {
-            $job = Job::create([
+        return DB::transaction(function () use ($customer, $franchise, $title, $date, $audit, $status, $fields) {
+            $job = Job::create(array_merge([
                 'franchise_id' => $franchise->getKey(),
                 'customer_id' => $customer->getKey(),
                 'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
@@ -59,7 +62,12 @@ final class BookJob
                 'scheduled_for' => $date === null ? null : "{$date} 09:00:00",
                 'currency' => strtoupper($franchise->currency ?: 'USD'),
                 'service_area_id' => JobServiceArea::resolve($franchise, null, $customer->postal_code),
-            ]);
+            ], array_intersect_key($fields, array_flip(['scheduled_for', 'duration_minutes', 'service_area_id', 'job_type', 'job_source',
+                'description', 'external_company', 'custom_fields', 'all_day', 'recurrence'])), ['status' => $status]));
+            if (isset($fields['service_area_id'])) {
+                // A person picked it on the Book panel: Workiz's projection no longer moves it.
+                $job->forceFill(['service_area_chosen_at' => now()])->saveQuietly();
+            }
 
             $this->audit->log('job.created', $job, metadata: $audit + ['number' => $job->number]);
 
