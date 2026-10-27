@@ -43,4 +43,34 @@ void main() {
     // so the mode goes back byte for byte.
     expect(b.sublist(8), c.modes[i].raw);
   });
+
+  // A slow board (ASUS) is still detecting when we connect; OpenRGB then
+  // pushes DEVICE_LIST_UPDATED (id 100) unasked. It must not be taken for
+  // the answer we are waiting on.
+  test('an unasked device-list-updated notice is not the answer', () async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    Uint8List packet(int id, List<int> data) {
+      final h = ByteData(16)
+        ..setUint32(0, 0x4247524F, Endian.little)
+        ..setUint32(8, id, Endian.little)
+        ..setUint32(12, data.length, Endian.little);
+      return Uint8List.fromList([...h.buffer.asUint8List(), ...data]);
+    }
+
+    server.listen((s) {
+      var sent = false;
+      s.listen((bytes) {
+        // Answer the first request carrying id 0 (controller count).
+        if (sent || bytes.length < 16) return;
+        sent = true;
+        s.add(packet(100, []));
+        s.add(packet(0, [0, 0, 0, 0]));
+      });
+    });
+
+    final c = await OpenRgbClient.connect(port: server.port);
+    addTearDown(c.close);
+    expect(await c.controllers(), isEmpty);
+  });
 }
