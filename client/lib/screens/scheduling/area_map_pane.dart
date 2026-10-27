@@ -80,6 +80,21 @@ class _AreaMapPaneState extends State<AreaMapPane> {
   bool _saving = false;
   String? _paneError;
 
+  bool _autoDrawing = false;
+  String? _autoError;
+
+  final _hex = TextEditingController();
+
+  /// Recommended area (Workiz's): a circle round a centre ZIP. [_circle] is
+  /// the centre and radius the editor was last loaded from, saved with Save.
+  final _centreZip = TextEditingController();
+  final _radius = TextEditingController();
+  bool _drawingCircle = false;
+  String? _circleError;
+  ({String? zip, int? miles})? _circle;
+  bool _savingColour = false;
+  String? _colourError;
+
   final _map = MapController();
   bool _mapReady = false;
 
@@ -104,6 +119,9 @@ class _AreaMapPaneState extends State<AreaMapPane> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _hex.dispose();
+    _centreZip.dispose();
+    _radius.dispose();
     super.dispose();
   }
 
@@ -142,6 +160,11 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       _selectedId = id;
       _zips = [];
       _paneError = null;
+      _colourError = null;
+      _hex.text =
+          (_areas.where((a) => a['area_id'] == id).firstOrNull?['color']
+              as String?) ??
+          '';
     });
     final response = await widget.api.get('/scheduling/areas/$id/map');
     if (!mounted || _selectedId != id) return;
@@ -180,7 +203,11 @@ class _AreaMapPaneState extends State<AreaMapPane> {
 
   // ── Colours: per branch in the company view, per area in a branch ──
 
+  /// The area's own colour when it has one (data, `#RRGGBB`); otherwise the
+  /// branch or position colour it always had.
   Color _colour(BuildContext context, Map<String, dynamic> area) {
+    final own = areaColourOf(area['color']);
+    if (own != null) return own;
     if (_branch == null) {
       final branches = {
         for (final a in _areas) a['franchise_id'] as String?,
@@ -191,6 +218,249 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       ).ink;
     }
     return PersonColours.hue(context, _areas.indexOf(area)).ink;
+  }
+
+  // ── An area's own colour (PATCH …/areas/{id} {color}) ──────────
+
+  Future<void> _setColour(String? hex) async {
+    final id = _selectedId;
+    if (id == null) return;
+    setState(() {
+      _colourError = null;
+      _savingColour = true;
+    });
+    final response = await widget.api.patch('/scheduling/areas/$id', {
+      'color': hex,
+    });
+    if (!mounted) return;
+    setState(() {
+      _savingColour = false;
+      if (!response.ok) {
+        _colourError = response.reason;
+        return;
+      }
+      _areas = [
+        for (final a in _areas)
+          if (a['area_id'] == id) {...a, 'color': hex} else a,
+      ];
+      _hex.text = hex ?? '';
+    });
+  }
+
+  void _submitHex(String raw) {
+    final v = raw.trim();
+    final hex = v.startsWith('#') ? v : '#$v';
+    if (!RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(hex)) {
+      setState(() => _colourError = 'A colour is # and six hex digits.');
+      return;
+    }
+    _setColour(hex.toUpperCase());
+  }
+
+  Widget _colourPicker(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = (_selected?['color'] as String?)?.toUpperCase();
+    return Column(
+      key: const ValueKey('area-colour'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('Colour', style: theme.textTheme.labelMedium),
+            for (final hex in areaSwatches)
+              Tooltip(
+                message: hex,
+                child: InkWell(
+                  key: ValueKey('area-colour-$hex'),
+                  customBorder: const CircleBorder(),
+                  onTap: _savingColour ? null : () => _setColour(hex),
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: areaColourOf(hex),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: current == hex
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.outlineVariant,
+                        width: current == hex ? 2.5 : 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            SizedBox(
+              width: 96,
+              child: TextField(
+                key: const ValueKey('area-colour-hex'),
+                controller: _hex,
+                enabled: !_savingColour,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '#RRGGBB',
+                ),
+                style: theme.textTheme.bodySmall,
+                onSubmitted: _submitHex,
+              ),
+            ),
+            TextButton(
+              key: const ValueKey('area-colour-default'),
+              onPressed: _savingColour || current == null
+                  ? null
+                  : () => _setColour(null),
+              child: const Text('Default'),
+            ),
+          ],
+        ),
+        if (_colourError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: ErrorNote(_colourError!),
+          ),
+      ],
+    );
+  }
+
+  // ── Auto draw (GET …/outline): loads the editor, saves nothing ───
+
+  Future<void> _autoDraw() async {
+    final id = _selectedId;
+    if (id == null || !_editing) return;
+    setState(() {
+      _autoDrawing = true;
+      _autoError = null;
+    });
+    final response = await widget.api.get('/scheduling/areas/$id/outline');
+    if (!mounted || _selectedId != id || !_editing) return;
+    var loaded = false;
+    setState(() {
+      _autoDrawing = false;
+      if (!response.ok) {
+        // 422: "This area needs at least 3 ZIP codes on the map …"
+        _autoError = response.reason;
+        return;
+      }
+      final body = response.body;
+      final data = body['data'] is Map ? body['data'] as Map : body;
+      final shape = _shapesOf([data['polygon'] ?? const []]).first;
+      if (shape.length < 3) {
+        _autoError = 'No outline came back for this area.';
+        return;
+      }
+      // Replaces only what is being edited; Save or Cancel still decides.
+      _shapes = [shape];
+      _circle = null;
+      _open = [];
+      _tool = _Tool.draw;
+      loaded = true;
+    });
+    if (loaded) {
+      _changed();
+      _fit();
+    }
+  }
+
+  // ── Recommended (GET …/outline?mode=recommended): a circle ───────
+
+  Future<void> _drawCircle() async {
+    final id = _selectedId;
+    if (id == null || !_editing) return;
+    final zip = _centreZip.text.trim();
+    final miles = int.tryParse(_radius.text.trim());
+    setState(() {
+      _drawingCircle = true;
+      _circleError = null;
+    });
+    // Typed values override the stored ones, so a circle can be tried first.
+    final response = await widget.api.get('/scheduling/areas/$id/outline', {
+      'mode': 'recommended',
+      if (zip.isNotEmpty) 'center_zip': zip,
+      if (miles != null) 'radius_miles': '$miles',
+    });
+    if (!mounted || _selectedId != id || !_editing) return;
+    var loaded = false;
+    setState(() {
+      _drawingCircle = false;
+      if (!response.ok) {
+        // 422: "Pick a centre ZIP code we know and a radius in miles."
+        _circleError = response.reason;
+        return;
+      }
+      final body = response.body;
+      final data = body['data'] is Map ? body['data'] as Map : body;
+      final shape = _shapesOf([data['polygon'] ?? const []]).first;
+      if (shape.length < 3) {
+        _circleError = 'No circle came back for this area.';
+        return;
+      }
+      _shapes = [shape];
+      _open = [];
+      _tool = _Tool.draw;
+      _circle = (zip: zip.isEmpty ? null : zip, miles: miles);
+      loaded = true;
+    });
+    if (loaded) {
+      _changed();
+      _fit();
+    }
+  }
+
+  Widget _recommended(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: const ValueKey('area-recommended'),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Recommended area', style: theme.textTheme.labelMedium),
+          const SizedBox(height: 6),
+          TextField(
+            key: const ValueKey('area-recommended-zip'),
+            controller: _centreZip,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Centre ZIP',
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('area-recommended-miles'),
+            controller: _radius,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Radius (miles)',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              key: const ValueKey('area-recommended-draw'),
+              onPressed: _drawingCircle ? null : _drawCircle,
+              child: Text(_drawingCircle ? 'Drawing…' : 'Draw circle'),
+            ),
+          ),
+          if (_circleError != null)
+            Padding(
+              key: const ValueKey('area-recommended-error'),
+              padding: const EdgeInsets.only(top: 6),
+              child: ErrorNote(_circleError!),
+            ),
+          const SizedBox(height: 6),
+          Text(
+            'Or Auto draw from ZIPs, or draw by hand on the map.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 
   // ── The camera ──────────────────────────────────────────────────
@@ -231,8 +501,33 @@ class _AreaMapPaneState extends State<AreaMapPane> {
 
   // ── Drawing ─────────────────────────────────────────────────────
 
-  void _startEditing() => setState(() {
+  void _startEditing() {
+    _prefillCircle();
+    _startEditingState();
+  }
+
+  /// The stored centre and radius, from the area detail, into the fields.
+  Future<void> _prefillCircle() async {
+    final id = _selectedId;
+    if (id == null) return;
+    final response = await widget.api.get('/scheduling/areas/$id', const {});
+    if (!mounted || _selectedId != id || !response.ok) return;
+    final data = response.body['data'];
+    if (data is! Map) return;
+    if (_centreZip.text.isEmpty && data['center_zip'] is String) {
+      _centreZip.text = data['center_zip'] as String;
+    }
+    if (_radius.text.isEmpty && data['radius_miles'] is num) {
+      _radius.text = '${(data['radius_miles'] as num).toInt()}';
+    }
+  }
+
+  void _startEditingState() => setState(() {
     _editing = true;
+    _circle = null;
+    _circleError = null;
+    _centreZip.clear();
+    _radius.clear();
     _tool = _Tool.draw;
     _shapes = [
       for (final s in _saved) [...s],
@@ -241,6 +536,7 @@ class _AreaMapPaneState extends State<AreaMapPane> {
     _preview = null;
     _take.clear();
     _paneError = null;
+    _autoError = null;
   });
 
   void _cancel() {
@@ -253,6 +549,9 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       _preview = null;
       _take.clear();
       _paneError = null;
+      _autoError = null;
+      _circle = null;
+      _circleError = null;
     });
   }
 
@@ -370,6 +669,22 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       });
       return;
     }
+    final circle = _circle;
+    if (!clear && circle != null) {
+      // The centre and radius the drawing came from, kept with the area.
+      final kept = await widget.api.patch('/scheduling/areas/$id', {
+        'center_zip': circle.zip,
+        'radius_miles': circle.miles,
+      });
+      if (!mounted) return;
+      if (!kept.ok) {
+        setState(() {
+          _saving = false;
+          _paneError = kept.reason;
+        });
+        return;
+      }
+    }
     final data = response.body['data'] as Map? ?? const {};
     int count(String k) => (data[k] as List? ?? const []).length;
     final line = clear
@@ -386,6 +701,7 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       _take.clear();
       _shapes = [];
       _open = [];
+      _circle = null;
     });
     await _load();
     if (mounted) await _select(id);
@@ -456,6 +772,10 @@ class _AreaMapPaneState extends State<AreaMapPane> {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        if (_mayEdit && _selected != null) ...[
+          const SizedBox(height: 8),
+          _colourPicker(context),
+        ],
         const SizedBox(height: 8),
         ..._areaRows(context),
       ],
@@ -528,6 +848,11 @@ class _AreaMapPaneState extends State<AreaMapPane> {
                         ],
                       ],
                     ),
+                  ),
+                if (area != null && _mayEdit)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _colourPicker(context),
                   ),
                 if (_paneError != null && !_editing)
                   Padding(
@@ -607,6 +932,7 @@ class _AreaMapPaneState extends State<AreaMapPane> {
               child: Row(
                 children: [
                   Container(
+                    key: ValueKey('area-map-dot-${a['area_id']}'),
                     width: 12,
                     height: 12,
                     decoration: BoxDecoration(
@@ -644,7 +970,9 @@ class _AreaMapPaneState extends State<AreaMapPane> {
 
   Widget _mapView(BuildContext context, {required bool tools}) {
     final scheme = Theme.of(context).colorScheme;
-    final drawing = ToneColours.of(context, Tone.caution).ink;
+    // The shape being edited wears the area's own colour when it has one.
+    final own = areaColourOf(_selected?['color']);
+    final drawing = own ?? ToneColours.of(context, Tone.caution).ink;
     final drawingOn = tools && _tool == _Tool.draw;
 
     var flags = InteractiveFlag.all & ~InteractiveFlag.rotate;
@@ -825,6 +1153,19 @@ class _AreaMapPaneState extends State<AreaMapPane> {
           onPressed: _open.length >= 3 ? _closeShape : null,
           child: const Text('Close shape'),
         ),
+        const SizedBox(height: 4),
+        FilledButton.tonal(
+          key: const ValueKey('area-map-auto-draw'),
+          onPressed: _autoDrawing ? null : _autoDraw,
+          child: Text(_autoDrawing ? 'Drawing…' : 'Auto draw from ZIPs'),
+        ),
+        if (_autoError != null)
+          Container(
+            key: const ValueKey('area-map-auto-error'),
+            constraints: const BoxConstraints(maxWidth: 260),
+            padding: const EdgeInsets.only(top: 6),
+            child: ErrorNote(_autoError!),
+          ),
       ],
     );
   }
@@ -860,6 +1201,7 @@ class _AreaMapPaneState extends State<AreaMapPane> {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
             child: Text('$name · review', style: theme.textTheme.titleSmall),
           ),
+          _recommended(context),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
@@ -995,4 +1337,27 @@ class _ZipChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Ten swatches for an area's own colour. Area colours are data the user
+/// picks (stored as `#RRGGBB` on the area), not chrome.
+const areaSwatches = [
+  '#E5484D',
+  '#F76B15',
+  '#F5C518',
+  '#46A758',
+  '#12A594',
+  '#00AEEF',
+  '#3E63DD',
+  '#8E4EC6',
+  '#D6409F',
+  '#8D8D86',
+];
+
+/// `#RRGGBB` to a colour; anything else is null, so the caller falls back.
+Color? areaColourOf(Object? hex) {
+  if (hex is! String || !RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(hex)) {
+    return null;
+  }
+  return Color(int.parse(hex.substring(1), radix: 16) | 0xFF000000);
 }

@@ -5,9 +5,12 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/area_map_pane.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart';
 
 /// Scheduling › Settings › Service areas (UI queue 125, desktop 1 and phone
 /// 4), against Scheduling's map server (efbd6e645, d69673ebf). No tile URL is
@@ -44,6 +47,8 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     double width = 1400,
+    double height = 900,
+    String? downColour,
     List<String> franchises = const ['fr-1'],
     List<String> permissions = const [
       'scheduling.view',
@@ -53,7 +58,7 @@ void main() {
     ],
     http.Response? Function(http.Request request)? onRequest,
   }) async {
-    tester.view.physicalSize = Size(width, 900);
+    tester.view.physicalSize = Size(width, height);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     requests = [];
@@ -105,6 +110,7 @@ void main() {
                 'franchise_id': 'fr-1',
                 'franchise_name': 'Branch fr-1',
                 'zip_count': 18,
+                'color': downColour,
                 'polygons': [
                   [
                     [41.0, -88.0],
@@ -145,6 +151,40 @@ void main() {
                   'latitude': null,
                   'longitude': null,
                 },
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/scheduling/areas/a-down') &&
+            request.method == 'GET') {
+          return json({
+            'data': {
+              'id': 'a-down',
+              'name': 'Downtown',
+              'center_zip': '90177',
+              'radius_miles': 5,
+            },
+          });
+        }
+        if (path.endsWith('/scheduling/areas/a-down/outline') &&
+            request.url.queryParameters['mode'] == 'recommended') {
+          return json({
+            'data': {
+              'polygon': [
+                for (var i = 0; i < 32; i++)
+                  [41.0 + i / 1000, -88.0 - i / 1000],
+              ],
+            },
+          });
+        }
+        if (path.endsWith('/scheduling/areas/a-down/outline')) {
+          return json({
+            'data': {
+              'polygon': [
+                [41.2, -88.1],
+                [41.2, -87.8],
+                [41.0, -87.7],
+                [40.9, -88.0],
               ],
             },
           });
@@ -433,5 +473,260 @@ void main() {
     await openDowntown(tester);
     expect(find.byKey(const ValueKey('area-map-edit')), findsNothing);
     expect(find.byKey(const ValueKey('area-map-tool-draw')), findsNothing);
+  });
+
+  // ── Auto draw from ZIPs ─────────────────────────────────────────
+
+  Future<void> startEditing(WidgetTester tester) async {
+    await openDowntown(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-edit')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Auto draw loads the outline as editable corners, saves nothing '
+      'until Save', (tester) async {
+    await pump(tester);
+    await startEditing(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-auto-draw')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    expect(sent('GET', '/areas/a-down/outline'), hasLength(1));
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(ValueKey('area-map-vertex-0-$i')), findsOneWidget);
+    }
+    // The usual preview ran with the loaded corners; nothing was written.
+    final body =
+        jsonDecode(sent('POST', '/areas/a-down/polygons/preview').last.body)
+            as Map<String, dynamic>;
+    expect((body['polygons'] as List).single, [
+      [41.2, -88.1],
+      [41.2, -87.8],
+      [41.0, -87.7],
+      [40.9, -88.0],
+    ]);
+    expect(requests.where((r) => r.method == 'PATCH'), isEmpty);
+    expect(requests.where((r) => r.method == 'PUT'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('area-map-save')));
+    await tester.pumpAndSettle();
+    final put =
+        jsonDecode(sent('PUT', '/areas/a-down/polygons').single.body)
+            as Map<String, dynamic>;
+    expect((put['polygons'] as List).single, hasLength(4));
+  });
+
+  testWidgets('Auto draw replaces only the unsaved drawing; Cancel keeps the '
+      'saved one', (tester) async {
+    await pump(tester);
+    await draw(tester);
+    expect(find.byKey(const ValueKey('area-map-vertex-0-2')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('area-map-auto-draw')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    // One shape of four corners, not the drawn triangle plus the outline.
+    expect(find.byKey(const ValueKey('area-map-vertex-0-3')), findsOneWidget);
+    expect(find.byKey(const ValueKey('area-map-vertex-1-0')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('area-map-cancel')));
+    await tester.pumpAndSettle();
+    expect(sent('PUT', '/polygons'), isEmpty);
+  });
+
+  testWidgets("Auto draw's 422 sentence is shown inline", (tester) async {
+    const sentence =
+        'This area needs at least 3 ZIP codes on the map to draw an '
+        'outline; it has 2.';
+    await pump(
+      tester,
+      onRequest: (r) => r.url.path.endsWith('/outline')
+          ? json({'message': sentence}, 422)
+          : null,
+    );
+    await startEditing(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-auto-draw')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('area-map-auto-error')),
+        matching: find.text(sentence),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('area-map-vertex-0-0')), findsNothing);
+    expect(sent('POST', '/polygons/preview'), isEmpty);
+  });
+
+  // ── Colour ──────────────────────────────────────────────────────
+
+  Color dotColour(WidgetTester tester, String id) =>
+      ((tester.widget<Container>(
+                find.byKey(ValueKey('area-map-dot-$id')),
+              )).decoration!
+              as BoxDecoration)
+          .color!;
+
+  Polygon downShape(WidgetTester tester) => tester
+      .widget<PolygonLayer>(find.byType(PolygonLayer))
+      .polygons
+      .firstWhere((p) => p.points.first == const LatLng(41.0, -88.0));
+
+  testWidgets('a swatch PATCHes the colour and paints the shape and the dot', (
+    tester,
+  ) async {
+    await pump(tester);
+    await openDowntown(tester);
+    await tester.tap(find.byKey(const ValueKey('area-colour-#E5484D')));
+    await tester.pumpAndSettle();
+
+    final patch = sent('PATCH', '/scheduling/areas/a-down').single;
+    expect(jsonDecode(patch.body), {'color': '#E5484D'});
+    const red = Color(0xFFE5484D);
+    expect(dotColour(tester, 'a-down'), red);
+    expect(downShape(tester).borderColor, red);
+    expect(downShape(tester).color, red.withValues(alpha: 0.16));
+  });
+
+  testWidgets('a typed hex is sent; Default sends null and falls back', (
+    tester,
+  ) async {
+    await pump(tester, downColour: '#3E63DD');
+    await openDowntown(tester);
+    const blue = Color(0xFF3E63DD);
+    expect(dotColour(tester, 'a-down'), blue);
+    expect(downShape(tester).borderColor, blue);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('area-colour-hex')),
+      '12a594',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(jsonDecode(sent('PATCH', '/areas/a-down').last.body), {
+      'color': '#12A594',
+    });
+
+    await tester.tap(find.byKey(const ValueKey('area-colour-default')));
+    await tester.pumpAndSettle();
+    expect(jsonDecode(sent('PATCH', '/areas/a-down').last.body), {
+      'color': null,
+    });
+    final context = tester.element(find.byType(AreaMapPane));
+    final fallback = PersonColours.hue(context, 0).ink;
+    expect(dotColour(tester, 'a-down'), fallback);
+    expect(downShape(tester).borderColor, fallback);
+  });
+
+  testWidgets('a null colour keeps the branch-position colour', (tester) async {
+    await pump(tester);
+    final context = tester.element(find.byType(AreaMapPane));
+    expect(dotColour(tester, 'a-down'), PersonColours.hue(context, 0).ink);
+    expect(dotColour(tester, 'a-east'), PersonColours.hue(context, 1).ink);
+    expect(downShape(tester).borderColor, PersonColours.hue(context, 0).ink);
+  });
+
+  testWidgets('phone 390x844: the colour picker fits, nothing overflows', (
+    tester,
+  ) async {
+    await pump(tester, width: 390, height: 844, downColour: '#8E4EC6');
+    await openDowntown(tester);
+    expect(find.byKey(const ValueKey('area-colour')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final picker = tester.getRect(find.byKey(const ValueKey('area-colour')));
+    expect(picker.right, lessThanOrEqualTo(390));
+  });
+
+  // ── Recommended area: a circle round a centre ZIP ──────────────
+
+  testWidgets('Recommended: stored values prefill, typed ones override the '
+      'query, the circle loads, and Save PATCHes centre and radius', (
+    tester,
+  ) async {
+    await pump(tester);
+    await startEditing(tester);
+
+    final zip = find.byKey(const ValueKey('area-recommended-zip'));
+    final miles = find.byKey(const ValueKey('area-recommended-miles'));
+    expect(tester.widget<TextField>(zip).controller!.text, '90177');
+    expect(tester.widget<TextField>(miles).controller!.text, '5');
+
+    await tester.enterText(zip, '90155');
+    await tester.enterText(miles, '12');
+    await tester.tap(find.byKey(const ValueKey('area-recommended-draw')));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    final asked = sent('GET', '/areas/a-down/outline').single;
+    expect(asked.url.queryParameters, {
+      'mode': 'recommended',
+      'center_zip': '90155',
+      'radius_miles': '12',
+    });
+    expect(find.byKey(const ValueKey('area-map-vertex-0-31')), findsOneWidget);
+    expect(sent('POST', '/polygons/preview'), isNotEmpty);
+    expect(requests.where((r) => r.method == 'PATCH'), isEmpty);
+
+    await tester.tap(find.byKey(const ValueKey('area-map-save')));
+    await tester.pumpAndSettle();
+    final put =
+        jsonDecode(sent('PUT', '/areas/a-down/polygons').single.body)
+            as Map<String, dynamic>;
+    expect((put['polygons'] as List).single, hasLength(32));
+    expect(jsonDecode(sent('PATCH', '/scheduling/areas/a-down').single.body), {
+      'center_zip': '90155',
+      'radius_miles': 12,
+    });
+  });
+
+  testWidgets("Recommended's 422 sentence is shown and nothing loads", (
+    tester,
+  ) async {
+    const sentence = 'Pick a centre ZIP code we know and a radius in miles.';
+    await pump(
+      tester,
+      onRequest: (r) => r.url.path.endsWith('/outline')
+          ? json({'message': sentence}, 422)
+          : null,
+    );
+    await startEditing(tester);
+    await tester.tap(find.byKey(const ValueKey('area-recommended-draw')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('area-recommended-error')),
+        matching: find.text(sentence),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('area-map-vertex-0-0')), findsNothing);
+  });
+
+  testWidgets('a hand drawing saves no centre or radius', (tester) async {
+    await pump(tester);
+    await draw(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-save')));
+    await tester.pumpAndSettle();
+    expect(requests.where((r) => r.method == 'PATCH'), isEmpty);
+  });
+
+  testWidgets('desktop: the radius label is painted whole, not cut short', (
+    tester,
+  ) async {
+    await pump(tester);
+    await startEditing(tester);
+    final label = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const ValueKey('area-recommended-miles')),
+        matching: find.text('Radius (miles)'),
+      ),
+    );
+    expect(label.didExceedMaxLines, isFalse);
+    expect(
+      label.getMaxIntrinsicWidth(double.infinity),
+      lessThanOrEqualTo(label.size.width + 0.5),
+    );
   });
 }
