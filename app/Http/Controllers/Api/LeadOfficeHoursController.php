@@ -6,6 +6,7 @@ use App\Models\Automation;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Models\User;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
@@ -37,9 +38,10 @@ class LeadOfficeHoursController extends Controller
     ) {}
 
     /** GET /api/v1/leads/office-hours */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $org = Organization::query()->findOrFail($this->tenant->idOrFail());
+        $reach = $this->reach($request->user(), $org);
         $companies = Company::query()->orderBy('name')->get();
         $branches = Franchise::query()->orderBy('name')->get()->groupBy('company_id');
 
@@ -57,6 +59,10 @@ class LeadOfficeHoursController extends Controller
         foreach ($companies->whereNull('parent_company_id') as $company) {
             $add($company);
         }
+
+        // Only the places this person may act on; a branch whose company is
+        // out of reach still lists, under a parent the list does not hold.
+        $places = array_values(array_filter($places, fn (array $p) => $reach[$p['scope']]($p['id'])));
 
         return response()->json(['data' => [
             'places' => $places,
@@ -77,6 +83,9 @@ class LeadOfficeHoursController extends Controller
             default => null,
         };
         abort_if($place === null, Response::HTTP_NOT_FOUND);
+        // leads.manage alone let a branch manager rewrite the organization's or another branch's hours.
+        $org = Organization::query()->findOrFail($this->tenant->idOrFail());
+        abort_unless($this->reach($request->user(), $org)[$scope]((string) $place->getKey()), Response::HTTP_NOT_FOUND);
 
         $input = $request->validate([
             'hours' => ['sometimes', 'nullable', 'array'],
@@ -98,6 +107,19 @@ class LeadOfficeHoursController extends Controller
         $this->settings->flush();
 
         return response()->json(['data' => $this->place($place, $scope, null)]);
+    }
+
+    /** @return array<string, \Closure(string): bool> whether this person may act on a place, by scope */
+    private function reach(User $user, Organization $org): array
+    {
+        $companies = $user->reachableCompanies()->map->getKey()->flip();
+        $branches = $user->reachableFranchises()->map->getKey()->flip();
+
+        return [
+            'organization' => fn (string $id) => $user->canActOnOrganization($org),
+            'company' => fn (string $id) => $companies->has($id),
+            'franchise' => fn (string $id) => $branches->has($id),
+        ];
     }
 
     /** @return array<string, mixed> */

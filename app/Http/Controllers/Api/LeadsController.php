@@ -1325,8 +1325,8 @@ class LeadsController extends Controller
      * Google's recording URL answers only to a bearer token for the account
      * the call was billed to, so the client cannot open it and must not be
      * handed it: the token would go with it. The audio is fetched with the
-     * connection's credentials once and kept on EzBizi's disk (LeadRecordings,
-     * Jose 2026-10-27), so it plays after the account is gone. Somebody
+     * connection's credentials on every play and never stored (LeadRecordings,
+     * Jose 2026-10-27). Somebody
      * listening to a stranger's voice is worth an audit row.
      */
     public function recording(Request $request, Lead $lead, string $conversation): HttpResponse
@@ -1337,11 +1337,10 @@ class LeadsController extends Controller
 
         abort_if($row === null || $row->recording_url === null, Response::HTTP_NOT_FOUND);
 
-        // Kept on EzBizi's own disk after the first play (LeadRecordings).
         try {
             $audio = app(LeadRecordings::class)->play($row);
         } catch (RuntimeException $e) {
-            // Not kept, and its Google account is gone: nothing to fetch it with.
+            // Its Google account is gone: nothing to fetch it with.
             abort($lead->connection === null && str_starts_with((string) $row->recording_url, 'http') ? Response::HTTP_CONFLICT : Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
 

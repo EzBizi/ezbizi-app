@@ -362,11 +362,10 @@ class LeadConversationsTest extends TestCase
     }
 
     /**
-     * Jose, 2026-10-27: every integration removable. The recording is kept on
-     * EzBizi's disk, plays after the account is disconnected, and its file
-     * goes when the enquiry does.
+     * Jose, 2026-10-27: "I don't want you saving any call recordings." A play
+     * streams from Google and leaves nothing on EzBizi's disk.
      */
-    public function test_a_kept_recording_plays_after_the_account_is_gone_and_goes_with_the_enquiry(): void
+    public function test_playing_a_recording_saves_nothing(): void
     {
         Storage::fake('local');
         $t = $this->provisionTenant('A1-Chimney');
@@ -374,23 +373,12 @@ class LeadConversationsTest extends TestCase
         $this->fakeGoogle([$this->leadRow('111')], $this->threadRows('111'));
         $this->sync($t, $connection);
 
-        $this->artisan('ezbizi:leads-keep-recordings', ['--all' => true])->assertSuccessful();
-
         $call = $this->inTenant($t['org'], fn () => LeadConversation::query()->whereNotNull('recording_url')->first());
-        $this->assertNotNull($call->recording_path);
-        Storage::disk('local')->assertExists($call->recording_path);
-
-        $this->inTenant($t['org'], fn () => SocialConnection::query()->whereKey($connection->id)->delete());
-        Http::fake(fn () => throw new \RuntimeException('nothing is fetched once it is kept'));
-
         $this->signedInAs($t['admin'])->get("/api/v1/leads/{$call->lead_id}/conversations/{$call->id}/recording")
             ->assertOk()->assertHeader('Content-Type', 'audio/mpeg');
-        $this->assertSame('ID3-fake-audio-bytes', Storage::disk('local')->get($call->recording_path));
 
-        // Deleted by the database's cascade: no model event, so the sweep removes the file.
-        $this->inTenant($t['org'], fn () => Lead::query()->whereKey($call->lead_id)->delete());
-        $this->artisan('ezbizi:leads-keep-recordings')->assertSuccessful();
-        Storage::disk('local')->assertMissing($call->recording_path);
+        $this->assertNull($call->fresh()->recording_path);
+        $this->assertSame([], Storage::disk('local')->allFiles());
     }
 
     /** "Who is waiting on me": the enquirer spoke last. The one filter drawn. */
