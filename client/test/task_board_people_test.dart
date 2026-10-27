@@ -307,8 +307,6 @@ void main() {
   ) async {
     await pump(tester);
 
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('tasks-new-board')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('new-board-name')), 'Gutters');
@@ -379,8 +377,6 @@ void main() {
       ],
     );
 
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     for (final header in ['MY BOARDS', 'SHARED WITH ME', "EVERYONE'S BOARDS"]) {
       expect(find.text(header), findsOneWidget);
     }

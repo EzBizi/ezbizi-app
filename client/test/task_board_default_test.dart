@@ -127,8 +127,6 @@ void main() {
 
   testWidgets('restores the board last opened in this place', (tester) async {
     await pumpBoard(tester);
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Northside Chimney').last);
     await tester.pumpAndSettle();
     expect(opened.last, 'b-co');
@@ -141,8 +139,6 @@ void main() {
   testWidgets('falls back to My board when the remembered board is gone or '
       'was opened in another place', (tester) async {
     await pumpBoard(tester);
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Northside Chimney').last);
     await tester.pumpAndSettle();
 
