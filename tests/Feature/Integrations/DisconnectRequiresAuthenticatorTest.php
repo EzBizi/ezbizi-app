@@ -250,6 +250,74 @@ class DisconnectRequiresAuthenticatorTest extends TestCase
 
     // ── helpers ───────────────────────────────────────────────────
 
+    // ── features (Jose, 2026-10-27: every integration is a removable add-on) ──
+
+    public function test_features_name_what_breaks_even_with_nothing_counted(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $x = $this->social($t, 'x');
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/integrations/social/'.$x->id.'/dependents')
+            ->assertOk()->json('data');
+
+        $this->assertSame([], $data['dependents']);
+        $this->assertSame([['feature' => 'Marketing › Posts: can\'t publish to X', 'severity' => 'breaks']], $data['features']);
+    }
+
+    public function test_a_second_account_turns_breaks_into_degrades(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $one = $this->social($t, 'x', 'x-1');
+        $this->social($t, 'x', 'x-2');
+
+        $features = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/integrations/social/'.$one->id.'/dependents')
+            ->assertOk()->json('data.features');
+
+        $this->assertSame('degrades', $features[0]['severity']);
+    }
+
+    public function test_phone_features_list_breaks_before_degrades(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $phone = $this->phone($t);
+
+        $features = collect($this->signedInAs($t['admin'])
+            ->getJson('/api/v1/integrations/phone/'.$phone->id.'/dependents')
+            ->assertOk()->json('data.features'));
+
+        $this->assertSame('breaks', $features->first()['severity']);
+        $this->assertContains(['feature' => 'Reports › Calls: call reports stop updating', 'severity' => 'degrades'], $features->all());
+        $this->assertContains('Automations: steps that need the phone account stop running', $features->pluck('feature')->all());
+    }
+
+    public function test_every_registered_counter_declares_features_for_some_connection(): void
+    {
+        $counters = iterator_to_array(app()->tagged(\App\Support\Integrations\Dependents\DependentRegistry::TAG));
+        $this->assertNotEmpty($counters);
+
+        $kinds = ['social' => array_map(fn ($p) => $p->value, \App\Support\Social\SocialProvider::cases()), 'phone' => ['twilio'], 'workspace' => ['google_workspace']];
+        $model = new SocialConnection;
+
+        foreach ($counters as $counter) {
+            $declared = false;
+            foreach ($kinds as $kind => $providers) {
+                foreach ($providers as $provider) {
+                    foreach ([true, false] as $last) {
+                        $ref = new \App\Support\Integrations\Dependents\IntegrationRef($kind, $provider, 'id', 'org', $model, $last);
+                        foreach ($counter->features($ref) as $row) {
+                            $this->assertContains($row['severity'], ['breaks', 'degrades']);
+                            $this->assertNotSame('', $row['feature']);
+                            $declared = true;
+                        }
+                    }
+                }
+            }
+            $this->assertTrue($declared, $counter::class.' declares no features for any connection');
+        }
+    }
+
     private function wrongCode(): string
     {
         return '000001';
