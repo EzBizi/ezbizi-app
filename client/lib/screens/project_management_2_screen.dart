@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -32,7 +34,11 @@ class ProjectManagement2Screen extends StatefulWidget {
 class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   bool _loading = true;
   String? _error;
+  bool _loaded = false;
   List<Map<String, dynamic>> _rows = const [];
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _q = '';
 
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
 
@@ -42,17 +48,51 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
-    final response = await widget.api.get('/project-management-2/jobs');
-    if (!mounted) return;
+    final q = _q;
+    final response = await widget.api.get('/project-management-2/jobs', {
+      if (q.isNotEmpty) 'q': q,
+    });
+    if (!mounted || q != _q) return;
     setState(() {
       _loading = false;
+      _loaded = true;
       _error = response.ok ? null : response.message;
       _rows = ((response.body['data'] as List?) ?? const [])
           .map((r) => (r as Map).cast<String, dynamic>())
           .toList();
     });
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
+  }
+
+  /// The list is not paged, so every job is on the device: the rows are
+  /// narrowed here too, because the server does not read q yet.
+  List<Map<String, dynamic>> get _shown {
+    final q = _q.toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((r) {
+      return [
+        r['customer'],
+        r['job_number'],
+        r['address'],
+      ].any((v) => v != null && '$v'.toLowerCase().contains(q));
+    }).toList();
   }
 
   /// The company under the branch only when the list spans several, where
@@ -78,24 +118,49 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final rows = _shown;
 
     return AsyncBody(
-      loading: _loading,
+      // Only the first load blanks the screen, so the search box keeps focus.
+      loading: _loading && !_loaded,
       error: _error,
       onRetry: _load,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            'Done pending approval · ${_rows.length} jobs',
-            style: theme.textTheme.titleMedium,
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Done pending approval · ${rows.length} jobs',
+                style: theme.textTheme.titleMedium,
+              ),
+              SizedBox(
+                width: 320,
+                child: TextField(
+                  key: const Key('pm2-search'),
+                  controller: _search,
+                  onChanged: _searched,
+                  style: theme.textTheme.bodyMedium,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    hintText: 'Customer, job ID or address',
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
-          if (_rows.isEmpty)
+          if (rows.isEmpty && _q.isNotEmpty)
+            Text('No job matches "$_q".')
+          else if (rows.isEmpty)
             const Text('No jobs are done pending approval.')
           else
             ListTable(
-              rowKey: (i) => ValueKey('pm2-job:${_rows[i]['id']}'),
+              rowKey: (i) => ValueKey('pm2-job:${rows[i]['id']}'),
               columns: [
                 const ListColumn('Job ID', flex: 2),
                 const ListColumn('Customer', flex: 3),
@@ -109,7 +174,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                 if (_money) const ListColumn('Money owed', flex: 2),
               ],
               rows: [
-                for (final row in _rows)
+                for (final row in rows)
                   [
                     Text('${row['job_number'] ?? '—'}'),
                     Text(

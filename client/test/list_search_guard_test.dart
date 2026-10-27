@@ -42,8 +42,8 @@ void main() {
           '  ${offenders.join('\n  ')}\n\n'
           'Rule (Jose, 2026-10-22, "i want search bars"): a file under '
           'lib/screens or lib/widgets that uses ListView.builder, '
-          'ListView.separated, DataTable, GroupedTable, FilterTiles or '
-          'ReportGrid must hold a search TextField with a literal Key, e.g. '
+          'ListView.separated, DataTable, GroupedTable, FilterTiles, '
+          'ReportGrid or ListTable must hold a search TextField with a literal Key, e.g. '
           "ValueKey('leads-search'). If the list genuinely needs none (a chat "
           'thread, a picker, content rather than records) or its search is '
           'drawn by a parent file, add it to _exempt in '
@@ -159,7 +159,7 @@ final real = ListView.separated(itemBuilder: (_, i) => Text('$i'));
 /// A list widget being USED: a constructor call, never the bare name.
 final _listWidget = RegExp(
   r'\bListView\.builder\(|\bListView\.separated\(|\bDataTable\(|'
-  r'\bGroupedTable\s*[(<]|\bFilterTiles\(|\bReportGrid\(',
+  r'\bGroupedTable\s*[(<]|\bFilterTiles\(|\bReportGrid\(|\bListTable\(',
 );
 
 /// `Key('…search…')` or `ValueKey<String>('…search…')`, single or double
@@ -311,7 +311,9 @@ const Map<String, _Exemption> _exempt = {
     host: null,
   ),
   'lib/widgets/list_table.dart': (
-    why: 'defines FilterTiles; the screen that uses it holds the search',
+    why:
+        'defines FilterTiles and ListTable; the screen that uses it holds '
+        'the search',
     owner: 'UI/UX',
     host: null,
   ),
@@ -378,6 +380,22 @@ const Map<String, _Exemption> _exempt = {
     owner: 'Phone',
     host: null,
   ),
+  // Seeded 2026-10-27 when ListTable joined the scan.
+  'lib/screens/customers/memberships_settings.dart': (
+    why: "the organization's membership plans, a handful of settings rows",
+    owner: 'Customers',
+    host: null,
+  ),
+  'lib/screens/phone/reports_tab.dart': (
+    why: 'call totals per period and the saved report names',
+    owner: 'Phone',
+    host: null,
+  ),
+  'lib/screens/phone/usage_pane.dart': (
+    why: 'a cost breakdown, one row per kind of usage',
+    owner: 'Phone',
+    host: null,
+  ),
   'lib/widgets/notification_bell.dart': (
     why: 'the bell drop-down of recent notifications',
     owner: 'UI/UX',
@@ -414,4 +432,7 @@ const _serverSearch = {
       'test/search_training_settings_test.dart',
   'lib/screens/customers_screen.dart':
       'test/search_customers_duplicates_test.dart',
+  // Jose 2026-10-27: "a search bar for project management 2".
+  'lib/screens/project_management_2_screen.dart':
+      'test/search_project_management_2_test.dart',
 };
