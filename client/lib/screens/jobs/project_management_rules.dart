@@ -194,7 +194,7 @@ List<PmMeasure> pmMeasures({int? warnDays, int? stoppedDays}) {
       number: 'Pipeline',
       rule:
           'Jobs in Waiting review, Ready to schedule, Scheduled or In '
-          'progress. The money is the sum of their Workiz total prices.',
+          'progress. The money is the sum of their totals.',
     ),
     (
       number: 'Paid but not started',

@@ -43,19 +43,4 @@ final class EstimateAging
 
         return $out;
     }
-
-    /**
-     * Paid per job, in cents: Workiz's succeeded charges less refunds, until
-     * EzBizi records its own payments.
-     *
-     * @param  list<string>  $jobIds
-     * @return array<string, int>
-     */
-    public static function paidCents(array $jobIds): array
-    {
-        return WorkizRecord::query()->whereIn('job_id', $jobIds)->where('type', 'payment')->where('status', 'succeeded')
-            ->selectRaw("job_id, SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(payload, '$.type')) = 'refund' THEN -amount ELSE amount END) AS paid")
-            ->groupBy('job_id')->pluck('paid', 'job_id')
-            ->map(fn ($v) => (int) round(((float) $v) * 100))->all();
-    }
 }

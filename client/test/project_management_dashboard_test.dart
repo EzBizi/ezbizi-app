@@ -252,7 +252,7 @@ void main() {
       reason: "the rules endpoint's sentence",
     );
     expect(tip('pm-info-waiting_review'), contains('still owe money'));
-    expect(tip('pm-info-pipeline'), contains('Workiz total prices'));
+    expect(tip('pm-info-pipeline'), contains('sum of their totals'));
     expect(tip('pm-info-attention-not_started'), contains('first payment'));
     expect(tip('pm-info-attention-not_started'), contains('8:20 AM Eastern'));
     expect(tip('pm-info-attention-stopped'), contains('more than 30 days'));
