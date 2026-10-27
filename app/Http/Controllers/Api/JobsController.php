@@ -372,6 +372,10 @@ class JobsController extends Controller
         }
 
         $meta['day_counts'] = (object) $dayCounts;
+        // The statuses where the viewer is looking (branch, company, organization), so a branch-only
+        // person gets them without reading organization settings (Jose's scope review, 2026-10-27).
+        $meta['statuses'] = array_values((array) app(\App\Support\Settings\SettingsResolver::class)
+            ->get('jobs.statuses', \App\Support\Scoping\ViewScope::forUser($request->user())->settingsScope()));
 
         return response()->json([
             'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j, money: $money)),

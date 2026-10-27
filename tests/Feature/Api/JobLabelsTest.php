@@ -82,6 +82,18 @@ class JobLabelsTest extends TestCase
         $this->assertSame('Masonry Work', $read($edited)->job_type, "a person's word stays");
     }
 
+    /** Jose's scope review, 2026-10-27: the list carries the statuses where the viewer looks, for a branch-only person too. */
+    public function test_the_list_carries_the_job_statuses_for_a_branch_only_person(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], fn () => app(\App\Support\Settings\SettingsResolver::class)->set('jobs.statuses', $alpha['org'],
+            [['value' => 'open', 'label' => 'Open'], ['value' => 'done', 'label' => 'Done']]));
+        $branchOnly = $this->userWithRole($alpha, 'Branch', ['jobs.view'], onlyAt: $alpha['franchise']);
+
+        $this->signedInAs($branchOnly)->getJson('/api/v1/jobs')->assertOk()
+            ->assertJsonPath('meta.statuses', [['value' => 'open', 'label' => 'Open'], ['value' => 'done', 'label' => 'Done']]);
+    }
+
     private function create(array $alpha, array $fields): \Illuminate\Testing\TestResponse
     {
         $customer = $this->inTenant($alpha['org'], fn () => Customer::create([
