@@ -199,6 +199,9 @@ class SchedulingAreasController extends Controller
             'name' => ['sometimes', 'string', 'max:191'],
             // Its own map colour (Jose, 2026-10-27); null goes back to the default.
             'color' => ['sometimes', 'nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            // "Recommended area": a centre ZIP and a radius (Jose, 2026-10-27).
+            'center_zip' => ['sometimes', 'nullable', 'regex:/^\d{5}$/'],
+            'radius_miles' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:200'],
         ]);
         $data['name'] ??= $row->name;
 
@@ -727,6 +730,8 @@ class SchedulingAreasController extends Controller
             'id' => $area->id,
             'name' => $area->name,
             'color' => $area->color,
+            'center_zip' => $area->center_zip,
+            'radius_miles' => $area->radius_miles,
             'franchise_id' => $area->franchise_id,
             'available_from' => $area->available_from?->toDateString(),
             'shares_with_id' => $area->shares_with_id,

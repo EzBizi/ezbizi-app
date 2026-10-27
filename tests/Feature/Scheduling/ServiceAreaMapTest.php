@@ -118,6 +118,22 @@ class ServiceAreaMapTest extends TestCase
         }
     }
 
+    /** Recommended (Jose, 2026-10-27): a circle round a stored centre ZIP and radius. */
+    public function test_a_recommended_circle_comes_from_the_stored_centre_and_radius(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $a = $this->area($t, 'Charlotte Hall');
+        $as = $this->signedInAs($t['admin']);
+        $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline?mode=recommended")->assertStatus(422);
+
+        $as->patchJson("/api/v1/scheduling/areas/{$a->id}", ['center_zip' => '20601', 'radius_miles' => 10])->assertOk()->assertJsonPath('data.radius_miles', 10);
+        $circle = $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline?mode=recommended")->assertOk()->json('data.polygon');
+        $this->assertCount(32, $circle);
+        $this->assertTrue(SchedulingAreaMapController::contains($circle, 38.5, -76.5), 'the centre is inside');
+        $this->assertTrue(SchedulingAreaMapController::contains($circle, 38.6, -76.4), '20602, ~9 miles out, is inside');
+        $this->assertFalse(SchedulingAreaMapController::contains($circle, 38.9, -76.9), '20603, ~35 miles out, is not');
+    }
+
     public function test_an_area_keeps_its_own_colour(): void
     {
         $t = $this->provisionTenant('Alpha');

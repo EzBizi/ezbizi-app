@@ -85,7 +85,7 @@ final class SchedulingAreaMapController extends Controller
     }
 
     /**
-     * GET /scheduling/areas/{area}/outline: a drawn shape from the area's own
+     * GET /scheduling/areas/{area}/outline[?mode=recommended]: a drawn shape from the area's own
      * ZIP centres (Jose, 2026-10-27, "auto draw"), their convex hull pushed out
      * about a mile so the edge ZIPs sit inside. Not saved: the editor loads it
      * to adjust, and saving goes through preview and save as any drawing does.
@@ -94,6 +94,23 @@ final class SchedulingAreaMapController extends Controller
     {
         $row = $this->reachable($request)->findOrFail($area);
         $this->authorize('view', $row);
+
+        // Recommended: a circle round a centre ZIP (?center_zip=&radius_miles=,
+        // else the area's own), 32 points the editor can drag.
+        if ($request->query('mode') === 'recommended') {
+            $data = $request->validate(['center_zip' => ['nullable', 'regex:/^\d{5}$/'], 'radius_miles' => ['nullable', 'integer', 'min:1', 'max:200']]);
+            $zip = $data['center_zip'] ?? $row->center_zip;
+            $miles = (int) ($data['radius_miles'] ?? $row->radius_miles ?? 0);
+            $centre = $zip === null ? null : DB::table('zip_centroids')->where('zip', $zip)->first();
+            abort_if($centre === null || $miles < 1, 422, 'Pick a centre ZIP code we know and a radius in miles.');
+            $lat = (float) $centre->latitude;
+            $lng = (float) $centre->longitude;
+
+            return response()->json(['data' => ['polygon' => array_map(fn ($i) => [
+                round($lat + $miles / 69.0 * cos(2 * M_PI * $i / 32), 6),
+                round($lng + $miles / (69.0 * cos(deg2rad($lat))) * sin(2 * M_PI * $i / 32), 6),
+            ], range(0, 31))]]);
+        }
         $points = DB::table('zip_centroids')
             ->whereIn('zip', ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip')->map(fn ($z) => substr($z, 0, 5)))
             ->get(['latitude', 'longitude'])->map(fn ($c) => [(float) $c->latitude, (float) $c->longitude])->unique()->values()->all();
