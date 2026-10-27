@@ -55,6 +55,23 @@ class LeadOfficeHoursTest extends TestCase
         $this->signedInAs($manager)->putJson("/api/v1/leads/office-hours/company/{$t['company']->id}", ['hours' => ['monday' => 'x']])->assertStatus(422);
     }
 
+    /** Desk review, 2026-10-27: leads.manage at one branch reached the organization's and every branch's hours. */
+    public function test_a_branch_manager_sees_and_sets_only_their_branch(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $other = $this->extraFranchise($t, 'Dallas');
+        $manager = $this->userWithRole($t, 'Branch lead manager', ['leads.view', 'leads.manage'], onlyAt: $t['franchise']);
+
+        $ids = collect($this->signedInAs($manager)->getJson('/api/v1/leads/office-hours')->assertOk()->json('data.places'))->pluck('id')->all();
+        $this->assertSame([$t['franchise']->id], $ids);
+
+        $this->signedInAs($manager)->putJson("/api/v1/leads/office-hours/franchise/{$t['franchise']->id}", ['hours' => self::LATE])->assertOk();
+        foreach (["organization/{$t['org']->id}", "company/{$t['company']->id}", "franchise/{$other->id}"] as $place) {
+            $this->signedInAs($manager)->putJson("/api/v1/leads/office-hours/{$place}", ['hours' => self::LATE])->assertNotFound();
+        }
+        $this->assertSame('17:00', $this->inTenant($t['org'], fn () => app(SettingsResolver::class)->get('leads.office_hours', $other)['monday']['close']));
+    }
+
     public function test_only_a_leads_manager_reaches_it(): void
     {
         $t = $this->provisionTenant('A1-Group');

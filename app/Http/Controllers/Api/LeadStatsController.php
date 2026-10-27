@@ -51,7 +51,7 @@ class LeadStatsController extends Controller
             ->groupBy('reason')->havingRaw('reason IS NOT NULL')->orderByDesc('n')->limit(10)->get()
             ->map(fn ($r) => ['reason' => $r->reason, 'count' => (int) $r->n]);
 
-        $jobs = DB::table('workiz_jobs')->whereIn('job_id', (clone $base)->whereNotNull('leads.job_id')->select('leads.job_id'))
+        $jobs = DB::table('workiz_jobs')->where('organization_id', $request->user()->organization_id)->whereIn('job_id', (clone $base)->whereNotNull('leads.job_id')->select('leads.job_id'))
             ->get(['job_type', 'scheduled_for']);
         $services = $jobs->countBy(fn ($j) => $j->job_type ?: 'Not set')->sortDesc()->take(15);
         $heat = [];
