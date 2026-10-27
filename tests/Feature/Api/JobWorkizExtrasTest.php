@@ -65,7 +65,8 @@ class JobWorkizExtrasTest extends TestCase
 
         $this->assertSame(['fields', 'files'], array_keys($data['workiz']));
         $this->assertSame(['System Type', 'Time Frames'], array_column($data['workiz']['fields'], 'name'));
-        $json = json_encode($data);
+        // UUIDs are random and can contain a needle such as 7500 (failed the 0.0.0499 gate).
+        $json = preg_replace('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/', 'uuid', json_encode($data));
         foreach (['32470', '324.70', '120000', '7500', '$299', 'Pricing', 'invoices', 'payments', 'labor_cost'] as $needle) {
             $this->assertStringNotContainsString($needle, $json, $needle);
         }
