@@ -29,6 +29,7 @@ void main() {
     required String section,
     String? companyId,
     String? companyName,
+    String? franchiseId,
     String? owner,
     int open = 0,
   }) => {
@@ -38,6 +39,7 @@ void main() {
     'visibility': 'main',
     'company_id': companyId,
     'company_name': companyName,
+    'franchise_id': franchiseId,
     'open_for_me': open,
     'can_edit': true,
     'my_role': section == 'mine' ? 'owner' : null,
@@ -196,6 +198,35 @@ void main() {
     expect(y(row('b-a1')), lessThan(y(row('b-cu'))));
     expect(y(row('b-cu')), lessThan(y(row('b-bos'))));
     expect(y(row('b-bos')), lessThan(y(row('b-ns'))));
+  });
+
+  testWidgets('a custom board with franchise_id nests under its branch; '
+      'without one it stays under its company', (tester) async {
+    await pumpBoard(
+      tester,
+      boards: [
+        for (final b in fixture)
+          if (b['id'] == 'b-bos') {...b, 'franchise_id': 'f-1'} else b,
+        board(
+          'b-bc',
+          'custom',
+          'Boston crew',
+          section: 'place',
+          companyId: 'c-1',
+          companyName: 'A-1 Chimney',
+          franchiseId: 'f-1',
+        ),
+      ],
+    );
+    double y(Finder f) => tester.getTopLeft(f).dy;
+    double x(Finder f) => tester.getTopLeft(f.first).dx;
+    Finder label(String t) => inTree(t);
+    // Under Boston, indented past it.
+    expect(y(row('b-bc')), greaterThan(y(row('b-bos'))));
+    expect(x(label('Boston crew')), greaterThan(x(label('Boston'))));
+    // No franchise_id: at company level, before the branches.
+    expect(y(row('b-cu')), lessThan(y(row('b-bos'))));
+    expect(x(label('Estimates follow-up')), x(label('Boston')));
   });
 
   testWidgets("Everyone's boards appear only when the list holds them "

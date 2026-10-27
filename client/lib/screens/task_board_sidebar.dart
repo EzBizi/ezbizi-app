@@ -10,8 +10,9 @@ import '../core/device_key_store_io.dart'
 /// replaces the "Other boards" picker.
 ///
 /// Built from GET /task-boards only: a board's `section` (mine, shared,
-/// place, everyone), `kind`, `company_name` and `owner`. The list carries no
-/// branch for a custom board, so a custom board sits under its company.
+/// place, everyone), `kind`, `company_name`, `franchise_id` and `owner`. A
+/// custom board with a `franchise_id` sits under that branch's board; one
+/// without sits under its company.
 /// Everyone's boards appear only when the list holds some, which it does only
 /// for tasks.view_all.
 ///
@@ -367,26 +368,60 @@ class _BoardTreeState extends State<BoardTree> {
     final companyRows = <Widget>[
       for (final company in companies)
         ...() {
-          final rows = byCompany[company]!.where((i) => matches(i)).toList()
+          int byName(int a, int b) =>
+              _name(boards[a]).compareTo(_name(boards[b]));
+          final all = byCompany[company]!;
+          // A custom board with a franchise_id sits under that branch's
+          // board; without one, or when that branch is not listed, under
+          // its company.
+          final branchIds = {
+            for (final i in all)
+              if (rank(i) == 2 && boards[i]['franchise_id'] != null)
+                '${boards[i]['franchise_id']}',
+          };
+          String? branchOf(int i) {
+            final f = boards[i]['franchise_id'];
+            return rank(i) == 1 && f != null && branchIds.contains('$f')
+                ? '$f'
+                : null;
+          }
+
+          final top = all.where((i) => branchOf(i) == null).toList()
             ..sort(
-              (a, b) => rank(a) != rank(b)
-                  ? rank(a) - rank(b)
-                  : _name(boards[a]).compareTo(_name(boards[b])),
+              (a, b) => rank(a) != rank(b) ? rank(a) - rank(b) : byName(a, b),
             );
+          final children = <Widget>[];
+          for (final i in top) {
+            final under = rank(i) == 2 && boards[i]['franchise_id'] != null
+                ? (all
+                      .where(
+                        (c) => branchOf(c) == '${boards[i]['franchise_id']}',
+                      )
+                      .toList()
+                    ..sort(byName))
+                : const <int>[];
+            final shownUnder = matches(i)
+                ? under
+                : under.where((c) => matches(c)).toList();
+            if (!matches(i) && shownUnder.isEmpty) continue;
+            children.add(
+              board(
+                i,
+                indent: 14,
+                // Found by a search, a branch says its company.
+                label: searching && company.isNotEmpty && rank(i) == 2
+                    ? '$company · ${_name(boards[i])}'
+                    : null,
+              ),
+            );
+            for (final c in shownUnder) {
+              children.add(board(c, indent: 30));
+            }
+          }
           return group(
             'company:$company',
             company.isEmpty ? 'Organization' : company,
-            [
-              for (final i in rows)
-                board(
-                  i,
-                  indent: 14,
-                  // Found by a search, a branch says its company.
-                  label: searching && company.isNotEmpty && rank(i) == 2
-                      ? '$company · ${_name(boards[i])}'
-                      : null,
-                ),
-            ],
+            children,
           );
         }(),
     ];
