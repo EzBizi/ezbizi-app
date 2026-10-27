@@ -8,6 +8,9 @@ import '../../widgets/disconnect_panel.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../core/branch_options.dart' show branchLabelOf;
+import '../../widgets/list_table.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';
 import 'inbox_people.dart';
@@ -338,7 +341,10 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       .where((option) => option.value == mailbox.provider)
       .firstOrNull;
 
-  // ── the screen ───────────────────────────────────────────────
+  // ── the screen (design 151, options 1 and 4) ─────────────────
+
+  /// Below this the inbox pane replaces the list instead of sitting beside it.
+  static const double _paneBeside = 1000;
 
   @override
   Widget build(BuildContext context) {
@@ -348,13 +354,10 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PanelHeader(
-          title: 'Connected inboxes',
           note:
               'An inbox belongs to the company you are looking at when you add '
-              'it. The organization view lists every company\'s. Each role is '
-              'then given the ones it should be able to read. This is where '
-              'one is added, handed its password, and where an inbox that has '
-              'stopped working says so.',
+              'it; each role is then given the ones it reads. Open an inbox to '
+              'hand it its password, choose who reads it, or disconnect it.',
           action: Refused(
             reason: refusal,
             child: FilledButton.icon(
@@ -375,81 +378,465 @@ class _MailboxSettingsTabState extends State<MailboxSettingsTab> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _scrollBody(),
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final beside = box.maxWidth >= _paneBeside;
+                final selected = _selectedMailbox(beside);
+
+                if (selected == null) return _scrollBody();
+                if (!beside) return _inboxPane(selected, beside: false);
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _scrollBody()),
+                    SizedBox(width: 440, child: _inboxPane(selected, beside: true)),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ],
     );
   }
 
-  /// Workspace cards used to sit above this list. Two connected domains with
-  /// Admin steps are taller than the page, and a Column that does not scroll
-  /// left the rest of Settings unreachable.
+  // ── selection, search, filter ────────────────────────────────
+
+  String? _selectedId;
+
+  /// True once somebody closed the pane, so a lone inbox is not reopened.
+  bool _closedPane = false;
+  final _search = TextEditingController();
+  String? _companyFilter;
+  final _scroll = ScrollController();
+  final Map<String, bool> _expanded = {};
+  final Map<String, GlobalKey> _rowKeys = {};
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// The open inbox. With exactly one inbox and room beside the list, it is
+  /// open from the start — there is nothing to choose between.
+  MailboxConnection? _selectedMailbox(bool beside) {
+    final id =
+        _selectedId ??
+        (beside && !_closedPane && _mailboxes.length == 1
+            ? _mailboxes.single.id
+            : null);
+
+    return _mailboxes.where((m) => m.id == id).firstOrNull;
+  }
+
+  void _select(MailboxConnection mailbox) => setState(() {
+    _selectedId = mailbox.id;
+    _closedPane = false;
+  });
+
+  void _closePane() => setState(() {
+    _selectedId = null;
+    _closedPane = true;
+  });
+
+  /// Which company a row is filtered under: a branch files under its company.
+  String _companyKey(MailboxConnection mailbox) {
+    switch (mailbox.scopeType) {
+      case 'franchise':
+        final franchise = _me.franchises
+            .where((f) => f.id == mailbox.scopeId)
+            .firstOrNull;
+
+        return 'company:${franchise?.companyId ?? mailbox.scopeId}';
+      case 'company':
+        return 'company:${mailbox.scopeId}';
+      default:
+        return '${mailbox.scopeType}:${mailbox.scopeId}';
+    }
+  }
+
+  String _companyKeyLabel(String key) {
+    final id = key.substring(key.indexOf(':') + 1);
+    if (key.startsWith('company:')) {
+      return _me.companies.where((c) => c.id == id).firstOrNull?.name ??
+          'A company';
+    }
+    if (key.startsWith('organization:')) {
+      return id == _me.organization.id
+          ? _me.organization.name
+          : 'This organization';
+    }
+    return 'Elsewhere';
+  }
+
+  /// "Company · Branch" for a branch, the company or organization otherwise.
+  String _companyLabel(MailboxConnection mailbox) =>
+      mailbox.scopeType == 'franchise'
+      ? branchLabelOf(_me, mailbox.scopeId, scopeLabel(_me, mailbox))
+      : scopeLabel(_me, mailbox);
+
+  List<MailboxConnection> get _visibleMailboxes {
+    final q = _search.text.trim().toLowerCase();
+
+    return [
+      for (final m in _mailboxes)
+        if ((_companyFilter == null || _companyKey(m) == _companyFilter) &&
+            (q.isEmpty ||
+                [
+                  m.address,
+                  m.displayName,
+                  _companyLabel(m),
+                  m.providerLabel,
+                ].any((v) => v.toLowerCase().contains(q))))
+          m,
+    ];
+  }
+
+  // ── what needs attention ─────────────────────────────────────
+
+  static bool _workspaceTrouble(WorkspaceLink link) =>
+      link.pending || (link.health?.needsAttention ?? false);
+
+  static bool _inboxTrouble(MailboxConnection m) =>
+      m.status != statusConnected || !m.canBeOpened;
+
+  bool _isExpanded(WorkspaceLink link) =>
+      _expanded[link.domain] ?? _workspaceTrouble(link);
+
+  GlobalKey _rowKey(String id) => _rowKeys.putIfAbsent(id, GlobalKey.new);
+
+  /// The summary's ›: the first Workspace with something missing is opened and
+  /// scrolled to; failing that, the first inbox in trouble is opened.
+  Future<void> _openFirstProblem(List<WorkspaceLink> links) async {
+    final link = links.where(_workspaceTrouble).firstOrNull;
+
+    if (link != null) {
+      setState(() => _expanded[link.domain] = true);
+      await WidgetsBinding.instance.endOfFrame;
+      final context = _rowKey('ws-${link.domain}').currentContext;
+      if (context != null && context.mounted) {
+        await Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 250),
+        );
+      }
+      return;
+    }
+
+    final inbox = _mailboxes.where(_inboxTrouble).firstOrNull;
+    if (inbox != null) _select(inbox);
+  }
+
+  int _inboxesOn(WorkspaceLink link) => _mailboxes
+      .where(
+        (m) =>
+            m.provider == 'gmail_workspace' &&
+            m.address.toLowerCase().endsWith('@${link.domain.toLowerCase()}'),
+      )
+      .length;
+
   Widget _scrollBody() {
+    final theme = Theme.of(context);
     final links = _workspace?.connections ?? const <WorkspaceLink>[];
     final offerConnect = _workspaceReachable && (_workspace?.canConnect ?? false);
     final showWorkspace = _workspaceReachable && (links.isNotEmpty || offerConnect);
+    final attention =
+        links.where(_workspaceTrouble).length +
+        _mailboxes.where(_inboxTrouble).length;
+    final connectRefusal = _me.refusal('email.edit', 'connect Google Workspace');
 
     return ListView(
       key: const Key('email-settings-list'),
+      controller: _scroll,
       padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
       children: [
+        _SummaryLine(
+          workspaces: links.length,
+          inboxes: _mailboxes.length,
+          attention: attention,
+          onAttention: attention == 0 ? null : () => _openFirstProblem(links),
+        ),
+        const SizedBox(height: 14),
         if (showWorkspace) ...[
+          Text('Google Workspace', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
           for (final link in links)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _WorkspaceCard(
+              key: _rowKey('ws-${link.domain}'),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _WorkspaceRow(
                 link: link,
                 viewLabel: _workspace?.viewLabel ?? '',
-                connectRefusal: _me.refusal(
-                  'email.edit',
-                  'connect Google Workspace',
+                inboxes: _inboxesOn(link),
+                expanded: _isExpanded(link),
+                onToggle: () => setState(
+                  () => _expanded[link.domain] = !_isExpanded(link),
                 ),
-                onConnect: _connectWorkspace,
+                onShowMissing: () => setState(() => _expanded[link.domain] = true),
+                connectRefusal: connectRefusal,
                 onDisconnect: () => _disconnectWorkspace(link),
               ),
             ),
           if (offerConnect)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 8),
               child: _WorkspaceCard(
                 link: null,
                 viewLabel: _workspace?.viewLabel ?? '',
-                connectRefusal: _me.refusal(
-                  'email.edit',
-                  'connect Google Workspace',
-                ),
+                connectRefusal: connectRefusal,
                 onConnect: _connectWorkspace,
                 onDisconnect: () {},
               ),
             ),
+          const SizedBox(height: 14),
         ],
+        Text('Connected inboxes', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
         if (_mailboxes.isEmpty)
           _nothingConnected()
-        else
-          for (final mailbox in _mailboxes)
-            _MailboxCard(
-              mailbox: mailbox,
-              me: _me,
-              provider: _providerFor(mailbox),
-              connectRefusal: _manageRefusal(mailbox, 'connect this inbox'),
-              disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
-              onConnect: () => _connect(mailbox),
-              onDisconnect: () => _disconnect(mailbox),
-              onMarkReadAtSource: (on) => _setMarkReadAtSource(mailbox, on),
-              alerts: mailbox.mayManage ? _alerts : null,
-              onNewMailAlert: (on) => _setNewMailAlert(mailbox, on),
-              // Only for somebody who may manage this inbox: choosing who reads
-              // it is managing it, and the server refuses anybody else.
-              people: mailbox.mayManage
-                  ? InboxPeople(
-                      key: ValueKey('people-${mailbox.id}'),
-                      api: widget.api,
-                      mailboxId: mailbox.id,
-                    )
-                  : null,
-            ),
+        else ...[
+          _inboxFilters(),
+          const SizedBox(height: 10),
+          _inboxTable(),
+        ],
       ],
+    );
+  }
+
+  Widget _inboxFilters() {
+    final keys = <String>{for (final m in _mailboxes) _companyKey(m)}.toList()
+      ..sort((a, b) => _companyKeyLabel(a).compareTo(_companyKeyLabel(b)));
+    final picked = _companyFilter;
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: 280,
+          child: TextField(
+            key: const ValueKey('email-inbox-search'),
+            controller: _search,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Search inboxes',
+            ),
+          ),
+        ),
+        if (keys.length > 1)
+          MenuAnchor(
+            menuChildren: [
+              for (final key in <String?>[null, ...keys])
+                MenuItemButton(
+                  key: ValueKey('email-inbox-company-${key ?? 'all'}'),
+                  leadingIcon: Icon(
+                    picked == key
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 18,
+                  ),
+                  onPressed: () => setState(() => _companyFilter = key),
+                  child: Text(key == null ? 'All companies' : _companyKeyLabel(key)),
+                ),
+            ],
+            builder: (context, controller, _) => OutlinedButton.icon(
+              key: const ValueKey('email-inbox-company'),
+              onPressed: () =>
+                  controller.isOpen ? controller.close() : controller.open(),
+              icon: const Icon(Icons.filter_list, size: 18),
+              label: Text(picked == null ? 'All companies' : _companyKeyLabel(picked)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The inbox list. Roles are not a column: the list endpoint does not send
+  /// them (they are on the inbox's own pane, under who can open it).
+  Widget _inboxTable() {
+    final rows = _visibleMailboxes;
+    final theme = Theme.of(context);
+
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Text(
+          'No inbox matches.',
+          key: const ValueKey('email-inbox-none'),
+          style: theme.textTheme.bodyMedium,
+        ),
+      );
+    }
+
+    return ListTable(
+      columns: const [
+        ListColumn('Address', flex: 4),
+        ListColumn('Company', flex: 3),
+        ListColumn('Kind', flex: 2),
+        ListColumn('Status', flex: 3),
+        ListColumn('Last checked', flex: 2),
+      ],
+      rowKey: (i) => ValueKey('email-inbox-row-${rows[i].id}'),
+      onTap: (i) => _select(rows[i]),
+      rows: [
+        for (final m in rows)
+          [
+            Text(
+              m.address,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: m.id == _selectedId ? theme.colorScheme.primary : null,
+              ),
+            ),
+            Text(
+              _companyLabel(m),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+            Text(
+              m.providerLabel.isNotEmpty
+                  ? m.providerLabel
+                  : _providerFor(m)?.label ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 260),
+              child: _inboxChip(m),
+            ),
+            Text(
+              _lastChecked(m),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+      ],
+    );
+  }
+
+  /// Working / Needs password / Stopped · reason.
+  Widget _inboxChip(MailboxConnection m) {
+    if (m.status == statusBroken || (m.status == statusConnected && !m.canBeOpened)) {
+      final why = m.statusReason ?? m.unavailableReason;
+      final short = why == null
+          ? (m.canBeOpened ? 'not answering' : 'cannot be opened')
+          : _firstClause(why);
+
+      return Tooltip(
+        message: why ?? stateOf(m).word,
+        child: StatusPill('Stopped · $short', tone: Tone.bad),
+      );
+    }
+    if (m.status == statusUnconfigured) {
+      final password = _providerFor(m)?.connectsBy == 'password';
+
+      return StatusPill(
+        password ? 'Needs password' : 'Not connected yet',
+        tone: Tone.caution,
+      );
+    }
+
+    return const StatusPill('Working', tone: Tone.ok);
+  }
+
+  static String _firstClause(String sentence) {
+    final cut = sentence.indexOf(RegExp(r'[.;]'));
+    final head = (cut > 0 ? sentence.substring(0, cut) : sentence).trim();
+
+    return head.length > 48 ? '${head.substring(0, 47)}…' : head;
+  }
+
+  String _lastChecked(MailboxConnection m) {
+    if (!m.lastReachedKnown) return '—';
+    final iso = m.lastReachedAt;
+    if (iso == null) return 'Never';
+    final at = DateTime.tryParse(iso)?.toLocal();
+    if (at == null) return '—';
+    final ago = DateTime.now().difference(at);
+    if (ago.inMinutes < 1) return 'Just now';
+    if (ago.inMinutes < 60) return '${ago.inMinutes} min ago';
+    if (ago.inHours < 24) return '${ago.inHours} h ago';
+
+    return '${ago.inDays} d ago';
+  }
+
+  /// One inbox's settings — the card it always had — beside the list, or in
+  /// its place where there is no room.
+  Widget _inboxPane(MailboxConnection mailbox, {required bool beside}) {
+    final theme = Theme.of(context);
+
+    return Container(
+      key: const ValueKey('email-inbox-pane'),
+      decoration: beside
+          ? BoxDecoration(
+              border: Border(left: BorderSide(color: EzBiziTheme.edge(context))),
+            )
+          : null,
+      child: ListView(
+        key: ValueKey('email-inbox-pane-${mailbox.id}'),
+        padding: EdgeInsets.fromLTRB(beside ? 16 : 24, 4, 24, 28),
+        children: [
+          Row(
+            children: [
+              if (!beside)
+                TextButton.icon(
+                  key: const ValueKey('email-inbox-pane-back'),
+                  onPressed: _closePane,
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: const Text('All inboxes'),
+                )
+              else
+                Expanded(
+                  child: Text(
+                    'Inbox settings',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              if (!beside) const Spacer(),
+              if (beside)
+                IconButton(
+                  key: const ValueKey('email-inbox-pane-close'),
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: _closePane,
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _MailboxCard(
+            mailbox: mailbox,
+            me: _me,
+            provider: _providerFor(mailbox),
+            connectRefusal: _manageRefusal(mailbox, 'connect this inbox'),
+            disconnectRefusal: _manageRefusal(mailbox, 'disconnect this inbox'),
+            onConnect: () => _connect(mailbox),
+            onDisconnect: () => _disconnect(mailbox),
+            onMarkReadAtSource: (on) => _setMarkReadAtSource(mailbox, on),
+            alerts: mailbox.mayManage ? _alerts : null,
+            onNewMailAlert: (on) => _setNewMailAlert(mailbox, on),
+            // Only for somebody who may manage this inbox: choosing who reads
+            // it is managing it, and the server refuses anybody else.
+            people: mailbox.mayManage
+                ? InboxPeople(
+                    key: ValueKey('people-${mailbox.id}'),
+                    api: widget.api,
+                    mailboxId: mailbox.id,
+                  )
+                : null,
+          ),
+        ],
+      ),
     );
   }
 
@@ -590,6 +977,306 @@ class _WorkspaceCard extends StatelessWidget {
   }
 }
 
+/// "2 Workspaces · 5 inboxes · 1 needs attention ›" — the ›, and the count
+/// before it, open the first problem.
+class _SummaryLine extends StatelessWidget {
+  const _SummaryLine({
+    required this.workspaces,
+    required this.inboxes,
+    required this.attention,
+    required this.onAttention,
+  });
+
+  final int workspaces;
+  final int inboxes;
+  final int attention;
+  final VoidCallback? onAttention;
+
+  static String _n(int n, String one, String many) => '$n ${n == 1 ? one : many}';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final caution = StateColour.of(context).caution;
+    final head =
+        '${_n(workspaces, 'Workspace', 'Workspaces')} · '
+        '${_n(inboxes, 'inbox', 'inboxes')} · ';
+
+    return Wrap(
+      key: const ValueKey('email-settings-summary'),
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(head, style: theme.textTheme.bodyMedium),
+        if (attention == 0)
+          Text(
+            'nothing needs attention',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: StateColour.of(context).on,
+            ),
+          )
+        else
+          InkWell(
+            key: const ValueKey('email-settings-attention'),
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            onTap: onAttention,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              child: Text(
+                '$attention ${attention == 1 ? 'needs' : 'need'} attention ›',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: caution,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One Workspace as a compact row: the G mark, domain, company, inbox count
+/// and one health chip; it opens to the permissions with their meanings, the
+/// Google Admin steps, and stays shut unless something is missing.
+class _WorkspaceRow extends StatelessWidget {
+  const _WorkspaceRow({
+    required this.link,
+    required this.viewLabel,
+    required this.inboxes,
+    required this.expanded,
+    required this.onToggle,
+    required this.onShowMissing,
+    required this.connectRefusal,
+    required this.onDisconnect,
+  });
+
+  final WorkspaceLink link;
+  final String viewLabel;
+  final int inboxes;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onShowMissing;
+  final String? connectRefusal;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final health = link.health;
+    final belongs = link.scopeLabel.isNotEmpty ? link.scopeLabel : viewLabel;
+    final missing = health?.scopes.where((s) => !s.ok).length ?? 0;
+    final trouble = link.pending || (health?.needsAttention ?? false);
+
+    final Widget chip;
+    if (link.pending) {
+      chip = _chip(
+        context,
+        'Waiting for Google Admin · Update permissions',
+        Tone.caution,
+        onShowMissing,
+      );
+    } else if (missing > 0 || trouble) {
+      chip = _chip(
+        context,
+        '${missing > 0 ? '$missing missing' : 'Needs attention'} · Update permissions',
+        Tone.caution,
+        onShowMissing,
+      );
+    } else if (health != null) {
+      chip = StatusPill('All ${health.scopes.length} permissions', tone: Tone.ok);
+    } else {
+      chip = const StatusPill('Connected', tone: Tone.ok);
+    }
+
+    final menu = MenuAnchor(
+      menuChildren: [
+        Refused(
+          reason: connectRefusal,
+          child: MenuItemButton(
+            key: ValueKey('workspace-disconnect-${link.domain}'),
+            leadingIcon: const Icon(Icons.link_off, size: 18),
+            onPressed: connectRefusal == null ? onDisconnect : null,
+            child: const Text('Disconnect Workspace'),
+          ),
+        ),
+      ],
+      builder: (context, controller, _) => IconButton(
+        key: ValueKey('workspace-menu-${link.domain}'),
+        tooltip: 'More for ${link.domain}',
+        icon: const Icon(Icons.more_horiz, size: 20),
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+    );
+
+    final heading = LayoutBuilder(
+      builder: (context, box) {
+        final narrow = box.maxWidth < 560;
+        final name = Row(
+          children: [
+            const _GMark(),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    link.domain,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  Row(
+                    children: [
+                      if (belongs.isNotEmpty)
+                        Flexible(
+                          child: Text(
+                            belongs,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      Text(
+                        '${belongs.isNotEmpty ? ' · ' : ''}'
+                        '$inboxes ${inboxes == 1 ? 'inbox' : 'inboxes'}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (narrow) menu,
+          ],
+        );
+        final tail = <Widget>[
+          Flexible(child: chip),
+          Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 20),
+        ];
+
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              name,
+              const SizedBox(height: 6),
+              Row(children: [const SizedBox(width: 38), ...tail]),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: name),
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Row(mainAxisSize: MainAxisSize.min, children: tail),
+            ),
+            menu,
+          ],
+        );
+      },
+    );
+
+    return Card(
+      key: ValueKey('workspace-row-${link.domain}'),
+      margin: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+              child: heading,
+            ),
+          ),
+          if (expanded)
+            Padding(
+              key: ValueKey('workspace-detail-${link.domain}'),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Divider(height: 1, color: EzBiziTheme.edge(context)),
+                  const SizedBox(height: 12),
+                  if (link.pending)
+                    Text(
+                      '${link.domain} is linked. Finish the steps below in '
+                      'this company\'s Google Admin — not in EzBizi — then '
+                      'come back here.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  if (health != null) _WorkspaceHealth(health: health),
+                  if (trouble && link.setupSteps.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _DelegationGuide(steps: link.setupSteps),
+                  ],
+                  if (trouble && (link.marketplaceListingUrl ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton(
+                        onPressed: () => launchUrl(
+                          Uri.parse(link.marketplaceListingUrl!),
+                          mode: LaunchMode.externalApplication,
+                          webOnlyWindowName: '_blank',
+                        ),
+                        child: const Text('Install EzBizi in Google'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _chip(
+    BuildContext context,
+    String label,
+    Tone tone,
+    VoidCallback onTap,
+  ) => InkWell(
+    key: const ValueKey('workspace-health-chip'),
+    borderRadius: BorderRadius.circular(999),
+    onTap: onTap,
+    child: StatusPill(label, tone: tone),
+  );
+}
+
+/// Google's G, drawn from theme colours rather than a brand asset.
+class _GMark extends StatelessWidget {
+  const _GMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: scheme.primaryContainer,
+      ),
+      child: Text(
+        'G',
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 14,
+          color: scheme.onPrimaryContainer,
+        ),
+      ),
+    );
+  }
+}
+
 class _WorkspaceHealth extends StatelessWidget {
   const _WorkspaceHealth({required this.health});
 
@@ -616,35 +1303,58 @@ class _WorkspaceHealth extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final scope in health.scopes)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        LayoutBuilder(
+          builder: (context, box) {
+            // Four across on a wide row, two on a tablet, one on a phone.
+            final across = box.maxWidth >= 720
+                ? 4
+                : box.maxWidth >= 380
+                ? 2
+                : 1;
+            final width = (box.maxWidth - 12 * (across - 1)) / across;
+
+            return Wrap(
+              spacing: 12,
+              runSpacing: 10,
               children: [
-                Icon(
-                  scope.ok ? Icons.check_circle : Icons.error_outline,
-                  size: 18,
-                  color: scope.ok ? okColor : warnColor,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        scope.label,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
+                for (final scope in health.scopes)
+                  SizedBox(
+                    width: width,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          scope.ok ? Icons.check_circle : Icons.error_outline,
+                          size: 18,
+                          color: scope.ok ? okColor : warnColor,
                         ),
-                      ),
-                      Text(scope.detail, style: theme.textTheme.bodySmall),
-                    ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                scope.label,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                scope.detail,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
-            ),
-          ),
+            );
+          },
+        ),
       ],
     );
   }
