@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 152 · Task Board: left sidebar of boards + number formatting — **sent 2026-10-27** (`docs/previews/task-board-sidebar-layouts.html`)
+### 152 · Task Board: left sidebar of boards + number formatting — **sent 2026-10-27 — Jose: "Go ahead" (1 and 4)** (`docs/previews/task-board-sidebar-layouts.html`)
 
 Jose 10-27 via Task Board: "add the left navigation sidebar as well, people would obviously only see what they have access to, like monday has" and "add format to the numbers automatically". 1 = collapsible tree replacing Other boards (recommended), 2 = icon rail, 3 = boards home page; phones 4-6. Number formatting is in 1 (no options needed).
 
