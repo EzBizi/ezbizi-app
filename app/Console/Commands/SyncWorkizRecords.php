@@ -25,13 +25,13 @@ use Illuminate\Support\Facades\Log;
 class SyncWorkizRecords extends Command
 {
     protected $signature = 'ezbizi:sync-workiz-records
-        {--type=* : Only these types: invoice, payment, estimate, time_off, event, timesheet, custom_field, item}
+        {--type=* : Only these types: invoice, payment, estimate, time_off, event, timesheet, custom_field, item, job_type, ad_group, tag, sub_status}
         {--connection= : Only this Workiz connection}
         {--full : Read everything since 2023, not only what changed}
         {--pages=50 : Most pages per branch and type in one run}
         {--pause=0 : Seconds between pages}';
 
-    protected $description = 'Mirror Workiz v2 invoices, payments, estimates, time off, events, timesheets, custom fields and items';
+    protected $description = 'Mirror Workiz v2 invoices, payments, estimates, time off, events, timesheets, custom fields, items and each account’s own lists';
 
     /** The column a type's cursor is read from; none for a type read whole. */
     private const CURSOR = [

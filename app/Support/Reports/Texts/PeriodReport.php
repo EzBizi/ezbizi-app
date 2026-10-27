@@ -7,8 +7,8 @@ use App\Models\Organization;
 use App\Support\Files\HardenedPdf;
 use App\Support\Reports\Airtable\AirtablePnl;
 use App\Support\Reports\Airtable\ReportSources;
+use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 
 /**
  * The weekly and monthly PDF, per branch and consolidated, for any
@@ -61,7 +61,7 @@ final class PeriodReport
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
             ->where('is_active', true)
-            ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
+            ->whereIn('id', ReportJobs::branchesWithJobs((string) $organization->getKey()))
             ->orderBy('name')
             ->get();
 
@@ -196,7 +196,7 @@ final class PeriodReport
     public function figures(Franchise $branch, string $from, string $to): array
     {
         $range = [$from.' 00:00:00', $to.' 23:59:59'];
-        $jobs = fn () => DB::table('workiz_jobs')->where('franchise_id', $branch->getKey());
+        $jobs = fn () => ReportJobs::jobs((string) $branch->getKey());
         $row = fn () => ['all' => 0, 'done' => 0, 'open' => 0, 'canceled' => 0, 'gross' => 0.0];
         $source = fn ($v) => trim((string) $v) ?: 'No source';
 
@@ -204,17 +204,16 @@ final class PeriodReport
         $created = [];
         // Jobs a draft leaves out, by Workiz's job number or id.
         $excluded = array_flip(array_map('strval', $this->options['exclude_jobs'] ?? []));
-        $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->remote_id])
-            || isset($excluded[(string) (json_decode($job->payload, true)['SerialId'] ?? '')]));
+        $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->ref]) || isset($excluded[(string) $job->serial]));
 
-        foreach ($jobs()->whereBetween('booked_at', $range)->get(['remote_id', 'job_source', 'status', 'payload'])->filter($kept) as $job) {
+        foreach ($jobs()->whereBetween('booked_at', $range)->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $created[$s] ??= $row();
             $created[$s]['all']++;
             $kind = self::kind($job->status);
             $created[$s][$kind]++;
             if ($kind === 'done') {
-                $created[$s]['gross'] += self::price($job->payload);
+                $created[$s]['gross'] += (float) $job->total;
             }
         }
 
@@ -223,15 +222,15 @@ final class PeriodReport
         // "completed at".
         $closed = [];
         $techs = [];
-        foreach ($jobs()->whereBetween('last_status_update', $range)->whereIn('status', ['Done', 'Canceled'])->get(['remote_id', 'job_source', 'status', 'payload'])->filter($kept) as $job) {
+        foreach ($jobs()->whereBetween('last_status_update', $range)->whereIn('status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
-            $price = $kind === 'done' ? self::price($job->payload) : 0.0;
+            $price = $kind === 'done' ? (float) $job->total : 0.0;
             $closed[$s] ??= $row();
             $closed[$s][$kind]++;
             $closed[$s]['gross'] += $price;
 
-            $team = (json_decode($job->payload, true)['Team'] ?? []) ?: [['id' => 'none', 'Name' => 'Unassigned']];
+            $team = ReportJobs::team($job);
             foreach ($team as $tech) {
                 $id = (string) ($tech['id'] ?? $tech['Name'] ?? 'none');
                 $techs[$id] ??= ['name' => trim((string) ($tech['Name'] ?? 'Unassigned')), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
@@ -241,14 +240,11 @@ final class PeriodReport
             }
         }
 
-        $names = DB::table('workiz_team_members')->where('franchise_id', $branch->getKey())->pluck('name', 'remote_id');
-        $paid = DB::table('workiz_records')->where('franchise_id', $branch->getKey())->where('type', 'payment')
-            ->whereBetween('starts_at', $range)->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get();
-
-        foreach ($paid as $p) {
-            $id = (string) $p->user_remote_id;
+        $names = ReportJobs::people((string) $branch->getKey());
+        foreach (ReportJobs::paidBy((string) $branch->getKey(), ...$range) as $id => $amount) {
+            $id = (string) $id;
             $techs[$id] ??= ['name' => self::collector($names[$id] ?? null, $id), 'done' => 0, 'canceled' => 0, 'gross' => 0.0, 'deposits' => 0.0];
-            $techs[$id]['deposits'] += (float) $p->amount;
+            $techs[$id]['deposits'] += $amount;
         }
 
         $byAll = fn ($a, $b) => [$b['all'] + $b['done'] + $b['canceled'], $b['gross']] <=> [$a['all'] + $a['done'] + $a['canceled'], $a['gross']];
@@ -361,11 +357,6 @@ final class PeriodReport
             'Canceled' => 'canceled',
             default => 'open',
         };
-    }
-
-    private static function price(string $payload): float
-    {
-        return (float) (json_decode($payload, true)['JobTotalPrice'] ?? 0);
     }
 
     private static function money(float $amount): string

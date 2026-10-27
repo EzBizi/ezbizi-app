@@ -3,6 +3,7 @@
 namespace App\Support\Integrations\Dependents\Counters;
 
 use App\Models\FinancialTable;
+use App\Support\Integrations\Dependents\Feature;
 use App\Support\Integrations\Dependents\IntegrationRef;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -26,5 +27,12 @@ final class AirtableTablesCounter extends RowCounter
     protected function label(int $count): string
     {
         return self::plural($count, 'Financials table stops syncing from Airtable', 'Financials tables stop syncing from Airtable');
+    }
+
+    public function features(IntegrationRef $ref): array
+    {
+        return $ref->provider === 'airtable'
+            ? [Feature::lastBreaks($ref, 'Reports › Financials: Airtable tables stop syncing; what was imported stays')]
+            : [];
     }
 }

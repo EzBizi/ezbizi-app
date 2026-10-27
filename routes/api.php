@@ -889,6 +889,8 @@ Route::prefix('v1')
 
         // Before the resource, or 'project-management' reads as a job id.
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
+        Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
+        Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
         Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
@@ -1058,6 +1060,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
+        Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
@@ -1450,6 +1453,7 @@ Route::prefix('v1')
         Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
+        Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');

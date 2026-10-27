@@ -7,6 +7,7 @@ use App\Models\Job;
 use App\Models\Organization;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EstimateAging;
+use App\Support\Jobs\JobMoney;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
@@ -19,9 +20,9 @@ use Illuminate\Support\Carbon;
  * 2026-10-21). The rule keeps the threshold.
  *
  * The estimate date is the latest of EzBizi's own (issued_on, else the day it
- * was made) and Workiz's estimate records. Paid is Workiz's succeeded charges
- * less refunds, in cents, until EzBizi records its own payments. A job with no
- * estimate is skipped; a job already announced today is not announced again.
+ * was made) and Workiz's estimate records. Paid is JobMoney's, in cents. A job
+ * with no estimate is skipped; a job already announced today is not announced
+ * again.
  */
 class EmitJobEstimateAging extends Command
 {
@@ -46,7 +47,7 @@ class EmitJobEstimateAging extends Command
                     ->chunkById(500, function ($jobs) use ($events, &$raised) {
                         $ids = $jobs->modelKeys();
                         $dates = EstimateAging::latestEstimateDates($ids);
-                        $paid = EstimateAging::paidCents($ids);
+                        $paid = JobMoney::paidCents($ids);
                         $already = AutomationEvent::query()->where('event_key', self::TRIGGER)->whereIn('subject_id', $ids)
                             ->where('occurred_at', '>=', now()->startOfDay())->pluck('subject_id')->flip();
 

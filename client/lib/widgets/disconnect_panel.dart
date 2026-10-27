@@ -64,6 +64,7 @@ class _DisconnectPanelState extends State<DisconnectPanel> {
   String? _error;
   String? _dependentsError;
   List<Map<String, dynamic>> _dependents = const [];
+  List<Map<String, dynamic>> _features = const [];
 
   @override
   void initState() {
@@ -87,12 +88,16 @@ class _DisconnectPanelState extends State<DisconnectPanel> {
     setState(() {
       _loading = false;
       if (response.ok) {
-        final rows =
-            (response.data as Map?)?['dependents'] as List? ?? const [];
-        _dependents = rows
-            .whereType<Map>()
-            .map((r) => Map<String, dynamic>.from(r))
-            .toList();
+        final data = response.data as Map?;
+        List<Map<String, dynamic>> rows(String key) =>
+            ((data?[key] as List?) ?? const [])
+                .whereType<Map>()
+                .map((r) => Map<String, dynamic>.from(r))
+                .toList();
+        _dependents = rows('dependents');
+        // What stops (breaks) or gets worse (degrades), whether or not
+        // anything is counted against this connection today.
+        _features = rows('features');
       } else {
         _dependentsError = response.reason;
       }
@@ -155,14 +160,19 @@ class _DisconnectPanelState extends State<DisconnectPanel> {
               Text('Checking…', style: muted)
             else if (_dependentsError != null)
               Text(_dependentsError!, style: muted)
-            else if (_dependents.isEmpty)
+            else if (_dependents.isEmpty && _features.isEmpty)
               Text(
                 'Nothing else in EzBizi depends on this connection.',
                 key: const Key('disconnect-no-dependents'),
                 style: muted,
               )
-            else
+            else ...[
+              for (final (i, row) in _features.indexed)
+                _FeatureRow(key: ValueKey('disconnect-feature-$i'), row: row),
+              if (_features.isNotEmpty && _dependents.isNotEmpty)
+                const SizedBox(height: 8),
               for (final row in _dependents) _DependentRow(row: row),
+            ],
           ],
           const SizedBox(height: 20),
           Text(
@@ -197,6 +207,39 @@ class _DisconnectPanelState extends State<DisconnectPanel> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One feature line, e.g. "Marketing › Posts: can't publish to X", marked as
+/// stopping outright (breaks) or working with less (degrades).
+class _FeatureRow extends StatelessWidget {
+  const _FeatureRow({super.key, required this.row});
+
+  final Map<String, dynamic> row;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final breaks = row['severity'] == 'breaks';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            breaks ? 'Stops' : 'Limited',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: breaks
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text('${row['feature'] ?? ''}')),
         ],
       ),
     );

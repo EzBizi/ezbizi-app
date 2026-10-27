@@ -4,6 +4,7 @@ namespace Tests\Feature\WhatsApp;
 
 use App\Jobs\PlanReportCorrection;
 use App\Jobs\SendCallRecordings;
+use App\Jobs\SendRequestedReport;
 use App\Jobs\SendWhatsAppPeriodReports;
 use App\Models\AssistantEntry;
 use App\Models\Customer;
@@ -982,6 +983,49 @@ class WhatsAppStaffBotTest extends TestCase
         Queue::assertPushed(SendCallRecordings::class,
             fn ($job) => str_contains($job->text, '9524572594'));
         $this->assertSame([], $this->sent, 'nothing is sent from the webhook itself');
+    }
+
+    /** Takeover row 50: "send me the report for last month" is queued; the file comes back built as the asker. */
+    public function test_a_report_file_request_comes_back_as_a_document_built_as_the_asker(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        // Not configured(): its Http fake would answer the upload first (fakes stack).
+        config(['services.meta.client_secret' => self::SECRET, 'services.meta.whatsapp_token' => 'a-token-for-the-fake', 'services.meta.whatsapp_bot_number_id' => self::BOT]);
+        $this->number($t, self::BOT);
+        $this->staff($t);
+        config(['services.grok_cli.home' => '/var/lib/ezbizi-grok']);
+        Queue::fake();
+        $this->inbound(self::BOT, $this->text('send me the company report for last month'))->assertOk();
+        Queue::assertPushed(SendRequestedReport::class);
+
+        $grok = fn (string $format) => Process::result(json_encode(['structuredOutput' => [
+            'is_request' => true, 'branch' => '', 'from' => '2026-09-01', 'to' => '2026-09-30', 'format' => $format, 'report' => 'period', 'clarify' => '',
+        ]]));
+        Process::fake(['*' => Process::sequence()->push($grok('pdf'))->push($grok('xlsx'))]);
+        $uploads = [];
+        $sent = [];
+        Http::fake(function ($request) use (&$uploads, &$sent) {
+            if (str_ends_with($request->url(), '/media')) {
+                $uploads[] = $request->url();
+
+                return Http::response(['id' => 'media-1']);
+            }
+            $sent[] = $request->data();
+
+            return Http::response(['messages' => [['id' => 'wamid.R'.count($sent)]]]);
+        });
+        $numberId = DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->value('id');
+        $run = fn ($user) => app()->call([new SendRequestedReport($numberId, '17867762666', (string) $user->id, 'send me the company report for last month'), 'handle']);
+
+        $run($t['admin']);
+        $this->assertCount(1, $uploads);
+        $this->assertSame('document', end($sent)['type']);
+        $this->assertSame('Company 2026-09-01 to 2026-09-30.pdf', end($sent)['document']['filename']);
+
+        // Excel needs reports.export, checked as the asker.
+        $run($this->userWithRole($t, 'Viewer', ['reports.view']));
+        $this->assertCount(1, $uploads, 'no file for somebody who may not export');
+        $this->assertSame('text', end($sent)['type']);
     }
 
     public function test_the_request_is_read_into_a_number_and_dates_or_a_question(): void

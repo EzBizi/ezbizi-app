@@ -226,9 +226,20 @@ final class AirtableWriter
         }
     }
 
+    /** Is the table's base still connected with a token that can be used? */
+    public static function connected(FinancialTable $table): bool
+    {
+        return self::token($table) !== '';
+    }
+
+    private static function token(FinancialTable $table): string
+    {
+        return (string) (SocialConnection::query()->where('provider', 'airtable')->where('remote_id', $table->source_base_id)->first()?->credentials['api_token'] ?? '');
+    }
+
     private static function http(FinancialTable $table)
     {
-        $token = (string) (SocialConnection::query()->where('provider', 'airtable')->where('remote_id', $table->source_base_id)->first()?->credentials['api_token'] ?? '');
+        $token = self::token($table);
         if ($token === '') {
             throw ValidationException::withMessages(['values' => 'This base is not connected to Airtable any more, so nothing can be written to it.']);
         }

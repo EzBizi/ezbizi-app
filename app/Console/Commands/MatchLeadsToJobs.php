@@ -2,10 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Mailbox;
 use App\Models\Organization;
-use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Email\MailboxReaders;
 use App\Support\Tenancy\TenantContext;
@@ -18,9 +19,10 @@ use Throwable;
  *
  * A1 Leads matches Local Services leads to Workiz jobs to put revenue beside
  * each account's spend; this is EzBizi's version (Jose, 2026-09-28: "build
- * everything and adapt it to ezbizi"). A lead whose phone matches a Workiz
- * client with a job BOOKED from a day before the lead to 30 days after it is
- * given that job - the earliest one. Measured on production the same day: 2,720
+ * everything and adapt it to ezbizi"). A lead whose phone matches an EzBizi
+ * customer with a job BOOKED from a day before the lead to 30 days after it is
+ * given that job - the earliest one. EzBizi's customers and jobs, not Workiz's
+ * clients: EzBizi is the master and Workiz a mirror (Jose, 2026-10-27). Measured on production the same day: 2,720
  * of the last 90 days' 6,533 Local Services leads match, and every one of those
  * jobs is already an EzBizi job.
  *
@@ -28,8 +30,8 @@ use Throwable;
  * itself is never replaced, and `job_matched_by` records that this link was
  * found rather than made - the lead's own status is left alone.
  *
- * `booked_at`, not the job's created_at: a projected job's created_at is the
- * moment it was imported.
+ * Booked is the job's created_at, except where Workiz's mirror holds its
+ * booked_at: a projected job's created_at is the moment it was imported.
  */
 class MatchLeadsToJobs extends Command
 {
@@ -54,13 +56,21 @@ class MatchLeadsToJobs extends Command
 
         foreach (Organization::query()->withoutGlobalScopes()->whereIn('id', $organizations)->get() as $organization) {
             $tenant->run($organization, function () use ($since, &$matched) {
-                // Every Workiz client by the last ten digits, and every booked
-                // job by client: one read each, not one per lead.
-                $clients = WorkizClient::query()->whereNotNull('phone_digits')->get(['client_id', 'phone_digits'])
-                    ->groupBy(fn (WorkizClient $c) => substr($c->phone_digits, -10));
-                $jobs = WorkizJob::query()->whereNotNull('job_id')->whereNotNull('booked_at')
-                    ->get(['client_id', 'job_id', 'booked_at'])
-                    ->groupBy('client_id');
+                // EzBizi is the master; Workiz a mirror (Jose, 2026-10-27). So
+                // EzBizi's own customers by the last ten digits, and their jobs
+                // by customer: one read each, not one per lead.
+                $clients = Customer::query()->whereNotNull('phone')->get(['id', 'phone'])
+                    ->groupBy(fn (Customer $c) => substr((string) preg_replace('/\D/', '', (string) $c->phone), -10));
+                // When it was booked: a Workiz-projected job's created_at is the
+                // moment it was imported, so its mirror's booked_at wins where
+                // there is one. Without Workiz, created_at is the booking.
+                $jobs = Job::query()->whereNotNull('customer_id')
+                    ->select(['id', 'customer_id', 'created_at'])
+                    ->selectSub(WorkizJob::query()->selectRaw('MIN(booked_at)')->whereColumn('workiz_jobs.job_id', 'jobs.id'), 'mirror_booked_at')
+                    ->get()
+                    ->map(fn (Job $j) => (object) ['job_id' => $j->id, 'customer_id' => $j->customer_id,
+                        'booked_at' => $j->mirror_booked_at !== null ? Carbon::parse($j->mirror_booked_at) : $j->created_at])
+                    ->groupBy('customer_id');
 
                 Lead::query()
                     ->whereNull('job_id')->whereNotNull('phone_digits')->whereNotNull('received_at')
@@ -73,8 +83,8 @@ class MatchLeadsToJobs extends Command
                         }
                         $at = $lead->received_at->getTimestamp();
                         $job = $clients->get($digits, collect())
-                            ->flatMap(fn (WorkizClient $c) => $jobs->get($c->client_id, collect()))
-                            ->filter(fn (WorkizJob $j) => ($t = Carbon::parse($j->booked_at)->getTimestamp()) >= $at - self::BEFORE && $t <= $at + self::AFTER)
+                            ->flatMap(fn (Customer $c) => $jobs->get($c->id, collect()))
+                            ->filter(fn (object $j) => ($t = $j->booked_at->getTimestamp()) >= $at - self::BEFORE && $t <= $at + self::AFTER)
                             ->sortBy('booked_at')
                             ->first();
 

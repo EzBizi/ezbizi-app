@@ -14,6 +14,27 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0498',
+      date: '27 Oct 2026',
+      items: [
+        'Task Board: boards in a sidebar tree by company and branch (full screen on a phone), Owner and Assigned columns, and files on updates with previews and download.',
+        'Monitoring: removed accounts no longer appear; online people are listed first; Files filters by platform and opens on Windows; large file downloads arrive in pieces with progress.',
+        'Search boxes across the app are the same full height as in Leads.',
+        'Sales is removed; Project Management covers that work.',
+        'Memberships: a member\'s booked visit carries its plan\'s job type in EzBizi, and Workiz copies it from there.',
+        'Customers and reports: money is read from EzBizi invoices first, ready to switch off Workiz.',
+        'Reports: download any period or a full year as PDF or Excel.',
+        'Financials: tables keep saving in EzBizi when Airtable is disconnected.',
+        'Disconnecting an integration shows which features stop or are limited; address lookups no longer error when the lookup service is down.',
+        'Automations: a new step sets a job\'s status and tags in EzBizi; steps whose service is not connected are skipped instead of failing.',
+        'Call reports keep RingCentral history in EzBizi even if RingCentral is disconnected.',
+        'Leads: every call recording has a Download button; Google Local Services recordings are kept in EzBizi.',
+        'Phone: call recordings are kept in EzBizi and deleted along with the call.',
+        'Project Management 1 and 2: money reads the same way in both (total less paid), and EzBizi\'s own estimates show on a job\'s timeline.',
+        'Jobs record who created them.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0497',
       date: '27 Oct 2026',
       items: [

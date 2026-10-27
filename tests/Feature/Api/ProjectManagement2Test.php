@@ -92,7 +92,7 @@ class ProjectManagement2Test extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta');
         $other = $this->inTenant($beta['org'], fn () => $this->job($beta, 'B-1', 'done pending approval'));
-        [$id, $bare] = $this->inTenant($alpha['org'], function () use ($alpha) {
+        [$id, $bare, $native] = $this->inTenant($alpha['org'], function () use ($alpha) {
             $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 10:00:00']);
             // Workiz's invoice total wins over the estimate.
             $this->record($alpha, $id, 'estimate', 'E9', '999.00', 'Pending', '2026-09-02');
@@ -107,7 +107,11 @@ class ProjectManagement2Test extends TestCase
             $emit('job.updated', ['before' => ['tags' => []], 'after' => ['tags' => ['DEPOSIT']]], '2026-09-07 09:00:00');
             $emit('job.updated', ['before' => ['title' => 'A'], 'after' => ['title' => 'B']], '2026-09-08 09:00:00');
 
-            return [$id, $this->job($alpha, 'J-6', 'done pending approval')];
+            // EzBizi's own job, no Workiz mirror: its own amount is its total.
+            $native = Job::create(['franchise_id' => $alpha['franchise']->id, 'customer_id' => Job::find($id)->customer_id, 'number' => 'N-1',
+                'title' => 'Ours', 'status' => 'done pending approval', 'currency' => 'USD', 'amount_minor' => 5000])->id;
+
+            return [$id, $this->job($alpha, 'J-6', 'done pending approval'), $native];
         });
 
         $job = $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$id}")->assertOk()->json('data');
@@ -119,8 +123,11 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame([99900, 50000, -10000], array_values(array_filter(array_map(fn ($s) => $s['amount'] ?? null, $job['timeline']))));
         $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
 
-        $row = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->json('data'))->firstWhere('id', $bare);
-        $this->assertSame([null, null, null], [$row['total'], $row['paid'], $row['pending']], 'no price draws no zero');
+        $rows = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->json('data'))->keyBy('id');
+        $this->assertSame([null, null, null], [$rows[$bare]['total'], $rows[$bare]['paid'], $rows[$bare]['pending']], 'no price draws no zero');
+        $this->assertSame(['N-1', 5000, 0, 5000], [$rows[$native]['job_number'], $rows[$native]['total'], $rows[$native]['paid'], $rows[$native]['pending']]);
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$native}")->assertOk()
+            ->assertJsonPath('data.timeline.0.what', 'Job created');
 
         $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$other}")->assertNotFound();
     }

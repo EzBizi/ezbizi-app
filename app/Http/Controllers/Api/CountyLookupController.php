@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +17,8 @@ use Illuminate\Support\Facades\Http;
  */
 class CountyLookupController extends Controller
 {
+    public const UNAVAILABLE = 'County suggestions are not answering right now. Type the county in yourself.';
+
     public function __invoke(Request $request): JsonResponse
     {
         $state = trim((string) $request->query('state', ''));
@@ -24,14 +28,19 @@ class CountyLookupController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $response = Http::timeout(4)
-            ->withHeaders(['User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)'])
-            ->get('https://photon.komoot.io/api/', [
-                'q' => "{$query}, {$state}",
-                'layer' => 'county',
-                'limit' => 10,
-                'lang' => 'en',
-            ]);
+        // Photon unreachable or slow: no suggestions and a sentence, never a 500.
+        try {
+            $response = Http::timeout(4)
+                ->withHeaders(['User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)'])
+                ->get('https://photon.komoot.io/api/', [
+                    'q' => "{$query}, {$state}",
+                    'layer' => 'county',
+                    'limit' => 10,
+                    'lang' => 'en',
+                ]);
+        } catch (ConnectionException|RequestException) {
+            return response()->json(['data' => [], 'message' => self::UNAVAILABLE]);
+        }
 
         $names = collect($response->successful() ? ($response->json('features') ?? []) : [])
             ->map(fn ($f) => is_array($f) ? ($f['properties'] ?? []) : [])

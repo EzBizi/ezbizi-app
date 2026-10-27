@@ -183,6 +183,7 @@ Schedule::command('ezbizi:sync-workiz-calls')->everyTenMinutes()->withoutOverlap
 // Workiz's own Payments report, through each tenant's signed-in web session.
 Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOverlapping(30);
 Schedule::command('ezbizi:workiz-web-estimate-links')->everyThirtyMinutes()->withoutOverlapping(30);
+Schedule::command('ezbizi:workiz-web-lists')->hourly()->withoutOverlapping(60);
 // A newly connected Workiz account's whole history, paced and resumable.
 Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=20 --pause=5')->everyFiveMinutes()->withoutOverlapping(60);
 
@@ -422,6 +423,8 @@ Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('Americ
 // Which job each lead became, by the customer's phone - Workiz jobs arrive
 // every minute; a quarter-hour is soon enough for a revenue figure.
 Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutOverlapping(30);
+// Call recordings onto EzBizi's disk, and orphaned ones off it (Jose, 2026-10-27).
+Schedule::command('ezbizi:leads-keep-recordings')->everyTenMinutes()->withoutOverlapping(30);
 
 // Call transcription is NOT scheduled here: a run takes minutes and schedule:run
 // runs a minute's commands in sequence, so it would hold the lead sync behind

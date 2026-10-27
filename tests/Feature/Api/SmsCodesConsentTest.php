@@ -43,6 +43,8 @@ class SmsCodesConsentTest extends TestCase
     /** EzBizi holding a number of its own to send from. */
     private function withSender(): void
     {
+        // The real gateway, so Http::fake sees the request Twilio would.
+        $this->app->bind(\App\Support\Phone\TwilioGateway::class, \App\Support\Phone\HttpTwilioGateway::class);
         config([
             'services.twilio.platform_account_sid' => 'ACtest',
             'services.twilio.platform_auth_token' => 'token',

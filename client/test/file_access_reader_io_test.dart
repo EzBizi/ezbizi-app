@@ -101,8 +101,9 @@ void main() {
     () async {
       final reader = IoFileAccessReader(
         driveProbe: (root) {
-          if (root == 'D:\\')
+          if (root == 'D:\\') {
             throw const FileSystemException('device not ready');
+          }
           return root == 'C:\\'; // only C: has media
         },
       );

@@ -20,4 +20,14 @@ interface DependentCounter
      * @return array{key: string, label: string, count: int, names?: list<string>}|null
      */
     public function count(IntegrationRef $ref, User $viewer): ?array;
+
+    /**
+     * Which features stop (breaks) or get worse (degrades) when this
+     * connection goes, whether or not anything is counted against it today:
+     * disconnecting X with no scheduled posts still means Posts cannot publish
+     * to X. Empty when this counter has nothing to say about the connection.
+     *
+     * @return list<array{feature: string, severity: 'breaks'|'degrades'}>
+     */
+    public function features(IntegrationRef $ref): array;
 }

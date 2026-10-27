@@ -567,6 +567,24 @@ void main() {
     expect(find.byKey(const ValueKey('recording-c-call')), findsOneWidget);
   });
 
+  /// Jose, 2026-10-27: Reports' Download, on a lead's call, named for the lead.
+  testWidgets('a call recording can be downloaded, named for the lead', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    expect(find.byKey(const Key('recording-download')), findsOneWidget);
+    final bar = tester.widget<RecordingPlaybackBar>(
+      find.byType(RecordingPlaybackBar),
+    );
+    expect(bar.downloadName, endsWith(' Marcus Bell'));
+    expect(bar.downloadName, startsWith('2026-09-0'));
+  });
+
   /// A refusal is shown, in the player's own words rather than ours.
   testWidgets("a recording that will not play says why, in the player's "
       'own words', (tester) async {

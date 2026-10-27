@@ -3,7 +3,6 @@
 namespace App\Support\Jobs;
 
 use App\Models\Job;
-use App\Models\WorkizRecord;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -80,7 +79,7 @@ final class ProjectStages
                 $rule = $g['rule'];
                 $any->orWhere(fn ($one) => $one->whereIn('franchise_id', $g['ids'])->whereIn('status', $rule['statuses'])
                     ->when($rule['scheduled'] !== null, fn ($q) => $rule['scheduled'] ? $q->whereNotNull('scheduled_for') : $q->whereNull('scheduled_for'))
-                    ->when($rule['due'] !== null, fn ($q) => $rule['due'] ? self::due($q) : $q->whereNotIn('id', self::due(Job::query())->select('id'))));
+                    ->when($rule['due'] !== null, fn ($q) => $rule['due'] ? JobMoney::due($q) : $q->whereNotIn('id', JobMoney::due(Job::query())->select('id'))));
             }
         });
     }
@@ -121,16 +120,9 @@ final class ProjectStages
             foreach ($groups as $g) {
                 $any->orWhere(fn ($one) => $one->whereIn('franchise_id', $g['ids'])
                     ->when($g['statuses'] !== [], fn ($q) => $q->whereIn('status', $g['statuses']))
-                    ->when($g['partly'], fn ($q) => self::due($q)->whereIn('id', WorkizRecord::query()->where('type', 'payment')
-                        ->where('status', 'succeeded')->whereNotNull('job_id')->select('job_id'))));
+                    ->when($g['partly'], fn ($q) => JobMoney::due($q)->whereIn('id', JobMoney::paidJobIds())));
             }
         });
-    }
-
-    /** Jobs with money still due (Workiz's amount due, until EzBizi invoices its own). */
-    public static function due(Builder $q): Builder
-    {
-        return $q->whereHas('workizJob', fn ($w) => $w->whereRaw("CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.JobAmountDue')) AS DECIMAL(12,2)) > 0"));
     }
 
     /** A tag or the job type, any case, is one of these words (redo, dispute: the organization's own words). */
@@ -152,7 +144,6 @@ final class ProjectStages
     /** Partly paid, money still due, and no payment for $days days (Jose: "stopped payments"). */
     public static function stopped(Builder $q, int $days): Builder
     {
-        return self::due($q)->whereIn('id', WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')
-            ->whereNotNull('job_id')->groupBy('job_id')->havingRaw('MAX(starts_at) < ?', [now()->subDays($days)])->select('job_id'));
+        return JobMoney::due($q)->whereIn('id', JobMoney::lastPaidBefore(now()->subDays($days)));
     }
 }

@@ -39,6 +39,11 @@ class SyncWorkizRecordsTest extends TestCase
             'isAllDay' => false, 'techIds' => ['USR-2'], 'isDeleted' => true, 'updatedAt' => '2026-10-02 10:00:00', 'createdAt' => '2026-10-02 10:00:00'],
         'timeSheet' => ['id' => 'TS-1', 'techId' => 'USR-3', 'techName' => 'Pat Doe', 'startDate' => '2026-10-05 09:00:00', 'endDate' => '2026-10-05 11:00:00',
             'notes' => 'Ladder', 'jobId' => 'JOB-1', 'laborCost' => 40, 'shiftLength' => '02:00'],
+        // The account lists, in the shape measured on NY 2026-10-27.
+        'jobTypes' => ['id' => 'JT-1', 'name' => 'Chimney Sweep', 'avgDuration' => 60, 'displayOrder' => 1, 'disabled' => false],
+        'adGroups' => ['id' => 'AG-1', 'name' => 'Google LSA', 'displayOrder' => 2, 'description' => '', 'disabled' => false],
+        'tags' => ['id' => 'TG-1', 'name' => 'DEPOSIT RECIEVED', 'color' => '#00aa00', 'type' => 'job'],
+        'jobSubStatus' => ['id' => 'JSS-1', 'name' => 'Estimate Declined', 'parentName' => 'Canceled', 'color' => '#ff0000'],
         'customfields' => ['id' => 'CF-1', 'entityType' => 'JOB', 'name' => 'Pricing', 'type' => 'Drop Down', 'options' => ['$99 - Level 1 Inspection'], 'position' => 4],
         'items' => ['id' => 'ITM-1', 'serialId' => 1173, 'name' => 'Premium Gas System Replacement', 'cost' => 0, 'price' => 6699, 'type' => 'product',
             'active' => true, 'updated' => '2026-09-29 19:00:18'],
@@ -115,6 +120,8 @@ class SyncWorkizRecordsTest extends TestCase
         $this->assertSame(['USR-3', 'JOB-1', '40.00'], [$sheet->user_remote_id, $sheet->job_remote_id, $sheet->amount]);
         $this->assertSame('Pricing', $this->record($tenant, 'custom_field')->payload['name']);
         $this->assertSame('6699.00', $this->record($tenant, 'item')->amount);
+        $this->assertSame(['Chimney Sweep', 'Google LSA', 'DEPOSIT RECIEVED', 'Canceled'], [$this->record($tenant, 'job_type')->payload['name'],
+            $this->record($tenant, 'ad_group')->payload['name'], $this->record($tenant, 'tag')->payload['name'], $this->record($tenant, 'sub_status')->payload['parentName']]);
 
         foreach (['invoice' => 'notes', 'payment' => 'confirmationCode', 'estimate' => 'description', 'time_off' => 'reason', 'event' => 'description', 'timesheet' => 'techName'] as $type => $field) {
             $this->assertArrayNotHasKey($field, $this->record($tenant, $type)->payload, $type.' keeps no '.$field);

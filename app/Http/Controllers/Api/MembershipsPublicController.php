@@ -263,6 +263,10 @@ class MembershipsPublicController extends Controller
 
                 $job = app(BookJob::class)($customer, $franchise, 'Yearly maintenance: '.$m->plan->name, $date,
                     ['source' => 'membership', 'membership_id' => $m->getKey()]);
+                // EzBizi's job carries the plan's type; Workiz mirrors the job.
+                if (filled($m->plan->job_type)) {
+                    $job->forceFill(['job_type' => $m->plan->job_type])->save();
+                }
                 $m->forceFill(['visit_job_id' => $job->getKey()])->save();
 
                 $this->events->emit('membership.visit_confirmed', $m, ['after' => MembershipsController::payload($m) + [

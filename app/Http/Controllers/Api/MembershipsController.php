@@ -162,17 +162,27 @@ class MembershipsController extends Controller
     {
         $required = $plan ? 'sometimes' : 'required';
 
-        return $request->validate([
+        $input = $request->validate([
             'name'        => [$required, 'string', 'max:120', Rule::unique('membership_plans')
                 ->where('organization_id', $this->tenant->idOrFail())->ignore($plan?->getKey())],
             // What a visit includes, one line, shown on the join page.
             'description' => ['sometimes', 'nullable', 'string', 'max:255'],
             'price_minor' => [$required, 'integer', 'min:0'],
             'billing'     => [$required, Rule::in(MembershipPlan::BILLINGS)],
-            // Jose: the Workiz job type a confirmed visit carries, per plan.
-            'workiz_job_type' => ['sometimes', 'nullable', 'string', 'max:120'],
+            // The job type a confirmed visit's EzBizi job gets (Jose: per plan;
+            // 2026-10-27: native, Workiz mirrors it). workiz_job_type is the
+            // old name the plan editor still sends.
+            'job_type'        => ['sometimes', 'nullable', 'string', 'max:100'],
+            'workiz_job_type' => ['sometimes', 'nullable', 'string', 'max:100'],
             'is_active'   => ['sometimes', 'boolean'],
         ]);
+
+        if (array_key_exists('workiz_job_type', $input)) {
+            $input['job_type'] ??= $input['workiz_job_type'];
+            unset($input['workiz_job_type']);
+        }
+
+        return $input;
     }
 
     // ── Helpers ──────────────────────────────────────────────────

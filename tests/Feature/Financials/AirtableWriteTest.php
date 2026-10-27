@@ -136,4 +136,32 @@ class AirtableWriteTest extends TestCase
             $this->assertNotContains(77, $source->rows()->pluck('Amount')->all());
         });
     }
+
+    /** Jose, 2026-10-27: Airtable is removable. A disconnected base's table saves in EzBizi instead of refusing. */
+    public function test_an_edit_after_airtable_is_disconnected_saves_in_ezbizi(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->inTenant($t['org'], function () use ($t) {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $t['org']->id, 'scope_type' => 'organization', 'scope_id' => $t['org']->id,
+                'provider' => 'airtable', 'remote_id' => 'appX', 'display_name' => 'Books']);
+            $c->connect(['api_token' => 'pat_x', 'refresh_token' => 'pat_x', 'base_id' => 'appX']);
+            $c->save();
+            AirtableRecord::query()->create(['organization_id' => $t['org']->id, 'base_id' => 'appX', 'table_id' => 'tblR', 'table_name' => 'Costs',
+                'record_id' => 'rec1', 'fields' => $this->airtable['rec1'], 'fields_hash' => 'x', 'fetched_at' => now()]);
+        });
+        $this->fakeAirtable();
+        $as = $this->signedInAs($t['admin']);
+        $base = $as->postJson('/api/v1/financials/bases', ['name' => 'B'])->json('data.id');
+        $table = $as->postJson("/api/v1/financials/bases/{$base}/airtable-links", ['base_id' => 'appX', 'table_id' => 'tblR'])->assertCreated()->json('data');
+        $fields = collect($table['fields'])->keyBy('name');
+        $row = $table['records'][0]['id'];
+        $this->inTenant($t['org'], fn () => SocialConnection::query()->where('provider', 'airtable')->delete());
+
+        $as->patchJson("/api/v1/financials/records/{$row}", ['values' => [$fields['Amount']['id'] => '42']])->assertOk()
+            ->assertJsonPath('data.values.'.$fields['Amount']['id'], 42);
+        $this->assertSame([], $this->writes, 'nothing went to Airtable');
+        $this->assertNull($as->getJson("/api/v1/financials/tables/{$table['id']}")->json('data.mirror'), 'the table is EzBizi\'s now');
+        $as->postJson("/api/v1/financials/tables/{$table['id']}/records", ['values' => [$fields['Name']['id'] => 'Tape']])->assertCreated();
+    }
 }

@@ -49,6 +49,11 @@ final class StaffAnswer
      */
     public static function answer(User $user, Organization $organization, string $question, string $channel, int $budget, array $files = []): ?array
     {
+        // No AI on this install: nothing to answer with, which is not a failure.
+        if (! GrokCli::configured()) {
+            return null;
+        }
+
         $started = microtime(true);
         $left = fn () => $budget - (int) ceil(microtime(true) - $started);
         $failed = null;

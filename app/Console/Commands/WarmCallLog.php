@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Support\Reports\Experimental\RingCentralCallLog;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Reads yesterday's RingCentral call log into the cache the Experimental report
@@ -19,7 +18,7 @@ class WarmCallLog extends Command
 {
     protected $signature = 'ezbizi:warm-call-log {--days=1 : finished days to read, counting back from yesterday}';
 
-    protected $description = 'Cache finished days of the RingCentral call log for the Experimental report';
+    protected $description = 'Keep finished days of the RingCentral call log for the Experimental report';
 
     public function handle(RingCentralCallLog $calls): int
     {
@@ -37,7 +36,7 @@ class WarmCallLog extends Command
         for ($back = 1; $back <= max(1, (int) $this->option('days')); $back++) {
             $day = $today->subDays($back);
 
-            if (Cache::has($calls->dayKeyFor($day))) {
+            if ($calls->hasDay($day)) {
                 continue;
             }
 
