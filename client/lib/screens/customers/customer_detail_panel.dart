@@ -10,6 +10,7 @@ import '../../widgets/address_fields.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/book_job_panel.dart';
 import '../../widgets/side_panel.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
@@ -295,6 +296,23 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       docked: widget.onDone != null,
       onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
+        if (row != null && widget.session.me!.can('jobs.create'))
+          TextButton.icon(
+            key: const ValueKey('customer-book-job'),
+            onPressed: _busy
+                ? null
+                : () => showBookJobPanel(
+                    context,
+                    api: widget.api,
+                    session: widget.session,
+                    prefill: BookPrefill(
+                      customerId: row['id'] as String,
+                      franchiseId: owner?['id'] as String?,
+                    ),
+                  ),
+            icon: const Icon(Icons.event_available_outlined, size: 18),
+            label: const Text('Book a job'),
+          ),
         TextButton(
           onPressed: _busy ? null : () => _done(null),
           child: const Text('Cancel'),
