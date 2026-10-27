@@ -56,7 +56,11 @@ class FinancialResultsTest extends TestCase
         $this->assertSame('approved', $this->signedInAs($t['admin'])->postJson("/api/v1/financials/results/{$pending['id']}/approve")->assertOk()->json('data.status'));
         $this->assertCount(2, $this->signedInAs($t['admin'])->getJson('/api/v1/financials/results?status=approved')->json('data'));
 
-        $viewer = $this->userWithRole($t, 'Viewer', ['financial_results.view']);
+        $this->assertCount(2, $this->signedInAs($t['admin'])->getJson('/api/v1/financials/results?q=tam')->json('data'));
+        $this->assertCount(0, $this->signedInAs($t['admin'])->getJson('/api/v1/financials/results?q=orlando')->json('data'));
+        $this->assertCount(2, $this->signedInAs($t['admin'])->getJson('/api/v1/financials/results?q=%20')->json('data'));
+
+        $viewer = $this->userWithRole($t, 'Viewer',['financial_results.view']);
         $this->signedInAs($viewer)->postJson('/api/v1/financials/results', $body)->assertForbidden();
 
         $beta = $this->provisionTenant('Beta');
