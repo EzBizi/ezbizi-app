@@ -19,8 +19,8 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * A lead is linked to the job it became by the customer's phone number: a
- * Workiz client with that number and a job booked from a day before the lead
+ * A lead is linked to the job it became by the customer's phone number: an
+ * EzBizi customer with that number and a job booked from a day before the lead
  * to 30 days after it. The earliest such job wins; a lead that already has a
  * job - booked from the lead itself - is never touched.
  */
@@ -66,6 +66,8 @@ class MatchLeadsToJobsTest extends TestCase
                 'synced_at' => now(),
             ]);
             foreach ($bookings as [$bookedAt, $job]) {
+                // The match is on EzBizi's customer (Jose, 2026-10-27); the projection gives it the client's phone.
+                $job?->customer->forceFill(['phone' => $phone])->save();
                 WorkizJob::create([
                     'franchise_id' => $this->t['franchise']->id,
                     'remote_id' => strtoupper(bin2hex(random_bytes(4))),
@@ -130,6 +132,20 @@ class MatchLeadsToJobsTest extends TestCase
         $this->assertSame($booked->id, $mine->job_id, 'a job booked from the lead is never replaced');
         $this->assertNull($mine->job_matched_by);
         $this->assertNull(Lead::withoutGlobalScopes()->find($late->id)->job_id);
+    }
+
+    /** Jose, 2026-10-27: EzBizi is the master. With no Workiz at all, an EzBizi customer's job matches by when it was made. */
+    public function test_without_workiz_an_ezbizi_customers_job_matches(): void
+    {
+        Carbon::setTestNow('2026-09-12T10:00:00Z');
+        $job = $this->job('J-E');
+        $this->inTenant($this->t['org'], fn () => $job->customer->forceFill(['phone' => '+1 215 555 0404'])->save());
+        Carbon::setTestNow('2026-09-28T12:00:00Z');
+        $lead = $this->lead('e', '2155550404', '2026-09-10T15:00:00Z');
+
+        $this->artisan('ezbizi:match-leads-to-jobs')->assertSuccessful();
+
+        $this->assertSame($job->id, Lead::withoutGlobalScopes()->find($lead->id)->job_id);
     }
 
     /** Jose, 2026-10-09: an LS Booking arrives empty; Workiz's Reserve with Google job has the customer. */

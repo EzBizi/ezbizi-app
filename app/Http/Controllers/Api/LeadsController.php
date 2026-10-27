@@ -36,6 +36,8 @@ use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
+use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Workiz\WorkizV2;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -880,6 +882,10 @@ class LeadsController extends Controller
             'status' => ['required', 'string', 'max:60'],
             'description' => ['nullable', 'string', 'max:10000'],
             'scheduled_for' => ['nullable', 'date'],
+            // A branch on Workiz gets the job there too (Jose, 2026-10-27).
+            'workiz_job_type' => ['nullable', 'string', 'max:120'],
+            'workiz_job_source' => ['nullable', 'string', 'max:120'],
+            'workiz_service_area' => ['nullable', 'string', 'max:120'],
         ]);
 
         $franchiseId = $input['franchise_id'] ?? $lead->franchise_id;
@@ -908,6 +914,16 @@ class LeadsController extends Controller
         }
 
         $this->authorize('create', [Job::class, $franchise]);
+
+        $writer = app(WorkizJobWriter::class);
+        $workiz = $writer->connection($franchise->getKey());
+
+        // v2 makes no job without a type: asked before anything is made.
+        if ($workiz !== null && WorkizV2::uses($workiz) && blank($input['workiz_job_type'] ?? null)) {
+            throw ValidationException::withMessages([
+                'workiz_job_type' => 'This branch books into Workiz: pick the Workiz job type.',
+            ]);
+        }
 
         $user = $request->user();
 
@@ -990,14 +1006,54 @@ class LeadsController extends Controller
             return ['job' => $job, 'customer' => $customer, 'customer_created' => $created];
         });
 
+        // Into the branch's Workiz too, after the commit: the job is EzBizi's
+        // either way, and a refusal is said on the panel, never swallowed.
+        $sent = null;
+
+        if ($workiz !== null) {
+            $made = $writer->create($result['job']->load('customer'), $input['workiz_job_type'] ?? null, $input['workiz_job_source'] ?? null);
+            $area = trim((string) ($input['workiz_service_area'] ?? '')) !== '' ? $input['workiz_service_area'] : null;
+            $placed = $made['job'] !== null && $area !== null ? $writer->setServiceArea($made['job'], $area) : null;
+
+            $sent = [
+                'serial_id' => $made['job']?->serial_id,
+                'service_area' => $placed !== null && $placed['refused'] === null ? $area : null,
+                'refused' => match (true) {
+                    $made['refused'] !== null => 'Not in Workiz: '.$made['refused'].' Enter job '.$result['job']->number.' in Workiz by hand.',
+                    $placed !== null && $placed['refused'] !== null => 'In Workiz as job '.$made['job']->serial_id.', without its service area: '.$placed['refused'],
+                    default => null,
+                },
+            ];
+        }
+
         return response()->json([
             'data' => [
                 'lead' => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name'])),
                 'customer' => $result['customer']->only(['id', 'number', 'name', 'phone', 'email']),
                 'customer_created' => $result['customer_created'],
                 'job' => $this->presentJob($result['job']),
+                'workiz' => $sent,
             ],
         ], Response::HTTP_CREATED);
+    }
+
+    /**
+     * GET /api/v1/leads/{lead}/workiz-choices?franchise_id=&zip=
+     *
+     * What the Book panel asks when the branch books into Workiz: its job
+     * types, sources and service areas (WorkizJobWriter::choices). `data` is
+     * null for a branch without Workiz.
+     */
+    public function workizChoices(Request $request, Lead $lead): JsonResponse
+    {
+        $this->authorize('update', $lead);
+
+        $input = $request->validate([
+            'franchise_id' => ['required', 'uuid', $this->existsInTenant('franchises')],
+            'zip' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        return response()->json(['data' => app(WorkizJobWriter::class)->choices($input['franchise_id'], $input['zip'] ?? $lead->postal_code)]);
     }
 
     /** @return array<string, mixed> */
