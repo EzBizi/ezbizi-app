@@ -22,7 +22,6 @@ use App\Support\Ai\AppAct;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
-use App\Support\Ai\ReportAsk;
 use App\Support\Ai\ReportCorrection;
 use App\Support\Ai\ReportFileRequest;
 use App\Support\Ai\StaffAnswer;
@@ -653,8 +652,7 @@ final class WhatsAppStaffBot
     }
 
     /**
-     * Sounds like the business's figures. ponytail: a word list; AI still
-     * decides (ReportAsk), and a miss falls back to the Library's AI answer.
+     * Sounds like the business's figures. ponytail: a word list; a miss falls back to the Library's AI answer.
      */
     public static function asksFigures(string $query): bool
     {

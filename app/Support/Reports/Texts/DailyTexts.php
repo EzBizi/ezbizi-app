@@ -49,8 +49,8 @@ final class DailyTexts
 
         return match ($kind) {
             'ppc' => $this->ppc($list, $day),
-            'marketing_ppc' => $this->marketingPpc($organization, $day),
-            'dispatchers' => $this->dispatchers($organization, $day),
+            'marketing_ppc' => $this->marketingPpc($organization, $day, $branches === null ? null : $list),
+            'dispatchers' => $this->dispatchers($day, $branches),
             'technician_sales' => $this->technicianSales($list, $day),
             'weekly_losses' => $this->weeklyLosses($list, $day),
             'weekly_reviews' => $this->weeklyReviews($list, $day),
@@ -95,10 +95,14 @@ final class DailyTexts
         ]));
     }
 
-    /** The organization's mapped "marketing" tables (Financials → Settings): the latest day on or before $day. */
-    private function marketingPpc(Organization $organization, CarbonImmutable $day): string
+    /**
+     * The mapped "marketing" tables (Financials → Settings): the latest day on
+     * or before $day. $branches null: the organization's own; else only those branches' tables.
+     */
+    private function marketingPpc(Organization $organization, CarbonImmutable $day, ?Collection $branches): string
     {
-        $rows = ReportSources::rows((string) $organization->id, 'marketing', null, $day->subDays(14)->toDateString(), $day->toDateString());
+        $read = fn (?string $branch) => ReportSources::rows((string) $organization->id, 'marketing', $branch, $day->subDays(14)->toDateString(), $day->toDateString());
+        $rows = $branches === null ? $read(null) : $branches->flatMap(fn ($b) => $read((string) $b->getKey()))->values();
         $head = "\u{1F4CA} *Marketing PPC · Daily update*\nReport: ".$day->format('D, M j, Y');
 
         if ($rows->isEmpty()) {
@@ -125,11 +129,20 @@ final class DailyTexts
         return implode("\n", $lines);
     }
 
-    /** Performance's People for the day: who answered, and the jobs they created. */
-    private function dispatchers(Organization $organization, CarbonImmutable $day): string
+    /**
+     * Performance's People for the day: who answered, and the jobs they created.
+     * ponytail: calls are not per branch, so a branch-scoped rule gets no
+     * figures; split by branch when the call log carries one.
+     *
+     * @param  list<string>|null  $branches
+     */
+    private function dispatchers(CarbonImmutable $day, ?array $branches): string
     {
-        $people = $this->performance->for(null, $day->startOfDay(), $day->endOfDay());
         $head = "\u{1F4CB} *Dispatcher performance*\n".$day->format('D, M j, Y');
+        if ($branches !== null) {
+            return $head."\n\nCovers the whole organization only; this rule is limited to some branches.";
+        }
+        $people = $this->performance->for(null, $day->startOfDay(), $day->endOfDay());
 
         $rows = collect($people)->filter(fn ($p) => ($p['answered'] ?? 0) > 0 || ($p['jobs'] ?? 0) > 0)
             ->sortByDesc(fn ($p) => $p['answered'] ?? 0);
