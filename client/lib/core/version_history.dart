@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0497',
+      date: '27 Oct 2026',
+      items: [
+        'Email › Settings and Google Workspace: redesigned.',
+        'Project Management - 2: money reads Pending, Paid and Total; click a job to see its details and timeline.',
+        'Leads › Online Booking: a booking that already has a job shows Booked in Workiz with its date instead of Approve and Decline, so no wrong confirmation is sent.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0496',
       date: '27 Oct 2026',
       items: [
