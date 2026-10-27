@@ -78,6 +78,7 @@ class SettingRegistry
             'phone' => ['Communication',      $this->phone()],
             'leads' => ['Leads',              $this->leads()],
             'scheduling' => ['Scheduling',         $this->scheduling()],
+            'integrations' => ['Integrations',     $this->integrations()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -2102,5 +2103,20 @@ class SettingRegistry
         }
 
         return 'UTC'.($hours > 0 ? '+' : '-').abs($hours);
+    }
+
+    /** @return list<SettingDefinition> */
+    private function integrations(): array
+    {
+        return [
+            // EzBizi is the master and Workiz a mirror until it is disconnected (Jose, 2026-10-27).
+            new SettingDefinition(
+                key: 'workiz.mirror', label: 'Mirror to Workiz',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'When on, changes made in EzBizi to a job that is also in Workiz (status, tags, '
+                    .'time, technicians, description, custom fields) are written to Workiz too, a few '
+                    .'seconds later. Turn it off for a branch that no longer uses Workiz.',
+            ),
+        ];
     }
 }
