@@ -414,6 +414,26 @@ final class WorkizJobWriter
     }
 
     /**
+     * The job's description, custom fields and all-day, as EzBizi holds them,
+     * onto its Workiz copy (EzBizi master, 2026-10-27). The same three create()
+     * sends; each measured on 2026-10-27 (all-day needs its end on a later day).
+     */
+    public function setFields(WorkizJob $mirror, Job $job): WorkizJob
+    {
+        [$connection, $id] = $this->v2Job($mirror);
+        $start = $job->getRawOriginal('scheduled_for');
+        $day = $job->all_day && $start !== null ? Carbon::parse($start)->startOfDay() : null;
+
+        return $this->put($connection, $mirror, $id, array_filter([
+            'description' => (string) ($job->description ?? ''),
+            'customFields' => $this->customFields($job),
+            'isAllDay' => $day !== null ? true : null,
+            'date' => $day?->toDateString(),
+            'endDate' => $day?->copy()->addDay()->toDateString(),
+        ], fn ($v) => $v !== null && $v !== []), 'workiz.job_fields_set', []);
+    }
+
+    /**
      * Take the job off Workiz's schedule (Jose's Project Management Action 1,
      * 2026-10-22: payment in, time removed). Measured on NY's test job
      * 900018655: PUT {isScheduled: false} clears date and endDate; a null or
