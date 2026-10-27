@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0496',
+      date: '27 Oct 2026',
+      items: [
+        'Project Management - 2: search by customer, job ID or address covers every job, not only the ones loaded; the list loads 50 at a time with Load more.',
+        'Windows: the app no longer crashes when it closes for an update.',
+        'Monitoring › Lighting: PCs that said the lighting engine was not responding now load their lights.',
+        'Android: fixed an error when location sharing tried to start while the app was in the background.',
+        'App problem reports: a phone that was offline or a browser tab in the background no longer raises false error alerts, and each report says where in the app it happened.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0495',
       date: '26 Oct 2026',
       items: [
