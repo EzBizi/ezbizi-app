@@ -4,6 +4,7 @@ namespace App\Support\Integrations\Dependents\Counters;
 
 use App\Models\Mailbox;
 use App\Support\Email\MailboxProvider;
+use App\Support\Integrations\Dependents\Feature;
 use App\Support\Integrations\Dependents\IntegrationRef;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -36,5 +37,12 @@ final class WorkspaceMailboxesCounter extends RowCounter
     protected function label(int $count): string
     {
         return self::plural($count, 'shared inbox stops syncing', 'shared inboxes stop syncing');
+    }
+
+    public function features(IntegrationRef $ref): array
+    {
+        return $ref->kind === 'workspace'
+            ? [Feature::breaks('Email: shared inboxes stop syncing and cannot send')]
+            : [];
     }
 }

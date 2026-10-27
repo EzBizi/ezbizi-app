@@ -3,6 +3,7 @@
 namespace App\Support\Integrations\Dependents\Counters;
 
 use App\Models\WhatsAppNumber;
+use App\Support\Integrations\Dependents\Feature;
 use App\Support\Integrations\Dependents\IntegrationRef;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -26,5 +27,12 @@ final class WhatsAppNumbersCounter extends RowCounter
     protected function label(int $count): string
     {
         return self::plural($count, 'WhatsApp number stops sending and receiving', 'WhatsApp numbers stop sending and receiving');
+    }
+
+    public function features(IntegrationRef $ref): array
+    {
+        return $ref->provider === 'whatsapp'
+            ? [Feature::breaks('Messages › WhatsApp: can\'t send or receive WhatsApp messages')]
+            : [];
     }
 }

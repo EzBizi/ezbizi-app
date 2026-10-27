@@ -9,6 +9,8 @@ use App\Models\ServiceAreaZip;
 use App\Models\WebLocation;
 use App\Support\Access\Refusal;
 use App\Support\Scoping\ViewScope;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -28,6 +30,8 @@ use Illuminate\Validation\ValidationException;
 class SchedulingLocationsController extends Controller
 {
     private const PHOTON = 'https://photon.komoot.io/api/';
+
+    public const GEOCODER_UNAVAILABLE = 'The address lookup is not answering right now, so the nearest branch cannot be worked out. The branch list below still works; try again in a minute.';
 
     /** GET /api/v1/scheduling/locations */
     public function index(Request $request): JsonResponse
@@ -191,9 +195,14 @@ class SchedulingLocationsController extends Controller
      */
     private function geocode(string $q): ?array
     {
-        $response = Http::timeout(6)
-            ->withHeaders(['User-Agent' => 'EzBizi/scheduling-locations (https://ezbizi.com; development@ezbizi.com)'])
-            ->get(self::PHOTON, ['q' => $q, 'limit' => 5, 'lang' => 'en']);
+        // Photon unreachable or slow is a plain sentence on the q field, never a 500.
+        try {
+            $response = Http::timeout(6)
+                ->withHeaders(['User-Agent' => 'EzBizi/scheduling-locations (https://ezbizi.com; development@ezbizi.com)'])
+                ->get(self::PHOTON, ['q' => $q, 'limit' => 5, 'lang' => 'en']);
+        } catch (ConnectionException|RequestException) {
+            throw ValidationException::withMessages(['q' => self::GEOCODER_UNAVAILABLE]);
+        }
 
         if (! $response->successful()) {
             return null;

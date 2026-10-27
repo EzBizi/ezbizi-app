@@ -49,6 +49,9 @@ final class IntegrationDependentsController extends Controller
         return response()->json(['data' => [
             'kind' => $kind,
             'id' => $id,
+            // What stops working, by feature (breaks | degrades), then what is
+            // counted against this connection today.
+            'features' => $this->registry->features($ref),
             'dependents' => $this->registry->for($ref, $user),
         ]]);
     }

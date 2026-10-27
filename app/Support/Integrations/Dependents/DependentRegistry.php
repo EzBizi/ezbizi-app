@@ -27,4 +27,30 @@ final class DependentRegistry
 
         return $out;
     }
+
+    /**
+     * Every counter's features for this connection, one line per feature
+     * (breaks wins over degrades), breaks first.
+     *
+     * @return list<array{feature: string, severity: 'breaks'|'degrades'}>
+     */
+    public function features(IntegrationRef $ref): array
+    {
+        $seen = [];
+
+        foreach ($this->app->tagged(self::TAG) as $counter) {
+            /** @var DependentCounter $counter */
+            foreach ($counter->features($ref) as $row) {
+                if (! isset($seen[$row['feature']]) || $row['severity'] === Feature::BREAKS) {
+                    $seen[$row['feature']] = $row;
+                }
+            }
+        }
+
+        $rows = array_values($seen);
+        $rank = fn (array $r) => $r['severity'] === Feature::BREAKS ? 0 : 1;
+        usort($rows, fn (array $a, array $b) => $rank($a) <=> $rank($b));
+
+        return $rows;
+    }
 }

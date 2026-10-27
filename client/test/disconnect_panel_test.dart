@@ -20,6 +20,34 @@ void main() {
 
     await _open(tester, api, (r) => result = r);
 
+    // Features first, each marked by severity, above the counts.
+    final breaks = find.byKey(const ValueKey('disconnect-feature-0'));
+    final degrades = find.byKey(const ValueKey('disconnect-feature-1'));
+    expect(
+      find.descendant(
+        of: breaks,
+        matching: find.text('Jobs › Workiz: jobs stop mirroring to Workiz'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: breaks, matching: find.text('Stops')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: degrades, matching: find.text('Limited')),
+      findsOneWidget,
+    );
+    final counts = find.byKey(
+      const ValueKey('disconnect-dependent-automations'),
+    );
+    expect(
+      tester.getTopLeft(degrades).dy,
+      lessThan(tester.getTopLeft(counts).dy),
+      reason: 'features sit above the counts',
+    );
+    expect(find.byKey(const Key('disconnect-no-dependents')), findsNothing);
+
     expect(find.textContaining('2 active automations'), findsOneWidget);
     expect(find.text('Push to Workiz, Names it'), findsOneWidget);
     expect(
@@ -74,6 +102,16 @@ ApiClient _api(List<http.Request> sent, {required bool refuse}) => ApiClient(
     if (request.url.path.endsWith('/dependents')) {
       return _json({
         'data': {
+          'features': [
+            {
+              'feature': 'Jobs › Workiz: jobs stop mirroring to Workiz',
+              'severity': 'breaks',
+            },
+            {
+              'feature': 'Reports: Workiz job reports stop updating',
+              'severity': 'degrades',
+            },
+          ],
           'dependents': [
             {
               'key': 'automations',
