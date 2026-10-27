@@ -87,21 +87,4 @@ class PhoneRecordingPurgeTest extends TestCase
             collect($gateway->calls)->where('method', 'deleteRecording')->pluck('args.1')->all(),
         );
     }
-
-    /**
-     * Jose, 2026-10-27: a recording is kept in EzBizi, and goes with the call.
-     */
-    public function test_the_copy_kept_in_ezbizi_is_deleted_with_the_call(): void
-    {
-        \Illuminate\Support\Facades\Storage::fake('local');
-        $t = $this->provisionTenant();
-        $call = $this->oldCall($t, 'RE'.str_repeat('e', 32), 6);
-
-        (new \App\Jobs\StoreCallRecording($call->id))->handle($this->app->make(TwilioGateway::class));
-        $this->assertTrue($call->hasLocalRecording(), 'the recording was not kept in EzBizi');
-
-        $this->artisan('ezbizi:expire-data')->assertSuccessful();
-
-        \Illuminate\Support\Facades\Storage::disk('local')->assertMissing($call->localRecordingPath());
-    }
 }

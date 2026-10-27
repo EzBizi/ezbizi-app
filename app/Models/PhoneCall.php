@@ -70,9 +70,6 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
      */
     public function forgetRecording(): void
     {
-        // EzBizi's own copy first: it is ours to delete whatever Twilio says.
-        \Illuminate\Support\Facades\Storage::disk('local')->delete($this->localRecordingPath());
-
         if (blank($this->recording_sid)) {
             return;
         }
@@ -102,17 +99,6 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
             && $this->answered_by === null
             && $this->menu_key === null
             && ! $this->voicemail;
-    }
-
-    /** Where EzBizi keeps this call's recording (StoreCallRecording). */
-    public function localRecordingPath(): string
-    {
-        return 'phone-recordings/'.$this->organization_id.'/'.$this->id.'.mp3';
-    }
-
-    public function hasLocalRecording(): bool
-    {
-        return \Illuminate\Support\Facades\Storage::disk('local')->exists($this->localRecordingPath());
     }
 
     public static function personalDataPurpose(): string

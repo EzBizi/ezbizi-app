@@ -75,9 +75,6 @@ class RecordingWebhookController extends Controller
 
             $call->save();
 
-            // Kept in EzBizi, not only on Twilio (Jose, 2026-10-27).
-            \App\Jobs\StoreCallRecording::dispatch((string) $call->id)->afterCommit();
-
             if ($voicemail && ! $this->alreadyLeft($call)) {
                 $this->events->emit('phone.voicemail.left', $call, $this->payload($call));
             }

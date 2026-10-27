@@ -1149,18 +1149,12 @@ class CallsController extends Controller
             abort(Status::HTTP_NOT_FOUND);
         }
 
-        // EzBizi's own copy when it has one; Twilio only for calls recorded
-        // before copies were kept, or while the copy is still downloading.
-        if ($call->hasLocalRecording()) {
-            $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get($call->localRecordingPath());
-        } else {
-            $connection = $call->connection;
-            if ($connection === null) {
-                abort(Status::HTTP_NOT_FOUND);
-            }
-
-            $bytes = $this->twilio->recordingMedia($connection, $recordingSid);
+        $connection = $call->connection;
+        if ($connection === null) {
+            abort(Status::HTTP_NOT_FOUND);
         }
+
+        $bytes = $this->twilio->recordingMedia($connection, $recordingSid);
 
         return response($bytes, Status::HTTP_OK)
             ->header('Content-Type', 'audio/mpeg')
