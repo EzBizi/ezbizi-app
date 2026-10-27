@@ -3721,16 +3721,18 @@ class ActionRunner
         $org = \App\Models\Organization::query()->findOrFail($automation->organization_id);
         $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $org) ?: config('app.timezone'));
         $day = \Carbon\CarbonImmutable::now($zone);
-        $branches = match ($automation->scope_type) {
-            'franchise' => [$automation->scope_id],
-            'company' => \App\Models\Franchise::query()->where('company_id', $automation->scope_id)->pluck('id')->all(),
-            default => null,
-        };
+        // A company's sub-companies are in it too (desk review, 2026-10-27).
+        $branches = $automation->scope_type === null ? null
+            : \App\Support\Scoping\ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
         $text = app(\App\Support\Reports\Texts\DailyTexts::class)->render($kind, $org, $day, $branches);
         $title = \App\Support\Reports\Texts\DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         $sent = 0;
         foreach (User::query()->where('is_active', true)->whereIn('id', self::idList($action['user_ids'] ?? []))->get() as $user) {
+            // The text carries money: each recipient must be allowed to see it here.
+            if (! self::mayReceiveReportText($user, $automation->scope_type, $automation->scope_id)) {
+                continue;
+            }
             // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
             if (! \Illuminate\Support\Facades\Cache::add("report.text:{$automation->id}:{$kind}:{$day->toDateString()}:{$user->id}", true, now()->addDays(2))) {
                 continue;
@@ -3745,6 +3747,13 @@ class ActionRunner
         return $sent === 0
             ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
             : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
+    }
+
+    /** Holds reports.view and reaches the rule's place (the organization when unscoped). */
+    public static function mayReceiveReportText(User $user, ?string $scopeType, ?string $scopeId): bool
+    {
+        return $user->hasPermission('reports.view')
+            && app(\App\Support\Access\ScopeReach::class)->covers($user, $scopeType ?? 'organization', $scopeId ?? $user->organization_id);
     }
 
     /**
