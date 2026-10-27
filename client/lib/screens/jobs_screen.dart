@@ -178,7 +178,6 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadStatuses();
     _load();
   }
 
@@ -187,30 +186,6 @@ class _JobsScreenState extends State<JobsScreen> {
     _search.dispose();
     _openDirty.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadStatuses() async {
-    final organizationId = widget.session.me!.organization.id;
-    final settings = await widget.api.get('/settings', {
-      'scope_type': 'organization',
-      'scope_id': organizationId,
-    });
-
-    if (!mounted || !settings.ok) return;
-
-    final all = settings.data;
-    final rows = (all is List)
-        ? all
-              .cast<Map<String, dynamic>>()
-              .where((s) => s['key'] == 'jobs.statuses')
-              .toList()
-        : const <Map<String, dynamic>>[];
-    final resolved = rows.isEmpty ? null : rows.first['value'];
-    final parsed = parseJobStatuses(resolved);
-
-    if (parsed.isNotEmpty) {
-      setState(() => _statusChoices = parsed);
-    }
   }
 
   Future<void> _load({int page = 1}) async {
@@ -281,6 +256,10 @@ class _JobsScreenState extends State<JobsScreen> {
       _page = page;
 
       if (page == 1) {
+        // The statuses where this person is looking, from the list itself: a
+        // branch-only person cannot read organization settings (2026-10-27).
+        final statuses = parseJobStatuses(meta?['statuses']);
+        if (statuses.isNotEmpty) _statusChoices = statuses;
         _statusCounts = _counts(meta?['status_counts']);
         _whenCounts = _counts(meta?['when_counts']);
         _moneyCounts = _counts(meta?['money_counts']);
