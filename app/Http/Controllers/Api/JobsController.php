@@ -813,6 +813,9 @@ class JobsController extends Controller
             'job_type'   => $job->job_type,
             'sub_status' => $job->sub_status,
             'tags'       => $job->tags ?? [],
+            // Who opened it and when (Jose, 2026-10-27): native, Workiz's for a mirrored job (backfilled).
+            'created_at' => $job->created_at?->toIso8601String(),
+            'created_by' => $job->created_by_label === null ? null : ['user_id' => $job->created_by_user_id, 'name' => $job->created_by_label],
             'review_reason' => $job->review_reason,
             'external_company' => $job->external_company,
             'needs_second_visit' => (bool) $job->needs_second_visit,
