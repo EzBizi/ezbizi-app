@@ -76,7 +76,9 @@ class BusinessProfileListingController extends Controller
     public function copyServices(Request $request, BusinessLocation $location): JsonResponse
     {
         $this->authorize('update', $location);
-        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid'], 'apply' => ['boolean']]);
+        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid'], 'apply' => ['boolean'],
+            'mode' => ['nullable', 'in:replace,add_missing']]);
+        $addOnly = ($input['mode'] ?? 'replace') === 'add_missing';
         if (($input['apply'] ?? false) && $refused = $this->refused()) {
             return $refused;
         }
@@ -88,12 +90,20 @@ class BusinessProfileListingController extends Controller
             return response()->json(['data' => $this->targets($input['targets'])->map(function (BusinessLocation $t) use ($names, $label) {
                 $have = array_values(array_filter(array_map($label, $this->api->categoriesAndServices($t)['services'])));
 
-                return ['id' => $t->id, 'name' => $t->label(), 'adds' => array_values(array_diff($names, $have)),
-                    'removes' => array_values(array_diff($have, $names))];
+                return ['id' => $t->id, 'name' => $t->label(), 'has' => $have, 'adds' => array_values(array_diff($names, $have)),
+                    'removes' => $addOnly ? [] : array_values(array_diff($have, $names))];
             })->values()->all()]);
         }
 
-        return $this->eachTarget($input['targets'], fn (BusinessLocation $t) => $this->api->replaceServices($t, $source));
+        return $this->eachTarget($input['targets'], function (BusinessLocation $t) use ($source, $label, $addOnly) {
+            $services = $source;
+            if ($addOnly) {
+                $current = $this->api->categoriesAndServices($t)['services'];
+                $have = array_map($label, $current);
+                $services = [...$current, ...array_filter($source, fn ($s) => ! in_array($label($s), $have, true))];
+            }
+            $this->api->replaceServices($t, array_values($services));
+        });
     }
 
     /** GET /business-profile/phone-check: the listing's number vs EzBizi's lines vs the website's (design 154 #10). */
@@ -104,7 +114,7 @@ class BusinessProfileListingController extends Controller
         $query = BusinessLocation::query()->whereNull('not_listed_since')->with('franchise')->orderBy('title');
         Places::scope($query, $request->user());
 
-        return response()->json(['data' => $query->get()->map(function (BusinessLocation $l) use ($digits) {
+        return response()->json(['checked_at' => now()->toIso8601String(), 'data' => $query->get()->map(function (BusinessLocation $l) use ($digits) {
             $lines = $l->franchise_id === null ? [] : PhoneNumber::query()->where('scope_type', PhoneNumber::SCOPE_FRANCHISE)
                 ->where('scope_id', $l->franchise_id)->pluck('e164')->all();
             $website = $l->franchise ? CustomerLinks::branchPhone($l->franchise) : null;
@@ -132,11 +142,20 @@ class BusinessProfileListingController extends Controller
 
         return response()->json(['data' => [
             ['source' => 'google', 'connected' => true, 'count' => (int) ($google->n ?? 0),
-                'average' => $google?->n ? round((float) $google->average, 2) : null],
+                'average' => $google?->n ? round((float) $google->average, 2) : null,
+                'last_sync' => BusinessLocation::query()->max('synced_at')],
             // ponytail: no eKomi or Thumbtack review import yet; each needs its own credentials.
             ['source' => 'ekomi', 'connected' => false, 'count' => 0, 'average' => null],
             ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null],
-        ]]);
+        ], 'reply_rule_id' => $this->replyRuleId()]);
+    }
+
+    /** The live rule that posts review replies: the send window lives on it (design 154 #7). */
+    private function replyRuleId(): ?string
+    {
+        return \App\Models\Automation::query()->where('is_active', true)->whereNull('disabled_at')
+            ->whereNotNull('active_version_id')->with('activeVersion')->orderBy('name')->get()
+            ->first(fn ($rule) => str_contains((string) json_encode($rule->activeVersion?->actions ?? []), '"publish_reply"'))?->id;
     }
 
     /** The organization's WhatsApp chat link, for every listing's Info tab (design 154 #16). */
