@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class WorkizRecords
 {
-    public const TYPES = ['invoice', 'payment', 'estimate', 'time_off', 'event', 'timesheet', 'custom_field', 'item'];
+    public const TYPES = ['invoice', 'payment', 'estimate', 'time_off', 'event', 'timesheet', 'custom_field', 'item', 'job_type', 'ad_group', 'tag', 'sub_status'];
 
     /** v2 caps a page at 300. */
     public const PAGE = 300;
@@ -26,7 +26,7 @@ final class WorkizRecords
      * anybody (a time off's reason can be medical). Not copied: no reader
      * needs it, and a field not held is one nothing has to erase.
      */
-    public const UNCOPIED = ['notes', 'description', 'details', 'reason', 'techName', 'imageUrl', 'confirmationCode'];
+    public const UNCOPIED = ['notes', 'description', 'details', 'reason', 'techName', 'imageUrl', 'confirmationCode', 'company_notes'];
 
     public static function path(string $type): string
     {
@@ -39,6 +39,11 @@ final class WorkizRecords
             'timesheet' => '/timeSheet',
             'custom_field' => '/customfields',
             'item' => '/items',
+            // Each account's own lists, whole (Jobs' Book panel, 2026-10-27).
+            'job_type' => '/jobTypes',
+            'ad_group' => '/adGroups',
+            'tag' => '/tags',
+            'sub_status' => '/jobSubStatus',
         };
     }
 
@@ -62,7 +67,7 @@ final class WorkizRecords
             'time_off' => ['baseDate' => now()->subMonth()->toDateString(), 'timeline' => 'next'],
             'timesheet' => ['field' => 'startDate', 'order' => 'DESC'],
             'event' => ['field' => 'start', 'order' => 'ASC'],
-            'custom_field' => [],
+            'custom_field', 'job_type', 'ad_group', 'tag', 'sub_status' => [],
         };
     }
 

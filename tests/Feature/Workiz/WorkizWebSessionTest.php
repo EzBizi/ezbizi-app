@@ -249,4 +249,26 @@ class WorkizWebSessionTest extends TestCase
         });
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'goToMaster'));
     }
+
+    /** Jobs' Book panel, 2026-10-27: each account's service areas (with ZIPs) and external companies. */
+    public function test_service_areas_and_external_companies_land_per_branch(): void
+    {
+        $this->connected();
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/metroAreas/index/' => Http::response(['flag' => true, 'data' => [['id' => '198005', 'metro_name' => 'Austin', 'status' => '1']]]),
+            'app.workiz.com/ajaxc/metroAreas/getBoundaryAndZip/198005/' => Http::response(['flag' => true, 'polygonPaths' => [], 'zipCode' => '78701, 78702']),
+            'app.workiz.com/ajaxc/companies/' => Http::response(['flag' => true, 'data' => [['id' => '9', 'company_name' => 'Home Warranty Co', 'status' => '1', 'company_notes' => 'private']]]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-lists')->expectsOutputToContain('2 Workiz list row(s) read.')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () {
+            $area = WorkizRecord::query()->where('type', 'service_area')->sole();
+            $this->assertSame(['SA-198005', 'Austin', ['78701', '78702'], $this->t['franchise']->id], [$area->remote_id, $area->payload['name'], $area->payload['zips'], $area->franchise_id]);
+            $company = WorkizRecord::query()->where('type', 'external_company')->sole();
+            $this->assertSame('Home Warranty Co', $company->payload['company_name']);
+            $this->assertArrayNotHasKey('company_notes', $company->payload);
+        });
+    }
 }
