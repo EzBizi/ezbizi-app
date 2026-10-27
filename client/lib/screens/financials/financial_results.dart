@@ -82,6 +82,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
   String? _error;
   bool _reading = false;
   final _search = TextEditingController();
+  Timer? _debounce;
   String _q = '';
   String _range = 'all';
   String? _status;
@@ -103,7 +104,17 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
   @override
   void dispose() {
     _search.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _searched(String text) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _q = text.trim());
+      _load();
+    });
   }
 
   Future<void> _load() async {
@@ -111,6 +122,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
       ..._rangeQuery(_range, widget.now ?? DateTime.now()),
       'status': ?_status,
       'source': ?_source,
+      if (_q.isNotEmpty) 'q': _q,
     };
     final r = await widget.api.get(
       '/financials/results',
@@ -124,23 +136,6 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
         if (row['source'] is String) _sources.add(row['source'] as String);
       }
     });
-  }
-
-  /// The server has no `q`; the search narrows the loaded rows.
-  List<Map> get _matching {
-    final q = _q.toLowerCase();
-    final rows = _rows ?? const <Map>[];
-    if (q.isEmpty) return rows;
-    return [
-      for (final r in rows)
-        if ([
-          r['place'],
-          r['source'],
-          r['area'],
-          r['date'],
-        ].whereType<Object>().join(' ').toLowerCase().contains(q))
-          r,
-    ];
   }
 
   Future<void> _read() async {
@@ -225,7 +220,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
         TextField(
           key: const Key('financials-results-search'),
           controller: _search,
-          onChanged: (t) => setState(() => _q = t.trim()),
+          onChanged: _searched,
           style: theme.textTheme.bodyMedium,
           decoration: InputDecoration(
             isDense: true,
@@ -527,7 +522,7 @@ class _FinancialResultsTabState extends State<FinancialResultsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _matching;
+    final rows = _rows ?? const <Map>[];
     return LayoutBuilder(
       builder: (context, box) {
         final narrow = box.maxWidth < 900;
