@@ -19,6 +19,7 @@ import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
 import 'task_board_people.dart';
+import 'task_board_sidebar.dart';
 
 typedef _Json = Map<String, dynamic>;
 
@@ -234,6 +235,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   _Json? _board;
   bool _loading = true;
   String? _error;
+
+  /// A phone showing the boards tree in place of the board (UI queue 152, 4).
+  bool _choosing = false;
 
   bool _kanban = false;
   String _query = '';
@@ -861,7 +865,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       builder: (context, constraints) {
         final cards = constraints.maxWidth < TaskBoardScreen.tableAbove;
 
-        return Column(
+        final board = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_boards.isNotEmpty) _picker(context, phone: cards),
@@ -887,205 +891,71 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             ),
           ],
         );
+        if (_boards.isEmpty) return board;
+        if (cards) return _choosing ? _choosingPane(context) : board;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _tree(docked: true),
+            Expanded(child: board),
+          ],
+        );
       },
     );
   }
 
-  /// The boards as one picker, grouped company › franchise (UI queue 84;
-  /// Jose: "Love it go with ur recommendations"). In the organization view
-  /// the tabs it replaces wrapped into four rows of about eighty, many
-  /// reading "Main · 0", because franchise names repeat across companies.
-  /// Under its company a repeated name is never ambiguous.
-  Widget _picker(BuildContext context, {required bool phone}) {
-    final theme = Theme.of(context);
-    final muted = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    // Someone else's personal board says whose it is.
-    String name(_Json b) => b['kind'] != 'user'
-        ? '${b['name']}'
-        : b['section'] == 'everyone' || b['section'] == 'shared'
-        ? "${(b['owner'] as Map?)?['name'] ?? 'Someone'}'s board"
-        : 'My board';
+  /// Which boards tree is kept on this device: per person.
+  String get _treeKey => 'task_board_tree_${widget.session.me?.id ?? ''}';
 
-    Widget row(int i, {bool indent = false, String? from}) {
-      final b = _boards[i];
-      return Padding(
-        padding: EdgeInsets.only(left: indent ? 20 : 0),
+  /// The boards tree (UI queue 152, 1): down the left beside the board, or
+  /// full screen on a phone once the title is tapped (152, 4).
+  Widget _tree({required bool docked}) => BoardTree(
+    boards: _boards,
+    selected: _selected,
+    storeKey: _treeKey,
+    docked: docked,
+    onOpen: (i) {
+      setState(() => _choosing = false);
+      if (i != _selected) _open(i);
+    },
+    onNewBoard: (widget.session.me?.can('tasks.create_boards') ?? false)
+        ? () {
+            setState(() => _choosing = false);
+            _newBoard();
+          }
+        : null,
+  );
+
+  /// The phone's boards tree in place of the board, with its own way back.
+  Widget _choosingPane(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
         child: Row(
           children: [
-            Icon(switch (b['kind']) {
-              'user' => Icons.person_outline,
-              'franchise' => Icons.storefront_outlined,
-              'custom' when b['visibility'] == 'private' => Icons.lock_outline,
-              'custom' => Icons.dashboard_customize_outlined,
-              _ => Icons.business_outlined,
-            }, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                from == null ? name(b) : '${name(b)} · from $from',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+            IconButton(
+              key: const Key('tasks-boards-back'),
+              tooltip: 'Back to the board',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() => _choosing = false),
             ),
-            Text('${b['open_for_me'] ?? 0} open', style: muted),
+            Text('Boards', style: Theme.of(context).textTheme.titleMedium),
           ],
         ),
-      );
-    }
-
-    SearchOption<int> header(String text) => SearchOption(
-      value: null,
-      enabled: false,
-      label: text,
-      child: Text(
-        text.toUpperCase(),
-        style: muted?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 0.6),
       ),
-    );
-    String? ownerOf(_Json b) => (b['owner'] as Map?)?['name'] as String?;
+      Expanded(child: _tree(docked: false)),
+    ],
+  );
 
-    // The place boards, each company with its own board and its franchises'
-    // under it (UI queue 84).
-    List<SearchOption<int>> places(Iterable<int> indexes) {
-      final byCompany = <String, List<int>>{};
-      for (final i in indexes) {
-        byCompany
-            .putIfAbsent('${_boards[i]['company_name'] ?? ''}', () => [])
-            .add(i);
-      }
-      final companies = byCompany.keys.toList()
-        ..sort((a, b) => a.isEmpty ? 1 : (b.isEmpty ? -1 : a.compareTo(b)));
-      return [
-        for (final company in companies) ...[
-          header(company.isEmpty ? 'Other boards' : company),
-          for (final i
-              in byCompany[company]!..sort((a, b) {
-                final ka = _boards[a]['kind'] == 'company' ? 0 : 1;
-                final kb = _boards[b]['kind'] == 'company' ? 0 : 1;
-                return ka != kb
-                    ? ka - kb
-                    : name(_boards[a]).compareTo(name(_boards[b]));
-              }))
-            SearchOption(
-              value: i,
-              label: name(_boards[i]),
-              // Searched as well, so "Main" finds every company's Main.
-              detail: company.isEmpty ? null : company,
-              child: row(i, indent: _boards[i]['kind'] != 'company'),
-            ),
-        ],
-      ];
-    }
-
-    // Why each board is here (Task Board's `section`): yours, shared with
-    // you, your places', or everyone's for See every board (UI queue 95, 1).
-    // A server without sections gets the grouping it always had.
-    final sectioned = _boards.any((b) => b['section'] != null);
-    Iterable<int> inSection(String key) => [
-      for (final (i, b) in _boards.indexed)
-        if (b['section'] == key) i,
-    ];
-    final everyone = <String, List<int>>{};
-    for (final i in inSection('everyone')) {
-      everyone.putIfAbsent(ownerOf(_boards[i]) ?? 'Someone', () => []).add(i);
-    }
-    final people = everyone.keys.toList()..sort();
-
-    final options = <SearchOption<int>>[
-      if (!sectioned) ...[
-        for (final (i, b) in _boards.indexed)
-          if (b['kind'] == 'user')
-            SearchOption(value: i, label: 'My board', child: row(i)),
-        ...places([
-          for (final (i, b) in _boards.indexed)
-            if (b['kind'] != 'user') i,
-        ]),
-      ] else ...[
-        if (inSection('mine').isNotEmpty) header('My boards'),
-        for (final i in inSection('mine'))
-          SearchOption(value: i, label: name(_boards[i]), child: row(i)),
-        if (inSection('shared').isNotEmpty) header('Shared with me'),
-        for (final i in inSection('shared'))
-          SearchOption(
-            value: i,
-            label: name(_boards[i]),
-            detail: ownerOf(_boards[i]),
-            child: row(i, from: ownerOf(_boards[i])),
-          ),
-        ...places(inSection('place')),
-        if (people.isNotEmpty) header("Everyone's boards"),
-        for (final person in people) ...[
-          SearchOption(
-            value: null,
-            enabled: false,
-            label: person,
-            child: Text(
-              '$person · ${everyone[person]!.length} '
-              '${everyone[person]!.length == 1 ? 'board' : 'boards'}',
-              style: theme.textTheme.labelLarge,
-            ),
-          ),
-          for (final i in everyone[person]!)
-            SearchOption(
-              value: i,
-              label: name(_boards[i]),
-              // A person's name finds their boards.
-              detail: person,
-              child: row(i, indent: true),
-            ),
-        ],
-      ],
-      // monday's "+ Add" at the foot of the board list, for those who may
-      // create boards (Task Board's tasks.create_boards).
-      if (widget.session.me?.can('tasks.create_boards') ?? false)
-        SearchOption(
-          value: -1,
-          label: 'New board',
-          child: Row(
-            key: const Key('tasks-new-board'),
-            children: [
-              Icon(Icons.add, size: 18, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                'New board',
-                style: TextStyle(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-    ];
-
+  /// [My Board] [<Company> Board] (Jose, 2026-10-26), lit when theirs is
+  /// open. Every other board is in the tree; on a phone the board's title ▾
+  /// opens it.
+  Widget _picker(BuildContext context, {required bool phone}) {
     final mine = _myBoardIndex;
     final company = _companyBoardIndex;
     final quick = {?mine, ?company};
-    final elsewhere = !quick.contains(_selected);
 
-    final field = SearchPickerField<int>(
-      key: const ValueKey('tasks-boards'),
-      label: elsewhere ? 'Board' : null,
-      hint: 'Other boards',
-      isDense: true,
-      // The picker names the board only when it is neither button's.
-      // -2 matches no option: null would match a section heading.
-      value: elsewhere ? _selected : -2,
-      options: options,
-      searchFrom: 6,
-      onChanged: (i) {
-        if (i == -1) {
-          _newBoard();
-        } else if (i != null && i != _selected) {
-          _open(i);
-        }
-      },
-    );
-
-    // [My Board] [<Company> Board] [Board picker] (Jose, 2026-10-26): the
-    // two buttons read as one segmented control, lit when theirs is open.
     Widget label(String text) => phone
         ? ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 130),
@@ -1118,16 +988,37 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             },
           );
 
+    final b = _boards[_selected];
+    final title = phone
+        ? ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 358),
+            child: TextButton.icon(
+              key: const ValueKey('tasks-boards'),
+              iconAlignment: IconAlignment.end,
+              icon: const Icon(Icons.arrow_drop_down),
+              onPressed: () => setState(() => _choosing = true),
+              label: Text(
+                b['kind'] == 'user' &&
+                        b['section'] != 'shared' &&
+                        b['section'] != 'everyone'
+                    ? 'My board'
+                    : '${b['kind'] == 'user' ? "${(b['owner'] as Map?)?['name'] ?? 'Someone'}'s board" : b['name']}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          )
+        : null;
+    if (buttons == null && title == null) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       child: Wrap(
         spacing: 10,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          ?buttons,
-          SizedBox(width: phone ? 358 : 300, child: field),
-        ],
+        children: [?title, ?buttons],
       ),
     );
   }
@@ -2207,10 +2098,14 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
               children: [
                 _statusDot(context, status),
                 const SizedBox(width: 6),
-                Text(
-                  '${status.name} · ${tasks.length}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                Flexible(
+                  child: Text(
+                    '${status.name} · ${tasks.length}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
