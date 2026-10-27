@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <functional>
 #include <utility>
 
@@ -20,12 +21,36 @@
 // message, and [FlutterWindow::MessageHandler] runs it when the platform thread
 // next pumps — which is exactly where `result->Success` is allowed to be called.
 //
-// On shutdown the window is gone, so PostMessage fails and the task is dropped
-// rather than leaked (the result is abandoned, which is correct when the app is
-// closing). The small race where a task is queued just as the engine tears down
-// is accepted: it needs a read in flight at the instant of close, and the worst
-// case is a dropped reply, not a frozen UI.
+// SHUTDOWN (2026-10-27). A completion carries the channel's MethodResult, and
+// destroying an unanswered result SENDS an empty reply through the engine's
+// messenger. Once the engine is gone that is a call into freed engine state —
+// an access violation inside flutter_windows.dll. So:
+//  * FlutterWindow::OnDestroy sets [PlatformShuttingDown] first, waits
+//    (bounded) for [InFlightWorkers] to reach zero while the engine is still
+//    alive to take their replies, and only then destroys the engine;
+//  * a handler asked to start work after that answers an error at once;
+//  * a completion that can no longer be posted (the window is gone) is
+//    deliberately LEAKED, never deleted: its destructor would be that reply.
+//    The process is exiting; the bytes go with it.
 inline constexpr UINT kWmRunOnPlatform = WM_APP + 0x11;
+
+inline std::atomic<bool>& PlatformShuttingDown() {
+  static std::atomic<bool> flag{false};
+  return flag;
+}
+
+inline std::atomic<int>& InFlightWorkers() {
+  static std::atomic<int> count{0};
+  return count;
+}
+
+// Held by a worker thread for its whole life, so OnDestroy can wait for it.
+struct InFlightWorker {
+  InFlightWorker() { ++InFlightWorkers(); }
+  ~InFlightWorker() { --InFlightWorkers(); }
+  InFlightWorker(const InFlightWorker&) = delete;
+  InFlightWorker& operator=(const InFlightWorker&) = delete;
+};
 
 inline void PostTaskToPlatform(HWND hwnd, std::function<void()> task) {
   if (hwnd == nullptr) {
@@ -35,8 +60,9 @@ inline void PostTaskToPlatform(HWND hwnd, std::function<void()> task) {
   auto* heap = new std::function<void()>(std::move(task));
   if (!PostMessage(hwnd, kWmRunOnPlatform, 0,
                    reinterpret_cast<LPARAM>(heap))) {
-    // The window is going away; don't leak the completion.
-    delete heap;
+    // The window is gone: leak the completion on purpose (see above) —
+    // deleting it would reply through an engine that no longer exists.
+    (void)heap;
   }
 }
 

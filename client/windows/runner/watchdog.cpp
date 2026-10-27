@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <shlobj.h>
 
+#include <atomic>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -16,6 +17,9 @@ constexpr char kWatchdogChannel[] = "com.ezbizi.app/watchdog";
 // Built once at install, so the crash filter does no allocation or lookup of
 // its own while the process is already failing.
 wchar_t g_marker_path[MAX_PATH] = {0};
+
+// Set by MarkShutdownStarted; read by the crash filter, lock-free.
+std::atomic<bool> g_shutdown_started{false};
 
 bool MarkerPath(wchar_t* out) {
   PWSTR base = nullptr;
@@ -50,7 +54,8 @@ LONG WINAPI WriteCrashMarker(EXCEPTION_POINTERS* info) {
     SYSTEMTIME now;
     GetSystemTime(&now);
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-                "exception 0x%08lX at %p in %s (offset 0x%llX), %04u-%02u-%02u %02u:%02u:%02u UTC",
+                "%sexception 0x%08lX at %p in %s (offset 0x%llX), %04u-%02u-%02u %02u:%02u:%02u UTC",
+                g_shutdown_started.load() ? "during shutdown: " : "",
                 rec->ExceptionCode, rec->ExceptionAddress, name,
                 owner ? static_cast<unsigned long long>(
                             reinterpret_cast<const char*>(rec->ExceptionAddress) -
@@ -70,6 +75,10 @@ LONG WINAPI WriteCrashMarker(EXCEPTION_POINTERS* info) {
 }
 
 }  // namespace
+
+void MarkShutdownStarted() {
+  g_shutdown_started.store(true);
+}
 
 void InstallCrashMarker() {
   if (MarkerPath(g_marker_path)) {

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:webview_windows/webview_windows.dart' as wvw;
 
+import '../../core/exit_hooks.dart';
 import 'voice_device.dart';
 
 /// The softphone on Windows: the browser SDK, hosted in WebView2.
@@ -40,6 +41,7 @@ class WindowsVoiceDevice implements VoiceDevice {
   static const _hostPage = 'softphone_host.html';
 
   wvw.WebviewController? _controller;
+  Future<void> Function()? _exitHook;
   StreamSubscription<dynamic>? _messages;
 
   bool _preparing = false;
@@ -124,6 +126,8 @@ class WindowsVoiceDevice implements VoiceDevice {
 
     try {
       final controller = wvw.WebviewController();
+      // Released before the engine at exit — see ExitHooks.
+      _exitHook = ExitHooks.add(controller.dispose);
       await controller.initialize();
       await controller.setPopupWindowPolicy(wvw.WebviewPopupWindowPolicy.deny);
 
@@ -289,6 +293,8 @@ class WindowsVoiceDevice implements VoiceDevice {
 
     final controller = _controller;
     _controller = null;
+    ExitHooks.remove(_exitHook);
+    _exitHook = null;
     if (controller != null) {
       try {
         controller.dispose();

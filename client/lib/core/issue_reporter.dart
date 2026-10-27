@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import 'api_client.dart';
 import 'client_platform.dart';
+import 'exit_hooks.dart';
 import 'issue_reporter_env_io.dart'
     if (dart.library.js_interop) 'issue_reporter_env_web.dart' as env;
 
@@ -136,6 +137,17 @@ class IssueReporter {
     env.onPageHidden(instance.notePageHidden);
     instance.startWatchdogs();
     instance.reportLastNativeCrash();
+    instance.answerExitRequests();
+  }
+
+  /// The Windows runner, about to destroy the engine, asks Dart to release
+  /// what must go first (see [ExitHooks]); the reply is what it waits for.
+  void answerExitRequests() {
+    _watchdog.setMethodCallHandler((call) async {
+      if (call.method != 'prepareToExit') return null;
+      await ExitHooks.runAll();
+      return true;
+    });
   }
 
   void attach(ApiClient api) {
@@ -387,7 +399,15 @@ class IssueReporter {
     try {
       final crash = await _watchdog.invokeMethod<String>('takeLastCrash');
       if (crash != null && crash.isNotEmpty) {
-        record('native_crash', 'The app closed unexpectedly last time', detail: crash);
+        // The runner prefixes a crash that happened after the window began to
+        // close (the updater closing the app, a quit from the tray): the app
+        // was going away anyway, so it is not "closed unexpectedly".
+        final closing = crash.startsWith('during shutdown');
+        record(
+          'native_crash',
+          closing ? 'The app crashed while closing last time' : 'The app closed unexpectedly last time',
+          detail: crash,
+        );
       }
     } catch (_) {}
   }

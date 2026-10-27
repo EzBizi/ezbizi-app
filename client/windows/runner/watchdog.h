@@ -17,6 +17,11 @@
 //    10-06 freeze); `takeLastCrash` returns and deletes the marker.
 void InstallCrashMarker();
 
+// Called once the window has begun to close for good. A crash after this is
+// written to the marker as "during shutdown: ...", so the next launch reports
+// it as a crash while closing, not as "closed unexpectedly" (2026-10-27).
+void MarkShutdownStarted();
+
 std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
 RegisterWatchdogChannel(flutter::FlutterEngine* engine);
 
