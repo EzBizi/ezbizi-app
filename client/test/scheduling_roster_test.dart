@@ -145,7 +145,7 @@ void main() {
     expect(find.byKey(const ValueKey('roster-save')), findsNothing);
     expect(
       gets.map((u) => u.path),
-      isNot(contains('/api/v1/scheduling/technicians')),
+      isNot(contains('/api/v1/scheduling/areas')),
     );
   });
 
@@ -167,6 +167,8 @@ void main() {
 
     expect(find.byTooltip('Back'), findsOneWidget);
     expect(find.byKey(const ValueKey('roster-save')), findsOneWidget);
+    // The linked login comes from the roster response's users.
+    expect(find.text('Dana Diaz'), findsOneWidget);
     expect(tester.getSize(find.byType(RosterEditor)).width, 390);
 
     await tester.tap(find.byTooltip('Back'));
@@ -278,17 +280,12 @@ Future<void> _pump(
             for (final r in _rows)
               if (branch == null || r['franchise_id'] == branch) r,
           ],
-        });
-      }
-      gets?.add(request.url);
-      if (path.endsWith('/scheduling/technicians')) {
-        return _json({
-          'data': <dynamic>[],
           'users': [
             {'id': 'u-2', 'name': 'Dana Diaz', 'email': 'dana@example.com'},
           ],
         });
       }
+      gets?.add(request.url);
       if (path.endsWith('/scheduling/areas')) {
         return _json({
           'data': [

@@ -82,9 +82,6 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
         'franchise_id': ?_branch,
         if (_showInactive) 'all': '1',
       }),
-      // The people a technician can be: this endpoint's `users`, the
-      // organization's active logins.
-      if (_canEdit && _users.isEmpty) widget.api.get('/scheduling/technicians'),
       if (_canEdit && _areas.isEmpty) widget.api.get('/scheduling/areas'),
     ]);
 
@@ -98,13 +95,11 @@ class _TechnicianRosterState extends State<TechnicianRoster> {
         return;
       }
       _rows = _list(roster.body['data']);
-      for (final r in results.skip(1)) {
-        if (!r.ok) continue;
-        if (r.body['users'] != null) {
-          _users = _list(r.body['users']);
-        } else {
-          _areas = _list(r.body['data']);
-        }
+      // The people a technician can be: the organization's active logins,
+      // sent with the roster (1fc243bcf).
+      _users = _list(roster.body['users']);
+      if (results.length > 1 && results[1].ok) {
+        _areas = _list(results[1].body['data']);
       }
     });
   }
