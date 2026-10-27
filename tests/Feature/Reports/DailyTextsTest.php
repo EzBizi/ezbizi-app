@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\FinancialResult;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Services\Ads\CampaignPerformance;
@@ -127,5 +128,27 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('• Spent: $200.00 · Calls: 10 · Jobs: 4', $text);
         $this->assertStringContainsString('• Cost/job: $50.00 · Call-to-job: 40.0%', $text);
         $this->assertStringNotContainsString('999', $text);
+    }
+
+    /** Meta, 2026-10-27: approved ACE results entered in EzBizi count; they replace Airtable's same day and area; pending never shows. */
+    public function test_marketing_ppc_reads_approved_results_over_airtable(): void
+    {
+        $this->airtableTable($this->t, null, 'marketing', [
+            ['DATE' => '2026-10-19', 'Service Area' => 'Austin', 'COST' => 999, 'CALLS' => 1, 'JOBS' => 1],
+            ['DATE' => '2026-10-19', 'Service Area' => 'Dallas', 'COST' => 100, 'CALLS' => 5, 'JOBS' => 1],
+        ]);
+        $this->inTenant($this->t['org'], function () {
+            $row = fn (string $area, int $cost, string $status) => FinancialResult::query()->create(['source' => 'ACE', 'date' => '2026-10-19',
+                'area' => $area, 'calls' => 10, 'jobs' => 4, 'cost_cents' => $cost, 'status' => $status]);
+            $row('Austin', 20000, 'approved');
+            $row('Dallas', 77700, 'pending');
+        });
+
+        $text = $this->text('marketing_ppc');
+
+        $this->assertStringContainsString("*Austin*\n• Spent: $200.00 · Calls: 10 · Jobs: 4", $text);
+        $this->assertStringContainsString("*Dallas*\n• Spent: $100.00 · Calls: 5 · Jobs: 1", $text);
+        $this->assertStringNotContainsString('999', $text);
+        $this->assertStringNotContainsString('777', $text);
     }
 }
