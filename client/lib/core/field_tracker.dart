@@ -30,6 +30,7 @@ class FieldTracker {
     current = this;
     unawaited(recorder.recover());
     _session.addListener(_sync);
+    _resumed = AppLifecycleListener(onResume: _sync);
     _poll = Timer.periodic(const Duration(minutes: 2), (_) => _sync());
     _sync();
   }
@@ -182,6 +183,13 @@ class FieldTracker {
       }
       return;
     }
+    // Android 12+ refuses to start a foreground service from the
+    // background (prod, 0.0.0461: "startForeground() not allowed"). Start
+    // only on screen; coming back to the app runs this again.
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
     if (!await _permitted()) return;
 
     final settings = switch (defaultTargetPlatform) {
@@ -219,6 +227,9 @@ class FieldTracker {
     _stream = null;
     _flush?.cancel();
     _flush = null;
+    // Refused because the app was not on screen: not a provider problem.
+    // Leave it; the next resume starts it.
+    if ('$error'.contains('startForeground')) return;
     if (defaultTargetPlatform == TargetPlatform.android && !_platformProvider) {
       _platformProvider = true;
       await _start();
@@ -284,7 +295,10 @@ class FieldTracker {
     }
   }
 
+  late final AppLifecycleListener _resumed;
+
   void dispose() {
+    _resumed.dispose();
     // Signing out never leaves a microphone running.
     if (recorder.active) unawaited(recorder.stop('done'));
     recorder.dispose();
