@@ -28,10 +28,15 @@ final class SchedulingRosterController extends Controller
         $this->authorize('viewAny', ServiceArea::class);
         $franchises = $this->franchises($request, $request->query('franchise_id'));
 
-        return response()->json(['data' => SchedulingTechnician::query()->with(['areas:id,name', 'user:id,name,email'])
+        return response()->json([
+            'data' => SchedulingTechnician::query()->with(['areas:id,name', 'user:id,name,email'])
             ->whereIn('franchise_id', $franchises)
             ->when(! $request->boolean('all'), fn ($q) => $q->where('is_active', true))
-            ->orderBy('name')->get()->map(fn (SchedulingTechnician $t) => $this->shown($t))->values()]);
+            ->orderBy('name')->get()->map(fn (SchedulingTechnician $t) => $this->shown($t))->values(),
+            // Who a technician's login can be: the organization's active people.
+            'users' => User::query()->where('organization_id', $request->user()->organization_id)->where('is_active', true)
+                ->orderBy('name')->get(['id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->all(),
+        ]);
     }
 
     /** POST /scheduling/roster {franchise_id, name, email?, phone?, user_id?, is_field_tech?, area_ids?} */

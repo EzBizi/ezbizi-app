@@ -32,7 +32,7 @@ class SchedulingRosterTest extends TestCase
         $this->assertCount(1, $as->getJson('/api/v1/scheduling/roster?all=1')->json('data'));
 
         $reader = $this->userWithRole($t, 'Reader', ['scheduling.view', 'scheduling.settings.view']);
-        $this->signedInAs($reader)->getJson('/api/v1/scheduling/roster')->assertOk();
+        $this->assertContains($t['admin']->id, array_column($this->signedInAs($reader)->getJson('/api/v1/scheduling/roster')->assertOk()->json('users'), 'id'));
         $this->signedInAs($reader)->patchJson("/api/v1/scheduling/roster/{$id}", ['name' => 'X'])->assertForbidden();
     }
 }
