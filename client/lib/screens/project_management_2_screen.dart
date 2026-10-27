@@ -9,13 +9,16 @@ import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/list_table.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/tag.dart';
+import 'jobs/job_detail_panel.dart';
 
 /// Project Management - 2 (Jose, 2026-10-26): Project Management rebuilt from
 /// scratch beside the first, to compare. For now one list, every job done
-/// pending approval, in his columns. Money only with Financials: the server
-/// leaves the keys out, and so do the columns.
+/// pending approval, in his columns, and a row opens the job with its
+/// timeline. Money only with Financials: the server leaves the keys out, and
+/// so do the columns.
 class ProjectManagement2Screen extends StatefulWidget {
   const ProjectManagement2Screen({
     super.key,
@@ -101,21 +104,13 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   /// two companies can each have an "Ohio".
   bool get _manyCompanies => _rows.map((r) => r['company']).toSet().length > 1;
 
-  String _date(Object? ymd) {
-    final at = ymd is String ? DateTime.tryParse(ymd) : null;
-    return at == null
-        ? '—'
-        : (widget.session.me?.display ?? DisplayFormats.fallback).formatDate(
-            at,
-          );
-  }
+  String _date(Object? ymd) => _day(ymd, widget.session);
 
-  String _amount(Map<String, dynamic> row, String key) {
-    final minor = row[key];
-    return minor is int
-        ? formatMoney(minor, currency: '${row['currency'] ?? 'USD'}')
-        : '—';
-  }
+  void _open(Map<String, dynamic> row) => showSidePanel<void>(
+    context,
+    builder: (_) =>
+        _JobPanel(api: widget.api, session: widget.session, row: row),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -163,6 +158,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
           else
             ListTable(
               rowKey: (i) => ValueKey('pm2-job:${rows[i]['id']}'),
+              onTap: (i) => _open(rows[i]),
               columns: [
                 const ListColumn('Job ID', flex: 2),
                 const ListColumn('Customer', flex: 3),
@@ -172,8 +168,10 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                 const ListColumn('Address', flex: 4),
                 const ListColumn('Created', flex: 2),
                 const ListColumn('Last modified', flex: 2),
-                if (_money) const ListColumn('Money pending', flex: 2),
-                if (_money) const ListColumn('Money owed', flex: 2),
+                if (_money) ...[
+                  for (final (label, _) in _moneyFields)
+                    ListColumn(label, flex: 2),
+                ],
               ],
               rows: [
                 for (final row in rows)
@@ -216,8 +214,9 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                     ),
                     Text(_date(row['created'])),
                     Text(_date(row['modified'])),
-                    if (_money) Text(_amount(row, 'money_pending')),
-                    if (_money) Text(_amount(row, 'money_owed')),
+                    if (_money)
+                      for (final (_, key) in _moneyFields)
+                        Text(_amount(row, key)),
                   ],
               ],
             ),
@@ -233,6 +232,201 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Jose, 2026-10-27: "Pending, Paid, Total". Total is the price (Workiz's
+/// invoice, else its estimate), Paid what came in less refunds, Pending
+/// what is left. None of them where the job has no price.
+const _moneyFields = [
+  ('Pending', 'pending'),
+  ('Paid', 'paid'),
+  ('Total', 'total'),
+];
+
+String _day(Object? ymd, Session session) {
+  final at = ymd is String ? DateTime.tryParse(ymd) : null;
+  return at == null
+      ? '—'
+      : (session.me?.display ?? DisplayFormats.fallback).formatDate(at);
+}
+
+String _amount(Map<String, dynamic> row, String key) {
+  final minor = row[key];
+  return minor is int
+      ? formatMoney(minor, currency: '${row['currency'] ?? 'USD'}')
+      : '—';
+}
+
+/// One job, opened from a row: its fields, then everything that happened to
+/// it, oldest first, from GET /project-management-2/jobs/{id}. The row draws
+/// the fields until that answers; "Open the job" is the full job.
+class _JobPanel extends StatefulWidget {
+  const _JobPanel({
+    required this.api,
+    required this.session,
+    required this.row,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final Map<String, dynamic> row;
+
+  @override
+  State<_JobPanel> createState() => _JobPanelState();
+}
+
+class _JobPanelState extends State<_JobPanel> {
+  Map<String, dynamic>? _job;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _error = null);
+    final response = await widget.api.get(
+      '/project-management-2/jobs/${widget.row['id']}',
+    );
+    if (!mounted) return;
+    setState(() {
+      _error = response.ok ? null : response.message;
+      if (response.ok) {
+        _job = (response.body['data'] as Map).cast<String, dynamic>();
+      }
+    });
+  }
+
+  Future<void> _openJob() async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => JobDetailPanel(
+        api: widget.api,
+        session: widget.session,
+        id: '${widget.row['id']}',
+      ),
+    );
+    if (changed == true && mounted) _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final job = _job ?? widget.row;
+    final formats = widget.session.me?.display ?? DisplayFormats.fallback;
+    final money = widget.session.me?.can('jobs.financials') ?? false;
+    final tags = job['tags'] as List? ?? const [];
+
+    Widget field(String label, Widget value) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 110, child: Text(label, style: muted)),
+          Expanded(child: value),
+        ],
+      ),
+    );
+
+    return SidePanel(
+      title: '${job['customer'] ?? 'Job'}',
+      subtitle: 'Job ${job['job_number'] ?? '—'} · ${job['branch'] ?? '—'}',
+      actions: [
+        OutlinedButton.icon(
+          key: const Key('pm2-open-job'),
+          onPressed: _openJob,
+          icon: const Icon(Icons.open_in_new, size: 18),
+          label: const Text('Open the job'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          field(
+            'Status',
+            Align(
+              alignment: Alignment.centerLeft,
+              child: StatusPill(
+                '${job['status']}',
+                tone: toneForJobStatus('done pending approval'),
+              ),
+            ),
+          ),
+          field(
+            'Tags',
+            tags.isEmpty
+                ? const Text('—')
+                : Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: [for (final t in tags) Tag('$t')],
+                  ),
+          ),
+          field('Address', Text('${job['address'] ?? '—'}')),
+          field('Created', Text(_day(job['created'], widget.session))),
+          field('Last modified', Text(_day(job['modified'], widget.session))),
+          if (money)
+            for (final (label, key) in _moneyFields)
+              field(label, Text(_amount(job, key))),
+          const Divider(height: 24),
+          Text('Timeline', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 12),
+          if (_error != null) ...[
+            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(onPressed: _load, child: const Text('Retry')),
+            ),
+          ] else if (_job == null)
+            const LinearProgressIndicator()
+          else
+            for (final e in (_job!['timeline'] as List? ?? const []))
+              if (e is Map)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, right: 10),
+                        child: Icon(
+                          Icons.circle,
+                          size: 8,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${e['what']}'),
+                            Text(
+                              [
+                                formatStamp(e['at'], '—', formats: formats),
+                                if (e['by'] is String) e['by'],
+                                if (e['amount'] is int)
+                                  formatMoney(
+                                    e['amount'] as int,
+                                    currency: '${job['currency'] ?? 'USD'}',
+                                  ),
+                              ].join(' · '),
+                              style: muted,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
         ],
       ),
     );

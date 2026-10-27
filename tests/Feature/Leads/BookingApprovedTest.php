@@ -3,6 +3,8 @@
 namespace Tests\Feature\Leads;
 
 use App\Models\AutomationEvent;
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
@@ -110,5 +112,46 @@ class BookingApprovedTest extends TestCase
             $this->assertNotSame('', $lead(null)->booking_link, 'no ZIP yet: the page asks for it');
             $this->assertSame('', $lead('90210')->booking_link, 'a ZIP no area covers');
         });
+    }
+
+    /**
+     * Kayla Culbreth, 2026-10-27: asked for the 28th online, booked in Workiz
+     * for the 29th. Approving would have texted her the 28th. A lead with a job
+     * shows the job instead, and Approve refuses.
+     */
+    public function test_a_booking_already_booked_as_a_job_cannot_be_approved(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $siteId = $this->signedInAs($t['admin'])->postJson('/api/v1/web/sites', [
+            'company_id' => $t['company']->getKey(), 'host' => 'a-1chimney.com',
+        ])->assertCreated()->json('data.id');
+
+        $lead = $this->inTenant($t['org'], function () use ($t, $siteId) {
+            $area = ServiceArea::create(['franchise_id' => $t['franchise']->id, 'name' => 'Fairfield']);
+            $customer = Customer::create(['owning_franchise_id' => $t['franchise']->id, 'number' => 'C-1', 'name' => 'Kayla']);
+            $job = Job::create(['franchise_id' => $t['franchise']->id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep',
+                'status' => 'Submitted', 'currency' => 'USD', 'scheduled_for' => '2026-10-29 08:00:00']);
+            $lead = Lead::create([
+                'organization_id' => $t['org']->id, 'franchise_id' => $t['franchise']->id, 'source' => Lead::SOURCE_WEBSITE_BOOKING,
+                'remote_id' => uniqid(), 'contact_name' => 'Kayla', 'phone' => '+17705550100', 'status' => 'new', 'received_at' => now(),
+            ]);
+            $lead->forceFill(['job_id' => $job->id, 'job_matched_by' => 'phone'])->save();
+            WebBooking::create(['site_id' => $siteId, 'lead_id' => $lead->id, 'service_area_id' => $area->id, 'date' => '2026-10-28',
+                'start_time' => '08:00', 'end_time' => '11:00', 'status' => WebBooking::PENDING]);
+
+            return $lead;
+        });
+
+        $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
+            ->assertJsonPath('data.booking.job.source', 'EzBizi')
+            ->assertJsonPath('data.booking.job.when', 'Thursday, Oct 29, 8:00 AM')
+            ->assertJsonPath('data.booking.fit', null);
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/approve")->assertStatus(409);
+        $this->assertSame(0, AutomationEvent::withoutGlobalScopes()->where('event_key', 'lead.booking_approved')->count());
+        $this->assertSame(WebBooking::PENDING, $this->inTenant($t['org'], fn () => WebBooking::query()->where('lead_id', $lead->id)->value('status')));
+
+        $this->signedInAs($t['admin'])->postJson("/api/v1/leads/{$lead->id}/booking/decline")->assertOk()
+            ->assertJsonPath('data.status', WebBooking::DECLINED);
     }
 }

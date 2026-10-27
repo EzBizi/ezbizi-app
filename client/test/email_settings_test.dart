@@ -124,6 +124,8 @@ void main() {
     ]));
 
     await _openSettings(tester);
+    // Design 151: two inboxes, so neither is open until its row is tapped.
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-1')));
 
     // One switch, not two: the second inbox cannot do it and is not offered it.
     expect(find.byType(SwitchListTile), findsOneWidget);
@@ -850,7 +852,10 @@ void main() {
 
     await _openSettings(tester);
 
+    // Design 151: each inbox's card opens beside the table.
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-1')));
     expect(find.text('Company · Everdoors'), findsOneWidget);
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-2')));
     expect(
       find.text('Franchise · Everdoors › Connecticut'),
       findsOneWidget,
@@ -1012,7 +1017,8 @@ void main() {
           'installation is registered with that service at all.',
     );
     expect(
-      find.byType(TextField),
+      // Inside the panel: the inbox search (design 151) sits behind it.
+      find.descendant(of: find.byType(SidePanel), matching: find.byType(TextField)),
       findsNothing,
       reason: 'There is nothing anybody can usefully type here.',
     );
@@ -2382,6 +2388,7 @@ void main() {
       );
 
       await _openSettings(tester);
+      await _openInbox(tester, width);
 
       expect(tester.takeException(), isNull);
       expect(find.text('info@a-1chimney.com'), findsWidgets);
@@ -2413,6 +2420,7 @@ void main() {
       );
 
       await _openSettings(tester);
+      await _openInbox(tester, width);
       await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
       expect(tester.takeException(), isNull);
@@ -2457,6 +2465,7 @@ void main() {
         size: Size(width, 900),
       );
 
+      await _openInbox(tester, width);
       await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
 
       expect(tester.takeException(), isNull);
@@ -2601,7 +2610,302 @@ void main() {
       expect(stateOf(row(const {})).word, 'Waiting to be connected');
     });
   });
+  // ── design 151 options 1 and 4: summary, compact rows, inbox table ──
+
+  testWidgets('the summary counts Workspaces, inboxes and what needs attention', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: _twoWorkspaces,
+        mailboxes: [
+          _row(id: 'mb-1', address: 'info@a-1chimney.com'),
+          _row(id: 'mb-2', address: 'jobs@a-1chimney.com', status: 'broken'),
+          _row(id: 'mb-3', address: 'help@a-1chimney.com'),
+        ],
+      ),
+    );
+    await _openSettings(tester);
+
+    expect(find.text('2 Workspaces · 3 inboxes · '), findsOne);
+    // One Workspace missing a permission, one inbox stopped.
+    expect(find.text('2 need attention ›'), findsOne);
+  });
+
+  testWidgets('a Workspace row starts open only when a permission is missing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(workspaceUsable: true, workspace: _twoWorkspaces),
+    );
+    await _openSettings(tester);
+
+    expect(find.text('All 4 permissions'), findsOne);
+    expect(find.text('1 missing · Update permissions'), findsOne);
+    expect(find.byKey(const ValueKey('workspace-detail-healthy.example')), findsNothing);
+    expect(find.byKey(const ValueKey('workspace-detail-a-1chimney.com')), findsOne);
+    // The four permissions, with their meanings, only in the open row.
+    expect(find.text('Move to Trash'), findsOne);
+    expect(find.text('Delete on EzBizi bins the thread in Gmail.'), findsOne);
+
+    // The healthy one opens on a tap, and shows all four too.
+    await _tap(tester, find.byKey(const ValueKey('workspace-row-healthy.example')));
+    expect(find.byKey(const ValueKey('workspace-detail-healthy.example')), findsOne);
+    expect(find.text('Read mail'), findsNWidgets(2));
+  });
+
+  testWidgets('Update permissions on the row shows the Google Admin steps', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(workspaceUsable: true, workspace: _twoWorkspaces),
+    );
+    await _openSettings(tester);
+
+    // Shut it (by its name, not the chip), then the chip opens it on the steps.
+    await _tap(tester, find.text('a-1chimney.com'));
+    expect(find.text('To-do in Google Admin'), findsNothing);
+    await _tap(tester, find.text('1 missing · Update permissions'));
+    expect(find.text('To-do in Google Admin'), findsOne);
+    expect(find.text('Open Google Admin'), findsWidgets);
+  });
+
+  testWidgets('Disconnect Workspace sits under the row menu', (tester) async {
+    await _pump(
+      tester,
+      _handler(workspaceUsable: true, workspace: _twoWorkspaces),
+    );
+    await _openSettings(tester);
+
+    expect(find.text('Disconnect Workspace'), findsNothing);
+    await _tap(tester, find.byKey(const ValueKey('workspace-menu-a-1chimney.com')));
+    expect(find.text('Disconnect Workspace'), findsOne);
+    await _tap(tester, find.text('Disconnect Workspace'));
+    // The confirmation is the side panel it always was, not a dialog.
+    expect(find.byType(SidePanel), findsOne);
+    expect(find.byType(Dialog), findsNothing);
+  });
+
+  testWidgets('the inbox table lists each inbox with its status, and search '
+      'narrows it', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(
+            id: 'mb-1',
+            address: 'info@a-1chimney.com',
+            lastReachedAt: _agoIso(const Duration(hours: 2)),
+          ),
+          _row(
+            id: 'mb-2',
+            address: 'jobs@a-1chimney.com',
+            status: 'broken',
+            statusReason: 'The password was refused. Enter the new one.',
+          ),
+          _row(
+            id: 'mb-3',
+            address: 'help@a-1chimney.com',
+            status: 'unconfigured',
+            canBeOpened: false,
+            scopeType: 'franchise',
+            scopeId: 'fr-1',
+          ),
+        ],
+      ),
+    );
+    await _openSettings(tester);
+
+    for (final id in ['mb-1', 'mb-2', 'mb-3']) {
+      expect(find.byKey(ValueKey('email-inbox-row-$id')), findsOne);
+    }
+    expect(find.text('Working'), findsOne);
+    expect(find.text('Stopped · The password was refused'), findsOne);
+    expect(find.text('Needs password'), findsOne);
+    expect(find.text('2 h ago'), findsOne);
+    // A branch is named with its company.
+    expect(find.text('Everdoors · Connecticut'), findsOne);
+
+    await tester.enterText(find.byKey(const ValueKey('email-inbox-search')), 'jobs');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-2')), findsOne);
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-1')), findsNothing);
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-3')), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('email-inbox-search')), 'nothing-like-it');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('email-inbox-none')), findsOne);
+  });
+
+  testWidgets('the company filter keeps one company\'s inboxes', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(id: 'mb-1', address: 'info@a-1chimney.com'),
+          _row(
+            id: 'mb-2',
+            address: 'ct@a-1chimney.com',
+            scopeType: 'franchise',
+            scopeId: 'fr-1',
+          ),
+        ],
+      ),
+    );
+    await _openSettings(tester);
+
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-company')));
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-company-company:co-1')));
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-2')), findsOne);
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-1')), findsNothing);
+  });
+
+  testWidgets('a row opens that inbox\'s settings in the side pane', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(id: 'mb-1', address: 'info@a-1chimney.com'),
+          _row(id: 'mb-2', address: 'jobs@a-1chimney.com', mayManage: false),
+        ],
+      ),
+    );
+    await _openSettings(tester);
+
+    expect(find.byKey(const ValueKey('email-inbox-pane')), findsNothing);
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-1')));
+    expect(find.byKey(const ValueKey('email-inbox-pane-mb-1')), findsOne);
+    // The table stays beside it.
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-2')), findsOne);
+    expect(find.widgetWithText(OutlinedButton, 'Reconnect'), findsOne);
+    expect(find.text('Who can open this inbox'), findsOne);
+
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-2')));
+    expect(find.byKey(const ValueKey('email-inbox-pane-mb-2')), findsOne);
+    expect(find.text('Who can open this inbox'), findsNothing);
+
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-pane-close')));
+    expect(find.byKey(const ValueKey('email-inbox-pane')), findsNothing);
+  });
+
+  testWidgets('need attention › opens the first inbox in trouble', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        mailboxes: [
+          _row(id: 'mb-1', address: 'info@a-1chimney.com'),
+          _row(id: 'mb-2', address: 'jobs@a-1chimney.com', status: 'broken'),
+        ],
+      ),
+    );
+    await _openSettings(tester);
+
+    await _tap(tester, find.byKey(const ValueKey('email-settings-attention')));
+    expect(find.byKey(const ValueKey('email-inbox-pane-mb-2')), findsOne);
+    expect(find.text('Not working'), findsOne);
+  });
+
+  testWidgets('phone: at 390 x 844 the rows stack and an inbox opens in place', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        workspaceUsable: true,
+        workspace: _twoWorkspaces,
+        mailboxes: [
+          _row(id: 'mb-1', address: 'info@a-1chimney.com'),
+          _row(
+            id: 'mb-2',
+            address: 'bookings-and-scheduling@a-1chimney.com',
+            status: 'broken',
+            statusReason:
+                'Google withdrew consent for this address on the admin side.',
+          ),
+        ],
+      ),
+      size: const Size(390, 844),
+    );
+    await _openSettings(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('1 missing · Update permissions'), findsOne);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('email-inbox-row-mb-2')),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('email-settings-list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('email-inbox-search')), findsOne);
+
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-2')));
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('email-inbox-pane-mb-2')), findsOne);
+    expect(find.byKey(const ValueKey('email-inbox-row-mb-1')), findsNothing);
+
+    await _tap(tester, find.byKey(const ValueKey('email-inbox-pane-back')));
+    expect(find.byKey(const ValueKey('email-inbox-pane')), findsNothing);
+    expect(find.byKey(const ValueKey('email-settings-summary')), findsOne);
+  });
 }
+
+Map<String, Object?> _workspaceLink(String domain, {required bool missing}) => {
+  'domain': domain,
+  'admin_email': 'it@$domain',
+  'status': 'connected',
+  'status_reason': null,
+  'scope_type': 'company',
+  'scope_id': 'co-1',
+  'scope_label': 'Everdoors',
+  'is_current_view': true,
+  'scopes': const <String>[],
+  'health': {
+    'status': missing ? 'needs_attention' : 'ok',
+    'summary': missing
+        ? 'Mail can be read and sent. Trash cannot run yet.'
+        : 'Everything EzBizi needs is allowed.',
+    'scopes': [
+      {'id': 'gmail.readonly', 'label': 'Read mail', 'detail': 'List and open messages.', 'ok': true},
+      {'id': 'gmail.send', 'label': 'Send mail', 'detail': 'Replies go out as the inbox.', 'ok': true},
+      {
+        'id': 'gmail.modify',
+        'label': 'Move to Trash',
+        'detail': 'Delete on EzBizi bins the thread in Gmail.',
+        'ok': !missing,
+      },
+      {'id': 'directory', 'label': 'List addresses', 'detail': 'The directory of users.', 'ok': true},
+    ],
+  },
+  'setup_steps': const [
+    {
+      'title': 'Open Google Admin',
+      'detail': 'Sign in as a Super Admin.',
+      'url': 'https://admin.google.com/ac/owl/domainwidedelegation',
+      'copy': null,
+    },
+  ],
+};
+
+final Map<String, Object?> _twoWorkspaces = {
+  'can_connect': false,
+  'view': {'type': 'organization', 'id': 'org-1', 'label': 'A-1 Chimney'},
+  'connections': [
+    _workspaceLink('healthy.example', missing: false),
+    _workspaceLink('a-1chimney.com', missing: true),
+  ],
+};
 
 // ── driving the screen ─────────────────────────────────────────────
 
@@ -2652,6 +2956,13 @@ Future<void> _pump(
 
 Future<void> _openSettings(WidgetTester tester) =>
     _tap(tester, find.widgetWithText(ChoiceChip, 'Settings'));
+
+/// Design 151: a lone inbox opens by itself only where its pane fits beside
+/// the table (1000 and wider); narrower, its row is tapped.
+Future<void> _openInbox(WidgetTester tester, double width) async {
+  if (width >= 1000) return;
+  await _tap(tester, find.byKey(const ValueKey('email-inbox-row-mb-1')));
+}
 
 /// The Settings tab on its own, with a fake window in place of the browser's.
 ///

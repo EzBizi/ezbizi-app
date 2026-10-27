@@ -499,9 +499,120 @@ void main() {
     expect(runs.first, (text: 'Pat', bold: true, italic: false));
     expect(runs.last.bold, isFalse);
   });
-}
+  // ── design 151 option 7: compact rows ────────────────────────────
 
-// ── the server ──────────────────────────────────────────────────
+  testWidgets('each row carries its one next step for its state', (
+    tester,
+  ) async {
+    final opened = <Uri>[];
+    final server = _Server(cards: [_ready, _notReady, _noTemplate]);
+    await _pump(tester, server, opened: opened);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('workspace-card-ws-1')),
+        matching: find.text('Set signatures ›'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('workspace-card-ws-2')),
+        matching: find.text('Update permissions'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('workspace-card-ws-3')),
+        matching: find.text('Write a template'),
+      ),
+      findsOne,
+    );
+    // One step per row, never two.
+    expect(find.text('Set signatures ›'), findsOne);
+    expect(find.text('Write a template'), findsOne);
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('workspace-update-permissions-ws-2')),
+    );
+    expect(opened, [Uri.parse(_authorize)]);
+    expect(server.asked('GET', '/workspaces/ws-2/people'), isEmpty);
+
+    await _tap(tester, find.byKey(const ValueKey('workspace-next-ws-3')));
+    expect(server.asked('GET', '/workspaces/ws-3/people'), hasLength(1));
+  });
+
+  testWidgets('the signature bar paints the counts the server sent', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _Server(
+        cards: [
+          {..._ready, 'signatures_set': 3, 'signatures_total': 4},
+          _notReady,
+        ],
+      ),
+    );
+
+    expect(find.text('3 of 4 set'), findsOne);
+    final bar = find.descendant(
+      of: find.byKey(const ValueKey('workspace-progress-ws-1')),
+      matching: find.byType(LinearProgressIndicator),
+    );
+    expect(tester.widget<LinearProgressIndicator>(bar).value, 0.75);
+    final size = tester.getSize(bar);
+    expect(size.width, greaterThan(100), reason: 'The bar has no width.');
+    expect(size.height, 6);
+    // Painted, not merely built: the indicator's render box is on screen.
+    expect(tester.renderObject<RenderBox>(bar).hasSize, isTrue);
+    expect(
+      find.byKey(const ValueKey('workspace-progress-ws-2')),
+      findsNothing,
+      reason: 'No counts sent and never opened: the bar is left off, not 0.',
+    );
+  });
+
+  testWidgets('without counts, the bar comes from the people read on open', (
+    tester,
+  ) async {
+    await _pump(tester, _Server(cards: [_ready, _notReady]));
+    expect(find.byKey(const ValueKey('workspace-progress-ws-1')), findsNothing);
+
+    await _tap(tester, find.byKey(const ValueKey('workspace-card-ws-1')));
+    await _tap(tester, find.byKey(const ValueKey('workspace-back')));
+
+    final active = _people.where((p) => p['suspended'] != true);
+    final set = active.where((p) => p['signature_applied_at'] != null).length;
+    expect(find.text('$set of ${active.length} set'), findsOne);
+  });
+
+  testWidgets('phone: the Workspace rows stack at 390 x 844 without overflow', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _Server(
+        cards: [
+          {..._ready, 'signatures_set': 1, 'signatures_total': 4},
+          _notReady,
+          _noTemplate,
+        ],
+      ),
+      size: const Size(390, 844),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Update permissions'), findsOne);
+    expect(find.text('Write a template'), findsOne);
+    expect(find.text('1 of 4 set'), findsOne);
+    expect(
+      find.text('Brightside Home Services · company · 4 people'),
+      findsOne,
+    );
+  });
+}
 
 const _template = '<b>{{name}}</b><br>{{title}} · {{company}}';
 const _authorize =
