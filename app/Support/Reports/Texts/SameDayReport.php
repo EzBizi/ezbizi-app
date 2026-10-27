@@ -4,6 +4,7 @@ namespace App\Support\Reports\Texts;
 
 use App\Models\Franchise;
 use App\Models\Organization;
+use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -67,7 +68,7 @@ final class SameDayReport
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
             ->where('is_active', true)
-            ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
+            ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
 
@@ -150,14 +151,14 @@ final class SameDayReport
     private static function figures(Franchise $branch, string $date): array
     {
         $day = [$date.' 00:00:00', $date.' 23:59:59'];
-        $jobs = DB::table('workiz_jobs')->where('franchise_id', $branch->getKey());
-        $fresh = fn ($table, $minutes) => ($last = DB::table($table)->where('franchise_id', $branch->getKey())->max('synced_at')) !== null
+        $jobs = ReportJobs::jobs((string) $branch->getKey());
+        $fresh = fn ($what, $minutes) => ($last = ReportJobs::syncedAt((string) $branch->getKey(), $what)) !== null
             && CarbonImmutable::parse($last)->greaterThan(now()->subMinutes($minutes));
 
         $out = ['jobs' => null, 'sources' => [], 'areas' => [], 'techs' => null, 'deposits' => null, 'reviews' => self::reviews($branch, $date)];
 
-        if ($fresh('workiz_jobs', self::JOBS_STALE_MINUTES)) {
-            $booked = (clone $jobs)->whereBetween('booked_at', $day)->get(['job_source', 'service_area']);
+        if ($fresh('jobs', self::JOBS_STALE_MINUTES)) {
+            $booked = (clone $jobs)->whereBetween('booked_at', $day)->get();
             $out['jobs'] = $booked->count();
             $out['sources'] = self::tally($booked->pluck('job_source'), 'No source');
             $out['areas'] = self::tally($booked->pluck('service_area'), 'No service area');
@@ -167,14 +168,13 @@ final class SameDayReport
             // "completed at" in the API.
             $techs = [];
             $closed = (clone $jobs)->whereBetween('last_status_update', $day)
-                ->whereIn('status', ['Done', 'Canceled'])->get(['status', 'payload']);
+                ->whereIn('status', ['Done', 'Canceled'])->get();
 
             foreach ($closed as $job) {
-                $payload = json_decode($job->payload, true) ?: [];
-                $team = $payload['Team'] ?? [] ?: [['id' => 'none', 'Name' => 'Unassigned']];
+                $team = ReportJobs::team($job);
                 $done = $job->status === 'Done';
                 // A job worked by two shares its price, so the total stays the job's.
-                $share = $done ? (float) ($payload['JobTotalPrice'] ?? 0) / count($team) : 0.0;
+                $share = $done ? (float) $job->total / count($team) : 0.0;
 
                 foreach ($team as $tech) {
                     $id = (string) ($tech['id'] ?? $tech['Name'] ?? 'none');
@@ -187,18 +187,14 @@ final class SameDayReport
             $out['techs'] = $techs;
         }
 
-        if ($fresh('workiz_records', self::PAYMENTS_STALE_MINUTES)) {
-            $names = DB::table('workiz_team_members')->where('franchise_id', $branch->getKey())->pluck('name', 'remote_id');
+        if ($fresh('payments', self::PAYMENTS_STALE_MINUTES)) {
+            $names = ReportJobs::people((string) $branch->getKey());
 
             $out['deposits'] = [];
-            $paid = DB::table('workiz_records')->where('franchise_id', $branch->getKey())
-                ->where('type', 'payment')->whereBetween('starts_at', $day)
-                ->groupBy('user_remote_id')->selectRaw('user_remote_id, sum(amount) amount')->get();
-
-            foreach ($paid as $r) {
-                $out['deposits'][(string) $r->user_remote_id] = [
-                    'name' => PeriodReport::collector($names[$r->user_remote_id] ?? null, (string) $r->user_remote_id),
-                    'amount' => (float) $r->amount,
+            foreach (ReportJobs::paidBy((string) $branch->getKey(), ...$day) as $ref => $amount) {
+                $out['deposits'][(string) $ref] = [
+                    'name' => PeriodReport::collector($names[$ref] ?? null, (string) $ref),
+                    'amount' => $amount,
                 ];
             }
         }
