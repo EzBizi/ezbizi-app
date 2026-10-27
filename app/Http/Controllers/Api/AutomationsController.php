@@ -1888,6 +1888,21 @@ class AutomationsController extends Controller
             ]);
         }
 
+        // A report text goes only to people who may see that report there (desk review, 2026-10-27).
+        foreach ((array) ($input['actions'] ?? []) as $i => $action) {
+            if (($action['type'] ?? null) !== 'report.text') {
+                continue;
+            }
+            $ids = is_string($action['user_ids'] ?? null) ? explode(',', $action['user_ids']) : (array) ($action['user_ids'] ?? []);
+            $refused = User::query()->whereIn('id', $ids)->get()
+                ->reject(fn (User $u) => ActionRunner::mayReceiveReportText($u, $scopeType, $scopeId));
+            if ($refused->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    "actions.{$i}.user_ids" => $refused->pluck('name')->join(', ').' cannot see reports for this place.',
+                ]);
+            }
+        }
+
         /*
          * The subject comes from the TRIGGER, and on an update the trigger is
          * not in the request — `trigger_key` validates as 'missing' there,
