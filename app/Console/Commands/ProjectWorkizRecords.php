@@ -583,7 +583,7 @@ class ProjectWorkizRecords extends Command
                 $job->save();
 
                 $mirrored->job_id = $job->getKey();
-                $mirrored->projected = $this->followedValues($job);
+                $mirrored->projected = $this->followedValues($job) + ['team' => $this->team($job, $mirrored)];
                 $mirrored->save();
             });
 
@@ -661,7 +661,9 @@ class ProjectWorkizRecords extends Command
                     // were never recorded: areaInputs() below, in SQL. Measured
                     // to agree with PHP's strict test, null against '' included.
                     ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))")
-                    ->orWhereRaw('NOT (workiz_team_members.user_id <=> jobs.performed_by_user_id)');
+                    ->orWhereRaw('NOT (workiz_team_members.user_id <=> jobs.performed_by_user_id)')
+                    // Workiz's team moved since it was handed to Scheduling: team() below.
+                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.team') <=> JSON_EXTRACT(workiz_jobs.payload, '$.Team[*].id'))");
             })
             ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
@@ -767,7 +769,8 @@ class ProjectWorkizRecords extends Command
                         // our old write, so their value goes on not matching and
                         // stays theirs. The area inputs are always the latest
                         // seen: they are what the next change is measured from.
-                        $row->projected = array_merge($last, array_intersect_key($changes, $last), ['area_inputs' => $inputs]);
+                        $row->projected = array_merge($last, array_intersect_key($changes, $last), ['area_inputs' => $inputs],
+                            ['team' => $this->team($job, $row)]);
                         $row->save();
                     });
 
@@ -952,6 +955,26 @@ class ProjectWorkizRecords extends Command
      *
      * @return array{status: ?string, scheduled_for: ?string, amount_minor: ?int}
      */
+    /**
+     * Workiz's technicians on the job, handed to Scheduling's native roster
+     * (JobTechnicians::fromWorkiz keeps only its source=workiz rows and leaves
+     * a job alone once EzBizi assigned anyone; Scheduling, 2026-10-27).
+     * Answers the ids handed over, as the payload holds them, or null for none,
+     * so the follow pass can tell when the team moved.
+     */
+    private function team(Job $job, WorkizJob $row): ?array
+    {
+        $team = array_values(array_filter((array) ($row->payload['Team'] ?? []), fn ($t) => is_array($t) && isset($t['id'])));
+        $ids = $team === [] ? null : array_column($team, 'id');
+
+        // ponytail: guarded until Scheduling's roster (ce7313008) is on main beside this.
+        if ($ids !== ($row->projected['team'] ?? null) && class_exists(\App\Support\Scheduling\JobTechnicians::class)) {
+            \App\Support\Scheduling\JobTechnicians::fromWorkiz($job, $team);
+        }
+
+        return $ids;
+    }
+
     public static function followedValues(Job $job): array
     {
         return [

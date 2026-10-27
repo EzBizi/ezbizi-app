@@ -95,6 +95,22 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertSame(['ana ruiz', $tenant['admin']->id], [$job->created_by_label, $job->created_by_user_id]);
     }
 
+    /** Scheduling, 2026-10-27: Workiz's team is handed over on create and again only when it moves. */
+    public function test_the_workiz_team_is_followed_only_when_it_moves(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $row = $this->mirror($tenant, [], ['Team' => [['id' => 'U1', 'Name' => 'Ron']]]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['U1'], $this->inTenant($tenant['org'], fn () => $row->fresh()->projected['team']));
+
+        $this->artisan('ezbizi:project-workiz')->doesntExpectOutputToContain('followed a change')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => ['Team' => [['id' => 'U2', 'Name' => 'Sam']]] + $row->fresh()->payload])->save());
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['U2'], $this->inTenant($tenant['org'], fn () => $row->fresh()->projected['team']));
+    }
+
     /**
      * THE HOUSE RULE, and this command is the one most able to break it.
      * `docs/DEVELOPMENT-RULES.md`: a recurring sweep never overwrites a field a
