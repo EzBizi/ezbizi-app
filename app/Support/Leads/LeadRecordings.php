@@ -10,33 +10,18 @@ use App\Support\Reports\Experimental\RingCentralCallLog;
 use App\Support\Social\GoogleToken;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
 /**
- * A lead's call recordings, played through EzBizi. Google Local Services'
- * are kept on EzBizi's own disk (Jose, 2026-10-27: EzBizi is the master,
- * every integration removable), fetched once with the account's credentials
- * and stored private at lead-recordings/<organization>/<row>.<ext>, so a call
- * still plays after its account is disconnected or Google's link has gone.
- * RingCentral's and Twilio's are fetched each play and never stored: the
- * privacy page says RingCentral audio is fetched then deleted, and Phone
- * keeps EZ calls with its own call row (Desk, 2026-10-27).
- *
- * The file is the row's personal data (LeadConversation::personalDataFiles):
- * erasure deletes it, and ezbizi:leads-keep-recordings deletes any file whose
- * row is gone.
+ * A lead's call recordings, played through EzBizi: fetched from where the call
+ * was made on every play and never stored (Jose, 2026-10-27: "I don't want you
+ * saving any call recordings").
  */
 final class LeadRecordings
 {
-    public const DIR = 'lead-recordings';
-
-    private const TYPES = ['mp3' => 'audio/mpeg', 'wav' => 'audio/wav', 'ogg' => 'audio/ogg', 'm4a' => 'audio/mp4'];
-
     /**
-     * The recording, ready for every player: stored when it is, else fetched
-     * and stored now.
+     * The recording, ready for every player.
      *
      * @return array{body: string, type: string}
      *
@@ -44,47 +29,10 @@ final class LeadRecordings
      */
     public function play(LeadConversation $row): array
     {
-        // Only Google's recordings are kept. RingCentral's stay fetch-then-delete,
-        // as the privacy page says; Phone keeps EZ calls with its own call row.
-        $kept = $this->stored($row) ?? (self::keeps($row) ? $this->keep($row) : $this->fetch($row));
-        [$body, $type] = PlayableAudio::forEveryPlayer($kept['body'], $kept['type']);
+        $audio = $this->fetch($row);
+        [$body, $type] = PlayableAudio::forEveryPlayer($audio['body'], $audio['type']);
 
         return ['body' => $body, 'type' => $type];
-    }
-
-    /** A Google Local Services recording: a URL, not a `ringcentral:` or `twilio:` key. */
-    public static function keeps(LeadConversation $row): bool
-    {
-        return str_starts_with((string) $row->recording_url, 'http');
-    }
-
-    /** @return array{body: string, type: string}|null */
-    public function stored(LeadConversation $row): ?array
-    {
-        $path = $row->recording_path;
-
-        if ($path === null || ! Storage::disk('local')->exists($path)) {
-            return null;
-        }
-
-        return ['body' => (string) Storage::disk('local')->get($path), 'type' => self::TYPES[pathinfo($path, PATHINFO_EXTENSION)] ?? 'audio/mpeg'];
-    }
-
-    /**
-     * @return array{body: string, type: string}
-     *
-     * @throws RuntimeException
-     */
-    public function keep(LeadConversation $row): array
-    {
-        $audio = $this->fetch($row);
-        $ext = array_search(strtolower(trim(explode(';', $audio['type'])[0])), self::TYPES, true) ?: 'mp3';
-        $path = self::DIR.'/'.$row->organization_id.'/'.$row->getKey().'.'.$ext;
-
-        Storage::disk('local')->put($path, $audio['body']);
-        $row->forceFill(['recording_path' => $path])->saveQuietly();
-
-        return $audio;
     }
 
     /**

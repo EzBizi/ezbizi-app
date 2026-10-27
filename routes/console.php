@@ -423,8 +423,6 @@ Schedule::command('ezbizi:ads-daily-review')->dailyAt('06:30')->timezone('Americ
 // Which job each lead became, by the customer's phone - Workiz jobs arrive
 // every minute; a quarter-hour is soon enough for a revenue figure.
 Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutOverlapping(30);
-// Call recordings onto EzBizi's disk, and orphaned ones off it (Jose, 2026-10-27).
-Schedule::command('ezbizi:leads-keep-recordings')->everyTenMinutes()->withoutOverlapping(30);
 
 // Call transcription is NOT scheduled here: a run takes minutes and schedule:run
 // runs a minute's commands in sequence, so it would hold the lead sync behind

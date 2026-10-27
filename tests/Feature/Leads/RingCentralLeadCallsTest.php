@@ -151,7 +151,6 @@ class RingCentralLeadCallsTest extends TestCase
         $this->signedInAs($t['admin'])->get("/api/v1/leads/{$lead->id}/conversations/{$conversation->id}/recording")
             ->assertOk()->assertHeader('Content-Type', 'audio/mpeg');
         // Fetch-then-delete, as the privacy page says: RingCentral audio is never kept (Desk, 2026-10-27).
-        $this->artisan('ezbizi:leads-keep-recordings', ['--all' => true])->assertSuccessful();
         $this->assertNull($conversation->fresh()->recording_path);
         $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles());
 
