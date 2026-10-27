@@ -395,6 +395,9 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
   bool _busy = false;
   String? _refused;
 
+  /// Replace each listing's list, or only add what it is missing.
+  String _mode = 'replace';
+
   /// The preview, once asked for; Apply is offered only then.
   List<Map<String, dynamic>>? _diff;
   Map<String, CopyResult> _results = {};
@@ -408,6 +411,7 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
     final r = await widget.api.post('${widget.path}/services/copy', {
       'targets': _ticked.toList(),
       'apply': false,
+      'mode': _mode,
     });
     if (!mounted) return;
     setState(() {
@@ -430,6 +434,7 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
     final answer = await sendCopy(widget.api, '${widget.path}/services/copy', {
       'targets': _ticked.toList(),
       'apply': true,
+      'mode': _mode,
     });
     if (!mounted) return;
     setState(() {
@@ -442,6 +447,7 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
   Widget _diffRow(ThemeData theme, Map<String, dynamic> d) {
     final adds = [...(d['adds'] as List? ?? const [])];
     final removes = [...(d['removes'] as List? ?? const [])];
+    final has = [...(d['has'] as List? ?? const [])];
     final result = _results['${d['id']}'];
     final label = widget.others
         .where((t) => t.id == d['id'])
@@ -463,6 +469,11 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
               ),
               if (result != null) copyResultPill(result),
             ],
+          ),
+          Text(
+            has.isEmpty ? 'Has no services yet.' : 'Has: ${has.join(', ')}',
+            key: ValueKey('cx-diff-has-${d['id']}'),
+            style: theme.textTheme.bodySmall,
           ),
           if (adds.isEmpty && removes.isEmpty)
             Text('Already the same.', style: theme.textTheme.bodySmall),
@@ -504,7 +515,7 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
             key: const ValueKey('cx-services-apply'),
             onPressed: _busy || _results.isNotEmpty ? null : _apply,
             child: Text(
-              'Replace on ${diff.length} '
+              '${_mode == 'replace' ? 'Replace' : 'Add'} on ${diff.length} '
               '${diff.length == 1 ? 'listing' : 'listings'}',
             ),
           ),
@@ -513,6 +524,26 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_refused != null) refusedNote(context, _refused!),
+          SegmentedButton<String>(
+            key: const ValueKey('cx-services-mode'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 'replace', label: Text('Replace')),
+              ButtonSegment(
+                value: 'add_missing',
+                label: Text('Add missing only'),
+              ),
+            ],
+            selected: {_mode},
+            onSelectionChanged: _busy || _results.isNotEmpty
+                ? null
+                : (v) {
+                    setState(() => _mode = v.first);
+                    // A preview shown is a preview of the mode chosen.
+                    if (_diff != null) _preview();
+                  },
+          ),
+          const SizedBox(height: 12),
           if (diff == null)
             ListingTargets(
               targets: widget.others,
@@ -527,8 +558,11 @@ class _CopyServicesPanelState extends State<CopyServicesPanel> {
             )
           else ...[
             Text(
-              'Each listing\'s services become this listing\'s. Nothing is '
-              'written until you replace.',
+              _mode == 'replace'
+                  ? 'Each listing\'s services become this listing\'s. Nothing '
+                        'is written until you replace.'
+                  : 'Each listing keeps its services and gains the ones it is '
+                        'missing. Nothing is written until you add.',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: 12),

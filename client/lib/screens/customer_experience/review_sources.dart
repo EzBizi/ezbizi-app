@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/status_pill.dart';
+import '../business_profile/phone_check_view.dart' show checkedAgo;
 
 /// Where reviews were written (design 154 #13): Google, eKomi, Thumbtack,
 /// each with its connection, count and average, from GET /reviews/sources.
@@ -93,6 +94,7 @@ class _ReviewSourcesState extends State<ReviewSources> {
   Widget _row(ThemeData theme, Map<String, dynamic> r) {
     final connected = r['connected'] == true;
     final average = (r['average'] as num?)?.toDouble();
+    final synced = DateTime.tryParse('${r['last_sync'] ?? ''}');
     return Container(
       key: ValueKey('cx-source-${r['source']}'),
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -126,6 +128,15 @@ class _ReviewSourcesState extends State<ReviewSources> {
             flex: 2,
             child: Text(
               average == null ? '—' : '${average.toStringAsFixed(1)} ★',
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              synced == null ? '—' : 'Synced ${checkedAgo(synced)}',
+              key: ValueKey('cx-source-sync-${r['source']}'),
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,
             ),
