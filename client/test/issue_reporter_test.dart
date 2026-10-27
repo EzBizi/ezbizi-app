@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/issue_reporter.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart' show AppLifecycleState;
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -161,5 +161,114 @@ void main() {
     final crashes = reporter.queued.where((q) => q['kind'] == 'native_crash').toList();
     expect(crashes, hasLength(1));
     expect(crashes.single['detail'], contains('flutter_windows.dll'));
+  });
+
+  // ── 2026-10-27: web freeze false alarms, missing context, Aborted() ──
+
+  test('a tick that finds the tab hidden or unfocused is not a freeze', () {
+    final t0 = DateTime(2026, 10, 27, 9);
+    reporter.checkTick(t0, resumed: true);
+    // Chrome throttles the hidden tab; the lifecycle still says resumed.
+    expect(
+      reporter.checkTick(t0.add(const Duration(seconds: 30)), resumed: true, visible: false),
+      isNull,
+    );
+    // The first tick back in front measures from the hidden one, not t0.
+    expect(
+      reporter.checkTick(t0.add(const Duration(milliseconds: 30500)), resumed: true),
+      isNull,
+    );
+  });
+
+  test('hidden at any point during the interval is not a freeze', () {
+    final t0 = DateTime(2026, 10, 27, 9);
+    reporter.checkTick(t0, resumed: true);
+    reporter.notePageHidden(); // visibilitychange between two ticks
+    expect(reporter.checkTick(t0.add(const Duration(seconds: 20)), resumed: true), isNull);
+  });
+
+  test('a once-a-minute throttle pattern is not a freeze', () {
+    var t = DateTime(2026, 10, 27, 23);
+    reporter.checkTick(t, resumed: true);
+    final stalls = <Duration?>[];
+    for (var i = 0; i < 30; i++) {
+      t = t.add(const Duration(seconds: 59, milliseconds: 800));
+      stalls.add(reporter.checkTick(t, resumed: true));
+    }
+    expect(stalls.whereType<Duration>(), isEmpty);
+
+    // Shorter late ticks on a one-minute cadence are the same throttle.
+    var u = DateTime(2026, 10, 28, 2);
+    reporter.checkTick(u, resumed: true);
+    final cadence = <Duration?>[];
+    for (var i = 0; i < 10; i++) {
+      for (var k = 0; k < 114; k++) {
+        u = u.add(const Duration(milliseconds: 500)); // on time for 57 s
+        reporter.checkTick(u, resumed: true);
+      }
+      u = u.add(const Duration(milliseconds: 3500)); // then 3 s late
+      cadence.add(reporter.checkTick(u, resumed: true));
+    }
+    expect(cadence.skip(1).whereType<Duration>(), isEmpty,
+        reason: 'A stall a minute after the last one is the throttle, not a freeze.');
+  });
+
+  test('a real 3 s freeze while visible is reported', () {
+    final t0 = DateTime(2026, 10, 27, 10);
+    reporter.checkTick(t0, resumed: true);
+    expect(
+      reporter.checkTick(t0.add(const Duration(milliseconds: 3500)), resumed: true),
+      const Duration(seconds: 3),
+    );
+  });
+
+  test('every report carries the context, after the frames the server fingerprints', () {
+    IssueReporter.module = 'scheduling';
+    IssueReporter.route = '/scheduling';
+    IssueReporter.breadcrumb('tap');
+    reporter.record('dart_error', 'Bad state: No element', detail: 'frame 1');
+
+    final detail = reporter.queued.single['detail']! as String;
+    final lines = detail.split('\n');
+    expect(lines.take(4).join('\n'), isNot(contains('context:')),
+        reason: 'Breadcrumbs vary; inside the first four lines they would stop repeats folding.');
+    final context = jsonDecode(lines.last.substring('context: '.length)) as Map<String, dynamic>;
+    expect(context['route'], '/scheduling');
+    expect(context['uptime_s'], isA<int>());
+    expect(context.keys, containsAll(['platform', 'os', 'renderer', 'breadcrumbs']));
+    expect(context['renderer'], 'native');
+    expect(context['breadcrumbs'], containsAll(['screen scheduling', 'tap scheduling']));
+  });
+
+  test('breadcrumbs keep the last ten', () {
+    for (var i = 0; i < 15; i++) {
+      IssueReporter.module = 'm$i';
+    }
+    expect(IssueReporter.breadcrumbs, hasLength(10));
+    expect(IssueReporter.breadcrumbs.last, 'screen m14');
+  });
+
+  test('a CanvasKit Aborted() is reported once and asks for a reload', () {
+    IssueReporter.pageBroken.value = false;
+    for (var i = 0; i < 5; i++) {
+      reporter.record('dart_error', 'RuntimeError: Aborted(). Build with -sASSERTIONS for more info.');
+    }
+    expect(reporter.queued.where((q) => '${q['message']}'.contains('Aborted()')), hasLength(1));
+    expect(IssueReporter.pageBroken.value, isTrue);
+  });
+
+  testWidgets('the reload banner shows once the page is broken', (tester) async {
+    IssueReporter.pageBroken.value = false;
+    await tester.pumpWidget(const Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageProblemBanner(child: SizedBox()),
+    ));
+    expect(find.textContaining('needs to reload'), findsNothing);
+
+    IssueReporter.pageBroken.value = true;
+    await tester.pump();
+    expect(find.text('The page hit a problem and needs to reload'), findsOneWidget);
+    expect(find.text('Reload'), findsOneWidget);
+    IssueReporter.pageBroken.value = false;
   });
 }

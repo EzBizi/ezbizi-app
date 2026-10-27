@@ -212,11 +212,13 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * the shell is unaffected and appears either way; see IncomingCallPopup
        * for why both exist.
        */
-      builder: (context, child) => Stack(
-        children: [
-          ?child,
-          IncomingCallPopup(api: _api, session: _session),
-        ],
+      builder: (context, child) => PageProblemBanner(
+        child: Stack(
+          children: [
+            ?child,
+            IncomingCallPopup(api: _api, session: _session),
+          ],
+        ),
       ),
       home: _home(),
     );
@@ -1193,6 +1195,10 @@ class _HomeShellState extends State<HomeShell> {
         ? destinations[railIndex].id
         : 'account';
     _syncShown(Address.pathOf(shownId));
+    // The first screen after launch is never `enter`ed, so reports from it
+    // said `module: unknown` (2026-10-27). Name whatever is actually shown.
+    IssueReporter.module = shownId;
+    IssueReporter.route = Address.pathOf(shownId);
 
     final shell = Scaffold(
       key: _scaffoldKey,
