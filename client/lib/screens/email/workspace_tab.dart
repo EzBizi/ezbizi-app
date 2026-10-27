@@ -103,6 +103,7 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
         session: widget.session,
         openUrl: widget.openUrl,
         card: card,
+        onPeople: (people) => _remember(open, people),
         onBack: _cards.length > 1
             ? () {
                 setState(() => _open = null);
@@ -134,15 +135,14 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Wrap(
+            Column(
               key: const ValueKey('tour-email-workspace-cards'),
-              spacing: 12,
-              runSpacing: 12,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (final card in _cards)
-                  SizedBox(
-                    width: phone ? constraints.maxWidth - 32 : 300,
-                    child: _card(context, card),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _row(context, card, phone: phone),
                   ),
               ],
             ),
@@ -152,46 +152,196 @@ class _WorkspaceTabState extends State<WorkspaceTab> {
     );
   }
 
-  Widget _card(BuildContext context, Map<String, dynamic> card) {
+  /// Signature counts per Workspace, from the people read when it was opened.
+  /// The list endpoint sends only `people_count`; when it sends
+  /// `signatures_set` / `signatures_total` those win.
+  final Map<String, (int, int)> _signatureCounts = {};
+
+  (int, int)? _signaturesOf(Map<String, dynamic> card) {
+    final set = card['signatures_set'];
+    final total = card['signatures_total'];
+    if (set is int && total is int) return (set, total);
+    return _signatureCounts['${card['id']}'];
+  }
+
+  void _remember(String id, List<Map<String, dynamic>> people) {
+    final active = people.where((p) => p['suspended'] != true).toList();
+    final set = active.where((p) => p['signature_applied_at'] != null).length;
+    _signatureCounts[id] = (set, active.length);
+  }
+
+  void _openCard(Map<String, dynamic> card) =>
+      setState(() => _open = '${card['id']}');
+
+  /// The one next step a Workspace row offers.
+  Widget _nextStep(Map<String, dynamic> card) {
+    if (card['signatures_ready'] != true) {
+      return updatePermissions(card, widget.openUrl) ?? const SizedBox.shrink();
+    }
+    if (card['has_template'] != true) {
+      return OutlinedButton(
+        key: ValueKey('workspace-next-${card['id']}'),
+        onPressed: () => _openCard(card),
+        child: const Text('Write a template'),
+      );
+    }
+    return TextButton(
+      key: ValueKey('workspace-next-${card['id']}'),
+      onPressed: () => _openCard(card),
+      child: const Text('Set signatures ›'),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    Map<String, dynamic> card, {
+    required bool phone,
+  }) {
     final theme = Theme.of(context);
     final count = card['people_count'];
-    return Card(
-      key: ValueKey('workspace-card-${card['id']}'),
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => setState(() => _open = '${card['id']}'),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
+    final people = count is int
+        ? '$count ${count == 1 ? 'person' : 'people'}'
+        : 'People not read';
+    final counts = _signaturesOf(card);
+    final progress = counts == null
+        ? null
+        : SignatureProgress(
+            key: ValueKey('workspace-progress-${card['id']}'),
+            set: counts.$1,
+            total: counts.$2,
+          );
+    final name = Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: theme.colorScheme.primaryContainer,
+          ),
+          child: Text(
+            'G',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 '${card['domain'] ?? ''}',
-                style: theme.textTheme.titleMedium,
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 2),
               Text(
-                '${card['scope_label'] ?? ''}',
+                phone
+                    ? '${card['scope_label'] ?? ''} · $people'
+                    : '${card['scope_label'] ?? ''}',
                 style: theme.textTheme.bodySmall,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 10),
-              statusChip(card),
-              if (updatePermissions(card, widget.openUrl) case final button?)
-                Padding(padding: const EdgeInsets.only(top: 6), child: button),
-              const SizedBox(height: 6),
-              Text(
-                count is int
-                    ? '$count ${count == 1 ? 'person' : 'people'}'
-                    : 'People not read',
-                style: theme.textTheme.bodySmall,
               ),
             ],
           ),
         ),
+      ],
+    );
+
+    final Widget body;
+    if (phone) {
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          name,
+          if (progress != null) ...[const SizedBox(height: 10), progress],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [statusChip(card), _nextStep(card)],
+          ),
+        ],
+      );
+    } else {
+      body = Row(
+        children: [
+          Expanded(flex: 4, child: name),
+          SizedBox(
+            width: 96,
+            child: Text(people, style: theme.textTheme.bodySmall),
+          ),
+          SizedBox(width: 170, child: progress ?? const SizedBox.shrink()),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: statusChip(card),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _nextStep(card),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Card(
+      key: ValueKey('workspace-card-${card['id']}'),
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _openCard(card),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: body,
+        ),
       ),
+    );
+  }
+}
+
+/// "5 of 7 set" over a bar.
+class SignatureProgress extends StatelessWidget {
+  const SignatureProgress({super.key, required this.set, required this.total});
+
+  final int set;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final done = total > 0 && set >= total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$set of $total set', style: theme.textTheme.bodySmall),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: total == 0 ? 0 : set / total,
+            minHeight: 6,
+            color: done
+                ? StateColour.of(context).on
+                : theme.colorScheme.primary,
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -244,10 +394,14 @@ class WorkspaceView extends StatefulWidget {
     required this.session,
     required this.card,
     this.onBack,
+    this.onPeople,
     this.openUrl = openExternally,
   });
 
   final OpenUrl openUrl;
+
+  /// Told the people each time they are read, so the list can show progress.
+  final void Function(List<Map<String, dynamic>> people)? onPeople;
 
   final ApiClient api;
   final Session session;
@@ -336,6 +490,7 @@ class _WorkspaceViewState extends State<WorkspaceView> {
           .map((p) => '${p['address']}')
           .firstOrNull;
     });
+    if (response.ok) widget.onPeople?.call(_people);
     _schedulePreview();
   }
 

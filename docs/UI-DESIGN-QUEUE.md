@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 152 · Task Board: left sidebar of boards + number formatting — **sent 2026-10-27 — Jose: "Go ahead" (1 and 4)** (`docs/previews/task-board-sidebar-layouts.html`)
+
+Jose 10-27 via Task Board: "add the left navigation sidebar as well, people would obviously only see what they have access to, like monday has" and "add format to the numbers automatically". 1 = collapsible tree replacing Other boards (recommended), 2 = icon rail, 3 = boards home page; phones 4-6. Number formatting is in 1 (no options needed).
+
 ### 151 · Email › Settings made compact — **sent 2026-10-27 — Jose: "Looks better" (1, 4 and 7)** (`docs/previews/email-settings-layouts.html`)
 
 Jose: "we can make an improvement to the Email - Settings tab in terms of UI." **1** (recommended) summary line (N Workspaces · N inboxes · N need attention); Workspaces as compact rows (domain, company, inbox count, one health chip; expand for the 4 permissions, auto-expanded only when missing; Disconnect under ⋯); Connected inboxes table (address, company, kind, status, last checked, roles; search + company filter; row opens a side pane); Add an inbox top right. **2** nested by Workspace. **3** compact cards. Phone **4** / **5** / **6**. **7** (Jose: "same with the google workspace tab") Workspace tab as the same compact rows: people, signature progress, status chip, the next step on the row.

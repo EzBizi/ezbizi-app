@@ -14,6 +14,7 @@ use App\Models\ServiceArea;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Models\WebBooking;
+use App\Models\WorkizJob;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
@@ -491,7 +492,7 @@ class LeadsController extends Controller
 
         // The day and window a website booking asked for, and where it stands (Jose, 2026-10-08).
         $booking = WebBooking::query()->where('lead_id', $lead->getKey())->first();
-        $data['booking'] = $booking === null ? null : $this->presentBooking($booking);
+        $data['booking'] = $booking === null ? null : $this->presentBooking($booking, $lead);
 
         $conversations = $lead->conversations;
         // A website visitor typing right now, shown under the thread (Jose, 2026-10-01).
@@ -732,6 +733,13 @@ class LeadsController extends Controller
         $booking = WebBooking::query()->where('lead_id', $lead->getKey())->firstOrFail();
         $wasApproved = $booking->status === WebBooking::APPROVED;
 
+        // Booked elsewhere already (Kayla Culbreth, 2026-10-27: asked for the
+        // 28th, booked in Workiz for the 29th): approving would text the
+        // customer the window they did not get.
+        if ($decision === 'approve' && ! $wasApproved && $lead->job_id !== null) {
+            return response()->json(['message' => 'This customer already has a job booked. Nothing was sent.'], 409);
+        }
+
         $booking->forceFill([
             'status' => $decision === 'approve' ? WebBooking::APPROVED : WebBooking::DECLINED,
             'decided_by' => $request->user()->getKey(),
@@ -754,7 +762,7 @@ class LeadsController extends Controller
             ]]);
         }
 
-        return response()->json(['data' => $this->presentBooking($booking)]);
+        return response()->json(['data' => $this->presentBooking($booking, $lead)]);
     }
 
     /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */
@@ -774,16 +782,25 @@ class LeadsController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function presentBooking(WebBooking $booking): array
+    private function presentBooking(WebBooking $booking, Lead $lead): array
     {
+        // The job the lead became (MatchLeadsToJobs, by phone, every 15
+        // minutes): the booking is handled, and its seat already given back.
+        $job = $lead->job_id === null ? null : Job::query()->find($lead->job_id);
+
         return [
+            'job' => $job === null ? null : [
+                'source' => WorkizJob::query()->where('job_id', $job->getKey())->exists() ? 'Workiz' : 'EzBizi',
+                // The branch's wall clock, already: "Thursday, Oct 29, 8:00 AM".
+                'when' => $job->scheduled_for?->format('l, M j, g:i A'),
+            ],
             'date' => $booking->date->toDateString(),
             'start_time' => substr((string) $booking->start_time, 0, 5),
             'end_time' => substr((string) $booking->end_time, 0, 5),
             'status' => $booking->status,
             'decided_at' => $booking->decided_at?->toIso8601String(),
             'decided_by' => $booking->decided_by === null ? null : User::query()->whereKey($booking->decided_by)->value('name'),
-            'fit' => $booking->status === WebBooking::PENDING ? self::bookingFit($booking) : null,
+            'fit' => $booking->status === WebBooking::PENDING && $job === null ? self::bookingFit($booking) : null,
         ];
     }
 

@@ -28,9 +28,10 @@ class ProjectManagement2Test extends TestCase
             $id = $this->job($alpha, 'J-1', 'Done Pending Approval', ['JobTotalPrice' => 0, 'JobAmountDue' => 900.5, 'CreatedDate' => '2026-09-01 10:00:00']);
             // The latest estimate still in play is what waits on approval.
             foreach ([['E1', '300.00', 'Pending', '2026-09-02'], ['E2', '450.00', null, '2026-09-03'], ['E3', '999.00', 'Declined', '2026-09-04']] as [$remote, $amount, $status, $at]) {
-                WorkizRecord::create(['franchise_id' => $alpha['franchise']->id, 'type' => 'estimate', 'remote_id' => $remote, 'job_id' => $id,
-                    'amount' => $amount, 'status' => $status, 'starts_at' => "{$at} 10:00:00", 'payload' => [], 'synced_at' => now()]);
+                $this->record($alpha, $id, 'estimate', $remote, $amount, $status, $at);
             }
+            $this->record($alpha, $id, 'payment', 'P1', '100.00', 'succeeded', '2026-09-05');
+            $this->record($alpha, $id, 'payment', 'P2', '50.00', 'failed', '2026-09-05');
 
             return $id;
         });
@@ -41,7 +42,7 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame([
             'id' => $id, 'customer' => 'Ann Smith', 'branch' => 'Alpha F1', 'company' => 'Alpha Co', 'tags' => ['DEPOSIT'],
             'address' => '1 Main St, Columbus, OH 43004', 'created' => '2026-09-01', 'modified' => '2026-10-20',
-            'money_pending' => 45000, 'money_owed' => 90050, 'currency' => 'USD',
+            'pending' => 35000, 'paid' => 10000, 'total' => 45000, 'currency' => 'USD',
         ], array_diff_key($rows[0], ['status' => 1, 'job_number' => 1]));
         $this->assertEquals('7001', $rows[0]['job_number'], "Workiz's job number");
         $this->assertNotEmpty($rows[0]['status']);
@@ -54,8 +55,9 @@ class ProjectManagement2Test extends TestCase
 
         $row = $this->signedInAs($this->userWithRole($alpha, 'PM2', ['jobs.view', 'project_management_2.view']))
             ->getJson('/api/v1/project-management-2/jobs')->assertOk()->json('data.0');
-        $this->assertArrayNotHasKey('money_pending', $row);
-        $this->assertArrayNotHasKey('money_owed', $row);
+        foreach (['pending', 'paid', 'total'] as $key) {
+            $this->assertArrayNotHasKey($key, $row);
+        }
 
         $this->signedInAs($this->userWithRole($alpha, 'Jobs only', ['jobs.view']))
             ->getJson('/api/v1/project-management-2/jobs')->assertForbidden();
@@ -83,6 +85,50 @@ class ProjectManagement2Test extends TestCase
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1')->assertOk();
         $this->assertCount(1, $page->json('data'));
         $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2], $page->json('meta'));
+    }
+
+    public function test_a_job_opens_with_its_money_and_timeline(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $beta = $this->provisionTenant('Beta');
+        $other = $this->inTenant($beta['org'], fn () => $this->job($beta, 'B-1', 'done pending approval'));
+        [$id, $bare] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 10:00:00']);
+            // Workiz's invoice total wins over the estimate.
+            $this->record($alpha, $id, 'estimate', 'E9', '999.00', 'Pending', '2026-09-02');
+            $this->record($alpha, $id, 'payment', 'P1', '500.00', 'succeeded', '2026-09-05');
+            $this->record($alpha, $id, 'payment', 'P2', '100.00', 'succeeded', '2026-09-06', ['type' => 'refund']);
+            $job = Job::find($id);
+            $emit = function (string $key, array $payload, string $at) use ($job) {
+                app(\App\Support\Automations\EventEmitter::class)->emit($key, $job, $payload)
+                    ->forceFill(['occurred_at' => $at, 'actor_label' => 'Ada'])->save();
+            };
+            $emit('job.status_changed', ['before' => ['status' => 'scheduled'], 'after' => ['status' => 'done pending approval']], '2026-09-03 09:00:00');
+            $emit('job.updated', ['before' => ['tags' => []], 'after' => ['tags' => ['DEPOSIT']]], '2026-09-07 09:00:00');
+            $emit('job.updated', ['before' => ['title' => 'A'], 'after' => ['title' => 'B']], '2026-09-08 09:00:00');
+
+            return [$id, $this->job($alpha, 'J-6', 'done pending approval')];
+        });
+
+        $job = $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$id}")->assertOk()->json('data');
+        $this->assertSame([120000, 40000, 80000], [$job['total'], $job['paid'], $job['pending']]);
+        $this->assertSame(['created', 'estimate', 'status', 'payment', 'payment', 'tags'], array_column($job['timeline'], 'kind'), 'oldest first; a title edit is left out');
+        $this->assertSame(['Job created', 'Estimate Pending'], array_slice(array_column($job['timeline'], 'what'), 0, 2));
+        $this->assertStringStartsWith('Status Scheduled → ', $job['timeline'][2]['what']);
+        $this->assertSame('Ada', $job['timeline'][2]['by']);
+        $this->assertSame([99900, 50000, -10000], array_values(array_filter(array_map(fn ($s) => $s['amount'] ?? null, $job['timeline']))));
+        $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
+
+        $row = collect($this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs')->json('data'))->firstWhere('id', $bare);
+        $this->assertSame([null, null, null], [$row['total'], $row['paid'], $row['pending']], 'no price draws no zero');
+
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$other}")->assertNotFound();
+    }
+
+    private function record(array $tenant, string $job, string $type, string $remote, string $amount, ?string $status, string $day, array $payload = []): void
+    {
+        WorkizRecord::create(['franchise_id' => $tenant['franchise']->id, 'type' => $type, 'remote_id' => $remote, 'job_id' => $job,
+            'amount' => $amount, 'status' => $status, 'starts_at' => "{$day} 10:00:00", 'payload' => $payload, 'synced_at' => now()]);
     }
 
     private function job(array $tenant, string $number, string $status, array $money = []): string

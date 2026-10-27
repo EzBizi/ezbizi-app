@@ -1653,6 +1653,9 @@ class _LeadThreadState extends State<LeadThread> {
       '${hm(b['start_time'])} - ${hm(b['end_time'])}',
     ].join(' · ');
     final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
+    // Booked as a job already (Kayla Culbreth, 2026-10-27): no Approve, which
+    // would text the customer the window they asked for, not the one booked.
+    final job = b['job'] is Map ? b['job'] as Map : null;
     // How it sits beside booked work, for the dispatcher only (Jose,
     // 2026-10-13: "the client does not need to see the recommendation").
     final fit = b['fit'] is Map ? b['fit'] as Map : null;
@@ -1685,7 +1688,13 @@ class _LeadThreadState extends State<LeadThread> {
         children: [
           Icon(Icons.event_available_outlined, size: 18, color: theme.colorScheme.primary),
           Text('Requested: $when', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-          if (status == 'pending') ...[
+          if (job != null)
+            Text(
+              ['Booked in ${job['source']}', if (job['when'] is String) job['when']].join(' · '),
+              key: const ValueKey('booking-job'),
+              style: theme.textTheme.bodySmall,
+            )
+          else if (status == 'pending') ...[
             FilledButton(
               key: const ValueKey('booking-approve'),
               onPressed: () => _decideBooking('approve'),
