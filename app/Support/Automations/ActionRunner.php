@@ -781,6 +781,11 @@ class ActionRunner
         if ($mirror === null) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'This job is not linked to Workiz, so nothing was changed there.'];
         }
+        // Workiz disconnected (2026-10-27: EzBizi master until then): the mirror stays, the key is gone.
+        if (! \App\Models\SocialConnection::query()->where('provider', \App\Support\Social\SocialProvider::Workiz->value)
+            ->where('scope_type', \App\Models\SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $subject->franchise_id)->exists()) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'This branch is no longer connected to Workiz, so nothing was changed there.'];
+        }
         $status = trim((string) ($action['status'] ?? ''));
         $sub = trim((string) ($action['sub_status'] ?? ''));
         $tags = array_values(array_filter(array_map('trim', is_array($action['tags'] ?? null) ? $action['tags'] : explode(',', (string) ($action['tags'] ?? '')))));
