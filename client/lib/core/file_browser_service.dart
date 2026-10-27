@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'api_client.dart';
 import 'file_access_types.dart';
@@ -22,8 +23,8 @@ class FileBrowserService {
     this._api, {
     Duration pollInterval = const Duration(milliseconds: 900),
     int maxPolls = 12,
-  })  : _pollInterval = pollInterval,
-        _maxPolls = maxPolls;
+  }) : _pollInterval = pollInterval,
+       _maxPolls = maxPolls;
 
   final ApiClient _api;
   final Duration _pollInterval;
@@ -34,7 +35,9 @@ class FileBrowserService {
   /// or the server's sentence to show under the code field ("That code did
   /// not verify…", "Too many attempts…").
   Future<String?> unlock(String code) async {
-    final res = await _api.post('/monitoring/files/unlock', {'code': code.trim()});
+    final res = await _api.post('/monitoring/files/unlock', {
+      'code': code.trim(),
+    });
     if (res.ok) _noteUntil(res.data);
     return res.ok ? null : res.reason;
   }
@@ -88,22 +91,54 @@ class FileBrowserService {
   }
 
   /// A file's bytes (base64-decoded), or a [FileAccessException].
-  Future<FileDownload> download(String deviceId, String path) async {
-    final answer = await _run(deviceId, 'download', path);
+  ///
+  /// Asked for in pieces from offset 0: an agent that answers with an
+  /// `offset` sends up to 4 MB at a time plus the whole `size`, and this asks
+  /// again from where the last piece ended until it has them all. An older
+  /// agent ignores the offset and sends the file whole (or `too_large`).
+  Future<FileDownload> download(
+    String deviceId,
+    String path, {
+    void Function(int got, int total)? onProgress,
+  }) async {
+    final bytes = BytesBuilder(copy: false);
+    String? name;
+    while (true) {
+      final answer = await _run(
+        deviceId,
+        'download',
+        path,
+        offset: bytes.length,
+      );
+      name ??= answer['name'] as String?;
+      final piece = base64OrEmpty(answer['content_base64'] as String?);
+      bytes.add(piece);
+      final total = (answer['size'] as num?)?.toInt() ?? bytes.length;
+      onProgress?.call(bytes.length, total);
+      if (answer['offset'] == null || piece.isEmpty || bytes.length >= total) {
+        break;
+      }
+    }
 
     return FileDownload(
-      name: answer['name'] as String? ?? _basename(path),
-      bytes: base64OrEmpty(answer['content_base64'] as String?),
+      name: name ?? _basename(path),
+      bytes: bytes.takeBytes(),
     );
   }
 
   /// POST the request, then poll its slot until the agent answers or the budget
   /// runs out. An `error` answer is thrown as a [FileAccessException] carrying
   /// the slug; exhausting the budget throws `offline`.
-  Future<Map<String, dynamic>> _run(String deviceId, String op, String path) async {
+  Future<Map<String, dynamic>> _run(
+    String deviceId,
+    String op,
+    String path, {
+    int? offset,
+  }) async {
     final posted = await _api.post('/monitoring/devices/$deviceId/files', {
       'op': op,
       'path': path,
+      'offset': ?offset,
     });
 
     if (!posted.ok) {
@@ -128,7 +163,9 @@ class FileBrowserService {
     for (var i = 0; i < _maxPolls; i++) {
       await Future<void>.delayed(_pollInterval);
 
-      final res = await _api.get('/monitoring/devices/$deviceId/files/$requestId');
+      final res = await _api.get(
+        '/monitoring/devices/$deviceId/files/$requestId',
+      );
       if (!res.ok || res.data is! Map) {
         continue;
       }

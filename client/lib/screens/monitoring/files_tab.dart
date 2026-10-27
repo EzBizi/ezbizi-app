@@ -44,12 +44,17 @@ class FilesTab extends StatefulWidget {
   /// The agent's own ceiling on a download, and so on a preview.
   static const int previewLimit = 5 * 1024 * 1024;
 
+  /// Downloads come in 4 MB pieces, so the ceiling is the browser holding the
+  /// whole file in memory before it saves it.
+  /// ponytail: 2 GB in memory; stream to disk (File System Access) past that.
+  static const int downloadLimit = 2 * 1024 * 1024 * 1024;
+
   /// The slug → sentence map the agent's refusals read as. `offline` is handled
   /// separately because it names the device's last-seen time.
   static const Map<String, String> errorNotes = {
     'access_denied': 'Windows refused access to this folder.',
     'not_found': 'This folder or file no longer exists.',
-    'too_large': 'Over 5 MB — it can’t be fetched from here yet.',
+    'too_large': 'Over 2 GB — too big to fetch from here.',
     'unreadable': 'This could not be read (it may be locked or in use).',
   };
 
@@ -67,6 +72,17 @@ class _FilesTabState extends State<FilesTab> {
   bool _loadingDevices = true;
   String? _devicesError;
   List<Map<String, dynamic>> _devices = [];
+
+  /// Which platform the rail shows. Windows by default: only it serves files.
+  String? _platform = 'windows';
+  static const _platforms = {
+    null: 'All',
+    'windows': 'Windows',
+    'web': 'Web',
+    'android': 'Android',
+    'ios': 'iOS',
+    'macos': 'macOS',
+  };
 
   Map<String, dynamic>? _device;
 
@@ -141,7 +157,8 @@ class _FilesTabState extends State<FilesTab> {
       }
 
       setState(() {
-        _devices = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+        _devices = (response.data as List<dynamic>)
+            .cast<Map<String, dynamic>>();
         _loadingDevices = false;
       });
     } catch (_) {
@@ -245,7 +262,15 @@ class _FilesTabState extends State<FilesTab> {
     setState(() => _downloads.insert(0, item));
 
     try {
-      final file = await _browser.download(device['id'] as String, path);
+      final file = await _browser.download(
+        device['id'] as String,
+        path,
+        onProgress: (got, total) {
+          if (mounted && total > 0) {
+            setState(() => item.percent = (100 * got / total).floor());
+          }
+        },
+      );
       if (!mounted) return;
       // Hand the bytes to the browser's own save (web). On the desktop build
       // Files.download is a no-op today — a manager fetching files is on the
@@ -471,16 +496,21 @@ class _FilesTabState extends State<FilesTab> {
       ),
     );
 
-    Widget item(String key, IconData icon, String label, bool on, VoidCallback go) =>
-        ListTile(
-          key: ValueKey('files-quick-$key'),
-          dense: true,
-          selected: on,
-          visualDensity: VisualDensity.compact,
-          leading: Icon(icon, size: 18),
-          title: Text(label, overflow: TextOverflow.ellipsis),
-          onTap: go,
-        );
+    Widget item(
+      String key,
+      IconData icon,
+      String label,
+      bool on,
+      VoidCallback go,
+    ) => ListTile(
+      key: ValueKey('files-quick-$key'),
+      dense: true,
+      selected: on,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(icon, size: 18),
+      title: Text(label, overflow: TextOverflow.ellipsis),
+      onTap: go,
+    );
 
     return ListView(
       key: const ValueKey('tour-files-quick'),
@@ -678,8 +708,10 @@ class _FilesTabState extends State<FilesTab> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(FilesTab.pickDeviceNote,
-              style: Theme.of(context).textTheme.bodyMedium),
+          child: Text(
+            FilesTab.pickDeviceNote,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
       );
     }
@@ -781,8 +813,7 @@ class _FilesTabState extends State<FilesTab> {
               Text(note, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () =>
-                    _open(_trail.isEmpty ? '' : _trail.last.path),
+                onPressed: () => _open(_trail.isEmpty ? '' : _trail.last.path),
                 child: const Text('Try again'),
               ),
             ],
@@ -796,8 +827,10 @@ class _FilesTabState extends State<FilesTab> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(FilesTab.emptyFolderNote,
-              style: Theme.of(context).textTheme.bodyMedium),
+          child: Text(
+            FilesTab.emptyFolderNote,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
       );
     }
@@ -810,14 +843,15 @@ class _FilesTabState extends State<FilesTab> {
       _ => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
     };
     final q = _query.trim().toLowerCase();
-    final sorted = [
-      for (final e in entries)
-        if (q.isEmpty || e.name.toLowerCase().contains(q)) e,
-    ]..sort((a, b) {
-        if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-        final order = by(a, b);
-        return _ascending ? order : -order;
-      });
+    final sorted =
+        [
+          for (final e in entries)
+            if (q.isEmpty || e.name.toLowerCase().contains(q)) e,
+        ]..sort((a, b) {
+          if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+          final order = by(a, b);
+          return _ascending ? order : -order;
+        });
 
     if (sorted.isEmpty) {
       return Padding(
@@ -903,7 +937,9 @@ class _FilesTabState extends State<FilesTab> {
         _sortBy = key;
       }),
       child: Row(
-        mainAxisAlignment: end ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: end
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           Text(
             label.toUpperCase(),
@@ -936,7 +972,9 @@ class _FilesTabState extends State<FilesTab> {
     padding: const EdgeInsets.symmetric(horizontal: 12),
     child: Row(
       children: [
-        Expanded(child: Align(alignment: Alignment.centerLeft, child: name)),
+        Expanded(
+          child: Align(alignment: Alignment.centerLeft, child: name),
+        ),
         const SizedBox(width: 12),
         SizedBox(
           width: 150,
@@ -988,7 +1026,9 @@ class _FilesTabState extends State<FilesTab> {
                   name,
                   Text(_when(entry.modifiedAt) ?? '', style: small),
                   Text(
-                    entry.sizeBytes == null ? '—' : _humanSize(entry.sizeBytes!),
+                    entry.sizeBytes == null
+                        ? '—'
+                        : _humanSize(entry.sizeBytes!),
                     style: small,
                   ),
                 )
@@ -1071,11 +1111,16 @@ class _FilesTabState extends State<FilesTab> {
   /// What a chosen file is: the picture itself when it is one, then its
   /// facts and Download. [framed] is the pane beside the list; otherwise it
   /// stands in for the list, with the way back.
-  Widget _preview(BuildContext context, FileEntry entry, {required bool framed}) {
+  Widget _preview(
+    BuildContext context,
+    FileEntry entry, {
+    required bool framed,
+  }) {
     final theme = Theme.of(context);
     final path = _pathOf(entry);
     final picture = _isPicture(entry);
     final tooBig = (entry.sizeBytes ?? 0) > FilesTab.previewLimit;
+    final tooBigToFetch = (entry.sizeBytes ?? 0) > FilesTab.downloadLimit;
     final bytes = _previews[path];
     final error = _previewErrors[path];
     final muted = theme.textTheme.bodySmall?.copyWith(
@@ -1122,7 +1167,9 @@ class _FilesTabState extends State<FilesTab> {
               key: const Key('files-preview-back'),
               onPressed: () => setState(() => _selected = null),
               icon: const Icon(Icons.arrow_back, size: 18),
-              label: Text(_trail.isEmpty ? 'Back' : 'Back to ${_trail.last.label}'),
+              label: Text(
+                _trail.isEmpty ? 'Back' : 'Back to ${_trail.last.label}',
+              ),
             ),
           ),
         ConstrainedBox(
@@ -1144,9 +1191,7 @@ class _FilesTabState extends State<FilesTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(width: 72, child: Text(label, style: muted)),
-                Expanded(
-                  child: Text(value, style: theme.textTheme.bodySmall),
-                ),
+                Expanded(child: Text(value, style: theme.textTheme.bodySmall)),
               ],
             ),
           ),
@@ -1155,12 +1200,12 @@ class _FilesTabState extends State<FilesTab> {
           alignment: Alignment.centerLeft,
           child: FilledButton.icon(
             key: ValueKey('files-download-${entry.name}'),
-            onPressed: tooBig ? null : () => _download(entry),
+            onPressed: tooBigToFetch ? null : () => _download(entry),
             icon: const Icon(Icons.download_outlined, size: 18),
             label: const Text('Download'),
           ),
         ),
-        if (tooBig)
+        if (tooBigToFetch)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(FilesTab.errorNotes['too_large']!, style: muted),
@@ -1203,8 +1248,13 @@ class _FilesTabState extends State<FilesTab> {
     if (entry.isDir) return Icons.folder_outlined;
 
     return switch (_extension(entry.name)) {
-      'jpg' || 'jpeg' || 'png' || 'gif' || 'webp' || 'bmp' || 'heic' =>
-        Icons.image_outlined,
+      'jpg' ||
+      'jpeg' ||
+      'png' ||
+      'gif' ||
+      'webp' ||
+      'bmp' ||
+      'heic' => Icons.image_outlined,
       'pdf' => Icons.picture_as_pdf_outlined,
       'xls' || 'xlsx' || 'csv' => Icons.table_chart_outlined,
       'mp4' || 'mov' || 'avi' || 'mkv' => Icons.movie_outlined,
@@ -1257,7 +1307,25 @@ class _FilesTabState extends State<FilesTab> {
       child: ListView(
         key: const Key('files-device-rail'),
         children: [
-          for (final device in _devices) _deviceTile(context, device),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final p in _platforms.entries)
+                  ChoiceChip(
+                    key: Key('files-platform-${p.key ?? 'all'}'),
+                    label: Text(p.value),
+                    selected: _platform == p.key,
+                    onSelected: (_) => setState(() => _platform = p.key),
+                  ),
+              ],
+            ),
+          ),
+          for (final device in _devices)
+            if (_platform == null || device['platform'] == _platform)
+              _deviceTile(context, device),
         ],
       ),
     );
@@ -1266,7 +1334,8 @@ class _FilesTabState extends State<FilesTab> {
   Widget _deviceTile(BuildContext context, Map<String, dynamic> device) {
     final user = device['user'] as Map<String, dynamic>? ?? const {};
     final name = user['name'] as String? ?? 'Unknown';
-    final machine = device['label'] as String? ?? device['platform'] as String? ?? '';
+    final machine =
+        device['label'] as String? ?? device['platform'] as String? ?? '';
     final online = isDeviceOnline(device);
     final selected = _device != null && _device!['id'] == device['id'];
 
@@ -1317,8 +1386,14 @@ class _FilesTabState extends State<FilesTab> {
   Widget _downloadRow(BuildContext context, _Download d) {
     final theme = Theme.of(context);
     final (icon, color) = switch (d.status) {
-      _DownloadStatus.downloading => (Icons.hourglass_empty, theme.colorScheme.outline),
-      _DownloadStatus.ready => (Icons.check_circle_outline, EzBiziTheme.clockIn(context)),
+      _DownloadStatus.downloading => (
+        Icons.hourglass_empty,
+        theme.colorScheme.outline,
+      ),
+      _DownloadStatus.ready => (
+        Icons.check_circle_outline,
+        EzBiziTheme.clockIn(context),
+      ),
       _DownloadStatus.error => (Icons.error_outline, theme.colorScheme.error),
     };
 
@@ -1329,8 +1404,13 @@ class _FilesTabState extends State<FilesTab> {
           Icon(icon, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(child: Text(d.name, overflow: TextOverflow.ellipsis)),
+          if (d.status == _DownloadStatus.downloading && d.percent != null)
+            Text('${d.percent}%', style: theme.textTheme.bodySmall),
           if (d.status == _DownloadStatus.error && d.error != null)
-            Text(d.error!, style: theme.textTheme.bodySmall?.copyWith(color: color)),
+            Text(
+              d.error!,
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
         ],
       ),
     );
@@ -1375,4 +1455,5 @@ class _Download {
   final String name;
   _DownloadStatus status = _DownloadStatus.downloading;
   String? error;
+  int? percent;
 }

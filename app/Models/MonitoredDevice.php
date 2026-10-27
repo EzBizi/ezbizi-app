@@ -121,7 +121,9 @@ class MonitoredDevice extends Model implements HoldsPersonalData
      */
     public function scopeVisibleTo(Builder $query, User $actor): Builder
     {
-        return $query->whereHas('user', fn (Builder $u) => app(ScopeReach::class)->constrainToVisiblePeople($u, $actor));
+        return $query->whereHas('user', fn (Builder $u) => $u
+            ->where('is_active', true) // removed/erased people are not listed
+            ->where(fn (Builder $q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $actor)));
     }
 
     /**

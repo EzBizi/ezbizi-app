@@ -169,6 +169,7 @@ class FloorPlansController extends Controller
         $actor = $request->user();
 
         $people = User::query()
+            ->where('is_active', true) // removed/erased people are not listed
             ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
             ->orderBy('name')
             ->limit(self::ASSIGNABLE_PEOPLE_LIMIT)
@@ -830,6 +831,7 @@ class FloorPlansController extends Controller
             // to keep the whereIn as an AND rather than letting an OR escape it.
             $visible = User::query()
                 ->whereIn('id', $userIds->all())
+                ->where('is_active', true)
                 ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
                 ->get(['id', 'name'])
                 ->keyBy('id');

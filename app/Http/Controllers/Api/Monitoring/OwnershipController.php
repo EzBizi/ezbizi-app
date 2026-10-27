@@ -76,6 +76,7 @@ class OwnershipController extends Controller
         $canSeeHours = $actor->hasPermission('work_hours.general.view');
 
         $people = User::query()
+            ->where('is_active', true) // removed/erased people are not listed
             ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
             // Reach says who this person may see; the view says who is in the
             // company they are standing in. See MonitoringView.
@@ -136,7 +137,9 @@ class OwnershipController extends Controller
             }
 
             return $row;
-        })->all();
+        })
+            // Online first, then offline; names stay A-Z inside each (stable sort).
+            ->sortByDesc('online')->values()->all();
 
         return response()->json(['data' => $rows]);
     }

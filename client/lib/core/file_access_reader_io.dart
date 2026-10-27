@@ -135,7 +135,11 @@ class IoFileAccessReader implements FileAccessReader {
   }
 
   @override
-  Future<Map<String, Object?>> read(String path, int maxBytes) async {
+  Future<Map<String, Object?>> read(
+    String path,
+    int maxBytes, {
+    int? offset,
+  }) async {
     final file = File(path);
     if (!file.existsSync()) {
       throw const FileAccessException('not_found');
@@ -146,6 +150,26 @@ class IoFileAccessReader implements FileAccessReader {
       length = await file.length();
     } on FileSystemException catch (ex) {
       throw FileAccessException(_slug(ex));
+    }
+
+    if (offset != null) {
+      try {
+        final raf = await file.open();
+        try {
+          await raf.setPosition(offset.clamp(0, length));
+          final bytes = await raf.read(maxBytes);
+          return {
+            'name': _basename(path),
+            'size': length,
+            'offset': offset,
+            'content_base64': base64Encode(bytes),
+          };
+        } finally {
+          await raf.close();
+        }
+      } on FileSystemException catch (ex) {
+        throw FileAccessException(_slug(ex));
+      }
     }
 
     // Refused on the SIZE, before a byte is read — so a 2 GB file is never
