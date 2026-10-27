@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 151 · Email › Settings made compact — **sent 2026-10-27** (`docs/previews/email-settings-layouts.html`)
+
+Jose: "we can make an improvement to the Email - Settings tab in terms of UI." **1** (recommended) summary line (N Workspaces · N inboxes · N need attention); Workspaces as compact rows (domain, company, inbox count, one health chip; expand for the 4 permissions, auto-expanded only when missing; Disconnect under ⋯); Connected inboxes table (address, company, kind, status, last checked, roles; search + company filter; row opens a side pane); Add an inbox top right. **2** nested by Workspace. **3** compact cards. Phone **4** / **5** / **6**.
+
 ### 150 · Monitoring › Lighting (RGB controller) — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/monitoring-lighting-layouts.html`)
 
 Monitoring relayed Jose ("EzBizi also act as a RGB Controller … in bulk or individually"). **1** (recommended) a Lighting tab (lighting.manage): bulk bar (All PCs in view / ticked N, mode Off/Static/Breathing/Rainbow, swatches + hex, brightness, Apply with result); list (tick, PC + person, live swatch of current mode, lights count, set by, status chip incl. engine missing / no lights / needs admin / close <brand app>); per-PC side pane with the same controls + lights found; search + status filter. **2** a Lighting section inside PC Specs. **3** rooms/zones. Phone **4** / **5** / **6**.
