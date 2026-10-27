@@ -888,6 +888,7 @@ Route::prefix('v1')
         Route::get('customers/{customer}/workiz-notes', CustomerWorkizNotesController::class);
 
         // Before the resource, or 'project-management' reads as a job id.
+        Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
         Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
