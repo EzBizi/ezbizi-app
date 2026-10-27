@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Http\Controllers\Api\SchedulingAreaMapController;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Tenancy\TenantContext;
@@ -95,6 +96,36 @@ class ServiceAreaMapTest extends TestCase
             ->postJson("/api/v1/scheduling/areas/{$a->id}/polygons/preview", ['polygons' => [$triangle]])->json('data.add');
         $this->assertNotContains('20699', $add);
         $this->assertContains('20601', $add);
+    }
+
+    /** Auto draw (Jose, 2026-10-27): the ZIP centres' hull, pushed out so edge ZIPs sit inside. */
+    public function test_an_outline_is_drawn_from_the_zips_and_holds_them_all(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $a = $this->area($t, 'San Antonio');
+        $as = $this->signedInAs($t['admin']);
+        ServiceAreaZip::create(['franchise_id' => $a->franchise_id, 'service_area_id' => $a->id, 'zip' => '20601']);
+        $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline")->assertStatus(422);
+
+        app(TenantContext::class)->set($t['org']);
+        foreach (['20602', '20603', '30301'] as $z) {
+            ServiceAreaZip::create(['franchise_id' => $a->franchise_id, 'service_area_id' => $a->id, 'zip' => $z]);
+        }
+        $poly = $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline")->assertOk()->json('data.polygon');
+        $this->assertGreaterThanOrEqual(3, count($poly));
+        foreach ([[38.5, -76.5], [38.6, -76.4], [38.9, -76.9], [33.7, -84.4]] as [$lat, $lng]) {
+            $this->assertTrue(SchedulingAreaMapController::contains($poly, $lat, $lng), "{$lat},{$lng} is inside");
+        }
+    }
+
+    public function test_an_area_keeps_its_own_colour(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $a = $this->area($t, 'Dallas');
+        $as = $this->signedInAs($t['admin']);
+        $as->patchJson("/api/v1/scheduling/areas/{$a->id}", ['color' => '#1A73E8'])->assertOk()->assertJsonPath('data.color', '#1A73E8')->assertJsonPath('data.name', 'Dallas');
+        $as->patchJson("/api/v1/scheduling/areas/{$a->id}", ['color' => 'blue'])->assertStatus(422);
+        $this->assertSame('#1A73E8', $as->getJson('/api/v1/scheduling/areas-map')->json('data.0.color'));
     }
 
     public function test_deleting_an_area_moves_its_zips_or_says_they_are_unassigned(): void

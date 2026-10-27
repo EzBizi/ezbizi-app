@@ -66,6 +66,7 @@ class SchedulingAreasController extends Controller
             'data' => $areas->map(fn (ServiceArea $a) => [
                 'id' => $a->id,
                 'name' => $a->name,
+                'color' => $a->color,
                 'franchise_id' => $a->franchise_id,
                 'shares_with_id' => $a->shares_with_id,
                 'zip_count' => $a->zips->count(),
@@ -194,7 +195,12 @@ class SchedulingAreasController extends Controller
 
         $this->authorize('update', $row);
 
-        $data = $request->validate(['name' => ['required', 'string', 'max:191']]);
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'max:191'],
+            // Its own map colour (Jose, 2026-10-27); null goes back to the default.
+            'color' => ['sometimes', 'nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+        ]);
+        $data['name'] ??= $row->name;
 
         $taken = ServiceArea::where('franchise_id', $row->franchise_id)
             ->where('name', $data['name'])
@@ -207,7 +213,7 @@ class SchedulingAreasController extends Controller
             ]);
         }
 
-        $row->update(['name' => $data['name']]);
+        $row->update($data);
 
         return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
     }
@@ -720,6 +726,7 @@ class SchedulingAreasController extends Controller
         return [
             'id' => $area->id,
             'name' => $area->name,
+            'color' => $area->color,
             'franchise_id' => $area->franchise_id,
             'available_from' => $area->available_from?->toDateString(),
             'shares_with_id' => $area->shares_with_id,
