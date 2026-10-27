@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
-use App\Http\Controllers\Api\SalesController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -1017,10 +1016,6 @@ Route::prefix('v1')
          * serves exactly one tab, which is the condition inbox 0051 sets for
          * the middleware being the right place.
          */
-        // Sales pipeline: quoted jobs awaiting approval (Jose, 2026-10-14).
-        Route::get('sales/deals', [SalesController::class, 'index'])->middleware('permission:sales.view');
-        Route::put('sales/deals/{job}', [SalesController::class, 'update'])->middleware('permission:sales.manage');
-
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [\App\Http\Controllers\Api\ComplaintsController::class, 'index']);

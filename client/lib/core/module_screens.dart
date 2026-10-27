@@ -19,7 +19,6 @@ import '../screens/leads_screen.dart';
 import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
-import '../screens/sales_screen.dart';
 import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
@@ -128,11 +127,6 @@ final Map<String, ModuleScreen> moduleScreens = {
   // does not appear — which for a placeholder would be indistinguishable from
   // having lost the permission. The screen behind it says what Newsletter will
   // be and what it is waiting for; see marketing_screen.dart.
-  // Sales pipeline: quoted jobs awaiting approval (2026-10-14).
-  'sales': ModuleScreen(
-    Icons.trending_up,
-    (api, session) => SalesScreen(api: api, session: session),
-  ),
   // Reviews and Business Profile, moved out of Marketing 2026-09-25.
   'customer_experience': ModuleScreen(
     Icons.sentiment_satisfied_outlined,
