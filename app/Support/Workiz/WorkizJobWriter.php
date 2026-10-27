@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Models\WorkizRecord;
 use App\Models\WorkizTeamMember;
 use App\Support\Audit\AuditLogger;
 use App\Support\Reports\Experimental\WorkizJobs;
@@ -615,11 +616,17 @@ final class WorkizJobWriter
             ->where('client_id', $body['ClientId'])->whereNotNull('payload->v2->client_id')->latest('synced_at')
             ->first(['payload'])?->payload['v2']['client_id'] ?? null : null;
 
+        // All-day: Workiz takes it only with an end on a later day (measured 2026-10-27).
+        $day = $job->all_day && isset($body['JobDateTime']) ? Carbon::parse($body['JobDateTime'])->startOfDay() : null;
+
         $sent = WorkizV2::send($connection, 'POST', '/jobs', array_filter([
             'jobTypeId' => $typeId,
             'adGroupId' => $this->v2Id($connection, '/adgroups', $jobSource),
-            'date' => $body['JobDateTime'] ?? null,
-            'endDate' => $body['JobEndDateTime'] ?? null,
+            'date' => $day?->toDateString() ?? $body['JobDateTime'] ?? null,
+            'endDate' => $day?->copy()->addDay()->toDateString() ?? $body['JobEndDateTime'] ?? null,
+            'isAllDay' => $day !== null ? true : null,
+            'description' => filled($job->description) ? (string) $job->description : null,
+            'customFields' => $this->customFields($job),
             'clientInfo' => is_string($clientId) ? ['clientId' => $clientId] : array_filter([
                 'firstName' => $body['FirstName'] ?? null,
                 'lastName' => $body['LastName'] ?? null,
@@ -638,6 +645,34 @@ final class WorkizJobWriter
         return $sent['refused'] !== null
             ? ['data' => null, 'refused' => $sent['refused']]
             : ['data' => is_array($sent['data']) ? WorkizV2::job($sent['data']) : null, 'refused' => null];
+    }
+
+    /**
+     * The job's {name: value} custom fields as Workiz's [{id, value}], by the
+     * branch's mirrored custom_field list (names matched without case and
+     * edge spaces: Workiz keeps "Pricing "). A name the branch lacks is left out.
+     *
+     * @return list<array{id: string, value: string}>
+     */
+    private function customFields(Job $job): array
+    {
+        $values = array_filter((array) ($job->custom_fields ?? []), fn ($v) => $v !== null && $v !== '');
+
+        if ($values === []) {
+            return [];
+        }
+
+        $ids = WorkizRecord::query()->where('franchise_id', $job->franchise_id)->where('type', 'custom_field')->get()
+            ->mapWithKeys(fn (WorkizRecord $r) => [mb_strtolower(trim((string) ($r->payload['name'] ?? ''))) => $r->remote_id]);
+        $out = [];
+
+        foreach ($values as $name => $value) {
+            if ($id = $ids[mb_strtolower(trim((string) $name))] ?? null) {
+                $out[] = ['id' => $id, 'value' => is_array($value) ? implode(', ', $value) : (string) $value];
+            }
+        }
+
+        return $out;
     }
 
     /** A job type's or source's id by its name, from the branch's own v2 list; null when it has none by that name. */

@@ -565,6 +565,21 @@ class ProjectWorkizRecords extends Command
                     $job->markEarnedIfDue($moment);
                 }
 
+                // Born when and by whom Workiz says (Jobs, 2026-10-27; the same
+                // rule as BackfillWorkizJobCreated). CreatedDate is the branch's
+                // wall clock; the person is a Workiz team member of this branch
+                // linked to an EzBizi user, matched by name.
+                $by = trim((string) ($mirrored->payload['CreatedBy'] ?? ''));
+                $born = $mirrored->payload['CreatedDate'] ?? null;
+                if (is_string($born) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $born)) {
+                    $job->created_at = Carbon::createFromFormat('Y-m-d H:i:s', $born, $franchise->timezone ?: 'America/New_York')->utc();
+                }
+                if ($by !== '') {
+                    $job->created_by_label = $by;
+                    $job->created_by_user_id = WorkizTeamMember::query()->where('franchise_id', $franchise->getKey())
+                        ->whereNotNull('user_id')->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($by)])->value('user_id');
+                }
+
                 $job->save();
 
                 $mirrored->job_id = $job->getKey();
