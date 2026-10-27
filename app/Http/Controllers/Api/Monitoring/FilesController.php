@@ -234,6 +234,9 @@ class FilesController extends Controller
             // rewrites the empty roots path to null before this runs; it is
             // coerced back to '' below.
             'path' => ['present', 'nullable', 'string', 'max:4096'],
+            // A big download comes in pieces: each request names where its
+            // piece starts, and the agent answers up to 4 MB from there.
+            'offset' => ['sometimes', 'nullable', 'integer', 'min:0'],
         ]);
 
         // The roots: '' reaches the agent, which reads it as "the drives".
@@ -243,7 +246,8 @@ class FilesController extends Controller
 
         $queueKey = $this->requestQueueKey($device->id);
         $queue = Cache::get($queueKey, []);
-        $queue[] = ['id' => $requestId, 'op' => $data['op'], 'path' => $path];
+        $queue[] = ['id' => $requestId, 'op' => $data['op'], 'path' => $path]
+            + (isset($data['offset']) ? ['offset' => (int) $data['offset']] : []);
 
         if (count($queue) > self::MAX_PENDING_PER_DEVICE) {
             $queue = array_slice($queue, -self::MAX_PENDING_PER_DEVICE);
@@ -253,15 +257,24 @@ class FilesController extends Controller
 
         // Audited on the REQUEST, not the answer: the record is "this manager
         // asked to see this path on this device", which is true whether or not
-        // the agent could read it.
-        $this->audit->log(
-            $data['op'] === 'download'
-                ? 'monitoring.files.downloaded'
-                : 'monitoring.files.listed',
-            $device,
-            [],
-            ['path' => $path, 'device' => $device->label],
-        );
+        // the agent could read it. Once per download, not once per piece: a
+        // later piece is audited only when its first piece was never asked
+        // for, so starting mid-file cannot read a file unrecorded.
+        $pieceKey = 'monitoring-files-piece:'.$request->user()->getKey().':'.$device->id.':'.md5($path);
+        $offset = (int) ($data['offset'] ?? 0);
+        if ($offset === 0) {
+            Cache::put($pieceKey, true, 3600);
+        }
+        if ($offset === 0 || ! Cache::has($pieceKey)) {
+            $this->audit->log(
+                $data['op'] === 'download'
+                    ? 'monitoring.files.downloaded'
+                    : 'monitoring.files.listed',
+                $device,
+                [],
+                ['path' => $path, 'device' => $device->label],
+            );
+        }
 
         // The server's own clock for the sliding unlock, so the screen's
         // "Unlocked · N min" never disagrees with what the server will do.
@@ -377,6 +390,7 @@ class FilesController extends Controller
             // op:download
             'name' => ['sometimes', 'string', 'max:1024'],
             'size' => ['sometimes', 'integer', 'min:0'],
+            'offset' => ['sometimes', 'nullable', 'integer', 'min:0'],
             // A zero-byte file is base64 '' → null, same trap as path above.
             'content_base64' => ['sometimes', 'nullable', 'string'],
         ]);
@@ -455,6 +469,7 @@ class FilesController extends Controller
             'op' => 'download',
             'name' => $data['name'] ?? null,
             'size' => $data['size'] ?? null,
+            'offset' => $data['offset'] ?? null,
             'content_base64' => $data['content_base64'] ?? null,
         ];
     }

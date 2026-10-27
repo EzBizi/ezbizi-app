@@ -24,7 +24,8 @@ void main() {
     List<http.Request> posts,
     List<Map<String, dynamic>> bodies,
     List<String> read,
-  }) harness({
+  })
+  harness({
     required List<Map<String, Object?>> requests,
     FileAccessReader? reader,
   }) {
@@ -73,23 +74,41 @@ void main() {
       final reader = _FakeReader(
         listing: {
           'C:\\Users\\toula': [
-            {'name': 'Documents', 'is_dir': true, 'size_bytes': null, 'modified_at': '2026-09-30T10:00:00Z'},
-            {'name': 'invoice.pdf', 'is_dir': false, 'size_bytes': 20480, 'modified_at': '2026-09-29T08:00:00Z'},
+            {
+              'name': 'Documents',
+              'is_dir': true,
+              'size_bytes': null,
+              'modified_at': '2026-09-30T10:00:00Z',
+            },
+            {
+              'name': 'invoice.pdf',
+              'is_dir': false,
+              'size_bytes': 20480,
+              'modified_at': '2026-09-29T08:00:00Z',
+            },
           ],
         },
       );
-      final it = harness(requests: [
-        {'id': 'r1', 'op': 'list', 'path': 'C:\\Users\\toula'},
-      ]);
+      final it = harness(
+        requests: [
+          {'id': 'r1', 'op': 'list', 'path': 'C:\\Users\\toula'},
+        ],
+      );
 
       final service = build(it.api, reader);
       await Future<void>.delayed(const Duration(milliseconds: 80));
       service.dispose();
 
-      expect(reader.listed, contains('C:\\Users\\toula'),
-          reason: 'The service must actually read the requested directory.');
-      expect(it.posts, isNotEmpty,
-          reason: 'The answer must be POSTed back to the request id.');
+      expect(
+        reader.listed,
+        contains('C:\\Users\\toula'),
+        reason: 'The service must actually read the requested directory.',
+      );
+      expect(
+        it.posts,
+        isNotEmpty,
+        reason: 'The answer must be POSTed back to the request id.',
+      );
       expect(it.posts.first.url.path, endsWith('/monitoring/file-requests/r1'));
 
       final body = it.bodies.first;
@@ -101,124 +120,188 @@ void main() {
     },
   );
 
-  test('the roots answer carries quick links; a folder answer does not', () async {
-    final reader = _FakeReader(
-      listing: {
-        '': [
-          {'name': r'C:\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-        ],
-        r'C:\': const [],
-      },
-      links: const [
-        {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
-      ],
-    );
-    final it = harness(requests: [
-      {'id': 'roots', 'op': 'list', 'path': ''},
-      {'id': 'drive', 'op': 'list', 'path': r'C:\'},
-    ]);
-
-    final service = build(it.api, reader);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    service.dispose();
-
-    final roots = it.bodies.firstWhere((b) => b['path'] == '');
-    expect(roots['quick_links'], [
-      {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
-    ]);
-    final drive = it.bodies.firstWhere((b) => b['path'] == r'C:\');
-    expect(drive.containsKey('quick_links'), isFalse,
-        reason: 'Quick links belong to This PC only.');
-  });
-
-  test('a download request posts the file back as base64 under op:download',
-      () async {
-    final reader = _FakeReader(
-      downloads: {
-        'C:\\Users\\toula\\invoice.pdf': {
-          'name': 'invoice.pdf',
-          'size': 13,
-          'content_base64': base64Encode('the file body'.codeUnits),
+  test(
+    'the roots answer carries quick links; a folder answer does not',
+    () async {
+      final reader = _FakeReader(
+        listing: {
+          '': [
+            {
+              'name': r'C:\',
+              'is_dir': true,
+              'size_bytes': null,
+              'modified_at': null,
+            },
+          ],
+          r'C:\': const [],
         },
-      },
-    );
-    final it = harness(requests: [
-      {'id': 'r2', 'op': 'download', 'path': 'C:\\Users\\toula\\invoice.pdf'},
-    ]);
+        links: const [
+          {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
+        ],
+      );
+      final it = harness(
+        requests: [
+          {'id': 'roots', 'op': 'list', 'path': ''},
+          {'id': 'drive', 'op': 'list', 'path': r'C:\'},
+        ],
+      );
 
-    final service = build(it.api, reader);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    service.dispose();
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
 
-    final body = it.bodies.first;
-    expect(body['status'], 'ready');
-    expect(body['op'], 'download');
-    expect(body['name'], 'invoice.pdf');
-    expect(body['content_base64'], base64Encode('the file body'.codeUnits));
-  });
+      final roots = it.bodies.firstWhere((b) => b['path'] == '');
+      expect(roots['quick_links'], [
+        {'label': 'Desktop', 'path': r'C:\Users\toula\Desktop'},
+      ]);
+      final drive = it.bodies.firstWhere((b) => b['path'] == r'C:\');
+      expect(
+        drive.containsKey('quick_links'),
+        isFalse,
+        reason: 'Quick links belong to This PC only.',
+      );
+    },
+  );
 
-  test('a reader refusal becomes the error answer, with the slug intact',
-      () async {
-    final reader = _FakeReader(
-      errors: {'C:\\Windows\\System32\\config': 'access_denied'},
-    );
-    final it = harness(requests: [
-      {'id': 'r3', 'op': 'list', 'path': 'C:\\Windows\\System32\\config'},
-    ]);
+  test(
+    'a download request posts the file back as base64 under op:download',
+    () async {
+      final reader = _FakeReader(
+        downloads: {
+          'C:\\Users\\toula\\invoice.pdf': {
+            'name': 'invoice.pdf',
+            'size': 13,
+            'content_base64': base64Encode('the file body'.codeUnits),
+          },
+        },
+      );
+      final it = harness(
+        requests: [
+          {
+            'id': 'r2',
+            'op': 'download',
+            'path': 'C:\\Users\\toula\\invoice.pdf',
+          },
+        ],
+      );
 
-    final service = build(it.api, reader);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    service.dispose();
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
 
-    final body = it.bodies.first;
-    expect(body['status'], 'error',
-        reason: 'A path the disk refuses is reported, not swallowed.');
-    expect(body['error'], 'access_denied',
-        reason: 'The slug the reader raised must reach the manager unchanged.');
-    expect(body['op'], 'list');
-  });
+      final body = it.bodies.first;
+      expect(body['status'], 'ready');
+      expect(body['op'], 'download');
+      expect(body['name'], 'invoice.pdf');
+      expect(body['content_base64'], base64Encode('the file body'.codeUnits));
+    },
+  );
 
-  test('an unexpected throw is an honest unreadable, not a dropped request',
-      () async {
-    // The reader throws something that is NOT a FileAccessException — the
-    // manager must still get an answer rather than polling a slot forever.
-    final reader = _FakeReader(throwArbitrary: true);
-    final it = harness(requests: [
-      {'id': 'r4', 'op': 'list', 'path': 'C:\\somewhere'},
-    ]);
+  test(
+    'a reader refusal becomes the error answer, with the slug intact',
+    () async {
+      final reader = _FakeReader(
+        errors: {'C:\\Windows\\System32\\config': 'access_denied'},
+      );
+      final it = harness(
+        requests: [
+          {'id': 'r3', 'op': 'list', 'path': 'C:\\Windows\\System32\\config'},
+        ],
+      );
 
-    final service = build(it.api, reader);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    service.dispose();
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
 
-    final body = it.bodies.first;
-    expect(body['status'], 'error');
-    expect(body['error'], 'unreadable');
-  });
+      final body = it.bodies.first;
+      expect(
+        body['status'],
+        'error',
+        reason: 'A path the disk refuses is reported, not swallowed.',
+      );
+      expect(
+        body['error'],
+        'access_denied',
+        reason: 'The slug the reader raised must reach the manager unchanged.',
+      );
+      expect(body['op'], 'list');
+    },
+  );
 
-  test('read-only: the service never asks the reader to write anything',
-      () async {
-    // The reader only has list/read; there is no write method to call. This
-    // pins that the loop handles exactly the two server operations and does
-    // nothing with anything else — a download and a list both route to a read
-    // or a list, never to a mutation.
-    final reader = _FakeReader(
-      listing: {'C:\\': []},
-      downloads: {'C:\\x': {'name': 'x', 'size': 0, 'content_base64': ''}},
-    );
-    final it = harness(requests: [
-      {'id': 'r5', 'op': 'list', 'path': 'C:\\'},
-      {'id': 'r6', 'op': 'download', 'path': 'C:\\x'},
-    ]);
+  test(
+    'an unexpected throw is an honest unreadable, not a dropped request',
+    () async {
+      // The reader throws something that is NOT a FileAccessException — the
+      // manager must still get an answer rather than polling a slot forever.
+      final reader = _FakeReader(throwArbitrary: true);
+      final it = harness(
+        requests: [
+          {'id': 'r4', 'op': 'list', 'path': 'C:\\somewhere'},
+        ],
+      );
 
-    final service = build(it.api, reader);
-    await Future<void>.delayed(const Duration(milliseconds: 80));
-    service.dispose();
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
 
-    expect(reader.listed, contains('C:\\'));
-    expect(reader.readCalls, contains('C:\\x'));
-    expect(it.bodies.every((b) => b['status'] == 'ready'), isTrue);
-  });
+      final body = it.bodies.first;
+      expect(body['status'], 'error');
+      expect(body['error'], 'unreadable');
+    },
+  );
+
+  test(
+    'read-only: the service never asks the reader to write anything',
+    () async {
+      // The reader only has list/read; there is no write method to call. This
+      // pins that the loop handles exactly the two server operations and does
+      // nothing with anything else — a download and a list both route to a read
+      // or a list, never to a mutation.
+      final reader = _FakeReader(
+        listing: {'C:\\': []},
+        downloads: {
+          'C:\\x': {'name': 'x', 'size': 0, 'content_base64': ''},
+        },
+      );
+      final it = harness(
+        requests: [
+          {'id': 'r5', 'op': 'list', 'path': 'C:\\'},
+          {'id': 'r6', 'op': 'download', 'path': 'C:\\x'},
+        ],
+      );
+
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(reader.listed, contains('C:\\'));
+      expect(reader.readCalls, contains('C:\\x'));
+      expect(it.bodies.every((b) => b['status'] == 'ready'), isTrue);
+    },
+  );
+
+  test(
+    'a download request with an offset reads that piece, not the whole file',
+    () async {
+      final reader = _FakeReader(
+        downloads: {
+          'C:\v.mp4': {'name': 'v.mp4', 'size': 9, 'content_base64': ''},
+        },
+      );
+      final it = harness(
+        requests: [
+          {'id': 'r7', 'op': 'download', 'path': 'C:\v.mp4', 'offset': 4194304},
+          {'id': 'r8', 'op': 'download', 'path': 'C:\v.mp4'},
+        ],
+      );
+
+      final service = build(it.api, reader);
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      service.dispose();
+
+      expect(reader.offsets, [4194304, null]);
+    },
+  );
 }
 
 /// A disk stand-in: canned answers keyed by path, or a slug to throw.
@@ -240,6 +323,7 @@ class _FakeReader implements FileAccessReader {
 
   final listed = <String>[];
   final readCalls = <String>[];
+  final offsets = <int?>[];
 
   @override
   Future<List<Map<String, Object?>>> list(String path) async {
@@ -250,8 +334,13 @@ class _FakeReader implements FileAccessReader {
   }
 
   @override
-  Future<Map<String, Object?>> read(String path, int maxBytes) async {
+  Future<Map<String, Object?>> read(
+    String path,
+    int maxBytes, {
+    int? offset,
+  }) async {
     readCalls.add(path);
+    offsets.add(offset);
     if (throwArbitrary) throw StateError('boom');
     if (errors.containsKey(path)) throw FileAccessException(errors[path]!);
     return downloads[path] ?? const {};
