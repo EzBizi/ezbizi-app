@@ -61,4 +61,24 @@ class JobBookingStoreTest extends TestCase
         $post(['service_area_id' => '00000000-0000-0000-0000-000000000000'])->assertNotFound();
         $post([])->assertUnprocessable()->assertJsonValidationErrors('service_area_id');
     }
+
+    public function test_booking_from_a_lead_converts_it(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $f = $alpha['franchise'];
+        [$area, $lead] = $this->inTenant($alpha['org'], fn () => [
+            ServiceArea::create(['organization_id' => $alpha['org']->id, 'franchise_id' => $f->id, 'name' => 'North']),
+            \App\Models\Lead::create(['organization_id' => $alpha['org']->id, 'company_id' => $alpha['company']->id, 'franchise_id' => $f->id,
+                'source' => 'website_form', 'remote_id' => 'book-1', 'status' => 'NEW', 'received_at' => now()]),
+        ]);
+
+        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs/book', ['franchise_id' => $f->id, 'lead_id' => $lead->id,
+            'customer' => ['name' => 'Ann'], 'service_area_id' => $area->id, 'title' => 'Sweep', 'scheduled' => false])->assertCreated()->json('data.job.id');
+
+        $this->inTenant($alpha['org'], function () use ($lead, $id) {
+            $this->assertSame([\App\Models\Lead::STATUS_BOOKED, $id], [$lead->fresh()->status, $lead->fresh()->job_id]);
+            $this->assertSame(1, \App\Models\AutomationEvent::query()->where('event_key', 'lead.converted')->where('subject_id', $lead->id)->count());
+            $this->assertSame(1, \App\Models\AuditEvent::query()->where('action', 'lead.converted')->count());
+        });
+    }
 }
