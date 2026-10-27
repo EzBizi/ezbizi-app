@@ -888,6 +888,8 @@ Route::prefix('v1')
 
         // Before the resource, or 'project-management' reads as a job id.
         Route::get('jobs/book/options', [\App\Http\Controllers\Api\JobBookingController::class, 'options']);
+        Route::post('jobs/book', [\App\Http\Controllers\Api\JobBookingController::class, 'store']);
+        Route::post('jobs/{job}/book/workiz', [\App\Http\Controllers\Api\JobBookingController::class, 'retryWorkiz']);
         Route::get('jobs/project-management', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'index']);
         Route::get('jobs/project-management/stats', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stats']);
         Route::get('jobs/project-management/jobs', [\App\Http\Controllers\Api\JobsProjectManagementController::class, 'stageJobs']);
@@ -1057,6 +1059,7 @@ Route::prefix('v1')
         Route::post('leads/{lead}/leave', [LeadPresenceController::class, 'leave']);
         Route::post('leads/{lead}/typing', [LeadsController::class, 'typing']);
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
+        Route::get('leads/{lead}/workiz-choices', [LeadsController::class, 'workizChoices']);
         Route::post('leads/{lead}/google-credit', [LeadsController::class, 'requestCredit']);
         Route::post('leads/{lead}/booking/{decision}', [LeadsController::class, 'decideBooking'])->whereIn('decision', ['approve', 'decline']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
