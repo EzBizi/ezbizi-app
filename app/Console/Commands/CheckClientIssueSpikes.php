@@ -63,7 +63,10 @@ class CheckClientIssueSpikes extends Command
         $hour = now()->subHour();
         $day = now()->subDay()->subHour();
 
+        // An offline phone flushes every failed background poll on reconnect;
+        // that is the network, not the app (0.0.0461, 2026-10-27).
         $recent = ClientIssue::query()
+            ->where('message', 'not like', '%could not reach the server%')
             ->where('last_seen_at', '>=', $hour)
             ->groupBy('platform', 'app_version')
             ->select(['platform', 'app_version', DB::raw('SUM(`count`) as n')])
@@ -77,6 +80,7 @@ class CheckClientIssueSpikes extends Command
             }
 
             $before = (int) ClientIssue::query()
+                ->where('message', 'not like', '%could not reach the server%')
                 ->where('platform', $row->platform)
                 ->where('app_version', $row->app_version)
                 ->whereBetween('last_seen_at', [$day, $hour])
