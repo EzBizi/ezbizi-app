@@ -993,6 +993,12 @@ RegisterMonitoringSpecsChannel(flutter::FlutterEngine* engine, HWND window) {
           result->NotImplemented();
           return;
         }
+        // No new worker once the window has begun to close: its reply could
+        // outlive the engine (platform_task.h).
+        if (PlatformShuttingDown()) {
+          result->Error("shutting_down", "The app is closing.");
+          return;
+        }
 
         // OFF THE PLATFORM THREAD. ReadSpecs makes a dozen blocking Win32 calls
         // (WLAN, PDH GPU counters, Security Center, the registry sweep, the TCP
@@ -1002,7 +1008,7 @@ RegisterMonitoringSpecsChannel(flutter::FlutterEngine* engine, HWND window) {
         std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> shared =
             std::move(result);
 
-        std::thread([shared, window]() {
+        std::thread([shared, window, worker = std::make_shared<InFlightWorker>()]() {
           // Serialised: a stalled ReadSpecs must not overlap the next poll and
           // corrupt the per-call CPU/GPU deltas it keeps in statics. Waiting
           // here costs a worker thread, never the UI.

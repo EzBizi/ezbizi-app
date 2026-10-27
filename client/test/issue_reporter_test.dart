@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/exit_hooks.dart';
 import 'package:ezbizi_client/core/issue_reporter.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -270,5 +271,39 @@ void main() {
     expect(find.text('The page hit a problem and needs to reload'), findsOneWidget);
     expect(find.text('Reload'), findsOneWidget);
     IssueReporter.pageBroken.value = false;
+  });
+
+  test('a crash after shutdown began is reported as a crash while closing', () async {
+    const channel = MethodChannel('com.ezbizi.app/watchdog');
+    var marker = 'during shutdown: exception 0xC0000005 at 0x7FF6 in flutter_windows.dll (offset 0x14BBD)';
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method != 'takeLastCrash') return null;
+      final m = marker;
+      marker = '';
+      return m;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+
+    await reporter.reportLastNativeCrash();
+
+    final crashes = reporter.queued.where((q) => q['kind'] == 'native_crash').toList();
+    expect(crashes, hasLength(1));
+    expect(crashes.single['message'], 'The app crashed while closing last time');
+  });
+
+  test('exit hooks all run, once, even when one throws or never finishes', () async {
+    var ran = 0;
+    ExitHooks.add(() async => ran++);
+    ExitHooks.add(() async => throw StateError('gone'));
+    ExitHooks.add(() => Completer<void>().future);
+    final removed = ExitHooks.add(() async => ran += 100);
+    ExitHooks.remove(removed);
+
+    await ExitHooks.runAll(each: const Duration(milliseconds: 50));
+    await ExitHooks.runAll(each: const Duration(milliseconds: 50));
+
+    expect(ran, 1);
   });
 }

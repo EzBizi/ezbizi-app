@@ -6,6 +6,8 @@ import 'package:webview_flutter/webview_flutter.dart' as wvf;
 import 'package:webview_windows/webview_windows.dart' as wvw;
 import 'package:window_manager/window_manager.dart';
 
+import '../../core/exit_hooks.dart';
+
 /// The native half of video_embed.dart. Linux has neither WebView.
 bool get videoEmbedSupported => Platform.isWindows || Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
 
@@ -22,6 +24,8 @@ class _WindowsVideo extends StatefulWidget {
 
 class _WindowsVideoState extends State<_WindowsVideo> {
   final _controller = wvw.WebviewController();
+  // Released before the engine at exit — see ExitHooks.
+  Future<void> Function()? _exitHook;
   bool _ready = false;
   String? _error;
 
@@ -36,6 +40,7 @@ class _WindowsVideoState extends State<_WindowsVideo> {
   @override
   void initState() {
     super.initState();
+    _exitHook = ExitHooks.add(_controller.dispose);
     unawaited(_start());
   }
 
@@ -81,6 +86,7 @@ class _WindowsVideoState extends State<_WindowsVideo> {
       _fullscreen!.remove();
       unawaited(windowManager.setFullScreen(false).catchError((_) {}));
     }
+    ExitHooks.remove(_exitHook);
     unawaited(_controller.dispose());
     super.dispose();
   }

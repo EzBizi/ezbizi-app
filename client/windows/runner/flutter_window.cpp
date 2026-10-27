@@ -9,11 +9,14 @@
 #include <utility>
 #include <variant>
 
+#include <flutter/method_result_functions.h>
+
 #include "flutter/generated_plugin_registrant.h"
 #include "monitoring_input.h"
 #include "monitoring_screenshot.h"
 #include "monitoring_specs.h"
 #include "platform_task.h"
+#include "watchdog.h"
 
 namespace {
 
@@ -66,6 +69,12 @@ bool FlutterWindow::OnCreate() {
           result->NotImplemented();
           return;
         }
+        // No new worker once the window has begun to close: its reply could
+        // outlive the engine (platform_task.h).
+        if (PlatformShuttingDown()) {
+          result->Error("shutting_down", "The app is closing.");
+          return;
+        }
 
         // OFF THE PLATFORM THREAD, the same reason as ReadSpecs: BitBlt +
         // GetDIBits + WIC JPEG on a busy or large display can take long enough
@@ -75,7 +84,7 @@ bool FlutterWindow::OnCreate() {
         std::shared_ptr<flutter::MethodResult<flutter::EncodableValue>> shared =
             std::move(result);
 
-        std::thread([shared, window]() {
+        std::thread([shared, window, worker = std::make_shared<InFlightWorker>()]() {
           static std::mutex capture_mutex;
           std::lock_guard<std::mutex> lock(capture_mutex);
 
@@ -142,23 +151,83 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+namespace {
+
+// Run the window's messages until [done] or [timeout_ms], so the engine can
+// deliver replies (and posted worker completions) while we wait. A WM_QUIT
+// seen here is put back for the main loop.
+void PumpUntil(const std::function<bool()>& done, ULONGLONG timeout_ms) {
+  const ULONGLONG deadline = ::GetTickCount64() + timeout_ms;
+  MSG msg;
+  while (!done() && ::GetTickCount64() < deadline) {
+    if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+      if (msg.message == WM_QUIT) {
+        ::PostQuitMessage(static_cast<int>(msg.wParam));
+        return;
+      }
+      ::TranslateMessage(&msg);
+      ::DispatchMessage(&msg);
+    } else {
+      ::MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+    }
+  }
+}
+
+}  // namespace
+
+/*
+ * Shutdown, in this order (2026-10-27).
+ *
+ * "The app closed unexpectedly last time": 27 users, every version, nearly all
+ * while the updater closed the app. An access violation at
+ * flutter_windows.dll+0x14BBD — FlutterDesktopMessengerSetCallback per the
+ * 3.41.6 engine PDB. ~FlutterWindowsEngine detaches its messenger and THEN
+ * runs the plugin destructors; webview_windows' ~WebviewBridge calls
+ * SetMethodCallHandler(nullptr) and dereferences the null engine. Anything that
+ * touches the messenger after the engine starts going away does the same.
+ *
+ *  1. Mark shutdown: the crash marker now says "during shutdown", and no
+ *     handler starts new background work.
+ *  2. Ask Dart to release its WebViews (`prepareToExit`, lib/core/
+ *     exit_hooks.dart) and wait for the answer, bounded. A WebView disposed
+ *     now is erased by its plugin while the engine is whole.
+ *  3. Wait, bounded, for in-flight worker threads, so their replies land on a
+ *     live engine (platform_task.h covers one that is later still).
+ *  4. Unregister every channel handler of ours while the engine is alive.
+ *  5. Only then destroy the controller, and with it the engine.
+ */
 void FlutterWindow::OnDestroy() {
-  if (monitoring_indicator_channel_) {
-    monitoring_indicator_channel_ = nullptr;
-  }
-
-  if (monitoring_input_channel_) {
-    monitoring_input_channel_ = nullptr;
-  }
-
-  if (monitoring_screenshot_channel_) {
-    monitoring_screenshot_channel_ = nullptr;
-  }
+  MarkShutdownStarted();
+  PlatformShuttingDown().store(true);
 
   if (flutter_controller_) {
+    if (watchdog_channel_) {
+      auto answered = std::make_shared<bool>(false);
+      watchdog_channel_->InvokeMethod(
+          "prepareToExit", nullptr,
+          std::make_unique<
+              flutter::MethodResultFunctions<flutter::EncodableValue>>(
+              [answered](const flutter::EncodableValue*) { *answered = true; },
+              [answered](const std::string&, const std::string&,
+                         const flutter::EncodableValue*) { *answered = true; },
+              [answered]() { *answered = true; }));
+      PumpUntil([answered]() { return *answered; }, 3000);
+    }
+
+    PumpUntil([]() { return InFlightWorkers().load() == 0; }, 1500);
+
+    for (auto* channel :
+         {&monitoring_indicator_channel_, &monitoring_input_channel_,
+          &monitoring_screenshot_channel_, &monitoring_specs_channel_,
+          &watchdog_channel_}) {
+      if (*channel) {
+        (*channel)->SetMethodCallHandler(nullptr);
+        *channel = nullptr;
+      }
+    }
+
     flutter_controller_ = nullptr;
   }
-  monitoring_specs_channel_ = nullptr;
 
   Win32Window::OnDestroy();
 }
