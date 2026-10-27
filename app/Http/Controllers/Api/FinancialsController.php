@@ -235,7 +235,7 @@ class FinancialsController extends Controller
         $values = $this->cleanValues($table, $request->validate(['values' => ['present', 'array']])['values']);
 
         // A mirrored table: the row is made in Airtable first, then copied here.
-        $record = $table->isMirror()
+        $record = $this->writesToAirtable($table, $request)
             ? AirtableWriter::create($table, $values)
             : $table->records()->create([
                 'values' => $values,
@@ -255,7 +255,7 @@ class FinancialsController extends Controller
         $this->authorize('update', $table->base);
         $input = $request->validate(['values' => ['sometimes', 'array'], 'position' => ['sometimes', 'integer', 'min:0']]);
 
-        if ($table->isMirror() && isset($input['values'])) {
+        if (isset($input['values']) && $this->writesToAirtable($table, $request)) {
             $conflicts = AirtableWriter::update($table, [$record->id => $this->cleanValues($table, $input['values'], keepNulls: true)]);
             $record->refresh();
             $this->audit->logChange('financials.airtable_write', $record, $request->user());
@@ -298,7 +298,7 @@ class FinancialsController extends Controller
             throw ValidationException::withMessages(['changes' => 'A row in the change is not in this table any more. Reload and try again.']);
         }
 
-        if ($table->isMirror()) {
+        if ($this->writesToAirtable($table, $request)) {
             $clean = [];
             foreach ($changes as $change) {
                 $clean[$change['id']] = array_replace($clean[$change['id']] ?? [], $this->cleanValues($table, $change['values'], keepNulls: true));
@@ -336,7 +336,7 @@ class FinancialsController extends Controller
     {
         $this->authorize('delete', $record->table->base);
         $this->audit->log('financials.record_deleted', $record, metadata: ['values' => $record->values], actor: $request->user());
-        $record->table->isMirror() ? AirtableWriter::delete($record->table, $record) : $record->delete();
+        $this->writesToAirtable($record->table, $request) ? AirtableWriter::delete($record->table, $record) : $record->delete();
 
         return response()->json(null, 204);
     }
@@ -697,6 +697,29 @@ class FinancialsController extends Controller
     }
 
     // ── Helpers ─────────────────────────────────────────────
+
+    /**
+     * Does this edit go to Airtable first? Only for a mirrored table whose
+     * base is still connected. Jose, 2026-10-27: EzBizi is the source of
+     * truth and every integration removable, so a mirror whose Airtable was
+     * disconnected is cut over to EzBizi on its first edit (audited, undoable
+     * from the table) instead of refusing the edit.
+     */
+    private function writesToAirtable(FinancialTable $table, Request $request): bool
+    {
+        if (! $table->isMirror()) {
+            return false;
+        }
+        if (AirtableWriter::connected($table)) {
+            return true;
+        }
+        $table->forceFill(['cut_over_at' => now(), 'cut_over_by_user_id' => $request->user()->id])->save();
+        $this->audit->log('financials.cut_over', $table, metadata: [
+            'airtable' => $table->source_base_id.'/'.$table->source_table_id, 'reason' => 'airtable_disconnected',
+        ], actor: $request->user());
+
+        return false;
+    }
 
     private function refuseMirror(FinancialTable $table): void
     {

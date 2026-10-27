@@ -42,10 +42,6 @@ class AirtableMirrorTest extends TestCase
         $this->assertCount(5, $table['records']);
         $this->assertSame('tblR', $table['mirror']['table_id']);
 
-        // Read-only here.
-        $this->signedInAs($admin)->postJson("/api/v1/financials/tables/{$table['id']}/records", ['values' => []])->assertStatus(422);
-        $this->signedInAs($admin)->patchJson("/api/v1/financials/records/{$table['records'][0]['id']}", ['values' => []])->assertStatus(422);
-
         // A renamed column keeps its link; a new Airtable column is added; a gone row leaves.
         $cost = collect($table['fields'])->firstWhere('name', 'Employee Cost');
         $this->signedInAs($admin)->patchJson("/api/v1/financials/fields/{$cost['id']}", ['name' => 'Paycheck', 'type' => 'currency'])->assertOk();
