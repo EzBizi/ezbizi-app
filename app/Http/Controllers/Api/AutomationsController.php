@@ -168,6 +168,7 @@ class AutomationsController extends Controller
         // Workiz's: the report's link on its Workiz job (ActionRunner::putInspectionReportOnWorkiz).
         'inspection_report.workiz',
         'workiz.job_update',
+        'job.set',
         /*
          * `ActionRunner::assignTraining` (task 9) is the real arm — the same
          * `App\Support\Training\AssignmentWriter` a person's own POST
@@ -1495,33 +1496,8 @@ class AutomationsController extends Controller
         $type = $input['scope_type'] ?? null;
         $id = $type === null ? null : ($input['scope_id'] ?? null);
 
-        // The place, its company when it is a branch, and the organization.
-        $places = [['organization', $this->tenant->idOrFail()]];
-        if ($type === 'company') {
-            $places[] = ['company', $id];
-        }
-        if ($type === 'franchise') {
-            $places[] = ['franchise', $id];
-            $places[] = ['company', \App\Models\Franchise::query()->whereKey($id)->value('company_id')];
-        }
-        $here = fn ($q) => $q->where(function ($w) use ($places) {
-            foreach ($places as [$t, $i]) {
-                $w->orWhere(fn ($x) => $x->where('scope_type', $t)->where('scope_id', $i));
-            }
-        });
-
-        $sms = \App\Models\PhoneNumber::query()->where('sms_outbound_allowed', true)->where($here)->exists();
-        $whatsApp = \App\Models\WhatsAppNumber::query()->exists();
-        $email = \App\Models\SendingIdentity::query()->where($here)->exists() || \App\Models\Mailbox::query()->where($here)->exists();
-        $ready = fn (bool $ok, string $why) => ['ready' => $ok, 'why_not' => $ok ? null : $why];
-
-        return response()->json(['data' => [
-            'sms.send' => $ready($sms, 'No number here can send texts yet.'),
-            'lead.text' => $ready($sms, 'No number here can send texts yet.'),
-            'whatsapp.send' => $ready($whatsApp, 'WhatsApp is not connected.'),
-            'email.send' => $ready($email, 'No inbox or sending address is set up here.'),
-            'notify' => $ready(true, ''),
-        ]]);
+        return response()->json(['data' => collect(\App\Support\Automations\StepReadiness::at($type, $id))
+            ->map(fn (?string $why) => ['ready' => $why === null, 'why_not' => $why])->all()]);
     }
 
     /** "scheduled_for" -> "Scheduled for"; "customer_id" -> "Customer". */
@@ -2157,6 +2133,7 @@ class AutomationsController extends Controller
         'lead.text' => [\App\Models\Lead::class],
         'job.create' => [\App\Models\Job::class, \App\Models\Customer::class],
         'workiz.job_update' => [\App\Models\Job::class],
+        'job.set' => [\App\Models\Job::class],
         'task.assign' => [\App\Models\Task::class],
         'task.move_group' => [\App\Models\Task::class],
         'resend' => [\App\Models\Invitation::class],
@@ -2420,6 +2397,13 @@ class AutomationsController extends Controller
             $type('time_clock.clock_out', 'Clock them out', true, []),
             $type('inspection_report.email', 'Email the report to the customer', true, []),
             $type('inspection_report.workiz', 'Put the report on its Workiz job', true, []),
+            // EzBizi first, Workiz mirrored (Jose, 2026-10-27). The Workiz-only step below stays for rules built on it.
+            $type('job.set', 'Set the job status and tags', true, [
+                $parameter('status', 'Status', 'status', required: false),
+                $parameter('sub_status', 'Sub-status', 'text', required: false),
+                $parameter('tags', 'Set tags to (comma-separated; others are removed)', 'text', required: false),
+                $parameter('unschedule', 'Remove the scheduled time', 'boolean', false),
+            ]),
             $type('workiz.job_update', 'Update the job in Workiz', true, [
                 $parameter('status', 'Status (e.g. Submitted, Canceled)', 'text', required: false),
                 $parameter('sub_status', 'Sub-status (e.g. Estimate Declined)', 'text', required: false),
