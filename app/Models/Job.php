@@ -36,7 +36,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
     'assigned_role_id', 'performed_by_user_id', 'service_area_id',
     'job_type', 'sub_status', 'tags', 'review_reason', 'external_company', 'needs_second_visit',
-    'job_source', 'custom_fields', 'all_day', 'recurrence',
+    'job_source', 'custom_fields', 'all_day', 'recurrence', 'created_by_user_id', 'created_by_label',
 ])]
 class Job extends Model implements StatesRetention
 {
@@ -147,6 +147,15 @@ class Job extends Model implements StatesRetention
     /** The company the job's franchise belongs to, by name: the export's `company`. */
     protected static function booted(): void
     {
+        // Who opened it, always (Jose, 2026-10-27): the signed-in person; the Workiz projection names its own.
+        static::creating(function (Job $job) {
+            $user = auth()->user();
+            if ($user instanceof User && $job->created_by_user_id === null && $job->created_by_label === null) {
+                $job->created_by_user_id = $user->getKey();
+                $job->created_by_label = $user->name;
+            }
+        });
+
         // The job's technician changing, by a person or the Workiz sync, rewrites its cards' Technician (Jose, 2026-10-22).
         static::updated(function (Job $job) {
             if ($job->wasChanged('performed_by_user_id')) {
