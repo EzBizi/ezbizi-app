@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Services\Ads\AdsCost;
 use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\Experimental\PerformancePeople;
+use App\Support\Reports\ReportJobs;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -67,7 +68,7 @@ final class DailyTexts
             if ($cost['accounts'] === 0) {
                 continue;
             }
-            $jobs = DB::table('workiz_jobs')->where('franchise_id', $branch->getKey())->where('job_source', 'PPC')
+            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('job_source', 'PPC')
                 ->whereBetween('booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->count();
             $c = $cost['ppc'];
             $lines = [...$lines, '*'.BranchName::of($branch).'*', ...$this->ppcLines($c['cost_minor'], $c['clicks'], $jobs, $c['conversions']), ''];
