@@ -172,6 +172,12 @@ final class CustomerLinks
         return self::siteValue(null, 'review_link', $franchise->getKey());
     }
 
+    /** The phone a branch's website shows, or null (Customer Experience phone check). */
+    public static function branchPhone(Franchise $franchise): ?string
+    {
+        return self::siteValue(null, 'phone', $franchise->getKey());
+    }
+
     private static function siteValue(?Customer $customer, string $key, ?string $franchiseId = null, ?string $areaId = null): ?string
     {
         $franchise = Franchise::query()->find($franchiseId ?? $customer?->owning_franchise_id);

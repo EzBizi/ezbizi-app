@@ -253,12 +253,29 @@ class ReviewsController extends Controller
             ->toBase()->select(DB::raw('avg(rating) as average, count(*) as n'))->first();
         $now = Carbon::now()->startOfMonth();
 
-        return collect(['this_month' => $now, 'last_month' => $now->copy()->subMonth()])
+        $months = collect(['this_month' => $now, 'last_month' => $now->copy()->subMonth()])
             ->map(function (Carbon $start) use ($month) {
                 $row = $month($start);
 
                 return ['average' => $row?->n ? round((float) $row->average, 2) : null, 'count' => (int) ($row->n ?? 0)];
             })->all();
+
+        // Design 154 #7: histogram, who wrote the replies, and the queue, under the same filters.
+        $histogram = (clone $query)->reorder()->whereNotNull('rating')->toBase()
+            ->select('rating', DB::raw('count(*) as n'))->groupBy('rating')->pluck('n', 'rating');
+        $replies = ReviewReply::query()->whereIn('review_id', (clone $query)->reorder()->select('reviews.id'))
+            ->toBase()->select('status', 'drafted_by', DB::raw('count(*) as n'))->groupBy('status', 'drafted_by')->get();
+        $published = $replies->where('status', ReviewReply::STATUS_PUBLISHED);
+
+        return $months + [
+            'histogram' => collect(range(1, 5))->mapWithKeys(fn ($r) => [$r => (int) ($histogram[$r] ?? 0)])->all(),
+            'replies' => [
+                'published' => (int) $published->sum('n'),
+                'by_ai' => (int) $published->whereIn('drafted_by', [ReviewReply::BY_DRAFTING_JOB, ReviewReply::BY_AUTOMATION])->sum('n'),
+                'drafts' => (int) $replies->where('status', ReviewReply::STATUS_DRAFT)->sum('n'),
+                'failed' => (int) $replies->where('status', ReviewReply::STATUS_FAILED)->sum('n'),
+            ],
+        ];
     }
 
     /** @return list<array{id: string, name: string}> each `locations/<id>` in the list, named. */

@@ -212,6 +212,7 @@ class BusinessProfileController extends Controller
             'label'              => $location->label(),
             'address'            => $location->addressLine(),
             'phone'              => $location->phone,
+            'whatsapp_link'      => BusinessProfileListingController::whatsappLink(),
             'website'            => $location->website,
             'primary_category'   => $location->primary_category,
             'verification_state' => $location->verification_state,
