@@ -1449,6 +1449,7 @@ Route::prefix('v1')
         Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
+        Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
