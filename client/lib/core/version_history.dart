@@ -23,6 +23,11 @@ class VersionHistory {
         'Sales is removed; Project Management covers that work.',
         'Memberships: a member\'s booked visit carries its plan\'s job type in EzBizi, and Workiz copies it from there.',
         'Customers and reports: money is read from EzBizi invoices first, ready to switch off Workiz.',
+        'Reports: download any period or a full year as PDF or Excel.',
+        'Financials: tables keep saving in EzBizi when Airtable is disconnected.',
+        'Disconnecting an integration shows which features stop or are limited; address lookups no longer error when the lookup service is down.',
+        'Automations: a new step sets a job\'s status and tags in EzBizi; steps whose service is not connected are skipped instead of failing.',
+        'Call reports keep RingCentral history in EzBizi even if RingCentral is disconnected.',
       ],
     ),
     VersionRelease(

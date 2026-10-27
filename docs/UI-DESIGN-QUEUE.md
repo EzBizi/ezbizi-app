@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 154 · Customer Experience: media, services, review stats, phone check, other sources, WhatsApp link — **sent 2026-10-27** (`docs/previews/customer-experience-layouts.html`)
+
+Customer Experience asked for 3 options each for six screens replacing Rodrigo's system, numbered 1–18. Recommended: 1 = media grid with type chips and Copy to locations in a SidePanel; 4 = category chips over grouped services rows, Copy with a per-listing diff; 7 = stats strip, histogram and gauge beside the reply queue with Draft all and the send window in place; 10 = one row per listing comparing Business Profile, RingCentral and policy numbers with a match chip; 13 = sources table (Google, eKomi, Thumbtack) plus a funnel card; 16 = WhatsApp row in each listing's Info tab with Copy and QR. One phone per recommended option.
+
 ### 153 · One shared Book panel (all of Workiz New Job) — **sent 2026-10-27** (`docs/previews/book-job-panel-layouts.html`)
 
 Jose via the desk and Jobs: one Book panel with every Workiz New Job option, opened from Leads (replaces book_lead_panel), Jobs, Customers and Communication with prefill; saves EzBizi then Workiz. 1 = side panel, one scroll, sticky Book (recommended); 2 = 4-step wizard; 3 = full page two columns; phones 4-6. Jobs builds.
