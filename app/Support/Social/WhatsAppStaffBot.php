@@ -8,6 +8,7 @@ use App\Jobs\AnswerWhatsAppWithTech;
 use App\Jobs\PlanReportCorrection;
 use App\Jobs\PlanWhatsAppCommand;
 use App\Jobs\ReadWhatsAppBill;
+use App\Jobs\ReadWhatsAppResults;
 use App\Jobs\SendCallRecordings;
 use App\Jobs\SendRequestedReport;
 use App\Models\AssistantEntry;
@@ -122,6 +123,13 @@ final class WhatsAppStaffBot
         $yesOrNo = preg_match('/^(yes|y|si|sí|ok|confirm|no|n|cancel)$/iu', $text) === 1;
         $yes = preg_match('/^(no|n|cancel)$/i', $text) !== 1;
 
+        // YES / NO to results rows held for this person (WhatsAppResults).
+        if ($viewer !== null && $yesOrNo && WhatsAppResults::pending($viewer)) {
+            $this->text($number, $to, app(WhatsAppResults::class)->answer($viewer, $yes), preview: false);
+
+            return;
+        }
+
         // YES / NO to a bill photo held for this person (WhatsAppBills).
         if ($viewer !== null && $yesOrNo && WhatsAppBills::pending($viewer)) {
             $this->text($number, $to, app(WhatsAppBills::class)->answer($viewer, $yes), preview: false);
@@ -145,6 +153,15 @@ final class WhatsAppStaffBot
 
         $techMode = $viewer !== null && GrokCli::configured()
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
+
+        // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
+        if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
+            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::CAPTION, $text) === 1) {
+            ReadWhatsAppResults::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
+            $this->text($number, $to, "\u{1F440} Reading the results in that photo\u{2026}", preview: false);
+
+            return;
+        }
 
         // A photo from somebody who may file bills: read as a period's bills -
         // when its caption says bill or receipt, once the tech assistant is on
@@ -731,6 +748,12 @@ final class WhatsAppStaffBot
     public function billRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
     {
         $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption), preview: false);
+    }
+
+    /** ReadWhatsAppResults' half: the rows read back as pending, held for a YES. */
+    public function resultsRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
+    {
+        $this->text($number, $to, app(WhatsAppResults::class)->read($viewer, $mediaId, $caption), preview: false);
     }
 
     /** PlanReportCorrection's half: repeat the changes back in our words, run nothing. */
