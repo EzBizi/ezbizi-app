@@ -43,9 +43,14 @@ class TaskBoard extends Model implements StatesRetention
     /**
      * The built-in columns a board can relabel or hide (Jose, 2026-10-20):
      * key => default label. `created` starts hidden, the rest visible.
+     *
+     * `creator` is who made the task (its `created_by`); `owner` keeps its key
+     * for saved settings but is the assignees, labelled "Assigned" (Jose,
+     * 2026-10-27). A board that saved its own label for `owner` keeps it.
      */
     public const BUILTIN_COLUMNS = [
-        'owner' => 'Owner',
+        'creator' => 'Owner',
+        'owner' => 'Assigned',
         'status' => 'Status',
         'due' => 'Due',
         'about' => 'About',
