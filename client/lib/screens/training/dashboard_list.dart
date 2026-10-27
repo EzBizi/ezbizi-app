@@ -120,13 +120,11 @@ class _TrainingDashboardState extends State<TrainingDashboard> {
                   // As tall as the controls beside it (Jose, 2026-10-20).
                   SizedBox(
                     width: 240,
-                    height: 40,
                     child: TextField(
                       key: const Key('training-dashboard-list-search'),
                       textAlignVertical: TextAlignVertical.center,
                       decoration: const InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
                         prefixIconConstraints: BoxConstraints(minWidth: 36),
                         prefixIcon: Icon(Icons.search, size: 18),
                         hintText: 'Find a guide or test',

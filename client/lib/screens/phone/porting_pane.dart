@@ -675,7 +675,6 @@ Widget _searchBox({
   required ValueChanged<String> onChanged,
 }) => SizedBox(
   width: 260,
-  height: 40,
   child: TextField(
     key: key,
     onChanged: onChanged,
@@ -685,7 +684,6 @@ Widget _searchBox({
       hintText: hint,
       prefixIcon: const Icon(Icons.search, size: 18),
       prefixIconConstraints: const BoxConstraints(minWidth: 36),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
       border: const OutlineInputBorder(),
     ),
   ),

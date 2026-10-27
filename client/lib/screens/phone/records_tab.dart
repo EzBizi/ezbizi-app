@@ -504,10 +504,9 @@ class _RecordsTabState extends State<RecordsTab> {
   );
 
   /// One box for all three views, keyed per view so a test (and the tour) can
-  /// tell which list it searches. 40 high: the height of the chips' row.
+  /// tell which list it searches. Standard field height (Jose, 2026-10-27).
   Widget _searchField() => SizedBox(
     width: 280,
-    height: 40,
     child: TextField(
       key: ValueKey(switch (_filter) {
         RecordsFilter.calls => 'comm-records-calls-search',
@@ -523,7 +522,6 @@ class _RecordsTabState extends State<RecordsTab> {
             : 'Search name, number or tag',
         prefixIcon: const Icon(Icons.search, size: 18),
         prefixIconConstraints: const BoxConstraints(minWidth: 36),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         border: const OutlineInputBorder(),
       ),
     ),

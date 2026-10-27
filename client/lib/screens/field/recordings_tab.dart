@@ -327,7 +327,6 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                     ),
                   SizedBox(
                     width: 260,
-                    height: 40,
                     child: TextField(
                       key: const ValueKey('field-recordings-search'),
                       onChanged: _search,
@@ -337,7 +336,6 @@ class _FieldRecordingsTabState extends State<FieldRecordingsTab> {
                         hintText: 'Search person, job or reason',
                         prefixIcon: Icon(Icons.search, size: 18),
                         prefixIconConstraints: BoxConstraints(minWidth: 36),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8),
                         border: OutlineInputBorder(),
                       ),
                     ),

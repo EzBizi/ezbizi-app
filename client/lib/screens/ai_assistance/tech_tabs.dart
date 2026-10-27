@@ -42,13 +42,11 @@ List<String> _list(Object? v) =>
 Widget _search(Key key, String hint, ValueChanged<String> onChanged) =>
     SizedBox(
       width: 260,
-      height: 40,
       child: TextField(
         key: key,
         textAlignVertical: TextAlignVertical.center,
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
           prefixIconConstraints: const BoxConstraints(minWidth: 36),
           prefixIcon: const Icon(Icons.search, size: 18),
           hintText: hint,
