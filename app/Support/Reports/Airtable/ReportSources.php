@@ -25,7 +25,7 @@ final class ReportSources
         'refunds' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Refund Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
         'disputes' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Dispute Amount', 'total' => 'Total Jobs', 'reason' => 'Reason', 'status' => 'Open/Close Job'],
         'check_returns' => ['date' => 'Date', 'job_number' => 'Job Number', 'technician' => 'Technician Name', 'amount' => 'Amount of check', 'total' => 'Total Jobs', 'reason' => 'Type', 'status' => 'Open/Close Job'],
-        'repair' => ['date' => 'Date', 'team' => 'Team', 'kind' => 'Record type', 'amount' => 'Job Amount', 'parts' => 'Parts Cost',
+        'repair' => ['date' => 'Date', 'team' => 'Team', 'kind' => 'Record type', 'job_number' => 'Job Number', 'amount' => 'Job Amount', 'parts' => 'Parts Cost',
             'tech_share' => 'Total Tech Share', 'external_share' => 'External Company Share', 'contracting' => 'Total Contracting Profit',
             'employee' => 'Employee Cost', 'helper' => 'Helper Cost', 'gas' => 'Gas Cost', 'operation' => 'Ave Operation Cost', 'hours' => 'Total Hours '],
         'hq_expenses' => ['date' => 'Date', 'category' => 'Category Name', 'amount' => 'Cost'],
