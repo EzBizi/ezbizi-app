@@ -185,6 +185,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\VehicleServiceController;
@@ -1106,6 +1107,16 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Results (ACE): drawn inside Financials; the controller checks each action.
+        Route::middleware('permission:financial_results.view')->group(function (): void {
+            Route::get('financials/results', [FinancialResultsController::class, 'index']);
+            Route::post('financials/results/read', [FinancialResultsController::class, 'read']);
+            Route::post('financials/results', [FinancialResultsController::class, 'store']);
+            Route::patch('financials/results/{result}', [FinancialResultsController::class, 'update']);
+            Route::post('financials/results/{result}/approve', [FinancialResultsController::class, 'approveOne']);
+            Route::get('financials/results/{result}/image', [FinancialResultsController::class, 'image']);
+            Route::delete('financials/results/{result}', [FinancialResultsController::class, 'destroy']);
         });
         Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
             Route::get('home', 'home');

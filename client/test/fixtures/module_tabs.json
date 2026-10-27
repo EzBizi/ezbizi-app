@@ -89,6 +89,11 @@
                 "Settings"
             ]
         },
+        "financial_results": {
+            "label": "Lead source results",
+            "parent": "financials",
+            "tabs": []
+        },
         "financials": {
             "label": "Financials",
             "parent": null,
@@ -431,6 +436,11 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financial_results.approve",
+        "financial_results.create",
+        "financial_results.delete",
+        "financial_results.edit",
+        "financial_results.view",
         "financials.approve",
         "financials.bases.view",
         "financials.bills.view",
