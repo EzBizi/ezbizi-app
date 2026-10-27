@@ -28,6 +28,10 @@ class VersionHistory {
         'Disconnecting an integration shows which features stop or are limited; address lookups no longer error when the lookup service is down.',
         'Automations: a new step sets a job\'s status and tags in EzBizi; steps whose service is not connected are skipped instead of failing.',
         'Call reports keep RingCentral history in EzBizi even if RingCentral is disconnected.',
+        'Leads: every call recording has a Download button; Google Local Services recordings are kept in EzBizi.',
+        'Phone: call recordings are kept in EzBizi and deleted along with the call.',
+        'Project Management 1 and 2: money reads the same way in both (total less paid), and EzBizi\'s own estimates show on a job\'s timeline.',
+        'Jobs record who created them.',
       ],
     ),
     VersionRelease(
