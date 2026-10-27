@@ -43,9 +43,17 @@ class FinancialResultsController extends Controller
             'to' => ['nullable', 'date_format:Y-m-d'],
             'status' => ['nullable', Rule::in(['pending', 'approved'])],
             'source' => ['nullable', 'string', 'max:60'],
+            'q' => ['nullable', 'string', 'max:200'],
         ]);
+        $term = trim((string) ($input['q'] ?? ''));
+        $like = '%'.addcslashes($term, '%_\\').'%';
 
         $rows = FinancialResult::query()->with('company:id,name', 'franchise:id,name')
+            // The search bar: source, area, or the place the row is for.
+            ->when($term !== '', fn ($q) => $q->where(fn ($w) => $w
+                ->where('source', 'like', $like)->orWhere('area', 'like', $like)
+                ->orWhereHas('company', fn ($c) => $c->where('name', 'like', $like))
+                ->orWhereHas('franchise', fn ($f) => $f->where('name', 'like', $like))))
             ->when($input['from'] ?? null, fn ($q, $d) => $q->where('date', '>=', $d))
             ->when($input['to'] ?? null, fn ($q, $d) => $q->where('date', '<=', $d))
             ->when($input['status'] ?? null, fn ($q, $s) => $q->where('status', $s))
