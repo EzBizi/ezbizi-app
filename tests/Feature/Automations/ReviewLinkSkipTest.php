@@ -39,7 +39,9 @@ class ReviewLinkSkipTest extends TestCase
 
         $this->assertTrue($withLink['skipped'] ?? false);
         $this->assertStringContainsString('no review link', $withLink['detail']);
-        $this->assertArrayNotHasKey('skipped', $without, 'only a step that names the link is held back');
+        // Only a step that names the link is held back FOR the link; with no texting
+        // number here the plain one is skipped as not connected (Jose, 2026-10-27).
+        $this->assertStringNotContainsString('review link', $without['detail'], 'only a step that names the link is held back for it');
         $this->assertTrue($noOffer['skipped'] ?? false, 'a membership offer with no link is held back too');
     }
 }

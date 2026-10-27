@@ -1351,6 +1351,14 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 automationActions: [
+                    new ActionDefinition(
+                        key: 'job.set',
+                        label: 'Set the job status and tags',
+                        description: 'Sets the status, sub-status and tags of the job (tags not listed are removed), or '
+                            .'removes its scheduled time. EzBizi is written first; a job linked to Workiz is then '
+                            .'brought in line there.',
+                        executionType: 'job.set',
+                    ),
                     // Jose's Project Management rules (2026-10-21), through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',

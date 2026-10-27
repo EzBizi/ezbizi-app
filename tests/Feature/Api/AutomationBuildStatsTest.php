@@ -58,7 +58,7 @@ class AutomationBuildStatsTest extends TestCase
         $t = $this->provisionTenant('Alpha');
         $url = '/api/v1/automations/readiness?scope_type=franchise&scope_id='.$t['franchise']->id;
         $before = $this->signedInAs($t['admin'])->getJson($url)->assertOk()->json('data');
-        $this->assertSame(['ready' => false, 'why_not' => 'No number here can send texts yet.'], $before['sms.send']);
+        $this->assertSame(['ready' => false, 'why_not' => 'No phone number is connected here.'], $before['sms.send']);
         $this->assertTrue($before['notify']['ready']);
 
         $this->inTenant($t['org'], function () use ($t) {
