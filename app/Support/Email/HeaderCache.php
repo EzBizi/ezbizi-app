@@ -128,7 +128,59 @@ final class HeaderCache
      */
     public function forget(Mailbox $mailbox, int $limit = 25): void
     {
-        Cache::forget($this->key($mailbox, null, $limit));
+        // Every first-page size the screens ask for, and the warm mark, so the
+        // warmer re-reads it on its next minute.
+        foreach (array_unique([$limit, ...self::WARM_LIMITS]) as $size) {
+            Cache::forget($this->key($mailbox, null, $size));
+        }
+
+        Cache::forget($this->markKey($mailbox));
+    }
+
+    /** The first-page sizes the inbox screens ask for: one inbox, and All inboxes. */
+    public const WARM_LIMITS = [25, 10];
+
+    /** How long a warmed first page is served; the warmer replaces it on any change well before. */
+    public const WARM_SECONDS = 900;
+
+    /**
+     * Keep this mailbox's first pages ready (ezbizi:warm-inbox-headers).
+     *
+     * Jose, 2026-10-27: "slow loading times for email inboxes". Measured on
+     * production: a first page is 1 list + 1 call per conversation, ~1.1 s for
+     * 25, read again on every open and once per inbox on All inboxes. Opening a
+     * message was 130-435 ms and is left alone.
+     *
+     * Re-read only when the provider's position (`currentMark`, one cheap call)
+     * moved since the last warm, so a quiet inbox costs one call a minute.
+     *
+     * @param  callable(int): MessagePage  $live  reads a first page of the given size
+     * @return bool  true when the pages were re-read
+     */
+    public function warm(Mailbox $mailbox, string $mark, callable $live): bool
+    {
+        $fresh = Cache::get($this->markKey($mailbox)) === $mark;
+
+        foreach (self::WARM_LIMITS as $size) {
+            $fresh = $fresh && Cache::has($this->key($mailbox, null, $size));
+        }
+
+        if ($fresh) {
+            return false;
+        }
+
+        foreach (self::WARM_LIMITS as $size) {
+            Cache::put($this->key($mailbox, null, $size), $live($size), self::WARM_SECONDS);
+        }
+
+        Cache::put($this->markKey($mailbox), $mark, self::WARM_SECONDS);
+
+        return true;
+    }
+
+    private function markKey(Mailbox $mailbox): string
+    {
+        return 'email.headers.warm-mark.'.$mailbox->getKey();
     }
 
     /**

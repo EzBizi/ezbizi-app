@@ -76,6 +76,7 @@ class MailboxMessagesApiTest extends TestCase
         FakeMailboxReader::$modified = [];
         FakeMailboxReader::$listedCursors = [];
         FakeMailboxReader::$pages = null;
+        FakeMailboxReader::$mark = 'mark-0';
     }
 
     /** @param array{org: \App\Models\Organization} $tenant */
@@ -1280,6 +1281,37 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertSame([null, null], FakeMailboxReader::$listedCursors, 'Several inboxes read more than one page each.');
     }
 
+    /**
+     * Inboxes load from a warmed cache (Jose, 2026-10-27: slow inbox loading).
+     * The warmer re-reads an inbox only when the provider's mark moved.
+     */
+    public function test_the_warmer_keeps_first_pages_cached_and_rereads_only_on_change(): void
+    {
+        $this->withFakeProvider();
+        $t    = $this->provisionTenant('A1-Group');
+        $info = $this->inbox($t);
+        $this->inTenant($t['org'], fn () => $info->forceFill(['status' => Mailbox::STATUS_CONNECTED])->save());
+        FakeMailboxReader::$page = new MessagePage([$this->summary('m-1')]);
+
+        $this->artisan('ezbizi:warm-inbox-headers')->assertSuccessful();
+        $this->assertSame([null, null], FakeMailboxReader::$listedCursors, 'Both first-page sizes are read once.');
+
+        // Opening the inbox now reads nothing from the provider.
+        FakeMailboxReader::$listedCursors = [];
+        $this->signedInAs($t['admin'])->getJson("/api/v1/email/mailboxes/{$info->id}/messages")->assertOk();
+        $this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk();
+        $this->assertSame([], FakeMailboxReader::$listedCursors, 'An open went to the provider despite a warm cache.');
+
+        // Nothing changed: the warmer does not re-read.
+        $this->artisan('ezbizi:warm-inbox-headers')->assertSuccessful();
+        $this->assertSame([], FakeMailboxReader::$listedCursors);
+
+        // The mailbox changed: it does.
+        FakeMailboxReader::$mark = 'mark-1';
+        $this->artisan('ezbizi:warm-inbox-headers')->assertSuccessful();
+        $this->assertSame([null, null], FakeMailboxReader::$listedCursors);
+    }
+
     public function test_inbox_actions_star_and_refuse_an_inbox_the_person_cannot_open(): void
     {
         $this->withFakeProvider();
@@ -2446,9 +2478,11 @@ class FakeMailboxReader implements \App\Support\Email\LabelsThreads, MailboxRead
      * actually models arrivals; a second scripted one here would be a fixture
      * two tests could disagree about.
      */
+    public static string $mark = 'mark-0';
+
     public function currentMark(Mailbox $mailbox): string
     {
-        return 'mark-0';
+        return self::$mark;
     }
 
     public function arrivalsSince(Mailbox $mailbox, string $mark, int $limit): Arrivals
