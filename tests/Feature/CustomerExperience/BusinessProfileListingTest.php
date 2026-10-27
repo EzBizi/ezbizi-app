@@ -43,7 +43,7 @@ class BusinessProfileListingTest extends TestCase
         $bad = $this->listing('(937) 555-0199', $this->t['franchise']->id);
         $none = $this->listing('(937) 555-0100', null);
 
-        $status = collect($this->getJson('/api/v1/business-profile/phone-check')->assertOk()->json('data'))->pluck('status', 'id');
+        $status = collect($this->getJson('/api/v1/business-profile/phone-check')->assertOk()->assertJsonStructure(['checked_at'])->json('data'))->pluck('status', 'id');
         $this->assertSame('match', $status[$good->id]);
         $this->assertSame('mismatch', $status[$bad->id]);
         $this->assertSame('unknown', $status[$none->id], 'no branch, nothing to compare with');
@@ -69,7 +69,8 @@ class BusinessProfileListingTest extends TestCase
         $this->assertEquals([1 => 0, 2 => 1, 3 => 0, 4 => 0, 5 => 1], $stats['histogram']);
         $this->assertSame(['published' => 1, 'by_ai' => 1, 'drafts' => 1, 'failed' => 0], $stats['replies']);
 
-        $google = collect($this->getJson('/api/v1/reviews/sources')->assertOk()->json('data'))->firstWhere('source', 'google');
+        $sources = $this->getJson('/api/v1/reviews/sources')->assertOk()->assertJsonPath('reply_rule_id', null);
+        $google = collect($sources->json('data'))->firstWhere('source', 'google');
         $this->assertSame(2, $google['count']);
 
         $id = $this->listing('1', null)->id;
