@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
 use App\Support\Reports\MarketingReport;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\ReportView;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
@@ -37,7 +37,7 @@ class MarketingReportController extends Controller
         $branches = Franchise::query()
             ->where('is_active', true)
             ->when($inView !== null, fn ($q) => $q->whereIn('id', $inView))
-            ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
+            ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
 
