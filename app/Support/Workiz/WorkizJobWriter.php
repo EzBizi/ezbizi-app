@@ -297,6 +297,98 @@ final class WorkizJobWriter
         }
     }
 
+    /**
+     * Put a job in one of the branch's Workiz service areas, by name. A create
+     * sets none (measured 2026-10-05); v1's /job/update/ takes `ServiceArea`.
+     * v2 lists no service areas (GET /serviceareas, /serviceAreas and
+     * /service-areas all 404, 2026-10-27), so a v2 branch writes this through
+     * the v1 pair it keeps under credentials['v1'].
+     *
+     * @return array{job: ?WorkizJob, refused: ?string}
+     */
+    public function setServiceArea(WorkizJob $job, string $area): array
+    {
+        $connection = $this->connection($job->franchise_id);
+
+        if ($connection === null) {
+            return ['job' => null, 'refused' => 'This branch has no Workiz connection.'];
+        }
+
+        $v1 = $connection->credentials['v1'] ?? null;
+        // An unsaved copy holding the kept v1 pair (FillWorkizCreators). Never saved.
+        $through = ! WorkizV2::uses($connection) ? $connection
+            : (is_array($v1) && ($v1['api_token'] ?? '') !== '' ? $connection->replicate()->forceFill(['credentials' => $v1]) : null);
+
+        if ($through === null) {
+            return ['job' => null, 'refused' => 'This branch keeps no Workiz v1 key, the only way EzBizi can set a service area.'];
+        }
+
+        // A request trims "Sacramento " to "Sacramento"; Workiz's own spelling goes back.
+        $area = collect($this->areaNames($job->franchise_id, null))->first(fn (string $a) => trim($a) === trim($area)) ?? $area;
+        $refused = $this->workiz->post($through, '/job/update/', ['UUID' => (string) $job->remote_id, 'ServiceArea' => $area]);
+
+        if ($refused !== null) {
+            return ['job' => null, 'refused' => $refused];
+        }
+
+        $this->audit->log('workiz.job_service_area_set', $job, metadata: ['service_area' => $area]);
+
+        $read = $this->workiz->find($connection, (string) $job->remote_id);
+
+        if ($read['job'] !== null) {
+            WorkizJob::land($connection, $read['job']);
+        }
+
+        return ['job' => $job->fresh(), 'refused' => null];
+    }
+
+    /**
+     * What booking a job into this branch's Workiz asks for (Leads ▸ Book,
+     * Jose 2026-10-27): its job types and sources, from v2's own lists, and
+     * its service areas, which no API lists, as named on the jobs EzBizi has
+     * mirrored, those seen at `$zip` first. Null when the branch has no Workiz.
+     *
+     * @return array{job_types: list<string>, job_sources: list<string>, areas: list<string>, zip_areas: list<string>}|null
+     */
+    public function choices(string $franchiseId, ?string $zip): ?array
+    {
+        $connection = $this->connection($franchiseId);
+
+        if ($connection === null) {
+            return null;
+        }
+
+        $names = fn (string $list) => ! WorkizV2::uses($connection) ? [] : collect(
+            WorkizV2::send($connection, 'GET', $list, ['pageSize' => 300, 'disabled' => 'false'])['data']['data'] ?? []
+        )->filter(fn ($row) => is_array($row) && ! ($row['disabled'] ?? false) && trim((string) ($row['name'] ?? '')) !== '')
+            ->pluck('name')->map(fn ($n) => (string) $n)->values()->all();
+
+        $zip = substr((string) preg_replace('/\D/', '', (string) $zip), 0, 5);
+
+        return [
+            'job_types' => $names('/jobtypes'),
+            'job_sources' => $names('/adgroups'),
+            'areas' => $this->areaNames($franchiseId, null),
+            'zip_areas' => strlen($zip) === 5 ? $this->areaNames($franchiseId, $zip) : [],
+        ];
+    }
+
+    /**
+     * A branch's service areas as named on its mirrored jobs, most used first,
+     * exactly as Workiz holds them, trailing space and all ("Sacramento ").
+     *
+     * @return list<string>
+     */
+    private function areaNames(string $franchiseId, ?string $zip): array
+    {
+        return WorkizJob::query()->where('franchise_id', $franchiseId)
+            ->when($zip !== null, fn ($q) => $q->where('postal_code', 'like', $zip.'%'))
+            ->whereNotNull('payload->ServiceArea')
+            ->selectRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.ServiceArea')) as area, COUNT(*) as n")
+            ->groupBy('area')->orderByDesc('n')->pluck('area')
+            ->reject(fn ($a) => $a === null || trim((string) $a) === '' || $a === 'null')->values()->all();
+    }
+
     /** Workiz's own words for a status (v2 lists exactly these, measured 2026-10-20). */
     public const STATUSES = ['Submitted', 'In progress', 'Pending', 'done pending approval', 'Canceled', 'Done'];
 
@@ -410,7 +502,7 @@ final class WorkizJobWriter
         return $job->fresh();
     }
 
-    private function connection(string $franchiseId): ?SocialConnection
+    public function connection(string $franchiseId): ?SocialConnection
     {
         return SocialConnection::query()
             ->where('provider', SocialProvider::Workiz->value)
