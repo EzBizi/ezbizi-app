@@ -5,9 +5,7 @@ namespace App\Support\Ai;
 use App\Models\AiTrace;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -47,9 +45,10 @@ final class GrokCli
         return CarbonImmutable::parse((string) config('services.grok_cli.since', '2026-10-13'))->startOfDay();
     }
 
+    /** Some AI is set up (GrokCli::provider()). */
     public static function configured(): bool
     {
-        return filled(config('services.grok_cli.home'));
+        return self::provider() !== null;
     }
 
     /**
@@ -87,95 +86,42 @@ final class GrokCli
      */
     public static function askMany(array $prompts, array $schema, int $timeout = self::TIMEOUT, array $files = []): array
     {
-        $home = (string) config('services.grok_cli.home');
-        $answers = [];
+        $provider = self::provider();
 
-        foreach (array_chunk($prompts, max(1, (int) config('services.grok_cli.concurrency', 4)), true) as $chunk) {
-            $started = microtime(true);
-            $works = [];
-            foreach ($chunk as $i => $prompt) {
-                $works[$i] = storage_path('app/grok-'.bin2hex(random_bytes(6)));
-                File::ensureDirectoryExists($works[$i].'/cwd', 0700);
-                File::put($works[$i].'/prompt.txt', $prompt);
-                foreach ($files as $name => $bytes) {
-                    File::put($works[$i].'/cwd/'.basename((string) $name), $bytes);
-                }
-            }
-
-            try {
-                // Started side by side, waited on one by one, so a call that
-                // runs out of time fails alone (prod 2026-10-12: one long
-                // transcript's timeout stopped every run behind it).
-                $running = [];
-                foreach ($works as $i => $work) {
-                    $running[$i] = Process::env(['HOME' => $home])->timeout($timeout)->start([
-                        $home.'/.grok/bin/grok',
-                        '--prompt-file', $work.'/prompt.txt',
-                        '--json-schema', json_encode($schema),
-                        // A photo (a bill) is read by the CLI's read_file tool from a
-                        // folder holding only that file (measured on prod 2026-10-16:
-                        // no other way in; `read` gave no structured output).
-                        '--max-turns', $files === [] ? '1' : '3',
-                        '--disable-web-search',
-                        '--no-subagents',
-                        '--tools', $files === [] ? '' : 'read_file',
-                        '--cwd', $work.'/cwd',
-                        // Measured on prod 2026-10-13, one 2.3k-char call:
-                        // default 215 s, low 61 s, same speakers and summary.
-                        '--reasoning-effort', (string) config('services.grok_cli.effort', 'low'),
-                    ]);
-                }
-                $results = [];
-                foreach ($running as $i => $process) {
-                    try {
-                        $results[$i] = $process->wait();
-                    } catch (ProcessTimedOutException) {
-                        self::failed('timed out after '.$timeout.'s');
-                        $results[$i] = new RuntimeException('The Grok CLI timed out after '.$timeout.'s');
-                    }
-                }
-            } finally {
-                foreach ($works as $work) {
-                    File::deleteDirectory($work);
-                }
-            }
-
-            foreach ($results as $i => $result) {
-                $answers[$i] = $result instanceof RuntimeException ? $result : self::answer($result);
-                self::trace($chunk[$i], $schema, $answers[$i], (int) round((microtime(true) - $started) * 1000), $i);
-            }
+        // No AI configured for this install: every question gets the same calm
+        // failure its caller already handles, never a crash (Jose, 2026-10-27:
+        // every integration is a removable add-on).
+        if ($provider === null) {
+            return array_map(fn () => new AiUnavailable('No AI is configured.'), array_values($prompts));
         }
 
-        ksort($answers);
+        $started = microtime(true);
+        $answers = $provider->askMany(array_values($prompts), $schema, $timeout, $files);
+        $ms = (int) round((microtime(true) - $started) * 1000);
 
-        return array_values($answers);
+        foreach (array_values($prompts) as $i => $prompt) {
+            self::trace($prompt, $schema, $answers[$i], $ms, $i);
+        }
+
+        return $answers;
     }
 
-    /** @return array<string, mixed>|RuntimeException */
-    private static function answer(ProcessResult $result): array|RuntimeException
+    /**
+     * The AI behind every caller: AI_PROVIDER grok or claude; "auto" (the
+     * default) is Grok when the CLI is set up, else Claude when its key is.
+     * Null when neither is: GrokCli::configured() is false and askMany()
+     * answers AiUnavailable.
+     */
+    public static function provider(): ?AiProvider
     {
-        if (! $result->successful()) {
-            // The CLI's own error, cut short; never the prompt.
-            $why = 'exit '.$result->exitCode().': '.mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300);
-            self::failed($why);
+        $grok = app(GrokCliProvider::class);
+        $claude = app(ClaudeProvider::class);
 
-            return new RuntimeException('The Grok CLI failed (exit '.$result->exitCode().'): '
-                .mb_substr(trim($result->errorOutput() ?: $result->output()), 0, 300));
-        }
-
-        // `structuredOutput`, measured on the box (grok 1.0.50).
-        $answer = json_decode($result->output(), true)['structuredOutput'] ?? null;
-
-        if (! is_array($answer)) {
-            self::failed('no structured output');
-
-            return new RuntimeException('The Grok CLI answered without structured output: '
-                .mb_substr(trim($result->output()), 0, 200));
-        }
-
-        Cache::forever('grok.last_ok', now()->toIso8601String());
-
-        return $answer;
+        return match ((string) config('services.ai.provider', 'auto')) {
+            'grok' => $grok->configured() ? $grok : null,
+            'claude' => $claude->configured() ? $claude : null,
+            default => $grok->configured() ? $grok : ($claude->configured() ? $claude : null),
+        };
     }
 
     /** Read by ezbizi:check-grok, which alerts when failures outlast successes. */
@@ -229,7 +175,7 @@ final class GrokCli
         }
     }
 
-    private static function failed(string $why): void
+    public static function failed(string $why): void
     {
         Cache::forever('grok.last_failure', ['at' => now()->toIso8601String(), 'why' => $why]);
     }
