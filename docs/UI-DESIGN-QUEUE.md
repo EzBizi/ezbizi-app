@@ -2967,7 +2967,7 @@ up could only be answered — Phone's sentence: *a rule would have been argued w
 
 ### 151 · Email › Settings made compact — **sent 2026-10-27** (`docs/previews/email-settings-layouts.html`)
 
-Jose: "we can make an improvement to the Email - Settings tab in terms of UI." **1** (recommended) summary line (N Workspaces · N inboxes · N need attention); Workspaces as compact rows (domain, company, inbox count, one health chip; expand for the 4 permissions, auto-expanded only when missing; Disconnect under ⋯); Connected inboxes table (address, company, kind, status, last checked, roles; search + company filter; row opens a side pane); Add an inbox top right. **2** nested by Workspace. **3** compact cards. Phone **4** / **5** / **6**.
+Jose: "we can make an improvement to the Email - Settings tab in terms of UI." **1** (recommended) summary line (N Workspaces · N inboxes · N need attention); Workspaces as compact rows (domain, company, inbox count, one health chip; expand for the 4 permissions, auto-expanded only when missing; Disconnect under ⋯); Connected inboxes table (address, company, kind, status, last checked, roles; search + company filter; row opens a side pane); Add an inbox top right. **2** nested by Workspace. **3** compact cards. Phone **4** / **5** / **6**. **7** (Jose: "same with the google workspace tab") Workspace tab as the same compact rows: people, signature progress, status chip, the next step on the row.
 
 ### 150 · Monitoring › Lighting (RGB controller) — **sent 2026-10-26 — Jose: "Looks good" (1 and 4)** (`docs/previews/monitoring-lighting-layouts.html`)
 
