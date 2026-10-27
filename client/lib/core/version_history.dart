@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0499',
+      date: '27 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'Call recordings are never copied into EzBizi; they play and download straight from the phone provider.',
+        'Lead office hours can only be seen and changed for the companies and branches you cover.',
+        'Branch-limited report texts and the Facebook campaign mapper stay within the reader\'s branches; report texts go only to people allowed to see those reports.',
+        'Jobs: the status list follows the company or branch you are viewing.',
+        'Disconnecting Workiz no longer causes errors anywhere; EzBizi changes are copied to Workiz while it is connected.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0498',
       date: '27 Oct 2026',
       items: [
