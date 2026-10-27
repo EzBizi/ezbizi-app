@@ -568,4 +568,31 @@ class WorkizV2Test extends TestCase
         $this->assertSame(['job' => null, 'failed' => null], app(WorkizJobs::class)->find($connection->fresh(), '09RR7R'));
         Http::assertSentCount(1);
     }
+
+    /** Jobs' Book panel, 2026-10-27: description, custom fields by the branch's ids, and all-day (end on the next day, as Workiz takes it). */
+    public function test_a_booked_job_sends_its_description_custom_fields_and_all_day(): void
+    {
+        [$tenant, $connection] = $this->branch();
+        $visit = $this->inTenant($tenant['org'], function () use ($connection) {
+            $customer = Customer::create(['owning_franchise_id' => $connection->scope_id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true]);
+            \App\Models\WorkizRecord::query()->create(['franchise_id' => $connection->scope_id, 'connection_id' => $connection->id, 'type' => 'custom_field',
+                'remote_id' => 'CF-1', 'payload' => ['name' => 'Pricing '], 'synced_at' => now()]);
+
+            return Job::create([
+                'franchise_id' => $connection->scope_id, 'customer_id' => $customer->id, 'number' => 'J-1', 'title' => 'Sweep', 'description' => 'Back door',
+                'status' => 'Submitted', 'scheduled_for' => '2026-11-10 09:00:00', 'duration_minutes' => 90, 'currency' => 'USD',
+                'all_day' => true, 'custom_fields' => ['pricing' => '$99 - Level 1 Inspection', 'Not in Workiz' => 'x'],
+            ]);
+        });
+        Http::fake([
+            'api.workiz.com/crm/api/v2/jobtypes*' => Http::response($this->page([['id' => 'JT-x1', 'name' => 'Chimney Inspection']])),
+            'api.workiz.com/crm/api/v2/jobs' => Http::response($this->v2Job(['id' => 'JOB-new', 'uuid' => 'NEW001', 'serialId' => 11009]), 201),
+        ]);
+
+        $this->inTenant($tenant['org'], fn () => app(WorkizJobWriter::class)->create($visit, 'Chimney Inspection'));
+
+        Http::assertSent(fn (Request $r) => $r->method() === 'POST' && str_ends_with($r->url(), '/v2/jobs')
+            && $r['description'] === 'Back door' && $r['customFields'] === [['id' => 'CF-1', 'value' => '$99 - Level 1 Inspection']]
+            && $r['isAllDay'] === true && $r['date'] === '2026-11-10' && $r['endDate'] === '2026-11-11');
+    }
 }

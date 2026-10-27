@@ -79,6 +79,38 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertNotEmpty($job->title);
     }
 
+    /** Jobs, 2026-10-27: a projected job is born when and by whom Workiz says. */
+    public function test_a_projected_job_carries_workizs_created_date_and_creator(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => \App\Models\WorkizTeamMember::create(['franchise_id' => $tenant['franchise']->id, 'remote_id' => 'U9',
+            'name' => 'Ana Ruiz', 'user_id' => $tenant['admin']->id, 'is_active' => true, 'is_field_tech' => false, 'service_areas' => [], 'payload' => [], 'synced_at' => now()]));
+        $this->mirror($tenant, [], ['CreatedDate' => '2026-01-15 09:30:00', 'CreatedBy' => 'ana ruiz ']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->sole());
+        $zone = $tenant['franchise']->fresh()->timezone ?: 'America/New_York';
+        $this->assertSame(\Illuminate\Support\Carbon::createFromFormat('Y-m-d H:i:s', '2026-01-15 09:30:00', $zone)->utc()->toDateTimeString(), $job->created_at->utc()->toDateTimeString());
+        $this->assertSame(['ana ruiz', $tenant['admin']->id], [$job->created_by_label, $job->created_by_user_id]);
+    }
+
+    /** Scheduling, 2026-10-27: Workiz's team is handed over on create and again only when it moves. */
+    public function test_the_workiz_team_is_followed_only_when_it_moves(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $row = $this->mirror($tenant, [], ['Team' => [['id' => 'U1', 'Name' => 'Ron']]]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['U1'], $this->inTenant($tenant['org'], fn () => $row->fresh()->projected['team']));
+
+        $this->artisan('ezbizi:project-workiz')->doesntExpectOutputToContain('followed a change')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $row->fresh()->forceFill(['payload' => ['Team' => [['id' => 'U2', 'Name' => 'Sam']]] + $row->fresh()->payload])->save());
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(['U2'], $this->inTenant($tenant['org'], fn () => $row->fresh()->projected['team']));
+    }
+
     /**
      * THE HOUSE RULE, and this command is the one most able to break it.
      * `docs/DEVELOPMENT-RULES.md`: a recurring sweep never overwrites a field a
