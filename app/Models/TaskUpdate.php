@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Models\Concerns\HasAttachments;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -12,10 +13,16 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** A comment on a task. @mentions are plain text for now. */
+/**
+ * A comment on a task. @mentions are plain text for now.
+ *
+ * It can carry files (Attachment, morph `task_updates`); `body` is '' when an
+ * update is only files. A soft-deleted task keeps its updates and their files.
+ */
 class TaskUpdate extends Model implements HoldsPersonalData
 {
     use BelongsToTenant;
+    use HasAttachments;
     use HasUuids;
 
     protected $fillable = ['organization_id', 'task_id', 'user_id', 'body'];

@@ -295,6 +295,9 @@ class AppServiceProvider extends ServiceProvider
                 // re-pointed from the run at submit, never by an upload naming
                 // the report directly. See Attachables.
                 'inspection_reports' => InspectionReport::class,
+                // Files on a task update arrive through POST tasks/{id}/updates
+                // only, never by naming the update to POST attachments.
+                'task_updates' => \App\Models\TaskUpdate::class,
             ],
         );
 

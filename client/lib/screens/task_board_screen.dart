@@ -17,6 +17,7 @@ import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
+import 'task_board_files.dart';
 import 'task_board_people.dart';
 
 typedef _Json = Map<String, dynamic>;
@@ -173,7 +174,11 @@ String _createdLabel(Object? at, DisplayFormats formats) {
 
 /// The built-in columns in the table's order, with the names a server from
 /// before `builtin_columns` showed (Jose, 2026-10-20).
+///
+/// `creator` (who made the task) is drawn only when the board lists it, so a
+/// server from before it keeps its headings; its name is the board's.
 const _builtinDefaults = {
+  'creator': 'Owner',
   'owner': 'Owner',
   'status': 'Status',
   'created': 'Created',
@@ -196,6 +201,7 @@ String _builtinLabel(_Json? board, String key) {
 bool _builtinShown(_Json? board, String key) {
   final row = (board?['builtin_columns'] as Map?)?[key];
   final visible = row is Map ? row['visible'] : null;
+  if (key == 'creator' && row is! Map) return false;
   return visible is bool ? visible : key != 'created';
 }
 
@@ -672,7 +678,10 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   Widget _columnsControl() {
     final hidden = [
       for (final key in _builtinDefaults.keys)
-        if (!_builtinShown(_board, key)) key,
+        if (!_builtinShown(_board, key) &&
+            (key != 'creator' ||
+                (_board?['builtin_columns'] as Map?)?['creator'] is Map))
+          key,
     ];
     return MenuAnchor(
       menuChildren: [
@@ -1504,6 +1513,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   }
 
   static const _widths = (
+    creator: 130.0,
     owner: 130.0,
     status: 130.0,
     due: 104.0,
@@ -1518,6 +1528,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// scrolls sideways instead of squeezing the task to nothing.
   double get _fixedWidth =>
       6 +
+      (_builtinShown(_board, 'creator') ? _widths.creator : 0) +
       (_builtinShown(_board, 'owner') ? _widths.owner : 0) +
       (_builtinShown(_board, 'status') ? _widths.status : 0) +
       (_builtinShown(_board, 'due') ? _widths.due : 0) +
@@ -1580,6 +1591,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                 child: Align(alignment: Alignment.centerLeft, child: h('Task')),
               ),
             ),
+            if (shown('creator')) b('creator', _widths.creator),
             if (shown('owner')) b('owner', _widths.owner),
             if (shown('status')) b('status', _widths.status),
             if (shown('created')) b('created', _widths.created),
@@ -1672,6 +1684,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   ),
                 ),
               ),
+              if (shown('creator'))
+                _cell(context, _widths.creator, _creatorCell(context, t)),
               if (shown('owner'))
                 _cell(
                   context,
@@ -1785,6 +1799,29 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Who made the task: a person's avatar and name, or a rule's or the
+  /// system's label as the server gives it.
+  Widget _creatorCell(BuildContext context, _Json t) {
+    final madeBy = t['created_by'];
+    if (madeBy is! Map || madeBy['label'] is! String) {
+      return const SizedBox.shrink();
+    }
+    final label = madeBy['label'] as String;
+    return Tooltip(
+      key: ValueKey('task-creator-${t['id']}'),
+      message: label,
+      child: Row(
+        children: [
+          if (madeBy['type'] == 'user') ...[
+            _avatar(context, label),
+            const SizedBox(width: 6),
+          ],
+          Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+        ],
       ),
     );
   }
@@ -2225,6 +2262,10 @@ class _TaskPanelState extends State<_TaskPanel> {
   String? _saveError;
   bool _confirmDelete = false;
   bool _posting = false;
+  String? _postError;
+
+  /// Files chosen for the next update, not sent yet.
+  final _files = <({String name, List<int> bytes})>[];
 
   final _title = TextEditingController();
   final _due = TextEditingController();
@@ -2279,21 +2320,48 @@ class _TaskPanelState extends State<_TaskPanel> {
     });
   }
 
+  Future<void> _attach() async {
+    final picked = await pickTaskUpdateFile();
+    if (picked == null || !mounted) return;
+    setState(() {
+      _postError = taskUpdateFileRefusal(
+        picked.name,
+        picked.bytes.length,
+        _files.length,
+      );
+      if (_postError == null) {
+        _files.add((name: picked.name, bytes: picked.bytes));
+      }
+    });
+  }
+
+  /// JSON with words only, as before; multipart once a file is attached,
+  /// `files[]` and the body only if there is one.
   Future<void> _post() async {
     final body = _update.text.trim();
-    if (body.isEmpty) return;
-    setState(() => _posting = true);
-    final res = await widget.api.post('/tasks/${widget.taskId}/updates', {
-      'body': body,
+    if (body.isEmpty && _files.isEmpty) return;
+    setState(() {
+      _posting = true;
+      _postError = null;
     });
+    final path = '/tasks/${widget.taskId}/updates';
+    final res = _files.isEmpty
+        ? await widget.api.post(path, {'body': body})
+        : await widget.api.postFiles(
+            path,
+            'files',
+            List.of(_files),
+            fields: {if (body.isNotEmpty) 'body': body},
+          );
     if (!mounted) return;
     setState(() {
       _posting = false;
       if (!res.ok) {
-        _saveError = res.reason;
+        _postError = res.reason;
         return;
       }
       _update.clear();
+      _files.clear();
       _task = {
         ..._task!,
         'updates': [
@@ -2555,7 +2623,9 @@ class _TaskPanelState extends State<_TaskPanel> {
         ),
         if (madeBy != null)
           fact(
-            'Made by',
+            (widget.board['builtin_columns'] as Map?)?['creator'] is Map
+                ? _builtinLabel(widget.board, 'creator')
+                : 'Made by',
             Text(
               madeBy['type'] == 'automation'
                   ? 'Automation "${madeBy['label']}"'
@@ -2624,7 +2694,15 @@ class _TaskPanelState extends State<_TaskPanel> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      Text('${u['body']}'),
+                      if ('${u['body'] ?? ''}'.isNotEmpty) Text('${u['body']}'),
+                      TaskAttachments(
+                        api: widget.api,
+                        attachments: [
+                          for (final a
+                              in (u['attachments'] as List? ?? const []))
+                            if (a is Map) Map<String, dynamic>.from(a),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -2643,14 +2721,55 @@ class _TaskPanelState extends State<_TaskPanel> {
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(
-              key: const Key('task-update-post'),
-              onPressed: _posting ? null : _post,
-              child: Text(_posting ? 'Posting…' : 'Post update'),
+          if (_files.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (i, f) in _files.indexed)
+                  TaskFileChip(
+                    key: ValueKey('task-update-file-$i'),
+                    name: f.name,
+                    size: f.bytes.length,
+                    onDeleted: _posting
+                        ? null
+                        : () => setState(() => _files.removeAt(i)),
+                  ),
+              ],
             ),
+          ],
+          if (_postError != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              _postError!,
+              key: const Key('task-update-error'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              TextButton.icon(
+                key: const Key('task-update-attach'),
+                onPressed: _posting || _files.length >= taskUpdateMaxFiles
+                    ? null
+                    : _attach,
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: const Text('Attach'),
+              ),
+              FilledButton(
+                key: const Key('task-update-post'),
+                onPressed: _posting ? null : _post,
+                child: Text(_posting ? 'Posting…' : 'Post update'),
+              ),
+            ],
           ),
         ],
       ],

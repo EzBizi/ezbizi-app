@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Attachment;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -12,12 +13,16 @@ use App\Models\TaskColumnValue;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Support\Files\AttachmentUploader;
+use App\Support\Files\UploadLimits;
 use App\Support\Tasks\TaskBoards;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -33,22 +38,56 @@ class TasksController extends Controller
         return ['updates', 'subtasks', 'subtasks as subtasks_done' => fn ($q) => $q->where('status', Task::STATUS_DONE)];
     }
 
-    public function __construct(private readonly TaskWriter $writer) {}
+    public function __construct(
+        private readonly TaskWriter $writer,
+        private readonly AttachmentUploader $uploader,
+        private readonly UploadLimits $limits,
+    ) {}
 
     public function show(Task $task): JsonResponse
     {
         $this->authorize('view', $task);
-        $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
+        $task->load(['assignee:id,name', 'owners.user:id,name', 'creator:id,name', 'updates.user:id,name', 'updates.attachments', 'statusRow', 'values.column'])->loadCount(['updates', 'subtasks']);
 
         return response()->json(['data' => self::present($task) + [
-            'updates' => $task->updates->map(fn (TaskUpdate $u) => [
-                'id' => $u->id,
-                'body' => $u->body,
-                'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
-                'created_at' => $u->created_at?->toIso8601String(),
-            ])->all(),
+            'updates' => $task->updates->map(fn (TaskUpdate $u) => self::presentUpdate($u))->all(),
         ]]);
     }
+
+    /**
+     * An update and its files. `url` is the authorized file endpoint
+     * (GET attachments/{id}, same bearer token, board `view` decides);
+     * `?inline=1` opens an image or a PDF in place.
+     */
+    public static function presentUpdate(TaskUpdate $u): array
+    {
+        return [
+            'id' => $u->id,
+            'body' => $u->body,
+            'author' => $u->user ? ['id' => $u->user->id, 'name' => $u->user->name] : null,
+            'created_at' => $u->created_at?->toIso8601String(),
+            'attachments' => $u->attachments->sortBy('created_at')->values()->map(function (Attachment $a) {
+                $url = url("/api/v1/attachments/{$a->id}");
+
+                return [
+                    'id' => $a->id,
+                    'name' => $a->original_name,
+                    'mime' => $a->mime,
+                    'size' => (int) $a->size_bytes,
+                    'url' => $url,
+                    'inline_url' => in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
+                    'thumbnail_url' => str_starts_with((string) $a->mime, 'image/') && in_array($a->mime, AttachmentsController::INLINE_MIMES, true) ? $url.'?inline=1' : null,
+                ];
+            })->all(),
+        ];
+    }
+
+    /** Up to 10 files, 25 MB each. Extensions: the attachment list plus these. */
+    public const UPDATE_MAX_FILES = 10;
+
+    public const UPDATE_MAX_KB = 25600;
+
+    public const UPDATE_EXTRA_EXTENSIONS = ['gif', 'ppt', 'pptx', 'mp4', 'mov', 'webm', 'm4v'];
 
     public function store(Request $request): JsonResponse
     {
@@ -88,15 +127,43 @@ class TasksController extends Controller
     public function storeUpdate(Request $request, Task $task): JsonResponse
     {
         $this->authorize('update', $task);
-        $input = $request->validate(['body' => ['required', 'string', 'max:5000']]);
-        $update = $this->writer->comment($task, $request->user(), $input['body']);
 
-        return response()->json(['data' => [
-            'id' => $update->id,
-            'body' => $update->body,
-            'author' => ['id' => $request->user()->id, 'name' => $request->user()->name],
-            'created_at' => $update->created_at?->toIso8601String(),
-        ]], 201);
+        // A file PHP refused for its size arrives present and invalid; say so
+        // in words before `max:` (which cannot weigh it) does. See UploadLimits.
+        foreach ((array) $request->file('files', []) as $i => $file) {
+            if ($file instanceof UploadedFile && ! $file->isValid()
+                && in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                throw ValidationException::withMessages(["files.$i" => 'That file is too large. The most an update takes is 25 MB per file.']);
+            }
+        }
+
+        $extensions = array_values(array_unique([...$this->limits->extensions(), ...self::UPDATE_EXTRA_EXTENSIONS]));
+        $input = $request->validate([
+            'body' => ['nullable', 'string', 'max:5000', 'required_without:files'],
+            'files' => ['sometimes', 'array', 'max:'.self::UPDATE_MAX_FILES],
+            'files.*' => ['file', 'mimes:'.implode(',', $extensions), 'max:'.self::UPDATE_MAX_KB],
+        ], [
+            'body.required_without' => 'Write something or attach a file.',
+            'files.max' => 'An update takes at most '.self::UPDATE_MAX_FILES.' files.',
+            'files.*.max' => 'That file is too large. The most an update takes is 25 MB per file.',
+            'files.*.mimes' => 'That kind of file is not accepted here. Accepted: '.implode(', ', $extensions).'.',
+        ]);
+        $body = trim((string) ($input['body'] ?? ''));
+        $files = $input['files'] ?? [];
+        if ($body === '' && $files === []) {
+            throw ValidationException::withMessages(['body' => 'Write something or attach a file.']);
+        }
+
+        $update = DB::transaction(function () use ($task, $request, $body, $files) {
+            $update = $this->writer->comment($task, $request->user(), $body);
+            foreach ($files as $file) {
+                $this->uploader->upload($request->user(), $update, $file, 'task_updates');
+            }
+
+            return $update;
+        });
+
+        return response()->json(['data' => self::presentUpdate($update->load(['user:id,name', 'attachments']))], 201);
     }
 
     public static function present(Task $task): array
@@ -128,7 +195,7 @@ class TasksController extends Controller
                     'type' => 'automation',
                     'label' => Automation::query()->find($task->created_by_automation_id)?->name ?? 'An automation',
                 ],
-                $task->creator !== null => ['type' => 'user', 'label' => $task->creator->name],
+                $task->creator !== null => ['type' => 'user', 'id' => $task->creator->id, 'label' => $task->creator->name],
                 default => null,
             },
         ];
