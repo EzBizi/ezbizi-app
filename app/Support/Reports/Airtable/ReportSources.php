@@ -2,6 +2,7 @@
 
 namespace App\Support\Reports\Airtable;
 
+use App\Models\FinancialResult;
 use App\Models\FinancialSource;
 use App\Models\Organization;
 use App\Support\Tenancy\TenantContext;
@@ -64,7 +65,25 @@ final class ReportSources
             }
         }
 
-        return $out;
+        return $role === 'marketing' && $franchiseId === null ? self::withResults($org, $out, $from, $to) : $out;
+    }
+
+    /**
+     * Approved Financials Results (ACE etc., entered in EzBizi; Meta, 2026-10-27)
+     * read alongside the Airtable marketing tables. A date and area EzBizi
+     * holds replaces the Airtable row for it, so moving off Airtable never
+     * counts a day twice. Pending results do not count.
+     */
+    private static function withResults(string $org, Collection $rows, string $from, string $to): Collection
+    {
+        $results = FinancialResult::withoutGlobalScopes()->where('organization_id', $org)->where('status', 'approved')
+            ->whereBetween('date', [$from, $to])->get()
+            ->map(fn (FinancialResult $r) => ['date' => $r->date->toDateString(), 'area' => $r->area, 'amount' => $r->cost_cents / 100,
+                'calls' => $r->calls, 'jobs' => $r->jobs, 'sales' => $r->sales_cents / 100, 'profit' => $r->profit_cents / 100, 'source' => $r->source]);
+        $held = $results->map(fn ($r) => $r['date'].'|'.mb_strtolower(trim((string) $r['area'])))->flip();
+
+        return $rows->reject(fn ($r) => $held->has(((string) ($r['date'] ?? '')).'|'.mb_strtolower(trim((string) ($r['area'] ?? '')))))
+            ->concat($results)->values();
     }
 
     /**

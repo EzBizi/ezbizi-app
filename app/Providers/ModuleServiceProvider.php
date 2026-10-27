@@ -26,6 +26,7 @@ use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
 use App\Models\FinancialRecord;
+use App\Models\FinancialResult;
 use App\Models\Invoice;
 use App\Models\Task;
 use App\Models\Vehicle;
@@ -2514,6 +2515,36 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'financial_record.updated',
                         label: 'Financials record changed',
                         description: 'A cell in a Financials record was changed. It carries the table name.',
+                    ),
+                ],
+            ),
+
+            /*
+             * Results (Jose, 2026-10-27, ACE option A): an outside lead
+             * source's calls, jobs, cost, sales and profit per date and area,
+             * typed in or read from a photo (app or WhatsApp). A row counts in
+             * reports only once approved. Drawn inside Financials (parent).
+             *
+             *   view     see results
+             *   create   type rows in, or send a photo
+             *   edit     change a pending row
+             *   delete   remove a row
+             *   approve  approve rows so they count; change approved rows
+             */
+            new ModuleDefinition(
+                key: 'financial_results',
+                label: 'Lead source results',
+                parent: 'financials',
+                sidebar: false,
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve'],
+                actionLabels: ['approve' => 'Approve results so they count in reports'],
+                subject: new AutomationSubject(FinancialResult::class, 'Lead source results', key: 'financial_result'),
+                emits: [FinancialResult::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'financial_result.approved',
+                        label: 'Lead source results approved',
+                        description: 'A row of a lead source\'s results (ACE) was approved. It carries the source, date, area, calls, jobs, cost, sales and profit.',
                     ),
                 ],
             ),
