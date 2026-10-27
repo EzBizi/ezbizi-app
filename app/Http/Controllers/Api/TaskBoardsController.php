@@ -68,6 +68,7 @@ class TaskBoardsController extends Controller
                 // Franchise names repeat across companies: the client groups by these.
                 'company_id' => ($b->company ?? $b->franchise?->company)?->id,
                 'company_name' => ($b->company ?? $b->franchise?->company)?->name,
+                'franchise_id' => $b->franchise_id,
                 'open_for_me' => (int) $b->open_for_me,
                 'can_edit' => $this->boards->canEdit($user, $b),
                 'my_role' => $role,
