@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/deep_links.dart';
 import 'package:ezbizi_client/core/phone_numbers.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
@@ -9,6 +10,7 @@ import 'package:ezbizi_client/screens/business_profile_screen.dart';
 import 'package:ezbizi_client/screens/reviews_screen.dart';
 import 'package:ezbizi_client/screens/customer_experience/review_sources.dart';
 import 'package:ezbizi_client/screens/customer_experience/review_stats_band.dart';
+import 'package:ezbizi_client/widgets/open_destination.dart';
 import 'package:ezbizi_client/widgets/status_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -578,6 +580,108 @@ void main() {
     expect(sent.where((c) => c.contains('/publish')), isEmpty);
   });
 
+  testWidgets('#4 add missing only: mode sent, removes none, has shown', (
+    tester,
+  ) async {
+    final sent = <http.Request>[];
+    await _pumpProfile(
+      tester,
+      sent: sent,
+      routes: {
+        'GET /services': (_) => _json({'data': services}),
+        'POST /services/copy': (r) {
+          final body = jsonDecode(r.body) as Map;
+          final add = body['mode'] == 'add_missing';
+          if (body['apply'] == true) {
+            return _json({
+              'data': [
+                {'id': 'loc-2', 'name': 'Oak Park', 'ok': true},
+              ],
+            });
+          }
+          return _json({
+            'data': [
+              {
+                'id': 'loc-2',
+                'name': 'Oak Park',
+                'has': ['Roof repair'],
+                'adds': ['Duct cleaning'],
+                'removes': add ? <String>[] : ['Roof repair'],
+              },
+            ],
+          });
+        },
+      },
+      locations: locations,
+    );
+    await tester.tap(find.byKey(const ValueKey('gbp-row-loc-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Services'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('cx-services-copy')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('cx-target-loc-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('cx-services-preview')));
+    await tester.pumpAndSettle();
+    expect(find.text('− Roof repair'), findsOneWidget);
+    expect(find.text('Has: Roof repair'), findsOneWidget);
+
+    // Switching mode re-previews in that mode.
+    await tester.tap(find.text('Add missing only'));
+    await tester.pumpAndSettle();
+    final previews = sent
+        .where((r) => r.url.path.endsWith('/services/copy'))
+        .map((r) => jsonDecode(r.body) as Map)
+        .toList();
+    expect(previews.last['mode'], 'add_missing');
+    expect(previews.last['apply'], false);
+    expect(find.text('− Roof repair'), findsNothing);
+    expect(find.text('+ Duct cleaning'), findsOneWidget);
+    expect(find.text('Has: Roof repair'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('cx-services-apply')));
+    await tester.pumpAndSettle();
+    final applied =
+        jsonDecode(
+              sent.lastWhere((r) => r.url.path.endsWith('/services/copy')).body,
+            )
+            as Map;
+    expect(applied['apply'], true);
+    expect(applied['mode'], 'add_missing');
+  });
+
+  testWidgets('#10 phone check says when it was checked', (tester) async {
+    final at = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+    await _pumpProfile(
+      tester,
+      routes: {
+        'GET /phone-check': (_) =>
+            _json({'checked_at': at.toIso8601String(), 'data': phoneCheck}),
+      },
+      locations: locations,
+    );
+    await tester.tap(find.byKey(const ValueKey('cx-open-phone-check')));
+    await tester.pumpAndSettle();
+    expect(find.text('Checked 5 min ago'), findsOneWidget);
+  });
+
+  testWidgets('#7 send window opens the reply rule, or Automations', (
+    tester,
+  ) async {
+    for (final rule in <String?>['rule-9', null]) {
+      final opened = <String>[];
+      DeepLinks.pending.value = null;
+      await _pumpReviews(tester, replyRule: rule, opened: opened);
+      await tester.tap(find.byKey(const ValueKey('cx-send-window')));
+      await tester.pumpAndSettle();
+      expect(opened, ['automations']);
+      expect(DeepLinks.pending.value?.id, rule);
+      if (rule != null) expect(DeepLinks.pending.value?.type, 'automation');
+    }
+    DeepLinks.pending.value = null;
+  });
+
   testWidgets('#13 sources: eKomi and Thumbtack say not connected', (
     tester,
   ) async {
@@ -591,6 +695,10 @@ void main() {
                     'connected': true,
                     'count': 312,
                     'average': 4.7,
+                    'last_sync': DateTime.now()
+                        .toUtc()
+                        .subtract(const Duration(minutes: 5))
+                        .toIso8601String(),
                   },
                   {
                     'source': 'ekomi',
@@ -624,6 +732,13 @@ void main() {
     expect(pill('thumbtack'), 'Not connected');
     expect(find.text('312 reviews'), findsOneWidget);
     expect(find.text('4.7 ★'), findsOneWidget);
+    expect(find.text('Synced 5 min ago'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('cx-source-sync-ekomi')))
+          .data,
+      '—',
+    );
 
     await tester.enterText(
       find.byKey(const ValueKey('cx-sources-search')),
@@ -792,6 +907,83 @@ Future<void> _pumpProfile(
       theme: EzBiziTheme.light(),
       home: Scaffold(
         body: BusinessProfileScreen(api: api, session: Session(api)),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpReviews(
+  WidgetTester tester, {
+  required String? replyRule,
+  required List<String> opened,
+}) async {
+  tester.view.physicalSize = const Size(1300, 1000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  final api = ApiClient(
+    client: MockClient((r) async {
+      final path = r.url.path;
+      if (path.endsWith('/me')) {
+        return _json({
+          'data': {
+            'id': 'u-1',
+            'name': 'Dana',
+            'email': 'dana@brightside.example',
+            'has_avatar': false,
+            'permissions': ['reviews.view', 'automations.view'],
+            'modules': [
+              {
+                'key': 'automations',
+                'label': 'Automations',
+                'available': true,
+                'reachable': true,
+              },
+            ],
+            'preferences': <String, dynamic>{},
+            'organization': {'id': 'org-1', 'name': 'Brightside'},
+            'scope': {
+              'type': 'organization',
+              'id': 'org-1',
+              'label': 'Brightside',
+              'path': ['Brightside'],
+            },
+          },
+        });
+      }
+      if (path.endsWith('/reviews/sources')) {
+        return _json({'data': <dynamic>[], 'reply_rule_id': replyRule});
+      }
+      if (path.endsWith('/reviews')) {
+        return _json({
+          'data': <dynamic>[],
+          'meta': {
+            'total': 0,
+            'unanswered': 0,
+            'stats': {
+              'histogram': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 0},
+              'replies': {'published': 0, 'by_ai': 0, 'drafts': 0, 'failed': 0},
+            },
+          },
+        });
+      }
+      return _json({'data': <String, dynamic>{}});
+    }),
+  );
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: OpenDestination(
+          open: opened.add,
+          child: ReviewsScreen(
+            key: ValueKey('$replyRule'),
+            api: api,
+            session: session,
+          ),
+        ),
       ),
     ),
   );

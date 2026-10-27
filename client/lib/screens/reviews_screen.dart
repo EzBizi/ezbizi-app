@@ -111,6 +111,10 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   Map<String, dynamic>? _stats;
   bool _drafting = false;
 
+  /// The live rule that posts replies, whose wait is the send window; null
+  /// when there is none (GET /reviews/sources `reply_rule_id`).
+  String? _replyRuleId;
+
   /// Opens on unanswered — see the class note.
   bool _onlyUnanswered = true;
 
@@ -159,6 +163,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     super.initState();
     _load();
     _loadSummary();
+    _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
   }
@@ -501,13 +506,29 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     await _load();
   }
 
-  /// The rules whose wait paces published replies live in Automations.
+  /// The rule whose wait paces published replies, opened the way a
+  /// notification about it does; Automations itself when there is none.
   VoidCallback? get _openSendWindow {
     final open = OpenDestination.of(context);
     if (open == null || !(widget.session.me?.reaches('automations') ?? false)) {
       return null;
     }
-    return () => open('automations');
+    final rule = _replyRuleId;
+    return () {
+      if (rule != null) {
+        DeepLinks.open(
+          DeepLink(module: 'automations', type: 'automation', id: rule),
+        );
+      }
+      open('automations');
+    };
+  }
+
+  Future<void> _loadReplyRule() async {
+    final r = await widget.api.get('/reviews/sources');
+    if (!mounted || !r.ok) return;
+    final id = r.body['reply_rule_id'];
+    setState(() => _replyRuleId = id is String && id.isNotEmpty ? id : null);
   }
 
   String? _savedBody(Map<String, dynamic> review) =>

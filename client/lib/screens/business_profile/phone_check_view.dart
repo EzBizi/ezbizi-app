@@ -27,6 +27,15 @@ class PhoneCheckView extends StatefulWidget {
   State<PhoneCheckView> createState() => _PhoneCheckViewState();
 }
 
+/// "just now", "5 min ago", "3 h ago", "2 d ago".
+String checkedAgo(DateTime at, {DateTime? now}) {
+  final ago = (now ?? DateTime.now()).difference(at.toLocal());
+  if (ago.isNegative || ago.inMinutes < 1) return 'just now';
+  if (ago.inMinutes < 60) return '${ago.inMinutes} min ago';
+  if (ago.inHours < 24) return '${ago.inHours} h ago';
+  return '${ago.inDays} d ago';
+}
+
 const _statusWords = {
   'match': ('Match', Tone.ok),
   'mismatch': ('Mismatch', Tone.bad),
@@ -39,6 +48,7 @@ class _PhoneCheckViewState extends State<PhoneCheckView> {
   String? _error;
   String? _status;
   String _q = '';
+  DateTime? _checkedAt;
 
   @override
   void initState() {
@@ -51,6 +61,7 @@ class _PhoneCheckViewState extends State<PhoneCheckView> {
     if (!mounted) return;
     setState(() {
       _error = r.ok ? null : r.message;
+      _checkedAt = DateTime.tryParse('${r.body['checked_at'] ?? ''}');
       _rows = r.ok
           ? [
               for (final m in (r.data as List? ?? const []).whereType<Map>())
@@ -98,6 +109,12 @@ class _PhoneCheckViewState extends State<PhoneCheckView> {
               Expanded(
                 child: Text('Phone check', style: theme.textTheme.titleMedium),
               ),
+              if (_checkedAt case final at?)
+                Text(
+                  'Checked ${checkedAgo(at)}',
+                  key: const ValueKey('cx-phone-checked'),
+                  style: theme.textTheme.bodySmall,
+                ),
             ],
           ),
         ),
