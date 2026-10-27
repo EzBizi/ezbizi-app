@@ -93,9 +93,10 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 .'Google, RingCentral or EzBizi\'s own phone line.',
                 Erasure::erase()),
             new PersonalDataEntry('recording_path', PersonalDataEntry::CONTENT,
-                'The recording itself, copied once to EzBizi\'s private storage so the call '
-                .'still plays after the account that brought it is disconnected (Jose, '
-                .'2026-10-27). Erasing removes the file; so does deleting the enquiry.',
+                'A Google Local Services call\'s recording itself, copied once to EzBizi\'s '
+                .'private storage so the call still plays after the account that brought it is '
+                .'disconnected (Jose, 2026-10-27). RingCentral and EzBizi phone recordings are '
+                .'never copied here. Erasing removes the file; so does deleting the enquiry.',
                 Erasure::erase()),
             new PersonalDataEntry('answered_by, rang', PersonalDataEntry::IDENTITY,
                 'The staff member who picked up a call, or whose phones rang, as RingCentral '

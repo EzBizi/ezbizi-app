@@ -147,8 +147,13 @@ class RingCentralLeadCallsTest extends TestCase
             'rc.test/restapi/v1.0/account/~/recording/R9/content' => \Illuminate\Support\Facades\Http::response('ID3-audio', 200, ['Content-Type' => 'audio/mpeg']),
         ]);
 
+        \Illuminate\Support\Facades\Storage::fake('local');
         $this->signedInAs($t['admin'])->get("/api/v1/leads/{$lead->id}/conversations/{$conversation->id}/recording")
             ->assertOk()->assertHeader('Content-Type', 'audio/mpeg');
+        // Fetch-then-delete, as the privacy page says: RingCentral audio is never kept (Desk, 2026-10-27).
+        $this->artisan('ezbizi:leads-keep-recordings', ['--all' => true])->assertSuccessful();
+        $this->assertNull($conversation->fresh()->recording_path);
+        $this->assertSame([], \Illuminate\Support\Facades\Storage::disk('local')->allFiles());
 
         $row = collect($this->signedInAs($t['admin'])->getJson('/api/v1/leads')->json('data'))->firstWhere('id', $lead->id);
         $this->assertNotNull($row, 'an administrator sees RC Calls');

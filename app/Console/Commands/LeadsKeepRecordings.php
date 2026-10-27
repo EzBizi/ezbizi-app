@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * Every ten minutes: copy each new call recording to EzBizi's own disk
+ * Every ten minutes: copy each new Google Local Services call recording to EzBizi's own disk
  * (LeadRecordings, Jose 2026-10-27), then delete any kept file whose row is
  * gone or no longer names it: an enquiry deleted by the database's cascade
  * fires no model event, so this is what keeps "deleted with the enquiry" true.
@@ -31,7 +31,7 @@ class LeadsKeepRecordings extends Command
         $failed = 0;
 
         $rows = LeadConversation::query()->withoutGlobalScopes()
-            ->whereNotNull('recording_url')->whereNull('recording_path')
+            ->where('recording_url', 'like', 'http%')->whereNull('recording_path')   // Google's only (LeadRecordings::keeps)
             ->when(! $this->option('all'), fn ($q) => $q->where('occurred_at', '>=', now()->subDays((int) $this->option('days'))))
             ->orderBy('occurred_at')
             ->get();

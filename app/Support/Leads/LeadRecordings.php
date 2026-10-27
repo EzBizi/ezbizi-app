@@ -15,15 +15,18 @@ use RuntimeException;
 use Throwable;
 
 /**
- * A lead's call recordings, kept on EzBizi's own disk (Jose, 2026-10-27:
- * EzBizi is the master, every integration removable). Fetched once from where
- * the call was made - Google with the account's credentials, RingCentral,
- * Twilio - and stored private at lead-recordings/<organization>/<row>.<ext>,
- * so a call still plays after its account is disconnected or Google's link
- * has gone.
+ * A lead's call recordings, played through EzBizi. Google Local Services'
+ * are kept on EzBizi's own disk (Jose, 2026-10-27: EzBizi is the master,
+ * every integration removable), fetched once with the account's credentials
+ * and stored private at lead-recordings/<organization>/<row>.<ext>, so a call
+ * still plays after its account is disconnected or Google's link has gone.
+ * RingCentral's and Twilio's are fetched each play and never stored: the
+ * privacy page says RingCentral audio is fetched then deleted, and Phone
+ * keeps EZ calls with its own call row (Desk, 2026-10-27).
  *
  * The file is the row's personal data (LeadConversation::personalDataFiles):
- * erasure deletes it, and `keep --sweep` deletes any file whose row is gone.
+ * erasure deletes it, and ezbizi:leads-keep-recordings deletes any file whose
+ * row is gone.
  */
 final class LeadRecordings
 {
@@ -41,10 +44,18 @@ final class LeadRecordings
      */
     public function play(LeadConversation $row): array
     {
-        $kept = $this->stored($row) ?? $this->keep($row);
+        // Only Google's recordings are kept. RingCentral's stay fetch-then-delete,
+        // as the privacy page says; Phone keeps EZ calls with its own call row.
+        $kept = $this->stored($row) ?? (self::keeps($row) ? $this->keep($row) : $this->fetch($row));
         [$body, $type] = PlayableAudio::forEveryPlayer($kept['body'], $kept['type']);
 
         return ['body' => $body, 'type' => $type];
+    }
+
+    /** A Google Local Services recording: a URL, not a `ringcentral:` or `twilio:` key. */
+    public static function keeps(LeadConversation $row): bool
+    {
+        return str_starts_with((string) $row->recording_url, 'http');
     }
 
     /** @return array{body: string, type: string}|null */
