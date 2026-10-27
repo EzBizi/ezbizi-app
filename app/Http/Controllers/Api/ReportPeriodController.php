@@ -7,12 +7,11 @@ use App\Support\Files\HardenedPdf;
 use App\Support\Reports\Airtable\ReportSources;
 use App\Support\Reports\Texts\BranchName;
 use App\Support\Reports\Texts\PeriodReport;
+use App\Support\Reports\Xlsx;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -122,15 +121,7 @@ class ReportPeriodController extends Controller
     /** @param array<string, list<list<mixed>>> $sheets title => rows, header first */
     private function xlsx(array $sheets, string $name): Response
     {
-        $book = new Spreadsheet;
-        $book->removeSheetByIndex(0);
-        foreach ($sheets as $title => $data) {
-            $book->createSheet()->setTitle($title)->fromArray($data, null, 'A1', true);
-        }
-        ob_start();
-        (new Xlsx($book))->save('php://output');
-
-        return $this->file((string) ob_get_clean(), "{$name}.xlsx", 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        return $this->file(Xlsx::write($sheets), "{$name}.xlsx", 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     }
 
     private function file(string $bytes, string $name, string $type): Response

@@ -9,8 +9,8 @@ use App\Models\FinancialSource;
 use App\Models\FinancialTable;
 use App\Models\ReportGoal;
 use App\Support\Reports\Texts\AirtableSections;
+use App\Support\Reports\Xlsx;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\MapsAirtableTables;
 use Tests\TestCase;
@@ -185,12 +185,9 @@ class AirtableSectionsTest extends TestCase
         $as = $this->signedInAs($this->t['admin']);
         $q = "/api/v1/reports/period?report=job_profitability&franchise_id={$this->branch}&from=2026-10-05&to=2026-10-11";
 
-        $file = tempnam(sys_get_temp_dir(), 'x');
-        file_put_contents($file, $as->get($q.'&format=xlsx')->assertOk()->getContent());
-        $rows = IOFactory::load($file)->getSheetByName('Jobs')->toArray(null, true, false);
-        unlink($file);
+        $rows = Xlsx::read($as->get($q.'&format=xlsx')->assertOk()->getContent(), 'Jobs');
         $this->assertCount(2, $rows, 'header and the one job, not the summary');
-        $this->assertSame(['2026-10-08', 4411, 'John', 5000.0, 149.85, 600.0, 300.0, 3950.15, '79%'], array_slice($rows[1], 1));
+        $this->assertSame(['2026-10-08', '4411', 'John', 5000.0, 149.85, 600.0, 300.0, 3950.15, '79%'], array_slice($rows[1], 1));
         $this->assertStringStartsWith('%PDF', $as->get($q)->assertOk()->getContent());
     }
 }

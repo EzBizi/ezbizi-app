@@ -8,9 +8,9 @@ use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Support\Reports\Texts\PeriodReport;
+use App\Support\Reports\Xlsx;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\MapsAirtableTables;
 use Tests\TestCase;
@@ -123,12 +123,8 @@ class PeriodReportTest extends TestCase
         $this->assertStringStartsWith('%PDF', $as->get('/api/v1/reports/period?year=2026')->assertOk()->getContent(), 'the company, for the year');
 
         $xlsx = $as->get("/api/v1/reports/period?franchise_id={$f->id}&year=2026&format=xlsx")->assertOk()->getContent();
-        $file = tempnam(sys_get_temp_dir(), 'x');
-        file_put_contents($file, $xlsx);
-        $book = IOFactory::load($file);
-        unlink($file);
-        $this->assertSame(['Alpha Co', 'LS Ads', 1, 1, 0, 0, 400.0], $book->getSheetByName('Created')->rangeToArray('A2:G2', null, true, false)[0]);
-        $this->assertSame('Ann', $book->getSheetByName('Technicians')->getCell('B2')->getValue());
+        $this->assertSame(['Alpha Co', 'LS Ads', 1.0, 1.0, 0.0, 0.0, 400.0], Xlsx::read($xlsx, 'Created')[1]);
+        $this->assertSame('Ann', Xlsx::read($xlsx, 'Technicians')[1][1]);
 
         $sibling = $this->extraFranchise($t, 'Sibling');
         $manager = $this->userWithRole($t, 'Branch Manager', ['reports.view'], onlyAt: $f);
