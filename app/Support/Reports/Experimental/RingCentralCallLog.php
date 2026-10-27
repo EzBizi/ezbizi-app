@@ -11,6 +11,7 @@ use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RuntimeException;
@@ -276,11 +277,50 @@ final class RingCentralCallLog
             $fetch = fn () => $this->forDate($day->toIso8601String(), $day->endOfDay()->toIso8601String());
 
             $calls = [...$calls, ...($day < $today
-                ? Cache::remember($this->dayKeyFor($day), now()->addDays(7), $fetch)
+                ? $this->storedDay($this->dayKeyFor($day), $fetch)
                 : $fetch())];
         }
 
         return $outbound ? $calls : array_values(array_filter($calls, fn (array $call) => $call['direction'] === 'Inbound'));
+    }
+
+    /**
+     * A finished day, from EzBizi's own copy (call_log_days), fetched once.
+     *
+     * Jose, 2026-10-27: an integration's data stays in EzBizi. This was a
+     * 7-day Cache::remember, so the reports' history went with the cache or
+     * the connection. A day still in that cache is copied over rather than
+     * fetched again.
+     *
+     * @param  callable(): list<array<string, mixed>>  $fetch
+     * @return list<array<string, mixed>>
+     */
+    private function storedDay(string $key, callable $fetch): array
+    {
+        $stored = DB::table('call_log_days')->where('day_key', $key)->value('calls');
+        if (is_string($stored)) {
+            return json_decode($stored, true) ?? [];
+        }
+
+        $calls = Cache::get($key);
+        if (! is_array($calls)) {
+            $calls = $fetch();
+        }
+
+        DB::table('call_log_days')->insertOrIgnore([
+            'day_key' => $key,
+            'calls' => json_encode($calls),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $calls;
+    }
+
+    /** Whether a finished day is already kept, so the nightly warm skips it. */
+    public function hasDay(CarbonImmutable $day): bool
+    {
+        return DB::table('call_log_days')->where('day_key', $this->dayKeyFor($day))->exists();
     }
 
     /** dayKey() for the account being read: a connected account caches apart from the env one. */
