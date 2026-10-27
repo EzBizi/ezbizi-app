@@ -193,6 +193,9 @@ class OpenRgbClient {
   bool _closed = false;
   bool get closed => _closed;
 
+  /// The server re-detected its devices; ask for the list again.
+  bool listChanged = false;
+
   void _onData(Uint8List chunk) {
     _buf.add(chunk);
     while (true) {
@@ -203,6 +206,12 @@ class OpenRgbClient {
       _buf
         ..clear()
         ..add(all.sublist(16 + n));
+      // DEVICE_LIST_UPDATED (100) comes unasked when detection finishes
+      // after we connect (slow boards: ASUS); it is no one's answer.
+      if (ByteData.sublistView(all).getUint32(8, Endian.little) == 100) {
+        listChanged = true;
+        continue;
+      }
       _waiting?.complete(all.sublist(16, 16 + n));
       _waiting = null;
     }

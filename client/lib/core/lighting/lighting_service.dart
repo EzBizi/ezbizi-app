@@ -142,8 +142,10 @@ class LightingService {
             : (_devices.isEmpty ? 'no_devices' : 'ok'),
       );
       _applied = null; // new devices get the current lighting too
-    } catch (_) {
+      MonitoringHeartbeat.extraSpecs.remove('rgb_error');
+    } catch (e) {
       _status('engine_not_responding');
+      MonitoringHeartbeat.extraSpecs['rgb_error'] = '$e';
     }
   }
 
@@ -157,8 +159,10 @@ class LightingService {
   }
 
   Future<void> _tick() async {
-    if (++_ticks % 60 == 0) {
-      await _rescan(); // every 10 min: hot-plugged devices
+    final ok = MonitoringHeartbeat.extraSpecs['rgb_status'] == 'ok';
+    if (_rgb?.listChanged == true || ++_ticks % (ok ? 60 : 6) == 0) {
+      _rgb?.listChanged = false;
+      await _rescan(); // every 10 min when fine, every minute while not
     }
     final r = await api.get('/monitoring/lighting', {
       'device_key': await DeviceKey.value(),
