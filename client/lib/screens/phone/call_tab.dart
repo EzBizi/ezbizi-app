@@ -9,6 +9,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/list_table.dart';
+import '../../widgets/book_job_panel.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../customers/customer_detail_panel.dart';
@@ -2117,6 +2118,22 @@ class _CallTabState extends State<CallTab> {
                   ),
                 ),
                 child: const Text('Open customer'),
+              ),
+            ),
+          if (widget.session.me?.can('jobs.create') ?? false)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('person-book-job'),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                onPressed: () => showBookJobPanel(
+                  context,
+                  api: widget.api,
+                  session: widget.session,
+                  prefill: BookPrefill(customerId: id, phone: _peer ?? ''),
+                ),
+                icon: const Icon(Icons.event_available_outlined, size: 18),
+                label: const Text('Book a job'),
               ),
             ),
         ],

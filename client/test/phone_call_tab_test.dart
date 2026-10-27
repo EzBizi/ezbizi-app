@@ -1730,6 +1730,34 @@ void main() {
     expect(find.byKey(const Key('person-open-customer')), findsOneWidget);
   });
 
+  // Design 153: Communication opens the shared Book panel with the number.
+  testWidgets('Book a job from a number nobody has opens with that phone', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      permissions: const ['phone.view', 'phone.edit', 'jobs.create'],
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name or number'),
+      '+13055550199',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('person-book-job')));
+    await tester.tap(find.byKey(const Key('person-book-job')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Book a job'), findsWidgets);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('book-phone')))
+          .controller!
+          .text,
+      '+13055550199',
+    );
+  });
+
   testWidgets('the transcript box waits for a call', (tester) async {
     await _pump(tester);
 

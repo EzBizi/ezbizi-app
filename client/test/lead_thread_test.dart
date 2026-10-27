@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
@@ -48,6 +49,39 @@ void main() {
     );
     expect(find.byType(SegmentedButton<String>), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  // Design 153: Book on a lead opens the shared panel, filled from the lead.
+  testWidgets('Book opens the shared Book panel with the lead and its id', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      postalCode: '06105',
+      bookable: true,
+      size: const Size(1200, 1400),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('book-open')).first);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('book-name')))
+          .controller!
+          .text,
+      'Marcus Bell',
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('book-unscheduled')));
+    await tester.tap(find.byKey(const ValueKey('book-unscheduled')));
+    await tester.pumpAndSettle();
+
+    expect(_booked.single['lead_id'], 'lead-1');
+    expect(_booked.single['title'], 'Fireplace chimney');
+    expect(find.byKey(const ValueKey('book-open')), findsNothing,
+        reason: 'the lead now has its job');
   });
 
   testWidgets('on a phone the details fold away and the header stays short', (
@@ -1247,8 +1281,10 @@ Future<void> _pump(
   Map<String, dynamic>? credit,
   String? replying,
   String? conflictOnce,
+  bool bookable = false,
 }) async {
   _sent.clear();
+  _booked.clear();
   _forced.clear();
   var conflict = conflictOnce;
   _typingPosts.clear();
@@ -1427,6 +1463,33 @@ Future<void> _pump(
         );
       }
 
+      if (bookable && request.url.path.endsWith('/me')) {
+        return _ok({'data': _bookerMe});
+      }
+      if (bookable && request.url.path.endsWith('/jobs/book/options')) {
+        return _ok({
+          'data': {
+            'statuses': ['Submitted'],
+            'workiz': false,
+            'service_areas': [
+              {'id': 'a-1', 'name': 'North', 'matches_zip': true},
+            ],
+          },
+        });
+      }
+      if (bookable &&
+          request.method == 'POST' &&
+          request.url.path.endsWith('/jobs/book')) {
+        _booked.add((jsonDecode(request.body) as Map).cast<String, dynamic>());
+        return _ok({
+          'data': {
+            'job': {'id': 'job-1', 'number': 'J-7'},
+            'workiz': {'status': 'no_workiz'},
+            'ezbizi_only': <String>[],
+          },
+        });
+      }
+
       return http.Response(
         '{}',
         404,
@@ -1434,6 +1497,12 @@ Future<void> _pump(
       );
     }),
   );
+
+  Session? session;
+  if (bookable) {
+    session = Session(api);
+    await tester.runAsync(() => session!.adopt('tok'));
+  }
 
   await tester.pumpWidget(
     MaterialApp(
@@ -1458,12 +1527,50 @@ Future<void> _pump(
           onStatusChanged: (_) async {},
           onRead: onRead,
           onNote: onNote,
+          session: session,
+          onBooked: bookable ? (result) async => result['lead'] as Map<String, dynamic>? : null,
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+final _booked = <Map<String, dynamic>>[];
+
+http.Response _ok(Object body) => http.Response(
+  jsonEncode(body),
+  200,
+  headers: {'content-type': 'application/json'},
+);
+
+const _bookerMe = {
+  'id': 'u-1',
+  'name': 'Jose',
+  'email': 'jose@example.com',
+  'role': {'name': 'Manager'},
+  'has_avatar': false,
+  'preferences': <String, dynamic>{},
+  'organization': {
+    'id': 'org-1',
+    'name': 'Everdoors',
+    'franchise_label': 'Franchise',
+    'is_read_only': false,
+  },
+  'scope': {
+    'type': 'organization',
+    'id': 'org-1',
+    'label': 'Everdoors',
+    'path': ['Everdoors'],
+  },
+  'companies': [
+    {'id': 'co-1', 'name': 'Everdoors', 'parent_company_id': null},
+  ],
+  'franchises': [
+    {'id': 'f-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+  ],
+  'permissions': ['leads.view', 'leads.edit', 'jobs.create'],
+};
 
 void _wordTests() {
   test('channels and sources read as words, never as wire values', () {

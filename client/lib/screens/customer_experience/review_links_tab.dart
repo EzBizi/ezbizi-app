@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/date_range_picker.dart';
 import '../reports/report_dates.dart';
+import 'review_sources.dart';
 
 /// Review links — what customers did with the link in their review text
 /// (Jose, 2026-10-15). UI queue 98: desktop 1 (a funnel row, then a Branch |
@@ -100,6 +101,9 @@ class _ReviewLinksTabState extends State<ReviewLinksTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Where reviews were written, above the funnel (design 154 #13).
+        ReviewSources(api: widget.api),
+        const SizedBox(height: 20),
         if (narrow) ...[
           dates,
           const SizedBox(height: 8),

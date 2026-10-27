@@ -17,7 +17,7 @@ import '../screens/phone/recording_player.dart';
 import '../screens/scheduling/availability_pane.dart';
 import 'ai_mark.dart';
 import 'async_body.dart';
-import 'book_lead_panel.dart';
+import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
@@ -617,33 +617,28 @@ class _LeadThreadState extends State<LeadThread> {
   /// The app's own side panel at every width - on a phone it fills the
   /// window - never a pushed full screen (Jose's containment rule).
   Future<void> _openBooking() async {
-    final panel = BookLeadPanel(
+    await showBookJobPanel(
+      context,
       api: widget.api,
       session: widget.session!,
-      lead: _lead,
-      matches: _matches,
-      said: [
-        for (final c in _conversations)
-          if (c['from'] != 'ADVERTISER' && c['text'] is String)
-            c['text'] as String,
-      ],
-      onBooked: (result) async {
-        Navigator.of(context).pop();
-        final fresh = await widget.onBooked!(result);
-        if (!mounted) return;
-        setState(() {
-          _lead = fresh ?? (result['lead'] as Map<String, dynamic>? ?? _lead);
-        });
-      },
-    );
-
-    await showSidePanel<void>(
-      context,
-      builder: (_) => SidePanel(
-        title: 'Book this lead',
-        subtitle: 'Creates a customer and a job, and marks the lead booked.',
-        child: panel,
+      prefill: BookPrefill.fromLead(
+        _lead,
+        matches: _matches,
+        said: [
+          for (final c in _conversations)
+            if (c['from'] != 'ADVERTISER' && c['text'] is String)
+              c['text'] as String,
+        ],
       ),
+      // POST jobs/book answers with the job, not the lead: the lead shows
+      // its job here, and the next load brings the server's own copy.
+      onBooked: (result) async {
+        final job = result['job'] as Map<String, dynamic>?;
+        final lead = {..._lead, 'job': job};
+        final fresh = await widget.onBooked!({'lead': lead, 'job': job});
+        if (!mounted) return;
+        setState(() => _lead = fresh ?? lead);
+      },
     );
   }
 

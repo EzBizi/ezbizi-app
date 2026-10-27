@@ -206,7 +206,16 @@ class JobBookingController extends Controller
             ], fn ($v) => $v !== null));
 
             if ($lead) {
-                $lead->forceFill(['job_id' => $job->id])->save();
+                // Booked from a lead: what LeadsController::book does, so conversion rules still fire (UI/UX, 2026-10-27).
+                $before = $lead->status;
+                $lead->status = Lead::STATUS_BOOKED;
+                $lead->job_id = $job->getKey();
+                $audit->logChange('lead.converted', $lead);
+                $lead->save();
+                $events->emit('lead.converted', $lead, [
+                    'before' => ['status' => $before],
+                    'after' => ['status' => $lead->status, 'source' => $lead->source, 'job_id' => $job->getKey(), 'customer_id' => $job->customer_id],
+                ]);
             }
 
             return $job;
