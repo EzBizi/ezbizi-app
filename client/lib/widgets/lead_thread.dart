@@ -2414,6 +2414,19 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
+  /// A call recording's file name: when, then who the lead is, without the
+  /// characters a file name cannot hold.
+  String _recordingName(Object? occurredAt) {
+    final who =
+        ((widget.lead['contact_name'] as String?)?.trim().isNotEmpty == true
+                ? widget.lead['contact_name'] as String
+                : '${widget.lead['phone'] ?? ''}')
+            .replaceAll(RegExp(r'[/:*?"<>|]'), '')
+            .replaceAll(r'\', '')
+            .trim();
+    return '${RecordingPlaybackBar.nameFor(occurredAt, null)} $who'.trim();
+  }
+
   /// One press puts [text] on the clipboard and says so, as a message's copy does.
   Widget _copyButton(String text, {required Key key, required String what}) {
     final quiet = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -2553,6 +2566,9 @@ class _LeadThreadState extends State<LeadThread> {
                     load: () => widget.api.getBytes(
                       '/leads/${widget.lead['id']}/conversations/$id/recording',
                     ),
+                    // Reports' Download (Jose, 2026-10-27), for whoever can
+                    // play it: "2026-10-19 1432 Kayla Culbreth".
+                    downloadName: _recordingName(c['occurred_at']),
                   ),
                 // The words, right under the recording (Jose, 2026-09-29): both
                 // voices in one text, machine-transcribed on our own server - so it
