@@ -209,11 +209,20 @@ class CustomersController extends Controller
         ), 0)), 0)";
         $invoice = "workiz_records.type = 'invoice'";
 
-        return \App\Models\WorkizRecord::query()
+        // EzBizi is the master (Jose, 2026-10-27): a job with an invoice of
+        // its own is counted from that, and Workiz's copy of the same job is
+        // left out -- once EzBizi's invoices are mirrored to Workiz and synced
+        // back, counting both would double every figure. Per JOB, so a
+        // customer's Workiz history still counts beside their new invoices.
+        $native = $this->nativeMoney($customer, $today, $reachable);
+        $nativeJobs = \App\Models\Invoice::query()->where('source_type', 'job')->select('source_id');
+
+        $workiz = \App\Models\WorkizRecord::query()
             ->join('jobs', 'jobs.id', '=', 'workiz_records.job_id')
             ->where('jobs.customer_id', $customer->getKey())
             ->whereIn('jobs.franchise_id', $reachable)
             ->whereNull('jobs.deleted_at')
+            ->whereNotIn('jobs.id', $nativeJobs)
             // Per currency and never summed across, as Jobs does.
             ->groupBy('jobs.currency')
             ->selectRaw("
@@ -239,6 +248,66 @@ class CustomersController extends Controller
                 'open_estimates_minor' => (int) $row->open_estimates_amount,
             ])
             ->values()
+            ->all();
+
+        // One entry per currency, the two sources added field by field.
+        return collect([...$workiz, ...$native])
+            ->groupBy('currency')
+            ->map(fn ($rows, $currency) => ['currency' => $currency] + collect(array_keys($rows[0]))
+                ->reject(fn ($k) => $k === 'currency')
+                ->mapWithKeys(fn ($k) => [$k => $today === null && $k === 'past_due_minor'
+                    ? null
+                    : $rows->sum($k)])
+                ->all())
+            ->values()
+            ->all();
+    }
+
+    /**
+     * EzBizi's own invoices on this customer's jobs in reach, in the same
+     * fields as the Workiz figures. Approved, sent or paid: a draft has not
+     * been asked for and a void is not owed. Due is the invoice less its
+     * payments (refunds count against them), never below zero; past due is
+     * the part of that whose due date is before the reader's today.
+     *
+     * ponytail: open estimates are Workiz's only. Add EzBizi's estimates when
+     * Estimates carries a status for "still in play".
+     *
+     * @param  string[]  $reachable
+     */
+    private function nativeMoney(Customer $customer, ?string $today, array $reachable): array
+    {
+        $paid = "COALESCE((SELECT SUM(CASE WHEN p.kind = 'refund' THEN -p.amount_cents ELSE p.amount_cents END)
+            FROM invoice_payments p WHERE p.invoice_id = invoices.id), 0)";
+        $owed = "CASE WHEN invoices.status IN ('approved', 'sent') THEN GREATEST(invoices.total_cents - {$paid}, 0) ELSE 0 END";
+
+        return \App\Models\Invoice::query()
+            ->join('jobs', 'jobs.id', '=', 'invoices.source_id')
+            ->where('invoices.source_type', 'job')
+            ->whereIn('invoices.status', ['approved', 'sent', 'paid'])
+            ->where('jobs.customer_id', $customer->getKey())
+            ->whereIn('jobs.franchise_id', $reachable)
+            ->whereNull('jobs.deleted_at')
+            ->groupBy('invoices.currency')
+            ->selectRaw("
+                invoices.currency,
+                COALESCE(SUM(invoices.total_cents), 0) AS invoiced,
+                COALESCE(SUM({$owed}), 0) AS due,
+                COALESCE(SUM(CASE WHEN invoices.due_on < ? THEN {$owed} ELSE 0 END), 0) AS past_due,
+                COALESCE(SUM({$paid}), 0) AS paid,
+                COUNT(*) AS invoices
+            ", [$today ?? '0000-00-00'])
+            ->get()
+            ->map(fn ($row) => [
+                'currency' => $row->currency,
+                'invoiced_minor' => (int) $row->invoiced,
+                'due_minor' => (int) $row->due,
+                'past_due_minor' => $today === null ? null : (int) $row->past_due,
+                'paid_minor' => (int) $row->paid,
+                'invoices' => (int) $row->invoices,
+                'open_estimates' => 0,
+                'open_estimates_minor' => 0,
+            ])
             ->all();
     }
 
