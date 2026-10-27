@@ -54,7 +54,7 @@ class CheckClientIssueSpikes extends Command
             }
         }
 
-        return $spikes === [] ? self::SUCCESS : self::FAILURE;
+        return self::SUCCESS; // a spike is mailed, not a failed run (385 failures flooded laravel.log)
     }
 
     /** @return list<array{platform: ?string, version: ?string, last_hour: int, usual: float}> */
