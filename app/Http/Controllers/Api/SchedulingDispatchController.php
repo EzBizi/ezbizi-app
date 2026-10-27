@@ -4,25 +4,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Job;
 use App\Models\SchedulingTechnician;
-use App\Models\WorkizJob;
-use App\Models\WorkizTeamMember;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scheduling\JobTechnicians;
 use App\Support\Scoping\ViewScope;
-use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Workiz\WorkizMirror;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Throwable;
 
 /**
  * Dispatching from the Schedule board: assign, unassign, move.
  *
  * EzBizi is the master (Jose, 2026-10-27, replacing 2026-09-25's "Workiz
  * stays the truth"): every write lands in `jobs` / `job_technicians` first and
- * answers from there. Workiz is then told, when the job and the technician
- * have a Workiz twin; a refusal or an outage there is reported
- * and never undoes EzBizi's change. A tenant with no Workiz at all dispatches
+ * answers from there. Workiz is then told through WorkizMirror's queue, which
+ * skips a job with no Workiz copy and audits a refusal; it never undoes
+ * EzBizi's change. A tenant with no Workiz at all dispatches
  * the same way.
  *
  * Gated on `scheduling.edit` on top of the Schedule tab: seeing the board is
@@ -39,7 +36,7 @@ class SchedulingDispatchController extends Controller
         $tech = $this->technician($request, $row);
         JobTechnicians::assign($row, $tech);
         $this->audit->log('scheduling.job_assigned', $row, metadata: ['technician' => $tech->name]);
-        $this->mirror($row, fn (WorkizJobWriter $w, WorkizJob $wj) => ($m = $this->workizMember($tech)) ? $w->assign($wj, $m) : null);
+        WorkizMirror::queue($row, 'assign', ['workiz_member_id' => $tech->workiz_member_id]);
 
         return response()->json(['data' => ['id' => $row->id]]);
     }
@@ -51,7 +48,7 @@ class SchedulingDispatchController extends Controller
         $tech = $this->technician($request, $row);
         JobTechnicians::unassign($row, $tech);
         $this->audit->log('scheduling.job_unassigned', $row, metadata: ['technician' => $tech->name]);
-        $this->mirror($row, fn (WorkizJobWriter $w, WorkizJob $wj) => ($m = $this->workizMember($tech)) ? $w->unassign($wj, $m) : null);
+        WorkizMirror::queue($row, 'unassign', ['workiz_member_id' => $tech->workiz_member_id]);
 
         return response()->json(['data' => ['id' => $row->id]]);
     }
@@ -78,7 +75,7 @@ class SchedulingDispatchController extends Controller
         $row->forceFill(['scheduled_for' => $start->format('Y-m-d H:i:s'), 'duration_minutes' => $minutes])->save();
         $this->audit->log('scheduling.job_rescheduled', $row, metadata: ['from' => $was, 'to' => $start->format('Y-m-d H:i')]);
         $end = $start->addMinutes($minutes)->format('Y-m-d H:i:s');
-        $this->mirror($row, fn (WorkizJobWriter $w, WorkizJob $wj) => $w->reschedule($wj, $start->format('Y-m-d H:i:s'), $end));
+        WorkizMirror::queue($row, 'reschedule', ['start' => $start->format('Y-m-d H:i:s'), 'end' => $end]);
 
         return response()->json(['data' => ['id' => $row->id]]);
     }
@@ -94,31 +91,5 @@ class SchedulingDispatchController extends Controller
         $id = $request->validate(['member_id' => ['required', 'uuid']])['member_id'];
 
         return SchedulingTechnician::query()->where('franchise_id', $job->franchise_id)->findOrFail($id);
-    }
-
-    private function workizMember(SchedulingTechnician $tech): ?WorkizTeamMember
-    {
-        return $tech->workiz_member_id === null ? null : WorkizTeamMember::find($tech->workiz_member_id);
-    }
-
-    /**
-     * Tells Workiz after EzBizi has saved, when the job has a Workiz twin; a
-     * refusal or outage is reported, never returned.
-     * ponytail: inline until WorkizMirror::queue (Workiz session) lands.
-     */
-    private function mirror(Job $job, \Closure $write): void
-    {
-        $twin = WorkizJob::query()->where('job_id', $job->id)->first();
-        if ($twin === null) {
-            return;
-        }
-        try {
-            $result = $write(app(WorkizJobWriter::class), $twin);
-            if (($result['refused'] ?? null) !== null) {
-                report(new \RuntimeException("Workiz mirror refused job {$twin->remote_id}: {$result['refused']}"));
-            }
-        } catch (Throwable $e) {
-            report($e);
-        }
     }
 }
