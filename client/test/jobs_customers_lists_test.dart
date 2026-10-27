@@ -478,6 +478,15 @@ Future<void> _pumpJobs(
             'last_page': 1,
             'current_page': 1,
             'status_counts': statusCounts,
+            // The statuses where the viewer looks come with the list (2026-10-27).
+            'statuses': [
+              'Pending',
+              'Submitted',
+              'In progress',
+              'done pending approval',
+              'Done',
+              'Canceled',
+            ],
             'when_counts': {'upcoming': jobs.length, 'past': 7522},
             'day_counts': dayCounts,
           },
