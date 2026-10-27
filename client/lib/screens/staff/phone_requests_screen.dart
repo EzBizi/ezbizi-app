@@ -216,14 +216,12 @@ class _PhoneRequestsScreenState extends State<PhoneRequestsScreen> {
             alignment: Alignment.centerLeft,
             child: SizedBox(
               width: 240,
-              height: 40,
               child: TextField(
                 key: const Key('phone-requests-search'),
                 controller: _search,
                 textAlignVertical: TextAlignVertical.center,
                 decoration: const InputDecoration(
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12),
                   prefixIconConstraints: BoxConstraints(minWidth: 36),
                   prefixIcon: Icon(Icons.search, size: 18),
                   hintText: 'Find a request',

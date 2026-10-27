@@ -173,13 +173,11 @@ class _WidgetsTabState extends State<WidgetsTab> {
               alignment: Alignment.centerLeft,
               child: SizedBox(
                 width: math.min(240, box.maxWidth),
-                height: 40,
                 child: TextField(
                   key: const Key('web-widgets-sites-search'),
                   textAlignVertical: TextAlignVertical.center,
                   decoration: const InputDecoration(
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
                     prefixIconConstraints: BoxConstraints(minWidth: 36),
                     prefixIcon: Icon(Icons.search, size: 18),
                     hintText: 'Find a website',

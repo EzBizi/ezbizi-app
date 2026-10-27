@@ -312,16 +312,14 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
                     }),
                   ),
                 ),
-                // As tall as the buttons beside it (Jose, 2026-10-20).
+                // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                 SizedBox(
                   width: 240,
-                  height: 40,
                   child: TextField(
                     key: const Key('rescheduling-search'),
                     textAlignVertical: TextAlignVertical.center,
                     decoration: const InputDecoration(
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12),
                       prefixIconConstraints: BoxConstraints(minWidth: 36),
                       prefixIcon: Icon(Icons.search, size: 18),
                       hintText: 'Find a job',
