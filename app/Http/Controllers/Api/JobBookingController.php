@@ -7,12 +7,14 @@ use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WorkizJob;
+use App\Models\SchedulingTechnician;
 use App\Models\WorkizTeamMember;
 use App\Models\Customer;
 use App\Models\Lead;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\BookJob;
+use App\Support\Scheduling\JobTechnicians;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Workiz\WorkizJobWriter;
 use Illuminate\Http\JsonResponse;
@@ -80,12 +82,13 @@ class JobBookingController extends Controller
             'external_companies' => Job::query()->where('franchise_id', $franchise->id)->whereNotNull('external_company')
                 ->distinct()->orderBy('external_company')->pluck('external_company')->all(),
             'custom_fields' => $fields,
-            // Field techs on the branch's Workiz; covers_area when they work the chosen area.
-            'technicians' => WorkizTeamMember::query()->where('franchise_id', $franchise->id)->where('is_active', true)->where('is_field_tech', true)
-                ->orderBy('name')->get(['id', 'name', 'user_id', 'service_areas'])
-                ->map(fn ($m) => ['id' => $m->id, 'name' => $m->name, 'user_id' => $m->user_id,
-                    'covers_area' => $area === null ? null : in_array(mb_strtolower($area->name), array_map('mb_strtolower', (array) $m->service_areas), true)])
-                ->all(),
+            // The branch's field techs on EzBizi's roster (Jose, 2026-10-27:
+            // EzBizi is the master); covers_area when they work the chosen area.
+            'technicians' => SchedulingTechnician::query()->with('areas:id')->where('franchise_id', $franchise->id)
+                ->where('is_active', true)->where('is_field_tech', true)->orderBy('name')->get()
+                ->map(fn (SchedulingTechnician $t) => ['id' => $t->id, 'name' => $t->name, 'user_id' => $t->user_id,
+                    'covers_area' => $area === null ? null : $t->areas->contains('id', $area->id)])
+                ->values()->all(),
         ]]);
     }
 
@@ -153,7 +156,9 @@ class JobBookingController extends Controller
         if ($lead) {
             $this->authorize('update', $lead);
         }
-        $members = WorkizTeamMember::query()->where('franchise_id', $franchise->id)->whereIn('id', $input['technician_ids'] ?? [])->get();
+        // Roster ids (EzBizi is the master, 2026-10-27); Workiz gets their linked members.
+        $techs = SchedulingTechnician::query()->where('franchise_id', $franchise->id)->whereIn('id', $input['technician_ids'] ?? [])->get();
+        $members = WorkizTeamMember::query()->whereIn('id', $techs->pluck('workiz_member_id')->filter())->get();
         $user = $request->user();
         // Workiz v2 makes no job without a type (measured, 2026-10-27): refused here, before anything is made.
         $writer = app(WorkizJobWriter::class);
@@ -220,6 +225,9 @@ class JobBookingController extends Controller
 
             return $job;
         });
+        foreach ($techs as $tech) {
+            JobTechnicians::assign($job, $tech);
+        }
 
         return response()->json(['data' => [
             'job' => ['id' => $job->id, 'number' => $job->number],
@@ -234,7 +242,8 @@ class JobBookingController extends Controller
         $input = $request->validate(['technician_ids' => ['nullable', 'array', 'max:10'], 'technician_ids.*' => ['uuid']]);
         $row = Job::query()->findOrFail($job);
         $this->authorize('update', $row);
-        $members = WorkizTeamMember::query()->where('franchise_id', $row->franchise_id)->whereIn('id', $input['technician_ids'] ?? [])->get();
+        $members = WorkizTeamMember::query()->whereIn('id', SchedulingTechnician::query()->where('franchise_id', $row->franchise_id)
+            ->whereIn('id', $input['technician_ids'] ?? [])->whereNotNull('workiz_member_id')->pluck('workiz_member_id'))->get();
 
         return response()->json(['data' => ['job' => ['id' => $row->id, 'number' => $row->number], 'workiz' => $this->toWorkiz($row, $members)]]);
     }

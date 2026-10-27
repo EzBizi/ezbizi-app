@@ -130,6 +130,7 @@ use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreaMapController;
+use App\Http\Controllers\Api\SchedulingRosterController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
@@ -1621,6 +1622,10 @@ Route::prefix('v1')
             // Settings › Schedule: Workiz technicians and their EzBizi users.
             Route::get('scheduling/technicians', [SchedulingTechniciansController::class, 'index']);
             Route::put('scheduling/technicians/{member}', [SchedulingTechniciansController::class, 'update']);
+            // EzBizi's own roster (Jose, 2026-10-27).
+            Route::get('scheduling/roster', [SchedulingRosterController::class, 'index']);
+            Route::post('scheduling/roster', [SchedulingRosterController::class, 'store']);
+            Route::patch('scheduling/roster/{technician}', [SchedulingRosterController::class, 'update']);
             Route::put('scheduling/franchises/{franchise}/limits', [SchedulingFranchiseLimitsController::class, 'update']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
