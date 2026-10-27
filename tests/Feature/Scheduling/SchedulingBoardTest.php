@@ -2,20 +2,23 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
+use App\Models\SchedulingTechnician;
 use App\Models\SchedulingTimeSlot;
+use App\Models\ServiceArea;
 use App\Models\User;
-use App\Models\WorkizJob;
-use App\Models\WorkizTeamMember;
+use App\Support\Scheduling\JobTechnicians;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * The Schedule board — one day, technicians × time slots (Jose, 2026-09-25,
- * with A1 Tools' board as the model). Read-only: it shows who is doing what,
- * and changes nothing in Workiz.
+ * The Schedule board, one day of technicians × time slots, read from EzBizi's
+ * own jobs and roster (Jose, 2026-10-27: EzBizi is the master). Nothing here
+ * has a Workiz row: a tenant without Workiz gets the same board.
  */
 class SchedulingBoardTest extends TestCase
 {
@@ -24,49 +27,33 @@ class SchedulingBoardTest extends TestCase
 
     private ?User $viewer = null;
 
-    private function day(array $tenant): void
+    /** @return array{0: SchedulingTechnician, 1: SchedulingTechnician} */
+    private function day(array $tenant): array
     {
         app(TenantContext::class)->set($tenant['org']);
-
         SchedulingTimeSlot::create(['start_time' => '08:00', 'end_time' => '11:00']);
         SchedulingTimeSlot::create(['start_time' => '11:00', 'end_time' => '14:00']);
+        $area = ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Hartford']);
+        $ivan = SchedulingTechnician::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Ivan Sharkov']);
+        $ivan->areas()->sync([$area->id]);
+        $harry = SchedulingTechnician::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Harry Jenkins']);
 
-        WorkizTeamMember::create([
-            'franchise_id' => $tenant['franchise']->id,
-            'remote_id' => '101',
-            'name' => 'Ivan Sharkov',
-            'is_field_tech' => true,
-            'is_active' => true,
-            'payload' => [],
-            'synced_at' => now(),
-        ]);
-        WorkizTeamMember::create([
-            'franchise_id' => $tenant['franchise']->id,
-            'remote_id' => '102',
-            'name' => 'Harry Jenkins',
-            'is_field_tech' => true,
-            'is_active' => true,
-            'payload' => [],
-            'synced_at' => now(),
-        ]);
+        return [$ivan, $harry];
     }
 
-    private function job(array $tenant, string $at, array $team = [], string $status = 'Submitted', ?Franchise $franchise = null): void
+    private function job(array $tenant, string $at, array $techs = [], string $status = 'Submitted', ?Franchise $franchise = null): Job
     {
         app(TenantContext::class)->set($tenant['org']);
-
-        WorkizJob::create([
-            'franchise_id' => ($franchise ?? $tenant['franchise'])->id,
-            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
-            'service_area' => 'Hartford',
-            'postal_code' => '06103',
-            'city' => 'Hartford',
-            'address' => '1430 Red Oaks Dr',
-            'status' => $status,
-            'scheduled_for' => $at,
-            'payload' => ['FirstName' => 'John', 'LastName' => 'Lynch', 'JobType' => 'Chimney Inspection', 'SerialId' => 400594, 'Team' => $team],
-            'synced_at' => now(),
+        $job = Job::factory()->create([
+            'franchise_id' => ($franchise ?? $tenant['franchise'])->id, 'customer_id' => Customer::factory()->create(['owning_franchise_id' => ($franchise ?? $tenant['franchise'])->id, 'name' => 'John Lynch'])->id,
+            'status' => $status, 'scheduled_for' => $at,
+            'job_type' => 'Chimney Inspection', 'service_area_id' => ServiceArea::query()->where('name', 'Hartford')->value('id'),
         ]);
+        foreach ($techs as $t) {
+            JobTechnicians::assign($job, $t);
+        }
+
+        return $job;
     }
 
     private function board(array $tenant, array $query = []): array
@@ -79,118 +66,58 @@ class SchedulingBoardTest extends TestCase
             ->json('data');
     }
 
-    /** An assigned job lands on its technician, in the window its time falls in. */
     public function test_an_assigned_job_lands_on_its_technician_and_window(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->day($tenant);
+        $t = $this->provisionTenant('Alpha');
+        [$ivan] = $this->day($t);
+        $job = $this->job($t, '2026-09-25 09:30:00', [$ivan]);
 
-        // 11:00 exactly is the second window, not the first.
-        $this->job($tenant, '2026-09-25 11:00:00', [['id' => 101, 'Name' => 'Ivan Sharkov']]);
-
-        $board = $this->board($tenant);
-
-        $this->assertSame(1, $board['counts']['scheduled']);
-        $this->assertSame('Ivan Sharkov', $board['technicians'][0]['name'], 'The busy technician reads first.');
-        $this->assertSame(1, $board['technicians'][0]['jobs']);
-
-        $card = $board['scheduled'][0];
-        $this->assertSame($board['technicians'][0]['id'], $card['technician_id']);
-        $this->assertSame(1, $card['window']);
-        $this->assertSame('John Lynch', $card['customer']);
-        $this->assertSame('400594', $card['number']);
+        $b = $this->board($t);
+        $this->assertSame([[$job->id, $ivan->id, 0, 'Hartford']], array_map(fn ($c) => [$c['job_id'], $c['technician_id'], $c['window'], $c['service_area']], $b['scheduled']));
+        $this->assertSame([['member_id' => $ivan->id, 'name' => 'Ivan Sharkov']], $b['scheduled'][0]['team']);
+        $tech = collect($b['technicians'])->firstWhere('id', $ivan->id);
+        $this->assertSame([1, ['Hartford']], [$tech['jobs'], $tech['service_areas']]);
+        $this->assertSame(['scheduled' => 1, 'unassigned' => 0], $b['counts']);
     }
 
-    /**
-     * A branch switched to Workiz v2 retires each v1 team row and records the
-     * USR- id that took over. A job whose payload still names the old id is
-     * the same person, so the board shows them once, on their v2 row.
-     */
-    public function test_a_retired_v1_technician_id_follows_its_v2_successor(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->day($tenant);
-        $ivan = WorkizTeamMember::where('remote_id', '101')->firstOrFail();
-        $ivan->update(['is_active' => false, 'payload' => ['succeeded_by' => 'USR-9']]);
-        $v2 = WorkizTeamMember::create([
-            'franchise_id' => $tenant['franchise']->id, 'remote_id' => 'USR-9', 'name' => 'Ivan Sharkov',
-            'is_field_tech' => true, 'is_active' => true, 'payload' => [], 'synced_at' => now(),
-        ]);
-
-        $this->job($tenant, '2026-09-25 08:00:00', [['id' => 101, 'Name' => 'Ivan Sharkov']]);
-        $this->job($tenant, '2026-09-25 11:00:00', [['id' => 'USR-9', 'Name' => 'Ivan Sharkov']]);
-
-        $board = $this->board($tenant);
-
-        $ivans = collect($board['technicians'])->where('name', 'Ivan Sharkov')->values();
-        $this->assertCount(1, $ivans, 'One person, one row.');
-        $this->assertSame(2, $ivans[0]['jobs']);
-        $this->assertSame([$v2->id, $v2->id], collect($board['scheduled'])->pluck('team.0.member_id')->all(), 'Both cards unassign through the live v2 row.');
-    }
-
-    /** Nobody on it → unassigned. Cancelled and done are not on the board at all. */
     public function test_a_job_with_nobody_on_it_is_unassigned_and_cancelled_is_left_out(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->day($tenant);
+        $t = $this->provisionTenant('Alpha');
+        $this->day($t);
+        $open = $this->job($t, '2026-09-25 12:00:00');
+        $this->job($t, '2026-09-25 12:00:00', status: 'Canceled');
 
-        $this->job($tenant, '2026-09-25 08:00:00');
-        $this->job($tenant, '2026-09-25 09:00:00', [], 'Canceled');
-        $this->job($tenant, '2026-09-25 09:30:00', [['id' => 102, 'Name' => 'Harry Jenkins']], 'Done');
-
-        $board = $this->board($tenant);
-
-        $this->assertSame(1, $board['counts']['unassigned']);
-        $this->assertSame(0, $board['counts']['scheduled']);
-        $this->assertSame(0, $board['unassigned'][0]['window']);
+        $b = $this->board($t);
+        $this->assertSame([$open->id], array_column($b['unassigned'], 'job_id'));
+        $this->assertSame([], $b['scheduled']);
     }
 
-    /**
-     * A technician on a job but missing from the mirror still gets a row.
-     * Hiding their work because a sync lagged would show a quiet day that is
-     * not one.
-     */
-    public function test_a_technician_missing_from_the_mirror_still_gets_a_row(): void
+    public function test_an_inactive_technician_still_on_a_job_keeps_a_row(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->day($tenant);
+        $t = $this->provisionTenant('Alpha');
+        [, $harry] = $this->day($t);
+        $this->job($t, '2026-09-25 09:00:00', [$harry]);
+        $harry->update(['is_active' => false]);
 
-        $this->job($tenant, '2026-09-25 08:00:00', [['id' => 999, 'Name' => 'New Hire']]);
-
-        $names = array_column($this->board($tenant)['technicians'], 'name');
-
-        $this->assertContains('New Hire', $names);
+        $this->assertContains($harry->id, array_column($this->board($t)['technicians'], 'id'));
     }
 
-    /** Picking a franchise shows only that franchise's technicians and jobs. */
     public function test_a_franchise_filter_narrows_the_board(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->day($tenant);
+        $t = $this->provisionTenant('Alpha');
+        [$ivan] = $this->day($t);
+        $other = $this->extraFranchise($t, 'Boston');
+        $this->job($t, '2026-09-25 09:00:00', [$ivan]);
+        $this->job($t, '2026-09-25 09:00:00', franchise: $other);
 
-        app(TenantContext::class)->set($tenant['org']);
-        $other = Franchise::create([
-            'organization_id' => $tenant['org']->id,
-            'company_id' => $tenant['company']->id,
-            'name' => 'Nationwide',
-        ]);
-
-        $this->job($tenant, '2026-09-25 08:00:00');
-        $this->job($tenant, '2026-09-25 08:00:00', [], 'Submitted', $other);
-
-        $this->assertSame(2, $this->board($tenant)['counts']['unassigned']);
-        $this->assertSame(1, $this->board($tenant, ['franchise_id' => $other->id])['counts']['unassigned']);
+        $this->assertCount(1, $this->board($t, ['franchise_id' => $other->id])['unassigned']);
+        $this->assertSame([], $this->board($t, ['franchise_id' => $other->id])['scheduled']);
     }
 
-    /** The Schedule tab is its own grant. */
     public function test_the_board_needs_the_schedule_tab(): void
     {
-        $tenant = $this->provisionTenant('Alpha');
-
-        $availabilityOnly = $this->userWithRole($tenant, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
-
-        $this->signedInAs($availabilityOnly)
-            ->getJson('/api/v1/scheduling/board?date=2026-09-25')
-            ->assertForbidden();
+        $t = $this->provisionTenant('Alpha');
+        $caller = $this->userWithRole($t, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
+        $this->signedInAs($caller)->getJson('/api/v1/scheduling/board?date=2026-09-25')->assertForbidden();
     }
 }
