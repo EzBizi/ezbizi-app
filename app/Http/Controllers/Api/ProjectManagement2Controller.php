@@ -5,8 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\AutomationEvent;
 use App\Models\Job;
 use App\Models\User;
-use App\Models\WorkizRecord;
-use App\Support\Jobs\WorkizMoney;
+use App\Support\Jobs\JobMoney;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -55,7 +54,7 @@ class ProjectManagement2Controller extends Controller
             ->latest()
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
         $jobs = $page->getCollection();
-        $money = $user->hasPermission('jobs.financials') ? $this->money($jobs, $this->records($jobs->pluck('id'))) : null;
+        $money = $user->hasPermission('jobs.financials') ? JobMoney::of($jobs->pluck('id')) : null;
 
         return response()->json([
             'data' => $jobs->map(fn (Job $job) => $this->row($job, $money))->values(),
@@ -72,10 +71,10 @@ class ProjectManagement2Controller extends Controller
     {
         $user = $this->allowed($request);
         $job = $this->inView($user)->with(self::WITH)->findOrFail($id);
-        $records = $this->records(collect([$job->id]));
-        $money = $user->hasPermission('jobs.financials') ? $this->money(collect([$job]), $records) : null;
+        $money = $user->hasPermission('jobs.financials') ? JobMoney::of([$job->id]) : null;
 
         $at = fn (?Carbon $t) => $t?->toIso8601String();
+        // ponytail: Workiz's payload until Jobs stores the job's own created date and creator (asked 2026-10-27).
         $created = $job->workizJob?->payload['CreatedDate'] ?? null;
         $timeline = collect([[
             'kind' => 'created',
@@ -84,16 +83,15 @@ class ProjectManagement2Controller extends Controller
             'by'   => is_string($job->workizJob?->payload['CreatedBy'] ?? null) ? $job->workizJob->payload['CreatedBy'] : null,
         ]]);
 
-        foreach ($records[$job->id] ?? [] as $r) {
-            $amount = $money === null ? [] : ['amount' => self::signed($r)];
-            if ($r->type === 'estimate') {
-                $timeline->push(['kind' => 'estimate', 'at' => $at($r->starts_at ?? $r->created_at),
-                    'what' => trim('Estimate '.($r->status ?? ''))] + $amount);
-            } elseif ($r->status === 'succeeded') {
-                $refund = self::signed($r) < 0;
-                $timeline->push(['kind' => 'payment', 'at' => $at($r->starts_at ?? $r->created_at),
-                    'what' => $refund ? 'Refund' : 'Payment'] + $amount);
-            }
+        // EzBizi's own estimates and Workiz's, and the payments, as JobMoney reads them.
+        $amount = fn (array $r) => $money === null ? [] : ['amount' => $r['cents']];
+        foreach (JobMoney::estimates([$job->id])[$job->id] ?? [] as $e) {
+            $timeline->push(['kind' => 'estimate', 'at' => $at($e['at']),
+                'what' => trim('Estimate '.ucfirst((string) $e['status']))] + $amount($e));
+        }
+        foreach (JobMoney::payments([$job->id])[$job->id] ?? [] as $p) {
+            $timeline->push(['kind' => 'payment', 'at' => $at($p['at']),
+                'what' => $p['cents'] < 0 ? 'Refund' : 'Payment'] + $amount($p));
         }
 
         $events = AutomationEvent::query()
@@ -140,46 +138,11 @@ class ProjectManagement2Controller extends Controller
         return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds());
     }
 
-    /** @return Collection<string, Collection<int, WorkizRecord>> the jobs' estimates and payments, oldest first */
-    private function records(Collection $ids): Collection
-    {
-        return WorkizRecord::query()
-            ->whereIn('job_id', $ids)
-            ->whereIn('type', ['estimate', 'payment'])
-            ->orderBy('starts_at')
-            ->get(['job_id', 'type', 'amount', 'status', 'starts_at', 'created_at', 'payload'])
-            ->groupBy('job_id');
-    }
-
-    /**
-     * Total and Paid per job (Jose, 2026-10-27: "Pending, Paid, Total").
-     * Total is Workiz's invoice total, else the latest estimate still in play:
-     * on 2026-10-27 Workiz had a total on 40 of the 1,735 jobs done pending
-     * approval and an estimate on 864. 786 had no price at all, and show none.
-     * Paid is the payments less refunds; Pending, in row(), is what is left.
-     *
-     * @return array<string, array{total: ?int, paid: int}>
-     */
-    private function money(Collection $jobs, Collection $records): array
-    {
-        return $jobs->mapWithKeys(function (Job $job) use ($records) {
-            $mine = $records[$job->id] ?? collect();
-            $estimate = $mine->where('type', 'estimate')
-                ->reject(fn (WorkizRecord $r) => in_array($r->status, ['Archived', 'Declined'], true))
-                ->last();
-            $invoice = WorkizMoney::for($job)['total'] ?? $job->amount_minor;
-
-            return [$job->id => [
-                'total' => $invoice ?: ($estimate ? self::signed($estimate) : null),
-                'paid'  => (int) $mine->where('type', 'payment')->where('status', 'succeeded')->sum(fn (WorkizRecord $p) => self::signed($p)),
-            ]];
-        })->all();
-    }
-
     private function row(Job $job, ?array $money): array
     {
-        $total = $money[$job->id]['total'] ?? null;
-        $paid = $money[$job->id]['paid'] ?? 0;
+        // Total, Paid and Due from JobMoney, the one definition both Project
+        // Managements read (Jose, 2026-10-27: "Pending, Paid, Total").
+        $m = $money[$job->id] ?? ['total' => null, 'paid' => 0, 'due' => 0];
 
         return [
             'id'         => $job->id,
@@ -199,9 +162,9 @@ class ProjectManagement2Controller extends Controller
             // Financials only, and ABSENT without it, so the client draws no zero.
             // Null where there is no price, so it draws no zero there either.
             ...($money !== null ? [
-                'pending'  => $total === null ? null : max($total - $paid, 0),
-                'paid'     => $total === null && $paid === 0 ? null : $paid,
-                'total'    => $total,
+                'pending'  => $m['total'] === null ? null : $m['due'],
+                'paid'     => $m['total'] === null && $m['paid'] === 0 ? null : $m['paid'],
+                'total'    => $m['total'],
                 'currency' => $job->currency,
             ] : []),
         ];
@@ -216,11 +179,5 @@ class ProjectManagement2Controller extends Controller
         return $this->labels[$job->franchise_id.'|'.$status] ??= $job->franchise
             ? Job::labelFor($status, $job->franchise)
             : Job::humanizeStatus($status);
-    }
-
-    /** In cents, a refund below zero. Rounded, never cast: (int) (1.15 * 100) is 114. */
-    private static function signed(WorkizRecord $r): int
-    {
-        return (int) round((float) $r->amount * 100) * (($r->payload['type'] ?? '') === 'refund' ? -1 : 1);
     }
 }
