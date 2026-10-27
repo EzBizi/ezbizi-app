@@ -94,7 +94,7 @@ class AirtableSectionsTest extends TestCase
 
     public function test_a_per_branch_table_not_yet_given_a_branch_reads_as_not_mapped(): void
     {
-        // What ezbizi:financial-sources-from-snapshot writes: the table, no place yet.
+        // A source with its table but no place yet.
         $this->airtableTable($this->t, null, 'repair', [['Date' => '2026-10-08', 'Team' => 'John', 'Job Amount' => 1]]);
 
         $this->assertStringContainsString('No repair team table is mapped',
