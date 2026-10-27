@@ -148,10 +148,15 @@ void main() {
     await tester.tap(find.text('Add job'));
     await tester.pumpAndSettle();
 
-    final customerField = find.widgetWithText(TextField, 'Customer');
+    // Add job opens the shared Book panel (design 153).
+    final customerField = find.descendant(
+      of: find.byKey(const ValueKey('book-client-search')),
+      matching: find.byType(TextField),
+    );
     expect(customerField, findsOneWidget);
 
     await tester.enterText(customerField, 'smith');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
     expect(
