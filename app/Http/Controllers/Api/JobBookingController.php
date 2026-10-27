@@ -7,7 +7,7 @@ use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WorkizJob;
-use App\Models\WorkizTeamMember;
+use App\Models\SchedulingTechnician;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -68,12 +68,13 @@ class JobBookingController extends Controller
             'external_companies' => Job::query()->where('franchise_id', $franchise->id)->whereNotNull('external_company')
                 ->distinct()->orderBy('external_company')->pluck('external_company')->all(),
             'custom_fields' => $fields,
-            // Field techs on the branch's Workiz; covers_area when they work the chosen area.
-            'technicians' => WorkizTeamMember::query()->where('franchise_id', $franchise->id)->where('is_active', true)->where('is_field_tech', true)
-                ->orderBy('name')->get(['id', 'name', 'user_id', 'service_areas'])
-                ->map(fn ($m) => ['id' => $m->id, 'name' => $m->name, 'user_id' => $m->user_id,
-                    'covers_area' => $area === null ? null : in_array(mb_strtolower($area->name), array_map('mb_strtolower', (array) $m->service_areas), true)])
-                ->all(),
+            // The branch's field techs on EzBizi's roster (Jose, 2026-10-27:
+            // EzBizi is the master); covers_area when they work the chosen area.
+            'technicians' => SchedulingTechnician::query()->with('areas:id')->where('franchise_id', $franchise->id)
+                ->where('is_active', true)->where('is_field_tech', true)->orderBy('name')->get()
+                ->map(fn (SchedulingTechnician $t) => ['id' => $t->id, 'name' => $t->name, 'user_id' => $t->user_id,
+                    'covers_area' => $area === null ? null : $t->areas->contains('id', $area->id)])
+                ->values()->all(),
         ]]);
     }
 }

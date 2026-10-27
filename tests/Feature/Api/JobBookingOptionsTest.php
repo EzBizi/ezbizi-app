@@ -2,10 +2,10 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\SchedulingTechnician;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WorkizJob;
-use App\Models\WorkizTeamMember;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -28,10 +28,9 @@ class JobBookingOptionsTest extends TestCase
                 WorkizJob::create(['franchise_id' => $f->id, 'remote_id' => "J{$i}", 'status' => 'Done', 'synced_at' => now(),
                     'payload' => ['JobType' => $type, 'JobSource' => $source, 'CustomFields' => [['Name' => 'Real Wood Y/N', 'Value' => $i ? 'Y' : 'N']]]]);
             }
-            WorkizTeamMember::create(['franchise_id' => $f->id, 'remote_id' => 'U1', 'name' => 'Ron', 'is_active' => true, 'is_field_tech' => true,
-                'service_areas' => ['North'], 'payload' => [], 'synced_at' => now()]);
-            WorkizTeamMember::create(['franchise_id' => $f->id, 'remote_id' => 'U2', 'name' => 'Sam', 'is_active' => true, 'is_field_tech' => true,
-                'service_areas' => ['South'], 'payload' => [], 'synced_at' => now()]);
+            // EzBizi's own roster (Jose, 2026-10-27: EzBizi is the master).
+            SchedulingTechnician::create(['franchise_id' => $f->id, 'name' => 'Ron'])->areas()->sync([$north->id]);
+            SchedulingTechnician::create(['franchise_id' => $f->id, 'name' => 'Sam']);
 
             return [$north];
         });
