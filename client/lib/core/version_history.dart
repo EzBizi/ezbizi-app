@@ -32,6 +32,8 @@ class VersionHistory {
         'Phone: call recordings are kept in EzBizi and deleted along with the call.',
         'Project Management 1 and 2: money reads the same way in both (total less paid), and EzBizi\'s own estimates show on a job\'s timeline.',
         'Jobs record who created them.',
+        'Reports: job profitability per job, PDF or Excel.',
+        'Ask the staff WhatsApp for any report and get the file back.',
       ],
     ),
     VersionRelease(
