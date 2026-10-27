@@ -12,6 +12,7 @@ import 'financials/financial_bills.dart';
 import 'financials/financial_grid.dart';
 import 'financials/financial_home.dart';
 import 'financials/financial_panels.dart';
+import 'financials/financial_results.dart';
 import 'financials/financial_sources.dart';
 import 'financials/financial_views.dart';
 import 'financials/invoices_tab.dart';
@@ -72,6 +73,16 @@ class _FinancialsHostState extends State<FinancialsScreen> {
           'Invoices',
           Icons.request_quote_outlined,
           InvoicesTab(api: widget.api, session: widget.session),
+        ),
+      // A child module, drawn as a tab here, as Invoices is (ACE, option A).
+      if (widget.session.me?.reachableModules.any(
+            (m) => m.key == 'financial_results',
+          ) ??
+          false)
+        (
+          'Lead source results',
+          Icons.campaign_outlined,
+          FinancialResultsTab(api: widget.api, me: widget.session.me!),
         ),
       if (_may('settings'))
         (
