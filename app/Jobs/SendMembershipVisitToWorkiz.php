@@ -53,7 +53,7 @@ final class SendMembershipVisitToWorkiz implements ShouldQueue
                 return;
             }
 
-            $refused = $writer->create($job, $membership->plan?->workiz_job_type, self::JOB_SOURCE)['refused'];
+            $refused = $writer->create($job, $job->job_type, self::JOB_SOURCE)['refused'];
 
             // BUSY alone means nothing happened (the sync held the lock past
             // create()'s 15 s); a retry is safe, create() twice is once.

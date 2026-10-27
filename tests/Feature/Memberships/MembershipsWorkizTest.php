@@ -32,7 +32,7 @@ class MembershipsWorkizTest extends TestCase
         $this->t = $this->provisionTenant('Alpha');
         $this->membership = $this->inTenant($this->t['org'], function () {
             $customer = Customer::create(['owning_franchise_id' => $this->t['franchise']->id, 'number' => 'C-1', 'name' => 'Marta Quill']);
-            $plan = MembershipPlan::create(['name' => 'Yearly sweep', 'price_minor' => 19900, 'billing' => 'yearly', 'workiz_job_type' => 'Chimney Inspection']);
+            $plan = MembershipPlan::create(['name' => 'Yearly sweep', 'price_minor' => 19900, 'billing' => 'yearly', 'job_type' => 'Chimney Inspection']);
             $starts = CarbonImmutable::today()->subYear()->addWeeks(3);
 
             return Membership::create([
@@ -128,5 +128,15 @@ class MembershipsWorkizTest extends TestCase
         } finally {
             $lock->release();
         }
+    }
+
+    public function test_the_ezbizi_job_is_booked_first_with_the_plans_type(): void
+    {
+        Queue::fake();
+        $this->book();
+
+        $job = \App\Models\Job::withoutGlobalScopes()->sole();
+        $this->assertSame('Chimney Inspection', $job->job_type, 'EzBizi is the master; Workiz mirrors this job.');
+        $this->assertSame($job->id, Membership::withoutGlobalScopes()->sole()->visit_job_id);
     }
 }
