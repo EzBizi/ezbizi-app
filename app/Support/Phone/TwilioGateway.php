@@ -303,6 +303,15 @@ interface TwilioGateway
      * $accountSid names the account that holds $from when it is not the
      * connection's (PhoneNumber::account_sid); null sends as the connection.
      */
+    /**
+     * A text from EzBizi's own number (verification codes), not a tenant's:
+     * signed by the platform parent, addressed to $accountSid, the account
+     * holding $from. Throws with Twilio's reason when refused.
+     *
+     * @return array{sid: string}
+     */
+    public function sendPlatformMessage(string $accountSid, string $from, string $to, string $body): array;
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array;
 
     /**

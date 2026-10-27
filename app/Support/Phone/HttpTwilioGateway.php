@@ -641,6 +641,31 @@ final class HttpTwilioGateway implements TwilioGateway
         return $out;
     }
 
+    public function sendPlatformMessage(string $accountSid, string $from, string $to, string $body): array
+    {
+        $response = \Illuminate\Support\Facades\Http::asForm()
+            ->withBasicAuth(
+                (string) config('services.twilio.platform_account_sid'),
+                (string) config('services.twilio.platform_auth_token'),
+            )
+            ->timeout(15)
+            ->post(
+                "https://api.twilio.com/2010-04-01/Accounts/{$accountSid}/Messages.json",
+                ['To' => $to, 'From' => $from, 'Body' => $body],
+            );
+
+        if (! $response->successful()) {
+            throw new RuntimeException(sprintf(
+                'Twilio refused the text (%s %s): %s',
+                $response->status(),
+                (string) $response->json('code'),
+                (string) $response->json('message'),
+            ));
+        }
+
+        return ['sid' => (string) $response->json('sid')];
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
     {
         // A `From` only sends from the account holding it, so a number held

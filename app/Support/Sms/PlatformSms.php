@@ -2,7 +2,7 @@
 
 namespace App\Support\Sms;
 
-use Illuminate\Support\Facades\Http;
+use App\Support\Phone\TwilioGateway;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -67,29 +67,16 @@ class PlatformSms
             return false;
         }
 
+        // Through the gateway, so Twilio stays one removable integration
+        // (Jose, 2026-10-27) and a test never reaches the real API.
         try {
-            $response = Http::asForm()
-                ->withBasicAuth($this->sid(), $this->token())
-                ->timeout(15)
-                ->post(
-                    "https://api.twilio.com/2010-04-01/Accounts/{$this->sendingSid()}/Messages.json",
-                    ['To' => $to, 'From' => $this->from(), 'Body' => $body],
-                );
+            app(TwilioGateway::class)->sendPlatformMessage($this->sendingSid(), (string) $this->from(), $to, $body);
 
-            if ($response->successful()) {
-                return true;
-            }
-
-            // Twilio's own reason, kept. A rejected send is nearly always a
-            // specific fixable thing — an unverified toll-free, a landline, a
-            // number that has replied STOP — and "sending failed" sends
-            // somebody to check their wifi for none of them.
-            Log::warning('platform sms refused', [
-                'status' => $response->status(),
-                'code' => $response->json('code'),
-                'message' => $response->json('message'),
-            ]);
+            return true;
         } catch (\Throwable $e) {
+            // Twilio's own reason, kept. A rejected send is nearly always a
+            // specific fixable thing - an unverified toll-free, a landline, a
+            // number that has replied STOP.
             Log::warning('platform sms failed', ['error' => $e->getMessage()]);
         }
 
