@@ -18,12 +18,12 @@ use App\Models\WorkizJob;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
-use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\AddressCheck;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
+use App\Support\Leads\LeadRecordings;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\RingCentralLeadCalls;
 use App\Support\Access\Refusal;
@@ -31,7 +31,6 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
-use App\Support\Social\GoogleToken;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
@@ -39,7 +38,6 @@ use App\Support\Web\ChatPeople;
 use App\Support\Workiz\WorkizJobWriter;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
@@ -47,7 +45,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
@@ -1327,8 +1324,9 @@ class LeadsController extends Controller
      *
      * Google's recording URL answers only to a bearer token for the account
      * the call was billed to, so the client cannot open it and must not be
-     * handed it: the token would go with it. The audio is fetched here with
-     * the connection's credentials and streamed back once, uncached. Somebody
+     * handed it: the token would go with it. The audio is fetched with the
+     * connection's credentials once and kept on EzBizi's disk (LeadRecordings,
+     * Jose 2026-10-27), so it plays after the account is gone. Somebody
      * listening to a stranger's voice is worth an audit row.
      */
     public function recording(Request $request, Lead $lead, string $conversation): HttpResponse
@@ -1339,62 +1337,13 @@ class LeadsController extends Controller
 
         abort_if($row === null || $row->recording_url === null, Response::HTTP_NOT_FOUND);
 
-        // An EZ Call: the audio through Phone's Twilio gateway, never a Twilio URL.
-        if (str_starts_with((string) $row->recording_url, 'twilio:')) {
-            $call = \App\Models\PhoneCall::query()->find(substr((string) $row->recording_url, strlen('twilio:')));
-            abort_if($call === null || $call->recording_sid === null || $call->connection === null, Response::HTTP_NOT_FOUND);
-            try {
-                $body = app(\App\Support\Phone\TwilioGateway::class)->recordingMedia($call->connection, (string) $call->recording_sid);
-            } catch (\Throwable $e) {
-                abort(Response::HTTP_BAD_GATEWAY, 'Twilio did not give the recording.');
-            }
-            $this->audit->log('lead.recording_played', $lead, [
-                'conversation_id' => $row->id,
-                'occurred_at' => $row->occurred_at?->toIso8601String(),
-                'duration_ms' => $row->duration_ms,
-            ], actor: $request->user());
-
-            return response($body, 200, ['Content-Type' => 'audio/mpeg', 'Cache-Control' => 'private, no-store']);
-        }
-
-        if (str_starts_with((string) $row->recording_url, 'ringcentral:')) {
-            try {
-                $audio = app(\App\Support\Reports\Experimental\RingCentralCallLog::class)
-                    ->recording(substr((string) $row->recording_url, strlen('ringcentral:')));
-            } catch (\RuntimeException $e) {
-                abort(Response::HTTP_BAD_GATEWAY, 'RingCentral did not give the recording: '.$e->getMessage());
-            }
-            $this->audit->log('lead.recording_played', $lead, [
-                'conversation_id' => $row->id,
-                'occurred_at' => $row->occurred_at?->toIso8601String(),
-                'duration_ms' => $row->duration_ms,
-            ], actor: $request->user());
-
-            return response($audio['body'], 200, ['Content-Type' => $audio['type'], 'Cache-Control' => 'private, no-store']);
-        }
-
-        $connection = $lead->connection;
-
-        abort_if(
-            $connection === null,
-            Response::HTTP_CONFLICT,
-            'The account this enquiry came through is no longer connected, so its recording cannot be fetched.',
-        );
-
+        // Kept on EzBizi's own disk after the first play (LeadRecordings).
         try {
-            $audio = Http::withToken(GoogleToken::forConnection($connection, 'google_ads'))
-                ->withHeaders(['developer-token' => (string) config('services.google_ads.developer_token')])
-                ->timeout(30)
-                ->get($row->recording_url);
-        } catch (ConnectionException) {
-            abort(Response::HTTP_BAD_GATEWAY, 'Google did not answer while fetching the recording.');
+            $audio = app(LeadRecordings::class)->play($row);
+        } catch (RuntimeException $e) {
+            // Not kept, and its Google account is gone: nothing to fetch it with.
+            abort($lead->connection === null && str_starts_with((string) $row->recording_url, 'http') ? Response::HTTP_CONFLICT : Response::HTTP_BAD_GATEWAY, $e->getMessage());
         }
-
-        abort_if(
-            $audio->failed(),
-            Response::HTTP_BAD_GATEWAY,
-            sprintf('Google refused the recording (HTTP %d).', $audio->status()),
-        );
 
         $this->audit->log('lead.recording_played', $lead, [
             'conversation_id' => $row->id,
@@ -1402,12 +1351,8 @@ class LeadsController extends Controller
             'duration_ms' => $row->duration_ms,
         ], actor: $request->user());
 
-        // Google sends MPEG-2.5, which the Windows app cannot decode; it gets
-        // a WAV every player opens. See PlayableAudio.
-        [$body, $type] = PlayableAudio::forEveryPlayer($audio->body(), $audio->header('Content-Type') ?: 'audio/mpeg');
-
-        return response($body, Response::HTTP_OK, [
-            'Content-Type' => $type,
+        return response($audio['body'], Response::HTTP_OK, [
+            'Content-Type' => $audio['type'],
             'Cache-Control' => 'private, no-store',
         ]);
     }

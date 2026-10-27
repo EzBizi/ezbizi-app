@@ -48,16 +48,15 @@ void main() {
     expect(find.text('Roof Quiz'), findsOneWidget);
   });
 
-  testWidgets(
-    'the search sits in the header at 40px, as tall as its neighbours',
-    (tester) async {
-      await _pump(tester);
-      final size = tester.getSize(
-        find.byKey(const Key('training-dashboard-list-search')),
-      );
-      expect(size.height, 40);
-    },
-  );
+  testWidgets('the search is the standard field height (Jose, 2026-10-27)', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final size = tester.getSize(
+      find.byKey(const Key('training-dashboard-list-search')),
+    );
+    expect(size.height, 56);
+  });
 }
 
 Future<void> _pump(WidgetTester tester) async {

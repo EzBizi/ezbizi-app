@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\Customer;
+use App\Models\Estimate;
 use App\Models\Job;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
@@ -55,7 +56,8 @@ class JobProjectStagesTest extends TestCase
                 'F' => $job('F', ['status' => 'done']),
             ];
             $pay($ids['C'], '2026-10-07 10:00:00');
-            $pay($ids['E'], '2026-09-10 10:00:00');
+            // 200 of 300 paid: 100 due (JobMoney: Total less Paid).
+            $pay($ids['E'], '2026-09-10 10:00:00', '200.00');
             $w = WorkizJob::create(['franchise_id' => $f, 'remote_id' => 'JOB-E', 'status' => 'x', 'synced_at' => now(),
                 'payload' => ['JobTotalPrice' => 300, 'JobAmountDue' => 100]]);
             $w->job_id = $ids['E'];
@@ -122,5 +124,44 @@ class JobProjectStagesTest extends TestCase
         $this->assertSame(['"Canceled" is in scope but in no stage, so its 0 job(s) show in no tab.'], $r['warnings']);
         $this->assertStringStartsWith('company', $r['stages_set_at']);
         $this->assertSame(['Paid but not started warning', 'Payments stopped', 'Estimate aging'], array_column($r['server_jobs'], 'name'));
+    }
+
+    /** EzBizi is the master, Workiz a mirror (Jose, 2026-10-27): with no Workiz at all, a job's own total is its money. */
+    public function test_every_tab_renders_without_workiz_and_a_job_owes_its_own_total(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $s = app(SettingsResolver::class);
+            $s->set('jobs.statuses', $alpha['org'], [['value' => 'dpa', 'label' => 'Dpa'], ['value' => 'submitted', 'label' => 'Submitted']]);
+            $s->set('jobs.estimate_aging_statuses', $alpha['org'], ['submitted']);
+            $s->set('jobs.pm_stages', $alpha['company'], [
+                ['key' => 'ready_to_schedule', 'statuses' => ['submitted']],
+                ['key' => 'done_waiting_payment', 'statuses' => ['dpa'], 'due' => true],
+            ]);
+            $f = $alpha['franchise']->id;
+            $customer = Customer::create(['owning_franchise_id' => $f, 'number' => 'C-1', 'name' => 'A Customer']);
+            $jobs = [];
+            foreach (['N' => ['dpa', 25000], 'Z' => ['dpa', 0], 'P' => ['dpa', 0], 'S' => ['submitted', 40000]] as $n => [$status, $amount]) {
+                $jobs[$n] = Job::create(['franchise_id' => $f, 'customer_id' => $customer->id, 'number' => $n, 'title' => $n,
+                    'currency' => 'USD', 'status' => $status, 'amount_minor' => $amount]);
+            }
+            // No invoice total: P's price is its latest live estimate; a later declined one is not.
+            foreach ([['E-1', 'sent', '2026-10-01', 12000], ['E-2', 'declined', '2026-10-05', 99900]] as [$number, $status, $on, $cents]) {
+                Estimate::create(['franchise_id' => $f, 'customer_id' => $customer->id, 'job_id' => $jobs['P']->id, 'number' => $number,
+                    'status' => $status, 'issued_on' => $on, 'currency' => 'USD', 'total_minor' => $cents]);
+            }
+        });
+        $get = fn (string $url) => $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management'.$url)->assertOk()->json();
+
+        $due = collect($get('/jobs?stage=done_waiting_payment')['data'])->sortBy('number')->values();
+        $this->assertSame([['N', 25000], ['P', 12000]], $due->map(fn ($r) => [$r['number'], $r['due_minor']])->all(), 'Z owes nothing');
+        $o = $get('/overview')['data'];
+        $this->assertSame(['count' => 2, 'total_minor' => 37000, 'due_minor' => 37000], $o['done_waiting_payment']);
+        $this->assertSame(40000, $o['pipeline_minor']);
+        foreach (['', '/stats?from=2026-10-01&to=2026-10-27', '/rules', '/logs?from=2026-10-01&to=2026-10-27', '/cards'] as $url) {
+            $get($url);
+        }
+        $this->artisan('jobs:warn-paid-not-started')->assertSuccessful();
+        $this->artisan('jobs:emit-estimate-aging')->assertSuccessful();
     }
 }

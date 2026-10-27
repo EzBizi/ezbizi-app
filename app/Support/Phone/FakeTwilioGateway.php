@@ -471,6 +471,13 @@ final class FakeTwilioGateway implements TwilioGateway
         $this->record(__FUNCTION__, [$connection->id, $callSid]);
     }
 
+    public function sendPlatformMessage(string $accountSid, string $from, string $to, string $body): array
+    {
+        $this->record(__FUNCTION__, [$accountSid, $from, $to, $body]);
+
+        return ['sid' => 'SM'.bin2hex(random_bytes(16))];
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body, ?string $accountSid = null): array
     {
         $this->record(__FUNCTION__, array_merge(

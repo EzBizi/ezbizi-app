@@ -76,11 +76,92 @@ final class SchedulingAreaMapController extends Controller
         return response()->json(['data' => $areas->map(fn (ServiceArea $a) => [
             'area_id' => $a->id,
             'name' => $a->name,
+            'color' => $a->color,
             'franchise_id' => $a->franchise_id,
             'franchise_name' => $names[$a->franchise_id] ?? null,
             'zip_count' => $a->zips_count,
             'polygons' => $shapes[$a->id] ?? [],
         ])->values()->all()]);
+    }
+
+    /**
+     * GET /scheduling/areas/{area}/outline[?mode=recommended]: a drawn shape from the area's own
+     * ZIP centres (Jose, 2026-10-27, "auto draw"), their convex hull pushed out
+     * about a mile so the edge ZIPs sit inside. Not saved: the editor loads it
+     * to adjust, and saving goes through preview and save as any drawing does.
+     */
+    public function outline(Request $request, string $area): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('view', $row);
+
+        // Recommended: a circle round a centre ZIP (?center_zip=&radius_miles=,
+        // else the area's own), 32 points the editor can drag.
+        if ($request->query('mode') === 'recommended') {
+            $data = $request->validate(['center_zip' => ['nullable', 'regex:/^\d{5}$/'], 'radius_miles' => ['nullable', 'integer', 'min:1', 'max:200']]);
+            $zip = $data['center_zip'] ?? $row->center_zip;
+            $miles = (int) ($data['radius_miles'] ?? $row->radius_miles ?? 0);
+            $centre = $zip === null ? null : DB::table('zip_centroids')->where('zip', $zip)->first();
+            abort_if($centre === null || $miles < 1, 422, 'Pick a centre ZIP code we know and a radius in miles.');
+            $lat = (float) $centre->latitude;
+            $lng = (float) $centre->longitude;
+
+            return response()->json(['data' => ['polygon' => array_map(fn ($i) => [
+                round($lat + $miles / 69.0 * cos(2 * M_PI * $i / 32), 6),
+                round($lng + $miles / (69.0 * cos(deg2rad($lat))) * sin(2 * M_PI * $i / 32), 6),
+            ], range(0, 31))]]);
+        }
+        $points = DB::table('zip_centroids')
+            ->whereIn('zip', ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip')->map(fn ($z) => substr($z, 0, 5)))
+            ->get(['latitude', 'longitude'])->map(fn ($c) => [(float) $c->latitude, (float) $c->longitude])->unique()->values()->all();
+        abort_if(count($points) < 3, 422, 'This area needs at least 3 ZIP codes on the map to draw an outline; it has '.count($points).'.');
+
+        return response()->json(['data' => ['polygon' => self::buffered(self::hull($points), 1.0)]]);
+    }
+
+    /**
+     * Andrew's monotone chain on [lat, lng].
+     *
+     * @param  list<array{0: float, 1: float}>  $p
+     * @return list<array{0: float, 1: float}>
+     */
+    public static function hull(array $p): array
+    {
+        usort($p, fn ($a, $b) => [$a[1], $a[0]] <=> [$b[1], $b[0]]);
+        $cross = fn ($o, $a, $b) => ($a[1] - $o[1]) * ($b[0] - $o[0]) - ($a[0] - $o[0]) * ($b[1] - $o[1]);
+        $half = function (array $pts) use ($cross) {
+            $h = [];
+            foreach ($pts as $pt) {
+                while (count($h) >= 2 && $cross($h[count($h) - 2], $h[count($h) - 1], $pt) <= 0) {
+                    array_pop($h);
+                }
+                $h[] = $pt;
+            }
+            array_pop($h);
+
+            return $h;
+        };
+
+        return array_merge($half($p), $half(array_reverse($p)));
+    }
+
+    /**
+     * Each vertex pushed away from the centre by about $miles.
+     * ponytail: radial push, not a true offset; fine for an outline a person adjusts.
+     */
+    private static function buffered(array $hull, float $miles): array
+    {
+        $cLat = array_sum(array_column($hull, 0)) / count($hull);
+        $cLng = array_sum(array_column($hull, 1)) / count($hull);
+        $milesPerLng = 69.0 * cos(deg2rad($cLat));
+
+        return array_map(function ($v) use ($cLat, $cLng, $miles, $milesPerLng) {
+            $dy = ($v[0] - $cLat) * 69.0;
+            $dx = ($v[1] - $cLng) * $milesPerLng;
+            $len = sqrt($dx * $dx + $dy * $dy) ?: 1.0;
+
+            return [round($v[0] + ($dy / $len) * $miles / 69.0, 6), round($v[1] + ($dx / $len) * $miles / $milesPerLng, 6)];
+        }, $hull);
     }
 
     /** POST /scheduling/areas/{area}/polygons/preview {polygons} */

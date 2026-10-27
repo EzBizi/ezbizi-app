@@ -55,8 +55,6 @@ IconData dashboardPanelIcon(String key) {
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,
     'business_profile': Icons.storefront_outlined,
-    // Sales pipeline; matches module_screens.dart.
-    'sales': Icons.trending_up,
     // Training is a guide somebody reads and a test they sit, so the icon is
     // the learning, not the paperwork — a certificate or a checklist would
     // read as HR, whose panel sits beside this one and counts a different

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +17,8 @@ use Illuminate\Support\Facades\Http;
  */
 class AddressLookupController extends Controller
 {
+    public const UNAVAILABLE = 'Address suggestions are not answering right now. Type the address in yourself; it saves the same way.';
+
     public function __invoke(Request $request): JsonResponse
     {
         $query = trim((string) $request->query('q', ''));
@@ -23,15 +27,22 @@ class AddressLookupController extends Controller
             return response()->json(['data' => []]);
         }
 
-        $response = Http::timeout(4)
-            ->withHeaders([
-                'User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)',
-            ])
-            ->get('https://photon.komoot.io/api/', [
-                'q'     => $query,
-                'limit' => 6,
-                'lang'  => 'en',
-            ]);
+        // Photon is a third party: when it times out or cannot be reached the
+        // address is still typed by hand, so this degrades to no suggestions
+        // with a sentence, never a 500.
+        try {
+            $response = Http::timeout(4)
+                ->withHeaders([
+                    'User-Agent' => 'EzBizi/address-lookup (https://ezbizi.com; development@ezbizi.com)',
+                ])
+                ->get('https://photon.komoot.io/api/', [
+                    'q'     => $query,
+                    'limit' => 6,
+                    'lang'  => 'en',
+                ]);
+        } catch (ConnectionException|RequestException) {
+            return response()->json(['data' => [], 'message' => self::UNAVAILABLE]);
+        }
 
         if (! $response->successful()) {
             return response()->json(['data' => []]);

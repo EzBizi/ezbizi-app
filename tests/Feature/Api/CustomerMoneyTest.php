@@ -107,6 +107,37 @@ class CustomerMoneyTest extends TestCase
         $this->assertSame(625000, $money[0]['invoiced_minor']);
     }
 
+    public function test_a_job_with_its_own_invoice_is_counted_from_that_and_not_from_workiz(): void
+    {
+        // EzBizi is the master (Jose, 2026-10-27). J-3 has an EzBizi invoice
+        // AND Workiz's mirror of it; only EzBizi's may count, or every figure
+        // doubles once invoices are mirrored. J-1's Workiz history still counts.
+        $job = $this->job($this->alpha['franchise'], 'J-3');
+        $this->record($job, 'invoice', 9999.00, due: 9999.00, dueOn: '2026-09-01', id: 'IV-MIRROR');
+        $this->inTenant($this->alpha['org'], function () use ($job) {
+            $invoice = \App\Models\Invoice::create([
+                'franchise_id' => $job->franchise_id, 'number' => 'INV-1', 'issued_on' => '2026-09-01',
+                'due_on' => '2026-09-15', 'status' => 'sent', 'currency' => 'USD',
+                'bill_to_type' => 'customer', 'bill_to_id' => $this->customer->id, 'bill_to_name' => 'Ann',
+                'source_type' => 'job', 'source_id' => $job->id, 'total_cents' => 80000,
+            ]);
+            \App\Models\InvoicePayment::create(['invoice_id' => $invoice->id, 'paid_on' => '2026-09-10',
+                'amount_cents' => 30000, 'method' => 'card']);
+        });
+        $here = $this->userWithRole($this->alpha, 'Branch money', ['customers.view', 'jobs.financials'],
+            onlyAt: $this->alpha['franchise']);
+
+        $money = $this->money($here)[0];
+
+        // J-1 (Workiz): invoiced 1250, due 525, past due 450, paid 550.
+        // J-3 (EzBizi): invoiced 800, due 500 (all past due), paid 300.
+        $this->assertSame(205000, $money['invoiced_minor']);
+        $this->assertSame(102500, $money['due_minor']);
+        $this->assertSame(95000, $money['past_due_minor']);
+        $this->assertSame(85000, $money['paid_minor']);
+        $this->assertSame(3, $money['invoices']);
+    }
+
     public function test_without_financials_there_is_no_money(): void
     {
         $viewer = $this->userWithRole($this->alpha, 'Viewer', ['customers.view']);

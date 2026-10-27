@@ -75,6 +75,57 @@ String _number(Object? v, String? unit) {
   return unit == null || unit.isEmpty ? text : '$text $unit';
 }
 
+/// Units written before the amount ("$12,450"); every other unit follows it
+/// ("12 ft").
+const _prefixUnits = {r'$', '€', '£', '¥', '₹', r'US$', r'C$', r'A$'};
+
+/// A number column's value as the table shows it (UI queue 152, 1):
+/// thousands separators, its decimals as stored, and the column's unit.
+/// Anything that is not a number comes back as it arrived.
+String formatCellNumber(Object? v, String? unit) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}'.trim());
+  if (n == null) return v == null ? '' : '$v';
+  final negative = n < 0;
+  final raw = (n == n.roundToDouble() ? '${n.abs().toInt()}' : '${n.abs()}');
+  final dot = raw.indexOf('.');
+  final whole = dot < 0 ? raw : raw.substring(0, dot);
+  final fraction = dot < 0 ? '' : raw.substring(dot);
+  final grouped = StringBuffer();
+  for (var i = 0; i < whole.length; i++) {
+    if (i > 0 && (whole.length - i) % 3 == 0) grouped.write(',');
+    grouped.write(whole[i]);
+  }
+  final amount = '$grouped$fraction';
+  final u = unit?.trim() ?? '';
+  final sign = negative ? '-' : '';
+  if (u.isEmpty) return '$sign$amount';
+  return _prefixUnits.contains(u) ? '$sign$u$amount' : '$sign$amount $u';
+}
+
+/// A phone number in a cell, for eyes only: the stored E.164 value stays
+/// what is edited and sent (UI queue 152, 1). +1 numbers read
+/// "(404) 555-0142"; another country's read "+" and grouped digits
+/// ("+44 20 7946 0958"). Anything else comes back as it arrived.
+String formatCellPhone(String raw) {
+  final v = raw.trim();
+  if (!RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(v)) return raw;
+  final digits = v.substring(1);
+  if (digits.startsWith('1')) {
+    if (digits.length != 11) return raw;
+    final d = digits.substring(1);
+    return '(${d.substring(0, 3)}) ${d.substring(3, 6)}-${d.substring(6)}';
+  }
+  // The country code is taken as two digits; the rest in fours from the
+  // right, so "+442079460958" reads "+44 20 7946 0958".
+  final country = digits.substring(0, 2);
+  final rest = digits.substring(2);
+  final groups = <String>[];
+  for (var end = rest.length; end > 0; end -= 4) {
+    groups.insert(0, rest.substring(end - 4 < 0 ? 0 : end - 4, end));
+  }
+  return '+$country ${groups.join(' ')}';
+}
+
 /// One cell of the table, in its column's own shape. A checkbox, a status
 /// and a dropdown change in place; the rest are changed in the task's panel.
 class ColumnCell extends StatelessWidget {
@@ -180,8 +231,13 @@ class ColumnCell extends StatelessWidget {
         return Align(
           alignment: Alignment.centerRight,
           child: Text(
-            v == null ? '—' : _number(v, column.unit),
-            style: v == null ? muted : null,
+            v == null ? '—' : formatCellNumber(v, column.unit),
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: (v == null ? muted : const TextStyle()).copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         );
       case 'date':
@@ -200,7 +256,11 @@ class ColumnCell extends StatelessWidget {
         );
       default:
         return Text(
-          v == null || '$v'.isEmpty ? '—' : '$v',
+          v == null || '$v'.isEmpty
+              ? '—'
+              : v is String
+              ? formatCellPhone(v)
+              : '$v',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: v == null || '$v'.isEmpty ? muted : null,

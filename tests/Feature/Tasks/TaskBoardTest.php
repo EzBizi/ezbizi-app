@@ -59,6 +59,10 @@ class TaskBoardTest extends TestCase
         $this->assertSame(['Alpha Co', 'Alpha F1', 'Viewer'], $names('franchise:'.$tenant['franchise']->id));
         $this->assertSame(['Beta Co', 'Beta F1', 'Viewer'], $names('company:'.$beta->id));
         $this->assertNotContains('Beta F1', $names('franchise:'.$tenant['franchise']->id));
+
+        $f1 = collect($this->signedInAs($viewer)->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
+            ->getJson('/api/v1/task-boards')->json('data'))->firstWhere('name', 'Alpha F1');
+        $this->assertSame($tenant['franchise']->id, $f1['franchise_id']);
     }
 
     public function test_assignable_is_the_owner_on_a_personal_board_and_reach_on_a_team_board(): void

@@ -459,6 +459,15 @@ class ActionRunner
             }
         }
 
+        // A step whose provider is not connected here is skipped and says so,
+        // not failed: an unconnected integration must not switch the rule off
+        // (Jose, 2026-10-27: EzBizi is the master; every integration removable).
+        $notConnected = StepReadiness::at($automation?->scope_type, $automation?->scope_id)[$type] ?? null;
+        if ($notConnected !== null) {
+            return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
+        }
+
+
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
             'change_status' => $this->changeStatus($action, $event, $subject, $automation),
@@ -498,6 +507,7 @@ class ActionRunner
             'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
             'inspection_report.workiz' => $this->putInspectionReportOnWorkiz($subject),
             'workiz.job_update' => $this->updateWorkizJob($action, $subject),
+            'job.set' => $this->setJob($action, $event, $subject),
 
             'task.create' => $this->createTask($action, $event, $subject, $automation),
             'task.assign' => $this->assignTask($action, $event, $subject, $automation),
@@ -702,6 +712,65 @@ class ActionRunner
      * "set tags to" on the job's Workiz copy, through WorkizJobWriter, which
      * resolves each account's own names and ids and audits what it removed.
      */
+    /**
+     * EzBizi is the master, Workiz the mirror (Jose, 2026-10-27): the job's
+     * own status, sub-status, tags (replaced, not added to) and scheduled
+     * time are written first, each audited and announced like any change;
+     * then its Workiz copy is brought in line, when there is one and Workiz
+     * is connected. Until Workiz's outbound mirror ships this step writes
+     * Workiz itself; afterwards that call can go without changing anything.
+     */
+    private function setJob(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'job.set';
+        if (! $subject instanceof Job) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a trigger about a job.'];
+        }
+        $status = trim((string) ($action['status'] ?? ''));
+        $sub = trim((string) ($action['sub_status'] ?? ''));
+        $tags = array_values(array_filter(array_map('trim', is_array($action['tags'] ?? null) ? $action['tags'] : explode(',', (string) ($action['tags'] ?? '')))));
+        $unschedule = filter_var($action['unschedule'] ?? false, FILTER_VALIDATE_BOOL);
+        if ($status === '' && $sub === '' && $tags === [] && ! $unschedule) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'Choose a status, tags to set, or to remove the scheduled time.'];
+        }
+
+        $done = [];
+        foreach (array_filter(['status' => $status, 'sub_status' => $sub]) as $field => $value) {
+            $result = $this->updateField(['field' => $field, 'value' => $value], $event, $subject->fresh());
+            if (! $result['ok']) {
+                return ['type' => $type, 'ok' => false, 'detail' => $result['detail']];
+            }
+            $done[] = self::WRITABLE[Job::class][$field].' '.$value;
+        }
+        if ($unschedule && $subject->fresh()->scheduled_for !== null) {
+            $this->updateField(['field' => 'scheduled_for', 'value' => null], $event, $subject->fresh());
+            $done[] = 'no scheduled time';
+        }
+        if ($tags !== []) {
+            // Replace, so the job carries exactly these. Through the model's
+            // setter, which trims and drops repeats; audited and announced.
+            $job = $subject->fresh();
+            $before = (array) ($job->tags ?? []);
+            $job->tags = $tags;
+            if ($job->isDirty('tags')) {
+                $job->save();
+                $payload = ['before' => ['tags' => $before], 'after' => ['tags' => $job->tags]];
+                $this->audit->log(action: 'job.updated_by_automation', target: $job, changes: $payload,
+                    metadata: ['caused_by_event' => $event->getKey(), 'trigger' => $event->event_key]);
+                $this->emitter->emit(eventKey: $this->updateEventFor($job), subject: $job, payload: $payload, causedBy: $event);
+            }
+            $done[] = 'tags '.implode(', ', $tags);
+        }
+
+        $line = 'Set '.implode('; ', $done).' on the job.';
+        if (StepReadiness::at(null, null)['workiz.job_update'] !== null) {
+            return ['type' => $type, 'ok' => true, 'detail' => $line];
+        }
+        $workiz = $this->updateWorkizJob($action, $subject->fresh());
+
+        return ['type' => $type, 'ok' => $workiz['ok'], 'detail' => $line.' Workiz: '.$workiz['detail']];
+    }
+
     private function updateWorkizJob(array $action, ?Model $subject): array
     {
         $type = 'workiz.job_update';

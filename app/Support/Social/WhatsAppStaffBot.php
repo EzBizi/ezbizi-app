@@ -8,7 +8,9 @@ use App\Jobs\AnswerWhatsAppWithTech;
 use App\Jobs\PlanReportCorrection;
 use App\Jobs\PlanWhatsAppCommand;
 use App\Jobs\ReadWhatsAppBill;
+use App\Jobs\ReadWhatsAppResults;
 use App\Jobs\SendCallRecordings;
+use App\Jobs\SendRequestedReport;
 use App\Models\AssistantEntry;
 use App\Models\Organization;
 use App\Models\StaffBotItem;
@@ -22,6 +24,7 @@ use App\Support\Ai\CallRecordingsRequest;
 use App\Support\Ai\GrokCli;
 use App\Support\Ai\ReportAsk;
 use App\Support\Ai\ReportCorrection;
+use App\Support\Ai\ReportFileRequest;
 use App\Support\Ai\StaffAnswer;
 use App\Support\Assistant\AssistantBrain;
 use App\Support\Assistant\TechAssistant;
@@ -120,6 +123,13 @@ final class WhatsAppStaffBot
         $yesOrNo = preg_match('/^(yes|y|si|sí|ok|confirm|no|n|cancel)$/iu', $text) === 1;
         $yes = preg_match('/^(no|n|cancel)$/i', $text) !== 1;
 
+        // YES / NO to results rows held for this person (WhatsAppResults).
+        if ($viewer !== null && $yesOrNo && WhatsAppResults::pending($viewer)) {
+            $this->text($number, $to, app(WhatsAppResults::class)->answer($viewer, $yes), preview: false);
+
+            return;
+        }
+
         // YES / NO to a bill photo held for this person (WhatsAppBills).
         if ($viewer !== null && $yesOrNo && WhatsAppBills::pending($viewer)) {
             $this->text($number, $to, app(WhatsAppBills::class)->answer($viewer, $yes), preview: false);
@@ -143,6 +153,15 @@ final class WhatsAppStaffBot
 
         $techMode = $viewer !== null && GrokCli::configured()
             && app(TechAssistant::class)->enabled(Organization::findOrFail($number->organization_id));
+
+        // A photo captioned results or ACE: a lead source's results (WhatsAppResults).
+        if ($viewer?->hasPermission(WhatsAppResults::PERMISSION) && $inbound->kind === 'image'
+            && $inbound->media_id !== null && GrokCli::configured() && preg_match(WhatsAppResults::CAPTION, $text) === 1) {
+            ReadWhatsAppResults::dispatch($number->id, $to, $viewer->getKey(), (string) $inbound->media_id, $inbound->body);
+            $this->text($number, $to, "\u{1F440} Reading the results in that photo\u{2026}", preview: false);
+
+            return;
+        }
 
         // A photo from somebody who may file bills: read as a period's bills -
         // when its caption says bill or receipt, once the tech assistant is on
@@ -555,6 +574,14 @@ final class WhatsAppStaffBot
             return;
         }
 
+        // "Send me the CT report for last month" (takeover row 50): the file,
+        // built as the asker, back in this chat.
+        if ($viewer?->hasPermission('reports.view') && GrokCli::configured() && ReportFileRequest::looksLikeOne($query)) {
+            SendRequestedReport::dispatch($number->id, $to, $viewer->getKey(), $query);
+
+            return;
+        }
+
         // "Leave out job 4512 and put CT first": a correction to the open report
         // draft, from somebody with reports.correct, held for a YES.
         if ($viewer?->hasPermission(ReportCorrection::PERMISSION) && GrokCli::configured()
@@ -721,6 +748,12 @@ final class WhatsAppStaffBot
     public function billRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
     {
         $this->text($number, $to, app(WhatsAppBills::class)->read($viewer, $mediaId, $caption), preview: false);
+    }
+
+    /** ReadWhatsAppResults' half: the rows read back as pending, held for a YES. */
+    public function resultsRead(WhatsAppNumber $number, string $to, User $viewer, string $mediaId, ?string $caption): void
+    {
+        $this->text($number, $to, app(WhatsAppResults::class)->read($viewer, $mediaId, $caption), preview: false);
     }
 
     /** PlanReportCorrection's half: repeat the changes back in our words, run nothing. */

@@ -3,7 +3,10 @@
 namespace App\Support\Integrations\Dependents\Counters;
 
 use App\Models\NewsletterSend;
+use App\Support\Integrations\Dependents\Feature;
 use App\Support\Integrations\Dependents\IntegrationRef;
+use App\Support\Newsletter\NewsletterSenders;
+use App\Support\Social\SocialProvider;
 use Illuminate\Database\Eloquent\Builder;
 
 final class QueuedNewslettersCounter extends RowCounter
@@ -26,5 +29,14 @@ final class QueuedNewslettersCounter extends RowCounter
     protected function label(int $count): string
     {
         return self::plural($count, 'newsletter waiting to send will fail', 'newsletters waiting to send will fail');
+    }
+
+    public function features(IntegrationRef $ref): array
+    {
+        if ($ref->kind !== 'social' || NewsletterSenders::for(SocialProvider::tryFrom($ref->provider)) === null) {
+            return [];
+        }
+
+        return [Feature::lastBreaks($ref, 'Marketing › Newsletter: can\'t send through '.Feature::providerLabel($ref))];
     }
 }

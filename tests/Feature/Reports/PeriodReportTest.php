@@ -8,6 +8,7 @@ use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
 use App\Support\Reports\Texts\PeriodReport;
+use App\Support\Reports\Xlsx;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -109,6 +110,28 @@ class PeriodReportTest extends TestCase
     }
 
     /** @return array{0: array, 1: Franchise} */
+    /** Takeover rows 35 and 50: any dates or a year, as PDF or Excel, inside the reader's view. */
+    public function test_the_report_on_request_as_pdf_or_excel_and_yearly(): void
+    {
+        [$t, $f] = $this->connecticut();
+        $this->inTenant($t['org'], fn () => $this->job($f, ['job_source' => 'LS Ads', 'status' => 'Done', 'booked_at' => '2026-03-02 09:00:00',
+            'last_status_update' => '2026-03-03 10:00:00', 'payload' => ['Team' => [['id' => 'USR-ann', 'Name' => 'Ann']], 'JobTotalPrice' => 400]]));
+        $as = $this->signedInAs($t['admin']);
+
+        $pdf = $as->get("/api/v1/reports/period?franchise_id={$f->id}&from=2026-03-01&to=2026-03-31")->assertOk();
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+        $this->assertStringStartsWith('%PDF', $as->get('/api/v1/reports/period?year=2026')->assertOk()->getContent(), 'the company, for the year');
+
+        $xlsx = $as->get("/api/v1/reports/period?franchise_id={$f->id}&year=2026&format=xlsx")->assertOk()->getContent();
+        $this->assertSame(['Alpha Co', 'LS Ads', 1.0, 1.0, 0.0, 0.0, 400.0], Xlsx::read($xlsx, 'Created')[1]);
+        $this->assertSame('Ann', Xlsx::read($xlsx, 'Technicians')[1][1]);
+
+        $sibling = $this->extraFranchise($t, 'Sibling');
+        $manager = $this->userWithRole($t, 'Branch Manager', ['reports.view'], onlyAt: $f);
+        $this->signedInAs($manager)->get("/api/v1/reports/period?franchise_id={$sibling->id}&year=2026")->assertForbidden();
+        $this->signedInAs($manager)->get("/api/v1/reports/period?franchise_id={$f->id}&year=2026&format=xlsx")->assertForbidden();
+    }
+
     private function connecticut(): array
     {
         $t = $this->provisionTenant('Alpha');

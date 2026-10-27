@@ -531,6 +531,23 @@ const Map<String, Tour> tabTours = {
       ),
     ],
   ),
+  'financials/Lead source results': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'tour-financials-results',
+        title: 'Lead source results',
+        body:
+            "An outside lead source's calls, jobs, cost, sales and profit per date and area. Pending rows are tinted; a row counts in reports once approved.",
+      ),
+      TourStep(
+        anchor: 'tour-financials-results-toolbar',
+        title: 'Find, add, or read a photo',
+        body:
+            'Filter by dates, status and source. Add a result by hand, or read a photo of the report and check its rows before saving.',
+      ),
+    ],
+  ),
   'financials/Invoices/Invoices': Tour(
     version: 1,
     steps: [

@@ -46,7 +46,7 @@ class GlanceRegistry
         'hr', 'work_hours', 'customers', 'jobs', 'project_management', 'project_management_2', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         // Sales before Leads, where its sidebar entry sits (2026-10-14).
-        'services', 'sales', 'leads',
+        'services', 'leads',
         // The container Reviews and Business Profile moved into (2026-09-25).
         'customer_experience', 'reviews', 'business_profile',
         'email', 'training',
@@ -201,11 +201,6 @@ class GlanceRegistry
         'financials' => [
             'label' => 'Financials',
             'sentence' => 'Your bases, tables and records live in the Financials tab. Open it to work in them.',
-        ],
-        // Sales (2026-10-14): placeholder until a live glance is built.
-        'sales' => [
-            'label' => 'Sales',
-            'sentence' => 'Deals waiting on approval live in the Sales tab. Open it to work the pipeline.',
         ],
         // Task Board (2026-10-13): placeholder until a live glance is built.
         'tasks' => [

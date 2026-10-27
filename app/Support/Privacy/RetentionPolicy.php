@@ -75,11 +75,11 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 47 tables this governs today are `a1leads_review_events`
+     * The 49 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `a1leads_reviews` (updated_at), `ai_eval_cases` (created_at), `ai_traces` (created_at),
      * `airtable_record_versions` (seen_at), `airtable_records`
-     * (fetched_at), `alerts` (created_at), `assistant_answers` (created_at), `assistant_jobs` (updated_at), `automation_events` (occurred_at),
+     * (fetched_at), `alerts` (created_at), `assistant_answers` (created_at), `assistant_jobs` (updated_at), `automation_events` (occurred_at), `call_log_days` (created_at),
      * `call_report_conversions` (created_at), `call_report_labels` (created_at),
      * `call_report_person_reviews` (created_at),
      * `call_report_scores` (created_at),
@@ -87,7 +87,7 @@ final class RetentionPolicy
      * `device_tokens` (last_registered_at),
      * `email_verifications` (created_at), `field_alerts` (created_at),
      * `field_geocodes` (updated_at), `field_locations` (recorded_at),
-     * `field_presences` (last_seen_at), `financial_adjustments` (date), `financial_bills` (period_to), `financial_charge_sheets` (period_to), `financial_repair_weeks` (week_start), `invitations` (created_at), `invoices` (issued_on),
+     * `field_presences` (last_seen_at), `financial_adjustments` (date), `financial_bills` (period_to), `financial_charge_sheets` (period_to), `financial_repair_weeks` (week_start), `financial_results` (date), `invitations` (created_at), `invoices` (issued_on),
      * `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
      * `phone_callbacks` (created_at), `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),

@@ -192,15 +192,12 @@ class Job extends Model implements StatesRetention
         return $c ? (trim(implode(', ', array_filter([$c->address_line1, $c->city, trim(($c->state ?? '').' '.($c->postal_code ?? ''))]))) ?: null) : null;
     }
 
-    /** Who does the job: the EzBizi user it names, else the first Workiz team member linked to one. */
+    /** Who does the job: the EzBizi user it names, else the first technician on its team with a login. */
     public function getTechnicianUserIdAttribute(): ?string
     {
-        if ($this->performed_by_user_id) {
-            return $this->performed_by_user_id;
-        }
-        $team = collect($this->workizJob?->payload['Team'] ?? $this->workizJob?->payload['team'] ?? [])->pluck('id')->filter()->all();
-
-        return $team === [] ? null : WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->value('user_id');
+        return $this->performed_by_user_id ?: SchedulingTechnician::query()
+            ->whereIn('id', JobTechnician::query()->where('job_id', $this->id)->select('technician_id'))
+            ->whereNotNull('user_id')->orderBy('name')->value('user_id');
     }
 
     public function getTechnicianNameAttribute(): ?string
@@ -210,7 +207,9 @@ class Job extends Model implements StatesRetention
             return User::query()->whereKey($id)->value('name');
         }
 
-        return collect($this->workizJob?->payload['Team'] ?? [])->pluck('name')->filter()->first();
+        return SchedulingTechnician::query()
+            ->whereIn('id', JobTechnician::query()->where('job_id', $this->id)->select('technician_id'))
+            ->orderBy('name')->value('name');
     }
 
     /** Trimmed, and blank is none: Workiz's own words arrive with stray spaces. */

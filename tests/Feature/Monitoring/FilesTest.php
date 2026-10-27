@@ -378,6 +378,50 @@ class FilesTest extends TestCase
 
     // ── §2.2 audit: one row per path opened, listing vs download distinguished ──
 
+    public function test_a_big_download_comes_in_pieces_and_is_audited_once(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->beat($alpha['admin']);
+        $device = $this->deviceFor($alpha['admin']);
+        $manager = $this->userWithRole($alpha, 'Files', ['monitoring.files.view']);
+        $this->unlockFiles($manager);
+        $url = '/api/v1/monitoring/devices/'.$device->id.'/files';
+
+        foreach ([0, 4194304, 8388608] as $offset) {
+            $this->signedInAs($manager)
+                ->postJson($url, ['op' => 'download', 'path' => 'C:\v.mp4', 'offset' => $offset])
+                ->assertOk();
+        }
+        // Starting mid-file on another path is still recorded.
+        $this->signedInAs($manager)
+            ->postJson($url, ['op' => 'download', 'path' => 'C:\other.mp4', 'offset' => 4194304])
+            ->assertOk();
+
+        $queued = $this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/monitoring/file-requests?device_key=dk-1')
+            ->assertOk()->json('requests');
+        $this->assertSame([0, 4194304, 8388608, 4194304], array_column($queued, 'offset'));
+
+        $paths = AuditEvent::withoutGlobalScopes()
+            ->where('action', 'monitoring.files.downloaded')
+            ->get()->map(fn ($r) => $r->metadata['path'])->all();
+        $this->assertSame(['C:\v.mp4', 'C:\other.mp4'], $paths);
+
+        $requestId = $this->signedInAs($manager)
+            ->postJson($url, ['op' => 'download', 'path' => 'C:\v.mp4', 'offset' => 4194304])
+            ->json('data.request_id');
+        $this->signedInAs($alpha['admin'])
+            ->postJson('/api/v1/monitoring/file-requests/'.$requestId, [
+                'device_key' => 'dk-1', 'status' => 'ready', 'op' => 'download',
+                'name' => 'v.mp4', 'size' => 9000000, 'offset' => 4194304,
+                'content_base64' => base64_encode('piece'),
+            ])->assertNoContent();
+        $this->signedInAs($manager)
+            ->getJson($url.'/'.$requestId)
+            ->assertOk()
+            ->assertJson(['data' => ['status' => 'ready', 'size' => 9000000, 'offset' => 4194304]]);
+    }
+
     public function test_each_request_writes_an_audit_row_naming_the_path(): void
     {
         $alpha = $this->provisionTenant('Alpha');

@@ -26,6 +26,7 @@ use App\Models\TrainingAttempt;
 use App\Models\TrainingProgress;
 use App\Models\User;
 use App\Models\FinancialRecord;
+use App\Models\FinancialResult;
 use App\Models\Invoice;
 use App\Models\Task;
 use App\Models\Vehicle;
@@ -1351,6 +1352,14 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 automationActions: [
+                    new ActionDefinition(
+                        key: 'job.set',
+                        label: 'Set the job status and tags',
+                        description: 'Sets the status, sub-status and tags of the job (tags not listed are removed), or '
+                            .'removes its scheduled time. EzBizi is written first; a job linked to Workiz is then '
+                            .'brought in line there.',
+                        executionType: 'job.set',
+                    ),
                     // Jose's Project Management rules (2026-10-21), through Workiz's writer.
                     new ActionDefinition(
                         key: 'job.workiz_update',
@@ -2511,6 +2520,36 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * Results (Jose, 2026-10-27, ACE option A): an outside lead
+             * source's calls, jobs, cost, sales and profit per date and area,
+             * typed in or read from a photo (app or WhatsApp). A row counts in
+             * reports only once approved. Drawn inside Financials (parent).
+             *
+             *   view     see results
+             *   create   type rows in, or send a photo
+             *   edit     change a pending row
+             *   delete   remove a row
+             *   approve  approve rows so they count; change approved rows
+             */
+            new ModuleDefinition(
+                key: 'financial_results',
+                label: 'Lead source results',
+                parent: 'financials',
+                sidebar: false,
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'approve'],
+                actionLabels: ['approve' => 'Approve results so they count in reports'],
+                subject: new AutomationSubject(FinancialResult::class, 'Lead source results', key: 'financial_result'),
+                emits: [FinancialResult::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'financial_result.approved',
+                        label: 'Lead source results approved',
+                        description: 'A row of a lead source\'s results (ACE) was approved. It carries the source, date, area, calls, jobs, cost, sales and profit.',
+                    ),
+                ],
+            ),
+
+            /*
              * Invoices (Jose, 2026-10-20/21): charge sheets per period, one
              * draft invoice per branch with its PDF, approve, send from the
              * organization's own mail, payments. One invoice model for the
@@ -2863,19 +2902,6 @@ class ModuleServiceProvider extends ServiceProvider
              * builder where this goes; the catalogue marks it per row, so
              * nobody builds a rule on an event that cannot arrive.
             */
-            /*
-             * Sales - the sales executives' pipeline tracker (Jose, 2026-10-14),
-             * replacing their spreadsheet. Every job "done pending approval" is a
-             * deal; `manage` sets its stage, urgency, follow-up date and notes.
-             */
-            new ModuleDefinition(
-                key: 'sales',
-                label: 'Sales',
-                actions: ['view', 'manage'],
-                automationExemptBecause: 'Not yet wired: a stage change is a real trigger '
-                    .'(e.g. "deal marked Sold") and should be added when somebody asks for one.',
-            ),
-
             new ModuleDefinition(
                 key: 'leads',
                 label: 'Leads',

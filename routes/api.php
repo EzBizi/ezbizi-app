@@ -18,7 +18,6 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
-use App\Http\Controllers\Api\SalesController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -131,6 +130,7 @@ use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreaMapController;
+use App\Http\Controllers\Api\SchedulingRosterController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
@@ -185,6 +185,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\FinancialsController;
 use App\Http\Controllers\Api\FinancialSourcesController;
 use App\Http\Controllers\Api\FinancialBillsController;
+use App\Http\Controllers\Api\FinancialResultsController;
 use App\Http\Controllers\Api\FinancialAdjustmentsController;
 use App\Http\Controllers\Api\InvoicesController;
 use App\Http\Controllers\Api\VehicleServiceController;
@@ -988,6 +989,7 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -1020,10 +1022,6 @@ Route::prefix('v1')
          * serves exactly one tab, which is the condition inbox 0051 sets for
          * the middleware being the right place.
          */
-        // Sales pipeline: quoted jobs awaiting approval (Jose, 2026-10-14).
-        Route::get('sales/deals', [SalesController::class, 'index'])->middleware('permission:sales.view');
-        Route::put('sales/deals/{job}', [SalesController::class, 'update'])->middleware('permission:sales.manage');
-
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         // Customer Experience › Complaints (Jose, 2026-10-20). Each checks its own grant.
         Route::get('complaints', [\App\Http\Controllers\Api\ComplaintsController::class, 'index']);
@@ -1035,6 +1033,13 @@ Route::prefix('v1')
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
+        // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
+        Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
+        Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
+        Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
+        Route::put('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'replaceServices']);
+        Route::post('business-profile/locations/{location}/services/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyServices']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
@@ -1110,6 +1115,16 @@ Route::prefix('v1')
             Route::post('financials/bills', [FinancialBillsController::class, 'store']);
             Route::get('financials/bills/{bill}/image', [FinancialBillsController::class, 'image']);
             Route::delete('financials/bills/{bill}', [FinancialBillsController::class, 'destroy']);
+        });
+        // Results (ACE): drawn inside Financials; the controller checks each action.
+        Route::middleware('permission:financial_results.view')->group(function (): void {
+            Route::get('financials/results', [FinancialResultsController::class, 'index']);
+            Route::post('financials/results/read', [FinancialResultsController::class, 'read']);
+            Route::post('financials/results', [FinancialResultsController::class, 'store']);
+            Route::patch('financials/results/{result}', [FinancialResultsController::class, 'update']);
+            Route::post('financials/results/{result}/approve', [FinancialResultsController::class, 'approveOne']);
+            Route::get('financials/results/{result}/image', [FinancialResultsController::class, 'image']);
+            Route::delete('financials/results/{result}', [FinancialResultsController::class, 'destroy']);
         });
         Route::prefix('financials')->middleware('permission:financials.bases.view')->controller(FinancialsController::class)->group(function (): void {
             Route::get('home', 'home');
@@ -1457,6 +1472,7 @@ Route::prefix('v1')
         Route::get('reports/drafts', [\App\Http\Controllers\Api\ReportDraftsController::class, 'index'])->middleware('permission:reports.correct');
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
+        Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
@@ -1617,6 +1633,10 @@ Route::prefix('v1')
             // Settings › Schedule: Workiz technicians and their EzBizi users.
             Route::get('scheduling/technicians', [SchedulingTechniciansController::class, 'index']);
             Route::put('scheduling/technicians/{member}', [SchedulingTechniciansController::class, 'update']);
+            // EzBizi's own roster (Jose, 2026-10-27).
+            Route::get('scheduling/roster', [SchedulingRosterController::class, 'index']);
+            Route::post('scheduling/roster', [SchedulingRosterController::class, 'store']);
+            Route::patch('scheduling/roster/{technician}', [SchedulingRosterController::class, 'update']);
             Route::put('scheduling/franchises/{franchise}/limits', [SchedulingFranchiseLimitsController::class, 'update']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
@@ -1630,6 +1650,7 @@ Route::prefix('v1')
             // Drawn areas: shapes, preview, save; one area, a branch, the company.
             Route::get('scheduling/areas-map', [SchedulingAreaMapController::class, 'overview']);
             Route::get('scheduling/areas/{area}/map', [SchedulingAreaMapController::class, 'show']);
+            Route::get('scheduling/areas/{area}/outline', [SchedulingAreaMapController::class, 'outline']);
             Route::post('scheduling/areas/{area}/polygons/preview', [SchedulingAreaMapController::class, 'preview']);
             Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);

@@ -428,16 +428,27 @@ void main() {
       'are told apart, with my open count on each', (tester) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('NORTHSIDE CHIMNEY'), findsOneWidget);
-    expect(find.text('EVERDOORS GARAGE'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
+      findsOneWidget,
+    );
     expect(find.text('Main'), findsNWidgets(2));
     expect(find.text('2 open'), findsOneWidget);
     // Companies in alphabetical order, each Main under its own.
-    final everdoors = tester.getTopLeft(find.text('EVERDOORS GARAGE')).dy;
-    final northside = tester.getTopLeft(find.text('NORTHSIDE CHIMNEY')).dy;
+    final everdoors = tester
+        .getTopLeft(
+          find.byKey(const ValueKey('tasks-fold-company:Everdoors Garage')),
+        )
+        .dy;
+    final northside = tester
+        .getTopLeft(
+          find.byKey(const ValueKey('tasks-fold-company:Northside Chimney')),
+        )
+        .dy;
     final mains = [
       for (final e in find.text('Main').evaluate())
         tester.getTopLeft(find.byWidget(e.widget)).dy,
@@ -453,8 +464,6 @@ void main() {
   ) async {
     await pumpBoard(tester);
 
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Lakeview franchise'));
     await tester.pumpAndSettle();
 

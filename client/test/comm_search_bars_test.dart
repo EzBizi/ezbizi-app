@@ -459,8 +459,8 @@ Future<void> _search(WidgetTester tester, String key, String term) async {
   expect(box, findsOneWidget);
   expect(
     tester.getSize(box).height,
-    40,
-    reason: 'the box is the height of the controls beside it',
+    56,
+    reason: 'the standard field height, as Leads (Jose, 2026-10-27)',
   );
 
   await tester.enterText(box, term);

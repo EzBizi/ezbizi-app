@@ -72,6 +72,9 @@ class FileAccessService {
   /// result slot from either side.
   static const int _maxDownloadBytes = 5 * 1024 * 1024;
 
+  /// One piece of a big download: under the server's 5 MB answer ceiling.
+  static const int _chunkBytes = 4 * 1024 * 1024;
+
   Timer? _timer;
   Duration _interval = const Duration(milliseconds: 1500);
   int _idleTicks = 0;
@@ -146,7 +149,12 @@ class FileAccessService {
           if (path.isEmpty) 'quick_links': await _reader.quickLinks(),
         };
       } else {
-        final file = await _reader.read(path, _maxDownloadBytes);
+        final offset = (request['offset'] as num?)?.toInt();
+        final file = await _reader.read(
+          path,
+          offset == null ? _maxDownloadBytes : _chunkBytes,
+          offset: offset,
+        );
         answer = {
           'device_key': deviceKey,
           'status': 'ready',

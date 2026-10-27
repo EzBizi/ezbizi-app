@@ -23,6 +23,13 @@ use Tests\TestCase;
  */
 class PlatformSmsAccountTest extends TestCase
 {
+    /** The real gateway, so Http::fake sees the request Twilio would. */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->app->bind(\App\Support\Phone\TwilioGateway::class, \App\Support\Phone\HttpTwilioGateway::class);
+    }
+
     /**
      * The number's account is in the URL; the parent's credentials sign it.
      */

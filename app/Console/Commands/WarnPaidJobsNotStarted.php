@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Organization;
-use App\Models\WorkizRecord;
+use App\Support\Jobs\JobMoney;
 use App\Support\Jobs\ProjectStages;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -37,8 +37,7 @@ class WarnPaidJobsNotStarted extends Command
                 if ($waiting->isEmpty()) {
                     return;
                 }
-                $paid = WorkizRecord::query()->whereIn('job_id', $waiting)->where('type', 'payment')->where('status', 'succeeded')
-                    ->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) paid_at')->pluck('paid_at', 'job_id');
+                $paid = collect(JobMoney::paidDates($waiting))->map(fn ($d) => $d['first']);
 
                 $byRecipient = [];
                 Job::query()->whereIn('id', $paid->keys())->with(['customer:id,name', 'franchise'])->get()

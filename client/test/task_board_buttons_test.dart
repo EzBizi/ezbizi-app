@@ -144,10 +144,6 @@ void main() {
   final quick = find.byKey(const Key('tasks-quick-boards'));
   Finder inQuick(String text) =>
       find.descendant(of: quick, matching: find.text(text));
-  Finder inPicker(String text) => find.descendant(
-    of: find.byKey(const ValueKey('tasks-boards')),
-    matching: find.text(text),
-  );
   Set<int> lit(WidgetTester tester) =>
       tester.widget<SegmentedButton<int>>(quick).selected;
 
@@ -159,25 +155,17 @@ void main() {
     expect(inQuick('Northside Chimney Board'), findsNothing);
     expect(opened, ['b-me']);
     expect(lit(tester), {0});
-    // The picker names no board (nor a section heading) while a button's
-    // board is open.
-    expect(inPicker('Other boards'), findsOneWidget);
-    expect(inPicker('My boards'), findsNothing);
 
     await tester.tap(inQuick('A-1 Chimney Board'));
     await tester.pumpAndSettle();
     expect(opened.last, 'b-a1');
     expect(lit(tester), {1});
-    expect(inPicker('Northside Chimney'), findsNothing);
 
-    // Another board: no button lit, the picker names it.
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Northside Chimney').last);
+    // Another board, from the tree: no button lit.
+    await tester.tap(find.byKey(const ValueKey('tasks-board-b-other')));
     await tester.pumpAndSettle();
     expect(opened.last, 'b-other');
     expect(lit(tester), isEmpty);
-    expect(inPicker('Northside Chimney'), findsOneWidget);
 
     await tester.tap(inQuick('My Board'));
     await tester.pumpAndSettle();
@@ -235,12 +223,13 @@ void main() {
         ),
     ];
     await pumpBoard(tester, boards: many);
-    await tester.tap(find.byKey(const ValueKey('tasks-boards')));
-    await tester.pumpAndSettle();
     for (final name in ['My board', 'A-1 Chimney', 'Boston', 'Branch 5']) {
       expect(find.text(name), findsWidgets, reason: name);
     }
-    await tester.enterText(find.byType(TextField).last, 'Branch 3');
+    await tester.enterText(
+      find.byKey(const ValueKey('tasks-boards-search')),
+      'Branch 3',
+    );
     await tester.pumpAndSettle();
     expect(find.text('Branch 3'), findsWidgets);
     expect(find.text('Branch 4'), findsNothing);

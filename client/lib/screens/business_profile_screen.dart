@@ -10,7 +10,13 @@ import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/tab_bar_like.dart';
+import 'business_profile/listing_copy.dart';
+import 'business_profile/listing_media.dart';
+import 'business_profile/listing_services.dart';
 import 'business_profile/performance_view.dart';
+import 'business_profile/phone_check_view.dart';
+import 'business_profile/whatsapp_row.dart';
 import 'monitoring/device_display.dart' show relativeAge;
 
 /// Business Profile — the listings the public sees on Maps.
@@ -84,6 +90,19 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   /// The listing whose details are open.
   String? _openId;
+
+  /// Which of the open listing's tabs shows: Info, Media or Services
+  /// (design 154 #1, #4, #16).
+  int _paneTab = 0;
+
+  /// Phone check in the tab's place (design 154 #10).
+  bool _phoneCheck = false;
+
+  /// Every listing but [id], as "Company · Branch", for copying to.
+  List<ListingTarget> _othersThan(String id) => [
+    for (final l in _locations)
+      if (l['id'] != id) (id: '${l['id']}', label: _rowName(l)),
+  ];
 
   bool get _performance => widget.performance;
 
@@ -347,6 +366,19 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         final open = _open;
         final paneBeside = box.maxWidth >= _paneBesideFrom;
 
+        if (_phoneCheck) {
+          return PhoneCheckView(
+            api: widget.api,
+            labelOf: (id) {
+              for (final l in _locations) {
+                if (l['id'] == id) return _rowName(l);
+              }
+              return null;
+            },
+            onBack: () => setState(() => _phoneCheck = false),
+          );
+        }
+
         // Narrow, or too narrow for a pane beside the table: the details
         // take the tab's place, with a way back.
         if (open != null && !paneBeside) {
@@ -449,6 +481,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       label: Text(_syncing ? 'Checking…' : 'Check Google'),
     );
 
+    final phoneCheck = IconButton(
+      key: const ValueKey('cx-open-phone-check'),
+      tooltip: 'Phone check',
+      icon: const Icon(Icons.phone_in_talk_outlined),
+      onPressed: () => setState(() => _phoneCheck = true),
+    );
+
     final profile = _profile == null
         ? null
         : ConnectedAccount(
@@ -467,7 +506,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               child: Row(
                 children: [
                   Expanded(child: counts),
-                  const SizedBox(width: 8),
+                  phoneCheck,
+                  const SizedBox(width: 4),
                   check,
                 ],
               ),
@@ -491,6 +531,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 child: profile,
               ),
             ),
+          phoneCheck,
+          const SizedBox(width: 8),
           check,
         ],
       ),
@@ -900,8 +942,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    final verification = (l['verification_state'] as String?) ?? '';
-    final category = l['primary_category'] as String? ?? '';
 
     Widget fact(String label, String value, {Key? key}) => Padding(
       key: key,
@@ -956,40 +996,80 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               ? const StatusPill('Showing on Google', tone: Tone.ok)
               : StatusPill(_googleWord(l), tone: Tone.bad),
         ),
-        const SizedBox(height: 16),
-        fact('Address', l['address'] as String? ?? ''),
-        fact('Phone', formatPhoneNumber(l['phone'] as String?)),
-        fact('Website', l['website'] as String? ?? ''),
-        fact(
-          'Category',
-          [
-            category,
-            if (verification.isNotEmpty) _humanise(verification).toLowerCase(),
-          ].where((p) => p.isNotEmpty).join(' · '),
+        const SizedBox(height: 8),
+        TabBarLike(
+          key: const ValueKey('gbp-pane-tabs'),
+          level: TabLevel.secondary,
+          labels: const [
+            ('Info', Icons.info_outline),
+            ('Media', Icons.photo_library_outlined),
+            ('Services', Icons.handyman_outlined),
+          ],
+          selected: _paneTab,
+          onSelected: (i) => setState(() => _paneTab = i),
         ),
-        Padding(
-          key: const ValueKey('gbp-pane-branch'),
-          padding: const EdgeInsets.only(bottom: 12),
-          child: _branchPicker(l),
-        ),
-        Padding(
-          key: const ValueKey('gbp-pane-auto-reply'),
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Auto-reply to reviews',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-              _autoReply(theme, l, where: 'pane'),
-            ],
-          ),
-        ),
-        Text('Checked ${_checked(l).toLowerCase()}', style: muted),
+        const SizedBox(height: 12),
+        if (_paneTab == 1)
+          ListingMedia(
+            api: widget.api,
+            locationId: '${l['id']}',
+            others: _othersThan('${l['id']}'),
+          )
+        else if (_paneTab == 2)
+          ListingServices(
+            api: widget.api,
+            locationId: '${l['id']}',
+            others: _othersThan('${l['id']}'),
+          )
+        else
+          ..._info(theme, l, fact, muted),
       ],
     );
+  }
+
+  List<Widget> _info(
+    ThemeData theme,
+    Map<String, dynamic> l,
+    Widget Function(String, String, {Key? key}) fact,
+    TextStyle? muted,
+  ) {
+    final verification = (l['verification_state'] as String?) ?? '';
+    final category = l['primary_category'] as String? ?? '';
+    final whatsapp = l['whatsapp_link'] as String?;
+    return [
+      fact('Address', l['address'] as String? ?? ''),
+      fact('Phone', formatPhoneNumber(l['phone'] as String?)),
+      fact('Website', l['website'] as String? ?? ''),
+      if (whatsapp != null && whatsapp.isNotEmpty) WhatsAppRow(link: whatsapp),
+      fact(
+        'Category',
+        [
+          category,
+          if (verification.isNotEmpty) _humanise(verification).toLowerCase(),
+        ].where((p) => p.isNotEmpty).join(' · '),
+      ),
+      Padding(
+        key: const ValueKey('gbp-pane-branch'),
+        padding: const EdgeInsets.only(bottom: 12),
+        child: _branchPicker(l),
+      ),
+      Padding(
+        key: const ValueKey('gbp-pane-auto-reply'),
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Auto-reply to reviews',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            _autoReply(theme, l, where: 'pane'),
+          ],
+        ),
+      ),
+      Text('Checked ${_checked(l).toLowerCase()}', style: muted),
+    ];
   }
 
   Widget _pill(Map<String, dynamic> l) => _live(l)

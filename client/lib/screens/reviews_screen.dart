@@ -12,7 +12,9 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
 import '../widgets/search_picker.dart';
+import '../widgets/open_destination.dart';
 import '../widgets/status_pill.dart';
+import 'customer_experience/review_stats_band.dart';
 
 /// Reviews — what the public said, the answer, and the work behind it.
 ///
@@ -105,6 +107,14 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   int _unanswered = 0;
   _Summary? _summary;
 
+  /// `meta.stats` of the list as filtered: histogram and replies (design 154 #7).
+  Map<String, dynamic>? _stats;
+  bool _drafting = false;
+
+  /// The live rule that posts replies, whose wait is the send window; null
+  /// when there is none (GET /reviews/sources `reply_rule_id`).
+  String? _replyRuleId;
+
   /// Opens on unanswered — see the class note.
   bool _onlyUnanswered = true;
 
@@ -153,6 +163,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     super.initState();
     _load();
     _loadSummary();
+    _loadReplyRule();
     _takeLink();
     DeepLinks.pending.addListener(_takeLink);
   }
@@ -228,6 +239,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
       _total = (meta['total'] as num?)?.toInt() ?? _loaded.length;
       _unanswered = (meta['unanswered'] as num?)?.toInt() ?? 0;
+      final stats = meta['stats'];
+      _stats = stats is Map ? Map<String, dynamic>.from(stats) : null;
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
@@ -445,6 +458,79 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     });
   }
 
+  /// Unanswered reviews in view with no saved reply: what Draft all writes.
+  List<Map<String, dynamic>> get _toDraft => [
+    for (final r in _reviews)
+      if (r['reply'] == null) r,
+  ];
+
+  /// Draft all (design 154 #7): an AI draft saved on each unanswered review in
+  /// view. Nothing posts; each one still waits for a person's Post.
+  Future<void> _draftAll() async {
+    final queue = _toDraft;
+    setState(() {
+      _drafting = true;
+      _notice = null;
+    });
+    var saved = 0;
+    String? refused;
+    for (final review in queue) {
+      final suggested = await widget.api.post(
+        '/reviews/${review['id']}/reply/suggest',
+        const {},
+      );
+      if (!mounted) return;
+      final body = suggested.ok
+          ? ((suggested.data as Map?)?['body'] as String? ?? '').trim()
+          : '';
+      if (body.isEmpty) {
+        refused ??= suggested.ok ? null : suggested.message;
+        continue;
+      }
+      final put = await widget.api.put('/reviews/${review['id']}/reply', {
+        'body': body,
+      });
+      if (!mounted) return;
+      if (put.ok) {
+        saved++;
+      } else {
+        refused ??= put.message;
+      }
+    }
+    setState(() {
+      _drafting = false;
+      _notice =
+          '$saved of ${queue.length} drafted. Nothing is public until you '
+          'post it.${refused == null ? '' : ' $refused'}';
+    });
+    await _load();
+  }
+
+  /// The rule whose wait paces published replies, opened the way a
+  /// notification about it does; Automations itself when there is none.
+  VoidCallback? get _openSendWindow {
+    final open = OpenDestination.of(context);
+    if (open == null || !(widget.session.me?.reaches('automations') ?? false)) {
+      return null;
+    }
+    final rule = _replyRuleId;
+    return () {
+      if (rule != null) {
+        DeepLinks.open(
+          DeepLink(module: 'automations', type: 'automation', id: rule),
+        );
+      }
+      open('automations');
+    };
+  }
+
+  Future<void> _loadReplyRule() async {
+    final r = await widget.api.get('/reviews/sources');
+    if (!mounted || !r.ok) return;
+    final id = r.body['reply_rule_id'];
+    setState(() => _replyRuleId = id is String && id.isNotEmpty ? id : null);
+  }
+
   String? _savedBody(Map<String, dynamic> review) =>
       (review['reply'] as Map<String, dynamic>?)?['body'] as String?;
 
@@ -613,6 +699,14 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (box.maxWidth >= 700) _summaryStrip(theme),
+            if (_stats case final stats?)
+              ReviewStatsBand(
+                stats: stats,
+                toDraft: _toDraft.length,
+                drafting: _drafting,
+                onDraftAll: _draftAll,
+                onSendWindow: _openSendWindow,
+              ),
             _toolbar(theme, box.maxWidth),
             if (_profile != null && box.maxWidth < 1200)
               ConnectedAccount(

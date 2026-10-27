@@ -5,6 +5,7 @@ namespace App\Support\Integrations\Dependents\Counters;
 use App\Models\Automation;
 use App\Models\User;
 use App\Support\Integrations\Dependents\DependentCounter;
+use App\Support\Integrations\Dependents\Feature;
 use App\Support\Integrations\Dependents\IntegrationRef;
 
 /**
@@ -88,5 +89,16 @@ final class AutomationsCounter implements DependentCounter
                 ? $hits->take(5)->pluck('name')->map(fn ($v) => (string) $v)->all()
                 : [],
         ];
+    }
+
+    public function features(IntegrationRef $ref): array
+    {
+        if (! isset(self::NEEDS[$ref->provider])) {
+            return [];
+        }
+
+        $name = Feature::providerLabel($ref);
+
+        return [Feature::lastBreaks($ref, "Automations: steps that need {$name} stop running")];
     }
 }

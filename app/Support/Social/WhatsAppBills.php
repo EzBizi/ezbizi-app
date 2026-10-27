@@ -125,7 +125,7 @@ final class WhatsAppBills
      *
      * @return array{company: ?Company, franchise: ?Franchise, label: string}|string the place, or a reply asking for it
      */
-    private function place(User $user, string $caption): array|string
+    public function place(User $user, string $caption): array|string
     {
         $franchises = Franchise::query()->whereIn('id', ViewScope::reachOf($user)->franchiseIds())->orderBy('name')->get();
         $named = trim($caption) === '' ? collect() : $franchises->filter(

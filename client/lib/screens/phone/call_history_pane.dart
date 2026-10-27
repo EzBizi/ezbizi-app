@@ -195,7 +195,6 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
           child: SizedBox(
-            height: 40,
             child: TextField(
               key: const ValueKey('comm-call-history-search'),
               onChanged: _search,
@@ -205,7 +204,6 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
                 hintText: 'Search name or number',
                 prefixIcon: Icon(Icons.search, size: 18),
                 prefixIconConstraints: BoxConstraints(minWidth: 36),
-                contentPadding: EdgeInsets.symmetric(horizontal: 8),
                 border: OutlineInputBorder(),
               ),
             ),

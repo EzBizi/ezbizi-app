@@ -627,6 +627,18 @@ return [
 
     // The Grok Build CLI's home on the box, signed in to Jose's Grok
     // subscription (App\Support\Ai\GrokCli). Unset: nothing uses it.
+    // The AI behind GrokCli (AiProvider): grok, claude, or auto (Grok when
+    // its CLI is set up, else Claude when its key is). Neither: no AI, and
+    // every AI feature shows its calm "not available" state (Jose, 2026-10-27).
+    'ai' => [
+        'provider' => env('AI_PROVIDER', 'auto'),
+        'claude' => [
+            'key' => env('AI_CLAUDE_KEY'),   // falls back to ANTHROPIC_API_KEY (Reports' tagger)
+            'model' => env('AI_CLAUDE_MODEL', 'claude-opus-5-5'),
+            'effort' => env('AI_CLAUDE_EFFORT', 'low'),
+        ],
+    ],
+
     'grok_cli' => [
         // Questions asked side by side (GrokCli::askMany); 1 if rate-limited.
         'concurrency' => (int) env('GROK_CLI_CONCURRENCY', 4),

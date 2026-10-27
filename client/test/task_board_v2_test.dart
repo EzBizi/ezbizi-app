@@ -348,7 +348,7 @@ void main() {
 
   Future<void> pump(
     WidgetTester tester, {
-    double width = 1400,
+    double width = 1700,
     int columns = 3,
   }) async {
     tester.view.physicalSize = Size(width, 900);

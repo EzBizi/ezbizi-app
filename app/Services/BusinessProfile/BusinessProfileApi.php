@@ -104,6 +104,17 @@ final class BusinessProfileApi
         ], $items);
     }
 
+    /** Adds a photo or video to a listing from a public URL (copying between listings). Refused while writes are off. */
+    public function addMedia(BusinessLocation $location, string $sourceUrl, ?string $category, string $format = 'PHOTO'): void
+    {
+        self::writable();
+        $this->client($location)->post(self::V4.GoogleBusinessProfilePublisher::v4Name($location, $location->connection).'/media', [
+            'mediaFormat' => $format,
+            'locationAssociation' => ['category' => $category ?: 'ADDITIONAL'],
+            'sourceUrl' => $sourceUrl,
+        ])->throw();
+    }
+
     /** @return array{primary: ?array, additional: list<array>, services: list<array>} */
     public function categoriesAndServices(BusinessLocation $location): array
     {
@@ -124,9 +135,7 @@ final class BusinessProfileApi
      */
     public function replaceServices(BusinessLocation $location, array $services): array
     {
-        if (! config('services.google_business_profile.write', false)) {
-            throw new RuntimeException('Changing Business Profile listings is not switched on yet.');
-        }
+        self::writable();
         $this->client($location)->patch(self::INFO.self::v1Name($location).'?updateMask=serviceItems', ['serviceItems' => $services])->throw();
 
         return $this->categoriesAndServices($location)['services'];
@@ -151,6 +160,13 @@ final class BusinessProfileApi
             'complies_with_guidelines' => $vom['complyWithGuidelines']['recommendationReason'] ?? null,
             'verifications' => array_map(fn ($v) => ['method' => $v['method'] ?? null, 'state' => $v['state'] ?? null, 'created' => $v['createTime'] ?? null], $list),
         ];
+    }
+
+    public static function writable(): void
+    {
+        if (! config('services.google_business_profile.write', false)) {
+            throw new RuntimeException('Changing Business Profile listings is not switched on yet.');
+        }
     }
 
     /** "locations/L", whichever way the listing's name was stored. */

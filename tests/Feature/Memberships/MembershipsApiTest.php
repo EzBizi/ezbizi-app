@@ -123,7 +123,9 @@ class MembershipsApiTest extends TestCase
     {
         $id = $this->plan();
         $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/plans/{$id}", ['workiz_job_type' => 'Chimney Sweep'])
-            ->assertOk()->assertJsonPath('data.workiz_job_type', 'Chimney Sweep');
+            ->assertOk()->assertJsonPath('data.job_type', 'Chimney Sweep')->assertJsonPath('data.workiz_job_type', 'Chimney Sweep');
+        $this->signedInAs($this->alpha['admin'])->patchJson("/api/v1/memberships/plans/{$id}", ['job_type' => 'Inspection'])
+            ->assertOk()->assertJsonPath('data.job_type', 'Inspection');
     }
 
     private function aCustomer(string $franchiseId): string

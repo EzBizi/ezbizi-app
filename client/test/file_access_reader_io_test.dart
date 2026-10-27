@@ -38,8 +38,9 @@ void main() {
   test('list of a path that does not exist is not_found', () async {
     await expectLater(
       reader.list('${tmp.path}/nope'),
-      throwsA(isA<FileAccessException>()
-          .having((e) => e.slug, 'slug', 'not_found')),
+      throwsA(
+        isA<FileAccessException>().having((e) => e.slug, 'slug', 'not_found'),
+      ),
     );
   });
 
@@ -53,76 +54,118 @@ void main() {
     expect(base64Decode(out['content_base64'] as String), [1, 2, 3, 4]);
   });
 
-  test('read refuses an over-cap file as too_large, before reading it',
-      () async {
-    File('${tmp.path}/big.bin').writeAsBytesSync(List.filled(2048, 0));
+  test(
+    'read refuses an over-cap file as too_large, before reading it',
+    () async {
+      File('${tmp.path}/big.bin').writeAsBytesSync(List.filled(2048, 0));
 
-    await expectLater(
-      reader.read('${tmp.path}/big.bin', 1024),
-      throwsA(isA<FileAccessException>()
-          .having((e) => e.slug, 'slug', 'too_large')),
-    );
-  });
+      await expectLater(
+        reader.read('${tmp.path}/big.bin', 1024),
+        throwsA(
+          isA<FileAccessException>().having((e) => e.slug, 'slug', 'too_large'),
+        ),
+      );
+    },
+  );
+
+  test(
+    'a piece of an over-cap file is read from its offset, with the whole size',
+    () async {
+      File(
+        '${tmp.path}/big.bin',
+      ).writeAsBytesSync([for (var i = 0; i < 2500; i++) i % 256]);
+
+      final out = await reader.read('${tmp.path}/big.bin', 1024, offset: 2048);
+
+      expect(out['size'], 2500);
+      expect(out['offset'], 2048);
+      expect(base64Decode(out['content_base64'] as String), [
+        for (var i = 2048; i < 2500; i++) i % 256,
+      ]);
+    },
+  );
 
   test('read of a missing file is not_found', () async {
     await expectLater(
       reader.read('${tmp.path}/ghost', 1024),
-      throwsA(isA<FileAccessException>()
-          .having((e) => e.slug, 'slug', 'not_found')),
+      throwsA(
+        isA<FileAccessException>().having((e) => e.slug, 'slug', 'not_found'),
+      ),
     );
   });
 
   // THE PRODUCTION BUG. A drive letter whose probe throws (device not ready)
   // must be skipped, not fail the whole roots listing.
-  test('roots skips a drive whose probe throws, and keeps the good ones',
-      () async {
-    final reader = IoFileAccessReader(
-      driveProbe: (root) {
-        if (root == 'D:\\') throw const FileSystemException('device not ready');
-        return root == 'C:\\'; // only C: has media
-      },
-    );
+  test(
+    'roots skips a drive whose probe throws, and keeps the good ones',
+    () async {
+      final reader = IoFileAccessReader(
+        driveProbe: (root) {
+          if (root == 'D:\\') {
+            throw const FileSystemException('device not ready');
+          }
+          return root == 'C:\\'; // only C: has media
+        },
+      );
 
-    final roots = await reader.list('');
+      final roots = await reader.list('');
 
-    final names = roots.map((e) => e['name']).toList();
-    expect(names, contains('C:\\'),
-        reason: 'A readable drive must be listed.');
-    expect(names, isNot(contains('D:\\')),
-        reason: 'The drive whose probe threw is skipped, not fatal.');
-    // And it is a listing, not a throw — the bug was the whole call failing.
-    expect(roots, isNotEmpty);
-  });
+      final names = roots.map((e) => e['name']).toList();
+      expect(
+        names,
+        contains('C:\\'),
+        reason: 'A readable drive must be listed.',
+      );
+      expect(
+        names,
+        isNot(contains('D:\\')),
+        reason: 'The drive whose probe threw is skipped, not fatal.',
+      );
+      // And it is a listing, not a throw — the bug was the whole call failing.
+      expect(roots, isNotEmpty);
+    },
+  );
 
   group('quickLinks', () {
     late Directory profile;
     setUp(() => profile = Directory.systemTemp.createTempSync('ezb-profile-'));
     tearDown(() => profile.deleteSync(recursive: true));
 
-    test('follows a redirected folder, falls back to the profile, skips missing ones',
-        () async {
-      Directory('${profile.path}\\Downloads').createSync();
-      final oneDriveDesktop =
-          Directory('${profile.path}\\OneDrive\\Desktop')..createSync(recursive: true);
-      // A stale, empty <profile>\Desktop that Explorer no longer uses.
-      Directory('${profile.path}\\Desktop').createSync();
+    test(
+      'follows a redirected folder, falls back to the profile, skips missing ones',
+      () async {
+        Directory('${profile.path}\\Downloads').createSync();
+        final oneDriveDesktop = Directory('${profile.path}\\OneDrive\\Desktop')
+          ..createSync(recursive: true);
+        // A stale, empty <profile>\Desktop that Explorer no longer uses.
+        Directory('${profile.path}\\Desktop').createSync();
 
-      final reader = IoFileAccessReader(
-        home: profile.path,
-        shellFolders: () async => {'Desktop': oneDriveDesktop.path},
-      );
+        final reader = IoFileAccessReader(
+          home: profile.path,
+          shellFolders: () async => {'Desktop': oneDriveDesktop.path},
+        );
 
-      final links = await reader.quickLinks();
-      final byLabel = {for (final l in links) l['label']: l['path']};
+        final links = await reader.quickLinks();
+        final byLabel = {for (final l in links) l['label']: l['path']};
 
-      expect(byLabel['Desktop'], oneDriveDesktop.path,
-          reason: 'Where Windows says Desktop is, not the leftover folder.');
-      expect(byLabel['Downloads'], '${profile.path}\\Downloads',
-          reason: 'No record → the profile folder.');
-      expect(byLabel.containsKey('Videos'), isFalse,
-          reason: 'A folder that does not exist is not offered.');
-      expect(links.first['label'], 'Desktop', reason: "Explorer's order.");
-    });
+        expect(
+          byLabel['Desktop'],
+          oneDriveDesktop.path,
+          reason: 'Where Windows says Desktop is, not the leftover folder.',
+        );
+        expect(
+          byLabel['Downloads'],
+          '${profile.path}\\Downloads',
+          reason: 'No record → the profile folder.',
+        );
+        expect(
+          byLabel.containsKey('Videos'),
+          isFalse,
+          reason: 'A folder that does not exist is not offered.',
+        );
+        expect(links.first['label'], 'Desktop', reason: "Explorer's order.");
+      },
+    );
 
     test('a failing registry read still yields the profile folders', () async {
       Directory('${profile.path}\\Documents').createSync();
@@ -141,8 +184,11 @@ void main() {
       final desktop = links.where((l) => l['label'] == 'Desktop').toList();
       expect(desktop, hasLength(1));
       expect(Directory(desktop.single['path']!).existsSync(), isTrue);
-      expect(desktop.single['path'], isNot(contains('%')),
-          reason: 'Environment variables must be expanded.');
+      expect(
+        desktop.single['path'],
+        isNot(contains('%')),
+        reason: 'Environment variables must be expanded.',
+      );
     }, skip: !Platform.isWindows);
   });
 }

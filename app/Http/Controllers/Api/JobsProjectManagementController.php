@@ -5,10 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\Job;
-use App\Models\WorkizRecord;
 use App\Support\Jobs\EstimateAging;
 use App\Support\Jobs\ProjectStages;
-use App\Support\Jobs\WorkizMoney;
+use App\Support\Jobs\JobMoney;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
  * (jobs.estimate_aging_statuses), and the ones that left such a status in the
  * last 60 days, each as a timeline: when it entered, payments, tag and status
  * changes with who or what made them, and what comes next. Read from the job's
- * own event stream and Workiz's payment records, so nothing is A-1-specific.
+ * own event stream and its money (JobMoney), so nothing is A-1-specific.
  * Amounts only with Jobs Financials.
  */
 class JobsProjectManagementController extends Controller
@@ -86,15 +85,14 @@ class JobsProjectManagementController extends Controller
                 fn ($q) => $q->when(isset($input['ids']), fn ($i) => $i->whereIn('id', $input['ids'])),
                 $unwatched)
             ->when(($input['filter'] ?? null) === 'recently_paid', fn ($q) => $q->whereIn('id',
-                $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id')))
+                JobMoney::paidJobIds(...$this->window($input, $user, $settings))))
             ->with(['franchise:id,name,timezone', 'customer:id,name', 'workizJob', 'performedBy:id,name'])
             ->get();
 
         $ids = $jobs->modelKeys();
         $estimates = EstimateAging::latestEstimateDates($ids);
-        $paid = EstimateAging::paidCents($ids);
-        $payments = WorkizRecord::query()->whereIn('job_id', $ids)->where('type', 'payment')->where('status', 'succeeded')
-            ->orderBy('starts_at')->get()->groupBy('job_id');
+        $m = JobMoney::of($ids);
+        $payments = JobMoney::payments($ids);
         $events = AutomationEvent::query()->whereIn('subject_id', $ids)->where('subject_type', Job::class)
             ->whereIn('event_key', ['job.status_changed', 'job.updated'])->orderBy('occurred_at')->get()->groupBy('subject_id');
 
@@ -105,7 +103,7 @@ class JobsProjectManagementController extends Controller
             ->filter(fn ($s) => is_array($s) && isset($s['value']))->mapWithKeys(fn ($s) => [$s['value'] => $s['label'] ?? $s['value']])->all();
 
         $rows = $jobs->map(fn (Job $job) => $this->row($job, $watched, $money, $estimates[$job->id] ?? null,
-            $paid[$job->id] ?? 0, $payments[$job->id] ?? collect(), $events[$job->id] ?? collect()))
+            $m[$job->id] ?? null, $payments[$job->id] ?? collect(), $events[$job->id] ?? collect()))
             ->filter(fn (array $r) => ($input['stage'] ?? null) === null || $r['stage'] === $input['stage'])
             ->filter(fn (array $r) => ($input['min_days'] ?? null) === null || ($r['waiting']['days_waiting'] ?? -1) >= (int) $input['min_days'])
             ->when(($input['filter'] ?? null) === 'recently_paid',
@@ -131,22 +129,24 @@ class JobsProjectManagementController extends Controller
         };
         $watchedJobs = $watched === [] ? new \Illuminate\Database\Eloquent\Collection
             : $daysOk($unwatched($base())->with(['workizJob', 'franchise:id,timezone'])->get());
-        $paidAll = EstimateAging::paidCents($watchedJobs->modelKeys());
+        $mAll = JobMoney::of($watchedJobs->modelKeys());
         $counts = ['waiting' => 0, 'partial' => 0, 'full' => 0, 'closed' => 0];
         foreach ($watchedJobs as $j) {
-            $counts[$this->stage($j, $watched, $paidAll[$j->id] ?? 0)]++;
+            $counts[$this->stage($j, $watched, $mAll[$j->id] ?? null)]++;
         }
         // Recently Paid counts what its list shows: every job paid in the window, watched or not.
         $counts = ['recently_paid' => filled($input['from'] ?? null) && filled($input['to'] ?? null)
-            ? $daysOk($base()->whereIn('id', $this->paymentsIn(...$this->window($input, $user, $settings))->select('job_id'))
+            ? $daysOk($base()->whereIn('id', JobMoney::paidJobIds(...$this->window($input, $user, $settings)))
                 ->with('franchise:id,timezone')->get())->count() : null] + $counts;
 
         return response()->json(['data' => $rows, 'meta' => ['watched' => $watched, 'deadline_days' => EstimateAging::DAYS, 'counts' => $counts]]);
     }
 
-    private function stage(Job $job, array $watched, int $paid): string
+    /** @param  array{total: ?int, paid: int}|null  $m  the job's JobMoney */
+    private function stage(Job $job, array $watched, ?array $m): string
     {
-        $total = WorkizMoney::for($job)['total'] ?? ($job->amount_minor ?? 0);
+        $paid = $m['paid'] ?? 0;
+        $total = $m['total'] ?? 0;
 
         return ! in_array($job->status, $watched, true) ? 'closed' : ($paid <= 0 ? 'waiting' : ($total > 0 && $paid >= $total ? 'full' : 'partial'));
     }
@@ -177,8 +177,7 @@ class JobsProjectManagementController extends Controller
         }
         if ($user->hasPermission('jobs.financials')) {
             [$from, $to] = $this->window($input, $user, $settings);
-            $out['payments']['amount_minor'] = (int) $this->paymentsIn($from, $to)->whereIn('job_id', $this->reach($user, $input))
-                ->get(['amount', 'payload'])->sum(fn (WorkizRecord $p) => round(((float) $p->amount) * 100) * (($p->payload['type'] ?? '') === 'refund' ? -1 : 1));
+            $out['payments']['amount_minor'] = array_sum(JobMoney::paidCents($this->reach($user, $input), $from, $to));
         }
 
         return response()->json(['data' => $out]);
@@ -206,7 +205,7 @@ class JobsProjectManagementController extends Controller
         // Waiting jobs, nothing paid, whose cancel day falls in the window.
         $watched = (array) $settings->get('jobs.estimate_aging_statuses', $user->organization);
         $waitingIds = $watched === [] ? [] : (clone $jobs)->whereIn('status', $watched)->pluck('id')->all();
-        $paid = EstimateAging::paidCents($waitingIds);
+        $paid = JobMoney::paidCents($waitingIds);
         $due = array_keys(array_filter(EstimateAging::latestEstimateDates($waitingIds), function (string $d, string $id) use ($paid, $input) {
             $deadline = Carbon::parse($d)->addDays(EstimateAging::DAYS)->toDateString();
 
@@ -214,7 +213,7 @@ class JobsProjectManagementController extends Controller
         }, ARRAY_FILTER_USE_BOTH));
 
         return [
-            'payments' => $this->paymentsIn($from, $to)->whereIn('job_id', $jobs)->distinct()->pluck('job_id')->all(),
+            'payments' => JobMoney::paidJobIds($from, $to)->whereIn('job_id', $jobs)->distinct()->pluck('job_id')->all(),
             'status_changes' => $distinct($changes('job.status_changed')
                 ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')) <> JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status'))")),
             'tag_changes' => $distinct($changes('job.updated')->whereRaw("JSON_CONTAINS_PATH(payload, 'one', '$.after.tags')")),
@@ -238,12 +237,6 @@ class JobsProjectManagementController extends Controller
         $zone = is_string($zone) && $zone !== '' ? $zone : ((string) ($settings->get('timezone', $user->organization) ?: config('app.timezone')));
 
         return [Carbon::parse($input['from'], $zone)->startOfDay()->utc(), Carbon::parse($input['to'], $zone)->endOfDay()->utc()];
-    }
-
-    /** Succeeded Workiz payments dated in the window, until EzBizi records its own. */
-    private function paymentsIn(Carbon $from, Carbon $to): \Illuminate\Database\Eloquent\Builder
-    {
-        return WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereBetween('starts_at', [$from, $to]);
     }
 
     /** @var array<string, string> status key => the organization's label */
@@ -270,11 +263,11 @@ class JobsProjectManagementController extends Controller
         };
     }
 
-    private function row(Job $job, array $watched, bool $money, ?string $estimateDate, int $paid, Collection $payments, Collection $events): array
+    private function row(Job $job, array $watched, bool $money, ?string $estimateDate, ?array $m, Collection $payments, Collection $events): array
     {
-        $total = WorkizMoney::for($job)['total'] ?? ($job->amount_minor ?? 0);
+        $total = $m['total'] ?? 0;
         $open = in_array($job->status, $watched, true);
-        $stage = $this->stage($job, $watched, $paid);
+        $stage = $this->stage($job, $watched, $m);
 
         $entered = $events->last(fn (AutomationEvent $e) => $e->event_key === 'job.status_changed'
             && in_array($e->payload['after']['status'] ?? null, $watched, true)
@@ -304,10 +297,10 @@ class JobsProjectManagementController extends Controller
 
         $running = 0;
         foreach ($payments as $p) {
-            $amount = (int) round(((float) $p->amount) * 100) * (($p->payload['type'] ?? '') === 'refund' ? -1 : 1);
+            $amount = $p['cents'];
             $running += $amount;
-            if ($p->starts_at && $p->starts_at->gte($since)) {
-                $timeline->push(['kind' => 'payment', 'at' => $p->starts_at->toIso8601String(), 'marks' => $total > 0 && $running >= $total ? 'full' : 'partial']
+            if ($p['at'] && $p['at']->gte($since)) {
+                $timeline->push(['kind' => 'payment', 'at' => $p['at']->toIso8601String(), 'marks' => $total > 0 && $running >= $total ? 'full' : 'partial']
                     + ($money ? ['amount_minor' => $amount] : []));
             }
         }
@@ -470,14 +463,13 @@ class JobsProjectManagementController extends Controller
             ->with(['customer:id,name', 'franchise:id,name', 'serviceArea:id,name', 'performedBy:id,name', 'workizJob'])
             ->orderByDesc('updated_at')->paginate(100, ['*'], 'page', (int) ($input['page'] ?? 1));
 
-        $paidAt = WorkizRecord::query()->whereIn('job_id', $page->getCollection()->modelKeys())->where('type', 'payment')
-            ->where('status', 'succeeded')->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) first_paid, MAX(starts_at) last_paid')
-            ->get()->keyBy('job_id');
+        $paidAt = JobMoney::paidDates($page->getCollection()->modelKeys());
+        $of = JobMoney::of($page->getCollection()->modelKeys());
         $money = $user->hasPermission('jobs.financials');
 
-        $rows = $page->getCollection()->map(function (Job $j) use ($paidAt, $money) {
-            $m = WorkizMoney::for($j);
-            $first = $paidAt[$j->id]->first_paid ?? null;
+        $rows = $page->getCollection()->map(function (Job $j) use ($paidAt, $of, $money) {
+            $m = $of[$j->id] ?? null;
+            $first = $paidAt[$j->id]['first'] ?? null;
 
             return [
                 'id' => $j->id, 'number' => $j->number, 'title' => $j->title, 'status' => $j->status, 'tags' => $j->tags ?? [],
@@ -489,11 +481,11 @@ class JobsProjectManagementController extends Controller
                 'review_reason' => $j->review_reason,
                 'external_company' => $j->external_company,
                 'needs_second_visit' => (bool) $j->needs_second_visit,
-                'paid_at' => $first ? Carbon::parse($first)->toDateString() : null,
+                'paid_at' => $first?->toDateString(),
                 // One clock, from the first payment, as the warning and the dashboard count (audit, 2026-10-23).
-                'days_since_first_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->first_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
-                'days_since_last_payment' => isset($paidAt[$j->id]) ? (int) Carbon::parse($paidAt[$j->id]->last_paid)->startOfDay()->diffInDays(now()->startOfDay()) : null,
-            ] + ($money && $m ? ['total_minor' => $m['total'], 'due_minor' => $m['due']] : []);
+                'days_since_first_payment' => isset($paidAt[$j->id]) ? (int) $paidAt[$j->id]['first']->copy()->startOfDay()->diffInDays(now()->startOfDay()) : null,
+                'days_since_last_payment' => isset($paidAt[$j->id]) ? (int) $paidAt[$j->id]['last']->copy()->startOfDay()->diffInDays(now()->startOfDay()) : null,
+            ] + ($money && isset($m['total']) ? ['total_minor' => $m['total'], 'due_minor' => $m['due']] : []);
         });
 
         $counts = [];
@@ -520,8 +512,6 @@ class JobsProjectManagementController extends Controller
         $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
         $in = fn (string $key) => ProjectStages::scope($this->stageFiltered($user, $settings, $input), $rules[$key] ?? null);
         $money = $user->hasPermission('jobs.financials');
-        $sum = fn ($q, string $field) => (int) round(100 * (float) \App\Models\WorkizJob::query()->whereIn('job_id', $q->select('id'))
-            ->sum(\DB::raw("CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.{$field}')) AS DECIMAL(12,2))")));
 
         $reasons = collect((array) $settings->get('jobs.review_reasons', $this->pmScope($user)))->filter(fn ($r) => is_array($r) && isset($r['value']));
         $review = $in('waiting_review')->with('serviceArea:id,name')->get(['id', 'review_reason', 'service_area_id']);
@@ -534,8 +524,7 @@ class JobsProjectManagementController extends Controller
         $redoCount = ProjectStages::anyWord($in('in_progress'), $redo)->count();
 
         $notStarted = collect(ProjectStages::NOT_STARTED)->flatMap(fn ($k) => isset($rules[$k]) ? $in($k)->pluck('id') : [])->unique();
-        $firstPaid = WorkizRecord::query()->whereIn('job_id', $notStarted)->where('type', 'payment')->where('status', 'succeeded')
-            ->groupBy('job_id')->selectRaw('job_id, MIN(starts_at) paid_at')->pluck('paid_at', 'job_id');
+        $firstPaid = collect(JobMoney::paidDates($notStarted))->map(fn ($d) => $d['first']);
         $limit = (int) $settings->get('jobs.pm_warn_days', $this->pmScope($user));
         $waitingJobs = Job::query()->whereIn('id', $firstPaid->keys())->with('customer:id,name')->get(['id', 'number', 'customer_id']);
 
@@ -573,18 +562,18 @@ class JobsProjectManagementController extends Controller
                 'next_7_days' => $in('scheduled')->whereBetween('scheduled_for', [now()->startOfDay(), now()->addDays(7)->endOfDay()])->count(),
             ],
             'done_waiting_payment' => ['count' => $doneWaiting->count()]
-                + ($money ? ['total_minor' => $sum($in('done_waiting_payment'), 'JobTotalPrice'), 'due_minor' => $sum($in('done_waiting_payment'), 'JobAmountDue')] : []),
+                + ($money ? ['total_minor' => JobMoney::sum($in('done_waiting_payment'), 'total'), 'due_minor' => JobMoney::sum($in('done_waiting_payment'), 'due')] : []),
             'stopped_payments' => ProjectStages::stopped(ProjectStages::anyOf($this->stageFiltered($user, $settings, $input), $rules), (int) $settings->get('jobs.pm_stopped_days', $this->pmScope($user)))->count(),
             'per_team' => (clone $open)->with('performedBy:id,name')->get(['id', 'performed_by_user_id'])
                 ->groupBy(fn ($j) => $j->performedBy?->name ?? 'Unassigned')->map(fn ($g, $name) => ['name' => $name, 'count' => $g->count()])
                 ->sortByDesc('count')->values()->all(),
             'waiting_to_start' => $waitingJobs->map(fn (Job $j) => [
                 'job' => ['id' => $j->id, 'number' => $j->number, 'customer' => $j->customer?->name],
-                'paid_at' => Carbon::parse($firstPaid[$j->id])->toDateString(),
-                'days' => (int) Carbon::parse($firstPaid[$j->id])->startOfDay()->diffInDays(now()->startOfDay()),
+                'paid_at' => $firstPaid[$j->id]->toDateString(),
+                'days' => (int) $firstPaid[$j->id]->copy()->startOfDay()->diffInDays(now()->startOfDay()),
                 'limit' => $limit,
             ])->sortByDesc('days')->values()->all(),
-        ] + ($money ? ['pipeline_minor' => $sum(clone $open, 'JobTotalPrice'), 'avg_production_cost_minor' => null] : [])]);
+        ] + ($money ? ['pipeline_minor' => JobMoney::sum(clone $open, 'total'), 'avg_production_cost_minor' => null] : [])]);
     }
 
     /**
@@ -890,9 +879,9 @@ class JobsProjectManagementController extends Controller
             ->when($flag('waiting_to_start'), function ($q) use ($user, $settings, $flag, $org) {
                 $rules = ProjectStages::forFranchises(\App\Models\Franchise::query()->whereIn('id', ViewScope::forUser($user)->franchiseIds())->get(), $settings);
                 $q->where(fn ($any) => collect(ProjectStages::NOT_STARTED)->each(fn ($k) => $any->orWhere(fn ($one) => ProjectStages::scope($one, $rules[$k] ?? null))))
-                    ->whereIn('id', WorkizRecord::query()->where('type', 'payment')->where('status', 'succeeded')->whereNotNull('job_id')->groupBy('job_id')
-                        ->when($flag('over_limit'), fn ($p) => $p->havingRaw('MIN(starts_at) <= ?', [now()->subDays((int) $settings->get('jobs.pm_warn_days', $org))->endOfDay()]))
-                        ->select('job_id'));
+                    ->whereIn('id', $flag('over_limit')
+                        ? JobMoney::firstPaidBy(now()->subDays((int) $settings->get('jobs.pm_warn_days', $org))->endOfDay())
+                        : JobMoney::paidJobIds());
             });
     }
 

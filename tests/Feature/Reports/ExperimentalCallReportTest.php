@@ -593,6 +593,26 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(['Trey Brannan', 'Nelly Escobar'], array_column($calls, 'answered_by'));
     }
 
+    /**
+     * Jose, 2026-10-27: an integration's data stays in EzBizi. A finished day
+     * is kept in call_log_days, so flushing the cache or losing RingCentral
+     * does not take the report's history with it.
+     */
+    public function test_a_finished_day_is_kept_in_ezbizi_not_only_in_the_cache(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Trey Brannan', 'Call connected']])]);
+        $day = \Carbon\CarbonImmutable::now()->subDays(3)->startOfDay();
+
+        app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay());
+        \Illuminate\Support\Facades\Cache::flush();
+        Http::fake(['*' => Http::response([], 500)]);
+
+        $again = app(RingCentralCallLog::class)->forPeriod($day, $day->endOfDay());
+
+        $this->assertSame(['Trey Brannan'], array_column($again, 'answered_by'));
+        $this->assertTrue(app(RingCentralCallLog::class)->hasDay($day));
+    }
+
     /** One sign-in serves every request until it expires: RingCentral rate-limits the sign-in too. */
     public function test_the_token_is_reused_across_requests(): void
     {

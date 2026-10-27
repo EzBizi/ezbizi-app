@@ -2965,6 +2965,18 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 155 · Scheduling › Settings › Technicians (native roster) — **sent 2026-10-27** (`docs/previews/scheduling-technicians-layouts.html`)
+
+Jose 10-27 "EzBizi is the master" via Scheduling and the desk: native roster on ad56e9f0e replaces Settings › Schedule Workiz linking. 1 = table + side-panel editor (recommended); 2 = cards by branch; 3 = areas × technicians grid; phones 4-6.
+
+### 154 · Customer Experience: media, services, review stats, phone check, other sources, WhatsApp link — **sent 2026-10-27 — Jose: "yes go ahead with all ur recommendations" (1, 4, 7, 10, 13 and 16)** (`docs/previews/customer-experience-layouts.html`)
+
+Customer Experience asked for 3 options each for six screens replacing Rodrigo's system, numbered 1–18. Recommended: 1 = media grid with type chips and Copy to locations in a SidePanel; 4 = category chips over grouped services rows, Copy with a per-listing diff; 7 = stats strip, histogram and gauge beside the reply queue with Draft all and the send window in place; 10 = one row per listing comparing Business Profile, RingCentral and policy numbers with a match chip; 13 = sources table (Google, eKomi, Thumbtack) plus a funnel card; 16 = WhatsApp row in each listing's Info tab with Copy and QR. One phone per recommended option.
+
+### 153 · One shared Book panel (all of Workiz New Job) — **sent 2026-10-27 — Jose: "yes go ahead with all ur recommendations" (1 and 4)** (`docs/previews/book-job-panel-layouts.html`)
+
+Jose via the desk and Jobs: one Book panel with every Workiz New Job option, opened from Leads (replaces book_lead_panel), Jobs, Customers and Communication with prefill; saves EzBizi then Workiz. 1 = side panel, one scroll, sticky Book (recommended); 2 = 4-step wizard; 3 = full page two columns; phones 4-6. Jobs builds.
+
 ### 152 · Task Board: left sidebar of boards + number formatting — **sent 2026-10-27 — Jose: "Go ahead" (1 and 4)** (`docs/previews/task-board-sidebar-layouts.html`)
 
 Jose 10-27 via Task Board: "add the left navigation sidebar as well, people would obviously only see what they have access to, like monday has" and "add format to the numbers automatically". 1 = collapsible tree replacing Other boards (recommended), 2 = icon rail, 3 = boards home page; phones 4-6. Number formatting is in 1 (no options needed).

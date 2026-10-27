@@ -41,7 +41,8 @@ class TaskBoardCustomerExperienceTest extends TestCase
         $url = "/api/v1/task-boards/{$this->board->id}";
         $data = $this->api()->getJson($url)->assertOk()->json('data');
         $this->assertSame([
-            'owner' => ['label' => 'Owner', 'visible' => true],
+            'creator' => ['label' => 'Owner', 'visible' => true],
+            'owner' => ['label' => 'Assigned', 'visible' => true],
             'status' => ['label' => 'Status', 'visible' => true],
             'due' => ['label' => 'Due', 'visible' => true],
             'about' => ['label' => 'About', 'visible' => true],
@@ -65,6 +66,26 @@ class TaskBoardCustomerExperienceTest extends TestCase
 
         $viewer = $this->userWithRole($this->tenant, 'Viewer', ['tasks.view']);
         $this->signedInAs($viewer)->patchJson($url, ['builtin_columns' => ['due' => ['label' => 'When']]])->assertForbidden();
+    }
+
+    public function test_a_saved_owner_label_survives_the_assigned_rename(): void
+    {
+        $this->inTenant($this->tenant['org'], fn () => $this->board->forceFill(['builtin_columns' => ['owner' => ['label' => 'Tech']]])->save());
+        $data = $this->api()->getJson("/api/v1/task-boards/{$this->board->id}")->assertOk()->json('data.builtin_columns');
+        $this->assertSame(['label' => 'Tech', 'visible' => true], $data['owner']);
+        $this->assertSame(['label' => 'Owner', 'visible' => true], $data['creator']);
+
+        $this->api()->patchJson("/api/v1/task-boards/{$this->board->id}", ['builtin_columns' => ['creator' => ['label' => 'Created by']]])
+            ->assertOk()->assertJsonPath('data.builtin_columns.creator.label', 'Created by');
+    }
+
+    public function test_created_by_names_the_creating_user_with_their_id(): void
+    {
+        $id = $this->api()->postJson('/api/v1/tasks', ['board_id' => $this->board->id, 'title' => 'Mine'])
+            ->assertCreated()->json('data.id');
+        $admin = $this->tenant['admin'];
+        $this->api()->getJson("/api/v1/tasks/{$id}")->assertOk()
+            ->assertJsonPath('data.created_by', ['type' => 'user', 'id' => $admin->id, 'label' => $admin->name]);
     }
 
     public function test_tasks_carry_created_at_and_every_owner(): void

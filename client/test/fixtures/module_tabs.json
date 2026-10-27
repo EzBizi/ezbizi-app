@@ -89,6 +89,11 @@
                 "Settings"
             ]
         },
+        "financial_results": {
+            "label": "Lead source results",
+            "parent": "financials",
+            "tabs": []
+        },
         "financials": {
             "label": "Financials",
             "parent": null,
@@ -298,11 +303,6 @@
             "parent": null,
             "tabs": []
         },
-        "sales": {
-            "label": "Sales",
-            "parent": null,
-            "tabs": []
-        },
         "scheduling": {
             "label": "Scheduling",
             "parent": null,
@@ -431,6 +431,11 @@
         "field.settings.view",
         "field.tracked",
         "field.view",
+        "financial_results.approve",
+        "financial_results.create",
+        "financial_results.delete",
+        "financial_results.edit",
+        "financial_results.view",
         "financials.approve",
         "financials.bases.view",
         "financials.bills.view",
@@ -595,8 +600,6 @@
         "roles.delete",
         "roles.edit",
         "roles.view",
-        "sales.manage",
-        "sales.view",
         "scheduling.availability.view",
         "scheduling.create",
         "scheduling.delete",

@@ -9,6 +9,7 @@ use App\Models\FinancialSource;
 use App\Models\FinancialTable;
 use App\Models\ReportGoal;
 use App\Support\Reports\Texts\AirtableSections;
+use App\Support\Reports\Xlsx;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\Concerns\MapsAirtableTables;
@@ -94,7 +95,7 @@ class AirtableSectionsTest extends TestCase
 
     public function test_a_per_branch_table_not_yet_given_a_branch_reads_as_not_mapped(): void
     {
-        // What ezbizi:financial-sources-from-snapshot writes: the table, no place yet.
+        // A source with its table but no place yet.
         $this->airtableTable($this->t, null, 'repair', [['Date' => '2026-10-08', 'Team' => 'John', 'Job Amount' => 1]]);
 
         $this->assertStringContainsString('No repair team table is mapped',
@@ -171,5 +172,22 @@ class AirtableSectionsTest extends TestCase
 
         $this->assertStringContainsString('<td>Rent</td><td>$1,200.00</td>', $html);
         $this->assertStringNotContainsString('999', $html);
+    }
+
+    /** Takeover row 42: per job, total less parts, tech share and external share; summary rows left out. */
+    public function test_job_profitability_per_job_as_pdf_or_excel(): void
+    {
+        $this->airtableTable($this->t, $this->branch, 'repair', [
+            ['Date' => '2026-10-08', 'Team' => 'John', 'Record type' => 'Job', 'Job Number' => '4411',
+                'Job Amount' => 5000, 'Parts Cost' => 149.85, 'Total Tech Share' => 600, 'External Company Share' => 300],
+            ['Date' => '2026-10-11', 'Team' => 'John', 'Record type' => 'Weekly Summary', 'Employee Cost' => 1000],
+        ], ['markers' => ['summary' => 'Weekly Summary']]);
+        $as = $this->signedInAs($this->t['admin']);
+        $q = "/api/v1/reports/period?report=job_profitability&franchise_id={$this->branch}&from=2026-10-05&to=2026-10-11";
+
+        $rows = Xlsx::read($as->get($q.'&format=xlsx')->assertOk()->getContent(), 'Jobs');
+        $this->assertCount(2, $rows, 'header and the one job, not the summary');
+        $this->assertSame(['2026-10-08', '4411', 'John', 5000.0, 149.85, 600.0, 300.0, 3950.15, '79%'], array_slice($rows[1], 1));
+        $this->assertStringStartsWith('%PDF', $as->get($q)->assertOk()->getContent());
     }
 }

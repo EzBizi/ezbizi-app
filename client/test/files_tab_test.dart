@@ -21,11 +21,11 @@ void main() {
   }
 
   Widget wrap(ApiClient api, Session session) => MaterialApp(
-        theme: EzBiziTheme.light(),
-        home: Scaffold(
-          body: FilesTab(api: api, session: session),
-        ),
-      );
+    theme: EzBiziTheme.light(),
+    home: Scaffold(
+      body: FilesTab(api: api, session: session),
+    ),
+  );
 
   /// A MockClient standing in for the server + agent. [answers] maps a path to
   /// the agent's eventual answer; the first poll of each request returns
@@ -52,14 +52,20 @@ void main() {
           return http.Response(
             jsonEncode({
               'data': {
-                'id': 'me', 'name': 'Viewer', 'email': 'v@e.test',
+                'id': 'me',
+                'name': 'Viewer',
+                'email': 'v@e.test',
                 'permissions': ['monitoring.view', 'monitoring.files.view'],
-                'modules': <dynamic>[], 'preferences': <String, dynamic>{},
+                'modules': <dynamic>[],
+                'preferences': <String, dynamic>{},
                 'organization': {
-                  'id': 'org-1', 'name': 'Everdoors',
-                  'franchise_label': 'Franchise', 'is_read_only': false,
+                  'id': 'org-1',
+                  'name': 'Everdoors',
+                  'franchise_label': 'Franchise',
+                  'is_read_only': false,
                 },
-                'companies': <dynamic>[], 'franchises': <dynamic>[],
+                'companies': <dynamic>[],
+                'franchises': <dynamic>[],
               },
             }),
             200,
@@ -69,9 +75,11 @@ void main() {
 
         if (path.endsWith('/monitoring/devices')) {
           return http.Response(
-            jsonEncode({'data': [
-              for (final d in devices) {...d, 'last_seen_at': now},
-            ]}),
+            jsonEncode({
+              'data': [
+                for (final d in devices) {...d, 'last_seen_at': now},
+              ],
+            }),
             200,
             headers: const {'content-type': 'application/json'},
           );
@@ -92,7 +100,9 @@ void main() {
           }
           isLocked = false;
           return http.Response(
-            jsonEncode({'data': {'unlocked_until': '2026-10-12T19:00:00Z'}}),
+            jsonEncode({
+              'data': {'unlocked_until': '2026-10-12T19:00:00Z'},
+            }),
             200,
             headers: const {'content-type': 'application/json'},
           );
@@ -113,10 +123,12 @@ void main() {
           final id = 'req-${nextId++}';
           pathOf[id] = body['path'] as String? ?? '';
           return http.Response(
-            jsonEncode({'data': {
-              'request_id': id,
-              'unlocked_until': '2026-10-12T19:00:00Z',
-            }}),
+            jsonEncode({
+              'data': {
+                'request_id': id,
+                'unlocked_until': '2026-10-12T19:00:00Z',
+              },
+            }),
             200,
             headers: const {'content-type': 'application/json'},
           );
@@ -130,13 +142,15 @@ void main() {
           if (!polled.contains(id)) {
             polled.add(id);
             return http.Response(
-              jsonEncode({'data': {'status': 'pending'}}),
+              jsonEncode({
+                'data': {'status': 'pending'},
+              }),
               200,
               headers: const {'content-type': 'application/json'},
             );
           }
-          final answer = answers[pathOf[id]] ??
-              {'status': 'error', 'error': 'not_found'};
+          final answer =
+              answers[pathOf[id]] ?? {'status': 'error', 'error': 'not_found'};
           return http.Response(
             jsonEncode({'data': answer}),
             200,
@@ -144,105 +158,209 @@ void main() {
           );
         }
 
-        return http.Response('{"message":"unstubbed ${request.method} $path"}', 500);
+        return http.Response(
+          '{"message":"unstubbed ${request.method} $path"}',
+          500,
+        );
       }),
     );
   }
 
-  testWidgets('pick a device, see its roots, drill in, and the breadcrumb grows',
-      (tester) async {
-    tester.view.physicalSize = const Size(1200, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+  testWidgets(
+    'the rail shows Windows machines by default; All shows the rest',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-    final api = fakeServer(
-      devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
-      ],
-      answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-        ]},
-        'C:\\': {'status': 'ready', 'op': 'list', 'path': 'C:\\', 'entries': [
-          {'name': 'Users', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-          {'name': 'readme.txt', 'is_dir': false, 'size_bytes': 2048, 'modified_at': '2026-10-01'},
-        ]},
-      },
-    );
+      final api = fakeServer(
+        devices: [
+          {
+            'id': 'dev-1',
+            'label': 'TOULA',
+            'platform': 'windows',
+            'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+          },
+          {
+            'id': 'dev-2',
+            'label': null,
+            'platform': 'web',
+            'user': {'id': 'u-2', 'name': 'Eve Sarfaty'},
+          },
+        ],
+        answers: const {},
+      );
 
-    await tester.pumpWidget(wrap(api, await signedIn(api)));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(wrap(api, await signedIn(api)));
+      await tester.pumpAndSettle();
 
-    // The rail lists the device.
-    expect(find.byKey(const ValueKey('files-device-dev-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('files-device-dev-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('files-device-dev-2')), findsNothing);
 
-    await tester.tap(find.text('Toula Elwell'));
-    await tester.pump(); // request posted
-    // The loading beat is up while the first poll is pending.
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('files-platform-all')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('files-device-dev-2')), findsOneWidget);
 
-    // Roots arrived.
-    expect(find.byKey(const ValueKey('files-entry-C:\\')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('files-platform-web')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('files-device-dev-1')), findsNothing);
+      expect(find.byKey(const ValueKey('files-device-dev-2')), findsOneWidget);
+    },
+  );
 
-    await tester.tap(find.byKey(const ValueKey('files-entry-C:\\')));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'pick a device, see its roots, drill in, and the breadcrumb grows',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-    // Drilled into C:\ — its children show, and the breadcrumb has grown.
-    expect(find.byKey(const ValueKey('files-entry-Users')), findsOneWidget);
-    expect(find.byKey(const ValueKey('files-entry-readme.txt')), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'This PC'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, 'C:\\'), findsOneWidget);
-  });
+      final api = fakeServer(
+        devices: [
+          {
+            'id': 'dev-1',
+            'label': 'TOULA',
+            'platform': 'windows',
+            'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+          },
+        ],
+        answers: {
+          '': {
+            'status': 'ready',
+            'op': 'list',
+            'path': '',
+            'entries': [
+              {
+                'name': 'C:\\',
+                'is_dir': true,
+                'size_bytes': null,
+                'modified_at': null,
+              },
+            ],
+          },
+          'C:\\': {
+            'status': 'ready',
+            'op': 'list',
+            'path': 'C:\\',
+            'entries': [
+              {
+                'name': 'Users',
+                'is_dir': true,
+                'size_bytes': null,
+                'modified_at': null,
+              },
+              {
+                'name': 'readme.txt',
+                'is_dir': false,
+                'size_bytes': 2048,
+                'modified_at': '2026-10-01',
+              },
+            ],
+          },
+        },
+      );
 
-  testWidgets('a download posts an op:download request and the tray marks it ready',
-      (tester) async {
-    tester.view.physicalSize = const Size(1200, 800);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+      await tester.pumpWidget(wrap(api, await signedIn(api)));
+      await tester.pumpAndSettle();
 
-    final log = <Map<String, dynamic>>[];
-    final api = fakeServer(
-      devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
-      ],
-      answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'invoice.pdf', 'is_dir': false, 'size_bytes': 13, 'modified_at': '2026-10-01'},
-        ]},
-        'invoice.pdf': {'status': 'ready', 'op': 'download', 'name': 'invoice.pdf',
-          'size': 13, 'content_base64': base64Encode('the file body'.codeUnits)},
-      },
-      requestLog: log,
-    );
+      // The rail lists the device.
+      expect(find.byKey(const ValueKey('files-device-dev-1')), findsOneWidget);
 
-    await tester.pumpWidget(wrap(api, await signedIn(api)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Toula Elwell'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Toula Elwell'));
+      await tester.pump(); // request posted
+      // The loading beat is up while the first poll is pending.
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.pumpAndSettle();
 
-    // A file is chosen first, as in Explorer (UI queue 79); Download is in
-    // what it shows.
-    await tester.tap(find.byKey(const ValueKey('files-entry-invoice.pdf')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('files-download-invoice.pdf')));
-    // No animated spinner rides a download (the tray shows a static state), so
-    // pumpAndSettle has nothing to advance the poll timers with — step the two
-    // ~900ms polls explicitly.
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
+      // Roots arrived.
+      expect(find.byKey(const ValueKey('files-entry-C:\\')), findsOneWidget);
 
-    // A download request was sent for that file.
-    expect(log.any((r) => r['op'] == 'download' && r['path'] == 'invoice.pdf'),
-        isTrue);
-    // The tray shows it, ready.
-    expect(find.byKey(const Key('files-downloads-tray')), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
-  });
+      await tester.tap(find.byKey(const ValueKey('files-entry-C:\\')));
+      await tester.pumpAndSettle();
+
+      // Drilled into C:\ — its children show, and the breadcrumb has grown.
+      expect(find.byKey(const ValueKey('files-entry-Users')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('files-entry-readme.txt')),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TextButton, 'This PC'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'C:\\'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a download posts an op:download request and the tray marks it ready',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      final log = <Map<String, dynamic>>[];
+      final api = fakeServer(
+        devices: [
+          {
+            'id': 'dev-1',
+            'label': 'TOULA',
+            'platform': 'windows',
+            'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+          },
+        ],
+        answers: {
+          '': {
+            'status': 'ready',
+            'op': 'list',
+            'path': '',
+            'entries': [
+              {
+                'name': 'invoice.pdf',
+                'is_dir': false,
+                'size_bytes': 13,
+                'modified_at': '2026-10-01',
+              },
+            ],
+          },
+          'invoice.pdf': {
+            'status': 'ready',
+            'op': 'download',
+            'name': 'invoice.pdf',
+            'size': 13,
+            'content_base64': base64Encode('the file body'.codeUnits),
+          },
+        },
+        requestLog: log,
+      );
+
+      await tester.pumpWidget(wrap(api, await signedIn(api)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Toula Elwell'));
+      await tester.pumpAndSettle();
+
+      // A file is chosen first, as in Explorer (UI queue 79); Download is in
+      // what it shows.
+      await tester.tap(find.byKey(const ValueKey('files-entry-invoice.pdf')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('files-download-invoice.pdf')),
+      );
+      // No animated spinner rides a download (the tray shows a static state), so
+      // pumpAndSettle has nothing to advance the poll timers with — step the two
+      // ~900ms polls explicitly.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      // A download request was sent for that file.
+      expect(
+        log.any((r) => r['op'] == 'download' && r['path'] == 'invoice.pdf'),
+        isTrue,
+      );
+      // The tray shows it, ready.
+      expect(find.byKey(const Key('files-downloads-tray')), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
+    },
+  );
 
   // UI queue 79: Explorer's panes once a computer is chosen.
   testWidgets('a chosen picture is fetched and shown beside the list, a '
@@ -257,16 +375,40 @@ void main() {
     final log = <Map<String, dynamic>>[];
     final api = fakeServer(
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'cap.png', 'is_dir': false, 'size_bytes': 70, 'modified_at': '2026-10-11'},
-          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
-        ]},
-        'cap.png': {'status': 'ready', 'op': 'download', 'name': 'cap.png',
-          'size': 70, 'content_base64': png},
+        '': {
+          'status': 'ready',
+          'op': 'list',
+          'path': '',
+          'entries': [
+            {
+              'name': 'cap.png',
+              'is_dir': false,
+              'size_bytes': 70,
+              'modified_at': '2026-10-11',
+            },
+            {
+              'name': 'estimate.pdf',
+              'is_dir': false,
+              'size_bytes': 9000,
+              'modified_at': '2026-10-10',
+            },
+          ],
+        },
+        'cap.png': {
+          'status': 'ready',
+          'op': 'download',
+          'name': 'cap.png',
+          'size': 70,
+          'content_base64': png,
+        },
       },
       requestLog: log,
     );
@@ -287,7 +429,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('files-sort-size')));
     await tester.pumpAndSettle();
     expect(
-      tester.getTopLeft(find.byKey(const ValueKey('files-entry-estimate.pdf'))).dy,
+      tester
+          .getTopLeft(find.byKey(const ValueKey('files-entry-estimate.pdf')))
+          .dy,
       lessThan(
         tester.getTopLeft(find.byKey(const ValueKey('files-entry-cap.png'))).dy,
       ),
@@ -305,12 +449,18 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
-    expect(log.where((r) => r['op'] == 'download' && r['path'] == 'cap.png'),
-        hasLength(1));
-    expect(find.byKey(const ValueKey('files-preview-image-cap.png')),
-        findsOneWidget);
-    expect(find.text('Opening a preview counts as a download in the log.'),
-        findsOneWidget);
+    expect(
+      log.where((r) => r['op'] == 'download' && r['path'] == 'cap.png'),
+      hasLength(1),
+    );
+    expect(
+      find.byKey(const ValueKey('files-preview-image-cap.png')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Opening a preview counts as a download in the log.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('on a phone a chosen file stands in for the list, with the way '
@@ -321,13 +471,27 @@ void main() {
 
     final api = fakeServer(
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'estimate.pdf', 'is_dir': false, 'size_bytes': 9000, 'modified_at': '2026-10-10'},
-        ]},
+        '': {
+          'status': 'ready',
+          'op': 'list',
+          'path': '',
+          'entries': [
+            {
+              'name': 'estimate.pdf',
+              'is_dir': false,
+              'size_bytes': 9000,
+              'modified_at': '2026-10-10',
+            },
+          ],
+        },
       },
     );
 
@@ -339,8 +503,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('files-entry-estimate.pdf')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('files-listing')), findsNothing);
-    expect(find.byKey(const ValueKey('files-download-estimate.pdf')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('files-download-estimate.pdf')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('files-preview-back')));
     await tester.pumpAndSettle();
@@ -357,13 +523,27 @@ void main() {
     final api = fakeServer(
       locked: true,
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-        ]},
+        '': {
+          'status': 'ready',
+          'op': 'list',
+          'path': '',
+          'entries': [
+            {
+              'name': 'C:\\',
+              'is_dir': true,
+              'size_bytes': null,
+              'modified_at': null,
+            },
+          ],
+        },
       },
     );
 
@@ -377,13 +557,19 @@ void main() {
     expect(find.byKey(const Key('files-listing')), findsNothing);
     expect(find.text('locked'), findsNothing);
 
-    await tester.enterText(find.byKey(const Key('files-unlock-code')), '000000');
+    await tester.enterText(
+      find.byKey(const Key('files-unlock-code')),
+      '000000',
+    );
     await tester.tap(find.byKey(const Key('files-unlock-submit')));
     await tester.pumpAndSettle();
     expect(find.text('That code did not verify.'), findsOneWidget);
     expect(find.byKey(const Key('files-lock-card')), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('files-unlock-code')), '123456');
+    await tester.enterText(
+      find.byKey(const Key('files-unlock-code')),
+      '123456',
+    );
     await tester.tap(find.byKey(const Key('files-unlock-submit')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('files-lock-card')), findsNothing);
@@ -404,19 +590,43 @@ void main() {
 
     final api = fakeServer(
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'quick_links': [
-          {'label': 'Downloads', 'path': 'C:\\Users\\toula\\Downloads'},
-        ], 'entries': [
-          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-        ]},
-        'C:\\Users\\toula\\Downloads': {'status': 'ready', 'op': 'list',
-          'path': 'C:\\Users\\toula\\Downloads', 'entries': [
-          {'name': 'quote.pdf', 'is_dir': false, 'size_bytes': 4000, 'modified_at': '2026-10-11'},
-        ]},
+        '': {
+          'status': 'ready',
+          'op': 'list',
+          'path': '',
+          'quick_links': [
+            {'label': 'Downloads', 'path': 'C:\\Users\\toula\\Downloads'},
+          ],
+          'entries': [
+            {
+              'name': 'C:\\',
+              'is_dir': true,
+              'size_bytes': null,
+              'modified_at': null,
+            },
+          ],
+        },
+        'C:\\Users\\toula\\Downloads': {
+          'status': 'ready',
+          'op': 'list',
+          'path': 'C:\\Users\\toula\\Downloads',
+          'entries': [
+            {
+              'name': 'quote.pdf',
+              'is_dir': false,
+              'size_bytes': 4000,
+              'modified_at': '2026-10-11',
+            },
+          ],
+        },
       },
     );
 
@@ -436,19 +646,29 @@ void main() {
     expect(find.widgetWithText(TextButton, 'Downloads'), findsOneWidget);
   });
 
-  testWidgets('access_denied on a folder reads as a sentence, not a spinner',
-      (tester) async {
+  testWidgets('access_denied on a folder reads as a sentence, not a spinner', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     final api = fakeServer(
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'error', 'op': 'list', 'error': 'access_denied', 'path': ''},
+        '': {
+          'status': 'error',
+          'op': 'list',
+          'error': 'access_denied',
+          'path': '',
+        },
       },
     );
 
@@ -463,21 +683,36 @@ void main() {
     expect(find.widgetWithText(OutlinedButton, 'Try again'), findsOneWidget);
   });
 
-  testWidgets('on a phone the rail and the browser are one at a time',
-      (tester) async {
+  testWidgets('on a phone the rail and the browser are one at a time', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(380, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     final api = fakeServer(
       devices: [
-        {'id': 'dev-1', 'label': 'TOULA', 'platform': 'windows',
-          'user': {'id': 'u-1', 'name': 'Toula Elwell'}},
+        {
+          'id': 'dev-1',
+          'label': 'TOULA',
+          'platform': 'windows',
+          'user': {'id': 'u-1', 'name': 'Toula Elwell'},
+        },
       ],
       answers: {
-        '': {'status': 'ready', 'op': 'list', 'path': '', 'entries': [
-          {'name': 'C:\\', 'is_dir': true, 'size_bytes': null, 'modified_at': null},
-        ]},
+        '': {
+          'status': 'ready',
+          'op': 'list',
+          'path': '',
+          'entries': [
+            {
+              'name': 'C:\\',
+              'is_dir': true,
+              'size_bytes': null,
+              'modified_at': null,
+            },
+          ],
+        },
       },
     );
 

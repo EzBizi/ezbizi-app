@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\Organization;
 use App\Support\Ai\GrokCli;
 use App\Support\Automations\EventEmitter;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
@@ -46,12 +47,12 @@ class AiWeeklySummary extends Command
                     }
 
                     $answer = GrokCli::ask(
-                        "You write a short weekly note for the owner of a home-services business (chimneys, "
+                        'You write a short weekly note for the owner of a home-services business (chimneys, '
                         ."fireplaces, garage doors). Below are last week's figures ({$from->toFormattedDateString()} "
                         ."to {$to->toFormattedDateString()}). Write:\n"
                         ."- headline: one line, the single most important thing.\n"
-                        ."- summary: 5 to 8 short plain-English lines: what went well, what went badly, "
-                        ."which branch stands out either way, and one or two things to do this week. Use the "
+                        .'- summary: 5 to 8 short plain-English lines: what went well, what went badly, '
+                        .'which branch stands out either way, and one or two things to do this week. Use the '
                         ."numbers; never invent one. No greetings, no sign-off.\n"
                         .'The summary goes to a WhatsApp group: '.GrokCli::WHATSAPP_STYLE."\n\n".$figures,
                         [
@@ -117,7 +118,7 @@ class AiWeeklySummary extends Command
         $branches = Franchise::query()->withoutGlobalScopes()
             ->where('organization_id', $organization->getKey())
             ->where('is_active', true)
-            ->whereIn('id', DB::table('workiz_jobs')->select('franchise_id'))
+            ->whereIn('id', ReportJobs::branchesWithJobs())
             ->orderBy('name')
             ->get();
 
@@ -139,7 +140,7 @@ class AiWeeklySummary extends Command
             ->pluck('n', 'label');
 
         if ($labels->isNotEmpty()) {
-            $text .= "Calls by reason (AI-labelled): ".$labels->map(fn ($n, $l) => "$l $n")->implode(', ')."\n";
+            $text .= 'Calls by reason (AI-labelled): '.$labels->map(fn ($n, $l) => "$l $n")->implode(', ')."\n";
         }
 
         return trim(preg_replace("/\n{3,}/", "\n\n", $text));

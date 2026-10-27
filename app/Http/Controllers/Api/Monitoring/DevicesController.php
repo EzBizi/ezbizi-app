@@ -65,6 +65,7 @@ class DevicesController extends Controller
                 // company's person walked in through the middle one.
                 $u->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor));
                 MonitoringView::people($u, $actor);
+                $u->where('is_active', true); // removed/erased people are not listed
             })
             ->orderByDesc('last_seen_at')
             ->get();

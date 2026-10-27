@@ -615,8 +615,8 @@ const Map<String, Tour> phoneTours = {
         anchor: 'tour-scheduling-settings-tabs',
         title: 'Scheduling settings',
         body:
-            "Availability for each area's capacity, Schedule for Workiz "
-            'technicians, Locations for dispatcher notes, and Suggestions.',
+            "Availability for each area's capacity, Technicians for the "
+            'roster, Locations for dispatcher notes, and Suggestions.',
       ),
       TourStep(
         anchor: 'tour-scheduling-areas',
@@ -625,8 +625,8 @@ const Map<String, Tour> phoneTours = {
       ),
       TourStep(
         anchor: 'tour-scheduling-technicians',
-        title: 'Workiz technicians',
-        body: 'Pick the EzBizi user each Workiz technician is.',
+        title: 'Technicians',
+        body: 'Who can be put on a job, their areas and their EzBizi login.',
       ),
       TourStep(
         anchor: 'tour-scheduling-dispatcher-notes',
@@ -688,22 +688,22 @@ const Map<String, Tour> phoneTours = {
       ),
     ],
   ),
-  'scheduling/Settings/Schedule': Tour(
+  'scheduling/Settings/Technicians': Tour(
     version: 1,
     steps: [
       TourStep(
         anchor: 'tour-scheduling-technicians',
-        title: 'Workiz technicians',
+        title: 'Technicians',
         body:
-            'Pick the EzBizi user each one is. Matched by email means the sync '
-            'proposed it; a link you pick here stays.',
+            "EzBizi's own roster. Open one to change their details, linked "
+            'user, areas, or to retire them; + Add technician adds one.',
       ),
       TourStep(
         anchor: 'tour-scheduling-technicians-find',
         title: 'Find a technician',
         body:
-            'By name, email or franchise. Unlinked only and Include inactive '
-            'narrow or widen the list.',
+            'By name, email, phone or area. Pick a branch, or Show inactive '
+            'to see retired ones.',
       ),
     ],
   ),

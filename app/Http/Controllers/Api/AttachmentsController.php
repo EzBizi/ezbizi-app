@@ -50,6 +50,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class AttachmentsController extends Controller
 {
+    /** What `?inline=1` may render in place: raster images and PDF only. */
+    public const INLINE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+
     public function __construct(
         private readonly FileStore $files,
         private readonly UploadLimits $limits,
@@ -135,7 +138,7 @@ class AttachmentsController extends Controller
      * one that matters within an organization: being in the same business does
      * not make somebody's employment file yours to read.
      */
-    public function show(Attachment $attachment): StreamedResponse
+    public function show(Request $request, Attachment $attachment): StreamedResponse
     {
         $subject = $this->subjectOf($attachment);
 
@@ -178,12 +181,14 @@ class AttachmentsController extends Controller
             $attachment->disk,
             $attachment->mime,
             $attachment->original_name,
-            // Never `inline`. The mime is detected rather than claimed, which
-            // makes it honest, not safe — an honest `text/html` rendered on this
-            // origin is still script running as the reader. FileStore sends
-            // `nosniff` beside this; two locks, because a download endpoint for
-            // arbitrary customer files is exactly where one is not enough.
-            disposition: 'attachment',
+            // `attachment` unless `?inline=1` asks to open it in the app AND the
+            // detected mime is a raster image or a PDF. The mime is detected
+            // rather than claimed, which makes it honest, not safe — an honest
+            // `text/html` (or svg) rendered on this origin is still script
+            // running as the reader, so nothing outside INLINE_MIMES is ever
+            // inline. FileStore sends `nosniff` beside this.
+            disposition: $request->boolean('inline') && in_array($attachment->mime, self::INLINE_MIMES, true)
+                ? 'inline' : 'attachment',
         );
     }
 

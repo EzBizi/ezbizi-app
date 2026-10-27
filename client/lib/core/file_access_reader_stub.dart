@@ -13,7 +13,11 @@ class StubFileAccessReader implements FileAccessReader {
       throw UnsupportedError('Remote file access runs only on the Windows agent.');
 
   @override
-  Future<Map<String, Object?>> read(String path, int maxBytes) async =>
+  Future<Map<String, Object?>> read(
+    String path,
+    int maxBytes, {
+    int? offset,
+  }) async =>
       throw UnsupportedError('Remote file access runs only on the Windows agent.');
 
   @override

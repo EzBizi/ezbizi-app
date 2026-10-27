@@ -159,14 +159,15 @@ final class WhatsAppGroups
         return $phoneNumberId === null ? null : WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
     }
 
-    private function upload(WhatsAppNumber $number, string $bytes, string $filename): string
+    /** Hands a file to Meta and returns its media id. */
+    public function upload(WhatsAppNumber $number, string $bytes, string $filename, string $type = 'application/pdf'): string
     {
         $response = Http::withToken(WhatsAppCloud::tokenFor((string) $number->phone_number_id))
             ->timeout(60)
-            ->attach('file', $bytes, $filename, ['Content-Type' => 'application/pdf'])
+            ->attach('file', $bytes, $filename, ['Content-Type' => $type])
             ->post(WhatsAppCloud::endpoint().'/'.$number->phone_number_id.'/media', [
                 'messaging_product' => 'whatsapp',
-                'type' => 'application/pdf',
+                'type' => $type,
             ]);
 
         $id = (string) ($response->json('id') ?? '');

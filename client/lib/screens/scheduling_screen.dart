@@ -13,7 +13,7 @@ import 'scheduling/locations_pane.dart';
 import 'scheduling/overbooking_pane.dart';
 import 'scheduling/routing_pane.dart';
 import 'scheduling/schedule_pane.dart';
-import 'scheduling/technician_links.dart';
+import 'scheduling/technician_roster.dart';
 import 'settings_screen.dart';
 
 /// Scheduling: Availability, the Schedule board, and Settings.
@@ -272,8 +272,8 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
 }
 
 /// Settings, in sub-tabs (Jose, 2026-09-25): Availability is the capacity
-/// screen that was all of Settings until now; Schedule links Workiz
-/// technicians to EzBizi users; Locations keeps each company's note for new
+/// screen that was all of Settings until now; Technicians is EzBizi's own
+/// roster; Locations keeps each company's note for new
 /// dispatchers (UI queue 49).
 ///
 /// ponytail: both sit under `scheduling.settings.view`. Split the grant when
@@ -327,10 +327,16 @@ class _SchedulingSettingsState extends State<SchedulingSettings> {
           visible: visible,
         ),
       ),
+      // EzBizi's own roster, which replaced Schedule's Workiz linking (Jose,
+      // 2026-10-27: "EzBizi is the master").
       (
-        'Schedule',
+        'Technicians',
         Icons.engineering_outlined,
-        (visible) => TechnicianLinks(api: widget.api, visible: visible),
+        (visible) => TechnicianRoster(
+          api: widget.api,
+          session: widget.session,
+          visible: visible,
+        ),
       ),
       if (notes)
         (

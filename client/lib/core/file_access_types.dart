@@ -26,7 +26,11 @@ abstract interface class FileAccessReader {
 
   /// [path]'s bytes as `{name, size, content_base64}`, refusing with
   /// `too_large` before reading anything when the file is over [maxBytes].
-  Future<Map<String, Object?>> read(String path, int maxBytes);
+  ///
+  /// With [offset], a PIECE instead: up to [maxBytes] from [offset], as
+  /// `{name, size (the whole file), offset, content_base64}` — never too_large.
+  /// The viewer asks piece after piece until it has `size` bytes.
+  Future<Map<String, Object?>> read(String path, int maxBytes, {int? offset});
 
   /// Explorer's Quick access for the signed-in user — `{label, path}` for
   /// Desktop, Documents, Downloads, Pictures, Videos, Music that exist. Sent
