@@ -419,33 +419,24 @@ class _AreaMapPaneState extends State<AreaMapPane> {
         children: [
           Text('Recommended area', style: theme.textTheme.labelMedium),
           const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('area-recommended-zip'),
-                  controller: _centreZip,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Centre ZIP',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 72,
-                child: TextField(
-                  key: const ValueKey('area-recommended-miles'),
-                  controller: _radius,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: 'Miles',
-                  ),
-                ),
-              ),
-            ],
+          TextField(
+            key: const ValueKey('area-recommended-zip'),
+            controller: _centreZip,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Centre ZIP',
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('area-recommended-miles'),
+            controller: _radius,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Radius (miles)',
+            ),
           ),
           const SizedBox(height: 6),
           Align(

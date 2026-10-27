@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/area_map_pane.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -709,5 +710,23 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('area-map-save')));
     await tester.pumpAndSettle();
     expect(requests.where((r) => r.method == 'PATCH'), isEmpty);
+  });
+
+  testWidgets('desktop: the radius label is painted whole, not cut short', (
+    tester,
+  ) async {
+    await pump(tester);
+    await startEditing(tester);
+    final label = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const ValueKey('area-recommended-miles')),
+        matching: find.text('Radius (miles)'),
+      ),
+    );
+    expect(label.didExceedMaxLines, isFalse);
+    expect(
+      label.getMaxIntrinsicWidth(double.infinity),
+      lessThanOrEqualTo(label.size.width + 0.5),
+    );
   });
 }
