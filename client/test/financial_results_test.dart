@@ -264,6 +264,20 @@ void main() {
     });
   });
 
+  testWidgets('search sends q to the server, debounced', (tester) async {
+    final seen = await _pump(tester);
+    final before = _calls(seen, 'GET').length;
+    await tester.enterText(
+      find.byKey(const Key('financials-results-search')),
+      'Bergen',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_calls(seen, 'GET').length, before);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_calls(seen, 'GET').last.url.queryParameters, {'q': 'Bergen'});
+  });
+
   testWidgets('Approve shows only with approve, and calls the endpoint', (
     tester,
   ) async {
