@@ -39,6 +39,11 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   final _search = TextEditingController();
   Timer? _debounce;
   String _q = '';
+  // The server pages (50 a page) and searches; "Load more" fetches the next.
+  int _page = 1;
+  int _lastPage = 1;
+  int _total = 0;
+  bool _fetching = false;
 
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
 
@@ -55,20 +60,31 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({int page = 1}) async {
+    setState(() {
+      _loading = true;
+      _fetching = true;
+    });
     final q = _q;
     final response = await widget.api.get('/project-management-2/jobs', {
+      'page': '$page',
       if (q.isNotEmpty) 'q': q,
     });
     if (!mounted || q != _q) return;
     setState(() {
       _loading = false;
+      _fetching = false;
       _loaded = true;
       _error = response.ok ? null : response.message;
-      _rows = ((response.body['data'] as List?) ?? const [])
+      if (!response.ok) return;
+      final rows = ((response.body['data'] as List?) ?? const [])
           .map((r) => (r as Map).cast<String, dynamic>())
           .toList();
+      _rows = page == 1 ? rows : [..._rows, ...rows];
+      final meta = response.body['meta'] as Map?;
+      _total = meta?['total'] as int? ?? _rows.length;
+      _lastPage = meta?['last_page'] as int? ?? 1;
+      _page = page;
     });
   }
 
@@ -79,20 +95,6 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
       setState(() => _q = text.trim());
       _load();
     });
-  }
-
-  /// The list is not paged, so every job is on the device: the rows are
-  /// narrowed here too, because the server does not read q yet.
-  List<Map<String, dynamic>> get _shown {
-    final q = _q.toLowerCase();
-    if (q.isEmpty) return _rows;
-    return _rows.where((r) {
-      return [
-        r['customer'],
-        r['job_number'],
-        r['address'],
-      ].any((v) => v != null && '$v'.toLowerCase().contains(q));
-    }).toList();
   }
 
   /// The company under the branch only when the list spans several, where
@@ -118,7 +120,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rows = _shown;
+    final rows = _rows;
 
     return AsyncBody(
       // Only the first load blanks the screen, so the search box keeps focus.
@@ -134,7 +136,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                'Done pending approval · ${rows.length} jobs',
+                'Done pending approval · $_total jobs',
                 style: theme.textTheme.titleMedium,
               ),
               SizedBox(
@@ -218,6 +220,18 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                     if (_money) Text(_amount(row, 'money_owed')),
                   ],
               ],
+            ),
+          if (_page < _lastPage)
+            Center(
+              child: TextButton(
+                key: const Key('pm2-more'),
+                onPressed: _fetching ? null : () => _load(page: _page + 1),
+                child: Text(
+                  _fetching
+                      ? 'Loading…'
+                      : 'Load more (${_total - rows.length} left)',
+                ),
+              ),
             ),
         ],
       ),

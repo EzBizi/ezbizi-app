@@ -29,18 +29,28 @@ class ProjectManagement2Controller extends Controller
             'Project Management - 2 is not in your role.',
         );
         $money = $user->hasPermission('jobs.financials');
+        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
 
-        // ponytail: no paging, like Sales' list of the same jobs. Page when it hurts.
-        $jobs = Job::query()
+        // q is the search box: customer name, job ID (Workiz's or ours) or address.
+        $page = Job::query()
             ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
             ->whereRaw('LOWER(TRIM(status)) = ?', [self::STATUS])
+            ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q
+                ->where('number', 'like', "%{$term}%")
+                ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%"))
+                ->orWhereHas('customer', fn ($c) => $c->where(fn ($c) => $c
+                    ->where('name', 'like', "%{$term}%")
+                    ->orWhere('address_line1', 'like', "%{$term}%")
+                    ->orWhere('city', 'like', "%{$term}%")
+                    ->orWhere('postal_code', 'like', "%{$term}%")))))
             ->with([
                 'franchise.company:id,name',
                 'customer:id,name,address_line1,city,state,postal_code',
                 'workizJob:id,job_id,serial_id,last_status_update,payload',
             ])
             ->latest()
-            ->get();
+            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+        $jobs = $page->getCollection();
 
         // Workiz's job total is empty on almost every one of these (36 of A-1's
         // 1,711 on 2026-10-26); the price waiting on approval is on its estimate
@@ -86,6 +96,6 @@ class ProjectManagement2Controller extends Controller
                     'currency'      => $job->currency,
                 ] : []),
             ];
-        })->values()]);
+        })->values(), 'meta' => $this->pageMeta($page)]);
     }
 }

@@ -10,16 +10,18 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 /// Project Management - 2's search (Jose, 2026-10-27: "search by customer
-/// name, job id, or address"). The fake server ignores q, as
-/// ProjectManagement2Controller does today, so the rows must narrow on the
-/// device.
+/// name, job id, or address"). ProjectManagement2Controller searches and
+/// pages; the fake server does both the same way, so what narrows is what it
+/// answers, and "Load more" brings page two.
 void main() {
   for (final (what, term) in [
     ('customer', 'omar'),
     ('job id', '4471'),
     ('address', 'elm st'),
   ]) {
-    testWidgets('$what: q is sent and the rows narrow', (tester) async {
+    testWidgets('$what: q is sent, the rows narrow, and the list pages', (
+      tester,
+    ) async {
       final requests = <http.Request>[];
       final api = ApiClient(
         client: MockClient((request) async {
@@ -42,11 +44,32 @@ void main() {
               },
             });
           }
+          final q = (request.url.queryParameters['q'] ?? '').toLowerCase();
+          final rows =
+              [
+                    _job(
+                      'j-1',
+                      '1002',
+                      'Dana Whitfield',
+                      '9 Oak Ave, Dayton OH',
+                    ),
+                    _job('j-2', '4471', 'Omar Castillo', '12 Elm St, Akron OH'),
+                    _job('j-3', '5310', 'Lena Park', '3 Pine Ct, Kent OH'),
+                  ]
+                  .where(
+                    (r) => '${r['customer']} ${r['job_number']} ${r['address']}'
+                        .toLowerCase()
+                        .contains(q),
+                  )
+                  .toList();
+          // Two a page, so the unsearched list has a second.
+          final page = int.parse(request.url.queryParameters['page'] ?? '1');
           return _json({
-            'data': [
-              _job('j-1', '1002', 'Dana Whitfield', '9 Oak Ave, Dayton OH'),
-              _job('j-2', '4471', 'Omar Castillo', '12 Elm St, Akron OH'),
-            ],
+            'data': rows.skip((page - 1) * 2).take(2).toList(),
+            'meta': {
+              'total': rows.length,
+              'last_page': (rows.length / 2).ceil().clamp(1, 99),
+            },
           });
         }),
       );
@@ -67,6 +90,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Dana Whitfield'), findsOneWidget);
       expect(find.text('Omar Castillo'), findsOneWidget);
+      expect(find.text('Lena Park'), findsNothing);
+      expect(find.text('Done pending approval · 3 jobs'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('pm2-more')));
+      await tester.pumpAndSettle();
+      expect(find.text('Lena Park'), findsOneWidget);
+      expect(find.byKey(const Key('pm2-more')), findsNothing);
 
       await _search(tester, term);
       final sent = requests

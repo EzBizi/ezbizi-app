@@ -61,6 +61,30 @@ class ProjectManagement2Test extends TestCase
             ->getJson('/api/v1/project-management-2/jobs')->assertForbidden();
     }
 
+    public function test_q_searches_customer_job_id_and_address_and_the_list_is_paged(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        [$ann, $bob] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $ann = $this->job($alpha, 'J-3', 'done pending approval');
+            $bob = $this->job($alpha, 'J-4', 'done pending approval');
+            Job::find($bob)->customer->update(['name' => 'Bob Jones', 'address_line1' => '9 Elm Rd']);
+
+            return [$ann, $bob];
+        });
+        $ids = fn (string $q) => collect($this->signedInAs($alpha['admin'])
+            ->getJson('/api/v1/project-management-2/jobs?q='.urlencode($q))->assertOk()->json('data'))->pluck('id')->sort()->values()->all();
+
+        $this->assertSame([$ann], $ids('7003'), "Workiz's job number");
+        $this->assertSame([$bob], $ids('J-4'), 'our job number');
+        $this->assertSame([$bob], $ids('bob'), 'customer name');
+        $this->assertSame([$bob], $ids('Elm'), 'address');
+        $this->assertSame(collect([$ann, $bob])->sort()->values()->all(), $ids('Columbus'), 'city');
+
+        $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1')->assertOk();
+        $this->assertCount(1, $page->json('data'));
+        $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2], $page->json('meta'));
+    }
+
     private function job(array $tenant, string $number, string $status, array $money = []): string
     {
         $customer = Customer::create(['owning_franchise_id' => $tenant['franchise']->id, 'number' => "C-{$number}", 'name' => 'Ann Smith',
