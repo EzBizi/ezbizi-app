@@ -34,6 +34,11 @@ class VersionHistory {
         'Jobs record who created them.',
         'Reports: job profitability per job, PDF or Excel.',
         'Ask the staff WhatsApp for any report and get the file back.',
+        'Book: one Book panel with every option (client, location and service area, job type and source, description, outside company, custom fields, schedule, technicians) opens from Leads, Jobs, Customers and Communication, and books the job in EzBizi and in Workiz.',
+        'Scheduling: the board and technicians run on EzBizi\'s own technician list, edited in Scheduling › Settings › Technicians; changes are copied to Workiz.',
+        'Scheduling › Service areas: make an area from a center ZIP and radius, draw it from its ZIPs, or by hand, then adjust it; each area can have its own color.',
+        'Customer Experience: Business Profile photos and services with copy to other listings, a phone check per listing, review rating histogram and reply stats, review sources, and a WhatsApp chat link on each listing.',
+        'Financials › Lead source results: ACE and other results entered in EzBizi or sent by WhatsApp, counted once approved; the Marketing PPC text includes them.',
       ],
     ),
     VersionRelease(
