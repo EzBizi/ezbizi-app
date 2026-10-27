@@ -12,8 +12,9 @@ use Illuminate\Http\Request;
 
 /**
  * Dispatching from the Schedule board: assign, unassign, move. Every write
- * goes TO Workiz, which stays the truth — Jose, 2026-09-25: "it should be
- * possible on both with the sync".
+ * goes TO Workiz too — Jose, 2026-09-25: "it should be possible on both
+ * with the sync". Since 2026-10-27 EzBizi is the master and Workiz a mirror
+ * until it is disconnected (WorkizMirror).
  *
  * All three are WorkizJobWriter's (the Workiz session's), which re-reads the
  * job from Workiz and lands it in the mirror before returning, so the board

@@ -10,7 +10,8 @@ use Illuminate\Support\Collection;
 /**
  * What Workiz v2 knows about a job beyond its money summary (Jose,
  * 2026-10-06: "take advantage of everything v2 has to offer"). Read-only,
- * from the mirror: Workiz stays the truth for A-1's invoices (decision 2).
+ * from the mirror: Workiz's invoices are read here until EzBizi holds the
+ * money natively (decision 2; EzBizi is the master from 2026-10-27).
  *
  * For anybody who can open the job: its custom fields, in Workiz's own names,
  * and its files (attachments and inspection-report PDFs), https links only.

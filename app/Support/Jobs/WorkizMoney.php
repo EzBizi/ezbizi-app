@@ -9,8 +9,8 @@ use App\Models\Job;
  *
  * Workiz has no invoice endpoint: its invoice IS the job's money, refreshed into
  * `workiz_jobs.payload` every minute by the Workiz sync. Reading it here keeps
- * one copy, and Workiz stays the source of truth (Jose, decision 2). Nothing is
- * written.
+ * one copy (Jose, decision 2), until EzBizi holds the money natively: from
+ * 2026-10-27 EzBizi is the master and Workiz a mirror. Nothing is written.
  *
  * `Cost` on a line is left out: it is the company's own cost, and nobody has
  * asked to show it.
