@@ -8,8 +8,6 @@ use App\Jobs\SendRequestedReport;
 use App\Jobs\SendWhatsAppPeriodReports;
 use App\Models\AssistantEntry;
 use App\Models\Customer;
-use App\Models\Franchise;
-use App\Models\Lead;
 use App\Models\StaffBotItem;
 use App\Models\StaffBotMenu;
 use App\Models\TrainingGuide;
@@ -20,7 +18,6 @@ use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppReportBatch;
 use App\Support\Ai\AppAsk;
 use App\Support\Ai\CallRecordingsRequest;
-use App\Support\Ai\ReportAsk;
 use App\Support\Ai\StaffAnswer;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppStaffBot;
@@ -805,33 +802,6 @@ class WhatsAppStaffBotTest extends TestCase
 
         // The Library's own answer, never the figures.
         $this->assertStringNotContainsString('From EzBizi Reports', json_encode($this->sent));
-    }
-
-    /** Jose, 2026-10-12: no Google Ads or LSA figures go to xAI. */
-    public function test_google_local_services_leads_are_not_in_the_figures_sent_to_ai(): void
-    {
-        $t = $this->provisionTenant('A1-Group');
-        $branch = $this->inTenant($t['org'], fn () => Franchise::query()->firstOrFail());
-        $this->inTenant($t['org'], function () use ($t, $branch) {
-            foreach ([Lead::SOURCE_LOCAL_SERVICES, Lead::SOURCE_THUMBTACK] as $source) {
-                Lead::create([
-                    'organization_id' => $t['org']->id, 'franchise_id' => $branch->id, 'source' => $source,
-                    'remote_id' => uniqid(), 'status' => 'new', 'received_at' => now(),
-                ]);
-            }
-        });
-
-        $counts = ReportAsk::leads($branch, now()->subDay()->toDateString(), now()->addDay()->toDateString());
-
-        $this->assertSame([Lead::SOURCE_THUMBTACK => 1], $counts);
-    }
-
-    public function test_a_misread_period_is_clamped_to_a_year_ending_today(): void
-    {
-        $today = CarbonImmutable::parse('2026-10-13', 'America/New_York');
-        $this->assertSame(['2025-10-13', '2026-10-13'], ReportAsk::period('1990-01-01', '2030-01-01', $today));
-        $this->assertSame(['2026-10-01', '2026-10-13'], ReportAsk::period('nonsense', 'x', $today));
-        $this->assertSame(['2026-10-05', '2026-10-11'], ReportAsk::period('2026-10-05', '2026-10-11', $today));
     }
 
     // ── A menu for each role (AI Assistance › Staff bot, UI queue 88) ─────

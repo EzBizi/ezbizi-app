@@ -87,6 +87,21 @@ class DailyTextsTest extends TestCase
         $this->assertStringNotContainsString('Bo', $text);
     }
 
+    /** Desk, 2026-10-27: a rule limited to some branches never gets the whole organization's figures. */
+    public function test_a_branch_rule_gets_only_its_branches_marketing_and_no_dispatchers(): void
+    {
+        $this->mock(PerformancePeople::class)->shouldNotReceive('for');
+        $this->airtableTable($this->t, null, 'marketing', [['DATE' => '2026-10-19', 'Service Area' => 'HQ area', 'COST' => 999, 'CALLS' => 1, 'JOBS' => 1]]);
+        $this->airtableTable($this->t, (string) $this->t['franchise']->id, 'marketing', [['DATE' => '2026-10-19', 'Service Area' => 'Branch area', 'COST' => 200, 'CALLS' => 10, 'JOBS' => 4]]);
+        $render = fn (string $kind) => $this->inTenant($this->t['org'], fn () => app(DailyTexts::class)
+            ->render($kind, $this->t['org'], CarbonImmutable::parse('2026-10-20'), [(string) $this->t['franchise']->id]));
+
+        $text = $render('marketing_ppc');
+        $this->assertStringContainsString('Branch area', $text);
+        $this->assertStringNotContainsString('HQ area', $text);
+        $this->assertStringContainsString('whole organization only', $render('dispatchers'));
+    }
+
     public function test_weekly_losses_list_only_negative_branches(): void
     {
         $f = $this->t['franchise'];

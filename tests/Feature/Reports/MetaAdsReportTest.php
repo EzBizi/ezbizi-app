@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Franchise;
 use App\Models\MetaAdCampaign;
 use App\Models\MetaAdInsight;
 use App\Models\SocialConnection;
@@ -71,6 +72,17 @@ class MetaAdsReportTest extends TestCase
         // Staff map a campaign to a branch.
         $this->signedInAs($user)->putJson('/api/v1/reports/meta/campaigns/'.$nj->id, ['franchise_id' => $t['franchise']->id])->assertOk();
         $get('')->assertJsonPath('data.rows.0.branch', $t['franchise']->name);
+
+        // Desk, 2026-10-27: a branch-limited builder sees and moves only its branch's campaigns.
+        $other = $this->inTenant($t['org'], fn () => Franchise::query()->create(['organization_id' => $t['org']->id, 'company_id' => $t['franchise']->company_id, 'name' => 'Other', 'is_active' => true]));
+        $local = $this->userWithRole($t, 'local', ['reports.meta.view', 'reports.build'], onlyAt: $other);
+        $this->signedInAs($local)->getJson('/api/v1/reports/meta/campaigns')->assertOk()->assertJsonCount(0, 'data');
+        $this->signedInAs($local)->getJson('/api/v1/reports/meta?from=2026-10-01&to=2026-10-07')->assertOk()
+            ->assertJsonCount(0, 'data.rows')->assertJsonPath('data.states', [])->assertJsonPath('data.regions', []);
+        $this->signedInAs($local)->putJson('/api/v1/reports/meta/campaigns/'.$nj->id, ['franchise_id' => $other->id])->assertForbidden();
+        $this->signedInAs($user)->putJson('/api/v1/reports/meta/campaigns/'.$nj->id, ['franchise_id' => $other->id])->assertOk();
+        $this->signedInAs($local)->putJson('/api/v1/reports/meta/campaigns/'.$nj->id, ['franchise_id' => $t['franchise']->id])->assertForbidden();
+        $this->signedInAs($local)->putJson('/api/v1/reports/meta/campaigns/'.$nj->id, ['state' => 'PA'])->assertOk();
     }
 
     public function test_the_tab_permission_is_needed(): void
