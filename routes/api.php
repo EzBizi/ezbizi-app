@@ -1639,6 +1639,7 @@ Route::prefix('v1')
             // Drawn areas: shapes, preview, save; one area, a branch, the company.
             Route::get('scheduling/areas-map', [SchedulingAreaMapController::class, 'overview']);
             Route::get('scheduling/areas/{area}/map', [SchedulingAreaMapController::class, 'show']);
+            Route::get('scheduling/areas/{area}/outline', [SchedulingAreaMapController::class, 'outline']);
             Route::post('scheduling/areas/{area}/polygons/preview', [SchedulingAreaMapController::class, 'preview']);
             Route::put('scheduling/areas/{area}/polygons', [SchedulingAreaMapController::class, 'save']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
