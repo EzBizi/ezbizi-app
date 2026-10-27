@@ -124,6 +124,7 @@ touches apps, monitoring, social, Google or mail.
 | DO NOT: "Keeps working offline — everything syncs once there's signal again" | `/` Office, truck or phone | Removed 2026-10-09. `client/pubspec.yaml` has no local database (no sqflite/drift/hive/isar) and `api_client.dart` has no outbox; only `field_tracker.dart` buffers GPS points offline. Replaced with "Installs without IT", which the FAQ already carried. Re-add only with an offline write queue in the client. |
 
 | Call labelling: "Where call labelling is switched on, the text of a transcribed call … never the recording … sent to Anthropic (Claude) and to xAI (Grok)" · "one word" · "EzBizi keeps only that word, for twelve months" · sub-processor "Anthropic and xAI" | `/privacy/` | `app/Support/Reports/Tagging/` — every `CallTagger` implementation, and what its `tag()` sends (today: `CallLabels::instruction` + the transcript text, nothing else). **A third tagger falsifies "these are all of them" by existing.** `CallReportLabel::retention()` (`window(12)`); `create_call_report_labels` stores `label` only — **a column holding the model's reasoning or the transcript breaks "only that word"**. Switch: `config/experimental_reports.php` `tagging.enabled` (`REPORT_CALL_TAGGING`, default `false`). Written 2026-10-06 BEFORE the switch, on Reports' `0094`; the sentence is conditional so it is true either way. |
+| "When xAI is not available … sent instead to Anthropic (Claude), for the same purpose" · "Anthropic receives the same information, or less: it is never sent a manual to read" · Report files on WhatsApp: message + branch names to xAI "only to read which report, branch and dates"; file "passes through Meta"; "The report itself is not sent to xAI" | `/privacy/` Calls and messages + Who we rely on | `GrokCli::provider()` (`eb2e455d2`, live 0.0.0498): `AI_PROVIDER` auto = Grok CLI if configured, else `ClaudeProvider`. Every xAI sentence on the page rides on this one switch. `ClaudeProvider::askMany` sends images only (no PDF) — if it starts sending files, drop "it is never sent a manual". `ReportFileRequest::read()` (`f903e323d`) and `SendRequestedReport`. |
 
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
@@ -3118,3 +3119,35 @@ Production `/download/windows.json` 0.0.0494 at `428654263`. Before this edit al
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461. Desk not
 reachable from a scheduled run; publish asked as an inbox file.
+
+## 2026-10-27: 0.0.0495-0.0.0498 live, and `/privacy/` did not say xAI work can go to Anthropic
+
+Production `/download/windows.json` 0.0.0498 at `67c8089d1`. Before this edit all 10 live
+`www/` files were byte-identical to the repo, so `0137` (Telegram, `06e20da37`) is live;
+`/privacy/` `Last-Modified` 10-27 19:15 UTC.
+
+- **The finding: `eb2e455d2` (0.0.0498) made AI a provider switch.** `GrokCli::provider()`
+  with `AI_PROVIDER` default `auto` sends every GrokCli caller — every "sent to xAI" sentence
+  on `/privacy/` — to Anthropic (Claude) whenever the Grok CLI is not configured. Not
+  measured which one production resolves to; disclosed either way (10-06 precedent). Added a
+  "When xAI is not available" paragraph and a clause in the Anthropic and xAI list item.
+- **Report files on WhatsApp** (`f903e323d`, 0.0.0498): the message and branch names go to
+  xAI to parse; the PDF/Excel goes over WhatsApp (Meta). Added a paragraph mirroring
+  "Call recordings on WhatsApp", and named report files in the xAI and Meta list items.
+  Last updated / `dateModified` / sitemap lastmod 2026-10-27.
+- **Call recordings — left alone, on purpose.** 0.0.0498 shipped Phone and Google LSA
+  recordings kept on EzBizi's disk (`4b19932ce`, `7d9cfd4e8`, `c0bb3b012`), contrary to
+  "the audio is downloaded, turned into text, and deleted". Jose reversed it the same day
+  ("I don't want you saving any call recordings"): the Phone revert `9d2ac4eef` is IN
+  `67c8089d1`; the Leads revert `f1c2ec849` (+ migration deleting `lead-recordings/`) is on
+  main for 0.0.0499, not live. The page states the intended state and is true again once
+  0.0.0499 ships; do not write "EzBizi keeps recordings" anywhere. If 0.0.0499 has not
+  shipped by the next run, say so.
+- RGB lighting, AI across companies, CX takeover, Book panel, native technician roster,
+  service-area drawing (still 0 customer setups not measured — the coverage row stands),
+  Lead source results, Workiz outbound mirror (Workiz is a connected account), Airtable
+  disconnect-safety: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461. Desk not reachable from a scheduled run; publish asked as `0138`.
+
