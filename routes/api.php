@@ -987,6 +987,7 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -1030,6 +1031,13 @@ Route::prefix('v1')
         Route::get('business-profile/locations/{location}/search-terms', [\App\Http\Controllers\Api\BusinessProfilePerformanceController::class, 'searchTerms']);
         // Lets a rule publish review replies on this listing (A1 Leads takeover, 2026-10-20). Off by default.
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
+        // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
+        Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
+        Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
+        Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
+        Route::put('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'replaceServices']);
+        Route::post('business-profile/locations/{location}/services/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyServices']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
         Route::post('leads/sync', [LeadsController::class, 'sync']);
