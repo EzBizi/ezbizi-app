@@ -49,9 +49,9 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     {
         return RetentionPolicy::withParent(
             'A call or message exchanged with somebody who enquired through the organization\'s '
-            .'advertising: when, which side, what was said, and for a call its length and a link '
-            .'to Google\'s recording of it. Held with the enquiry it belongs to and deleted with '
-            .'it; shown only to that organization.'
+            .'advertising: when, which side, what was said, and for a call its length and its '
+            .'recording. Held with the enquiry it belongs to and deleted with it; shown only to '
+            .'that organization.'
         );
     }
 
@@ -89,9 +89,13 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 .'for a day, booked.',
                 Erasure::erase()),
             new PersonalDataEntry('recording_url', PersonalDataEntry::CONTENT,
-                'Where Google keeps the recording of a call with this person — their voice. '
-                .'EzBizi never copies the audio; it streams it on request with the connected '
-                .'account\'s credentials, so removing the link removes the reach.',
+                'Where the recording of a call with this person — their voice — was made: '
+                .'Google, RingCentral or EzBizi\'s own phone line.',
+                Erasure::erase()),
+            new PersonalDataEntry('recording_path', PersonalDataEntry::CONTENT,
+                'The recording itself, copied once to EzBizi\'s private storage so the call '
+                .'still plays after the account that brought it is disconnected (Jose, '
+                .'2026-10-27). Erasing removes the file; so does deleting the enquiry.',
                 Erasure::erase()),
             new PersonalDataEntry('answered_by, rang', PersonalDataEntry::IDENTITY,
                 'The staff member who picked up a call, or whose phones rang, as RingCentral '
@@ -101,6 +105,12 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 'Links to photographs or files the person sent with a message.',
                 Erasure::erase()),
         ];
+    }
+
+    /** The kept recording, deleted when the row is erased (Anonymiser). */
+    public function personalDataFiles(): array
+    {
+        return [['disk' => 'local', 'path' => $this->recording_path]];
     }
 
     /** Same answer as Lead: nothing joins an enquirer to a person on this platform. */
