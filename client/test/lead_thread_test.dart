@@ -120,6 +120,33 @@ void main() {
     expect(find.text('Approved by Mia'), findsOneWidget);
   });
 
+  /// Kayla Culbreth, 2026-10-27: booked in Workiz already, so no Approve that
+  /// would text her the window she asked for instead of the one booked.
+  testWidgets('a booking already booked as a job shows the job, not Approve', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      booking: const {
+        'date': '2026-10-28',
+        'start_time': '08:00',
+        'end_time': '11:00',
+        'status': 'pending',
+        'decided_by': null,
+        'job': {'source': 'Workiz', 'when': 'Thursday, Oct 29, 8:00 AM'},
+      },
+    );
+
+    expect(find.byKey(const ValueKey('booking-approve')), findsNothing);
+    expect(find.byKey(const ValueKey('booking-decline')), findsNothing);
+    expect(
+      find.text('Booked in Workiz · Thursday, Oct 29, 8:00 AM'),
+      findsOneWidget,
+    );
+  });
+
   /// Jose, 2026-10-13: the dispatcher sees the scheduling fit; the customer
   /// never does.
   testWidgets('a pending booking says where a better window is', (
