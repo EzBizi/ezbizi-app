@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
+use App\Models\EmailFilter;
 use App\Models\EmailSnooze;
 use App\Models\Lead;
 use App\Models\Mailbox;
@@ -96,6 +97,7 @@ class InboxController extends Controller
         $limit    = $many ? self::PER_INBOX_MANY : self::PER_INBOX;
         $maxPages = $category === null || $many ? 1 : self::MAX_PAGES;
         $started  = microtime(true);
+        $filters  = EmailFiltersController::visibleTo($user);
 
         foreach ($mailboxes as $mailbox) {
             // A paged-out inbox (cursor present, null) has nothing more; on the first page every inbox is asked.
@@ -106,6 +108,7 @@ class InboxController extends Controller
             $reader = $this->readers->for($mailbox);
             $cursor = $cursors[$mailbox->id] ?? null;
             $wanted = 0;
+            $mine   = EmailFiltersController::forMailbox($filters, $mailbox);
 
             if (microtime(true) - $started > self::BUDGET_SECONDS) {
                 $next[$mailbox->id] = $cursor;   // not reached: asked on the next page
@@ -138,8 +141,16 @@ class InboxController extends Controller
                 }
 
                 foreach ($page->messages as $summary) {
-                    $found[] = [$mailbox, $summary];
-                    $wanted += ($category === 'notifications') === $summary->isBulk ? 1 : 0;
+                    // A filter: hide drops the mail from this view, notifications files it there.
+                    $action = $mine->first(fn ($f) => $f->matches($summary->fromName, $summary->fromAddress, $summary->subject))?->action;
+
+                    if ($action === EmailFilter::ACTION_HIDE) {
+                        continue;
+                    }
+
+                    $filed   = $action === EmailFilter::ACTION_NOTIFICATIONS;
+                    $found[] = [$mailbox, $summary, $filed];
+                    $wanted += ($category === 'notifications') === ($filed || $summary->isBulk) ? 1 : 0;
                 }
 
                 $cursor = $page->nextCursor;
@@ -290,13 +301,13 @@ class InboxController extends Controller
     {
         $rows = [];
 
-        foreach ($found as [$mailbox, $s]) {
+        foreach ($found as [$mailbox, $s, $filed]) {
             $key   = $s->rfcId !== '' ? 'm:'.$s->rfcId : 't:'.$mailbox->id.':'.($s->threadId ?? $s->id);
             $where = ['mailbox_id' => $mailbox->id, 'address' => $mailbox->address, 'message_id' => $s->id, 'thread_id' => $s->threadId];
 
             if (! isset($rows[$key])) {
                 $rows[$key] = ['summary' => $s, 'inboxes' => [$where], 'unread' => $s->unreadAtProvider,
-                    'starred' => in_array('STARRED', $s->labels, true), 'count' => $s->messageCount, 'bulk' => $s->isBulk];
+                    'starred' => in_array('STARRED', $s->labels, true), 'count' => $s->messageCount, 'bulk' => $s->isBulk, 'filed' => $filed];
 
                 continue;
             }
@@ -306,6 +317,7 @@ class InboxController extends Controller
             $rows[$key]['starred']   = $rows[$key]['starred'] || in_array('STARRED', $s->labels, true);
             $rows[$key]['count']     = max($rows[$key]['count'], $s->messageCount);
             $rows[$key]['bulk']      = $rows[$key]['bulk'] || $s->isBulk;
+            $rows[$key]['filed']     = $rows[$key]['filed'] || $filed;
         }
 
         $who = $this->whoSent(array_map(fn ($r) => mb_strtolower($r['summary']->fromAddress), $rows), $user);
@@ -340,7 +352,8 @@ class InboxController extends Controller
                 'message_count'   => max(1, $r['count']),
                 // A known customer or lead outranks a bulk marker: their
                 // automated invoice reply is still them.
-                'category'        => $customer !== null ? 'people' : ($r['bulk'] ? 'notifications' : 'primary'),
+                // A filter somebody made outranks both: they said where it goes.
+                'category'        => $r['filed'] ? 'notifications' : ($customer !== null ? 'people' : ($r['bulk'] ? 'notifications' : 'primary')),
                 'inboxes'         => $r['inboxes'],
                 // Handled if handled in any inbox it reached: {at, by} of the first.
                 'dealt'           => collect($r['inboxes'])->pluck('dealt')->filter()->first(),

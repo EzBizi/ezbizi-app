@@ -413,6 +413,7 @@
         "email.create",
         "email.delete",
         "email.edit",
+        "email.filters.share",
         "email.inbox.view",
         "email.settings.view",
         "email.view",
