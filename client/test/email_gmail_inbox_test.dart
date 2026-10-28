@@ -50,6 +50,20 @@ void main() {
     expect(find.textContaining('&#39;'), findsNothing);
   });
 
+  testWidgets('a folder filter is a folder that opens ?filter=id', (
+    tester,
+  ) async {
+    final server = _Server();
+    await _pump(tester, server);
+
+    expect(find.byKey(const ValueKey('email-folder-filter:8')), findsNothing);
+    await _tap(tester, find.byKey(const ValueKey('email-folder-filter:7')));
+
+    final last = server.lists.last.queryParameters;
+    expect(last['filter'], '7');
+    expect(last.containsKey('folder'), isFalse);
+  });
+
   testWidgets('starring a merged row sends one item per inbox', (tester) async {
     final server = _Server();
     await _pump(tester, server);
@@ -578,6 +592,33 @@ class _Server {
     if (path.endsWith('/me')) return _json({'data': _me});
 
     if (path.endsWith('/email/mailboxes')) return _json({'data': _mailboxes});
+
+    if (path.endsWith('/email/filters')) {
+      return _json({
+        'data': {
+          'filters': [
+            {
+              'id': 7,
+              'name': 'Vendors',
+              'from_contains': '@vendor.example',
+              'action': 'folder',
+              'shared': false,
+              'may_delete': true,
+            },
+            {
+              'id': 8,
+              'name': 'Hidden junk',
+              'subject_contains': 'Win',
+              'action': 'hide',
+              'shared': false,
+              'may_delete': true,
+            },
+          ],
+          'may_share': false,
+          'actions': ['folder', 'notifications', 'hide'],
+        },
+      });
+    }
 
     if (path.endsWith('/email/inbox')) {
       lists.add(request.url);
