@@ -903,6 +903,7 @@ Route::prefix('v1')
         Route::apiResource('jobs', JobsController::class);
         Route::get('project-management-2/jobs', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'jobs']);
         Route::get('project-management-2/jobs/{id}', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'job'])->whereUuid('id');
+        Route::post('project-management-2/jobs/{id}/submit', [\App\Http\Controllers\Api\ProjectManagement2Controller::class, 'submit'])->whereUuid('id');
 
         // Task Board (UI queue 80). Visibility and writes are decided per board
         // by TaskBoardPolicy: your own board always, team boards by tasks.* and view.

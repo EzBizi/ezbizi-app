@@ -11,14 +11,16 @@ import '../widgets/async_body.dart';
 import '../widgets/list_table.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/status_pill.dart';
+import '../widgets/tab_bar_like.dart';
 import '../widgets/tag.dart';
 import 'jobs/job_detail_panel.dart';
 
 /// Project Management - 2 (Jose, 2026-10-26): Project Management rebuilt from
-/// scratch beside the first, to compare. For now one list, every job done
-/// pending approval, in his columns, and a row opens the job with its
-/// timeline. Money only with Financials: the server leaves the keys out, and
-/// so do the columns.
+/// scratch beside the first, to compare. Three tabs (2026-10-28): every job
+/// done pending approval, the ones paid and ready to submit (with Submit,
+/// which moves the job to Submitted here and in Workiz), and the submitted.
+/// A row opens the job with its timeline. Money only with Financials: the
+/// server leaves the keys out, and so do the columns.
 class ProjectManagement2Screen extends StatefulWidget {
   const ProjectManagement2Screen({
     super.key,
@@ -47,8 +49,12 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
   int _lastPage = 1;
   int _total = 0;
   bool _fetching = false;
+  String _tab = 'pending';
+  Map<String, dynamic> _counts = const {};
 
   bool get _money => widget.session.me?.can('jobs.financials') ?? false;
+  bool get _canSubmit =>
+      _tab == 'ready' && (widget.session.me?.can('jobs.edit') ?? false);
 
   @override
   void initState() {
@@ -69,11 +75,13 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
       _fetching = true;
     });
     final q = _q;
+    final tab = _tab;
     final response = await widget.api.get('/project-management-2/jobs', {
+      'tab': tab,
       'page': '$page',
       if (q.isNotEmpty) 'q': q,
     });
-    if (!mounted || q != _q) return;
+    if (!mounted || q != _q || tab != _tab) return;
     setState(() {
       _loading = false;
       _fetching = false;
@@ -87,8 +95,59 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
       final meta = response.body['meta'] as Map?;
       _total = meta?['total'] as int? ?? _rows.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
+      _counts = (meta?['counts'] as Map?)?.cast<String, dynamic>() ?? _counts;
       _page = page;
     });
+  }
+
+  void _switch(int i) {
+    setState(() {
+      _tab = _tabs[i].$1;
+      _rows = const [];
+    });
+    _load();
+  }
+
+  /// Ready for Submission's button: asked once, then the job is Submitted
+  /// and leaves this tab for the third.
+  Future<void> _submit(Map<String, dynamic> row) async {
+    final go = await showSidePanel<bool>(
+      context,
+      builder: (c) => SidePanel(
+        title: 'Submit job ${row['job_number'] ?? ''}?',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('pm2-submit-confirm'),
+            onPressed: () => Navigator.of(c).pop(true),
+            child: const Text('Submit'),
+          ),
+        ],
+        child: Text(
+          '${row['customer'] ?? 'This job'} moves from done pending approval '
+          'to Submitted, here and in Workiz.',
+        ),
+      ),
+    );
+    if (go != true || !mounted) return;
+    final response = await widget.api.post(
+      '/project-management-2/jobs/${row['id']}/submit',
+      const {},
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response.ok
+              ? 'Job ${row['job_number'] ?? ''} is Submitted. Workiz follows in a few seconds.'
+              : response.message,
+        ),
+      ),
+    );
+    _load();
   }
 
   void _searched(String text) {
@@ -125,13 +184,26 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          TabBarLike(
+            key: const Key('pm2-tabs'),
+            labels: [
+              for (final (key, label, icon) in _tabs)
+                (
+                  _counts[key] is int ? '$label · ${_counts[key]}' : label,
+                  icon,
+                ),
+            ],
+            selected: _tabs.indexWhere((t) => t.$1 == _tab),
+            onSelected: _switch,
+          ),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 16,
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                'Done pending approval · $_total jobs',
+                '${_heading[_tab]} · $_total jobs',
                 style: theme.textTheme.titleMedium,
               ),
               SizedBox(
@@ -154,7 +226,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
           if (rows.isEmpty && _q.isNotEmpty)
             Text('No job matches "$_q".')
           else if (rows.isEmpty)
-            const Text('No jobs are done pending approval.')
+            Text(_empty[_tab]!)
           else
             ListTable(
               rowKey: (i) => ValueKey('pm2-job:${rows[i]['id']}'),
@@ -172,6 +244,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                   for (final (label, _) in _moneyFields)
                     ListColumn(label, flex: 2),
                 ],
+                if (_canSubmit) const ListColumn('', flex: 2, end: true),
               ],
               rows: [
                 for (final row in rows)
@@ -198,7 +271,7 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                       alignment: Alignment.centerLeft,
                       child: StatusPill(
                         '${row['status']}',
-                        tone: toneForJobStatus('done pending approval'),
+                        tone: toneForJobStatus('${row['status']}'),
                       ),
                     ),
                     Wrap(
@@ -217,6 +290,15 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
                     if (_money)
                       for (final (_, key) in _moneyFields)
                         Text(_amount(row, key)),
+                    if (_canSubmit)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.tonal(
+                          key: ValueKey('pm2-submit:${row['id']}'),
+                          onPressed: () => _submit(row),
+                          child: const Text('Submit'),
+                        ),
+                      ),
                   ],
               ],
             ),
@@ -237,6 +319,25 @@ class _ProjectManagement2ScreenState extends State<ProjectManagement2Screen> {
     );
   }
 }
+
+/// Jose's three tabs (2026-10-28): the server's key, the label, the icon.
+const _tabs = [
+  ('pending', 'Pending', Icons.hourglass_empty),
+  ('ready', 'Ready for Submission', Icons.task_alt),
+  ('submitted', 'Submitted', Icons.send_outlined),
+];
+
+const _heading = {
+  'pending': 'Done pending approval',
+  'ready': 'Paid, ready to submit',
+  'submitted': 'Submitted from done pending approval',
+};
+
+const _empty = {
+  'pending': 'No jobs are done pending approval.',
+  'ready': 'No job done pending approval has a payment yet.',
+  'submitted': 'No job has gone from done pending approval to Submitted yet.',
+};
 
 /// Jose, 2026-10-27: "Pending, Paid, Total". Total is the price (Workiz's
 /// invoice, else its estimate), Paid what came in less refunds, Pending
@@ -357,7 +458,7 @@ class _JobPanelState extends State<_JobPanel> {
               alignment: Alignment.centerLeft,
               child: StatusPill(
                 '${job['status']}',
-                tone: toneForJobStatus('done pending approval'),
+                tone: toneForJobStatus('${job['status']}'),
               ),
             ),
           ),

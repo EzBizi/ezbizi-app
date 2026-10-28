@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Models\AutomationEvent;
 use App\Models\Job;
 use App\Models\User;
+use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\JobMoney;
 use App\Support\Scoping\ViewScope;
+use App\Support\Workiz\WorkizMirror;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -23,6 +26,10 @@ use Symfony\Component\HttpFoundation\Response;
 class ProjectManagement2Controller extends Controller
 {
     public const STATUS = 'done pending approval';
+
+    public const SUBMITTED = 'submitted';
+
+    public const TABS = ['pending', 'ready', 'submitted'];
 
     private const WITH = [
         'franchise.company:id,name',
@@ -37,11 +44,12 @@ class ProjectManagement2Controller extends Controller
     public function jobs(Request $request): JsonResponse
     {
         $user = $this->allowed($request);
-        $term = trim((string) ($request->validate(['q' => ['nullable', 'string', 'max:200']])['q'] ?? ''));
+        $input = $request->validate(['q' => ['nullable', 'string', 'max:200'], 'tab' => ['nullable', 'in:'.implode(',', self::TABS)]]);
+        $term = trim((string) ($input['q'] ?? ''));
+        $tab = $input['tab'] ?? 'pending';
 
         // q is the search box: customer name, job ID (Workiz's or ours) or address.
-        $page = $this->inView($user)
-            ->whereRaw('LOWER(TRIM(status)) = ?', [self::STATUS])
+        $page = $this->tab($this->inView($user), $tab)
             ->when($term !== '', fn ($q) => $q->where(fn ($q) => $q
                 ->where('number', 'like', "%{$term}%")
                 ->orWhereHas('workizJob', fn ($w) => $w->where('serial_id', 'like', "%{$term}%"))
@@ -58,8 +66,44 @@ class ProjectManagement2Controller extends Controller
 
         return response()->json([
             'data' => $jobs->map(fn (Job $job) => $this->row($job, $money))->values(),
-            'meta' => $this->pageMeta($page),
+            // Each tab's count, for its label, without the search.
+            'meta' => $this->pageMeta($page) + ['counts' => collect(self::TABS)
+                ->mapWithKeys(fn (string $t) => [$t => $this->tab($this->inView($user), $t)->count()])->all()],
         ]);
+    }
+
+    /**
+     * POST /api/v1/project-management-2/jobs/{id}/submit (Jose, 2026-10-28):
+     * a paid job done pending approval becomes Submitted, in EzBizi and, a
+     * few seconds later through the mirror, in Workiz. The same trail as an
+     * edit in the job panel: the audit row and the events, so rules and the
+     * Submitted tab see it.
+     */
+    public function submit(Request $request, string $id, AuditLogger $audit, EventEmitter $events): JsonResponse
+    {
+        $user = $this->allowed($request);
+        $job = $this->inView($user)->with(self::WITH)->findOrFail($id);
+        $this->authorize('update', $job);
+        abort_unless(mb_strtolower(trim((string) $job->status)) === self::STATUS, Response::HTTP_CONFLICT,
+            'This job is no longer done pending approval.');
+        abort_unless((JobMoney::paidCents([$job->id])[$job->id] ?? 0) > 0, Response::HTTP_CONFLICT,
+            'Nothing has been paid on this job yet.');
+
+        $before = $job->status;
+        // The organization's own word for it (A-1's is Workiz's, "Submitted").
+        $job->status = collect(Job::allowedStatuses($job->franchise))
+            ->first(fn (string $s) => strcasecmp(trim($s), self::SUBMITTED) === 0) ?? 'Submitted';
+        $change = ['before' => ['status' => $before], 'after' => ['status' => $job->status]];
+
+        DB::transaction(function () use ($job, $change, $audit, $events) {
+            $audit->logChange('job.updated', $job);
+            $job->save();
+            $events->emit('job.updated', $job, $change);
+            $events->emit('job.status_changed', $job, $change);
+            WorkizMirror::queue($job, 'status', ['status' => 'Submitted']);
+        });
+
+        return response()->json(['data' => $this->row($job, $user->hasPermission('jobs.financials') ? JobMoney::of([$job->id]) : null)]);
     }
 
     /**
@@ -136,6 +180,37 @@ class ProjectManagement2Controller extends Controller
     private function inView(User $user): Builder
     {
         return Job::query()->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds());
+    }
+
+    /**
+     * Jose's three tabs (2026-10-28). Pending: every job done pending
+     * approval. Ready for Submission: those with money paid, partly or in
+     * full. Submitted: jobs now Submitted that came from done pending
+     * approval, by this tab's button or in Workiz, latest first.
+     */
+    private function tab(Builder $jobs, string $tab): Builder
+    {
+        $dpa = fn (Builder $q) => $q->whereRaw('LOWER(TRIM(status)) = ?', [self::STATUS]);
+
+        return match ($tab) {
+            'pending' => $dpa($jobs),
+            // ponytail: any succeeded payment row counts, so a job paid and refunded in full stays; net it here if that turns up.
+            'ready' => $dpa($jobs)->whereIn('id', JobMoney::paidJobIds()),
+            // ponytail: read off the status-change events, so a job drops off when they age out of retention.
+            'submitted' => $jobs->whereRaw('LOWER(TRIM(status)) = ?', [self::SUBMITTED])
+                ->whereIn('id', $this->submissions()->select('subject_id'))
+                ->orderByDesc($this->submissions()->whereColumn('subject_id', 'jobs.id')->selectRaw('MAX(occurred_at)')),
+        };
+    }
+
+    /** Every move from done pending approval to Submitted, wherever it was made. */
+    private function submissions(): Builder
+    {
+        return AutomationEvent::query()
+            ->where('event_key', 'job.status_changed')
+            ->where('subject_type', Job::class)
+            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.before.status')))) = ?", [self::STATUS])
+            ->whereRaw("LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.after.status')))) = ?", [self::SUBMITTED]);
     }
 
     private function row(Job $job, ?array $money): array

@@ -1488,8 +1488,8 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'project_management_2',
                 label: 'Project Management - 2',
                 actions: ['view'],
-                automationExemptBecause: 'It reads jobs; Jobs raises every event a rule could use.',
-                auditExemptBecause: 'It changes nothing.',
+                automationExemptBecause: 'Its one write, Submit, raises the job\'s own job.updated and job.status_changed.',
+                auditExemptBecause: 'Its one write, Submit, is a job status change, audited as job.updated like any job edit.',
             ),
 
             /*

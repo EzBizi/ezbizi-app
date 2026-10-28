@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Api;
 
+use App\Jobs\MirrorToWorkiz;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
+use App\Support\Automations\EventEmitter;
+use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -84,7 +89,7 @@ class ProjectManagement2Test extends TestCase
 
         $page = $this->signedInAs($alpha['admin'])->getJson('/api/v1/project-management-2/jobs?per_page=1')->assertOk();
         $this->assertCount(1, $page->json('data'));
-        $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2], $page->json('meta'));
+        $this->assertSame(['total' => 2, 'per_page' => 1, 'current_page' => 1, 'last_page' => 2, 'counts' => ['pending' => 2, 'ready' => 0, 'submitted' => 0]], $page->json('meta'));
     }
 
     public function test_a_job_opens_with_its_money_and_timeline(): void
@@ -130,6 +135,50 @@ class ProjectManagement2Test extends TestCase
             ->assertJsonPath('data.timeline.0.what', 'Job created');
 
         $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$other}")->assertNotFound();
+    }
+
+    public function test_three_tabs_and_submit_moves_a_paid_job_to_submitted_here_and_in_workiz(): void
+    {
+        Queue::fake();
+        $alpha = $this->provisionTenant('Alpha');
+        [$unpaid, $paid, $submitted] = $this->inTenant($alpha['org'], function () use ($alpha) {
+            $c = new SocialConnection;
+            $c->forceFill(['organization_id' => $alpha['org']->id, 'scope_type' => SocialConnection::SCOPE_FRANCHISE, 'scope_id' => $alpha['franchise']->id,
+                'provider' => SocialProvider::Workiz->value, 'remote_id' => $alpha['franchise']->id, 'display_name' => 'Alpha']);
+            $c->connect(['api_token' => 'v2key', 'refresh_token' => 'v2key', 'api_version' => 'v2']);
+            $c->save();
+
+            $unpaid = $this->job($alpha, 'J-7', 'done pending approval');
+            $paid = $this->job($alpha, 'J-8', 'done pending approval');
+            $this->record($alpha, $paid, 'payment', 'P8', '100.00', 'succeeded', '2026-10-20');
+            // Submitted from done pending approval, in Workiz: tracked. A new job Workiz opened as Submitted: not.
+            $submitted = $this->job($alpha, 'J-9', 'Submitted');
+            app(EventEmitter::class)->emit('job.status_changed', Job::find($submitted),
+                ['before' => ['status' => 'done pending approval'], 'after' => ['status' => 'Submitted']]);
+            $this->job($alpha, 'J-10', 'Submitted');
+
+            return [$unpaid, $paid, $submitted];
+        });
+        $tab = fn (string $t) => $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs?tab={$t}")->assertOk();
+        $ids = fn (string $t) => collect($tab($t)->json('data'))->pluck('id')->sort()->values()->all();
+        $sorted = fn (array $a) => collect($a)->sort()->values()->all();
+
+        $this->assertSame($sorted([$unpaid, $paid]), $ids('pending'));
+        $this->assertSame([$paid], $ids('ready'));
+        $this->assertSame([$submitted], $ids('submitted'));
+        $this->assertSame(['pending' => 2, 'ready' => 1, 'submitted' => 1], $tab('pending')->json('meta.counts'));
+
+        $submit = fn (string $id, $user = null) => $this->signedInAs($user ?? $alpha['admin'])->postJson("/api/v1/project-management-2/jobs/{$id}/submit");
+        $submit($unpaid)->assertStatus(409)->assertJsonPath('message', 'Nothing has been paid on this job yet.');
+        $submit($paid, $this->userWithRole($alpha, 'Viewer', ['jobs.view', 'project_management_2.view']))->assertForbidden();
+
+        $submit($paid)->assertOk()->assertJsonPath('data.id', $paid);
+        $this->assertSame('submitted', strtolower($this->inTenant($alpha['org'], fn () => Job::find($paid)->status)));
+        Queue::assertPushed(MirrorToWorkiz::class, fn (MirrorToWorkiz $m) => $m->jobId === $paid && $m->op === 'status' && $m->args === ['status' => 'Submitted']);
+        $this->assertSame(['pending' => 1, 'ready' => 0, 'submitted' => 2], $tab('pending')->json('meta.counts'));
+        $this->assertSame($paid, $tab('submitted')->json('data.0.id'), 'latest submitted first');
+
+        $submit($paid)->assertStatus(409)->assertJsonPath('message', 'This job is no longer done pending approval.');
     }
 
     private function record(array $tenant, string $job, string $type, string $remote, string $amount, ?string $status, string $day, array $payload = []): void
