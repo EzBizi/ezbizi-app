@@ -18,6 +18,7 @@ import '../widgets/status_pill.dart';
 import 'task_board_automate.dart';
 import 'task_board_columns.dart';
 import 'task_board_files.dart';
+import 'task_board_move.dart';
 import 'task_board_people.dart';
 import 'task_board_sidebar.dart';
 
@@ -266,6 +267,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
 
   bool get _canEdit => _board?['can_edit'] == true;
 
+  /// Rows ticked for the bulk bar (Jose, 2026-10-28).
+  final Set<String> _picked = {};
+
   @override
   void initState() {
     super.initState();
@@ -384,7 +388,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
         ),
       );
     final ids = groups.map((g) => g['id']).toSet();
-    if (_tasks.any((t) => !ids.contains(t['group_id']))) {
+    if (_tasks.any((t) => !ids.contains(_groupOf(t)))) {
       groups.add({'id': null, 'name': 'Not in a group', 'colour': null});
     }
     return groups;
@@ -398,10 +402,232 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
       for (final t in _tasks)
         if (t['parent_task_id'] == null &&
             (groupId == null
-                ? !ids.contains(t['group_id'])
-                : t['group_id'] == groupId))
+                ? !ids.contains(_groupOf(t))
+                : _groupOf(t) == groupId))
           t,
     ];
+  }
+
+  /// The group a row sits in here. A branch task shown on its company board
+  /// (rolled_up_from) sits in this board's group of the same name.
+  Object? _groupOf(_Json t) {
+    final from = t['rolled_up_from'];
+    if (from is! Map) return t['group_id'];
+    final name = '${from['group_name']}'.trim().toLowerCase();
+    for (final g in (_board?['groups'] as List? ?? const []).cast<Map>()) {
+      if ('${g['name']}'.trim().toLowerCase() == name) return g['id'];
+    }
+    return t['group_id'];
+  }
+
+  void _say(String text, {SnackBarAction? action}) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(text), action: action));
+
+  /// Drag and drop: [id] lands in [groupId] at [position] (null = the end).
+  Future<void> _moveTo(String id, Object? groupId, int? position) async {
+    if (groupId == null) return;
+    final res = await widget.api.patch('/tasks/$id/move', {
+      'group_id': groupId,
+      'position': ?position,
+    });
+    if (!mounted) return;
+    res.ok ? await _load() : _say(res.reason);
+  }
+
+  Future<String?> _destination(String title, String action) =>
+      showSidePanel<String>(
+        context,
+        builder: (_) => TaskDestinationPanel(
+          api: widget.api,
+          title: title,
+          action: action,
+          boardId: _board?['id'] as String?,
+        ),
+      );
+
+  /// Delete, then a snackbar that can put them back.
+  Future<void> _delete(List<String> ids) async {
+    final res = ids.length == 1
+        ? await widget.api.delete('/tasks/${ids.single}')
+        : await widget.api.post('/tasks/bulk', {'ids': ids, 'op': 'delete'});
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final gone = ids.length == 1
+        ? ids
+        : ((res.body['data'] as Map)['done'] as List).cast<String>();
+    setState(() {
+      _picked.removeAll(gone);
+      _board = {
+        ..._board!,
+        'tasks': _tasks.where((t) => !gone.contains(t['id'])).toList(),
+      };
+    });
+    _say(
+      gone.length == 1 ? 'Task deleted' : '${gone.length} tasks deleted',
+      action: SnackBarAction(
+        key: const Key('task-undo'),
+        label: 'Undo',
+        onPressed: () async {
+          for (final id in gone) {
+            await widget.api.post('/tasks/$id/restore', const {});
+          }
+          if (mounted) await _load();
+        },
+      ),
+    );
+  }
+
+  Future<void> _rowAction(_Json t, String action) async {
+    final id = t['id'] as String;
+    switch (action) {
+      case 'open':
+        await _openTask(t);
+      case 'move':
+        final group = await _destination('Move to', 'Move');
+        if (group != null) await _moveTo(id, group, null);
+      case 'copy':
+      case 'duplicate':
+        final group = action == 'copy'
+            ? await _destination('Copy to', 'Copy')
+            : t['group_id'] as String?;
+        if (action == 'copy' && group == null) return;
+        final res = await widget.api.post('/tasks/$id/copy', {
+          'group_id': ?group,
+        });
+        if (!mounted) return;
+        res.ok ? await _load() : _say(res.reason);
+      case 'link':
+        await showSidePanel<void>(
+          context,
+          builder: (_) => TaskLinkPanel(api: widget.api, task: t),
+        );
+        if (mounted) await _load();
+      case 'delete':
+        await _delete([id]);
+    }
+  }
+
+  Widget _rowMenu(_Json t) => PopupMenuButton<String>(
+    key: ValueKey('task-menu-${t['id']}'),
+    tooltip: 'More',
+    padding: EdgeInsets.zero,
+    iconSize: 18,
+    icon: const Icon(Icons.more_horiz),
+    onSelected: (a) => _rowAction(t, a),
+    itemBuilder: (_) => [
+      const PopupMenuItem(value: 'open', child: Text('Open')),
+      if (_canEdit) ...[
+        const PopupMenuItem(value: 'move', child: Text('Move to…')),
+        const PopupMenuItem(value: 'copy', child: Text('Copy to…')),
+        const PopupMenuItem(value: 'duplicate', child: Text('Duplicate')),
+      ],
+      const PopupMenuItem(value: 'link', child: Text('Link…')),
+      if (_canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+    ],
+  );
+
+  Future<void> _bulk(String op) async {
+    final ids = _picked.toList();
+    Map<String, Object?>? extra;
+    switch (op) {
+      case 'delete':
+        return _delete(ids);
+      case 'move':
+      case 'copy':
+        final group = await _destination(
+          op == 'move' ? 'Move to' : 'Copy to',
+          op == 'move' ? 'Move' : 'Copy',
+        );
+        if (group == null) return;
+        extra = {'group_id': group};
+      case 'status':
+        final status = await showSidePanel<String>(
+          context,
+          builder: (_) => TaskChoicePanel(
+            title: 'Set status',
+            label: 'Status',
+            options: {
+              for (final s
+                  in (_board?['statuses'] as List? ?? const []).cast<Map>())
+                '${s['key'] ?? s['id']}': '${s['name'] ?? s['label']}',
+            },
+          ),
+        );
+        if (status == null) return;
+        extra = {'status': status};
+      case 'assign':
+        final who = await showSidePanel<String>(
+          context,
+          builder: (_) => TaskChoicePanel(
+            title: 'Assign',
+            label: 'Person',
+            options: _people,
+            none: 'Nobody',
+          ),
+        );
+        if (who == null) return;
+        extra = {'assignee_user_id': who.isEmpty ? null : who};
+    }
+    final res = await widget.api.post('/tasks/bulk', {
+      'ids': ids,
+      'op': op,
+      ...?extra,
+    });
+    if (!mounted) return;
+    if (!res.ok) return _say(res.reason);
+    final refused = ((res.body['data'] as Map)['refused'] as List? ?? const []);
+    setState(_picked.clear);
+    if (refused.isNotEmpty) {
+      _say(
+        refused.length == 1
+            ? '1 task was not changed: ${(refused.first as Map)['reason']}'
+            : '${refused.length} tasks were not changed.',
+      );
+    }
+    await _load();
+  }
+
+  Widget _bulkBar(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const Key('task-bulk-bar'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '${_picked.length} selected',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.onSecondaryContainer,
+            ),
+          ),
+          for (final (op, label) in const [
+            ('move', 'Move'),
+            ('copy', 'Copy'),
+            ('status', 'Status'),
+            ('assign', 'Assign'),
+            ('delete', 'Delete'),
+          ])
+            TextButton(
+              key: ValueKey('task-bulk-$op'),
+              onPressed: () => _bulk(op),
+              child: Text(label),
+            ),
+          TextButton(
+            key: const Key('task-bulk-clear'),
+            onPressed: () => setState(_picked.clear),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// A task's subtasks: rows of the board that name it as their parent.
@@ -1224,6 +1450,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       children: [
+        if (_picked.isNotEmpty && !cards) _bulkBar(context),
         for (final (i, g) in _groups(_board!).indexed)
           // The walkthrough's last step points at the first group.
           i == 0
@@ -1259,49 +1486,53 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
     final folded = _folded.contains(group['id']);
     final id = group['id'] as String?;
 
-    final header = InkWell(
-      key: ValueKey('task-group-$id'),
-      onTap: () =>
-          setState(() => folded ? _folded.remove(id) : _folded.add(id)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          children: [
-            // The name and count take the row; the menu sits at its end.
-            Expanded(
-              child: Row(
-                children: [
-                  Icon(
-                    folded ? Icons.chevron_right : Icons.expand_more,
-                    color: colour,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 4),
-                  if (id != null && _naming == id)
-                    _groupNameField(id)
-                  else
-                    Flexible(
-                      child: Text(
-                        '${group['name']}',
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: colour,
-                          fontWeight: FontWeight.w800,
+    final header = _dropOn(
+      id,
+      null,
+      InkWell(
+        key: ValueKey('task-group-$id'),
+        onTap: () =>
+            setState(() => folded ? _folded.remove(id) : _folded.add(id)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: [
+              // The name and count take the row; the menu sits at its end.
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      folded ? Icons.chevron_right : Icons.expand_more,
+                      color: colour,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 4),
+                    if (id != null && _naming == id)
+                      _groupNameField(id)
+                    else
+                      Flexible(
+                        child: Text(
+                          '${group['name']}',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: colour,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
+                    const SizedBox(width: 8),
+                    Text(
+                      all.length == 1 ? '1 task' : '${all.length} tasks',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  const SizedBox(width: 8),
-                  Text(
-                    all.length == 1 ? '1 task' : '${all.length} tasks',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            if (_canEdit && id != null) _groupMenu(group, all.length),
-          ],
+              if (_canEdit && id != null) _groupMenu(group, all.length),
+            ],
+          ),
         ),
       ),
     );
@@ -1353,8 +1584,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                       _headings(context, id),
                       if (_renaming case final r? when r.group == id)
                         _columnNameField(r.key),
-                      for (final t in shown) ...[
-                        _row(context, t, colour),
+                      for (final (at, t) in shown.indexed) ...[
+                        _dropOn(id, at, _row(context, t, colour)),
                         if (_expanded.contains(t['id'])) ...[
                           for (final sub in _subtasksOf(t))
                             _row(context, sub, colour, sub: true),
@@ -1419,6 +1650,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
   /// scrolls sideways instead of squeezing the task to nothing.
   double get _fixedWidth =>
       6 +
+      // The row's ⋯ menu, and its drag handle and tick where it can change.
+      (_canEdit ? 82 : 32) +
       (_builtinShown(_board, 'creator') ? _widths.creator : 0) +
       (_builtinShown(_board, 'owner') ? _widths.owner : 0) +
       (_builtinShown(_board, 'status') ? _widths.status : 0) +
@@ -1559,6 +1792,29 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                   padding: EdgeInsets.only(left: sub ? 34 : 2, right: 10),
                   child: Row(
                     children: [
+                      if (!sub && _canEdit) ...[
+                        SizedBox(width: 18, child: _dragHandle(context, t)),
+                        SizedBox(
+                          width: 32,
+                          // A toggle, not a Checkbox: the board's own
+                          // checkbox columns are the Checkboxes on a row.
+                          child: IconButton(
+                            key: ValueKey('task-pick-${t['id']}'),
+                            tooltip: 'Select',
+                            padding: EdgeInsets.zero,
+                            iconSize: 18,
+                            isSelected: _picked.contains(t['id']),
+                            icon: const Icon(Icons.check_box_outline_blank),
+                            selectedIcon: const Icon(Icons.check_box),
+                            onPressed: () => setState(
+                              () => _picked.remove(t['id'])
+                                  ? null
+                                  : _picked.add(t['id'] as String),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (!sub) SizedBox(width: 32, child: _rowMenu(t)),
                       if (!sub) _subtaskToggle(t),
                       Flexible(
                         child: Text(
@@ -1570,6 +1826,17 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
                           ),
                         ),
                       ),
+                      if (t['rolled_up_from'] case final Map from)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Text(
+                            '${from['board_name']}',
+                            key: ValueKey('task-from-${t['id']}'),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
                       if (!sub) _subtaskCountChip(context, t),
                     ],
                   ),
@@ -1691,6 +1958,54 @@ class _TaskBoardScreenState extends State<TaskBoardScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _dragHandle(BuildContext context, _Json t) {
+    final theme = Theme.of(context);
+    return Draggable<String>(
+      key: ValueKey('task-drag-${t['id']}'),
+      data: t['id'] as String,
+      feedback: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(8),
+        color: theme.colorScheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text('${t['title']}'),
+        ),
+      ),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.grab,
+        child: Icon(
+          Icons.drag_indicator,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  /// A row (or a group's header) a dragged task can be dropped on: it takes
+  /// that row's place in the group, or the end of the group.
+  Widget _dropOn(String? groupId, int? position, Widget child) {
+    if (!_canEdit || groupId == null) return child;
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (d) => true,
+      onAcceptWithDetails: (d) => _moveTo(d.data, groupId, position),
+      builder: (context, hovering, _) => hovering.isEmpty
+          ? child
+          : DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: child,
+            ),
     );
   }
 

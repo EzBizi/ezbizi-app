@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\Task;
 use App\Models\TaskBoard;
 use App\Models\TaskColumnValue;
+use App\Models\TaskGroup;
 use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Models\Vehicle;
@@ -123,6 +124,94 @@ class TasksController extends Controller
         $this->writer->delete($task, $request->user());
 
         return response()->noContent();
+    }
+
+    /** PATCH tasks/{task}/move {group_id, position?}: reorder in a group, or move to another group or board. */
+    public function move(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('update', $task);
+        $input = $request->validate(['group_id' => ['required', 'uuid'], 'position' => ['sometimes', 'nullable', 'integer', 'min:0']]);
+        $group = $this->writableGroup($request->user(), $input['group_id']);
+        $task = $this->writer->move($task, $group, $input['position'] ?? null, $request->user());
+
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
+    }
+
+    /** POST tasks/{task}/copy {group_id?}: a copy in that group (any board you write), or a duplicate beside it. */
+    public function copy(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $input = $request->validate(['group_id' => ['sometimes', 'nullable', 'uuid']]);
+        $group = $this->writableGroup($request->user(), $input['group_id'] ?? $task->group_id);
+        $copy = $this->writer->copy($task, $group, $request->user());
+
+        return response()->json(['data' => self::present($copy->fresh(self::WITH)->loadCount(self::counts()))], 201);
+    }
+
+    /** POST tasks/{id}/restore: undo a delete. */
+    public function restore(Request $request, string $id): JsonResponse
+    {
+        $task = Task::onlyTrashed()->findOrFail($id);
+        $this->authorize('update', $task);
+        $this->writer->restore($task, $request->user());
+
+        return response()->json(['data' => self::present($task->fresh(self::WITH)->loadCount(self::counts()))]);
+    }
+
+    /**
+     * POST tasks/bulk {ids, op: move|copy|delete|status|assign, group_id?, status?, assignee_user_id?}.
+     * Each task is checked on its own; one refused does not stop the rest.
+     */
+    public function bulk(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:200'],
+            'ids.*' => ['uuid'],
+            'op' => ['required', Rule::in(['move', 'copy', 'delete', 'status', 'assign'])],
+            'group_id' => [Rule::requiredIf(in_array($request->input('op'), ['move', 'copy'], true)), 'nullable', 'uuid'],
+            'status' => [Rule::requiredIf($request->input('op') === 'status'), 'nullable', 'string', 'max:64'],
+            'assignee_user_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+        $user = $request->user();
+        $group = in_array($input['op'], ['move', 'copy'], true) ? $this->writableGroup($user, $input['group_id']) : null;
+        $done = [];
+        $refused = [];
+
+        foreach (array_values(array_unique($input['ids'])) as $id) {
+            $task = Task::query()->find($id);
+            $ability = $input['op'] === 'copy' ? 'view' : ($input['op'] === 'delete' ? 'delete' : 'update');
+            if ($task === null || ! $user->can($ability, $task)) {
+                $refused[] = ['id' => $id, 'reason' => 'You cannot change that task.'];
+
+                continue;
+            }
+            try {
+                match ($input['op']) {
+                    'move' => $this->writer->move($task, $group, null, $user),
+                    'copy' => $this->writer->copy($task, $group, $user),
+                    'delete' => $this->writer->delete($task, $user),
+                    'status' => $this->writer->update($task, ['status' => $input['status']], $user),
+                    'assign' => $this->writer->update($task, ['assignee_user_id' => $input['assignee_user_id'] ?? null], $user),
+                };
+                $done[] = $id;
+            } catch (ValidationException $e) {
+                $refused[] = ['id' => $id, 'reason' => collect($e->errors())->flatten()->first()];
+            }
+        }
+
+        return response()->json(['data' => ['done' => $done, 'refused' => $refused]]);
+    }
+
+    /** A group on a board the person may write. */
+    private function writableGroup(User $user, string $groupId): TaskGroup
+    {
+        $group = TaskGroup::query()->with('board')->find($groupId);
+        if ($group === null || $group->board === null || ! $user->can('view', $group->board)) {
+            throw ValidationException::withMessages(['group_id' => 'There is no such group you can see.']);
+        }
+        $this->authorize('update', $group->board);
+
+        return $group;
     }
 
     /** GET tasks/{task}/links: the linked tasks this person can see. */

@@ -2,6 +2,7 @@
 
 namespace App\Support\Tasks;
 
+use App\Http\Controllers\Api\TasksController;
 use App\Models\Task;
 use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
@@ -74,6 +75,7 @@ class TaskWriter
                 'board_id' => $board->id,
                 'parent_task_id' => $parent?->id,
                 'group_id' => $groupId,
+                'position' => (int) Task::query()->where('group_id', $groupId)->max('position') + 1,
                 // A subtask is filed exactly where its parent is.
                 'company_id' => $parent ? $parent->company_id : TaskBoards::companyIdOf($board),
                 'franchise_id' => $parent ? $parent->franchise_id : $board->franchise_id,
@@ -208,6 +210,87 @@ class TaskWriter
                 $this->update($other, ['status_id' => $target->id], $actor);
             }
         }
+    }
+
+    /**
+     * Move a top-level task (and its subtasks) to a group, on this board or
+     * another, at a 0-based position among that group's top-level tasks; the
+     * group is renumbered. Across boards the task is refiled to the new place
+     * and takes the new board's status with the same key (else Not started).
+     * The caller has checked write on both boards.
+     */
+    public function move(Task $task, TaskGroup $group, ?int $position, ?User $actor): Task
+    {
+        return DB::transaction(function () use ($task, $group, $position, $actor) {
+            if ($task->parent_task_id !== null) {
+                throw ValidationException::withMessages(['task' => 'A subtask moves with its parent.']);
+            }
+            $board = $group->board;
+            $fields = ['group_id' => $group->id];
+            if ($board->id !== $task->board_id) {
+                $statuses = $board->statuses()->get();
+                $status = $statuses->firstWhere('key', $task->status) ?? $statuses->firstWhere('key', Task::STATUS_NOT_STARTED) ?? $statuses->first();
+                $fields += [
+                    'board_id' => $board->id,
+                    'company_id' => TaskBoards::companyIdOf($board),
+                    'franchise_id' => $board->franchise_id,
+                    'status_id' => $status?->id,
+                    'status' => $status?->statusKey() ?? $task->status,
+                ];
+            }
+
+            $ids = Task::query()->where('group_id', $group->id)->whereNull('parent_task_id')
+                ->whereKeyNot($task->id)->orderBy('position')->orderBy('created_at')->pluck('id')->all();
+            $at = $position === null ? count($ids) : max(0, min($position, count($ids)));
+            array_splice($ids, $at, 0, [$task->id]);
+
+            $task->fill($fields);
+            $this->audit->logChange('task.moved', $task, $actor);
+            $task->save();
+            Task::query()->withTrashed()->where('parent_task_id', $task->id)
+                ->update(array_intersect_key($fields, array_flip(['group_id', 'board_id', 'company_id', 'franchise_id'])));
+            foreach ($ids as $i => $id) {
+                Task::query()->whereKey($id)->update(['position' => $i]);
+            }
+
+            return $task->refresh();
+        });
+    }
+
+    /** A new task like this one, on $group's board: title, dates, About, owners; its columns' values when the board is the same. */
+    public function copy(Task $task, TaskGroup $group, ?User $actor): Task
+    {
+        $sameBoard = $group->board_id === $task->board_id;
+        $input = [
+            'title' => $task->title,
+            'group_id' => $group->id,
+            'due_on' => $task->due_on?->toDateString(),
+            'about_type' => $task->about_type,
+            'about_id' => $task->about_id,
+            'priority' => $task->priority,
+            'estimate_minutes' => $task->estimate_minutes,
+        ];
+        if ($sameBoard) {
+            $input['status_id'] = $task->status_id;
+            $input['values'] = $task->values()->with('column')->get()->mapWithKeys(fn (TaskColumnValue $v) => [$v->column_id => TasksController::valueOf($v)])->filter(fn ($v) => $v !== null)->all();
+            $input['assignee_user_ids'] = $this->ownerIds($task);
+        }
+
+        return $this->create($group->board, $input, $actor);
+    }
+
+    /** Undo a delete: the task and the subtasks that went with it. */
+    public function restore(Task $task, ?User $actor): Task
+    {
+        return DB::transaction(function () use ($task, $actor) {
+            $at = $task->deleted_at;
+            Task::onlyTrashed()->where('parent_task_id', $task->id)->where('deleted_at', $at)->get()
+                ->each(fn (Task $c) => $c->restore());
+            $task->restore();
+            $this->audit->log('task.restored', $task, actor: $actor);
+
+            return $task;
+        });
     }
 
     /** Deleting a parent takes its subtasks with it (soft, like the parent). */

@@ -87,6 +87,7 @@ class TaskBoardsController extends Controller
         $tasks = $taskBoard->tasks()
             ->with(TasksController::WITH)
             ->withCount(TasksController::counts())
+            ->orderBy('position')
             ->orderBy('created_at')
             ->get();
 
@@ -95,8 +96,9 @@ class TaskBoardsController extends Controller
         $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
         $rolled = $sources->isEmpty() ? collect() : Task::query()
             ->whereIn('board_id', $sources->keys())
-            ->with(TasksController::WITH)
+            ->with([...TasksController::WITH, 'group:id,name'])
             ->withCount(TasksController::counts())
+            ->orderBy('position')
             ->orderBy('created_at')
             ->get();
 
@@ -126,6 +128,8 @@ class TaskBoardsController extends Controller
                 ->concat($rolled->map(fn (Task $t) => TasksController::present($t) + ['rolled_up_from' => [
                     'board_id' => $t->board_id,
                     'board_name' => $sources[$t->board_id]->name,
+                    // The client files it under this board's group of the same name.
+                    'group_name' => $t->group?->name,
                 ]]))->all(),
         ]]);
     }

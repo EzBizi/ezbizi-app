@@ -924,7 +924,11 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
         Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
         Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
+        Route::post('tasks/bulk', [\App\Http\Controllers\Api\TasksController::class, 'bulk']);
         Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
+        Route::patch('tasks/{task}/move', [\App\Http\Controllers\Api\TasksController::class, 'move']);
+        Route::post('tasks/{task}/copy', [\App\Http\Controllers\Api\TasksController::class, 'copy']);
+        Route::post('tasks/{id}/restore', [\App\Http\Controllers\Api\TasksController::class, 'restore']);
         Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
         Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
         Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);

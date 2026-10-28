@@ -44,7 +44,7 @@ class TaskRollUpAndLinksTest extends TestCase
 
         $rows = collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$company->id}")->assertOk()->json('data.tasks'));
         $row = $rows->firstWhere('id', $task->id);
-        $this->assertSame(['board_id' => $branch->id, 'board_name' => $branch->name], $row['rolled_up_from']);
+        $this->assertSame(['board_id' => $branch->id, 'board_name' => $branch->name, 'group_name' => 'Open Tasks'], $row['rolled_up_from']);
 
         // The branch board itself does not carry it as rolled up.
         $own = collect($this->signedInAs($tenant['admin'])->getJson("/api/v1/task-boards/{$branch->id}")->json('data.tasks'))->firstWhere('id', $task->id);
