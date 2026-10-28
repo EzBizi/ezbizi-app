@@ -488,6 +488,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final noDelete = _noDelete;
     final noCreate = _noCreate;
     final disabledReason = automation['disabled_reason'] as String?;
+    final coreReason = automation['core_reason'] as String?;
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
     final description = automation['description'] as String?;
@@ -499,6 +500,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       // The whole card opens the rule (UI queue 73); it used to do nothing,
       // so everything hid in the ⋮ menu.
       clipBehavior: Clip.antiAlias,
+      // A rule a tab depends on wears its own border (Jose, 2026-10-28).
+      shape: coreReason == null
+          ? null
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.tertiary, width: 2),
+            ),
       child: InkWell(
         key: ValueKey('automation-${automation['id']}'),
         onTap: () => _open(automation),
@@ -536,6 +544,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         // EzBizi itself switched off is tagged.
                         if (disabledReason != null)
                           const Tag('Auto-disabled', warn: true),
+                        if (coreReason != null) const Tag('Core'),
                       ],
                     ),
                   ),
@@ -672,6 +681,19 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                 ErrorNote(
                   '${formatStamp(automation['disabled_at'], 'At an unknown time', formats: _formats)}'
                   ' — $disabledReason',
+                ),
+              ],
+              if (coreReason != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  automation['is_active'] == true
+                      ? 'Core rule. Switched off: $coreReason'
+                      : 'Core rule is off: $coreReason',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: automation['is_active'] == true
+                        ? theme.colorScheme.tertiary
+                        : theme.colorScheme.error,
+                  ),
                 ),
               ],
             ],
@@ -959,6 +981,32 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   // ── row actions ──────────────────────────────────────────────────
 
   Future<void> _setActive(Map<String, dynamic> automation, bool on) async {
+    // Switching off a rule a tab depends on says what stops, first.
+    final core = automation['core_reason'] as String?;
+    if (!on && core != null) {
+      final go = await showSidePanel<bool>(
+        context,
+        builder: (context) => SidePanel(
+          title: 'Switch off a core rule?',
+          width: 480,
+          actions: [
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Switch it off'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep it on'),
+            ),
+          ],
+          child: Text('While this rule is off: $core'),
+        ),
+      );
+      if (go != true || !mounted) return;
+    }
     final response = await widget.api.patch(
       '/automations/${automation['id']}',
       {'is_active': on},
