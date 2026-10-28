@@ -2,19 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\SchedulingSeedCompanyAvailability;
 use App\Models\Franchise;
 use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
-use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaScheduledSlot;
+use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
 use App\Models\ServiceAreaZipRelease;
+use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
-use App\Support\Scheduling\Openings;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -170,10 +171,21 @@ class SchedulingAreasController extends Controller
             ]);
         }
 
-        $area = ServiceArea::create([
-            'franchise_id' => $franchise->id,
-            'name' => $data['name'],
-        ]);
+        // A branch seeded with one catch-all (scheduling:seed-company-availability)
+        // gets its first real area BY NAMING the catch-all: its capacity and
+        // jobs stay, and no fake "All areas" row sits beside the real one
+        // (Jose, 2026-10-28, A1 Garage Doors).
+        $areas = ServiceArea::where('franchise_id', $franchise->id)->get();
+        $catchAll = $areas->count() === 1 && $areas[0]->covers_all_zips && $areas[0]->name === SchedulingSeedCompanyAvailability::NAME && ! $areas[0]->zips()->exists() ? $areas[0] : null;
+        if ($catchAll !== null) {
+            $catchAll->update(['name' => $data['name']]);
+            $area = $catchAll;
+        } else {
+            $area = ServiceArea::create([
+                'franchise_id' => $franchise->id,
+                'name' => $data['name'],
+            ]);
+        }
 
         return response()->json(['data' => $this->detail($area->fresh(['slots', 'zips']))], 201);
     }
