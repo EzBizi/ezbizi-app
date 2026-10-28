@@ -18,16 +18,19 @@ use App\Models\WorkizJob;
 use App\Services\Leads\CallTranscripts;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
+use App\Support\Access\Refusal;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\AddressCheck;
+use App\Support\Leads\CallTypeCorrections;
+use App\Support\Leads\EzLeadCalls;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
 use App\Support\Leads\LeadRecordings;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\RingCentralLeadCalls;
-use App\Support\Access\Refusal;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Scheduling\NearbySuggestion;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -37,12 +40,15 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Web\ChatPeople;
 use App\Support\Workiz\WorkizJobWriter;
 use App\Support\Workiz\WorkizV2;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -482,7 +488,7 @@ class LeadsController extends Controller
         // shown as initials on the bubble, as A1 Tools does (Jose,
         // 2026-09-28). Replies sent elsewhere (A1 Tools, Google) have no name.
         $senders = AuditEvent::query()
-            ->where('action', 'lead.replied')
+            ->whereIn('action', ['lead.replied', 'lead.texted'])
             ->where('target_id', $lead->getKey())
             ->get(['changes', 'actor_label'])
             ->mapWithKeys(fn (AuditEvent $e) => [
@@ -767,7 +773,7 @@ class LeadsController extends Controller
     /** "Thursday, October 16, between 8:00 AM and 11:00 AM" */
     public static function bookingWhen(WebBooking $booking): string
     {
-        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+        $at = fn (string $t) => CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
 
         return $booking->date->format('l, F j').', between '.$at((string) $booking->start_time).' and '.$at((string) $booking->end_time);
     }
@@ -775,7 +781,7 @@ class LeadsController extends Controller
     /** "8:00 AM - 11:00 AM" */
     public static function bookingWindow(WebBooking $booking): string
     {
-        $at = fn (string $t) => \Carbon\CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
+        $at = fn (string $t) => CarbonImmutable::parse($booking->date->toDateString().' '.$t)->format('g:i A');
 
         return $at((string) $booking->start_time).' - '.$at((string) $booking->end_time);
     }
@@ -822,8 +828,8 @@ class LeadsController extends Controller
         $tz = (string) app(SettingsResolver::class)->get('timezone', $booking->lead?->organization);
         // Scheduling's own scoring (2799bf9a): the chosen window, and a
         // strictly better one only when there is one.
-        $fit = app(\App\Support\Scheduling\NearbySuggestion::class)->fit($area, $zip, $booking->date->toDateString(),
-            substr((string) $booking->start_time, 0, 5), \App\Support\Scheduling\Openings::tomorrow($tz));
+        $fit = app(NearbySuggestion::class)->fit($area, $zip, $booking->date->toDateString(),
+            substr((string) $booking->start_time, 0, 5), Openings::tomorrow($tz));
         $better = $fit['better'] ?? null;
         $shown = $better ?? $fit['chosen'];
         $miles = $shown['nearest_miles'] ?? null;
@@ -1075,10 +1081,16 @@ class LeadsController extends Controller
     {
         // Our RingCentral call out: the text holds who made it ("We called" on
         // the card with the staff name), and "No answer" when nobody picked up.
-        if ((str_starts_with((string) $c->remote_id, 'rc_') || str_starts_with((string) $c->remote_id, \App\Support\Leads\EzLeadCalls::CALL))
+        if ((str_starts_with((string) $c->remote_id, 'rc_') || str_starts_with((string) $c->remote_id, EzLeadCalls::CALL))
             && $c->channel === LeadConversation::CHANNEL_PHONE_CALL && $c->participant === LeadConversation::FROM_ADVERTISER) {
             $sentBy ??= $c->text;
             $c = (clone $c)->forceFill(['text' => $c->duration_ms === null ? 'No answer' : null]);
+        }
+        // Only EzBizi writes these two (LeadTexts, EzTextReplies), so one with
+        // no named sender is still ours, never "sent outside EzBizi".
+        if ($c->participant === LeadConversation::FROM_ADVERTISER && ($sentBy ?? '') === ''
+            && (str_starts_with((string) $c->remote_id, 'sms_') || str_starts_with((string) $c->remote_id, 'ez_sent_'))) {
+            $sentBy = 'EzBizi';
         }
 
         return [
@@ -1194,12 +1206,12 @@ class LeadsController extends Controller
      * suggests the reason; a person presses the button, because it is a claim
      * made to Google in the business's name.
      */
-    public function requestCredit(Request $request, Lead $lead, \App\Services\Leads\LocalServicesLeads $google): JsonResponse
+    public function requestCredit(Request $request, Lead $lead, LocalServicesLeads $google): JsonResponse
     {
         $this->authorize('update', $lead);
 
         $input = $request->validate([
-            'reason' => ['required', 'string', \Illuminate\Validation\Rule::in(['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH', 'GEO_MISMATCH', 'DUPLICATE', 'NOT_READY_TO_BOOK', 'OTHER_DISSATISFIED_REASON'])],
+            'reason' => ['required', 'string', Rule::in(['SPAM', 'SOLICITATION', 'JOB_TYPE_MISMATCH', 'GEO_MISMATCH', 'DUPLICATE', 'NOT_READY_TO_BOOK', 'OTHER_DISSATISFIED_REASON'])],
             'comment' => ['nullable', 'string', 'max:1000', 'required_if:reason,OTHER_DISSATISFIED_REASON'],
         ]);
 
@@ -1298,7 +1310,7 @@ class LeadsController extends Controller
      *
      * @return array{by: string, text: string, at: ?string}|null
      */
-    private function replyAfter(Lead $lead, \Carbon\CarbonInterface $since, User $me): ?array
+    private function replyAfter(Lead $lead, CarbonInterface $since, User $me): ?array
     {
         $rows = LeadConversation::query()->where('lead_id', $lead->getKey())
             ->where('participant', LeadConversation::FROM_ADVERTISER)->where('is_automatic', false)
@@ -1476,7 +1488,7 @@ class LeadsController extends Controller
             Refusal::permission('re-classify leads with AI')->message());
 
         $id = (string) $lead->getKey();
-        dispatch(fn () => \Illuminate\Support\Facades\Artisan::call('ezbizi:leads-read', ['--lead' => [$id]]))->afterResponse();
+        dispatch(fn () => Artisan::call('ezbizi:leads-read', ['--lead' => [$id]]))->afterResponse();
 
         return response()->json(['data' => ['id' => $id, 'reclassifying' => true]], 202);
     }
@@ -1497,7 +1509,7 @@ class LeadsController extends Controller
         $row = $lead->conversations()->whereKey($conversation)->first();
         abort_if($row === null || ! str_starts_with((string) $row->remote_id, 'rc_'), Response::HTTP_NOT_FOUND);
 
-        $saved = app(\App\Support\Leads\CallTypeCorrections::class)
+        $saved = app(CallTypeCorrections::class)
             ->override(substr((string) $row->remote_id, 3), $input['type'], $request->user());
 
         return response()->json(['data' => ['corrected_type' => $saved->corrected_type, 'reason' => $saved->reason]]);
@@ -1910,7 +1922,7 @@ class LeadsController extends Controller
      * Call (Jose, 2026-10-13: "for LS CALLS automatically mark them as read
      * and remove them from the lead warnings, as they are non actionable").
      */
-    private const UNREAD_SQL = "(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) "
+    private const UNREAD_SQL = '(leads.read_at IS NULL OR COALESCE(leads.last_contact_at, leads.received_at) > leads.read_at) '
         ."AND NOT (leads.source = 'local_services' AND leads.lead_type = 'PHONE_CALL') AND leads.source NOT IN ('ringcentral', 'ez_calls')";
 
     /** @return list<string> the fields whose value is still the one AI wrote */

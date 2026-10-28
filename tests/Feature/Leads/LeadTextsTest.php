@@ -44,6 +44,22 @@ class LeadTextsTest extends TestCase
             $thread->map(fn ($c) => [$c->channel, $c->participant, $c->text, (bool) $c->is_automatic])->all());
     }
 
+    /** Jose, 2026-10-28: a Re-Scheduling offer showed as "Sent outside EzBizi" and its EZ Texts thread could not be replied to. */
+    public function test_a_text_that_opens_an_ez_texts_lead_is_ours_and_can_be_answered(): void
+    {
+        $t = $this->provisionTenant();
+        $this->line($t, true);
+        $viewer = $this->userWithRole($t, 'Lead manager', ['leads.view', 'leads.manage', 'leads.ez_texts.view']);
+        $lead = $this->lead($t, '+15553334444', Lead::SOURCE_EZ_TEXTS);
+
+        $this->inTenant($t['org'], fn () => app(LeadTexts::class)->send($lead, 'An earlier opening is free.', $viewer));
+
+        $this->signedInAs($viewer)->getJson("/api/v1/leads/{$lead->id}")->assertOk()
+            ->assertJsonPath('data.conversations.0.sent_by', $viewer->name)
+            ->assertJsonPath('data.can_reply', true)
+            ->assertJsonPath('data.cannot_reply_because', null);
+    }
+
     public function test_no_cleared_line_is_said_plainly(): void
     {
         $t = $this->provisionTenant();
@@ -55,10 +71,10 @@ class LeadTextsTest extends TestCase
         $this->inTenant($t['org'], fn () => app(LeadTexts::class)->send($lead, 'Hello'));
     }
 
-    private function lead(array $t, string $phone): Lead
+    private function lead(array $t, string $phone, string $source = Lead::SOURCE_LOCAL_SERVICES): Lead
     {
         return $this->inTenant($t['org'], fn () => Lead::create([
-            'organization_id' => $t['org']->id, 'source' => Lead::SOURCE_LOCAL_SERVICES, 'lead_type' => 'PHONE_CALL',
+            'organization_id' => $t['org']->id, 'source' => $source, 'lead_type' => 'PHONE_CALL',
             'remote_id' => uniqid(), 'phone' => $phone, 'phone_digits' => preg_replace('/\D/', '', $phone),
             'status' => 'new', 'received_at' => now(),
         ]));

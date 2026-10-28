@@ -65,19 +65,26 @@ final class EzTextReplies implements LeadReplyChannel
         return LeadConversation::query()->where('remote_id', 'ez_sent_'.$sent->id)->firstOrFail();
     }
 
-    /** The line of the customer's latest EZ call or text on this lead. */
+    /**
+     * The line of the latest EZ call or text on this lead, or of a text
+     * LeadTexts sent or filed on it (`sms_<sid>`): a Re-Scheduling offer opens
+     * an EZ Texts lead with nothing else on it (Jose, 2026-10-28).
+     */
     private function line(Lead $lead): ?PhoneNumber
     {
         $last = LeadConversation::query()->where('lead_id', $lead->getKey())
-            ->where(fn ($q) => $q->where('remote_id', 'like', EzLeadCalls::TEXT.'%')->orWhere('remote_id', 'like', EzLeadCalls::CALL.'%'))
+            ->where(fn ($q) => $q->where('remote_id', 'like', EzLeadCalls::TEXT.'%')->orWhere('remote_id', 'like', EzLeadCalls::CALL.'%')
+                ->orWhere('remote_id', 'like', 'sms\_%'))
             ->orderByDesc('occurred_at')->value('remote_id');
         if ($last === null) {
             return null;
         }
 
-        $numberId = str_starts_with($last, EzLeadCalls::TEXT)
-            ? PhoneMessage::query()->whereKey(substr($last, strlen(EzLeadCalls::TEXT)))->value('number_id')
-            : PhoneCall::query()->whereKey(substr($last, strlen(EzLeadCalls::CALL)))->value('number_id');
+        $numberId = match (true) {
+            str_starts_with($last, EzLeadCalls::TEXT) => PhoneMessage::query()->whereKey(substr($last, strlen(EzLeadCalls::TEXT)))->value('number_id'),
+            str_starts_with($last, EzLeadCalls::CALL) => PhoneCall::query()->whereKey(substr($last, strlen(EzLeadCalls::CALL)))->value('number_id'),
+            default => PhoneMessage::query()->where('twilio_sid', substr($last, 4))->value('number_id'),
+        };
 
         return $numberId === null ? null : PhoneNumber::query()->find($numberId);
     }
