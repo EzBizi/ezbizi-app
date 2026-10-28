@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0501',
+      date: '28 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'Email: inboxes really open fast now; the pages kept ready in the background are used.',
+        'Scheduling: "Used by" on time slots counts only the company or branch you are viewing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0500',
       date: '28 Oct 2026',
       items: [
