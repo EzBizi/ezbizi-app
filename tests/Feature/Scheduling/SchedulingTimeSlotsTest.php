@@ -99,6 +99,40 @@ class SchedulingTimeSlotsTest extends TestCase
      * alone, which is the half that proves the move is by window and not a
      * sweep of the table.
      */
+    /** Per company (Jose, 2026-10-28): A1 Garage Doors' 5-8 PM moves nothing of A-1's. */
+    public function test_a_company_changes_its_own_copy_and_others_keep_theirs(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $owner = $this->orgEditor($tenant);
+        $a1 = $this->area($tenant, 'Hartford');
+        app(TenantContext::class)->set($tenant['org']);
+        $morning = SchedulingTimeSlot::create(['start_time' => '08:00', 'end_time' => '11:00']);
+        $garage = Company::create(['name' => 'A1 Garage Doors']);
+        $branch = Franchise::create(['company_id' => $garage->id, 'name' => 'CT']);
+        $theirs = ServiceArea::create(['franchise_id' => $branch->id, 'name' => 'CT, MA']);
+        foreach ([$a1, $theirs] as $area) {
+            ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 2]);
+        }
+        $asGarage = fn () => $this->signedInAs($owner)->withHeader('X-EzBizi-View', 'company:'.$garage->id);
+
+        $asGarage()->getJson('/api/v1/scheduling/time-slots')->assertJsonPath('inherited_from', 'the organization')->assertJsonPath('data.0.areas', 1);
+        $asGarage()->patchJson("/api/v1/scheduling/time-slots/{$morning->id}", ['start_time' => '17:00', 'end_time' => '20:00'])->assertOk()
+            ->assertJsonPath('data.0.start_time', '17:00');
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame('17:00', substr(ServiceAreaSlot::where('service_area_id', $theirs->id)->value('start_time'), 0, 5));
+        $this->assertSame('08:00', substr(ServiceAreaSlot::where('service_area_id', $a1->id)->value('start_time'), 0, 5), "A-1's capacity stays");
+        $this->assertSame('08:00', substr($morning->fresh()->start_time, 0, 5), "the organization's window stays");
+        $asGarage()->getJson('/api/v1/scheduling/time-slots')->assertJsonPath('inherited_from', null);
+        $this->withoutHeader('X-EzBizi-View');
+
+        // An organization change now moves only the companies still inheriting it.
+        $this->signedInAs($owner)->patchJson("/api/v1/scheduling/time-slots/{$morning->id}", ['start_time' => '09:00', 'end_time' => '12:00'])->assertOk();
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame('09:00', substr(ServiceAreaSlot::where('service_area_id', $a1->id)->value('start_time'), 0, 5));
+        $this->assertSame('17:00', substr(ServiceAreaSlot::where('service_area_id', $theirs->id)->value('start_time'), 0, 5));
+    }
+
     public function test_changing_a_window_moves_every_capacity_row_on_it(): void
     {
         $tenant = $this->provisionTenant('Alpha');

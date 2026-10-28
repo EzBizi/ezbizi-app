@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\SchedulingTimeSlot;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
 use App\Support\Scoping\ViewScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,9 +34,16 @@ class SchedulingTimeSlotsController extends Controller
     /** GET /api/v1/scheduling/time-slots */
     public function index(Request $request): JsonResponse
     {
+        $company = $this->viewCompany($request);
+        $owner = SchedulingTimeSlot::ownerFor($company);
+
         return response()->json([
-            'data' => $this->ordered(),
+            'data' => $this->ordered($owner),
             'can_edit' => $this->mayEdit($request),
+            // Per company since 2026-10-28: whose windows these are, when not
+            // the company in view's own.
+            'inherited_from' => $company === null || $owner === $company ? null
+                : ($owner === null ? 'the organization' : Company::query()->whereKey($owner)->value('name')),
         ]);
     }
 
@@ -42,11 +52,12 @@ class SchedulingTimeSlotsController extends Controller
     {
         $this->assertMayEdit($request);
         [$start, $end] = $this->window($request);
-        $this->assertNoOverlap($start, $end);
+        $owner = $this->ownSet($request);
+        $this->assertNoOverlap($owner, $start, $end);
 
-        SchedulingTimeSlot::create(['start_time' => $start, 'end_time' => $end]);
+        SchedulingTimeSlot::create(['company_id' => $owner, 'start_time' => $start, 'end_time' => $end]);
 
-        return response()->json(['data' => $this->ordered()], 201);
+        return response()->json(['data' => $this->ordered($owner)], 201);
     }
 
     /**
@@ -61,12 +72,13 @@ class SchedulingTimeSlotsController extends Controller
     public function update(Request $request, string $slot): JsonResponse
     {
         $this->assertMayEdit($request);
-        $row = SchedulingTimeSlot::query()->findOrFail($slot);
         [$start, $end] = $this->window($request);
-        $this->assertNoOverlap($start, $end, $row->id);
+        [$owner, $row] = $this->ownRow($request, $slot);
+        $this->assertNoOverlap($owner, $start, $end, $row->id);
 
-        DB::transaction(function () use ($row, $start, $end) {
+        DB::transaction(function () use ($row, $start, $end, $owner) {
             ServiceAreaSlot::query()
+                ->whereIn('service_area_id', $this->areasOf($owner))
                 ->where('start_time', $this->hm($row->start_time))
                 ->where('end_time', $this->hm($row->end_time))
                 ->update(['start_time' => $start, 'end_time' => $end]);
@@ -74,7 +86,7 @@ class SchedulingTimeSlotsController extends Controller
             $row->update(['start_time' => $start, 'end_time' => $end]);
         });
 
-        return response()->json(['data' => $this->ordered()]);
+        return response()->json(['data' => $this->ordered($owner)]);
     }
 
     /**
@@ -101,8 +113,10 @@ class SchedulingTimeSlotsController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($row) {
+        [$owner, $row] = $this->ownRow($request, $slot);
+        DB::transaction(function () use ($row, $owner) {
             ServiceAreaSlot::query()
+                ->whereIn('service_area_id', $this->areasOf($owner))
                 ->where('start_time', $this->hm($row->start_time))
                 ->where('end_time', $this->hm($row->end_time))
                 ->delete();
@@ -110,11 +124,58 @@ class SchedulingTimeSlotsController extends Controller
             $row->delete();
         });
 
-        return response()->json(['data' => $this->ordered()]);
+        return response()->json(['data' => $this->ordered($owner)]);
+    }
+
+    /** The company in view (a branch's company); null at organization level. */
+    private function viewCompany(Request $request): ?string
+    {
+        $view = ViewScope::forUser($request->user());
+
+        return match ($view->type) {
+            ViewScope::COMPANY => $view->id,
+            ViewScope::FRANCHISE => Franchise::query()->whereKey($view->id)->value('company_id'),
+            default => null,
+        };
+    }
+
+    /**
+     * The set a change in this view writes: the company's own. A company
+     * still on inherited windows gets a copy first, so its change never
+     * moves another company's (copy on write).
+     */
+    private function ownSet(Request $request): ?string
+    {
+        $company = $this->viewCompany($request);
+        $owner = SchedulingTimeSlot::ownerFor($company);
+        if ($company !== null && $owner !== $company) {
+            foreach (SchedulingTimeSlot::query()->where('company_id', $owner)->get() as $w) {
+                SchedulingTimeSlot::create(['company_id' => $company, 'start_time' => $this->hm($w->start_time), 'end_time' => $this->hm($w->end_time)]);
+            }
+        }
+
+        return $company;
+    }
+
+    /** @return array{0: ?string, 1: SchedulingTimeSlot} the view's own row with the hours of $slot */
+    private function ownRow(Request $request, string $slot): array
+    {
+        $picked = SchedulingTimeSlot::query()->findOrFail($slot);
+        $owner = $this->ownSet($request);
+
+        return [$owner, SchedulingTimeSlot::query()->where('company_id', $owner)
+            ->where('start_time', $picked->start_time)->where('end_time', $picked->end_time)->firstOrFail()];
+    }
+
+    /** Areas booking into $owner's windows: every company inheriting them. */
+    private function areasOf(?string $owner): Builder
+    {
+        return ServiceArea::query()->whereIn('franchise_id',
+            Franchise::query()->whereIn('company_id', SchedulingTimeSlot::inheritors($owner))->select('id'))->select('id');
     }
 
     /** @return array<int, array{id: string, start_time: string, end_time: string}> */
-    private function ordered(): array
+    private function ordered(?string $owner): array
     {
         // How many areas have capacity on each window, so a change or a
         // removal can say what it will touch before anybody confirms it.
@@ -128,6 +189,7 @@ class SchedulingTimeSlotsController extends Controller
             ->mapWithKeys(fn ($r) => [$this->hm($r->start_time).'-'.$this->hm($r->end_time) => (int) $r->areas]);
 
         return SchedulingTimeSlot::query()
+            ->where('company_id', $owner)
             ->orderBy('start_time')
             ->get()
             ->map(fn (SchedulingTimeSlot $s) => [
@@ -162,9 +224,10 @@ class SchedulingTimeSlotsController extends Controller
      * decide which window a 14:30 job belongs to; refusing them here means
      * that question never has to be answered.
      */
-    private function assertNoOverlap(string $start, string $end, ?string $except = null): void
+    private function assertNoOverlap(?string $owner, string $start, string $end, ?string $except = null): void
     {
         $clash = SchedulingTimeSlot::query()
+            ->where('company_id', $owner)
             ->when($except, fn ($q) => $q->where('id', '!=', $except))
             ->where('start_time', '<', $end)
             ->where('end_time', '>', $start)
@@ -182,6 +245,13 @@ class SchedulingTimeSlotsController extends Controller
     {
         $user = $request->user();
 
+        $company = $this->viewCompany($request);
+        if ($company !== null) {
+            $row = Company::query()->find($company);
+
+            return $row !== null && $user->canActOnCompany($row);
+        }
+
         return $user->organization !== null && $user->canActOnOrganization($user->organization);
     }
 
@@ -190,8 +260,8 @@ class SchedulingTimeSlotsController extends Controller
         abort_unless(
             $this->mayEdit($request),
             403,
-            'Time slots apply to every branch, so only someone who works at the whole-organization '
-                .'level can change them. You can still set how many jobs your own areas take.',
+            'Time slots apply to every branch of a company, so only someone who works at the company '
+                .'or organization level can change them. You can still set how many jobs your own areas take.',
         );
     }
 

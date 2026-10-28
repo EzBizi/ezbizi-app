@@ -52,11 +52,18 @@ class SchedulingBoardController extends Controller
 
         $franchises = Franchise::whereIn('id', $franchiseIds)->pluck('name', 'id');
 
-        $windows = SchedulingTimeSlot::query()->orderBy('start_time')->get()
+        // The windows of the companies on the board, each its own or the one
+        // it inherits (per company since 2026-10-28).
+        $owners = Franchise::whereIn('id', $franchiseIds)->pluck('company_id')->unique()
+            ->map(fn ($c) => SchedulingTimeSlot::ownerFor($c))->unique()->values();
+        $windows = SchedulingTimeSlot::query()
+            ->where(fn ($q) => $q->whereIn('company_id', $owners->filter()->all())
+                ->when($owners->contains(null), fn ($q) => $q->orWhereNull('company_id')))
+            ->orderBy('start_time')->get()
             ->map(fn (SchedulingTimeSlot $w) => [
                 'start_time' => substr((string) $w->start_time, 0, 5),
                 'end_time' => substr((string) $w->end_time, 0, 5),
-            ])->values()->all();
+            ])->unique(fn ($w) => $w['start_time'].$w['end_time'])->values()->all();
 
         // EzBizi's own jobs and roster (Jose, 2026-10-27: EzBizi is the
         // master). Workiz is a mirror; nothing here reads it.

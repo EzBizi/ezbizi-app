@@ -249,13 +249,17 @@ class SchedulingAreasController extends Controller
         $to = null;
         if ($request->filled('move_zips_to')) {
             $to = $this->reachable($request)->whereKeyNot($row->id)->findOrFail((string) $request->input('move_zips_to'));
+            // ZIPs are a company's own; they move only within it (2026-10-28).
+            abort_unless(Franchise::query()->whereKey($to->franchise_id)->value('company_id')
+                === Franchise::query()->whereKey($row->franchise_id)->value('company_id'), 422, 'ZIPs can move only to an area of the same company.');
             $this->authorize('update', $to);
         }
 
         $result = DB::transaction(function () use ($row, $to) {
             $count = ServiceAreaZip::where('service_area_id', $row->id)->count();
             if ($to === null) {
-                ServiceAreaZipRelease::release(ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip'));
+                ServiceAreaZipRelease::release(ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip'),
+                    Franchise::query()->whereKey($row->franchise_id)->value('company_id'));
             } else {
                 ServiceAreaZip::where('service_area_id', $row->id)
                     ->update(['service_area_id' => $to->id, 'franchise_id' => $to->franchise_id]);
@@ -548,7 +552,9 @@ class SchedulingAreasController extends Controller
 
         $wanted = $this->readZips($data['zips']);
 
+        $company = Franchise::query()->whereKey($row->franchise_id)->value('company_id');
         $clash = ServiceAreaZip::query()
+            ->where('company_id', $company)
             ->whereIn('zip', $wanted->keys())
             ->where('service_area_id', '!=', $row->id)
             ->with('serviceArea')
@@ -561,10 +567,10 @@ class SchedulingAreasController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($row, $wanted) {
+        DB::transaction(function () use ($row, $wanted, $company) {
             $before = ServiceAreaZip::where('service_area_id', $row->id)->pluck('zip');
-            ServiceAreaZipRelease::release($before->diff($wanted->keys()));
-            ServiceAreaZipRelease::claim($wanted->keys());
+            ServiceAreaZipRelease::release($before->diff($wanted->keys()), $company);
+            ServiceAreaZipRelease::claim($wanted->keys(), $company);
             ServiceAreaZip::where('service_area_id', $row->id)->delete();
 
             foreach ($wanted as $zip => $city) {

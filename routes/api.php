@@ -1592,6 +1592,8 @@ Route::prefix('v1')
             Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::post('scheduling/overbooking/offers/preview', [SchedulingOverbookingController::class, 'previewOffers']);
             Route::post('scheduling/overbooking/offers/send', [SchedulingOverbookingController::class, 'sendOffers']);
+            Route::get('scheduling/reschedule-offers', [SchedulingOverbookingController::class, 'offerForLead']);
+            Route::post('scheduling/reschedule-offers/{offer}/move', [SchedulingOverbookingController::class, 'moveOffer']);
         });
 
         Route::middleware('permission:scheduling.schedule.view')->group(function () {

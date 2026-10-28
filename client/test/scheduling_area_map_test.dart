@@ -284,6 +284,27 @@ void main() {
     });
   });
 
+  testWidgets('a whole state is picked, sent with the drawing, and saved', (
+    tester,
+  ) async {
+    await pump(tester);
+    await openDowntown(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-edit')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('area-states-pick')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CT').last);
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('area-state-CT')), findsOneWidget);
+    final body =
+        jsonDecode(sent('POST', '/areas/a-down/polygons/preview').last.body)
+            as Map<String, dynamic>;
+    expect(body['states'], ['CT']);
+  });
+
   testWidgets('a middle-button drag pans the map while drawing', (
     tester,
   ) async {

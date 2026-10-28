@@ -147,6 +147,11 @@ class _LeadThreadState extends State<LeadThread> {
   /// A website booking's day and window, and where it stands (Jose, 2026-10-08).
   Map<String, dynamic>? _booking;
 
+  /// An earlier-opening offer this thread is about (Scheduling, 2026-10-28):
+  /// the customer said yes, so the job moves in one click.
+  Map<String, dynamic>? _offer;
+  bool _moving = false;
+
   /// Everybody else with this lead open right now (LeadPresence), refreshed
   /// with every re-read of the lead.
   List<String> _viewers = const [];
@@ -412,6 +417,9 @@ class _LeadThreadState extends State<LeadThread> {
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
       _booking = data['booking'] as Map<String, dynamic>?;
+      if (widget.lead['lead_type'] == 'Reschedule' && _offer == null) {
+        _loadOffer();
+      }
       _viewers = [for (final v in (data['viewers'] as List? ?? const [])) '$v'];
       _replyingOther = data['replying'] as String?;
       if (_replyingOther == null) _replyAnyway = false;
@@ -831,6 +839,7 @@ class _LeadThreadState extends State<LeadThread> {
                         _creditLine(theme, lead['credit'] as Map),
                       if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
                       if (_booking != null) _bookingBlock(theme),
+                      if (_offer != null) _offerBlock(theme),
                       if (!narrow || _showDetails) ...[
                         if (_details != null) _detailsBlock(theme, lead),
                         _noteBlock(theme, lead),
@@ -1774,6 +1783,67 @@ class _LeadThreadState extends State<LeadThread> {
         SnackBar(content: Text(response.message)),
       );
     }
+  }
+
+  Future<void> _loadOffer() async {
+    final response = await widget.api.get('/scheduling/reschedule-offers', {
+      'lead_id': '${widget.lead['id']}',
+    });
+    if (!mounted || !response.ok || response.data is! Map) return;
+    setState(() => _offer = Map<String, dynamic>.from(response.data as Map));
+  }
+
+  Future<void> _moveOffer() async {
+    setState(() => _moving = true);
+    final response = await widget.api.post(
+      '/scheduling/reschedule-offers/${_offer!['id']}/move',
+      const {},
+    );
+    if (!mounted) return;
+    setState(() => _moving = false);
+    if (response.ok) {
+      _offer = null;
+      await _loadOffer();
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
+    }
+  }
+
+  Widget _offerBlock(ThemeData theme) {
+    final o = _offer!;
+    String hm(Object? t) {
+      final parts = '$t'.split(':');
+      final h = int.tryParse(parts.first) ?? 0;
+      return '${h % 12 == 0 ? 12 : h % 12}:${parts.length > 1 ? parts[1] : '00'} ${h < 12 ? 'AM' : 'PM'}';
+    }
+
+    final window = o['start_time'] == null ? '' : ' · ${hm(o['start_time'])} - ${hm(o['end_time'])}';
+    final moved = o['moved_at'] != null;
+    return Padding(
+      key: const ValueKey('lead-reschedule-offer'),
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Icon(Icons.event_repeat_outlined, size: 18, color: theme.colorScheme.primary),
+          Text(
+            '${moved ? 'Moved to' : 'Offered'}: ${o['open_date']}$window',
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          if (!moved) Text('Booked for ${o['booked_for']}', style: theme.textTheme.bodySmall),
+          if (o['can_move'] == true)
+            FilledButton(
+              key: const ValueKey('reschedule-move'),
+              onPressed: _moving ? null : _moveOffer,
+              child: const Text('Move appointment'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _decideBooking(String decision) async {

@@ -150,6 +150,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// so a branch-level manager reads them and cannot move them.
   bool _canEditSlots = false;
 
+  /// Whose windows these are when not the company in view's own, e.g.
+  /// "the organization" (per company since 2026-10-28).
+  String? _slotsInheritedFrom;
+
   /// A failure that belongs to the time-slots card, and only to it.
   String? _slotError;
 
@@ -248,6 +252,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       _timeSlots = (response.body['data'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
       _canEditSlots = response.body['can_edit'] == true;
+      _slotsInheritedFrom = response.body['inherited_from'] as String?;
     });
   }
 
@@ -3222,8 +3227,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'The windows every service area books into. Each area sets how '
-            'many jobs a window takes on each day.',
+            _slotsInheritedFrom == null
+                ? 'The windows every service area books into. Each area sets '
+                      'how many jobs a window takes on each day.'
+                : 'Using $_slotsInheritedFrom’s windows. Changing one '
+                      'gives this company its own copy; the rest keep theirs.',
+            key: const ValueKey('time-slots-inherited'),
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
           const SizedBox(height: 12),
@@ -3316,8 +3325,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           if (!_canEditSlots && _timeSlots.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
-              'These apply to every branch, so they are changed at '
-              'organization level.',
+              'These apply to every branch of the company, so they are '
+              'changed at company or organization level.',
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),
           ],

@@ -63,7 +63,7 @@ class ServiceAreaZipTest extends TestCase
             $this->fail('A second area took a zip the first one already holds.');
         } catch (QueryException $e) {
             $this->assertStringContainsStringIgnoringCase(
-                'service_area_zips_organization_id_zip_unique',
+                'service_area_zips_company_id_zip_unique',
                 $e->getMessage(),
                 'Refused, but not by the uniqueness index this test is about.'
             );
@@ -108,7 +108,7 @@ class ServiceAreaZipTest extends TestCase
             $this->fail('A second branch took a zip another branch already holds.');
         } catch (QueryException $e) {
             $this->assertStringContainsStringIgnoringCase(
-                'service_area_zips_organization_id_zip_unique',
+                'service_area_zips_company_id_zip_unique',
                 $e->getMessage(),
             );
         }

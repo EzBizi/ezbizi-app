@@ -3,6 +3,8 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Http\Controllers\Api\SchedulingAreaMapController;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Tenancy\TenantContext;
@@ -85,6 +87,60 @@ class ServiceAreaMapTest extends TestCase
         $branch = $as->getJson("/api/v1/scheduling/areas-map?franchise_id={$t['franchise']->id}")->assertOk()->json('data');
         $this->assertSame(['Charlotte Hall', 'Waldorf'], array_column($branch, 'name'));
         $this->assertCount(2, $as->getJson('/api/v1/scheduling/areas-map')->assertOk()->json('data'));
+    }
+
+    /** Companies are separate businesses: another company's ZIP is no conflict (Jose, 2026-10-28). */
+    public function test_another_company_s_zip_neither_blocks_nor_conflicts(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $a1 = $this->area($t, 'Charlotte Hall');
+        ServiceAreaZip::create(['franchise_id' => $a1->franchise_id, 'service_area_id' => $a1->id, 'zip' => '20601']);
+        $garage = $this->inTenant($t['org'], fn () => Company::create(['name' => 'A1 Garage Doors']));
+        $branch = $this->inTenant($t['org'], fn () => Franchise::create(['company_id' => $garage->id, 'name' => 'Connecticut']));
+        $mine = $this->inTenant($t['org'], fn () => ServiceArea::create(['franchise_id' => $branch->id, 'name' => 'Mid-Atlantic']));
+        $as = $this->signedInAs($t['admin']);
+
+        $plan = $as->postJson("/api/v1/scheduling/areas/{$mine->id}/polygons/preview", ['polygons' => [self::SQUARE]])->assertOk()->json('data');
+        $this->assertSame(['20601', '20602', '20603'], $plan['add']);
+        $this->assertSame([], $plan['conflicts']);
+        $as->putJson("/api/v1/scheduling/areas/{$mine->id}/polygons", ['polygons' => [self::SQUARE]])->assertOk();
+        $as->putJson("/api/v1/scheduling/areas/{$a1->id}/zips", ['zips' => [['zip' => '20601'], ['zip' => '20603']]])->assertOk();
+
+        app(TenantContext::class)->set($t['org']);
+        $this->assertSame(2, ServiceAreaZip::query()->where('zip', '20601')->count(), 'each company holds its own');
+        $this->assertSame($mine->id, ServiceArea::forZip('20601', [$branch->id])?->id);
+        $this->assertSame($a1->id, ServiceArea::forZip('20601', [$t['franchise']->id])?->id);
+        // Within one company, still one area per ZIP.
+        $other = $this->area($t, 'Waldorf');
+        $as->putJson("/api/v1/scheduling/areas/{$other->id}/zips", ['zips' => [['zip' => '20601']]])->assertStatus(422);
+        $as->deleteJson("/api/v1/scheduling/areas/{$a1->id}?move_zips_to={$mine->id}")->assertStatus(422);
+    }
+
+    /** A whole state in one pick (Jose, 2026-10-28), kept and drawn like a shape. */
+    public function test_picking_states_adds_their_zips_and_unpicking_removes_them(): void
+    {
+        DB::table('zip_centroids')->insert([
+            ['zip' => '06010', 'latitude' => 41.68, 'longitude' => -72.94],
+            ['zip' => '06510', 'latitude' => 41.31, 'longitude' => -72.92],
+            ['zip' => '06901', 'latitude' => 41.05, 'longitude' => -73.54],
+            ['zip' => '01001', 'latitude' => 42.06, 'longitude' => -72.63],
+        ]);
+        $t = $this->provisionTenant('Alpha');
+        $a = $this->area($t, 'New England');
+        $as = $this->signedInAs($t['admin']);
+
+        $this->assertSame(['06010', '06510', '06901'], $as->postJson("/api/v1/scheduling/areas/{$a->id}/polygons/preview", ['polygons' => [], 'states' => ['CT']])->assertOk()->json('data.add'));
+        $as->postJson("/api/v1/scheduling/areas/{$a->id}/polygons/preview", ['polygons' => [], 'states' => ['XX']])->assertStatus(422);
+        $as->putJson("/api/v1/scheduling/areas/{$a->id}/polygons", ['polygons' => [], 'states' => ['CT', 'MA']])->assertOk()
+            ->assertJsonPath('data.added', ['01001', '06010', '06510', '06901']);
+
+        $map = $as->getJson("/api/v1/scheduling/areas/{$a->id}/map")->assertOk()->json('data.states');
+        $this->assertSame(['CT', 'MA'], array_column($map, 'state'));
+        $this->assertGreaterThanOrEqual(3, count($map[0]['outline']));
+        $this->assertSame([], $map[1]['outline'], 'one ZIP centre has no outline');
+
+        $as->putJson("/api/v1/scheduling/areas/{$a->id}/polygons", ['polygons' => [], 'states' => ['MA']])->assertOk()
+            ->assertJsonPath('data.removed', ['06010', '06510', '06901']);
     }
 
     public function test_a_triangle_excludes_a_centre_inside_its_bounding_box(): void

@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Models\Job;
 use App\Models\SchedulingTechnician;
 use App\Support\Audit\AuditLogger;
+use App\Support\Scheduling\JobMove;
 use App\Support\Scheduling\JobTechnicians;
 use App\Support\Scoping\ViewScope;
 use App\Support\Workiz\WorkizMirror;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -67,15 +67,7 @@ class SchedulingDispatchController extends Controller
             'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
         ]);
         $row = $this->job($request, $job);
-
-        // Wall clock in, wall clock out: parsed and formatted in one zone, so nothing converts.
-        $start = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$data['date']} {$data['start_time']}", 'UTC');
-        $minutes = (int) ($row->duration_minutes ?: $start->diffInMinutes(CarbonImmutable::createFromFormat('Y-m-d H:i', "{$data['date']} {$data['end_time']}", 'UTC')));
-        $was = $row->getRawOriginal('scheduled_for');
-        $row->forceFill(['scheduled_for' => $start->format('Y-m-d H:i:s'), 'duration_minutes' => $minutes])->save();
-        $this->audit->log('scheduling.job_rescheduled', $row, metadata: ['from' => $was, 'to' => $start->format('Y-m-d H:i')]);
-        $end = $start->addMinutes($minutes)->format('Y-m-d H:i:s');
-        WorkizMirror::queue($row, 'reschedule', ['start' => $start->format('Y-m-d H:i:s'), 'end' => $end]);
+        JobMove::to($row, $data['date'], $data['start_time'], $data['end_time']);
 
         return response()->json(['data' => ['id' => $row->id]]);
     }
