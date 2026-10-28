@@ -49,6 +49,29 @@ final class WhatsAppIntake
      */
     public function handle(WhatsAppNumber $number, WhatsAppMessage $inbound, ?string $choice): bool
     {
+        /*
+         * A NUMBER THAT DOES NOT ANSWER (auto_reply off - a coexistence number
+         * whose staff reply from the WhatsApp Business app, 2026-10-28): no
+         * menu, no thanks. Every stranger is a lead and their words land on it.
+         */
+        if ($number->auto_reply === false) {
+            if (($lead = $this->knownLead($number, $inbound)) !== null) {
+                $this->hold($lead, $inbound);
+
+                return true;
+            }
+
+            $contact = WhatsAppContact::firstOrCreate(
+                ['phone_number_id' => $inbound->phone_number_id, 'counterparty' => $inbound->counterparty],
+                ['organization_id' => $number->organization_id, 'kind' => WhatsAppContact::KIND_UNKNOWN],
+            );
+            if ($contact->kind === WhatsAppContact::KIND_UNKNOWN) {
+                $this->classify($contact, WhatsAppContact::KIND_LEAD);
+            }
+
+            return true;
+        }
+
         $tapped = $choice === self::LEAD || $choice === self::HIRING;
 
         /*
