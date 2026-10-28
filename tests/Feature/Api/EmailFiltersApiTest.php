@@ -33,6 +33,12 @@ class EmailFiltersApiTest extends TestCase
         Cache::flush();
     }
 
+    protected function tearDown(): void
+    {
+        FakeMailboxReader::$searches = [];   // static; the inbox tests read it
+        parent::tearDown();
+    }
+
     private function inbox(array $t): Mailbox
     {
         return $this->inTenant($t['org'], function () use ($t) {
@@ -87,6 +93,28 @@ class EmailFiltersApiTest extends TestCase
         $this->assertSame('notifications', $theirs['lsa']);
         $this->assertSame('primary', $theirs['noise']);
         $this->assertCount(1, $this->signedInAs($reader)->getJson('/api/v1/email/filters')->json('data.filters'));
+    }
+
+    /** Jose 10-28: a filter moves its mail into its own folder; the folder reads it from Gmail by search. */
+    public function test_a_folder_filter_moves_mail_out_of_the_inbox_into_its_own_folder(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->inbox($t);
+
+        $id = $this->signedInAs($t['admin'])->postJson('/api/v1/email/filters', [
+            'name' => 'Workiz', 'from_contains' => 'notifications@mg.workiz.com',
+            'scope_type' => 'company', 'scope_id' => $t['company']->id,
+        ])->assertCreated()->assertJsonPath('data.action', 'folder')->json('data.id');
+
+        FakeMailboxReader::$page     = new MessagePage([$this->mail('wz', 'notifications@mg.workiz.com'), $this->mail('bob', 'bob@example.com')]);
+        FakeMailboxReader::$searches = [];
+
+        $inbox = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox')->assertOk()->json('data'))->pluck('subject');
+        $this->assertSame(['bob'], $inbox->all());
+
+        $folder = collect($this->signedInAs($t['admin'])->getJson('/api/v1/email/inbox?filter='.$id)->assertOk()->json('data'))->pluck('subject');
+        $this->assertContains('wz', $folder->all());
+        $this->assertSame(['from:"notifications@mg.workiz.com"'], FakeMailboxReader::$searches);
     }
 
     public function test_sharing_needs_the_permission_and_reach_but_a_personal_filter_does_not(): void
