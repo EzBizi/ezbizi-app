@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Support\Automations\ActionRunner;
@@ -57,13 +58,20 @@ class SchedulingWarnUnderfilled extends Command
                     return;
                 }
 
-                $events->emit(self::TRIGGER, $organization, ['after' => [
-                    'summary' => self::summary($under->all(), $date),
-                    'underfilled_areas' => $under->count(),
-                    'open_spots' => $under->sum('gap'),
-                    'date' => $date->toDateString(),
-                ]]);
-                $this->line("{$organization->name}: {$under->count()} areas with {$min}+ empty spots");
+                // One event per company, its subject one of the company's
+                // branches, so a rule scoped to a company (or a company above
+                // it) gets that company's areas only, never every company's.
+                foreach ($under->groupBy('company_id') as $companyId => $rows) {
+                    $events->emit(self::TRIGGER, Franchise::query()->find($rows->first()['franchise_id']), ['after' => [
+                        'summary' => self::summary($rows->all(), $date),
+                        'company_id' => $companyId,
+                        'company_name' => $rows->first()['company_name'],
+                        'underfilled_areas' => $rows->count(),
+                        'open_spots' => $rows->sum('gap'),
+                        'date' => $date->toDateString(),
+                    ]]);
+                    $this->line("{$organization->name} / {$rows->first()['company_name']}: {$rows->count()} areas with {$min}+ empty spots");
+                }
             });
         }
 
@@ -74,8 +82,10 @@ class SchedulingWarnUnderfilled extends Command
     public static function summary(array $rows, CarbonImmutable $date): string
     {
         $name = fn (?string $s) => ActionRunner::escapeMarkdown((string) $s);
-        $lines = ['## Empty spots tomorrow, '.$date->format('D M j'), ''];
-        foreach (collect($rows)->groupBy('franchise_name') as $branch => $areas) {
+        $company = collect($rows)->pluck('company_name')->filter()->unique()->implode(', ');
+        $lines = ['## '.($company === '' ? '' : $name($company).': ').'empty spots tomorrow, '.$date->format('D M j'), ''];
+        foreach (collect($rows)->groupBy('franchise_id') as $areas) {
+            $branch = $areas->first()['franchise_name'];
             $lines[] = "### {$name($branch)}: {$areas->sum('gap')} empty ({$areas->sum('booked')} of {$areas->sum('capacity')} booked)";
             foreach ($areas as $r) {
                 $lines[] = "- {$name($r['name'])}: {$r['booked']} booked / {$r['capacity']} available, {$r['gap']} empty";

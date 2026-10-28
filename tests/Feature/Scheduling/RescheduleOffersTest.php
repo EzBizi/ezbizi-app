@@ -3,7 +3,10 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Console\Commands\SchedulingWarnUnderfilled;
+use App\Models\AutomationEvent;
+use App\Models\Company;
 use App\Models\Customer;
+use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\Lead;
 use App\Models\PhoneConnection;
@@ -111,6 +114,21 @@ class RescheduleOffersTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-10-26 16:10:00', 'America/New_York'));
         $this->artisan('scheduling:warn-underfilled')->expectsOutputToContain('1 areas with 2+ empty spots')->assertSuccessful();
         $this->artisan('scheduling:warn-underfilled')->doesntExpectOutputToContain('empty spots')->assertSuccessful();
+
+        // Two companies, one email each, scoped to its company (Jose, 2026-10-28).
+        $this->assertSame([[$t['company']->id, 'company']], AutomationEvent::query()->get()
+            ->map(fn ($e) => [$e->scope_snapshot['id'], $e->scope_snapshot['type']])->all());
+        $other = $this->inTenant($t['org'], fn () => Company::create(['name' => 'Bravo Co']));
+        $theirs = $this->inTenant($t['org'], fn () => Franchise::create(['company_id' => $other->id, 'name' => 'Connecticut']));
+        $this->inTenant($t['org'], fn () => ServiceAreaSlot::create(['service_area_id' => ServiceArea::create(['franchise_id' => $theirs->id, 'name' => 'Hartford'])->id, 'weekday' => 2, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 3]));
+        AutomationEvent::query()->delete();
+        $this->artisan('scheduling:warn-underfilled', ['--now' => true])->assertSuccessful();
+        $events = AutomationEvent::query()->get()->keyBy(fn ($e) => $e->scope_snapshot['id']);
+        $this->assertEqualsCanonicalizing([$t['company']->id, $other->id], $events->keys()->all());
+        $this->assertStringContainsString('Hartford', $events[$other->id]->payload['after']['summary']);
+        $this->assertStringContainsString('Bravo Co', $events[$other->id]->payload['after']['summary']);
+        $this->assertStringNotContainsString('Dallas', $events[$other->id]->payload['after']['summary']);
+        $this->assertStringNotContainsString('Hartford', $events[$t['company']->id]->payload['after']['summary']);
 
         $summary = SchedulingWarnUnderfilled::summary([['franchise_name' => 'DFW', 'name' => 'Dallas', 'booked' => 1, 'capacity' => 4, 'gap' => 3]], CarbonImmutable::parse('2026-10-27'));
         $this->assertStringContainsString('### DFW: 3 empty (1 of 4 booked)', $summary);
