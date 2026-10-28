@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\SchedulingTimeSlot;
+use App\Models\ServiceArea;
 use App\Models\ServiceAreaSlot;
+use App\Support\Scoping\ViewScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -116,7 +118,10 @@ class SchedulingTimeSlotsController extends Controller
     {
         // How many areas have capacity on each window, so a change or a
         // removal can say what it will touch before anybody confirms it.
+        // Counted within the view (company or branch), not the whole
+        // organization (Jose, 2026-10-28: A1 Garage Doors read "43 areas").
         $used = ServiceAreaSlot::query()
+            ->whereIn('service_area_id', ServiceArea::query()->whereIn('franchise_id', ViewScope::forUser(request()->user())->franchiseIds())->select('id'))
             ->selectRaw('start_time, end_time, COUNT(DISTINCT service_area_id) as areas')
             ->groupBy('start_time', 'end_time')
             ->get()
