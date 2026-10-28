@@ -23,6 +23,8 @@ class VersionHistory {
         'Automations: rules a tab depends on are marked Core, with a warning before switching one off.',
         'Leads: texts EzBizi sent show as EzBizi\'s and can be replied to from the same line.',
         'Project Management: a job\'s price no longer reads \$0.00 from an empty draft estimate; Project Management - 1 stages can match several rules.',
+        'Email: the reading pane follows dark mode, and inboxes stay fast between background refreshes.',
+        'Reports: company-wide report downloads no longer fail to build.',
       ],
     ),
     VersionRelease(
