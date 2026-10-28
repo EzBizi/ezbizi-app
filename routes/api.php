@@ -1884,6 +1884,8 @@ Route::prefix('v1')
         Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
         // Push the scheduled end out by the org's extension length (design 2026-09-08 §7).
         Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
+        // Continue without clocking in: no lock for the rest of today (2026-10-28).
+        Route::post('time-clock/skip-lock', [TimeClockController::class, 'skipLock']);
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
         // Address → formatted address + coordinates (Google), for any module's

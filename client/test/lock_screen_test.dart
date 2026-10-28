@@ -115,6 +115,54 @@ void main() {
 
     expect(session.me!.timeClock.lock, isFalse);
   });
+  testWidgets('no skip button without may_skip', (tester) async {
+    await _pump(tester);
+    expect(find.text('Continue without clocking in'), findsNothing);
+  });
+
+  testWidgets('may_skip shows Continue without clocking in, which lets go', (
+    tester,
+  ) async {
+    final posted = <String>[];
+    final session = await _pump(
+      tester,
+      maySkip: true,
+      onRequest: (r) async {
+        if (r.url.path != '/api/v1/time-clock/skip-lock') return null;
+        posted.add(r.method);
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'time_clock': {
+                'organization_enabled': true,
+                'can_clock': true,
+                'show_button': true,
+                'open': null,
+                'lock': false,
+                'may_skip': true,
+              },
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      },
+    );
+
+    expect(session.me!.timeClock.lock, isTrue);
+    expect(find.widgetWithText(FilledButton, 'Clock In'), findsOneWidget);
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Continue without clocking in'),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(posted, ['POST']);
+    expect(session.me!.timeClock.lock, isFalse);
+    expect(session.me!.timeClock.open, isNull);
+  });
+
   testWidgets('the lock screen polls and lets go when the server says so', (
     tester,
   ) async {
@@ -165,6 +213,7 @@ Future<Session> _pump(
   Map<String, Object?>? display,
   Size? size,
   String? todayLabel,
+  bool maySkip = false,
 }) async {
   if (size != null) {
     tester.view.physicalSize = size;
@@ -210,6 +259,7 @@ Future<Session> _pump(
                 'lock': true,
                 'today': {'start': '08:00', 'end': '17:00'},
                 'today_label': ?todayLabel,
+                'may_skip': maySkip,
               },
             },
           }),
