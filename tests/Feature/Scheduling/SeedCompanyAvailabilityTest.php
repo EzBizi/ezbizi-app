@@ -62,5 +62,16 @@ class SeedCompanyAvailabilityTest extends TestCase
         $this->artisan('scheduling:seed-company-availability', ['--from' => $source->name])->assertSuccessful();
         app(TenantContext::class)->set($t['org']);
         $this->assertSame(1, ServiceArea::query()->where('covers_all_zips', true)->count());
+
+        // The branch's first real area is the catch-all, named: no "All areas" beside it.
+        $this->signedInAs($t['admin'])->postJson('/api/v1/scheduling/areas', ['franchise_id' => $branch->id, 'name' => 'CT, MA'])
+            ->assertCreated()->assertJsonPath('data.id', $catchAll->id);
+        app(TenantContext::class)->set($t['org']);
+        $this->assertSame(['CT, MA'], ServiceArea::query()->where('franchise_id', $branch->id)->pluck('name')->all());
+        $this->assertSame(2, ServiceAreaSlot::where('service_area_id', $catchAll->id)->count());
+        // The second is a new area.
+        $this->signedInAs($t['admin'])->postJson('/api/v1/scheduling/areas', ['franchise_id' => $branch->id, 'name' => 'NH'])->assertCreated();
+        app(TenantContext::class)->set($t['org']);
+        $this->assertSame(2, ServiceArea::query()->where('franchise_id', $branch->id)->count());
     }
 }

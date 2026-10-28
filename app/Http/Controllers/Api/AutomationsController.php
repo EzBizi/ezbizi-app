@@ -2717,6 +2717,8 @@ class AutomationsController extends Controller
             // repeated failure must say so where somebody will see it.
             'disabled_at' => $automation->disabled_at?->toIso8601String(),
             'disabled_reason' => $automation->disabled_reason,
+            // A rule a tab depends on (Jose, 2026-10-28): what stops working when it is off. Set by that module, never by the builder.
+            'core_reason' => $automation->core_reason,
             'runs_count' => $automation->runs_count ?? $automation->runs()->count(),
             'version' => $automation->activeVersion?->version,
             // A clock rule's WHEN. Missing from this payload, the builder opened

@@ -1303,6 +1303,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $this->assertTrue($read->fromCache);
         $this->assertSame('m-1', $read->messages[0]->id);
+        $this->assertSame('2026-08-11', $read->messages[0]->sentAt->toDateString());
     }
 
     public function test_the_warmer_keeps_first_pages_cached_and_rereads_only_on_change(): void

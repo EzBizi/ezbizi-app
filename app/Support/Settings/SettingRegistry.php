@@ -2,6 +2,7 @@
 
 namespace App\Support\Settings;
 
+use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 
 /**
@@ -1308,6 +1309,11 @@ class SettingRegistry
             $enum('scheduling.reschedule_max_after_miles', 'Re-Scheduling: nearest job after the move within', 10, [2, 5, 10, 15, 20, 30],
                 fn ($v) => "{$v} miles",
                 'A move is suggested only when it puts the job this close to other booked work.'),
+            new SettingDefinition(
+                key: 'scheduling.offer_today', label: 'Offer today in online booking',
+                type: SettingDefinition::TYPE_BOOL, default: true,
+                help: 'When on, the booking widget offers the windows today that have not started and still have room. Off books from tomorrow.',
+            ),
             // "An earlier opening" texts from Scheduling › Overbooking (Shoval, 2026-10-26).
             new SettingDefinition(
                 key: 'scheduling.offer_message', label: 'Earlier-opening text',
@@ -1319,7 +1325,7 @@ class SettingRegistry
                 fn ($v) => $v === 1 ? '1 empty spot' : "{$v} empty spots",
                 'Areas with fewer empty spots tomorrow are left out of the Tomorrow under-filled trigger and its email.'),
             $enum('scheduling.underfilled_hour', 'Tomorrow under-filled: check at', 16, range(6, 21),
-                fn ($v) => \Carbon\CarbonImmutable::createFromTime($v)->format('g A').' the day before',
+                fn ($v) => CarbonImmutable::createFromTime($v)->format('g A').' the day before',
                 'When Tomorrow under-filled is raised. Who gets the email is the automation rule on it.'),
             $enum('scheduling.offer_min_days_out', 'Earlier-opening text: offer to jobs booked at least', 2, [1, 2, 3, 5, 7],
                 fn ($v) => $v === 1 ? '1 day after the open day' : "{$v} days after the open day",
