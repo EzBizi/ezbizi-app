@@ -88,7 +88,7 @@ final class HeaderCache
     public function remember(Mailbox $mailbox, ?string $cursor, int $limit, callable $live): MessagePage
     {
         $key    = $this->key($mailbox, $cursor, $limit);
-        $cached = Cache::get($key);
+        $cached = self::thaw(Cache::get($key));
 
         if ($cached instanceof MessagePage) {
             // Rebuilt rather than returned as-is, so `from_cache` is true on the
@@ -104,7 +104,7 @@ final class HeaderCache
 
         $page = $live();
 
-        Cache::put($key, $page, self::TTL_SECONDS);
+        Cache::put($key, serialize($page), self::TTL_SECONDS);
 
         return $page;
     }
@@ -162,7 +162,7 @@ final class HeaderCache
         $fresh = Cache::get($this->markKey($mailbox)) === $mark;
 
         foreach (self::WARM_LIMITS as $size) {
-            $fresh = $fresh && Cache::has($this->key($mailbox, null, $size));
+            $fresh = $fresh && self::thaw(Cache::get($this->key($mailbox, null, $size))) !== null;   // an entry left in the old form is re-read
         }
 
         if ($fresh) {
@@ -170,12 +170,25 @@ final class HeaderCache
         }
 
         foreach (self::WARM_LIMITS as $size) {
-            Cache::put($this->key($mailbox, null, $size), $live($size), self::WARM_SECONDS);
+            Cache::put($this->key($mailbox, null, $size), serialize($live($size)), self::WARM_SECONDS);
         }
 
         Cache::put($this->markKey($mailbox), $mark, self::WARM_SECONDS);
 
         return true;
+    }
+
+    /*
+     * Stored as our own serialized string: config/cache.php has
+     * `serializable_classes => false`, so a MessagePage put directly came back
+     * as __PHP_Incomplete_Class and every read missed -- 0 of 66 hits on
+     * production with the warmer running (2026-10-28).
+     */
+    private static function thaw(mixed $value): ?MessagePage
+    {
+        $page = is_string($value) ? @unserialize($value) : null;
+
+        return $page instanceof MessagePage ? $page : null;
     }
 
     private function markKey(Mailbox $mailbox): string
