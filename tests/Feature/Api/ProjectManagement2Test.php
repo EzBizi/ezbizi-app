@@ -159,8 +159,10 @@ class ProjectManagement2Test extends TestCase
             $this->record($alpha, $paid, 'payment', 'P8', '100.00', 'succeeded', '2026-10-20');
             // Submitted from done pending approval, in Workiz: tracked. A new job Workiz opened as Submitted: not.
             $submitted = $this->job($alpha, 'J-9', 'Submitted');
+            // A day earlier: "latest first" below needs it older than the Submit, not the same second.
             app(EventEmitter::class)->emit('job.status_changed', Job::find($submitted),
-                ['before' => ['status' => 'done pending approval'], 'after' => ['status' => 'Submitted']]);
+                ['before' => ['status' => 'done pending approval'], 'after' => ['status' => 'Submitted']])
+                ->forceFill(['occurred_at' => now()->subDay()])->save();
             $this->job($alpha, 'J-10', 'Submitted');
 
             return [$unpaid, $paid, $submitted];
