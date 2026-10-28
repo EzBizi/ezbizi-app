@@ -58,7 +58,7 @@ class TaskBoardsController extends Controller
 
             $role = $b->kind === TaskBoard::KIND_USER && $b->owner_user_id === $user->getKey()
                 ? TaskBoardMember::OWNER
-                : $b->members->firstWhere('user_id', $user->getKey())?->role;
+                : ($b->members->firstWhere('user_id', $user->getKey())?->role ?? $this->boards->roleOf($user, $b));
 
             return [
                 'id' => $b->id,
@@ -87,6 +87,18 @@ class TaskBoardsController extends Controller
         $tasks = $taskBoard->tasks()
             ->with(TasksController::WITH)
             ->withCount(TasksController::counts())
+            ->orderBy('position')
+            ->orderBy('created_at')
+            ->get();
+
+        // A company board carries its branches' tasks as the same rows, each
+        // marked with the board it lives on (Jose, 2026-10-28).
+        $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
+        $rolled = $sources->isEmpty() ? collect() : Task::query()
+            ->whereIn('board_id', $sources->keys())
+            ->with([...TasksController::WITH, 'group:id,name'])
+            ->withCount(TasksController::counts())
+            ->orderBy('position')
             ->orderBy('created_at')
             ->get();
 
@@ -96,12 +108,10 @@ class TaskBoardsController extends Controller
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
             'my_role' => $this->boards->roleOf($user, $taskBoard),
-            'members_count' => $taskBoard->members()->count(),
+            'members_count' => count($people = $this->effectiveMembers($taskBoard)),
             // The first four people on it, owners first, for the header avatars.
-            'members_preview' => $taskBoard->members()->with('user:id,name')->get()
-                ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
-                ->take(4)->values()
-                ->map(fn (TaskBoardMember $m) => ['id' => $m->user_id, 'name' => $m->user?->name])->all(),
+            'members_preview' => collect($people)->take(4)
+                ->map(fn (array $m) => ['id' => $m['user_id'], 'name' => $m['name']])->values()->all(),
             'can_manage' => $this->boards->canManageMembers($user, $taskBoard),
             // Rename and delete: custom boards, their owners and Administrators.
             'can_rename' => ! $taskBoard->isAutomatic() && $this->boards->canManage($user, $taskBoard),
@@ -114,7 +124,13 @@ class TaskBoardsController extends Controller
             'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
-            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))->all(),
+            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))
+                ->concat($rolled->map(fn (Task $t) => TasksController::present($t) + ['rolled_up_from' => [
+                    'board_id' => $t->board_id,
+                    'board_name' => $sources[$t->board_id]->name,
+                    // The client files it under this board's group of the same name.
+                    'group_name' => $t->group?->name,
+                ]]))->all(),
         ]]);
     }
 
@@ -223,9 +239,7 @@ class TaskBoardsController extends Controller
     {
         $this->authorize('view', $taskBoard);
 
-        $members = $taskBoard->members()->with('user:id,name')->get()
-            ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
-            ->values();
+        $members = collect($this->effectiveMembers($taskBoard));
 
         $candidates = $this->boards->canManageMembers($request->user(), $taskBoard)
             ? $this->boards->candidates($taskBoard)->load('role:id,name')
@@ -236,7 +250,7 @@ class TaskBoardsController extends Controller
             : [];
 
         return response()->json(['data' => [
-            'members' => $members->map(fn (TaskBoardMember $m) => self::presentMember($m))->all(),
+            'members' => $members->all(),
             'candidates' => $candidates,
         ]]);
     }
@@ -302,6 +316,25 @@ class TaskBoardsController extends Controller
             'name' => $m->user?->name,
             'role' => $m->role,
         ];
+    }
+
+    /**
+     * Manual rows plus, on a company or franchise board, everyone assigned
+     * there (`implicit: true`, role member, no id, cannot be removed; a manual row has no `implicit` key), owners first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function effectiveMembers(TaskBoard $board): array
+    {
+        $manual = $board->members()->with('user:id,name')->get()
+            ->map(fn (TaskBoardMember $m) => self::presentMember($m));
+        $implicit = $this->boards->implicitMembers($board)->map(fn (User $u) => [
+            'id' => null, 'user_id' => $u->id, 'name' => $u->name, 'role' => TaskBoardMember::MEMBER, 'implicit' => true,
+        ]);
+
+        return $manual->concat($implicit)
+            ->sortBy(fn (array $m) => [array_search($m['role'], TaskBoardMember::ROLES, true), $m['name']])
+            ->values()->all();
     }
 
     /** Members on any kind of board: owner, tasks.manage_members, Administrator. */

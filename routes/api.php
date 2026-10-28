@@ -926,11 +926,18 @@ Route::prefix('v1')
         Route::post('task-boards/{taskBoard}/groups', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'storeGroup']);
         Route::patch('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'updateGroup']);
         Route::delete('task-boards/{taskBoard}/groups/{group}', [\App\Http\Controllers\Api\TaskBoardSettingsController::class, 'destroyGroup']);
+        Route::post('tasks/bulk', [\App\Http\Controllers\Api\TasksController::class, 'bulk']);
         Route::post('tasks', [\App\Http\Controllers\Api\TasksController::class, 'store']);
+        Route::patch('tasks/{task}/move', [\App\Http\Controllers\Api\TasksController::class, 'move']);
+        Route::post('tasks/{task}/copy', [\App\Http\Controllers\Api\TasksController::class, 'copy']);
+        Route::post('tasks/{id}/restore', [\App\Http\Controllers\Api\TasksController::class, 'restore']);
         Route::get('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'show']);
         Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
         Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'links']);
+        Route::post('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'storeLink']);
+        Route::delete('tasks/{task}/links/{linked}', [\App\Http\Controllers\Api\TasksController::class, 'destroyLink']);
 
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.

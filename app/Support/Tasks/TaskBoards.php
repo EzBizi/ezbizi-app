@@ -155,7 +155,70 @@ class TaskBoards
         }
 
         return TaskBoardMember::query()->where('board_id', $board->getKey())
-            ->where('user_id', $user->getKey())->value('role');
+            ->where('user_id', $user->getKey())->value('role')
+            ?? ($this->implicitUserIds($board)?->where('user_id', $user->getKey())->exists()
+                ? TaskBoardMember::MEMBER : null);
+    }
+
+    /**
+     * Who is on a company or franchise board without a row (Jose, 2026-10-28):
+     * everyone assigned at exactly that company or franchise. Read live from
+     * assignments, so it follows them; no cascade to a company's franchises
+     * (an Assignment does not cascade, see App\Models\Assignment). Null for
+     * boards that have none (personal and custom).
+     */
+    public function implicitUserIds(TaskBoard $board): ?Builder
+    {
+        $column = match ($board->kind) {
+            TaskBoard::KIND_COMPANY => 'assigned_company_id',
+            TaskBoard::KIND_FRANCHISE => 'assigned_franchise_id',
+            default => null,
+        };
+        if ($column === null) {
+            return null;
+        }
+
+        return Assignment::query()
+            ->where($column, $board->kind === TaskBoard::KIND_COMPANY ? $board->company_id : $board->franchise_id)
+            ->whereIn('user_id', User::query()->where('is_active', true)->select('id'))
+            ->select('user_id');
+    }
+
+    /**
+     * Boards whose tasks also show on this one, as the same rows (Jose,
+     * 2026-10-28): on a company board, its branches' boards, each only when
+     * the person may view it there. There is no automatic organization board,
+     * so nothing rolls further up.
+     *
+     * @return Collection<int, TaskBoard>
+     */
+    public function rolledUpBoards(User $user, TaskBoard $board): Collection
+    {
+        if ($board->kind !== TaskBoard::KIND_COMPANY) {
+            return collect();
+        }
+
+        return TaskBoard::query()->where('kind', TaskBoard::KIND_FRANCHISE)
+            ->whereIn('franchise_id', Franchise::query()->where('company_id', $board->company_id)->select('id'))
+            ->whereIn('id', $this->visibleTo($user)->select('id'))
+            ->get();
+    }
+
+    /**
+     * Implicit members without a row of their own: a manual row always wins.
+     *
+     * @return Collection<int, User>
+     */
+    public function implicitMembers(TaskBoard $board): Collection
+    {
+        $ids = $this->implicitUserIds($board);
+        if ($ids === null) {
+            return collect();
+        }
+
+        return User::query()->whereIn('id', $ids)
+            ->whereNotIn('id', $board->members()->select('user_id'))
+            ->orderBy('name')->get(['id', 'name']);
     }
 
     /** Owners and Administrators rename and delete custom boards and own their rules. */
@@ -265,7 +328,12 @@ class TaskBoards
         // even a place my reach does not cover).
         $mine = fn (Builder $q) => $q->where(fn (Builder $o) => $o->where('kind', TaskBoard::KIND_USER)
             ->where('owner_user_id', $user->getKey()))
-            ->orWhereIn('id', $this->membershipIds($user));
+            ->orWhereIn('id', $this->membershipIds($user))
+            // Implicit members: assigned at exactly the board's company or franchise.
+            ->orWhere(fn (Builder $c) => $c->where('kind', TaskBoard::KIND_COMPANY)
+                ->whereIn('company_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_company_id')->select('assigned_company_id')))
+            ->orWhere(fn (Builder $f) => $f->where('kind', TaskBoard::KIND_FRANCHISE)
+                ->whereIn('franchise_id', Assignment::query()->where('user_id', $user->getKey())->whereNotNull('assigned_franchise_id')->select('assigned_franchise_id')));
 
         if (! $user->hasPermission('tasks.view')) {
             return TaskBoard::query()->where($mine);
@@ -349,11 +417,11 @@ class TaskBoards
         }
 
         return OwnedScope::mayWrite(
-                $user,
-                $board->organization_id,
-                $board->kind,
-                $board->kind === TaskBoard::KIND_COMPANY ? $board->company_id : $board->franchise_id,
-            );
+            $user,
+            $board->organization_id,
+            $board->kind,
+            $board->kind === TaskBoard::KIND_COMPANY ? $board->company_id : $board->franchise_id,
+        );
     }
 
     /** @return array{0: string[], 1: string[]} company ids, franchise ids */
