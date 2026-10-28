@@ -186,7 +186,9 @@ final class HeaderCache
      */
     private static function thaw(mixed $value): ?MessagePage
     {
-        $page = is_string($value) ? @unserialize($value) : null;
+        $page = is_string($value) ? @unserialize($value, ['allowed_classes' => [
+            MessagePage::class, MessageSummary::class, \Illuminate\Support\Carbon::class, \Carbon\Carbon::class, \DateTimeZone::class,
+        ]]) : null;
 
         return $page instanceof MessagePage ? $page : null;
     }
