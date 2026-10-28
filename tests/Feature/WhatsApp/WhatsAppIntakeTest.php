@@ -114,6 +114,21 @@ class WhatsAppIntakeTest extends TestCase
         $this->assertCount(2, array_filter($this->sent, fn ($m) => str_contains((string) ($m['text']['body'] ?? ''), 'Someone will reach out')));
     }
 
+    public function test_a_number_with_auto_reply_off_sends_nothing_and_every_message_lands_on_one_lead(): void
+    {
+        DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->update(['auto_reply' => false]);
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'Do you sweep chimneys in Miami?']], 'wamid.IN1')->assertOk();
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'hello?']], 'wamid.IN2')->assertOk();
+
+        $this->assertSame([], $this->sent);
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame(
+            ['Do you sweep chimneys in Miami?', 'hello?'],
+            LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $lead->id)->orderBy('created_at')->pluck('text')->all(),
+        );
+    }
+
     public function test_i_want_to_work_with_you_tells_hr_and_makes_no_lead(): void
     {
         $leads = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);

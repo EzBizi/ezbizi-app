@@ -115,6 +115,7 @@ final class OnboardWhatsAppNumber implements ShouldQueue
                     'display_number' => $digits === '' ? null : '+'.$digits,
                     'display_name' => $info->json('verified_name') ?: null,
                     'social_connection_id' => $connection->getKey(),
+                    'auto_reply' => $info->json('is_on_biz_app') !== true,
                 ],
             ),
         );

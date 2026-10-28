@@ -44,8 +44,10 @@ class WhatsAppNumber extends Model implements StatesRetention
     protected $table = 'whatsapp_numbers';
 
     protected $fillable = [
-        'organization_id', 'phone_number_id', 'waba_id', 'display_number', 'display_name', 'social_connection_id',
+        'organization_id', 'phone_number_id', 'waba_id', 'display_number', 'display_name', 'social_connection_id', 'auto_reply',
     ];
+
+    protected $casts = ['auto_reply' => 'boolean'];
 
     public function organization(): BelongsTo
     {
