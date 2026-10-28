@@ -985,6 +985,7 @@ class TimeClockStatus {
     this.today,
     this.afterHours = false,
     this.needsLocation = false,
+    this.maySkip = false,
     this.todayLabel = '',
   });
 
@@ -1025,6 +1026,10 @@ class TimeClockStatus {
   /// 2026-10-16): a hand punch must carry where the device is.
   final bool needsLocation;
 
+  /// May leave the lock screen for today without clocking in
+  /// (`time_clock.lock_screen_skip`, 2026-10-28).
+  final bool maySkip;
+
   /// "Wednesday, September 30": the server's today, in the org's language.
   final String todayLabel;
 
@@ -1059,6 +1064,7 @@ class TimeClockStatus {
           : null,
       afterHours: map['after_hours'] == true,
       needsLocation: map['needs_location'] == true,
+      maySkip: map['may_skip'] == true,
       todayLabel: '${map['today_label'] ?? ''}',
     );
   }

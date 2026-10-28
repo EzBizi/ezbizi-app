@@ -23,8 +23,8 @@ class TimeClockModuleTest extends TestCase
 
         $this->assertNotNull($module);
         $this->assertSame('Clock in', $module->label);
-        $this->assertSame(['view', 'lock_screen', 'anywhere'], $module->actions);
-        $this->assertSame(['time_clock.view', 'time_clock.lock_screen', 'time_clock.anywhere'], $module->permissionKeys());
+        $this->assertSame(['view', 'lock_screen', 'anywhere', 'lock_screen_skip'], $module->actions);
+        $this->assertSame(['time_clock.view', 'time_clock.lock_screen', 'time_clock.anywhere', 'time_clock.lock_screen_skip'], $module->permissionKeys());
         $this->assertFalse($module->sidebar);
         $this->assertSame(ModuleDefinition::ROLES_TAB, $module->rolesGroup);
     }

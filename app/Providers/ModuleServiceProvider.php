@@ -968,8 +968,13 @@ class ModuleServiceProvider extends ServiceProvider
                 // `anywhere` (2026-10-16): clock in and out away from the
                 // place's clock-in zone. A capability, not a restriction, so
                 // Administrator holding every permission means exempt.
-                actions: ['view', 'lock_screen', 'anywhere'],
-                actionLabels: ['anywhere' => 'Clock in from anywhere'],
+                // `lock_screen_skip` (2026-10-28, Jose: "people with
+                // Administrator Status can skip the lock screen if they want,
+                // like without clocking in"). A capability like `anywhere`, so
+                // Administrator holding every permission is what grants it.
+                // Skipping writes only an audit row (time_clock.lock_skipped).
+                actions: ['view', 'lock_screen', 'anywhere', 'lock_screen_skip'],
+                actionLabels: ['anywhere' => 'Clock in from anywhere', 'lock_screen_skip' => 'Skip the lock screen'],
                 sidebar: false,
                 triggers: [
                     new TriggerDefinition(

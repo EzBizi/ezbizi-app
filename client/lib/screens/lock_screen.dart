@@ -92,17 +92,27 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<void> _clockIn() async {
+  Future<void> _clockIn() => _send(
+    '/time-clock/clock-in',
+    () => punchPosition(widget.session.me?.timeClock.needsLocation ?? false),
+  );
+
+  /// Off the lock screen for today, still not clocked in (2026-10-28). The
+  /// server answers `lock: false`, which hands the window back.
+  Future<void> _skip() =>
+      _send('/time-clock/skip-lock', () async => <String, dynamic>{});
+
+  Future<void> _send(
+    String path,
+    Future<Map<String, dynamic>> Function() body,
+  ) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
 
-    final response = await widget.api.post(
-      '/time-clock/clock-in',
-      await punchPosition(widget.session.me?.timeClock.needsLocation ?? false),
-    );
+    final response = await widget.api.post(path, await body());
     if (!mounted) return;
 
     if (response.ok && response.data is Map) {
@@ -246,6 +256,17 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
           label: Text(UiStrings.t('time_clock.clock_in')),
         ),
       ),
+      if (me?.timeClock.maySkip ?? false) ...[
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton(
+            key: const ValueKey('lock-skip'),
+            onPressed: _busy ? null : _skip,
+            child: Text(UiStrings.t('time_clock.skip_lock')),
+          ),
+        ),
+      ],
       if (_error != null) ...[
         const SizedBox(height: 12),
         Text(

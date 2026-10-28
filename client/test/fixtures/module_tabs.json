@@ -626,6 +626,7 @@
         "tasks.view_all",
         "time_clock.anywhere",
         "time_clock.lock_screen",
+        "time_clock.lock_screen_skip",
         "time_clock.view",
         "training.assign",
         "training.manage",

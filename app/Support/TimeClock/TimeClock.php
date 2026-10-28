@@ -3,6 +3,7 @@
 namespace App\Support\TimeClock;
 
 use App\Models\Assignment;
+use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
 use App\Models\Organization;
 use App\Models\TimeClockDay;
@@ -85,7 +86,8 @@ final class TimeClock
             && (bool) $this->settings->get('time_clock.lock_screen', $organization)
             && $user->hasPermission('time_clock.lock_screen')
             && ! $user->lock_screen_exempt
-            && $window !== null;
+            && $window !== null
+            && ! $this->skippedToday($user, $schedule, $scope);
 
         return [
             'organization_enabled' => $enabled,
@@ -96,6 +98,8 @@ final class TimeClock
                 'clocked_in_at' => $this->instant($open->clocked_in_at),
             ],
             'lock' => $lock,
+            // "Continue without clocking in" on the lock screen (2026-10-28).
+            'may_skip' => $user->hasPermission('time_clock.lock_screen_skip'),
             'scheduled_end_at' => $this->instant($open?->scheduled_end_at),
             'warning_minutes' => (int) $this->settings->get('time_clock.warning_minutes', $organization),
             'extension_minutes' => (int) $this->settings->get('time_clock.extension_minutes', $organization),
@@ -114,6 +118,39 @@ final class TimeClock
                 ->locale((string) $this->settings->get('locale', $scope))
                 ->isoFormat(str_starts_with((string) $this->settings->get('date_format', $scope), 'M') ? 'dddd, MMMM D' : 'dddd D MMMM'),
         ];
+    }
+
+    /**
+     * Lift the lock screen for the rest of today without clocking in
+     * (Jose, 2026-10-28). The audit row IS the record: payload() reads it
+     * back, so there is no second store to drift. The person stays off the
+     * clock.
+     */
+    public function skipLock(User $user): array
+    {
+        if (! $user->hasPermission('time_clock.lock_screen_skip')) {
+            abort(403, Refusal::permission('skip the lock screen')->message());
+        }
+
+        if (! $this->skippedToday($user, $this->scheduleFor($user), ViewScope::forUser($user)->settingsScope())) {
+            $this->audit->log('time_clock.lock_skipped', $user, actor: $user);
+        }
+
+        return $this->payload($user);
+    }
+
+    /** "Today" is the schedule's day, in its zone — the same day `today` describes. */
+    private function skippedToday(User $user, ?array $schedule, mixed $scope): bool
+    {
+        $tz = (string) ($schedule['timezone'] ?? $this->settings->get('timezone', $scope));
+
+        return AuditEvent::query()
+            ->where('organization_id', $user->organization_id)
+            ->where('action', 'time_clock.lock_skipped')
+            ->where('target_type', User::class)
+            ->where('target_id', $user->getKey())
+            ->where('occurred_at', '>=', now()->timezone($tz)->startOfDay()->setTimezone(config('app.timezone')))
+            ->exists();
     }
 
     /**
