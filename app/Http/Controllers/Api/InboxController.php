@@ -68,6 +68,7 @@ class InboxController extends Controller
             'mailbox'  => ['sometimes', 'nullable', 'string', 'max:64'],
             'search'   => ['sometimes', 'nullable', 'string', 'max:500'],
             'cursor'   => ['sometimes', 'nullable', 'string', 'max:8192'],
+            'filter'   => ['sometimes', 'nullable', 'uuid'],
         ]);
 
         $folder    = $input['folder'] ?? 'inbox';
@@ -82,6 +83,14 @@ class InboxController extends Controller
         $category = $input['category'] ?? null;
         $cursors = json_decode(base64_decode((string) ($input['cursor'] ?? ''), true) ?: '{}', true) ?: [];
         $search  = trim((string) ($input['search'] ?? ''));
+        $filters = EmailFiltersController::visibleTo($user);
+
+        // A filter's folder: its match asked of the provider, across every page.
+        if (($input['filter'] ?? null) !== null) {
+            $opened  = $filters->firstWhere('id', $input['filter']) ?? abort(404);
+            $search  = trim($opened->searchQuery().' '.$search);
+            $filters = $filters->reject(fn ($f) => $f->is($opened));
+        }
         $next    = [];
         $errors  = [];
         $found   = [];   // [mailbox, summary]
@@ -97,7 +106,6 @@ class InboxController extends Controller
         $limit    = $many ? self::PER_INBOX_MANY : self::PER_INBOX;
         $maxPages = $category === null || $many ? 1 : self::MAX_PAGES;
         $started  = microtime(true);
-        $filters  = EmailFiltersController::visibleTo($user);
 
         foreach ($mailboxes as $mailbox) {
             // A paged-out inbox (cursor present, null) has nothing more; on the first page every inbox is asked.
@@ -144,7 +152,8 @@ class InboxController extends Controller
                     // A filter: hide drops the mail from this view, notifications files it there.
                     $action = $mine->first(fn ($f) => $f->matches($summary->fromName, $summary->fromAddress, $summary->subject))?->action;
 
-                    if ($action === EmailFilter::ACTION_HIDE) {
+                    // Hidden, or moved to its filter's folder.
+                    if ($action === EmailFilter::ACTION_HIDE || $action === EmailFilter::ACTION_FOLDER) {
                         continue;
                     }
 

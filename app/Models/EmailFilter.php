@@ -20,7 +20,10 @@ class EmailFilter extends Model implements StatesRetention
     /** Matching mail is left out of the inbox list in EzBizi. */
     public const ACTION_HIDE = 'hide';
 
-    public const ACTIONS = [self::ACTION_NOTIFICATIONS, self::ACTION_HIDE];
+    /** Matching mail moves to its own folder, named after the filter (Jose, 2026-10-28). */
+    public const ACTION_FOLDER = 'folder';
+
+    public const ACTIONS = [self::ACTION_FOLDER, self::ACTION_NOTIFICATIONS, self::ACTION_HIDE];
 
     protected $fillable = ['user_id', 'scope_type', 'scope_id', 'name', 'from_contains', 'subject_contains', 'action', 'created_by'];
 
@@ -35,6 +38,15 @@ class EmailFilter extends Model implements StatesRetention
     public function isShared(): bool
     {
         return $this->user_id === null;
+    }
+
+    /** The same match as a provider search, so a folder reads every page, not just the inbox's first. */
+    public function searchQuery(): string
+    {
+        return trim(
+            ($this->from_contains !== null ? 'from:"'.str_replace('"', '', $this->from_contains).'" ' : '')
+            .($this->subject_contains !== null ? 'subject:"'.str_replace('"', '', $this->subject_contains).'"' : '')
+        );
     }
 
     /** Does this mail match? Case-insensitive "contains" on each field set. */
