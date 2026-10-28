@@ -262,13 +262,15 @@ class SchedulingBuildZipMap extends Command
         $disputed = [];
 
         // A zip a person took out of its area stays out (2026-10-21).
-        $released = ServiceAreaZipRelease::query()->pluck('zip')->flip();
+        $released = ServiceAreaZipRelease::query()->get(['company_id', 'zip'])->mapWithKeys(fn ($r) => [$r->company_id.'|'.$r->zip => true]);
+        $companyOf = Franchise::query()->pluck('company_id', 'id');
 
         foreach ($best as $claim) {
-            if (isset($released[$claim['zip']])) {
+            $company = $companyOf[$claim['area']->franchise_id] ?? null;
+            if (isset($released[$company.'|'.$claim['zip']])) {
                 continue;
             }
-            $existing = ServiceAreaZip::query()->where('zip', $claim['zip'])->first();
+            $existing = ServiceAreaZip::query()->where('company_id', $company)->where('zip', $claim['zip'])->first();
 
             /*
              * A ZIP THAT ALREADY HAS AN AREA KEEPS IT. New zips are added; an

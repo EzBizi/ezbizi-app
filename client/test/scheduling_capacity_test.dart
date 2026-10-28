@@ -1588,11 +1588,32 @@ void main() {
       expect(find.text('Edit time slots'), findsNothing);
       expect(find.byTooltip('Change hours'), findsNothing);
       expect(
-        find.textContaining('changed at organization level'),
+        find.textContaining('changed at company or organization level'),
         findsOneWidget,
       );
     },
   );
+
+  testWidgets('a company on inherited windows says whose they are', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      onRequest: (request) =>
+          request.url.path.endsWith('/scheduling/time-slots')
+          ? _json({
+              'data': _oneWindow,
+              'can_edit': true,
+              'inherited_from': 'the organization',
+            })
+          : null,
+    );
+
+    expect(
+      find.textContaining('Using the organization\u2019s windows'),
+      findsOneWidget,
+    );
+  });
 
   /// "Closed on the 18th": picked from a date picker, never typed, and sent as
   /// `closed: true` — not as zeros on each window, which would read as "open

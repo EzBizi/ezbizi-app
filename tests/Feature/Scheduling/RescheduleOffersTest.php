@@ -3,6 +3,7 @@
 namespace Tests\Feature\Scheduling;
 
 use App\Console\Commands\SchedulingWarnUnderfilled;
+use App\Models\AuditEvent;
 use App\Models\AutomationEvent;
 use App\Models\Company;
 use App\Models\Customer;
@@ -19,6 +20,7 @@ use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -83,6 +85,20 @@ class RescheduleOffersTest extends TestCase
 
         // Offered once: the next preview leaves them out.
         $this->assertSame([], $as->postJson('/api/v1/scheduling/overbooking/offers/preview', $target)->json('data.candidates'));
+        // The customer said yes (Jose, 2026-10-28): one click moves the job, mirrored to Workiz.
+        $offer = $as->getJson('/api/v1/scheduling/reschedule-offers?lead_id='.$lead->id)->assertOk()
+            ->assertJsonPath('data.start_time', '08:00')->assertJsonPath('data.can_move', true)->json('data');
+        Queue::fake();
+        $viewer = $this->userWithRole($t, 'Viewer', ['scheduling.view', 'scheduling.overbooking.view']);
+        $this->signedInAs($viewer)->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertForbidden();
+        $as = $this->signedInAs($t['admin']);
+        $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertOk()
+            ->assertJsonPath('data.scheduled_for', '2026-10-27 08:00:00');
+        $as->postJson("/api/v1/scheduling/reschedule-offers/{$offer['id']}/move")->assertStatus(409);
+        app(TenantContext::class)->set($t['org']);
+        $this->assertSame('2026-10-27 08:00:00', $later->fresh()->getRawOriginal('scheduled_for'));
+        $this->assertNotNull(SchedulingRescheduleOffer::query()->sole()->moved_at);
+        $this->assertSame(1, AuditEvent::query()->where('action', 'scheduling.job_rescheduled')->count());
     }
 
     public function test_sending_needs_scheduling_edit_and_the_send_hours(): void

@@ -9,11 +9,13 @@ use App\Models\ServiceAreaZip;
 use App\Models\ServiceAreaZipRelease;
 use App\Models\ZipCentroid;
 use App\Support\Audit\AuditLogger;
+use App\Support\Scheduling\ZipStates;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 /**
  * Drawn service areas, Workiz-style (Jose, 2026-10-21): draw one or more
@@ -45,6 +47,7 @@ final class SchedulingAreaMapController extends Controller
         return response()->json(['data' => [
             'area_id' => $row->id,
             'polygons' => $this->polygons([$row->id])[$row->id] ?? [],
+            'states' => $this->stateShapes($row),
             'zips' => ServiceAreaZip::where('service_area_id', $row->id)->orderBy('zip')->get()
                 ->map(function (ServiceAreaZip $z) use ($centres) {
                     $c = $centres[substr($z->zip, 0, 5)] ?? null;
@@ -82,6 +85,7 @@ final class SchedulingAreaMapController extends Controller
             'franchise_name' => $names[$a->franchise_id] ?? null,
             'zip_count' => $a->zips_count,
             'polygons' => $shapes[$a->id] ?? [],
+            'states' => $this->stateShapes($a),
         ])->values()->all()]);
     }
 
@@ -151,7 +155,7 @@ final class SchedulingAreaMapController extends Controller
      * Each vertex pushed away from the centre by about $miles.
      * ponytail: radial push, not a true offset; fine for an outline a person adjusts.
      */
-    private static function buffered(array $hull, float $miles): array
+    public static function buffered(array $hull, float $miles): array
     {
         $cLat = array_sum(array_column($hull, 0)) / count($hull);
         $cLng = array_sum(array_column($hull, 1)) / count($hull);
@@ -172,7 +176,23 @@ final class SchedulingAreaMapController extends Controller
         $row = $this->reachable($request)->findOrFail($area);
         $this->authorize('update', $row);
 
-        return response()->json(['data' => $this->plan($row, $this->shapes($request), $request)]);
+        return response()->json(['data' => $this->plan($row, $this->shapes($request), $request) + [
+            'states' => array_map(fn ($s) => ['state' => $s, 'outline' => ZipStates::outline($s)], $this->states($request)),
+        ]]);
+    }
+
+    /** @return list<array{state: string, outline: list<array{0: float, 1: float}>}> */
+    private function stateShapes(ServiceArea $row): array
+    {
+        return array_map(fn ($s) => ['state' => $s, 'outline' => ZipStates::outline($s)], $row->states ?? []);
+    }
+
+    /** @return list<string> states picked whole (Jose, 2026-10-28) */
+    private function states(Request $request): array
+    {
+        $data = $request->validate(['states' => ['sometimes', 'array', 'max:60'], 'states.*' => ['string', Rule::in(array_keys(ZipStates::PREFIXES))]]);
+
+        return array_values(array_unique($data['states'] ?? []));
     }
 
     /** PUT /scheduling/areas/{area}/polygons {polygons, take?: [zip]} */
@@ -183,7 +203,8 @@ final class SchedulingAreaMapController extends Controller
         $shapes = $this->shapes($request);
         $take = collect($request->validate(['take' => ['sometimes', 'array'], 'take.*' => ['string', 'max:16']])['take'] ?? []);
 
-        $result = DB::transaction(function () use ($request, $row, $shapes, $take) {
+        $company = Franchise::query()->whereKey($row->franchise_id)->value('company_id');
+        $result = DB::transaction(function () use ($request, $row, $shapes, $take, $company) {
             $plan = $this->plan($row, $shapes, $request);
 
             // Moves only what was asked for, from areas this person can edit.
@@ -199,14 +220,15 @@ final class SchedulingAreaMapController extends Controller
                 $moved[] = $c['zip'];
             }
 
+            $row->update(['states' => $this->states($request) ?: null]);
             ServiceAreaPolygon::where('service_area_id', $row->id)->delete();
             foreach ($shapes as $points) {
                 ServiceAreaPolygon::create(['franchise_id' => $row->franchise_id, 'service_area_id' => $row->id, 'points' => $points]);
             }
 
             ServiceAreaZip::where('service_area_id', $row->id)->whereIn('zip', $plan['remove'])->delete();
-            ServiceAreaZipRelease::release($plan['remove']);
-            ServiceAreaZipRelease::claim(array_merge($plan['add'], $moved));
+            ServiceAreaZipRelease::release($plan['remove'], $company);
+            ServiceAreaZipRelease::claim(array_merge($plan['add'], $moved), $company);
             foreach (array_merge($plan['add'], $moved) as $zip) {
                 ServiceAreaZip::create(['franchise_id' => $row->franchise_id, 'service_area_id' => $row->id, 'zip' => $zip, 'source' => 'drawn']);
             }
@@ -234,8 +256,9 @@ final class SchedulingAreaMapController extends Controller
      */
     private function plan(ServiceArea $row, array $shapes, Request $request): array
     {
-        $inside = $this->zipsInside($shapes);
-        $owners = ServiceAreaZip::query()->whereIn('zip', $inside)->with('serviceArea:id,name')->get()->keyBy('zip');
+        $inside = array_values(array_unique(array_merge($this->zipsInside($shapes), ZipStates::zips($this->states($request)))));
+        sort($inside);
+        $owners = ServiceAreaZip::query()->where('company_id', Franchise::query()->whereKey($row->franchise_id)->value('company_id'))->whereIn('zip', $inside)->with('serviceArea:id,name')->get()->keyBy('zip');
         $outsideMine = ServiceAreaZip::where('service_area_id', $row->id)->get(['zip', 'source'])
             ->reject(fn ($z) => in_array(substr($z->zip, 0, 5), $inside, true));
 

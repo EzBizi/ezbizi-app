@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Model;
  * (`scheduling:build-zip-map`) leaves it unassigned. Assigning it anywhere by
  * hand clears it.
  */
-#[Fillable(['organization_id', 'zip', 'released_by'])]
+#[Fillable(['organization_id', 'company_id', 'zip', 'released_by'])]
 class ServiceAreaZipRelease extends Model implements StatesRetention
 {
     use BelongsToTenant;
@@ -25,20 +25,20 @@ class ServiceAreaZipRelease extends Model implements StatesRetention
         return RetentionPolicy::forever('A person\'s decision that a zip has no area; dropping it would let the sweep reverse it.');
     }
 
-    /** @param iterable<string> $zips */
-    public static function release(iterable $zips): void
+    /** One company's decision; another company's map is its own (2026-10-28). */
+    public static function release(iterable $zips, ?string $companyId): void
     {
         foreach ($zips as $zip) {
-            static::firstOrCreate(['zip' => (string) $zip], ['released_by' => auth()->id()]);
+            static::firstOrCreate(['company_id' => $companyId, 'zip' => (string) $zip], ['released_by' => auth()->id()]);
         }
     }
 
     /** @param iterable<string> $zips */
-    public static function claim(iterable $zips): void
+    public static function claim(iterable $zips, ?string $companyId): void
     {
         $zips = collect($zips)->map(fn ($z) => (string) $z)->all();
         if ($zips !== []) {
-            static::whereIn('zip', $zips)->delete();
+            static::where('company_id', $companyId)->whereIn('zip', $zips)->delete();
         }
     }
 }

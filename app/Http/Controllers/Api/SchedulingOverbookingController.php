@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Console\Commands\SchedulingWarnOverbooking;
 use App\Models\Automation;
 use App\Models\Customer;
+use App\Models\SchedulingRescheduleOffer;
 use App\Models\ServiceArea;
 use App\Support\Scheduling\Openings;
 use App\Support\Scheduling\Overbooking;
@@ -108,6 +109,33 @@ class SchedulingOverbookingController extends Controller
         $ids = $request->validate(['job_ids' => ['required', 'array', 'min:1'], 'job_ids.*' => ['uuid']])['job_ids'];
 
         return response()->json(['data' => $offers->send($area, $date, $ids, $request->user())]);
+    }
+
+    /** GET /scheduling/reschedule-offers?lead_id= : the offer a lead's thread is about, if any */
+    public function offerForLead(Request $request): JsonResponse
+    {
+        $lead = $request->validate(['lead_id' => ['required', 'uuid']])['lead_id'];
+        $offer = SchedulingRescheduleOffer::query()->where('lead_id', $lead)
+            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->latest()->first();
+
+        return response()->json(['data' => $offer === null ? null : [
+            'id' => $offer->id, 'job_id' => $offer->job_id, 'open_date' => $offer->open_date->toDateString(),
+            'start_time' => $offer->start_time === null ? null : substr((string) $offer->start_time, 0, 5),
+            'end_time' => $offer->end_time === null ? null : substr((string) $offer->end_time, 0, 5),
+            'booked_for' => $offer->booked_for?->format('Y-m-d H:i'),
+            'moved_at' => $offer->moved_at?->toIso8601String(),
+            'can_move' => $request->user()->hasPermission('scheduling.edit') && $offer->moved_at === null,
+        ]]);
+    }
+
+    /** POST /scheduling/reschedule-offers/{offer}/move (scheduling.edit): the customer said yes */
+    public function moveOffer(Request $request, string $offer, RescheduleOffers $offers): JsonResponse
+    {
+        abort_unless($request->user()->hasPermission('scheduling.edit'), 403, 'Moving an appointment needs the right to edit Scheduling.');
+        $row = SchedulingRescheduleOffer::query()->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())->findOrFail($offer);
+        $job = $offers->move($row);
+
+        return response()->json(['data' => ['job_id' => $job->id, 'scheduled_for' => $job->getRawOriginal('scheduled_for')]]);
     }
 
     /** @return array{0: ServiceArea, 1: CarbonImmutable} */
