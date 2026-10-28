@@ -58,7 +58,7 @@ class TaskBoardsController extends Controller
 
             $role = $b->kind === TaskBoard::KIND_USER && $b->owner_user_id === $user->getKey()
                 ? TaskBoardMember::OWNER
-                : $b->members->firstWhere('user_id', $user->getKey())?->role;
+                : ($b->members->firstWhere('user_id', $user->getKey())?->role ?? $this->boards->roleOf($user, $b));
 
             return [
                 'id' => $b->id,
@@ -96,12 +96,10 @@ class TaskBoardsController extends Controller
             'name' => $taskBoard->name,
             'visibility' => $taskBoard->visibility,
             'my_role' => $this->boards->roleOf($user, $taskBoard),
-            'members_count' => $taskBoard->members()->count(),
+            'members_count' => count($people = $this->effectiveMembers($taskBoard)),
             // The first four people on it, owners first, for the header avatars.
-            'members_preview' => $taskBoard->members()->with('user:id,name')->get()
-                ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
-                ->take(4)->values()
-                ->map(fn (TaskBoardMember $m) => ['id' => $m->user_id, 'name' => $m->user?->name])->all(),
+            'members_preview' => collect($people)->take(4)
+                ->map(fn (array $m) => ['id' => $m['user_id'], 'name' => $m['name']])->values()->all(),
             'can_manage' => $this->boards->canManageMembers($user, $taskBoard),
             // Rename and delete: custom boards, their owners and Administrators.
             'can_rename' => ! $taskBoard->isAutomatic() && $this->boards->canManage($user, $taskBoard),
@@ -223,9 +221,7 @@ class TaskBoardsController extends Controller
     {
         $this->authorize('view', $taskBoard);
 
-        $members = $taskBoard->members()->with('user:id,name')->get()
-            ->sortBy(fn (TaskBoardMember $m) => [array_search($m->role, TaskBoardMember::ROLES, true), $m->user?->name])
-            ->values();
+        $members = collect($this->effectiveMembers($taskBoard));
 
         $candidates = $this->boards->canManageMembers($request->user(), $taskBoard)
             ? $this->boards->candidates($taskBoard)->load('role:id,name')
@@ -236,7 +232,7 @@ class TaskBoardsController extends Controller
             : [];
 
         return response()->json(['data' => [
-            'members' => $members->map(fn (TaskBoardMember $m) => self::presentMember($m))->all(),
+            'members' => $members->all(),
             'candidates' => $candidates,
         ]]);
     }
@@ -302,6 +298,25 @@ class TaskBoardsController extends Controller
             'name' => $m->user?->name,
             'role' => $m->role,
         ];
+    }
+
+    /**
+     * Manual rows plus, on a company or franchise board, everyone assigned
+     * there (`implicit: true`, role member, no id, cannot be removed; a manual row has no `implicit` key), owners first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function effectiveMembers(TaskBoard $board): array
+    {
+        $manual = $board->members()->with('user:id,name')->get()
+            ->map(fn (TaskBoardMember $m) => self::presentMember($m));
+        $implicit = $this->boards->implicitMembers($board)->map(fn (User $u) => [
+            'id' => null, 'user_id' => $u->id, 'name' => $u->name, 'role' => TaskBoardMember::MEMBER, 'implicit' => true,
+        ]);
+
+        return $manual->concat($implicit)
+            ->sortBy(fn (array $m) => [array_search($m['role'], TaskBoardMember::ROLES, true), $m['name']])
+            ->values()->all();
     }
 
     /** Members on any kind of board: owner, tasks.manage_members, Administrator. */
