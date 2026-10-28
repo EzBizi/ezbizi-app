@@ -14,7 +14,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Storage::disk('local')->deleteDirectory('lead-recordings');
+        // The deploy user cannot open www-data's 700 folder (failed the 0.0.0499
+        // deploy twice); the desk deletes it as root after the deploy.
+        try {
+            Storage::disk('local')->deleteDirectory('lead-recordings');
+        } catch (\Throwable) {
+        }
         DB::table('lead_conversations')->whereNotNull('recording_path')->update(['recording_path' => null]);
     }
 
