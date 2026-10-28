@@ -16,6 +16,7 @@ use App\Models\Vehicle;
 use App\Support\Files\AttachmentUploader;
 use App\Support\Files\UploadLimits;
 use App\Support\Tasks\TaskBoards;
+use App\Support\Tasks\TaskLinks;
 use App\Support\Tasks\TaskWriter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -122,6 +123,49 @@ class TasksController extends Controller
         $this->writer->delete($task, $request->user());
 
         return response()->noContent();
+    }
+
+    /** GET tasks/{task}/links: the linked tasks this person can see. */
+    public function links(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $user = $request->user();
+
+        return response()->json(['data' => TaskLinks::of($task)
+            ->filter(fn (Task $t) => $user->can('view', $t))
+            ->map(fn (Task $t) => self::presentLink($t))->values()->all()]);
+    }
+
+    /** POST tasks/{task}/links {linked_task_id}: both must be visible to the person. */
+    public function storeLink(Request $request, Task $task): JsonResponse
+    {
+        $this->authorize('view', $task);
+        $input = $request->validate(['linked_task_id' => ['required', 'uuid']]);
+        $other = Task::query()->find($input['linked_task_id']);
+        if ($other === null || ! $request->user()->can('view', $other)) {
+            throw ValidationException::withMessages(['linked_task_id' => 'There is no such task you can see.']);
+        }
+        if ($other->id === $task->id) {
+            throw ValidationException::withMessages(['linked_task_id' => 'A task cannot be linked to itself.']);
+        }
+        $created = TaskLinks::link($task, $other, $request->user());
+
+        return response()->json(['data' => self::presentLink($other->load('board'))], $created ? 201 : 200);
+    }
+
+    public function destroyLink(Request $request, Task $task, string $linked): Response
+    {
+        $this->authorize('view', $task);
+        $other = Task::query()->findOrFail($linked);
+        $this->authorize('view', $other);
+        TaskLinks::unlink($task, $other);
+
+        return response()->noContent();
+    }
+
+    private static function presentLink(Task $t): array
+    {
+        return ['id' => $t->id, 'title' => $t->title, 'status' => $t->status, 'board_id' => $t->board_id, 'board_name' => $t->board?->name];
     }
 
     public function storeUpdate(Request $request, Task $task): JsonResponse

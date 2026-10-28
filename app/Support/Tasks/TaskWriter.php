@@ -13,6 +13,7 @@ use App\Models\TaskUpdate;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\JobTechnicianSync;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -177,10 +178,36 @@ class TaskWriter
                     'before' => $before,
                     'after' => $this->snapshot($task),
                 ]);
+                $done = $this->statusOf($task)['is_done'];
+                if ($done !== $before['is_done']) {
+                    $this->carryToLinked($task, $done, $actor);
+                }
             }
 
             return $task;
         });
+    }
+
+    /**
+     * Done or reopened carries to linked tasks (Jose, 2026-10-28): each takes
+     * its own board's first done status, or Not started (else the first open
+     * one). A task already on that side is left alone, which also ends the walk.
+     */
+    private function carryToLinked(Task $task, bool $done, ?User $actor): void
+    {
+        foreach (TaskLinks::of($task) as $other) {
+            if ($other->board === null || $this->statusOf($other)['is_done'] === $done) {
+                continue;
+            }
+            $statuses = $other->board->statuses()->get();
+            $target = $done
+                ? $statuses->firstWhere('is_done', true)
+                : ($statuses->first(fn (TaskStatus $s) => ! $s->is_done && $s->key === Task::STATUS_NOT_STARTED)
+                    ?? $statuses->firstWhere('is_done', false));
+            if ($target !== null) {
+                $this->update($other, ['status_id' => $target->id], $actor);
+            }
+        }
     }
 
     /** Deleting a parent takes its subtasks with it (soft, like the parent). */
@@ -422,8 +449,8 @@ class TaskWriter
                     $why = 'That person cannot be named on this board.';
                     $row['value_user_id'] = $value;
                     // A card's Technician is its job's (Jose, 2026-10-22): the job takes it first, or nothing is saved.
-                    if ($ok && \App\Support\Jobs\JobTechnicianSync::isTechnicianColumn($column)) {
-                        \App\Support\Jobs\JobTechnicianSync::toJob($task, $value, $key);
+                    if ($ok && JobTechnicianSync::isTechnicianColumn($column)) {
+                        JobTechnicianSync::toJob($task, $value, $key);
                     }
                     break;
                 case 'checkbox':

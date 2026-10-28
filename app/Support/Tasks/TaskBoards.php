@@ -185,6 +185,26 @@ class TaskBoards
     }
 
     /**
+     * Boards whose tasks also show on this one, as the same rows (Jose,
+     * 2026-10-28): on a company board, its branches' boards, each only when
+     * the person may view it there. There is no automatic organization board,
+     * so nothing rolls further up.
+     *
+     * @return Collection<int, TaskBoard>
+     */
+    public function rolledUpBoards(User $user, TaskBoard $board): Collection
+    {
+        if ($board->kind !== TaskBoard::KIND_COMPANY) {
+            return collect();
+        }
+
+        return TaskBoard::query()->where('kind', TaskBoard::KIND_FRANCHISE)
+            ->whereIn('franchise_id', Franchise::query()->where('company_id', $board->company_id)->select('id'))
+            ->whereIn('id', $this->visibleTo($user)->select('id'))
+            ->get();
+    }
+
+    /**
      * Implicit members without a row of their own: a manual row always wins.
      *
      * @return Collection<int, User>

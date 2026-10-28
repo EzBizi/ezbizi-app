@@ -929,6 +929,9 @@ Route::prefix('v1')
         Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'update']);
         Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TasksController::class, 'destroy']);
         Route::post('tasks/{task}/updates', [\App\Http\Controllers\Api\TasksController::class, 'storeUpdate']);
+        Route::get('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'links']);
+        Route::post('tasks/{task}/links', [\App\Http\Controllers\Api\TasksController::class, 'storeLink']);
+        Route::delete('tasks/{task}/links/{linked}', [\App\Http\Controllers\Api\TasksController::class, 'destroyLink']);
 
         // Lines hang off a job and are never addressed without one — a line id
         // alone would be an id oracle across franchises.

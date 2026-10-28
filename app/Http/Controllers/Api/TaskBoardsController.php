@@ -90,6 +90,16 @@ class TaskBoardsController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        // A company board carries its branches' tasks as the same rows, each
+        // marked with the board it lives on (Jose, 2026-10-28).
+        $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
+        $rolled = $sources->isEmpty() ? collect() : Task::query()
+            ->whereIn('board_id', $sources->keys())
+            ->with(TasksController::WITH)
+            ->withCount(TasksController::counts())
+            ->orderBy('created_at')
+            ->get();
+
         return response()->json(['data' => [
             'id' => $taskBoard->id,
             'kind' => $taskBoard->kind,
@@ -112,7 +122,11 @@ class TaskBoardsController extends Controller
             'builtin_columns' => $taskBoard->resolvedBuiltinColumns(),
             'groups' => $taskBoard->groups->map(fn (TaskGroup $g) => TaskBoardSettingsController::presentGroup($g))->all(),
             'assignable' => $this->boards->assignable($taskBoard)->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->all(),
-            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))->all(),
+            'tasks' => $tasks->map(fn (Task $t) => TasksController::present($t))
+                ->concat($rolled->map(fn (Task $t) => TasksController::present($t) + ['rolled_up_from' => [
+                    'board_id' => $t->board_id,
+                    'board_name' => $sources[$t->board_id]->name,
+                ]]))->all(),
         ]]);
     }
 
