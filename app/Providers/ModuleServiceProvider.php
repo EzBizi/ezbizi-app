@@ -3494,7 +3494,9 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'email',
                 label: 'Email',
-                auditActionPrefixes: ['mailbox', 'sending_identity'],
+                auditActionPrefixes: ['mailbox', 'sending_identity', 'email_filter'],
+                // Jose 2026-10-28: anybody with the Inbox files their own mail; this makes filters for everyone at a place they reach.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'filters.share'],
 
                 /*
                  * ── TWO TABS, AND THE SECOND ONE IS THE POINT ────────

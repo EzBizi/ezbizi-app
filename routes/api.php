@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceManagementController;
+use App\Http\Controllers\Api\EmailFiltersController;
 use App\Http\Controllers\Api\InboxController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\HrContractsController;
@@ -2857,6 +2858,9 @@ Route::prefix('v1')
             // Design 137: one list across inboxes, merged by Message-ID, and its bulk actions.
             Route::get('email/inbox', [InboxController::class, 'index']);
             Route::post('email/inbox/actions', [InboxController::class, 'actions']);
+            Route::get('email/filters', [EmailFiltersController::class, 'index']);
+            Route::post('email/filters', [EmailFiltersController::class, 'store']);
+            Route::delete('email/filters/{filter}', [EmailFiltersController::class, 'destroy']);
             Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
             Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
             Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
