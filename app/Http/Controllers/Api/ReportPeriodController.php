@@ -58,7 +58,7 @@ class ReportPeriodController extends Controller
             return $this->xlsx($this->workbook($report, $branches, $from, $to), $name);
         }
         $pdf = $branch !== null ? $report->forFranchise($branch, $from, $to)
-            : HardenedPdf::render($report->consolidated($request->user()->organization, $from, $to), 'letter');
+            : $report->consolidated($request->user()->organization, $from, $to); // already a PDF
 
         return $this->file($pdf, "{$name}.pdf", 'application/pdf');
     }
