@@ -14,6 +14,7 @@ import '../../widgets/open_destination.dart';
 import '../../widgets/side_panel.dart';
 import '../customers/customer_detail_panel.dart';
 import 'compose_panel.dart';
+import 'filters_panel.dart';
 import 'forward_panel.dart';
 import 'inbox_rows.dart';
 import 'mail_data.dart';
@@ -162,6 +163,21 @@ class _GmailInboxState extends State<GmailInbox> {
   bool _groupsSeeded = false;
 
   String _folder = 'inbox';
+
+  /// Folder-action filters (`GET email/filters`), drawn as folders under the
+  /// built-in ones; opening one is `GET email/inbox?filter={id}`.
+  List<EmailFilter> _filterFolders = const [];
+
+  List<_Folder> get _allFolders => [
+    ..._folders,
+    for (final f in _filterFolders)
+      _Folder('filter:${f.id}', f.name, Icons.folder_outlined),
+  ];
+
+  _Folder get _currentFolder => _allFolders.firstWhere(
+    (f) => f.id == _folder,
+    orElse: () => _folders.first,
+  );
   String _category = 'primary';
   final TextEditingController _search = TextEditingController();
   String _submittedSearch = '';
@@ -262,6 +278,7 @@ class _GmailInboxState extends State<GmailInbox> {
     });
 
     if (_mailboxes.isNotEmpty) _loadList();
+    _loadFilterFolders();
 
     // A notification tapped before the inboxes were known waited for them.
     _followLink();
@@ -277,8 +294,12 @@ class _GmailInboxState extends State<GmailInbox> {
       _listError = null;
     });
 
+    final filterId = _folder.startsWith('filter:')
+        ? _folder.substring(7)
+        : null;
     final query = <String, String>{
-      'folder': _folder,
+      if (filterId == null) 'folder': _folder,
+      'filter': ?filterId,
       if (_folder == 'inbox') 'category': _category,
       'mailbox': ?_mailboxFilter,
       if (_submittedSearch.isNotEmpty) 'search': _submittedSearch,
@@ -658,6 +679,42 @@ class _GmailInboxState extends State<GmailInbox> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(said)));
   }
 
+  Future<void> _loadFilterFolders() async {
+    final response = await widget.api.get('/email/filters');
+    if (!mounted || !response.ok) return;
+    final data = response.data;
+    final rows = data is Map ? data['filters'] : null;
+    setState(() {
+      _filterFolders = [
+        for (final row in (rows is List ? rows : const []))
+          if (row is Map<String, dynamic>) EmailFilter.fromJson(row),
+      ].where((f) => f.action == 'folder').toList();
+      if (_folder.startsWith('filter:') &&
+          !_filterFolders.any((f) => 'filter:${f.id}' == _folder)) {
+        _folder = 'inbox';
+      }
+    });
+  }
+
+  /// Filters (`email/filters`). [from] opens the add form with that sender.
+  Future<void> _openFilters({String? from}) async {
+    final me = widget.session.me;
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => EmailFiltersPanel(
+        api: widget.api,
+        organizationName: me?.organization.name ?? 'the organization',
+        companies: me?.companies ?? const [],
+        branches: me?.franchises ?? const [],
+        prefillFrom: from,
+      ),
+    );
+    if (changed == true && mounted) {
+      _loadFilterFolders();
+      _loadList(cursor: _cursor);
+    }
+  }
+
   /// "—" while the server has not counted an inbox yet, never 0; nothing
   /// when it is known to be 0.
   static String? _unreadBadge(int? unread) =>
@@ -776,7 +833,7 @@ class _GmailInboxState extends State<GmailInbox> {
               ),
             ),
           ),
-          for (final folder in _folders)
+          for (final folder in _allFolders)
             _railTile(
               key: ValueKey('email-folder-${folder.id}'),
               icon: folder.icon,
@@ -1230,6 +1287,13 @@ class _GmailInboxState extends State<GmailInbox> {
               tooltip: 'Refresh',
               icon: const Icon(Icons.refresh),
               onPressed: () => _loadList(cursor: _cursor),
+            ),
+          if (none)
+            IconButton(
+              key: const ValueKey('email-filters'),
+              tooltip: 'Filters',
+              icon: const Icon(Icons.filter_alt_outlined),
+              onPressed: _openFilters,
             )
           else ...[
             IconButton(
@@ -1383,7 +1447,7 @@ class _GmailInboxState extends State<GmailInbox> {
   Widget _list(BuildContext context, {bool phone = false}) {
     final theme = Theme.of(context);
     final formats = widget.session.me!.display;
-    final folder = _folders.firstWhere((f) => f.id == _folder);
+    final folder = _currentFolder;
 
     return KeyedSubtree(
       key: const ValueKey('tour-email-list'),
@@ -1536,6 +1600,13 @@ class _GmailInboxState extends State<GmailInbox> {
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => _act('trash', [row]),
                 ),
+                if (open != null)
+                  IconButton(
+                    key: const ValueKey('email-filter-like-this'),
+                    tooltip: 'Filter mail like this',
+                    icon: const Icon(Icons.filter_alt_outlined),
+                    onPressed: () => _openFilters(from: open.fromAddress),
+                  ),
                 if (!back)
                   IconButton(
                     tooltip: 'Close',
@@ -1643,7 +1714,7 @@ class _GmailInboxState extends State<GmailInbox> {
   Widget _phone(BuildContext context, BoxConstraints constraints) {
     if (_openRow != null) return _reader(context, back: true);
 
-    final folder = _folders.firstWhere((f) => f.id == _folder);
+    final folder = _currentFolder;
     final mailbox = _mailboxById(_mailboxFilter);
     final theme = Theme.of(context);
     final notice = _notConnectedNotice(context);
