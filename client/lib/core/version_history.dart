@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0500',
+      date: '28 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'Email: filters. Anyone can make a filter that moves matching mail into its own folder; people allowed to can share a filter with everyone.',
+        'Scheduling: the Tomorrow under-filled email is sent per company and names it.',
+        'Project Management - 2: Pending, Ready for Submission and Submitted tabs; Submit moves a paid job to Submitted, in Workiz too.',
+        'Task Board: company and branch boards include the people assigned at that level, and a company board shows its branches\'s tasks as the same tasks.',
+        'Task Board: drag tasks to reorder or move them, a menu on each row to move, copy, link or delete, and bulk actions; a deleted task can be undone.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0499',
       date: '27 Oct 2026',
       items: [
