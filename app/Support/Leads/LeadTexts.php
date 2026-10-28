@@ -75,9 +75,11 @@ final class LeadTexts
         ]);
         $this->thread->refresh($lead);
 
-        $this->audit->log('lead.texted', $lead, ['from' => (string) $number->e164], actor: $actor);
+        $row = LeadConversation::query()->where('organization_id', $lead->organization_id)->where('remote_id', $remoteId)->firstOrFail();
+        // conversation_id names the sender on the thread, as lead.replied does.
+        $this->audit->log('lead.texted', $lead, ['from' => (string) $number->e164, 'conversation_id' => $row->id], actor: $actor);
 
-        return LeadConversation::query()->where('organization_id', $lead->organization_id)->where('remote_id', $remoteId)->firstOrFail();
+        return $row;
     }
 
     /**
