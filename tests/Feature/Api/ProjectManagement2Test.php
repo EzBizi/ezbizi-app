@@ -35,6 +35,8 @@ class ProjectManagement2Test extends TestCase
             foreach ([['E1', '300.00', 'Pending', '2026-09-02'], ['E2', '450.00', null, '2026-09-03'], ['E3', '999.00', 'Declined', '2026-09-04']] as [$remote, $amount, $status, $at]) {
                 $this->record($alpha, $id, 'estimate', $remote, $amount, $status, $at);
             }
+            // An empty draft on E2's date is not a price (Workiz 500033871, 2026-10-28).
+            $this->record($alpha, $id, 'estimate', 'E0', '0.00', 'Unsent', '2026-09-03');
             $this->record($alpha, $id, 'payment', 'P1', '100.00', 'succeeded', '2026-09-05');
             $this->record($alpha, $id, 'payment', 'P2', '50.00', 'failed', '2026-09-05');
 
@@ -116,7 +118,11 @@ class ProjectManagement2Test extends TestCase
             $native = Job::create(['franchise_id' => $alpha['franchise']->id, 'customer_id' => Job::find($id)->customer_id, 'number' => 'N-1',
                 'title' => 'Ours', 'status' => 'done pending approval', 'currency' => 'USD', 'amount_minor' => 5000])->id;
 
-            return [$id, $this->job($alpha, 'J-6', 'done pending approval'), $native];
+            // Its only estimate is an empty draft: no price, so no zero either.
+            $bare = $this->job($alpha, 'J-6', 'done pending approval');
+            $this->record($alpha, $bare, 'estimate', 'E6', '0.00', 'Unsent', '2026-09-02');
+
+            return [$id, $bare, $native];
         });
 
         $job = $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$id}")->assertOk()->json('data');
