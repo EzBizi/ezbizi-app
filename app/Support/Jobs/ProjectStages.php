@@ -25,15 +25,19 @@ final class ProjectStages
     public const OPEN = ['in_progress', 'waiting_review', 'ready_to_schedule', 'scheduled'];
 
     /**
+     * Each stage's rules, in order. A stage may have several, any of which
+     * puts a job in it (Jose, 2026-10-28: done pending approval whatever its
+     * money, Done only while money is due).
+     *
      * @param  mixed  $setting  jobs.pm_stages: [{key, statuses[], scheduled?: bool|null, due?: bool|null}]
-     * @return array<string, array{statuses: list<string>, scheduled: ?bool, due: ?bool}>
+     * @return array<string, list<array{statuses: list<string>, scheduled: ?bool, due: ?bool}>>
      */
     public static function rules(mixed $setting): array
     {
         $out = [];
         foreach ((array) $setting as $r) {
             if (is_array($r) && in_array($r['key'] ?? null, self::KEYS, true) && ($r['statuses'] ?? []) !== []) {
-                $out[$r['key']] = [
+                $out[$r['key']][] = [
                     'statuses' => array_values(array_map('strval', (array) $r['statuses'])),
                     'scheduled' => isset($r['scheduled']) ? (bool) $r['scheduled'] : null,
                     'due' => isset($r['due']) ? (bool) $r['due'] : null,
@@ -57,10 +61,12 @@ final class ProjectStages
     {
         $groups = [];
         foreach ($franchises as $f) {
-            foreach (self::rules($settings->get('jobs.pm_stages', $f)) as $key => $rule) {
-                $sig = $key.json_encode($rule);
-                $groups[$key][$sig] ??= ['ids' => [], 'rule' => $rule];
-                $groups[$key][$sig]['ids'][] = $f->getKey();
+            foreach (self::rules($settings->get('jobs.pm_stages', $f)) as $key => $rules) {
+                foreach ($rules as $rule) {
+                    $sig = $key.json_encode($rule);
+                    $groups[$key][$sig] ??= ['ids' => [], 'rule' => $rule];
+                    $groups[$key][$sig]['ids'][] = $f->getKey();
+                }
             }
         }
 

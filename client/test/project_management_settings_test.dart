@@ -110,6 +110,56 @@ void main() {
     ]);
   });
 
+  testWidgets('a stage takes a second rule: + Or, its own statuses and money', (
+    tester,
+  ) async {
+    final server = await settings(tester);
+    Future<void> tap(String key) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.tap(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+    }
+
+    Object? stages() => writes(server).last.last;
+    const done = {
+      'key': 'done_waiting_payment',
+      'statuses': ['done'],
+      'scheduled': null,
+      'due': null,
+    };
+
+    // No "+ Or" until the stage has a rule of its own.
+    expect(
+      find.byKey(const ValueKey('pm-set-stage-done_waiting_payment-or')),
+      findsNothing,
+    );
+    await tap('pm-set-stage-done_waiting_payment-add');
+    await tester.tap(find.text('Done').last);
+    await tester.pumpAndSettle();
+    await tap('pm-set-stage-done_waiting_payment-or');
+    await tap('pm-set-stage-done_waiting_payment-1-add');
+    await tester.tap(find.text('Parts ordered').last);
+    await tester.pumpAndSettle();
+    await tap('pm-set-stage-done_waiting_payment-1-due-true');
+
+    expect((stages() as List).skip(1).toList(), [
+      done,
+      {
+        'key': 'done_waiting_payment',
+        'statuses': ['parts_ordered'],
+        'scheduled': null,
+        'due': true,
+      },
+    ]);
+
+    await tap('pm-set-stage-done_waiting_payment-1-remove');
+    expect((stages() as List).skip(1).toList(), [done]);
+    expect(
+      find.byKey(const ValueKey('pm-set-stage-done_waiting_payment-1-or')),
+      findsNothing,
+    );
+  });
+
   testWidgets('reasons, words, the warning sentence, stopped and cost', (
     tester,
   ) async {
