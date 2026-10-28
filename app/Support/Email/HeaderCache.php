@@ -104,7 +104,12 @@ final class HeaderCache
 
         $page = $live();
 
-        Cache::put($key, serialize($page), self::TTL_SECONDS);
+        // A first page the warmer keeps lives as long as the warmer's copy:
+        // a 60 s put over it made it expire between warmer passes, and All
+        // inboxes went back to ~20 s of live reads (prod, 2026-10-28). The
+        // warmer still re-reads it whenever the inbox changes.
+        $warmed = $cursor === null && in_array($limit, self::WARM_LIMITS, true);
+        Cache::put($key, serialize($page), $warmed ? self::WARM_SECONDS : self::TTL_SECONDS);
 
         return $page;
     }
