@@ -111,7 +111,11 @@ void main() {
     await _pump(tester, _handler());
 
     expect(find.text('Recent runs'), findsOneWidget);
-    expect(DeepLinks.pending.value, isNull, reason: 'taken once, never reopened');
+    expect(
+      DeepLinks.pending.value,
+      isNull,
+      reason: 'taken once, never reopened',
+    );
   });
 
   testWidgets('the list and the builder are two tabs, and switching works', (
@@ -158,21 +162,26 @@ void main() {
   testWidgets('a disabled automation says when it stopped, not just that it did', (
     tester,
   ) async {
-    await _pump(tester, _handler(list: const [
-      {
-        'id': 'a-1',
-        'name': 'Chase completions',
-        'description': null,
-        'trigger_key': 'job.status_changed',
-        'is_active': true,
-        'is_live': false,
-        'disabled_at': '2026-09-14T15:40:00+00:00',
-        'disabled_reason':
-            'Disabled after 5 consecutive failures. Open Run history to see what failed.',
-        'runs_count': 7,
-        'version': 2,
-      },
-    ]));
+    await _pump(
+      tester,
+      _handler(
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Chase completions',
+            'description': null,
+            'trigger_key': 'job.status_changed',
+            'is_active': true,
+            'is_live': false,
+            'disabled_at': '2026-09-14T15:40:00+00:00',
+            'disabled_reason':
+                'Disabled after 5 consecutive failures. Open Run history to see what failed.',
+            'runs_count': 7,
+            'version': 2,
+          },
+        ],
+      ),
+    );
 
     expect(find.text('Auto-disabled'), findsOneWidget);
 
@@ -187,6 +196,43 @@ void main() {
     expect(find.textContaining('At an unknown time'), findsNothing);
   });
 
+  // Jose, 2026-10-28: a rule a tab depends on is marked, and switching it
+  // off names what stops before it goes.
+  testWidgets('a core rule says what stops and asks before switching off', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        list: const [
+          {
+            'id': 'a-1',
+            'name': 'Membership renewal',
+            'description': null,
+            'trigger_key': 'job.status_changed',
+            'is_active': true,
+            'is_live': true,
+            'disabled_at': null,
+            'disabled_reason': null,
+            'core_reason': 'memberships stop renewing.',
+            'runs_count': 3,
+            'version': 1,
+          },
+        ],
+      ),
+    );
+
+    expect(find.text('Core'), findsOneWidget);
+    expect(find.textContaining('memberships stop renewing'), findsOneWidget);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    expect(find.text('Switch off a core rule?'), findsOneWidget);
+    expect(
+      find.text('While this rule is off: memberships stop renewing.'),
+      findsOneWidget,
+    );
+  });
+
   // On a phone one line cut every rule to "Flag a customer with no w…".
   testWidgets('on a phone a rule name reads in full over two lines', (
     tester,
@@ -196,20 +242,22 @@ void main() {
     const name = 'Flag idle customers';
     await _pump(
       tester,
-      _handler(list: const [
-        {
-          'id': 'a-1',
-          'name': name,
-          'description': null,
-          'trigger_key': 'job.status_changed',
-          'is_active': false,
-          'is_live': false,
-          'disabled_at': null,
-          'disabled_reason': null,
-          'runs_count': 0,
-          'version': 1,
-        },
-      ]),
+      _handler(
+        list: const [
+          {
+            'id': 'a-1',
+            'name': name,
+            'description': null,
+            'trigger_key': 'job.status_changed',
+            'is_active': false,
+            'is_live': false,
+            'disabled_at': null,
+            'disabled_reason': null,
+            'runs_count': 0,
+            'version': 1,
+          },
+        ],
+      ),
       size: const Size(411, 900),
     );
 
@@ -329,8 +377,11 @@ void main() {
 
     expect(find.text('Send a notification'), findsOneWidget);
     expect(find.text('Not built yet'), findsNothing);
-    expect(find.text('Change the status'), findsNothing,
-        reason: 'an action the engine cannot run was still offered');
+    expect(
+      find.text('Change the status'),
+      findsNothing,
+      reason: 'an action the engine cannot run was still offered',
+    );
   });
 
   /// ── The field, and the record it belongs to ──────────────────────
@@ -367,15 +418,12 @@ void main() {
 
       // And read as words. "scheduled_for" is a wire name, and the person
       // choosing runs a chimney business.
-      expect(field.options.map((o) => o.label), [
-        'Status',
-        'Date and time',
-      ]);
+      expect(field.options.map((o) => o.label), ['Status', 'Date and time']);
 
       await _tap(
-      tester,
-      find.widgetWithText(SearchPickerField<String>, 'Field'),
-    );
+        tester,
+        find.widgetWithText(SearchPickerField<String>, 'Field'),
+      );
       await _tap(tester, find.text('Date and time').last);
       await _type(tester, 'Set to', '2026-09-01');
 
@@ -477,10 +525,7 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    await _tap(
-      tester,
-      find.widgetWithText(SearchPickerField<String>, 'Field'),
-    );
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Field'));
     await _tap(tester, find.text('Email').last);
 
     expect((await _saveButton(tester)).onPressed, isNotNull);
@@ -523,7 +568,10 @@ void main() {
       await _tap(tester, find.text('Status changed'));
       await _goTo(tester, 'then');
 
-      expect(_inStep(find.text('Update a field on the customer')), findsNothing);
+      expect(
+        _inStep(find.text('Update a field on the customer')),
+        findsNothing,
+      );
       expect(find.text('Choose what this step does'), findsOneWidget);
     },
   );
@@ -580,7 +628,16 @@ void main() {
     testWidgets('is refused the controls it cannot use, and told why', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
+      await _pump(
+        tester,
+        _handler(
+          permissions: const [
+            'automations.view',
+            'automations.rules.view',
+            'automations.build.view',
+          ],
+        ),
+      );
 
       // Still on screen. Hiding it is not compliance — somebody looking for
       // "New automation" and not finding it concludes the app is broken.
@@ -609,7 +666,16 @@ void main() {
     testWidgets('sees the reason inside the row menu, not a grey line', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
+      await _pump(
+        tester,
+        _handler(
+          permissions: const [
+            'automations.view',
+            'automations.rules.view',
+            'automations.build.view',
+          ],
+        ),
+      );
 
       await _tap(tester, find.byType(PopupMenuButton<String>));
 
@@ -634,7 +700,16 @@ void main() {
     testWidgets('cannot reach the builder by opening the tab directly', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
+      await _pump(
+        tester,
+        _handler(
+          permissions: const [
+            'automations.view',
+            'automations.rules.view',
+            'automations.build.view',
+          ],
+        ),
+      );
 
       await _tap(tester, find.text('Build'));
 
@@ -708,16 +783,19 @@ void main() {
   ) async {
     Map<String, dynamic>? sent;
 
-    await _pump(tester, _handler(
-      onCreate: (body) => sent = body,
-      triggerFields: const ['source', 'contact_name'],
-      triggerFieldValues: const {
-        'source': [
-          {'value': 'local_services', 'label': 'Google Local Services'},
-          {'value': 'website_chat', 'label': 'Website live chat'},
-        ],
-      },
-    ));
+    await _pump(
+      tester,
+      _handler(
+        onCreate: (body) => sent = body,
+        triggerFields: const ['source', 'contact_name'],
+        triggerFieldValues: const {
+          'source': [
+            {'value': 'local_services', 'label': 'Google Local Services'},
+            {'value': 'website_chat', 'label': 'Website live chat'},
+          ],
+        },
+      ),
+    );
 
     await _tap(tester, find.text('Build'));
     await _type(tester, 'Name', 'Chat replies');
@@ -742,10 +820,11 @@ void main() {
     await _type(tester, 'Message', 'A chat came in');
     await _save(tester);
 
-    expect(
-      ((sent!['conditions'] as Map)['all'] as List).single,
-      {'field': 'source', 'op': 'eq', 'value': 'website_chat'},
-    );
+    expect(((sent!['conditions'] as Map)['all'] as List).single, {
+      'field': 'source',
+      'op': 'eq',
+      'value': 'website_chat',
+    });
   });
 
   // Jose, 2026-10-20: inboxes for an email auto-reply are ticked, not typed.
@@ -754,17 +833,20 @@ void main() {
   ) async {
     Map<String, dynamic>? sent;
 
-    await _pump(tester, _handler(
-      onCreate: (body) => sent = body,
-      triggerFields: const ['address'],
-      triggerFieldValues: const {
-        'address': [
-          {'value': 'office@brightside.example', 'label': 'Office'},
-          {'value': 'jobs@brightside.example', 'label': 'Jobs'},
-          {'value': 'billing@brightside.example', 'label': 'Billing'},
-        ],
-      },
-    ));
+    await _pump(
+      tester,
+      _handler(
+        onCreate: (body) => sent = body,
+        triggerFields: const ['address'],
+        triggerFieldValues: const {
+          'address': [
+            {'value': 'office@brightside.example', 'label': 'Office'},
+            {'value': 'jobs@brightside.example', 'label': 'Jobs'},
+            {'value': 'billing@brightside.example', 'label': 'Billing'},
+          ],
+        },
+      ),
+    );
 
     await _tap(tester, find.text('Build'));
     await _type(tester, 'Name', 'Closed-office reply');
@@ -843,26 +925,29 @@ void main() {
   ) async {
     Map<String, dynamic>? sent;
 
-    await _pump(tester, _handler(
-      onCreate: (body) => sent = body,
-      triggerFields: const ['phone', 'contact_name'],
-      // GROUPED BY NUMBER, as Meta's endpoint returns it: a template is
-      // approved against the WABA behind a number, and ours sit on different
-      // ones. The flat shape hid one number's templates entirely.
-      whatsAppTemplates: const [
-        {
-          'from': '+18778536971',
-          'label': 'EzBizi',
-          'templates': [
-            {
-              'name': 'appointment_reminder',
-              'parameters': 2,
-              'preview': 'Hi {{1}}, your visit is {{3}}.',
-            },
-          ],
-        },
-      ],
-    ));
+    await _pump(
+      tester,
+      _handler(
+        onCreate: (body) => sent = body,
+        triggerFields: const ['phone', 'contact_name'],
+        // GROUPED BY NUMBER, as Meta's endpoint returns it: a template is
+        // approved against the WABA behind a number, and ours sit on different
+        // ones. The flat shape hid one number's templates entirely.
+        whatsAppTemplates: const [
+          {
+            'from': '+18778536971',
+            'label': 'EzBizi',
+            'templates': [
+              {
+                'name': 'appointment_reminder',
+                'parameters': 2,
+                'preview': 'Hi {{1}}, your visit is {{3}}.',
+              },
+            ],
+          },
+        ],
+      ),
+    );
 
     await _tap(tester, find.text('Build'));
     await _type(tester, 'Name', 'Remind them');
@@ -1002,9 +1087,13 @@ void main() {
     await _tap(tester, find.text('An address I type').last);
 
     expect(find.text('Email address'), findsOneWidget);
-    expect(find.text('Search people'), findsNothing,
-        reason: 'the people list must be GONE, not merely joined by a box - '
-            'showing both is the overflow this replaced');
+    expect(
+      find.text('Search people'),
+      findsNothing,
+      reason:
+          'the people list must be GONE, not merely joined by a box - '
+          'showing both is the overflow this replaced',
+    );
   });
 
   /// "The customer it is about" saves the one value the server resolves.
@@ -1036,7 +1125,10 @@ void main() {
     await _type(tester, 'Message', 'All done.');
     await _save(tester);
 
-    expect((sent!['actions'] as List).single, containsPair('to_field', 'customer:'));
+    expect(
+      (sent!['actions'] as List).single,
+      containsPair('to_field', 'customer:'),
+    );
   });
 
   /// A box that takes {{ }} NAMES THE FIELDS, and one that does not says nothing.
@@ -1156,10 +1248,7 @@ void main() {
     await _goTo(tester, 'then');
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
-    await _tap(
-      tester,
-      find.widgetWithText(SearchPickerField<String>, 'Field'),
-    );
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Field'));
     await _tap(tester, find.text('Date and time').last);
     await _type(tester, 'Set to', '2026-09-01');
 
@@ -1171,7 +1260,6 @@ void main() {
       isFalse,
       reason: 'an untouched picker must leave the server free to use the view',
     );
-
   });
 
   /// And choosing one sends the PAIR the server stores.
@@ -1205,10 +1293,7 @@ void main() {
     await _goTo(tester, 'then');
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
-    await _tap(
-      tester,
-      find.widgetWithText(SearchPickerField<String>, 'Field'),
-    );
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Field'));
     await _tap(tester, find.text('Date and time').last);
     await _type(tester, 'Set to', '2026-09-01');
 
@@ -1279,7 +1364,10 @@ void main() {
 
     // The closed set, in plain words.
     expect(
-      find.descendant(of: table, matching: find.text('Website live chat, Thumbtack')),
+      find.descendant(
+        of: table,
+        matching: find.text('Website live chat, Thumbtack'),
+      ),
       findsOneWidget,
     );
 
@@ -1310,12 +1398,21 @@ void main() {
     );
 
     await _tap(tester, find.text('Build'));
-    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
-    await _tap(tester, find.text('Tell the office about website chats only').last);
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Start from a template'),
+    );
+    await _tap(
+      tester,
+      find.text('Tell the office about website chats only').last,
+    );
 
     // The name, the trigger, the condition and the step all arrive together.
     expect(
-      find.widgetWithText(TextField, 'Tell the office about website chats only'),
+      find.widgetWithText(
+        TextField,
+        'Tell the office about website chats only',
+      ),
       findsOneWidget,
     );
     await _goTo(tester, 'then');
@@ -1367,10 +1464,16 @@ void main() {
     );
 
     await _tap(tester, find.text('Build'));
-    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Start from a template'),
+    );
 
     await tester.enterText(
-      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
       'owner reassigned',
     );
     await tester.pumpAndSettle();
@@ -1393,8 +1496,14 @@ void main() {
     await _type(tester, 'Name', 'My own rule');
 
     Future<void> choose() async {
-      await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
-      await _tap(tester, find.text('Tell the office about website chats only').last);
+      await _tap(
+        tester,
+        find.widgetWithText(SearchPickerField<String>, 'Start from a template'),
+      );
+      await _tap(
+        tester,
+        find.text('Tell the office about website chats only').last,
+      );
     }
 
     await choose();
@@ -1404,7 +1513,13 @@ void main() {
 
     await choose();
     await _tap(tester, find.text('Use the template'));
-    expect(find.widgetWithText(TextField, 'Tell the office about website chats only'), findsOneWidget);
+    expect(
+      find.widgetWithText(
+        TextField,
+        'Tell the office about website chats only',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Use the template'), findsNothing);
   });
 
@@ -1448,7 +1563,8 @@ void main() {
     expect(
       second.dy,
       first.dy,
-      reason: 'two rules at the same height is what "more at the same time" means',
+      reason:
+          'two rules at the same height is what "more at the same time" means',
     );
     expect(second.dx, greaterThan(first.dx));
 
@@ -1472,7 +1588,8 @@ void main() {
       {
         ..._list.first,
         'id': 'a-2',
-        'name': 'A rule whose name is long enough to need a second line at card width',
+        'name':
+            'A rule whose name is long enough to need a second line at card width',
       },
     ];
 
@@ -1487,7 +1604,9 @@ void main() {
       tester.getTopLeft(find.byType(Card).at(0)).dy,
       reason: 'the two must be side by side for this to test anything',
     );
-    expect({for (var i = 0; i < 2; i++) tester.getSize(find.byType(Card).at(i))}, hasLength(1));
+    expect({
+      for (var i = 0; i < 2; i++) tester.getSize(find.byType(Card).at(i)),
+    }, hasLength(1));
   });
 
   /// A BUILT ACTION IS OFFERED, AND DRAWS ITS OWN FORM.
@@ -1520,7 +1639,11 @@ void main() {
             {
               'key': 'users',
               'label': 'People',
-              'subject': {'key': 'user', 'label': 'User', 'writable_fields': []},
+              'subject': {
+                'key': 'user',
+                'label': 'User',
+                'writable_fields': [],
+              },
               'triggers': [
                 {'key': 'user.activated', 'label': 'Activated'},
               ],
@@ -1538,15 +1661,23 @@ void main() {
     await _goTo(tester, 'then');
     await _tap(tester, find.text('Add a step'));
 
-    expect(find.text('Not built yet'), findsNothing,
-        reason: 'both of these are built');
+    expect(
+      find.text('Not built yet'),
+      findsNothing,
+      reason: 'both of these are built',
+    );
 
     await _tap(tester, _inStep(find.text('Assign training')));
 
-    expect(find.widgetWithText(SearchPickerField<String>, 'What to assign'),
-        findsOneWidget);
-    expect(find.widgetWithText(TextField, 'Message'), findsNothing,
-        reason: 'a built action must draw its own form, not a Message box');
+    expect(
+      find.widgetWithText(SearchPickerField<String>, 'What to assign'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(TextField, 'Message'),
+      findsNothing,
+      reason: 'a built action must draw its own form, not a Message box',
+    );
   });
 
   /// THE STEP SAYS WHO THE REPORT COVERS (queue 33, Jose's 1).
@@ -1601,8 +1732,11 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Send the work hours report')));
 
-    expect(find.byKey(const ValueKey('step-hours-covers')), findsNothing,
-        reason: 'no report chosen yet');
+    expect(
+      find.byKey(const ValueKey('step-hours-covers')),
+      findsNothing,
+      reason: 'no report chosen yet',
+    );
 
     await _tap(
       tester,
@@ -1622,8 +1756,11 @@ void main() {
     );
 
     await _tap(tester, find.byKey(const ValueKey('step-hours-edit')));
-    expect(find.text('Edit report'), findsOneWidget,
-        reason: "Work Hours' own editor");
+    expect(
+      find.text('Edit report'),
+      findsOneWidget,
+      reason: "Work Hours' own editor",
+    );
   });
 
   /// "Set to" is a list when the field has one, and a box when it does not.
@@ -1633,53 +1770,60 @@ void main() {
   /// "Booked" and skip for ever, because the stored value is `booked`. The
   /// SECOND assertion is the one that matters: a field with an open set must
   /// keep its text box, or this trades one wrong control for another.
-  testWidgets('setting a field offers its real values, and only when it has them', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(
-      // `is_active` is writable on the fixture's Customer subject AND has a
-      // closed set, which is the pairing this control is about.
-      triggerFields: const ['is_active', 'name'],
-      triggerFieldValues: const {
-        'is_active': [
-          {'value': '1', 'label': 'Active'},
-          {'value': '0', 'label': 'Inactive'},
-        ],
-      },
-    ));
+  testWidgets(
+    'setting a field offers its real values, and only when it has them',
+    (tester) async {
+      await _pump(
+        tester,
+        _handler(
+          // `is_active` is writable on the fixture's Customer subject AND has a
+          // closed set, which is the pairing this control is about.
+          triggerFields: const ['is_active', 'name'],
+          triggerFieldValues: const {
+            'is_active': [
+              {'value': '1', 'label': 'Active'},
+              {'value': '0', 'label': 'Inactive'},
+            ],
+          },
+        ),
+      );
 
-    await _tap(tester, find.text('Build'));
-    await _goTo(tester, 'when');
-    await _tap(tester, find.text('Created'));
-    await _goTo(tester, 'then');
-    await _tap(tester, find.text('Add a step'));
-    await _tap(tester, find.text('Update a field'));
+      await _tap(tester, find.text('Build'));
+      await _goTo(tester, 'when');
+      await _tap(tester, find.text('Created'));
+      await _goTo(tester, 'then');
+      await _tap(tester, find.text('Add a step'));
+      await _tap(tester, find.text('Update a field'));
 
-    // The Field control is a PICKER of writable fields, not a text box.
-    await _tap(
-      tester,
-      find.ancestor(
-        of: find.text('Field'),
-        matching: find.byType(SearchPickerField<String>),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _tap(tester, find.text('Active').last);
+      // The Field control is a PICKER of writable fields, not a text box.
+      await _tap(
+        tester,
+        find.ancestor(
+          of: find.text('Field'),
+          matching: find.byType(SearchPickerField<String>),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Active').last);
 
-    expect(find.text('Set to'), findsOneWidget);
+      expect(find.text('Set to'), findsOneWidget);
 
-    await _tap(
-      tester,
-      find.ancestor(
-        of: find.text('Set to'),
-        matching: find.byType(SearchPickerField<String>),
-      ),
-    );
-    await tester.pumpAndSettle();
+      await _tap(
+        tester,
+        find.ancestor(
+          of: find.text('Set to'),
+          matching: find.byType(SearchPickerField<String>),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Inactive'), findsWidgets,
-        reason: 'the field offers its closed set, in plain words');
-  });
+      expect(
+        find.text('Inactive'),
+        findsWidgets,
+        reason: 'the field offers its closed set, in plain words',
+      );
+    },
+  );
 
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
@@ -1736,7 +1880,11 @@ void main() {
     await _tap(tester, picker);
 
     for (final field in ['from_address', 'received_at', 'subject']) {
-      expect(find.text(field), findsWidgets, reason: '$field should be offered');
+      expect(
+        find.text(field),
+        findsWidgets,
+        reason: '$field should be offered',
+      );
     }
 
     await _tap(tester, find.text('subject').last);
@@ -1870,7 +2018,11 @@ void main() {
     await _tap(tester, find.text('Open and edit'));
 
     expect(
-      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save changes')).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Save changes'),
+          )
+          .onPressed,
       isNotNull,
     );
     await _tap(tester, find.text('Save changes'));
@@ -1929,7 +2081,10 @@ void main() {
     await _goTo(tester, 'then');
     expect(find.text('appointment_reminder'), findsWidgets);
     expect(
-      tester.widget<TextField>(find.widgetWithText(TextField, 'Blank 2')).controller?.text,
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Blank 2'))
+          .controller
+          ?.text,
       'tomorrow',
     );
 
@@ -1964,10 +2119,15 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.textContaining('This stays as it is once a rule is saved'),
-        findsOneWidget);
-    expect(find.byKey(const ValueKey('tour-automations-trigger')), findsNothing,
-        reason: 'a saved rule offers no trigger picker');
+    expect(
+      find.textContaining('This stays as it is once a rule is saved'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('tour-automations-trigger')),
+      findsNothing,
+      reason: 'a saved rule offers no trigger picker',
+    );
 
     await _goTo(tester, 'only-if');
 
@@ -2311,7 +2471,8 @@ void main() {
     expect(
       find.text('Stock is low'),
       findsWidgets,
-      reason: 'A marked trigger is still selectable; the badge explains, it '
+      reason:
+          'A marked trigger is still selectable; the badge explains, it '
           'does not forbid.',
     );
   });
@@ -2327,42 +2488,46 @@ void main() {
   /// The line is a PICKER, not a text field. Its value is an id, and a text
   /// field there asks somebody to type a uuid, which is a way of asking them
   /// to fail.
-  testWidgets('Send a message offers the company lines rather than a blank box', (
-    tester,
-  ) async {
-    Map<String, dynamic>? sent;
-    await _pump(
-      tester,
-      _handler(catalogue: _catalogueWithSms(), onCreate: (body) => sent = body),
-    );
+  testWidgets(
+    'Send a message offers the company lines rather than a blank box',
+    (tester) async {
+      Map<String, dynamic>? sent;
+      await _pump(
+        tester,
+        _handler(
+          catalogue: _catalogueWithSms(),
+          onCreate: (body) => sent = body,
+        ),
+      );
 
-    await _tap(tester, find.text('Build'));
-    await _type(tester, 'Name', 'Text me when mail lands');
-    await _goTo(tester, 'when');
-    await _tap(tester, find.text('Email'));
-    await _tap(tester, find.text('An email arrived'));
-    await _goTo(tester, 'then');
-    await _tap(tester, find.text('Add a step'));
-    await _tap(tester, _inStep(find.text('Send a message')));
+      await _tap(tester, find.text('Build'));
+      await _type(tester, 'Name', 'Text me when mail lands');
+      await _goTo(tester, 'when');
+      await _tap(tester, find.text('Email'));
+      await _tap(tester, find.text('An email arrived'));
+      await _goTo(tester, 'then');
+      await _tap(tester, find.text('Add a step'));
+      await _tap(tester, _inStep(find.text('Send a message')));
 
-    // The line is chosen from what the company holds.
-    await _tap(tester, find.byType(SearchPickerField<String>).last);
-    await tester.pumpAndSettle();
-    await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
+      // The line is chosen from what the company holds.
+      await _tap(tester, find.byType(SearchPickerField<String>).last);
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
-    await _type(tester, 'Send to', '+13057242199');
-    await _type(tester, 'Message', 'An email just arrived.');
-    await _save(tester);
+      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Message', 'An email just arrived.');
+      await _save(tester);
 
-    expect(sent?['actions'], [
-      {
-        'type': 'sms.send',
-        'number_id': 'num-1',
-        'to': '+13057242199',
-        'body': 'An email just arrived.',
-      },
-    ]);
-  });
+      expect(sent?['actions'], [
+        {
+          'type': 'sms.send',
+          'number_id': 'num-1',
+          'to': '+13057242199',
+          'body': 'An email just arrived.',
+        },
+      ]);
+    },
+  );
 
   /// A yes/no parameter is a switch, and OFF is an answer.
   ///
@@ -2374,104 +2539,111 @@ void main() {
   ///
   /// So this saves with the switch UNTOUCHED. Break it by deleting the boolean
   /// skip in _missingParameter and it goes red on "Mark it urgent is required."
-  testWidgets('a yes/no step parameter is a switch, and leaving it off still saves', (
-    tester,
-  ) async {
-    Map<String, dynamic>? sent;
-    await _pump(
-      tester,
-      _handler(
-        catalogue: _catalogueWithABooleanParameter(),
-        onCreate: (body) => sent = body,
-      ),
-    );
+  testWidgets(
+    'a yes/no step parameter is a switch, and leaving it off still saves',
+    (tester) async {
+      Map<String, dynamic>? sent;
+      await _pump(
+        tester,
+        _handler(
+          catalogue: _catalogueWithABooleanParameter(),
+          onCreate: (body) => sent = body,
+        ),
+      );
 
-    await _tap(tester, find.text('Build'));
-    await _type(tester, 'Name', 'Text me when mail lands');
-    await _goTo(tester, 'when');
-    await _tap(tester, find.text('Email'));
-    await _tap(tester, find.text('An email arrived'));
-    await _goTo(tester, 'then');
-    await _tap(tester, find.text('Add a step'));
-    await _tap(tester, _inStep(find.text('Send a message')));
+      await _tap(tester, find.text('Build'));
+      await _type(tester, 'Name', 'Text me when mail lands');
+      await _goTo(tester, 'when');
+      await _tap(tester, find.text('Email'));
+      await _tap(tester, find.text('An email arrived'));
+      await _goTo(tester, 'then');
+      await _tap(tester, find.text('Add a step'));
+      await _tap(tester, _inStep(find.text('Send a message')));
 
-    await _tap(tester, find.byType(SearchPickerField<String>).last);
-    await tester.pumpAndSettle();
-    await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
-    await _type(tester, 'Send to', '+13057242199');
-    await _type(tester, 'Message', 'An email just arrived.');
+      await _tap(tester, find.byType(SearchPickerField<String>).last);
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
+      await _type(tester, 'Send to', '+13057242199');
+      await _type(tester, 'Message', 'An email just arrived.');
 
-    // A switch, not a box to type "true" into.
-    expect(
-      find.widgetWithText(SwitchListTile, 'Mark it urgent'),
-      findsOneWidget,
-      reason: 'a boolean parameter drawn as a TextField asks for a typed "true"',
-    );
+      // A switch, not a box to type "true" into.
+      expect(
+        find.widgetWithText(SwitchListTile, 'Mark it urgent'),
+        findsOneWidget,
+        reason:
+            'a boolean parameter drawn as a TextField asks for a typed "true"',
+      );
 
-    // Deliberately NOT touched. Off is the answer being given.
-    await _save(tester);
+      // Deliberately NOT touched. Off is the answer being given.
+      await _save(tester);
 
-    expect(
-      sent,
-      isNotNull,
-      reason: 'a required boolean left off is answered, not missing — it must save',
-    );
+      expect(
+        sent,
+        isNotNull,
+        reason:
+            'a required boolean left off is answered, not missing — it must save',
+      );
 
-    // A REAL boolean on the wire, not the text the switch stored it in. The
-    // server must never be left casting a string: PHP turns '' into false and
-    // the string 'false' into TRUE.
-    expect((sent?['actions'] as List).first, containsPair('urgent', false));
-  });
+      // A REAL boolean on the wire, not the text the switch stored it in. The
+      // server must never be left casting a string: PHP turns '' into false and
+      // the string 'false' into TRUE.
+      expect((sent?['actions'] as List).first, containsPair('urgent', false));
+    },
+  );
 
   // ── UI queue 113: five steps with a timeline (Jose's 1 and 4) ──────────
 
-  testWidgets('the timeline jumps between the steps, and Back and Next walk them',
-      (tester) async {
-    await _pump(tester, _handler());
-    await _tap(tester, find.text('Build'));
+  testWidgets(
+    'the timeline jumps between the steps, and Back and Next walk them',
+    (tester) async {
+      await _pump(tester, _handler());
+      await _tap(tester, find.text('Build'));
 
-    // A new rule starts at its name.
-    expect(find.text('Name it'), findsOneWidget);
-    expect(find.text('Step 1 of 5'), findsOneWidget);
+      // A new rule starts at its name.
+      expect(find.text('Name it'), findsOneWidget);
+      expect(find.text('Step 1 of 5'), findsOneWidget);
 
-    await _goTo(tester, 'then');
-    expect(find.text('Then do this'), findsOneWidget);
-    expect(find.text('Name it'), findsNothing, reason: 'one step at a time');
-    expect(find.text('Step 4 of 5'), findsOneWidget);
+      await _goTo(tester, 'then');
+      expect(find.text('Then do this'), findsOneWidget);
+      expect(find.text('Name it'), findsNothing, reason: 'one step at a time');
+      expect(find.text('Step 4 of 5'), findsOneWidget);
 
-    await _goTo(tester, 'only-if');
-    expect(find.text('Only if'), findsWidgets);
-    expect(find.byKey(const ValueKey('tour-automations-add-condition')),
-        findsOneWidget);
+      await _goTo(tester, 'only-if');
+      expect(find.text('Only if'), findsWidgets);
+      expect(
+        find.byKey(const ValueKey('tour-automations-add-condition')),
+        findsOneWidget,
+      );
 
-    await _tap(tester, find.byKey(const ValueKey('automation-builder-back')));
-    expect(find.text('When this happens'), findsOneWidget);
+      await _tap(tester, find.byKey(const ValueKey('automation-builder-back')));
+      expect(find.text('When this happens'), findsOneWidget);
 
-    await _tap(tester, find.text('Created'));
-    await _tap(tester, find.byKey(const ValueKey('automation-builder-next')));
-    expect(find.text('Step 3 of 5'), findsOneWidget);
+      await _tap(tester, find.text('Created'));
+      await _tap(tester, find.byKey(const ValueKey('automation-builder-next')));
+      expect(find.text('Step 3 of 5'), findsOneWidget);
 
-    // With no conditions the bar offers to skip them, and skipping lands on
-    // Then and reads as "none" on the timeline.
-    await _tap(tester, find.byKey(const ValueKey('automation-builder-skip')));
-    expect(find.text('Then do this'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('automation-step-only-if')),
-        matching: find.text('none'),
-      ),
-      findsOneWidget,
-    );
+      // With no conditions the bar offers to skip them, and skipping lands on
+      // Then and reads as "none" on the timeline.
+      await _tap(tester, find.byKey(const ValueKey('automation-builder-skip')));
+      expect(find.text('Then do this'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('automation-step-only-if')),
+          matching: find.text('none'),
+        ),
+        findsOneWidget,
+      );
 
-    // The When step's summary is the trigger it reacts to.
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('automation-step-when')),
-        matching: find.text('Created'),
-      ),
-      findsOneWidget,
-    );
-  });
+      // The When step's summary is the trigger it reacts to.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('automation-step-when')),
+          matching: find.text('Created'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('Next refuses without a trigger, and says why', (tester) async {
     await _pump(tester, _handler());
@@ -2505,58 +2677,65 @@ void main() {
     expect(find.text('Give it a name first.'), findsOneWidget);
   });
 
-  testWidgets('editing opens on Review, as one sentence whose parts jump back',
-      (tester) async {
-    await _pump(tester, _handler());
+  testWidgets(
+    'editing opens on Review, as one sentence whose parts jump back',
+    (tester) async {
+      await _pump(tester, _handler());
 
-    await _tap(tester, find.byType(PopupMenuButton<String>));
-    await _tap(tester, find.text('Open and edit'));
+      await _tap(tester, find.byType(PopupMenuButton<String>));
+      await _tap(tester, find.text('Open and edit'));
 
-    expect(find.text('Step 5 of 5'), findsOneWidget);
-    expect(find.byKey(const ValueKey('automation-sentence')), findsOneWidget);
+      expect(find.text('Step 5 of 5'), findsOneWidget);
+      expect(find.byKey(const ValueKey('automation-sentence')), findsOneWidget);
 
-    Finder part(String step) =>
-        find.byKey(ValueKey('automation-sentence-$step'));
+      Finder part(String step) =>
+          find.byKey(ValueKey('automation-sentence-$step'));
 
-    String said(String step) =>
-        tester.widget<Text>(
-          find.descendant(of: part(step), matching: find.byType(Text)),
-        ).data!;
+      String said(String step) => tester
+          .widget<Text>(
+            find.descendant(of: part(step), matching: find.byType(Text)),
+          )
+          .data!;
 
-    expect(said('when'), 'Jobs › Status changed');
-    expect(said('only-if'), 'only if the status is one of completed, invoiced');
-    expect(
-      said('then'),
-      'sends a notification to everybody who can see it: “A job finished.”',
-    );
-    expect(said('name'), 'across the whole organization');
-
-    // The rehearsal of the saved rule sits here now, and so does History.
-    expect(find.byKey(const Key('automation-builder-try')), findsOneWidget);
-    expect(find.text('Put this one back'), findsOneWidget);
-    expect(find.text('Save changes'), findsOneWidget);
-
-    // Every complete step is ticked on the timeline.
-    for (final step in ['name', 'when', 'only-if', 'then']) {
+      expect(said('when'), 'Jobs › Status changed');
       expect(
-        find.descendant(
-          of: find.byKey(ValueKey('automation-step-$step')),
-          matching: find.byIcon(Icons.check),
-        ),
-        findsOneWidget,
-        reason: '$step is complete on a saved rule',
+        said('only-if'),
+        'only if the status is one of completed, invoiced',
       );
-    }
+      expect(
+        said('then'),
+        'sends a notification to everybody who can see it: “A job finished.”',
+      );
+      expect(said('name'), 'across the whole organization');
 
-    await _tap(tester, part('only-if'));
-    expect(find.text('Step 3 of 5'), findsOneWidget);
-    expect(
-      tester.widget<TextField>(find.widgetWithText(TextField, 'Values'))
-          .controller
-          ?.text,
-      'completed, invoiced',
-    );
-  });
+      // The rehearsal of the saved rule sits here now, and so does History.
+      expect(find.byKey(const Key('automation-builder-try')), findsOneWidget);
+      expect(find.text('Put this one back'), findsOneWidget);
+      expect(find.text('Save changes'), findsOneWidget);
+
+      // Every complete step is ticked on the timeline.
+      for (final step in ['name', 'when', 'only-if', 'then']) {
+        expect(
+          find.descendant(
+            of: find.byKey(ValueKey('automation-step-$step')),
+            matching: find.byIcon(Icons.check),
+          ),
+          findsOneWidget,
+          reason: '$step is complete on a saved rule',
+        );
+      }
+
+      await _tap(tester, part('only-if'));
+      expect(find.text('Step 3 of 5'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.widgetWithText(TextField, 'Values'))
+            .controller
+            ?.text,
+        'completed, invoiced',
+      );
+    },
+  );
 
   testWidgets('trigger cards carry the 30-day count when the server answers', (
     tester,
@@ -2609,7 +2788,10 @@ void main() {
     await _tap(tester, find.text('Created'));
 
     expect(find.textContaining('in the last 30 days'), findsNothing);
-    expect(find.byKey(const ValueKey('automation-trigger-count')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('automation-trigger-count')),
+      findsNothing,
+    );
 
     await _goTo(tester, 'only-if');
     await _tap(tester, find.text('Add a condition'));
@@ -2618,7 +2800,10 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('automation-would-have-run')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('automation-would-have-run')),
+      findsNothing,
+    );
     expect(find.textContaining('would have run'), findsNothing);
   });
 
@@ -2711,7 +2896,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('Tested on the newest 500 events: it would have run 120 times.'),
+      find.text(
+        'Tested on the newest 500 events: it would have run 120 times.',
+      ),
       findsOneWidget,
     );
     expect(find.textContaining('last 30 days'), findsNothing);
@@ -2759,7 +2946,10 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, find.text('Send a notification'));
     await _tap(tester, find.byKey(const ValueKey('automation-then-back')));
-    expect(find.byKey(const ValueKey('automation-then-step-0')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('automation-then-step-0')),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('automation-then-details')), findsNothing);
 
     await _goTo(tester, 'review');
@@ -2799,14 +2989,16 @@ void main() {
     );
 
     expect(
-      tester.widget<TextField>(find.widgetWithText(TextField, 'Message').first)
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Message').first)
           .controller
           ?.text,
       'Hello {{contact_name}}',
     );
     // Into the box the cursor was in, not the first one.
     expect(
-      tester.widget<TextField>(find.widgetWithText(TextField, 'Subject').first)
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Subject').first)
           .controller
           ?.text,
       '',
@@ -2883,7 +3075,10 @@ Finder _inStep(Finder finder) =>
 
 /// Choose a condition's detail from its picker (UI queue 131).
 Future<void> _pickField(WidgetTester tester, String field) async {
-  await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Field').last);
+  await _tap(
+    tester,
+    find.widgetWithText(SearchPickerField<String>, 'Field').last,
+  );
   await _tap(tester, find.text(field).last);
 }
 
@@ -3065,7 +3260,12 @@ Map<String, Object?> _catalogueWithBuiltActions() => {
   ],
   'action_types': [
     ...(_catalogueWithSms()['action_types'] as List),
-    {'key': 'deactivate', 'label': 'Switch it off', 'module_only': true, 'parameters': []},
+    {
+      'key': 'deactivate',
+      'label': 'Switch it off',
+      'module_only': true,
+      'parameters': [],
+    },
     {
       'key': 'training.assign',
       'label': 'Assign training',
@@ -3205,10 +3405,7 @@ Map<String, Object?> _catalogueWithABooleanParameter() {
   final types = List<Object?>.from(catalogue['action_types'] as List);
 
   final sms = Map<String, Object?>.from(
-    types.firstWhere(
-          (t) => (t as Map)['key'] == 'sms.send',
-        )
-        as Map,
+    types.firstWhere((t) => (t as Map)['key'] == 'sms.send') as Map,
   );
 
   sms['parameters'] = [
