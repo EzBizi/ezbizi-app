@@ -1557,10 +1557,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final mailbox = _mailboxById(_fromId);
     final open = _open;
 
-    // White, like the page Gmail puts mail on.
+    // The theme's surface: the text is drawn in theme colours, so fixed white was unreadable in dark mode (Jose, 2026-10-28).
     return ColoredBox(
       key: const ValueKey('email-reader'),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
