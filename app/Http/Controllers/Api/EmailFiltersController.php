@@ -46,7 +46,7 @@ class EmailFiltersController extends Controller
             'name' => ['required', 'string', 'max:120'],
             'from_contains' => ['nullable', 'string', 'max:255', 'required_without:subject_contains'],
             'subject_contains' => ['nullable', 'string', 'max:255'],
-            'action' => ['required', Rule::in(EmailFilter::ACTIONS)],
+            'action' => ['sometimes', Rule::in(EmailFilter::ACTIONS)],
             'scope_type' => ['nullable', Rule::in(['organization', 'company', 'franchise'])],
             'scope_id' => ['nullable', 'required_with:scope_type', 'uuid'],
         ]);
@@ -64,7 +64,7 @@ class EmailFiltersController extends Controller
             'name' => $input['name'],
             'from_contains' => self::clean($input['from_contains'] ?? null),
             'subject_contains' => self::clean($input['subject_contains'] ?? null),
-            'action' => $input['action'],
+            'action' => $input['action'] ?? EmailFilter::ACTION_FOLDER,
             'created_by' => $user->id,
         ]);
 
