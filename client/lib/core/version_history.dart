@@ -14,6 +14,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0502',
+      date: '28 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'WhatsApp: a business can connect its own WhatsApp Business number and keep using the phone app; customer messages arrive in Leads with no automatic reply.',
+        'Scheduling: online booking can offer today\'s windows until they start (a setting per company); a branch\'s first real area replaces its "All areas" placeholder; any real ZIP works as a circle centre; drag with the mouse wheel to move the map while drawing.',
+        'Automations: rules a tab depends on are marked Core, with a warning before switching one off.',
+        'Leads: texts EzBizi sent show as EzBizi\'s and can be replied to from the same line.',
+        'Project Management: a job\'s price no longer reads \$0.00 from an empty draft estimate; Project Management - 1 stages can match several rules.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0501',
       date: '28 Oct 2026',
       items: [
