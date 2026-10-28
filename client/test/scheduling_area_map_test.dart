@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/area_map_pane.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -281,6 +282,35 @@ void main() {
     expect(sent('GET', '/scheduling/areas-map').last.url.queryParameters, {
       'franchise_id': 'fr-2',
     });
+  });
+
+  testWidgets('a middle-button drag pans the map while drawing', (
+    tester,
+  ) async {
+    await pump(tester);
+    await openDowntown(tester);
+    await tester.tap(find.byKey(const ValueKey('area-map-edit')));
+    await tester.pumpAndSettle();
+    final camera = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .mapController!;
+    final before = camera.camera.center;
+    final map = tester.getRect(find.byKey(const ValueKey('area-map')));
+    final g = await tester.startGesture(
+      map.center,
+      kind: PointerDeviceKind.mouse,
+      buttons: kMiddleMouseButton,
+    );
+    await g.moveBy(const Offset(120, 40));
+    await g.up();
+    await tester.pumpAndSettle();
+
+    expect(camera.camera.center, isNot(before));
+    expect(
+      find.byKey(const ValueKey('area-map-vertex--1-0')),
+      findsNothing,
+      reason: 'panning adds no corner',
+    );
   });
 
   testWidgets('drawing a shape asks the preview with its corners', (
