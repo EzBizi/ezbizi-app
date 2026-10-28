@@ -57,6 +57,24 @@ class TaskRollUpAndLinksTest extends TestCase
         $this->assertNull($siblingRows->firstWhere('id', $task->id));
     }
 
+    public function test_a_rolled_up_row_takes_the_company_boards_status_by_name(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $company = $this->board($tenant, 'company', $tenant['company']->id);
+        $task = $this->task($tenant, $this->board($tenant, 'franchise', $tenant['franchise']->id), 'Cap');
+        [$done, $custom] = $this->inTenant($tenant['org'], fn () => [
+            $company->statuses()->where('key', 'done')->first(),
+            $company->statuses()->create(['organization_id' => $tenant['org']->id, 'key' => 'waiting_parts', 'name' => 'Waiting parts', 'colour' => '#999999', 'position' => 9, 'is_done' => false]),
+        ]);
+
+        $this->signedInAs($tenant['admin'])->patchJson("/api/v1/tasks/{$task->id}", ['status_id' => $done->id])
+            ->assertOk()->assertJsonPath('data.status', 'done');
+        $this->assertNotSame($done->id, $this->inTenant($tenant['org'], fn () => $task->fresh()->status_id));
+
+        $this->signedInAs($tenant['admin'])->patchJson("/api/v1/tasks/{$task->id}", ['status_id' => $custom->id])
+            ->assertStatus(422)->assertJsonPath('errors.status_id.0', 'The board this task is on has no status called Waiting parts.');
+    }
+
     public function test_linked_tasks_show_each_other_and_share_done_and_reopen(): void
     {
         $tenant = $this->provisionTenant('Alpha');

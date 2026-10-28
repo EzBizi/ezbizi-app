@@ -437,8 +437,20 @@ class TaskWriter
     private function resolveStatus(TaskBoard $board, array $input): ?TaskStatus
     {
         if (! empty($input['status_id'])) {
-            return TaskStatus::query()->where('board_id', $board->id)->find($input['status_id'])
-                ?? throw ValidationException::withMessages(['status_id' => 'That status is not on this board.']);
+            $own = TaskStatus::query()->where('board_id', $board->id)->find($input['status_id']);
+            if ($own !== null) {
+                return $own;
+            }
+            // A branch task shown on its company board (roll-up) is sent the
+            // company board's status: take the task's board's of the same name.
+            $other = TaskStatus::query()->find($input['status_id']);
+            $wanted = $other ? mb_strtolower(trim($other->name)) : null;
+
+            return ($wanted === null ? null : TaskStatus::query()->where('board_id', $board->id)->get()
+                ->first(fn (TaskStatus $s) => mb_strtolower(trim($s->name)) === $wanted))
+                ?? throw ValidationException::withMessages(['status_id' => $other
+                    ? "The board this task is on has no status called {$other->name}."
+                    : 'That status is not on this board.']);
         }
 
         if (! isset($input['status']) || $input['status'] === '') {

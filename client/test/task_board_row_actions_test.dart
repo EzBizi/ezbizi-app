@@ -138,8 +138,11 @@ void main() {
     );
   }
 
-  Future<void> pumpBoard(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1400, 900);
+  Future<void> pumpBoard(
+    WidgetTester tester, {
+    Size size = const Size(1400, 900),
+  }) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final api = fakeServer();
@@ -215,5 +218,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(log.last.$2, '/tasks/t1/restore');
     expect(find.byKey(const ValueKey('task-t1')), findsOneWidget);
+  });
+  testWidgets('a phone card has the menu too', (tester) async {
+    await pumpBoard(tester, size: const Size(390, 844));
+    await tester.tap(find.byKey(const ValueKey('task-menu-t1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Move to…'), findsOneWidget);
+    expect(find.byKey(const Key('task-bulk-bar')), findsNothing);
   });
 }
