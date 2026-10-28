@@ -146,6 +146,26 @@ class WhatsAppConnectTest extends TestCase
         $this->assertSame($pin, $connection->fresh()->credentials['pin']);
     }
 
+    public function test_a_number_kept_in_the_business_app_is_synced_and_never_registered(): void
+    {
+        $t = $this->provisionTenant('Acme');
+        $connection = $this->inTenant($t['org'], fn () => SocialConnection::create([
+            'organization_id' => $t['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION, 'scope_id' => $t['org']->id,
+            'provider' => 'whatsapp', 'remote_id' => self::PHONE_ID, 'display_name' => 'Acme',
+        ])->forceFill(['credentials' => ['access_token' => 'the-business-token']]));
+        $this->inTenant($t['org'], fn () => $connection->save());
+        Http::fake(fn (Request $r) => str_contains($r->url(), '/'.self::PHONE_ID.'?')
+            ? Http::response(['display_phone_number' => '+1 305-555-0100', 'is_on_biz_app' => true])
+            : Http::response(['success' => true]));
+
+        $this->inTenant($t['org'], fn () => (new OnboardWhatsAppNumber($connection->id, self::WABA))->handle());
+
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/register'));
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), self::PHONE_ID.'/smb_app_data') && $r['sync_type'] === 'smb_app_state_sync');
+        Http::assertSent(fn ($r) => str_ends_with($r->url(), self::PHONE_ID.'/smb_app_data') && $r['sync_type'] === 'history');
+        $this->assertSame('+13055550100', WhatsAppNumber::query()->withoutGlobalScopes()->sole()->display_number);
+    }
+
     public function test_a_connected_number_sends_with_its_own_token_and_others_with_the_global_one(): void
     {
         [$t] = $this->connected();

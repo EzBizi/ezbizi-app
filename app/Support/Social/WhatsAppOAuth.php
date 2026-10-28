@@ -79,7 +79,10 @@ final class WhatsAppOAuth implements SocialOAuth
             'override_default_response_type' => 'true',
             // Embedded Signup's own flow (business, WABA, number) rather than
             // a bare login. sessionInfoVersion 3 is Meta's current shape.
-            'extras' => json_encode(['setup' => new \stdClass, 'featureType' => '', 'sessionInfoVersion' => '3']),
+            // whatsapp_business_app_onboarding ("coexistence", 2026-10-28): a
+            // number already in the WhatsApp Business app can be connected and
+            // stay in the app; the flow still offers a new number.
+            'extras' => json_encode(['setup' => new \stdClass, 'featureType' => 'whatsapp_business_app_onboarding', 'sessionInfoVersion' => '3']),
         ]);
     }
 
