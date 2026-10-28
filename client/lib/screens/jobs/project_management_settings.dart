@@ -55,7 +55,9 @@ String pmPlaceLabel(Me me) {
       : s.label;
 }
 
-/// One stage's rule, as `jobs.pm_stages` holds it.
+/// One rule of a stage, as `jobs.pm_stages` holds it. A stage may have
+/// several; a job meeting any of them is in it (Jose, 2026-10-28: done
+/// pending approval whatever its money, Done only while money is due).
 @immutable
 class PmStageRule {
   const PmStageRule(this.key, this.statuses, this.scheduled, this.due);
@@ -72,16 +74,23 @@ class PmStageRule {
     'due': due,
   };
 
-  static Map<String, PmStageRule> parse(Object? value) => {
-    for (final r in value is List ? value : const [])
-      if (r is Map && pmStageKeys.contains(r['key']))
-        '${r['key']}': PmStageRule(
-          '${r['key']}',
-          [for (final s in (r['statuses'] as List?) ?? const []) '$s'],
-          r['scheduled'] is bool ? r['scheduled'] as bool : null,
-          r['due'] is bool ? r['due'] as bool : null,
-        ),
-  };
+  /// Each stage's rules, in order.
+  static Map<String, List<PmStageRule>> parse(Object? value) {
+    final out = <String, List<PmStageRule>>{};
+    for (final r in value is List ? value : const []) {
+      if (r is Map && pmStageKeys.contains(r['key'])) {
+        (out['${r['key']}'] ??= []).add(
+          PmStageRule(
+            '${r['key']}',
+            [for (final s in (r['statuses'] as List?) ?? const []) '$s'],
+            r['scheduled'] is bool ? r['scheduled'] as bool : null,
+            r['due'] is bool ? r['due'] as bool : null,
+          ),
+        );
+      }
+    }
+    return out;
+  }
 }
 
 /// Project Management › Settings (design 141; cards per topic, design
@@ -730,15 +739,63 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
 
   // ── stages ─────────────────────────────────────────────────────
 
-  Map<String, PmStageRule> get _rules => PmStageRule.parse(_value(pmStagesKey));
+  Map<String, List<PmStageRule>> get _rules =>
+      PmStageRule.parse(_value(pmStagesKey));
 
-  void _saveRules(Map<String, PmStageRule> rules) {
+  /// Stages showing an empty "or" rule that is not saved yet.
+  final Set<String> _orRows = {};
+
+  void _saveRules(Map<String, List<PmStageRule>> rules) {
     _write(pmStagesKey, [
       for (final key in pmStageKeys)
-        if (rules[key] != null && rules[key]!.statuses.isNotEmpty)
-          rules[key]!.toJson(),
+        for (final r in rules[key] ?? const <PmStageRule>[])
+          if (r.statuses.isNotEmpty) r.toJson(),
     ]);
   }
+
+  /// A stage's rows: its rules (at least one) and an unsaved "or" row.
+  List<PmStageRule> _ruleRows(
+    String key,
+    Map<String, List<PmStageRule>> rules,
+  ) {
+    final saved = rules[key] ?? const <PmStageRule>[];
+    return [
+      ...saved,
+      if (saved.isEmpty || _orRows.contains(key))
+        PmStageRule(key, const [], null, null),
+    ];
+  }
+
+  /// Rule [i] of [key] becomes [next]; past the saved ones, it is added.
+  void _putRule(
+    Map<String, List<PmStageRule>> rules,
+    String key,
+    int i,
+    PmStageRule next,
+  ) {
+    final list = [...?rules[key]];
+    if (i < list.length) {
+      list[i] = next;
+    } else {
+      list.add(next);
+      setState(() => _orRows.remove(key));
+    }
+    _saveRules({...rules, key: list});
+  }
+
+  void _removeRule(Map<String, List<PmStageRule>> rules, String key, int i) {
+    final list = [...?rules[key]];
+    if (i >= list.length) {
+      setState(() => _orRows.remove(key));
+      return;
+    }
+    list.removeAt(i);
+    _saveRules({...rules, key: list});
+  }
+
+  /// Rule [i]'s keys: the stage's own for the first, so a one-rule stage
+  /// keeps the keys it always had.
+  static String _slot(String key, int i) => i == 0 ? key : '$key-$i';
 
   String _statusLabel(String value) {
     for (final s in widget.statuses) {
@@ -796,49 +853,76 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
               ),
             ),
             for (final key in pmStageKeys)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: theme.colorScheme.outlineVariant),
+              for (final (i, rule) in _ruleRows(key, rules).indexed)
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: i == 0
+                          ? BorderSide(color: theme.colorScheme.outlineVariant)
+                          : BorderSide.none,
+                    ),
+                  ),
+                  child: Padding(
+                    key: ValueKey('pm-set-stage-${_slot(key, i)}'),
+                    padding: EdgeInsets.only(top: i == 0 ? 8 : 0, bottom: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: _stageColumn,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _stageCell(context, key, i, rules, editable),
+                              if (i == _ruleRows(key, rules).length - 1)
+                                ?_orButton(key, rules, editable),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: _statuses(
+                            context,
+                            key,
+                            i,
+                            rule,
+                            rules,
+                            editable,
+                          ),
+                        ),
+                        SizedBox(
+                          width: _ruleColumn,
+                          child: _tri(
+                            key,
+                            i,
+                            rule,
+                            rules,
+                            editable,
+                            'scheduled',
+                          ),
+                        ),
+                        SizedBox(
+                          width: _ruleColumn,
+                          child: _tri(key, i, rule, rules, editable, 'due'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Padding(
-                  key: ValueKey('pm-set-stage-$key'),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: _stageColumn,
-                        child: _stageName(context, key),
-                      ),
-                      Expanded(child: _statuses(context, key, rules, editable)),
-                      SizedBox(
-                        width: _ruleColumn,
-                        child: _tri(key, rules, editable, 'scheduled'),
-                      ),
-                      SizedBox(
-                        width: _ruleColumn,
-                        child: _tri(key, rules, editable, 'due'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         );
       },
     );
   }
 
-  /// Phone 4: one stage as a small card.
+  /// Phone 4: one stage as a small card, its rules one under another.
   Widget _stageCard(
     BuildContext context,
     String key,
-    Map<String, PmStageRule> rules,
+    Map<String, List<PmStageRule>> rules,
     bool editable,
   ) {
     final theme = Theme.of(context);
-    Widget rule(String label, String what) => Padding(
+    Widget tri(int i, PmStageRule r, String label, String what) => Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
@@ -846,7 +930,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
             width: 84,
             child: Text(label, style: theme.textTheme.bodySmall),
           ),
-          Expanded(child: _tri(key, rules, editable, what)),
+          Expanded(child: _tri(key, i, r, rules, editable, what)),
         ],
       ),
     );
@@ -861,12 +945,75 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _stageName(context, key),
-            const SizedBox(height: 8),
-            _statuses(context, key, rules, editable),
-            rule('Scheduled', 'scheduled'),
-            rule('Money due', 'due'),
+            for (final (i, r) in _ruleRows(key, rules).indexed) ...[
+              if (i > 0) const Divider(height: 20),
+              _stageCell(context, key, i, rules, editable),
+              const SizedBox(height: 8),
+              _statuses(context, key, i, r, rules, editable),
+              tri(i, r, 'Scheduled', 'scheduled'),
+              tri(i, r, 'Money due', 'due'),
+            ],
+            ?_orButton(key, rules, editable),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// The stage's name on its first rule; "or" and a remove on the others.
+  Widget _stageCell(
+    BuildContext context,
+    String key,
+    int i,
+    Map<String, List<PmStageRule>> rules,
+    bool editable,
+  ) {
+    if (i == 0) return _stageName(context, key);
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        const SizedBox(width: 18),
+        Text(
+          'or',
+          key: ValueKey('pm-set-stage-${_slot(key, i)}-or'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (editable)
+          IconButton(
+            key: ValueKey('pm-set-stage-${_slot(key, i)}-remove'),
+            tooltip: 'Remove this rule',
+            visualDensity: VisualDensity.compact,
+            iconSize: 16,
+            icon: const Icon(Icons.close),
+            onPressed: () => _removeRule(rules, key, i),
+          ),
+      ],
+    );
+  }
+
+  /// "+ Or": another rule for the stage, once it has one saved.
+  Widget? _orButton(
+    String key,
+    Map<String, List<PmStageRule>> rules,
+    bool editable,
+  ) {
+    if (!editable || (rules[key]?.isEmpty ?? true) || _orRows.contains(key)) {
+      return null;
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Tooltip(
+        message: 'Another rule: a job meeting either is in this stage',
+        child: TextButton(
+          key: ValueKey('pm-set-stage-$key-or'),
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+          ),
+          onPressed: () => setState(() => _orRows.add(key)),
+          child: const Text('+ Or'),
         ),
       ),
     );
@@ -888,16 +1035,18 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
   Widget _statuses(
     BuildContext context,
     String key,
-    Map<String, PmStageRule> rules,
+    int i,
+    PmStageRule rule,
+    Map<String, List<PmStageRule>> rules,
     bool editable,
   ) {
     final theme = Theme.of(context);
-    final rule = rules[key] ?? PmStageRule(key, const [], null, null);
+    final slot = _slot(key, i);
     final left = [
       for (final s in widget.statuses)
         if (!rule.statuses.contains(s.value)) s,
     ];
-    void put(PmStageRule next) => _saveRules({...rules, key: next});
+    void put(PmStageRule next) => _putRule(rules, key, i, next);
 
     return Padding(
       padding: const EdgeInsets.only(right: 12),
@@ -906,7 +1055,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (rule.statuses.isEmpty)
+          if (rule.statuses.isEmpty && i == 0)
             Text(
               'not set up',
               key: ValueKey('pm-set-stage-$key-unmapped'),
@@ -916,7 +1065,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
             ),
           for (final s in rule.statuses)
             InputChip(
-              key: ValueKey('pm-set-stage-$key-status-$s'),
+              key: ValueKey('pm-set-stage-$slot-status-$s'),
               label: Text(_statusLabel(s)),
               deleteButtonTooltipMessage: 'Remove',
               onDeleted: editable
@@ -937,7 +1086,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
             SizedBox(
               width: 170,
               child: SearchPickerField<String>(
-                key: ValueKey('pm-set-stage-$key-add'),
+                key: ValueKey('pm-set-stage-$slot-add'),
                 value: null,
                 hint: '+ Add',
                 isDense: true,
@@ -967,24 +1116,28 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
   /// the key the chips had: `pm-set-stage-<stage>-<what>-<any|true|false>`.
   Widget _tri(
     String key,
-    Map<String, PmStageRule> rules,
+    int i,
+    PmStageRule rule,
+    Map<String, List<PmStageRule>> rules,
     bool editable,
     String what,
   ) {
-    final rule = rules[key] ?? PmStageRule(key, const [], null, null);
+    final slot = _slot(key, i);
     final value = what == 'scheduled' ? rule.scheduled : rule.due;
     String id(bool? v) => '${v ?? 'any'}';
-    void set(bool? v) => _saveRules({
-      ...rules,
-      key: what == 'scheduled'
+    void set(bool? v) => _putRule(
+      rules,
+      key,
+      i,
+      what == 'scheduled'
           ? PmStageRule(key, rule.statuses, v, rule.due)
           : PmStageRule(key, rule.statuses, rule.scheduled, v),
-    });
+    );
 
     return Align(
       alignment: Alignment.centerLeft,
       child: SegmentedButton<String>(
-        key: ValueKey('pm-set-stage-$key-$what'),
+        key: ValueKey('pm-set-stage-$slot-$what'),
         showSelectedIcon: false,
         style: const ButtonStyle(visualDensity: VisualDensity.compact),
         segments: [
@@ -997,7 +1150,7 @@ class _ProjectManagementSettingsState extends State<ProjectManagementSettings> {
               value: id(v),
               label: Text(
                 label,
-                key: ValueKey('pm-set-stage-$key-$what-${id(v)}'),
+                key: ValueKey('pm-set-stage-$slot-$what-${id(v)}'),
               ),
             ),
         ],
