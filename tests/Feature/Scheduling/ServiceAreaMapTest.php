@@ -8,6 +8,7 @@ use App\Models\ServiceAreaZip;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -132,6 +133,12 @@ class ServiceAreaMapTest extends TestCase
         $this->assertTrue(SchedulingAreaMapController::contains($circle, 38.5, -76.5), 'the centre is inside');
         $this->assertTrue(SchedulingAreaMapController::contains($circle, 38.6, -76.4), '20602, ~9 miles out, is inside');
         $this->assertFalse(SchedulingAreaMapController::contains($circle, 38.9, -76.9), '20603, ~35 miles out, is not');
+
+        // A ZIP the Census table lacks is geocoded once and kept; one that does not exist is named.
+        Http::fake(['api.zippopotam.us/us/33101' => Http::response(['places' => [['latitude' => '25.77', 'longitude' => '-80.19']]]), 'api.zippopotam.us/*' => Http::response([], 404)]);
+        $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline?mode=recommended&center_zip=33101&radius_miles=25")->assertOk();
+        $this->assertSame(1, DB::table('zip_centroids')->where('zip', '33101')->count());
+        $as->getJson("/api/v1/scheduling/areas/{$a->id}/outline?mode=recommended&center_zip=33123&radius_miles=25")->assertStatus(422)->assertJsonPath('message', '33123 is not a US ZIP code.');
     }
 
     public function test_an_area_keeps_its_own_colour(): void

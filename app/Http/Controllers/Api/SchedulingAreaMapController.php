@@ -7,6 +7,7 @@ use App\Models\ServiceArea;
 use App\Models\ServiceAreaPolygon;
 use App\Models\ServiceAreaZip;
 use App\Models\ServiceAreaZipRelease;
+use App\Models\ZipCentroid;
 use App\Support\Audit\AuditLogger;
 use App\Support\Scoping\ViewScope;
 use Illuminate\Database\Eloquent\Builder;
@@ -101,8 +102,9 @@ final class SchedulingAreaMapController extends Controller
             $data = $request->validate(['center_zip' => ['nullable', 'regex:/^\d{5}$/'], 'radius_miles' => ['nullable', 'integer', 'min:1', 'max:200']]);
             $zip = $data['center_zip'] ?? $row->center_zip;
             $miles = (int) ($data['radius_miles'] ?? $row->radius_miles ?? 0);
-            $centre = $zip === null ? null : DB::table('zip_centroids')->where('zip', $zip)->first();
-            abort_if($centre === null || $miles < 1, 422, 'Pick a centre ZIP code we know and a radius in miles.');
+            abort_if($zip === null || $miles < 1, 422, 'Pick a centre ZIP code and a radius in miles.');
+            $centre = ZipCentroid::locate($zip);
+            abort_if($centre === null, 422, "{$zip} is not a US ZIP code.");
             $lat = (float) $centre->latitude;
             $lng = (float) $centre->longitude;
 

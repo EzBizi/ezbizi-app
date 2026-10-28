@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show kMiddleMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -996,121 +997,141 @@ class _AreaMapPaneState extends State<AreaMapPane> {
       borderRadius: BorderRadius.circular(10),
       child: Stack(
         children: [
-          FutureBuilder<String?>(
-            future: mapTileUrl(widget.api, Theme.of(context).brightness),
-            builder: (context, tiles) => FlutterMap(
-              mapController: _map,
-              options: MapOptions(
-                backgroundColor: scheme.surfaceContainerHighest,
-                initialCenter: const LatLng(39.5, -98.35),
-                initialZoom: 4,
-                interactionOptions: InteractionOptions(flags: flags),
-                onTap: (_, at) => _tapMap(at),
-                onMapReady: () {
-                  _mapReady = true;
-                  _fit();
-                },
-              ),
-              children: [
-                if (tiles.data != null)
-                  TileLayer(
-                    urlTemplate: tiles.data,
-                    userAgentPackageName: 'com.ezbizi.app',
-                  ),
-                PolygonLayer(
-                  polygons: [
-                    for (final a in _areas)
-                      if (!(_editing && a['area_id'] == _selectedId))
-                        for (final s in _shapesOf(a['polygons']))
+          // Middle button held and dragged pans in every tool, so drawing a
+          // shape never has to stop to move the map (Jose, 2026-10-28).
+          Listener(
+            onPointerMove: (e) {
+              if (!_mapReady || e.buttons & kMiddleMouseButton == 0) return;
+              final c = _map.camera;
+              _map.move(
+                c.unprojectAtZoom(c.projectAtZoom(c.center) - e.delta),
+                c.zoom,
+              );
+            },
+            child: FutureBuilder<String?>(
+              future: mapTileUrl(widget.api, Theme.of(context).brightness),
+              builder: (context, tiles) => FlutterMap(
+                mapController: _map,
+                options: MapOptions(
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  initialCenter: const LatLng(39.5, -98.35),
+                  initialZoom: 4,
+                  interactionOptions: InteractionOptions(flags: flags),
+                  onTap: (_, at) => _tapMap(at),
+                  onMapReady: () {
+                    _mapReady = true;
+                    _fit();
+                  },
+                ),
+                children: [
+                  if (tiles.data != null)
+                    TileLayer(
+                      urlTemplate: tiles.data,
+                      userAgentPackageName: 'com.ezbizi.app',
+                    ),
+                  PolygonLayer(
+                    polygons: [
+                      for (final a in _areas)
+                        if (!(_editing && a['area_id'] == _selectedId))
+                          for (final s in _shapesOf(a['polygons']))
+                            Polygon(
+                              points: s,
+                              color: _colour(
+                                context,
+                                a,
+                              ).withValues(alpha: 0.16),
+                              borderColor: _colour(context, a),
+                              borderStrokeWidth: a['area_id'] == _selectedId
+                                  ? 3
+                                  : 2,
+                            ),
+                      if (_editing)
+                        for (final s in _shapes)
                           Polygon(
                             points: s,
-                            color: _colour(context, a).withValues(alpha: 0.16),
-                            borderColor: _colour(context, a),
-                            borderStrokeWidth: a['area_id'] == _selectedId
-                                ? 3
-                                : 2,
+                            color: drawing.withValues(alpha: 0.10),
+                            borderColor: drawing,
+                            borderStrokeWidth: 2,
+                            pattern: StrokePattern.dashed(
+                              segments: const [8, 5],
+                            ),
                           ),
-                    if (_editing)
-                      for (final s in _shapes)
-                        Polygon(
-                          points: s,
-                          color: drawing.withValues(alpha: 0.10),
-                          borderColor: drawing,
-                          borderStrokeWidth: 2,
-                          pattern: StrokePattern.dashed(segments: const [8, 5]),
-                        ),
-                  ],
-                ),
-                if (_editing && _open.length > 1)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: _open,
-                        color: drawing,
-                        strokeWidth: 2,
-                        pattern: StrokePattern.dashed(segments: const [8, 5]),
-                      ),
                     ],
                   ),
-                MarkerLayer(
-                  markers: [
-                    for (final z in _zips)
-                      if (z['latitude'] is num && z['longitude'] is num)
-                        Marker(
-                          point: LatLng(
-                            (z['latitude'] as num).toDouble(),
-                            (z['longitude'] as num).toDouble(),
-                          ),
-                          width: 10,
-                          height: 10,
-                          child: Tooltip(
-                            message: [z['zip'], ?z['city']].join(' · '),
-                            child: Container(
-                              key: ValueKey('area-map-zip-${z['zip']}'),
-                              decoration: BoxDecoration(
-                                color: scheme.onSurfaceVariant,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: scheme.surface,
-                                  width: 1.5,
+                  if (_editing && _open.length > 1)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _open,
+                          color: drawing,
+                          strokeWidth: 2,
+                          pattern: StrokePattern.dashed(segments: const [8, 5]),
+                        ),
+                      ],
+                    ),
+                  MarkerLayer(
+                    markers: [
+                      for (final z in _zips)
+                        if (z['latitude'] is num && z['longitude'] is num)
+                          Marker(
+                            point: LatLng(
+                              (z['latitude'] as num).toDouble(),
+                              (z['longitude'] as num).toDouble(),
+                            ),
+                            width: 10,
+                            height: 10,
+                            child: Tooltip(
+                              message: [z['zip'], ?z['city']].join(' · '),
+                              child: Container(
+                                key: ValueKey('area-map-zip-${z['zip']}'),
+                                decoration: BoxDecoration(
+                                  color: scheme.onSurfaceVariant,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: scheme.surface,
+                                    width: 1.5,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                  ],
-                ),
-                if (tools)
-                  MarkerLayer(
-                    markers: [
-                      for (final (s, i, p) in vertices)
-                        Marker(
-                          point: p,
-                          width: 18,
-                          height: 18,
-                          child: GestureDetector(
-                            key: ValueKey('area-map-vertex-$s-$i'),
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _tapVertex(s, i),
-                            onPanUpdate: _tool == _Tool.draw
-                                ? (d) => _moveVertex(s, i, d.delta)
-                                : null,
-                            onPanEnd: _tool == _Tool.draw && s >= 0
-                                ? (_) => _changed()
-                                : null,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: scheme.surface,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: drawing, width: 2.5),
+                    ],
+                  ),
+                  if (tools)
+                    MarkerLayer(
+                      markers: [
+                        for (final (s, i, p) in vertices)
+                          Marker(
+                            point: p,
+                            width: 18,
+                            height: 18,
+                            child: GestureDetector(
+                              key: ValueKey('area-map-vertex-$s-$i'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _tapVertex(s, i),
+                              onPanUpdate: _tool == _Tool.draw
+                                  ? (d) => _moveVertex(s, i, d.delta)
+                                  : null,
+                              onPanEnd: _tool == _Tool.draw && s >= 0
+                                  ? (_) => _changed()
+                                  : null,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: scheme.surface,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: drawing,
+                                    width: 2.5,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                if (tiles.data != null) MapAttributionLine(api: widget.api),
-              ],
+                      ],
+                    ),
+                  if (tiles.data != null) MapAttributionLine(api: widget.api),
+                ],
+              ),
             ),
           ),
           if (tools) Positioned(left: 10, top: 10, child: _toolbar(context)),

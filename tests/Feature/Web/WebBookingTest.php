@@ -10,7 +10,9 @@ use App\Models\ServiceAreaZip;
 use App\Models\WebBooking;
 use App\Models\WebSite;
 use App\Support\Scheduling\NearbySuggestion;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Web\BookingLink;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
@@ -161,6 +163,23 @@ class WebBookingTest extends TestCase
         $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->sole());
         $this->assertSame($sub->id, $lead->company_id);
         $this->assertNull($lead->franchise_id, 'not filed under the parent company\'s branch');
+    }
+
+    /** Today is offered until its window starts, unless the company turned it off (Jose, 2026-10-28). */
+    public function test_today_is_offered_before_its_window_starts_unless_turned_off(): void
+    {
+        [$site, $tenant] = $this->siteWithArea();
+        $days = fn () => $this->getJson('/api/v1/web/booking/days?key='.$site->public_key.'&zip=06810')->assertOk()->json('days.0.date');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 07:00', 'America/New_York'));
+        $this->assertSame('2026-11-03', $days());
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 08:30', 'America/New_York'));
+        $this->assertSame('2026-11-04', $days(), 'a window that has started is not offered');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 07:00', 'America/New_York'));
+        $this->inTenant($tenant['org'], fn () => app(SettingsResolver::class)->set('scheduling.offer_today', $tenant['company'], false));
+        $this->assertSame('2026-11-04', $days());
+        $this->postJson('/api/v1/web/booking', $this->booking($site, '2026-11-03') + ['captcha' => $this->solved()])->assertStatus(409);
     }
 
     /** @return array{0: WebSite, 1: array} */
