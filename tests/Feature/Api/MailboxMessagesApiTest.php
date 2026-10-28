@@ -1304,6 +1304,12 @@ class MailboxMessagesApiTest extends TestCase
         $this->assertTrue($read->fromCache);
         $this->assertSame('m-1', $read->messages[0]->id);
         $this->assertSame('2026-08-11', $read->messages[0]->sentAt->toDateString());
+
+        // A live first page outlives a minute, so it is not gone between warmer passes.
+        $this->inTenant($t['org'], fn () => $cache->forget($mailbox));
+        $this->inTenant($t['org'], fn () => $cache->remember($mailbox, null, 10, fn () => $page));
+        $this->travel(2)->minutes();
+        $this->assertTrue($this->inTenant($t['org'], fn () => $cache->remember($mailbox, null, 10, fn () => $this->fail('Expired after a minute.')))->fromCache);
     }
 
     public function test_the_warmer_keeps_first_pages_cached_and_rereads_only_on_change(): void
