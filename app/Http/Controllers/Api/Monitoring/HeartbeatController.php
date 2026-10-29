@@ -36,7 +36,7 @@ class HeartbeatController extends Controller
      * something read off the screen — onto the roster. `upload_*` carries the
      * HTTP status the upload was refused with.
      */
-    private const CAPTURE_REASON = 'regex:/^(screen_locked|com_unavailable|no_screen|gdi_failed|blit_failed|pixels_unreadable|jpeg_encoder_missing|encode_failed|empty_capture|channel_missing|capture_failed|upload_[0-9]{3})$/';
+    private const CAPTURE_REASON_PATTERN = '/^(screen_locked|com_unavailable|no_screen|gdi_failed|blit_failed|pixels_unreadable|jpeg_encoder_missing|encode_failed|empty_capture|channel_missing|capture_failed|upload_[0-9]{3})$/';
 
     public function __construct(
         private readonly EventEmitter $events,
@@ -73,12 +73,20 @@ class HeartbeatController extends Controller
             'capture' => ['nullable', 'array'],
             'capture.ok' => ['required_with:capture', 'boolean'],
             'capture.at' => ['required_with:capture', 'date'],
-            'capture.reason' => ['nullable', 'string', 'max:40', self::CAPTURE_REASON],
+            'capture.reason' => ['nullable', 'string'],
         ]);
     }
 
     private function accept(Request $request, array $data): Response
     {
+        // An unknown reason no longer refuses the whole beat (461 refused beats
+        // read as offline, 2026-10-29): outside the vocabulary it is stored as
+        // capture_failed, so free text still never lands, and logged as a slug.
+        $reason = $data['capture']['reason'] ?? null;
+        if ($reason !== null && ! preg_match(self::CAPTURE_REASON_PATTERN, $reason)) {
+            Log::info('monitoring.capture.unknown_reason', ['reason' => preg_match('/^[a-z0-9_]{1,40}$/', $reason) ? $reason : '(not a slug)']);
+            $data['capture']['reason'] = 'capture_failed';
+        }
 
         // SECURITY exemption: the Lead Developer's own device advertises no
         // screen-reaching capability, so the Desktop Monitoring picker (which
