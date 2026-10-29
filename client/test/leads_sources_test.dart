@@ -13,7 +13,15 @@ import 'package:http/testing.dart';
 
 /// Leads › Manage › Connections, every source (design 156, options 1 + 4),
 /// against `GET /leads/sources` (server 6aff39145).
-var _writes = 0;
+final _sent = <({String method, String path, Object? body})>[];
+var _sourceReads = 0;
+
+Future<void> _openSite(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(const ValueKey('provider-web')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('site-$id')));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('the source list holds every source with its count and a dot '
@@ -78,57 +86,106 @@ void main() {
     expect(find.text('riverton.brightside.example'), findsOneWidget);
   });
 
-  testWidgets('a site opens its panel, read-only until there is a write', (
-    tester,
-  ) async {
+  testWidgets('each flag draws its control', (tester) async {
     await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('provider-web')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('site-s-2')));
-    await tester.pumpAndSettle();
+    await _openSite(tester, 's-2');
 
     expect(find.byKey(const ValueKey('website-panel')), findsOneWidget);
     expect(find.text('Leads go to'), findsOneWidget);
     expect(find.text('Company · Branch'), findsOneWidget);
-    expect(find.byKey(const ValueKey('site-primary')), findsOneWidget);
+    expect(find.byKey(const ValueKey('site-chat')), findsOneWidget);
+    expect(find.byKey(const ValueKey('site-make-primary')), findsOneWidget);
     expect(find.textContaining('Last seen'), findsOneWidget);
-    expect(find.text('Changes come with the next update'), findsOneWidget);
     expect(
-      tester
-          .widget<SwitchListTile>(find.byKey(const ValueKey('site-booking')))
-          .onChanged,
-      isNull,
+      find.descendant(
+        of: find.byKey(const ValueKey('website-panel')),
+        matching: find.text('Booking unknown'),
+      ),
+      findsOneWidget,
     );
     expect(
-      tester
-          .widget<SearchPickerField<String>>(
-            find.byType(SearchPickerField<String>),
-          )
-          .onChanged,
-      isNull,
+      find.text('Booking is a block on the site\'s pages.'),
+      findsOneWidget,
     );
-
-    await tester.tap(find.byKey(const ValueKey('site-booking')));
-    await tester.pumpAndSettle();
-    expect(_writes, 0);
+    expect(find.text('Changes come with the next update'), findsNothing);
   });
 
-  testWidgets('without leads.edit the panel shows values and no controls', (
+  testWidgets('without its flags the panel shows values and no controls', (
     tester,
   ) async {
-    await _pump(tester, canEdit: false);
-    await tester.tap(find.byKey(const ValueKey('provider-web')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('site-s-1')));
+    await _pump(tester, flags: false);
+    await _openSite(tester, 's-2');
+
+    expect(find.byKey(const ValueKey('site-chat')), findsNothing);
+    expect(find.text('Chat on'), findsOneWidget);
+    expect(find.byType(SearchPickerField<String>), findsNothing);
+    expect(find.text('Brightside · Riverton'), findsWidgets);
+    expect(find.byKey(const ValueKey('site-make-primary')), findsNothing);
+  });
+
+  testWidgets('the Chat switch sends the whole config back with only chat '
+      'flipped, then reloads', (tester) async {
+    await _pump(tester);
+    await _openSite(tester, 's-2');
+    final reads = _sourceReads;
+
+    await tester.tap(find.byKey(const ValueKey('site-chat')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('website-panel')), findsOneWidget);
-    expect(find.byKey(const ValueKey('site-chat')), findsNothing);
-    expect(find.byKey(const ValueKey('site-booking')), findsNothing);
-    expect(find.byKey(const ValueKey('site-primary')), findsNothing);
-    expect(find.byType(SearchPickerField<String>), findsNothing);
-    expect(find.byKey(const ValueKey('site-pending')), findsNothing);
-    expect(find.text('Chat On · Booking On'), findsOneWidget);
+    final put = _sent.singleWhere((r) => r.method == 'PUT');
+    expect(put.path, '/api/v1/web/sites/s-2/widgets');
+    expect(put.body, {
+      'config': {
+        'chat': {'enabled': false, 'greeting': 'Hi there'},
+        'booking': {'enabled': true, 'slots': 3},
+        'theme': 'light',
+      },
+    });
+    expect(_sourceReads, reads + 1);
+  });
+
+  testWidgets('the branch picker patches franchise_id', (tester) async {
+    await _pump(tester);
+    await _openSite(tester, 's-2');
+
+    await tester.tap(find.byType(SearchPickerField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Brightside · Springfield').last);
+    await tester.pumpAndSettle();
+
+    final patch = _sent.singleWhere((r) => r.method == 'PATCH');
+    expect(patch.path, '/api/v1/web/sites/s-2');
+    expect(patch.body, {'franchise_id': 'fr-1'});
+  });
+
+  testWidgets('Make primary posts, then reloads', (tester) async {
+    await _pump(tester);
+    await _openSite(tester, 's-2');
+    final reads = _sourceReads;
+
+    await tester.tap(find.byKey(const ValueKey('site-make-primary')));
+    await tester.pumpAndSettle();
+
+    expect(
+      _sent.where((r) => r.method == 'POST').single.path,
+      '/api/v1/web/sites/s-2/primary',
+    );
+    expect(_sourceReads, reads + 1);
+  });
+
+  testWidgets('a refusal is shown in the server\'s words', (tester) async {
+    await _pump(tester, refusal: 'Only an owner can change the primary site.');
+    await _openSite(tester, 's-2');
+    final reads = _sourceReads;
+
+    await tester.tap(find.byKey(const ValueKey('site-make-primary')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Only an owner can change the primary site.'),
+      findsOneWidget,
+    );
+    expect(_sourceReads, reads, reason: 'a refused save reloads nothing');
   });
 
   testWidgets('Google Business Profile lists its listings and says why no '
@@ -287,9 +344,21 @@ Future<void> _pump(
   WidgetTester tester, {
   Object? data = _all,
   bool canEdit = true,
+  bool flags = true,
+  String? refusal,
   Size size = const Size(1400, 900),
 }) async {
-  _writes = 0;
+  _sent.clear();
+  _sourceReads = 0;
+  final served = data == null
+      ? null
+      : (jsonDecode(jsonEncode(data)) as Map).cast<String, dynamic>();
+  for (final site in (served?['web']?['sites'] as List? ?? const [])) {
+    (site as Map)
+      ..['may_edit'] = flags
+      ..['may_edit_chat'] = flags
+      ..['may_set_primary'] = flags;
+  }
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -304,13 +373,34 @@ Future<void> _pump(
           },
         });
       }
-      if (request.url.path.endsWith('/leads/sources') &&
-          request.method == 'GET') {
-        return data == null
+      final path = request.url.path;
+      if (path.endsWith('/leads/sources') && request.method == 'GET') {
+        _sourceReads++;
+        return served == null
             ? _json({'message': 'Not found.'}, 404)
-            : _json({'data': data});
+            : _json({'data': served});
       }
-      if (request.method != 'GET') _writes++;
+      if (path.endsWith('/widgets') && request.method == 'GET') {
+        return _json({
+          'data': {
+            'config': {
+              'chat': {'enabled': true, 'greeting': 'Hi there'},
+              'booking': {'enabled': true, 'slots': 3},
+              'theme': 'light',
+            },
+          },
+        });
+      }
+      if (request.method != 'GET') {
+        _sent.add((
+          method: request.method,
+          path: path,
+          body: request.body.isEmpty ? null : jsonDecode(request.body),
+        ));
+        return refusal == null
+            ? _json({'data': <String, dynamic>{}})
+            : _json({'message': refusal}, 422);
+      }
       return _json({'message': 'Nothing stubbed.'}, 500);
     }),
   );
