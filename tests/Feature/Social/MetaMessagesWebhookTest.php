@@ -202,12 +202,13 @@ class MetaMessagesWebhookTest extends TestCase
         $this->pageBelongsTo($t);
 
         $this->deliver($this->body(['mid' => 'm_A1', 'text' => 'How long does the chimney sweep take?',
-            'referral' => ['source' => 'ADS', 'type' => 'OPEN_THREAD', 'ad_id' => '1']]))->assertOk();
+            'referral' => ['source' => 'ADS', 'type' => 'OPEN_THREAD', 'ad_id' => '1', 'ads_context_data' => ['ad_title' => 'Fall sweep']]]))->assertOk();
         $this->deliver($this->body(['mid' => 'm_A2', 'text' => 'What is included?', 'quick_reply' => ['payload' => 'q2']]))->assertOk();
         $this->deliver($this->body(['mid' => 'm_A3', 'text' => 'I need a sweep']))->assertOk();
 
         $this->assertSame(['m_A1' => true, 'm_A2' => true, 'm_A3' => false], LeadConversation::query()->withoutGlobalScopes()
             ->orderBy('remote_id')->pluck('is_ad_question', 'remote_id')->map(fn ($v) => (bool) $v)->all());
+        $this->assertSame(['source' => 'Facebook ad', 'ad_name' => 'Fall sweep', 'headline' => 'Fall sweep'], Lead::query()->withoutGlobalScopes()->sole()->referral);
     }
 
     public function test_a_retried_delivery_does_not_double_the_message(): void

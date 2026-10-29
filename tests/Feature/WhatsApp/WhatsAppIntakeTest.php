@@ -93,6 +93,18 @@ class WhatsAppIntakeTest extends TestCase
         $this->assertCount(1, $this->titlesFor($leads->id));
     }
 
+    /** Leads, 2026-10-29: a hidden number rings nobody, because the bell carries the number. */
+    public function test_a_hidden_number_rings_no_bell(): void
+    {
+        $leads = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);
+        DB::table('lead_hidden_numbers')->insert(['id' => (string) Str::uuid(), 'organization_id' => $this->t['org']->id,
+            'digits' => substr(self::STRANGER, -10), 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'private']], 'wamid.IN1')->assertOk();
+
+        $this->assertSame([], $this->titlesFor($leads->id));
+    }
+
     public function test_i_need_a_service_makes_one_lead_carrying_what_they_first_said(): void
     {
         $this->inbound(['type' => 'text', 'text' => ['body' => 'Do you sweep chimneys in Miami?']], 'wamid.IN1');

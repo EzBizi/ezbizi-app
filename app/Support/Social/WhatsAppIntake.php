@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Http\Controllers\Api\WhatsAppMediaController;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\LeadHiddenNumber;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\WhatsAppContact;
@@ -236,6 +237,11 @@ final class WhatsAppIntake
 
     private function notify(WhatsAppContact $contact, string $kind, string $permission): void
     {
+        // A hidden number (Leads, 2026-10-29) rings nobody: the bell carries it.
+        if (LeadHiddenNumber::covers('+'.$contact->counterparty)) {
+            return;
+        }
+
         // ponytail: every active user is loaded and asked; an org with
         // thousands of users wants a permission query here instead.
         $audience = User::query()->where('is_active', true)->get()

@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\WhatsAppContact;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadThread;
 use App\Support\Social\WhatsAppCloud;
 use App\Support\Social\WhatsAppGroups;
@@ -336,6 +337,15 @@ class WhatsAppWebhookController extends Controller
         foreach ((array) ($value['messages'] ?? []) as $m) {
             if (isset($m['referral']) && ($row = $contact((string) ($m['from'] ?? ''))) !== null) {
                 $row->forceFill(['referral' => $m['referral']])->save();
+                $lead = $row->lead_id !== null ? Lead::query()->find($row->lead_id) : null;
+                if ($lead !== null && $lead->referral === null) {
+                    $r = (array) $m['referral'];
+                    $lead->forceFill(['referral' => LeadReferral::clean([
+                        'source' => ($r['source_type'] ?? null) === 'post' ? 'Facebook post' : 'Facebook ad',
+                        'headline' => $r['headline'] ?? null,
+                        'page_url' => $r['source_url'] ?? null,
+                    ])])->save();
+                }
             }
         }
 
