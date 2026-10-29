@@ -339,12 +339,12 @@ const _empty = {
   'submitted': 'No job has gone from done pending approval to Submitted yet.',
 };
 
-/// Jose, 2026-10-27: "Pending, Paid, Total". Total is the price (Workiz's
-/// invoice, else its estimate), Paid what came in less refunds, Pending
-/// what is left. None of them where the job has no price.
+/// Jose, 2026-10-27, reordered 2026-10-29: "Paid - Pending - Total". Total is
+/// the price (Workiz's invoice, else its estimate), Paid what came in less
+/// refunds, Pending what is left. None of them where the job has no price.
 const _moneyFields = [
-  ('Pending', 'pending'),
   ('Paid', 'paid'),
+  ('Pending', 'pending'),
   ('Total', 'total'),
 ];
 

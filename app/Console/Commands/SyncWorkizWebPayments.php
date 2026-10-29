@@ -71,7 +71,7 @@ class SyncWorkizWebPayments extends Command
                         Log::warning('Workiz web payments: '.$name.': '.$read['refused']);
                         $this->warn($name.': '.$read['refused']);
 
-                        if ($read['refused'] === WorkizWebSession::EXPIRED) {
+                        if (in_array($read['refused'], [WorkizWebSession::EXPIRED, WorkizWebSession::BUSY], true)) {
                             return $count;
                         }
 

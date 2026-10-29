@@ -1068,7 +1068,13 @@ function ezbizi_chat_style($id, $style, $position, $config = array()) {
  */
 function ezbizi_booking_shortcode($atts) {
     // No chat bubble on a booking page (Jose, 2026-10-09): it sat on the card.
-    $GLOBALS['ezbizi_chat_hidden'] = true;
+    // chat="keep" leaves it, for a site with the widget on every page
+    // (suggestion 01a1889b, 2026-10-29: Everdoors lost chat site-wide).
+    // A site can also default it with the ezbizi_booking_hides_chat filter.
+    $keep = is_array($atts) && isset($atts['chat']) && strtolower((string) $atts['chat']) === 'keep';
+    if (! $keep && apply_filters('ezbizi_booking_hides_chat', true)) {
+        $GLOBALS['ezbizi_chat_hidden'] = true;
+    }
     $key = ezbizi_public_key();
     $config = ezbizi_widget_config('form');
 
@@ -1076,7 +1082,7 @@ function ezbizi_booking_shortcode($atts) {
         return ezbizi_widget_silent(__('EzBizi: this site has no browser key or widget settings yet. Click EzBizi in the sidebar.', 'ezbizi'));
     }
 
-    $atts = shortcode_atts(array('title' => __('Book Service', 'ezbizi')), $atts);
+    $atts = shortcode_atts(array('title' => __('Book Service', 'ezbizi'), 'chat' => 'hide'), $atts);
     $style = isset($config['style']) && is_array($config['style']) ? $config['style'] : array();
     $accent = esc_attr(ezbizi_widget_text($style, 'accent', '#0b6e9f'));
     $on = esc_attr(ezbizi_widget_text($style, 'on_accent', '#ffffff'));
