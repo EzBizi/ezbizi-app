@@ -95,11 +95,19 @@ class WhatsAppConnectTest extends TestCase
             ->assertOk()->json('data.authorization_url');
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-        $this->assertStringStartsWith('https://www.facebook.com/', $url);
-        $this->assertSame('1772377890501449', $query['config_id']);
-        $this->assertArrayNotHasKey('scope', $query);
-        $this->assertSame('true', $query['override_default_response_type']);
-        $this->assertSame('3', json_decode($query['extras'], true)['sessionInfoVersion']);
+        // Our page, which opens Meta through FB.login: a dialog/oauth link
+        // drops extras, and coexistence never showed (2026-10-29).
+        $this->assertStringStartsWith('https://app.ezbizi.test'.WhatsAppOAuth::LAUNCH_PATH.'?state=', $url);
+
+        $page = $this->get(WhatsAppOAuth::LAUNCH_PATH.'?state='.$query['state'])->assertOk()->getContent();
+        $this->assertStringContainsString('FB.login(', $page);
+        $this->assertStringContainsString('"config_id":"1772377890501449"', $page);
+        $this->assertStringContainsString('"featureType":"whatsapp_business_app_onboarding"', $page);
+        $this->assertStringContainsString('"sessionInfoVersion":"3"', $page);
+        $this->assertStringContainsString('"override_default_response_type":true', $page);
+        $this->assertStringContainsString(WhatsAppOAuth::CALLBACK_PATH.'?state='.$query['state'], $page);
+
+        $this->get(WhatsAppOAuth::LAUNCH_PATH.'?state=<script>')->assertNotFound();
     }
 
     public function test_identify_turns_the_shared_wabas_into_one_account_per_number(): void

@@ -68,22 +68,22 @@ final class WhatsAppOAuth implements SocialOAuth
         );
     }
 
+    /**
+     * Embedded Signup's own flow (business, WABA, number). The
+     * whatsapp_business_app_onboarding featureType ("coexistence", 2026-10-28)
+     * offers to connect a number that stays in the WhatsApp Business app.
+     */
+    public const EXTRAS = ['featureType' => 'whatsapp_business_app_onboarding', 'sessionInfoVersion' => '3'];
+
+    public const LAUNCH_PATH = '/api/v1/social/whatsapp/launch';
+
+    /**
+     * Our own page, which opens Meta through FB.login: a dialog/oauth link
+     * drops `extras`, so the coexistence choice never showed (2026-10-29).
+     */
     public function authorizeUrl(string $state, ?string $verifier = null): string
     {
-        return 'https://www.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/dialog/oauth?'.http_build_query([
-            'client_id' => MetaApp::id(),
-            'redirect_uri' => $this->redirectUri(),
-            'response_type' => 'code',
-            'config_id' => (string) config('services.meta.whatsapp_signup_config'),
-            'state' => $state,
-            'override_default_response_type' => 'true',
-            // Embedded Signup's own flow (business, WABA, number) rather than
-            // a bare login. sessionInfoVersion 3 is Meta's current shape.
-            // whatsapp_business_app_onboarding ("coexistence", 2026-10-28): a
-            // number already in the WhatsApp Business app can be connected and
-            // stay in the app; the flow still offers a new number.
-            'extras' => json_encode(['setup' => new \stdClass, 'featureType' => 'whatsapp_business_app_onboarding', 'sessionInfoVersion' => '3']),
-        ]);
+        return substr($this->redirectUri(), 0, -strlen(self::CALLBACK_PATH)).self::LAUNCH_PATH.'?state='.rawurlencode($state);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
@@ -91,7 +91,7 @@ final class WhatsAppOAuth implements SocialOAuth
         $body = $this->get('https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/oauth/access_token', [
             'client_id' => MetaApp::id(),
             'client_secret' => MetaApp::secret(),
-            'redirect_uri' => $this->redirectUri(),
+            // No redirect_uri: a code from FB.login is bound to none.
             'code' => $code,
         ]);
 
