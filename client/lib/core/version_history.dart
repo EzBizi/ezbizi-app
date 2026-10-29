@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0503',
+      date: '29 Oct 2026',
+      items: [
+        'Email: the inbox list refreshes as soon as you return from connecting a mailbox.',
+        'Email: the mailbox Connected page now says what EzBizi does: reading, archiving and Trash mirror to the mailbox, and nothing is deleted permanently.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0502',
       date: '28 Oct 2026',
       items: [
