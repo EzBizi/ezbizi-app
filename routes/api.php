@@ -3564,13 +3564,17 @@ Route::prefix('v1')
 Route::prefix('v1')
     ->middleware(['auth:sanctum', 'tenant'])
     ->group(function () {
+        // Each agent route counts in its OWN bucket (the third throttle
+        // argument). Unnamed, Laravel keys every throttle by user id alone,
+        // so the fast polls (input, files, live, lighting) used up the
+        // heartbeat's allowance and offices read offline (2026-10-29).
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-heartbeat');
 
         // A device's own periodic screen capture — same idle-less reasoning
         // as the heartbeat above (see ScreenshotsController's docblock).
         Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:60,1,mon-screenshots');
 
         // Live View's agent half — "is anyone watching me" and "here is my
         // latest frame", polled/sent every ~1-2s for as long as the agent
@@ -3581,27 +3585,27 @@ Route::prefix('v1')
         // controller already assumes, the same margin ScreenshotsController
         // and HeartbeatController leave themselves.
         Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-live-wanted');
         Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-live-frame');
 
         // Remote Control's agent half — "what should I apply, and is
         // anyone still driving me" — same idle-less and throttle reasoning
         // as `live-wanted` just above. See RemoteControlController's
         // docblock.
         Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-input');
 
         // Remote file access's agent half — "what should I read" and "here is
         // the answer" — same idle-less and throttle reasoning as
         // `input-pending` just above. See FilesController.
         Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-files-pending');
         Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-files-answer');
         // The PC's agent asking which lighting to show (LightingController).
         Route::get('monitoring/lighting', [MonitoringLightingController::class, 'pending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-lighting');
     });
 
 /*
