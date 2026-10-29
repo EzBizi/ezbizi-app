@@ -476,13 +476,10 @@ class _LeadThreadState extends State<LeadThread> {
     // full size: a label shrinks to fit rather than breaking mid-word
     // ("Archiv-e", 2026-10-01, once Completed made it four).
     Widget label(String text, String key) {
-      final words = Text(
-        text,
-        key: ValueKey(key),
-        maxLines: 1,
-        softWrap: false,
-      );
-      return fill ? FittedBox(fit: BoxFit.scaleDown, child: words) : words;
+      final words = Text(text, key: ValueKey(key), maxLines: 1, softWrap: false);
+      return fill
+          ? FittedBox(fit: BoxFit.scaleDown, child: words)
+          : words;
     }
 
     final control = SegmentedButton<String>(
@@ -502,7 +499,10 @@ class _LeadThreadState extends State<LeadThread> {
           value: 'not_a_lead',
           label: label('Not a lead', 'status-not-a-lead'),
         ),
-        ButtonSegment(value: 'new', label: label('Lead', 'status-lead')),
+        ButtonSegment(
+          value: 'new',
+          label: label('Lead', 'status-lead'),
+        ),
         // Somebody reached out and is waiting, or will try again (Jose,
         // 2026-10-14). Clears the red mark; the customer writing reopens it.
         ButtonSegment(
@@ -518,7 +518,10 @@ class _LeadThreadState extends State<LeadThread> {
         ),
         // A real customer who declined or wants what we do not do (Jose,
         // 2026-10-09).
-        ButtonSegment(value: 'lost', label: label('Lost', 'status-lost')),
+        ButtonSegment(
+          value: 'lost',
+          label: label('Lost', 'status-lost'),
+        ),
       ],
       selected: {current},
       onSelectionChanged: (picked) {
@@ -795,10 +798,13 @@ class _LeadThreadState extends State<LeadThread> {
                               company,
                               key: const ValueKey('thread-company'),
                             ),
-                          if (_details != null && (!narrow || _showDetails))
+                          if (_details != null &&
+                              (!narrow || _showDetails))
                             ..._factPills(lead, _details!),
                           ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: box.maxWidth),
+                            constraints: BoxConstraints(
+                              maxWidth: box.maxWidth,
+                            ),
                             child: Text(
                               narrow && showsNumberLine(lead)
                                   ? '${formatPhoneNumber(lead['phone'] as String?)} · $line'
@@ -905,19 +911,19 @@ class _LeadThreadState extends State<LeadThread> {
             child: _canReply
                 ? _composer(theme)
                 : Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                    child: Text(
-                      // The server's sentence, from the channel that refused. The
-                      // fallback is source-free on purpose: a screen that invents a
-                      // reason invents the wrong one, which is how a Thumbtack
-                      // message came to be described as a Google phone call.
-                      _cannotReplyBecause ??
-                          'This enquiry cannot be replied to from here.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Text(
+                // The server's sentence, from the channel that refused. The
+                // fallback is source-free on purpose: a screen that invents a
+                // reason invents the wrong one, which is how a Thumbtack
+                // message came to be described as a Google phone call.
+                _cannotReplyBecause ??
+                    'This enquiry cannot be replied to from here.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
         ],
       ],
@@ -1089,8 +1095,7 @@ class _LeadThreadState extends State<LeadThread> {
               child: AiMark.badge(
                 'Draft by AI',
                 key: ValueKey('reply-ai-draft'),
-                tooltip:
-                    'Written by AI. Read it before sending: nothing goes '
+                tooltip: 'Written by AI. Read it before sending: nothing goes '
                     'until you press Send.',
               ),
             ),
@@ -1111,8 +1116,7 @@ class _LeadThreadState extends State<LeadThread> {
                 // The phone's own spell check and suggestions (Jose,
                 // 2026-09-30: "hellu" was not corrected). Windows and the
                 // web build have no native checker Flutter can call.
-                spellCheckConfiguration:
-                    WidgetsBinding
+                spellCheckConfiguration: WidgetsBinding
                         .instance
                         .platformDispatcher
                         .nativeSpellCheckServiceDefined
@@ -1239,11 +1243,7 @@ class _LeadThreadState extends State<LeadThread> {
                   [
                     'Existing customer · ${customer['name']}',
                     if (customer['number'] != null) '${customer['number']}',
-                    total == 0
-                        ? 'No jobs yet'
-                        : total == 1
-                        ? '1 job'
-                        : '$total jobs',
+                    total == 0 ? 'No jobs yet' : total == 1 ? '1 job' : '$total jobs',
                     if (!_customerOpen && latest.isNotEmpty) 'last $latest',
                   ].join(' · '),
                   style: theme.textTheme.titleSmall?.copyWith(color: green.ink),
@@ -1255,9 +1255,7 @@ class _LeadThreadState extends State<LeadThread> {
                 key: const ValueKey('lead-customer-more'),
                 tooltip: _customerOpen ? 'Less' : 'Address and jobs',
                 visualDensity: VisualDensity.compact,
-                icon: Icon(
-                  _customerOpen ? Icons.expand_less : Icons.expand_more,
-                ),
+                icon: Icon(_customerOpen ? Icons.expand_less : Icons.expand_more),
                 onPressed: () => setState(() => _customerOpen = !_customerOpen),
               ),
               if (widget.session != null)
@@ -1273,25 +1271,22 @@ class _LeadThreadState extends State<LeadThread> {
           if (_customerOpen && revenue > 0 && currency != null)
             Text(formatMinor(revenue, currency), style: quiet),
           if (_customerOpen)
-            for (final job in jobs)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  [
-                    formatJobWhen(job['when'] as String?),
-                    '${job['title'] ?? 'Job ${job['number'] ?? ''}'}',
-                    if (job['status'] != null) '${job['status']}',
-                    if (job['amount_minor'] is num && job['currency'] is String)
-                      formatMinor(
-                        (job['amount_minor'] as num).toInt(),
-                        job['currency'] as String,
-                      ),
-                  ].where((s) => s.isNotEmpty).join(' · '),
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+          for (final job in jobs)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                [
+                  formatJobWhen(job['when'] as String?),
+                  '${job['title'] ?? 'Job ${job['number'] ?? ''}'}',
+                  if (job['status'] != null) '${job['status']}',
+                  if (job['amount_minor'] is num && job['currency'] is String)
+                    formatMinor((job['amount_minor'] as num).toInt(), job['currency'] as String),
+                ].where((s) => s.isNotEmpty).join(' · '),
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
+            ),
         ],
       ),
     );
@@ -1493,85 +1488,84 @@ class _LeadThreadState extends State<LeadThread> {
     // the bottom"). A reversed list starts at its end without scrolling, so a
     // long thread never has to be built to its bottom first.
     return ListView.builder(
-      key: const ValueKey('thread-list'),
-      reverse: true,
-      padding: const EdgeInsets.all(14),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[items.length - 1 - i];
-        if (item is String) return _dayDivider(theme, item);
-        final c = item as Map<String, dynamic>;
-        final mine = c['from'] == 'ADVERTISER';
-        // Our replies say who sent them (Jose, 2026-09-29). A reply with no
-        // name was sent outside EzBizi - A1 Tools, Google - so it is not
-        // "You", which would claim the reader sent it.
-        final who = !mine
-            ? 'Customer'
-            : c['automatic'] == true
-            ? 'Automation'
-            : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
-        final when = messageWhen(
-          c['occurred_at'] as String?,
-          clock: widget.session?.me?.display.formatTime,
+    key: const ValueKey('thread-list'),
+    reverse: true,
+    padding: const EdgeInsets.all(14),
+    itemCount: items.length,
+    itemBuilder: (context, i) {
+      final item = items[items.length - 1 - i];
+      if (item is String) return _dayDivider(theme, item);
+      final c = item as Map<String, dynamic>;
+      final mine = c['from'] == 'ADVERTISER';
+      // Our replies say who sent them (Jose, 2026-09-29). A reply with no
+      // name was sent outside EzBizi - A1 Tools, Google - so it is not
+      // "You", which would claim the reader sent it.
+      final who = !mine
+          ? 'Customer'
+          : c['automatic'] == true
+          ? 'Automation'
+          : (c['sent_by'] as String?) ?? 'Sent outside EzBizi';
+      final when = messageWhen(
+        c['occurred_at'] as String?,
+        clock: widget.session?.me?.display.formatTime,
+      );
+
+      final Widget body;
+      if (c['channel'] == 'PHONE_CALL') {
+        body = _callRow(theme, c, who: who, when: when);
+      } else if (c['channel'] == 'BOOKING') {
+        body = _bookingRow(theme, when: when);
+      } else {
+        body = _message(
+          theme,
+          c,
+          mine: mine,
+          // Ours, not automatic, and nobody in EzBizi named as sending it:
+          // it went out from A1 Tools or Google directly.
+          outside: mine && c['automatic'] != true && c['sent_by'] == null,
+          automatic: mine && c['automatic'] == true,
+          who: who,
+          when: when,
         );
+      }
 
-        final Widget body;
-        if (c['channel'] == 'PHONE_CALL') {
-          body = _callRow(theme, c, who: who, when: when);
-        } else if (c['channel'] == 'BOOKING') {
-          body = _bookingRow(theme, when: when);
-        } else {
-          body = _message(
-            theme,
-            c,
-            mine: mine,
-            // Ours, not automatic, and nobody in EzBizi named as sending it:
-            // it went out from A1 Tools or Google directly.
-            outside: mine && c['automatic'] != true && c['sent_by'] == null,
-            automatic: mine && c['automatic'] == true,
-            who: who,
-            when: when,
-          );
-        }
+      final reactions = (c['_reactions'] as List? ?? const []).cast<String>();
+      final sender = c['automatic'] == true
+          ? _sender(theme, null, automatic: true)
+          : mine && c['sent_by'] is String
+          ? _sender(theme, c['sent_by'] as String)
+          : null;
 
-        final reactions = (c['_reactions'] as List? ?? const []).cast<String>();
-        final sender = c['automatic'] == true
-            ? _sender(theme, null, automatic: true)
-            : mine && c['sent_by'] is String
-            ? _sender(theme, c['sent_by'] as String)
-            : null;
-
-        return Align(
-          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Padding(
-              padding: EdgeInsets.only(bottom: reactions.isEmpty ? 8 : 18),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(right: sender == null ? 0 : 10),
-                    child: body,
+      return Align(
+        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: reactions.isEmpty ? 8 : 18),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(right: sender == null ? 0 : 10),
+                  child: body,
+                ),
+                // Who sent it, bottom right of the bubble, as A1 Tools does.
+                if (sender != null) Positioned(right: 0, bottom: -6, child: sender),
+                // A reaction hangs on the message it answers (WhatsApp).
+                if (reactions.isNotEmpty)
+                  Positioned(
+                    left: mine ? null : 10,
+                    right: mine ? 16 : null,
+                    bottom: -14,
+                    child: _reactionChip(theme, reactions),
                   ),
-                  // Who sent it, bottom right of the bubble, as A1 Tools does.
-                  if (sender != null)
-                    Positioned(right: 0, bottom: -6, child: sender),
-                  // A reaction hangs on the message it answers (WhatsApp).
-                  if (reactions.isNotEmpty)
-                    Positioned(
-                      left: mine ? null : 10,
-                      right: mine ? 16 : null,
-                      bottom: -14,
-                      child: _reactionChip(theme, reactions),
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 
   /// "── Today ──" where the day changes (Jose, 2026-09-28).
@@ -1649,29 +1643,8 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _bookingBlock(ThemeData theme) {
     final b = _booking!;
     final status = '${b['status']}';
-    const days = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final date = DateTime.tryParse('${b['date']}');
     String hm(Object? t) {
       final parts = '$t'.split(':');
@@ -1680,8 +1653,7 @@ class _LeadThreadState extends State<LeadThread> {
     }
 
     final when = [
-      if (date != null)
-        '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}',
+      if (date != null) '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}',
       '${hm(b['start_time'])} - ${hm(b['end_time'])}',
     ].join(' · ');
     final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
@@ -1694,9 +1666,7 @@ class _LeadThreadState extends State<LeadThread> {
     String? fitLine;
     if (fit != null) {
       final near = (fit['nearby'] as num?)?.toInt() ?? 0;
-      final miles = fit['nearest_miles'] is num
-          ? ', nearest ${fit['nearest_miles']} mi'
-          : '';
+      final miles = fit['nearest_miles'] is num ? ', nearest ${fit['nearest_miles']} mi' : '';
       final jobs = '$near job${near == 1 ? '' : 's'} nearby$miles';
       if (fit['verdict'] == 'good') {
         fitLine = 'Good fit: beside $jobs';
@@ -1705,8 +1675,7 @@ class _LeadThreadState extends State<LeadThread> {
       } else {
         final d = DateTime.tryParse('${fit['date']}');
         final at = [
-          if (d != null)
-            '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}',
+          if (d != null) '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}',
           '${hm(fit['start_time'])} - ${hm(fit['end_time'])}',
         ].join(' · ');
         fitLine = 'Better: $at ($jobs)';
@@ -1721,23 +1690,11 @@ class _LeadThreadState extends State<LeadThread> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Icon(
-            Icons.event_available_outlined,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
-          Text(
-            'Requested: $when',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          Icon(Icons.event_available_outlined, size: 18, color: theme.colorScheme.primary),
+          Text('Requested: $when', style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
           if (job != null)
             Text(
-              [
-                'Booked in ${job['source']}',
-                if (job['when'] is String) job['when'],
-              ].join(' · '),
+              ['Booked in ${job['source']}', if (job['when'] is String) job['when']].join(' · '),
               key: const ValueKey('booking-job'),
               style: theme.textTheme.bodySmall,
             )
@@ -1763,10 +1720,7 @@ class _LeadThreadState extends State<LeadThread> {
               fitLine,
               key: const ValueKey('booking-fit'),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: ToneColours.of(
-                  context,
-                  fit!['verdict'] == 'better' ? Tone.caution : Tone.ok,
-                ).ink,
+                color: ToneColours.of(context, fit!['verdict'] == 'better' ? Tone.caution : Tone.ok).ink,
               ),
             ),
         ],
@@ -1779,10 +1733,7 @@ class _LeadThreadState extends State<LeadThread> {
   Widget _creditLine(ThemeData theme, Map credit) {
     final reason = creditReasonWord(credit['reason'] as String?);
     final requested = credit['requested_at'] != null;
-    final colours = ToneColours.of(
-      context,
-      requested ? Tone.neutral : Tone.caution,
-    );
+    final colours = ToneColours.of(context, requested ? Tone.neutral : Tone.caution);
     return Padding(
       key: const ValueKey('lead-credit'),
       padding: const EdgeInsets.only(top: 6),
@@ -1798,17 +1749,12 @@ class _LeadThreadState extends State<LeadThread> {
             icon: Icons.money_off_outlined,
           ),
           if (!requested) ...[
-            const AiMark(
-              tooltip:
-                  'AI read the conversation and thinks Google '
-                  'should refund this lead. Nothing is sent until you press '
-                  'Request credit.',
-            ),
+            const AiMark(tooltip: 'AI read the conversation and thinks Google '
+                'should refund this lead. Nothing is sent until you press '
+                'Request credit.'),
             TextButton(
               key: const ValueKey('lead-credit-request'),
-              onPressed: _requestingCredit
-                  ? null
-                  : () => _requestCredit(credit['reason'] as String),
+              onPressed: _requestingCredit ? null : () => _requestCredit(credit['reason'] as String),
               child: const Text('Request credit'),
             ),
           ],
@@ -1833,9 +1779,9 @@ class _LeadThreadState extends State<LeadThread> {
       }
     });
     if (!response.ok) {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
     }
   }
 
@@ -1859,9 +1805,9 @@ class _LeadThreadState extends State<LeadThread> {
       _offer = null;
       await _loadOffer();
     } else {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
     }
   }
 
@@ -1873,9 +1819,7 @@ class _LeadThreadState extends State<LeadThread> {
       return '${h % 12 == 0 ? 12 : h % 12}:${parts.length > 1 ? parts[1] : '00'} ${h < 12 ? 'AM' : 'PM'}';
     }
 
-    final window = o['start_time'] == null
-        ? ''
-        : ' · ${hm(o['start_time'])} - ${hm(o['end_time'])}';
+    final window = o['start_time'] == null ? '' : ' · ${hm(o['start_time'])} - ${hm(o['end_time'])}';
     final moved = o['moved_at'] != null;
     return Padding(
       key: const ValueKey('lead-reschedule-offer'),
@@ -1885,22 +1829,12 @@ class _LeadThreadState extends State<LeadThread> {
         runSpacing: 6,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Icon(
-            Icons.event_repeat_outlined,
-            size: 18,
-            color: theme.colorScheme.primary,
-          ),
+          Icon(Icons.event_repeat_outlined, size: 18, color: theme.colorScheme.primary),
           Text(
             '${moved ? 'Moved to' : 'Offered'}: ${o['open_date']}$window',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
-          if (!moved)
-            Text(
-              'Booked for ${o['booked_for']}',
-              style: theme.textTheme.bodySmall,
-            ),
+          if (!moved) Text('Booked for ${o['booked_for']}', style: theme.textTheme.bodySmall),
           if (o['can_move'] == true)
             FilledButton(
               key: const ValueKey('reschedule-move'),
@@ -1915,23 +1849,15 @@ class _LeadThreadState extends State<LeadThread> {
   Future<void> _decideBooking(String decision) async {
     // Two literal paths, so ClientCallsRealRoutesTest can match each route.
     final response = decision == 'approve'
-        ? await widget.api.post(
-            '/leads/${widget.lead['id']}/booking/approve',
-            const {},
-          )
-        : await widget.api.post(
-            '/leads/${widget.lead['id']}/booking/decline',
-            const {},
-          );
+        ? await widget.api.post('/leads/${widget.lead['id']}/booking/approve', const {})
+        : await widget.api.post('/leads/${widget.lead['id']}/booking/decline', const {});
     if (!mounted) return;
     if (response.ok && response.data is Map) {
-      setState(
-        () => _booking = Map<String, dynamic>.from(response.data as Map),
-      );
+      setState(() => _booking = Map<String, dynamic>.from(response.data as Map));
     } else {
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(SnackBar(content: Text(response.message)));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(response.message)),
+      );
     }
   }
 
@@ -1960,16 +1886,11 @@ class _LeadThreadState extends State<LeadThread> {
           Row(
             key: const ValueKey('lead-address-checked'),
             children: [
-              Icon(
-                Icons.verified_outlined,
-                size: 14,
-                color: theme.colorScheme.primary,
-              ),
+              Icon(Icons.verified_outlined, size: 14, color: theme.colorScheme.primary),
               const SizedBox(width: 4),
               Flexible(
                 child: Tooltip(
-                  message:
-                      'Checked with Google. The customer wrote: ${address ?? ''}',
+                  message: 'Checked with Google. The customer wrote: ${address ?? ''}',
                   child: Text(
                     '${(d['checked_address'] as Map)['address']}',
                     style: theme.textTheme.bodySmall,
@@ -2000,8 +1921,7 @@ class _LeadThreadState extends State<LeadThread> {
                 const SizedBox(width: 6),
                 const AiMark(
                   key: ValueKey('lead-ai-zip'),
-                  tooltip:
-                      'ZIP filled in by AI from what the customer said. '
+                  tooltip: 'ZIP filled in by AI from what the customer said. '
                       'Edit it to change it.',
                 ),
               ],
@@ -2080,36 +2000,31 @@ class _LeadThreadState extends State<LeadThread> {
     ];
   }
 
-  Widget _pill(String text, ToneColours colours, {IconData? icon, Key? key}) =>
-      Container(
-        key: key,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: colours.fill,
-          borderRadius: BorderRadius.circular(999),
+  Widget _pill(String text, ToneColours colours, {IconData? icon, Key? key}) => Container(
+    key: key,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(
+      color: colours.fill,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 13, color: colours.ink),
+          const SizedBox(width: 4),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colours.ink),
+          ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 13, color: colours.ink),
-              const SizedBox(width: 4),
-            ],
-            Flexible(
-              child: Text(
-                text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: colours.ink,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 
   /// "IVR menu:", "Dispatcher:" and "Customer:" in bold, where Grok has
   /// divided the call by speaker (Jose, 2026-10-12).
@@ -2315,11 +2230,7 @@ class _LeadThreadState extends State<LeadThread> {
               '$names ${_viewers.length == 1 ? 'is' : 'are'} viewing this lead',
               maxLines: compact ? 1 : null,
               overflow: compact ? TextOverflow.ellipsis : null,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: colours.ink,
-              ),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colours.ink),
             ),
           ),
         ],
@@ -2337,8 +2248,11 @@ class _LeadThreadState extends State<LeadThread> {
 
     await showSidePanel<void>(
       context,
-      builder: (_) =>
-          SidePanel(title: 'Availability', scrollable: false, child: pane),
+      builder: (_) => SidePanel(
+        title: 'Availability',
+        scrollable: false,
+        child: pane,
+      ),
     );
   }
 
@@ -2422,90 +2336,86 @@ class _LeadThreadState extends State<LeadThread> {
     final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 
     // Approved design 158, option 1 + 4: a question the customer TAPPED on a
-    // Meta Click-to-Message ad stays in their position, but with no fill and
-    // a dashed tertiary outline and a tag, so it reads as what they asked
+    // Meta Click-to-Message ad stays in their position, but with no fill, a
+    // dashed tertiary outline and a tag, so it reads as what they asked
     // without passing for something they typed. A missing flag is false.
     final adQuestion = !mine && c['ad_question'] == true;
+    const padding = EdgeInsets.fromLTRB(11, 8, 11, 6);
 
     final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (adQuestion)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text(
-              'AD QUESTION (META)',
-              key: ValueKey('ad-question-${c['id']}'),
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: scheme.tertiary,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (adQuestion)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'AD QUESTION (META)',
+                key: ValueKey('ad-question-${c['id']}'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: scheme.tertiary,
+                ),
               ),
             ),
-          ),
-        // Selectable, so part of a message can be copied too (the
-        // dispatchers, via Jose, 2026-09-29: "copy and paste").
-        if ((c['text'] as String?)?.isNotEmpty == true)
-          SelectableText(
-            c['text'] as String,
-            style: theme.textTheme.bodyMedium?.copyWith(color: ink),
-          ),
-        if (attachments.isNotEmpty)
+          // Selectable, so part of a message can be copied too (the
+          // dispatchers, via Jose, 2026-09-29: "copy and paste").
+          if ((c['text'] as String?)?.isNotEmpty == true)
+            SelectableText(
+              c['text'] as String,
+              style: theme.textTheme.bodyMedium?.copyWith(color: ink),
+            ),
+          if (attachments.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (var i = 0; i < attachments.length; i++)
+                    _attachment(theme, attachments[i], i + 1),
+                ],
+              ),
+            ),
           Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                for (var i = 0; i < attachments.length; i++)
-                  _attachment(theme, attachments[i], i + 1),
+                Flexible(
+                  child: Text(
+                    adQuestion ? '$who · $when · tapped on your ad' : '$who · $when',
+                    style: theme.textTheme.labelSmall?.copyWith(color: quiet),
+                  ),
+                ),
+                // The whole message in one press, as A1 Tools has it.
+                if ((c['text'] as String?)?.isNotEmpty == true)
+                  InkWell(
+                    key: ValueKey('copy-${c['id']}'),
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: c['text'] as String));
+                      if (!mounted) return;
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                        const SnackBar(content: Text('Message copied')),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Icon(
+                        Icons.copy_outlined,
+                        size: 14,
+                        semanticLabel: 'Copy message',
+                        color: quiet,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  adQuestion
-                      ? '$who · $when · tapped on your ad'
-                      : '$who · $when',
-                  style: theme.textTheme.labelSmall?.copyWith(color: quiet),
-                ),
-              ),
-              // The whole message in one press, as A1 Tools has it.
-              if ((c['text'] as String?)?.isNotEmpty == true)
-                InkWell(
-                  key: ValueKey('copy-${c['id']}'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: c['text'] as String),
-                    );
-                    if (!mounted) return;
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      const SnackBar(content: Text('Message copied')),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: Icon(
-                      Icons.copy_outlined,
-                      size: 14,
-                      semanticLabel: 'Copy message',
-                      color: quiet,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
+        ],
+      );
 
-    const padding = EdgeInsets.fromLTRB(11, 8, 11, 6);
     if (adQuestion) {
       return CustomPaint(
         key: ValueKey('ad-question-bubble-${c['id']}'),
@@ -2536,16 +2446,13 @@ class _LeadThreadState extends State<LeadThread> {
   /// app cannot draw, still opens outside, which is the only way to see it.
   Widget _attachment(ThemeData theme, String url, int n) {
     final open = _openImages.contains(url);
-    void outside() =>
-        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    void outside() => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 
     return Stack(
       children: [
         InkWell(
           key: ValueKey('attachment-$n'),
-          onTap: () => setState(
-            () => open ? _openImages.remove(url) : _openImages.add(url),
-          ),
+          onTap: () => setState(() => open ? _openImages.remove(url) : _openImages.add(url)),
           borderRadius: BorderRadius.circular(6),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(6),
@@ -2622,9 +2529,9 @@ class _LeadThreadState extends State<LeadThread> {
       onTap: () async {
         await Clipboard.setData(ClipboardData(text: text));
         if (!mounted) return;
-        ScaffoldMessenger.maybeOf(
-          context,
-        )?.showSnackBar(SnackBar(content: Text('$what copied')));
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          SnackBar(content: Text('$what copied')),
+        );
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -2759,42 +2666,39 @@ class _LeadThreadState extends State<LeadThread> {
                 // The words, right under the recording (Jose, 2026-09-29): both
                 // voices in one text, machine-transcribed on our own server - so it
                 // is labelled as a transcript, not quoted. Four lines, then Show all.
-                if ((c['summary'] as String?)?.isNotEmpty ?? false)
-                  _callSummary(theme, id, c)
-                else if ((c['transcript'] as String?)?.isNotEmpty ?? false)
-                  _transcript(theme, id, c['transcript'] as String)
-                else if (c['transcript_pending'] == true)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6, bottom: 2),
-                    child: Container(
-                      key: ValueKey('transcript-pending-$id'),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.hourglass_top,
-                            size: 12,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Transcribing…',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+          if ((c['summary'] as String?)?.isNotEmpty ?? false)
+            _callSummary(theme, id, c)
+          else if ((c['transcript'] as String?)?.isNotEmpty ?? false)
+            _transcript(theme, id, c['transcript'] as String)
+          else if (c['transcript_pending'] == true)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: Container(
+                key: ValueKey('transcript-pending-$id'),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.hourglass_top,
+                      size: 12,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Transcribing…',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
+                  ],
+                ),
+              ),
+            ),
               ],
             ),
           ),
@@ -2816,21 +2720,22 @@ bool showsNumberLine(Map<String, dynamic> lead) {
 
 /// Google's credit reason, in words.
 String creditReasonWord(String? reason) => switch (reason) {
-  'SPAM' => 'Spam',
-  'SOLICITATION' => 'Someone selling',
-  'JOB_TYPE_MISMATCH' => 'Service we do not offer',
-  'GEO_MISMATCH' => 'Outside our area',
-  'DUPLICATE' => 'Duplicate',
-  _ => 'Other',
-};
+      'SPAM' => 'Spam',
+      'SOLICITATION' => 'Someone selling',
+      'JOB_TYPE_MISMATCH' => 'Service we do not offer',
+      'GEO_MISMATCH' => 'Outside our area',
+      'DUPLICATE' => 'Duplicate',
+      _ => 'Other',
+    };
 
 /// Google's creditIssuanceDecision, in words.
 String creditDecisionWord(String? decision) => switch (decision) {
-  'SUCCESS_NOT_REACHED_THRESHOLD' || 'SUCCESS_REACHED_THRESHOLD' => 'credited',
-  'FAIL_OVER_THRESHOLD' => 'refused, credit limit reached',
-  'FAIL_NOT_ELIGIBLE' => 'refused, not eligible',
-  _ => 'sent',
-};
+      'SUCCESS_NOT_REACHED_THRESHOLD' || 'SUCCESS_REACHED_THRESHOLD' =>
+        'credited',
+      'FAIL_OVER_THRESHOLD' => 'refused, credit limit reached',
+      'FAIL_NOT_ELIGIBLE' => 'refused, not eligible',
+      _ => 'sent',
+    };
 
 /// Whether [field] still holds the value AI wrote: the API's `ai` list,
 /// which drops a field once a person changes it (UI queue 77).
@@ -2912,8 +2817,7 @@ String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
    */
   // `site` since 2026-10-19: `summary` held the host until Grok's one-line
   // read replaced it, and forms then showed no website (Jose).
-  final host =
-      (source == 'website_chat' ||
+  final host = (source == 'website_chat' ||
           source == 'website_form' ||
           source == 'website_booking')
       ? (lead['site'] as String?)
@@ -3021,8 +2925,7 @@ String messageWhen(
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
   if (at == null) return '';
 
-  final time =
-      clock?.call(at.hour, at.minute) ??
+  final time = clock?.call(at.hour, at.minute) ??
       '${at.hour.toString().padLeft(2, '0')}:'
           '${at.minute.toString().padLeft(2, '0')}';
 
@@ -3089,20 +2992,7 @@ String? threadDay(String? iso, {DateTime? now}) {
   if (days == 0) return 'Today';
   if (days == 1) return 'Yesterday';
   const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const month = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   final label = '${week[at.weekday - 1]}, ${month[at.month - 1]} ${at.day}';
   return at.year == today.year ? label : '$label, ${at.year}';
 }
@@ -3217,15 +3107,12 @@ class _DashedOutline extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Offset.zero & size,
-          Radius.circular(radius),
-        ).deflate(0.75),
-      );
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(0.75);
     const dash = 5.0, gap = 4.0;
-    for (final metric in path.computeMetrics()) {
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
       for (var d = 0.0; d < metric.length; d += dash + gap) {
         canvas.drawPath(metric.extractPath(d, d + dash), paint);
       }
