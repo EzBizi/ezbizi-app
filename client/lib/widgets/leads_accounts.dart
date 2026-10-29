@@ -39,6 +39,7 @@ import 'error_note.dart';
 import 'grouped_rows.dart';
 import 'leads_dashboard.dart';
 import 'leads_office_hours.dart';
+import 'leads_sources.dart';
 import 'leads_stats.dart';
 import 'reply_templates_manager.dart';
 import 'search_picker.dart';
@@ -124,6 +125,16 @@ const _providers = <({String key, String name})>[
   (key: 'web', name: 'Website'),
 ];
 
+/// The sources `GET /leads/sources` adds after Website (design 156), in
+/// the list's order. Shown only when the server sends them: it leaves out a
+/// source the person cannot view.
+const _sourceProviders = <({String key, String name})>[
+  (key: 'whatsapp', name: 'WhatsApp'),
+  (key: 'facebook', name: 'Facebook / Messenger'),
+  (key: 'instagram', name: 'Instagram'),
+  (key: 'google_business_profile', name: 'Google Business Profile'),
+];
+
 /// The page: providers, their accounts, and one account beside them.
 class LeadsConnections extends StatefulWidget {
   const LeadsConnections({
@@ -202,6 +213,57 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   /// included, the way the connections' steps do.
   bool _templatesDeep = false;
 
+  /// `GET /leads/sources`, or null until it answers or when it does not
+  /// (the endpoint is new): then Website keeps its explanation and the other
+  /// sources stay out of the list.
+  List<LeadSource>? _sources;
+
+  /// The site open beside the table, or in place of it on a phone.
+  String? _openSiteId;
+
+  @override
+  void initState() {
+    super.initState();
+    // The source panes' search boxes share this controller and set no
+    // onChanged of their own.
+    _search.addListener(() {
+      final q = _search.text.trim().toLowerCase();
+      if (q != _query) setState(() => _query = q);
+    });
+    _loadSources();
+  }
+
+  Future<void> _loadSources() async {
+    final response = await widget.api.get('/leads/sources');
+    if (!mounted || !response.ok) return;
+    setState(() => _sources = parseLeadSources(response.body));
+  }
+
+  /// The server's source for a provider row; `web` is its `website`.
+  LeadSource? _source(String provider) {
+    final key = provider == 'web' ? 'website' : provider;
+    for (final s in _sources ?? const <LeadSource>[]) {
+      if (s.key == key) return s;
+    }
+    return null;
+  }
+
+  /// Google Ads and Thumbtack always; Website unless the server left it out;
+  /// the rest when the server sent them.
+  List<({String key, String name})> get _shownProviders => [
+    for (final p in _providers)
+      if (p.key != 'web' || _sources == null || _source('web') != null) p,
+    for (final p in _sourceProviders)
+      if (_source(p.key) != null) p,
+  ];
+
+  SourceItem? _openSite() {
+    for (final i in _source('web')?.items ?? const <SourceItem>[]) {
+      if (i.id == _openSiteId) return i;
+    }
+    return null;
+  }
+
   @override
   void dispose() {
     _search.dispose();
@@ -231,6 +293,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   void _choose(String provider) => setState(() {
     _provider = provider;
     _openId = null;
+    _openSiteId = null;
     _filter = 'all';
     _search.clear();
     _query = '';
@@ -306,7 +369,14 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
                       child: _providerList(context, selected: provider),
                     ),
                     const VerticalDivider(width: 1),
-                    if (open == null)
+                    if (provider == 'web' && _openSite() != null) ...[
+                      Expanded(child: _pane(context, provider, table: true)),
+                      const VerticalDivider(width: 1),
+                      SizedBox(
+                        width: 400,
+                        child: _sitePanel(_openSite()!, inPlace: false),
+                      ),
+                    ] else if (open == null)
                       Expanded(child: _pane(context, provider, table: true))
                     else ...[
                       SizedBox(
@@ -445,13 +515,20 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
 
     final open = _open(provider);
     if (open != null) return _panel(open, provider, inPlace: true);
+    final site = provider == 'web' ? _openSite() : null;
+    if (site != null) return _sitePanel(site, inPlace: true);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(
           context,
-          title: _providers.firstWhere((p) => p.key == provider).name,
+          title: _shownProviders
+              .firstWhere(
+                (p) => p.key == provider,
+                orElse: () => _providers.first,
+              )
+              .name,
           backTooltip: 'Back to the connections',
           onBack: () => setState(() => _provider = null),
         ),
@@ -587,7 +664,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       key: const ValueKey('connections-providers'),
       padding: const EdgeInsets.all(8),
       children: [
-        for (final p in _providers)
+        for (final p in _shownProviders)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: ListTile(
@@ -598,9 +675,18 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
                 borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
               ),
               // No site has a brand mark; a globe says "your website".
-              leading: p.key == 'web'
-                  ? const Icon(Icons.language)
-                  : SocialNetworkMark(network: p.key, size: 24),
+              leading: switch (p.key) {
+                'web' => const Icon(Icons.language),
+                'facebook' => const SocialNetworkMark(
+                  network: 'facebook_page',
+                  size: 24,
+                ),
+                'instagram' => const SocialNetworkMark(
+                  network: 'instagram_professional',
+                  size: 24,
+                ),
+                _ => SocialNetworkMark(network: p.key, size: 24),
+              },
               title: Text(p.name),
               subtitle: Text(_summary(p.key)),
               trailing: _attentionMark(p.key, chevron: selected == null),
@@ -614,6 +700,17 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   /// "22 accounts · 13 sending leads": the count first, because the count is
   /// what tells twenty-two lookalike accounts from one.
   String _summary(String provider) {
+    final source = _source(provider);
+    if (source != null) {
+      final n = source.count;
+      final noun = switch (provider) {
+        'web' => n == 1 ? 'site' : 'sites',
+        'whatsapp' => n == 1 ? 'number' : 'numbers',
+        'google_business_profile' => n == 1 ? 'listing' : 'listings',
+        _ => n == 1 ? 'page' : 'pages',
+      };
+      return n == 0 ? 'Not connected' : '$n $noun';
+    }
     if (provider == 'web') {
       return 'Chat and forms, through the WordPress plugin';
     }
@@ -630,8 +727,17 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   }
 
   Widget? _attentionMark(String provider, {required bool chevron}) {
+    final source = _source(provider);
     final n = _accountsOf(provider).where(needsAttention).length;
-    final mark = n == 0
+    final mark = source != null
+        ? (source.needsAttention
+              ? Tooltip(
+                  key: ValueKey('attention-$provider'),
+                  message: 'Needs attention',
+                  child: const ToneDot(Tone.caution),
+                )
+              : null)
+        : n == 0
         ? null
         : Tooltip(
             message: '$n ${n == 1 ? 'needs' : 'need'} attention',
@@ -653,7 +759,27 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     required bool table,
     bool phone = false,
   }) {
-    if (provider == 'web') return _website(context);
+    final source = _source(provider);
+    if (provider == 'web') {
+      return source == null
+          ? _website(context)
+          : LeadsWebsitePane(
+              source: source,
+              session: widget.session,
+              search: _search,
+              query: _query,
+              table: table,
+              openId: _openSiteId,
+              onOpen: (i) => setState(() => _openSiteId = i.id),
+            );
+    }
+    if (source != null) {
+      return LeadsSourceItemsPane(
+        source: source,
+        search: _search,
+        query: _query,
+      );
+    }
 
     final all = _accountsOf(provider);
     if (all.isEmpty) return _notConnected(context, provider);
@@ -1106,6 +1232,16 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
       ],
     );
   }
+
+  Widget _sitePanel(SourceItem site, {required bool inPlace}) =>
+      LeadsWebsitePanel(
+        key: ValueKey('site-panel-${site.id}'),
+        session: widget.session,
+        site: site,
+        mayEdit: widget.canEdit,
+        inPlace: inPlace,
+        onClose: () => setState(() => _openSiteId = null),
+      );
 
   Widget _panel(
     Map<String, dynamic> c,
