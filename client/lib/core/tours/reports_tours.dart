@@ -93,6 +93,28 @@ const Map<String, Tour> reportsTours = {
       ),
     ],
   ),
+  'reports/Workspace': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'workspace-list',
+        title: 'Pick a report',
+        body: 'Tables and daily texts. Search finds one by name.',
+      ),
+      TourStep(
+        anchor: 'workspace-place',
+        title: 'Where',
+        body: 'Which company or branch the report covers.',
+      ),
+      TourStep(
+        anchor: 'workspace-actions',
+        title: 'Approve, download or send',
+        body:
+            'Approve a weekly or monthly report, download it as PDF or Excel, '
+            'or send a daily text to your WhatsApp now.',
+      ),
+    ],
+  ),
   'reports/Scoring': Tour(
     version: 1,
     steps: [

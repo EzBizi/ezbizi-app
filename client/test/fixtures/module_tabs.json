@@ -290,7 +290,8 @@
                 "Scoring",
                 "Marketing",
                 "Meta",
-                "Thumbtack"
+                "Thumbtack",
+                "Workspace"
             ]
         },
         "reviews": {
@@ -591,6 +592,7 @@
         "reports.settings",
         "reports.thumbtack.view",
         "reports.view",
+        "reports.workspace.view",
         "reviews.create",
         "reviews.delete",
         "reviews.edit",
