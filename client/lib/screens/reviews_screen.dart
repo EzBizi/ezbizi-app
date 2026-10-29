@@ -111,6 +111,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   Map<String, dynamic>? _stats;
   bool _drafting = false;
 
+  /// Why Draft all could not draft a review, by review id; shown on its row.
+  final Map<String, String> _draftFailures = {};
+
   /// The live rule that posts replies, whose wait is the send window; null
   /// when there is none (GET /reviews/sources `reply_rule_id`).
   String? _replyRuleId;
@@ -464,46 +467,76 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       if (r['reply'] == null) r,
   ];
 
-  /// Draft all (design 154 #7): an AI draft saved on each unanswered review in
-  /// view. Nothing posts; each one still waits for a person's Post.
+  /// Draft all (design 154 #7): POST /reviews/replies/draft-batch, at most
+  /// 20 ids a call. The server saves each body as a draft; nothing posts, and
+  /// each one still waits for a person's Post.
   Future<void> _draftAll() async {
-    final queue = _toDraft;
+    final ids = [for (final r in _toDraft) '${r['id']}'];
+    if (ids.isEmpty) return;
     setState(() {
       _drafting = true;
       _notice = null;
+      _draftFailures.removeWhere((id, _) => ids.contains(id));
     });
-    var saved = 0;
-    String? refused;
-    for (final review in queue) {
-      final suggested = await widget.api.post(
-        '/reviews/${review['id']}/reply/suggest',
-        const {},
-      );
-      if (!mounted) return;
-      final body = suggested.ok
-          ? ((suggested.data as Map?)?['body'] as String? ?? '').trim()
-          : '';
-      if (body.isEmpty) {
-        refused ??= suggested.ok ? null : suggested.message;
-        continue;
-      }
-      final put = await widget.api.put('/reviews/${review['id']}/reply', {
-        'body': body,
+    var ready = 0;
+    var failed = 0;
+    for (var i = 0; i < ids.length; i += 20) {
+      final chunk = ids.sublist(i, i + 20 > ids.length ? ids.length : i + 20);
+      final response = await widget.api.post('/reviews/replies/draft-batch', {
+        'ids': chunk,
       });
       if (!mounted) return;
-      if (put.ok) {
-        saved++;
-      } else {
-        refused ??= put.message;
+      if (!response.ok) {
+        failed += chunk.length;
+        setState(() {
+          for (final id in chunk) {
+            _draftFailures[id] = response.message;
+          }
+        });
+        continue;
       }
+      final rows = response.data is List ? response.data as List : const [];
+      setState(() {
+        for (final row in rows.whereType<Map>()) {
+          final id = '${row['id']}';
+          final body = row['body'] as String?;
+          if (row['ok'] == true && body != null) {
+            ready++;
+            for (final r in _loaded) {
+              if ('${r['id']}' == id) {
+                r['reply'] = <String, dynamic>{
+                  ...?(r['reply'] as Map?),
+                  'body': body,
+                  'status': 'draft',
+                };
+              }
+            }
+            if ('${_open?['id']}' == id) {
+              _open!['reply'] = <String, dynamic>{
+                ...?(_open!['reply'] as Map?),
+                'body': body,
+                'status': 'draft',
+              };
+              _draft.text = body;
+              _aiDraft = body;
+            }
+          } else {
+            failed++;
+            _draftFailures[id] =
+                row['message'] as String? ?? 'Could not draft a reply.';
+          }
+        }
+      });
     }
-    setState(() {
-      _drafting = false;
-      _notice =
-          '$saved of ${queue.length} drafted. Nothing is public until you '
-          'post it.${refused == null ? '' : ' $refused'}';
-    });
-    await _load();
+    setState(() => _drafting = false);
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(
+          '$ready ${ready == 1 ? 'draft' : 'drafts'} ready'
+          '${failed == 0 ? '' : " · $failed couldn't be drafted"}',
+        ),
+      ),
+    );
   }
 
   /// The rule whose wait paces published replies, opened the way a
@@ -704,7 +737,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 stats: stats,
                 toDraft: _toDraft.length,
                 drafting: _drafting,
-                onDraftAll: _draftAll,
+                onDraftAll: _can('reviews.manage') ? _draftAll : null,
                 onSendWindow: _openSendWindow,
               ),
             _toolbar(theme, box.maxWidth),
@@ -1518,6 +1551,14 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                             ),
                           ),
                       ],
+                    ),
+                  ],
+                  if (_draftFailures['$id'] case final why?) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      why,
+                      key: ValueKey('review-draft-failed-$id'),
+                      style: small?.copyWith(color: theme.colorScheme.error),
                     ),
                   ],
                 ],

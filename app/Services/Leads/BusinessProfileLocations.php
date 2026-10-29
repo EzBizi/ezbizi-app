@@ -266,6 +266,18 @@ class BusinessProfileLocations
                 ]);
             } else {
                 $location->fill($fields);
+
+                // A listing left behind by a disconnected account (its
+                // connection_id nulled) belongs to the account that lists it
+                // now (2026-10-29: A-1 reconnected on EzBizi's own client and
+                // all 38 stayed orphaned). A chosen branch stays; an unmapped
+                // listing follows its account's company.
+                if ($location->connection_id === null) {
+                    $location->connection_id = $connection->getKey();
+                    if ($location->franchise_id === null && $connection->scope_type === SocialConnection::SCOPE_COMPANY) {
+                        $location->company_id = $connection->scope_id;
+                    }
+                }
             }
 
             $location->save();

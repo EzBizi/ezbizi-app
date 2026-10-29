@@ -7,6 +7,7 @@ use App\Models\ReportGoal;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Models\WorkizRecord;
+use App\Support\Reports\ReportJobs;
 use App\Support\Reports\Texts\PeriodReport;
 use App\Support\Reports\Xlsx;
 use App\Support\Social\SocialProvider;
@@ -72,6 +73,22 @@ class PeriodReportTest extends TestCase
         $this->assertStringContainsString($this->row('$1,000.00', '$250.00', '$750.00', '75.0%'), $html);
 
         $this->assertStringStartsWith('%PDF', app(PeriodReport::class)->forFranchise($f, '2026-09-21', '2026-09-27'));
+    }
+
+    /** Workiz (2026-10-29): a sub-contracted job is credited to its external company, as Workiz's Sources report does. */
+    public function test_a_subcontracted_job_reports_its_external_company_as_the_source(): void
+    {
+        [$t, $f] = $this->connecticut();
+        $sources = $this->inTenant($t['org'], function () use ($f) {
+            $this->job($f, ['job_source' => 'GMB', 'external_company_id' => '7', 'status' => 'Submitted', 'booked_at' => '2026-09-22 09:00:00']);
+            $this->job($f, ['job_source' => 'LS Ads', 'external_company_id' => '9', 'status' => 'Submitted', 'booked_at' => '2026-09-22 09:00:00']);
+            WorkizRecord::query()->create(['franchise_id' => $f->id, 'type' => 'external_company', 'remote_id' => 'EC-7',
+                'payload' => ['company_name' => ' MS Chimney '], 'synced_at' => now()]);
+
+            return ReportJobs::jobs((string) $f->id)->pluck('job_source')->sort()->values()->all();
+        });
+
+        $this->assertSame(['LS Ads', 'MS Chimney'], $sources, 'no record for EC-9 yet: falls back to job_source');
     }
 
     /** 2026-10-16: one table stood for the branch until a date, another from it. */

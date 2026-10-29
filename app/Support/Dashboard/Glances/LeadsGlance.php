@@ -88,6 +88,8 @@ final class LeadsGlance extends DescribedGlance
                  * they cannot reconcile is the one they will believe.
                  */
                 ->sourceVisibleTo($user)
+                // And not a hidden one, the list's rule (2026-10-29).
+                ->notHiddenFrom($user)
                 // The view's own places and companies: a sibling company's
                 // company-level leads are not counted (2026-10-16).
                 ->tap(fn ($q) => $view->constrainPlaces($q));

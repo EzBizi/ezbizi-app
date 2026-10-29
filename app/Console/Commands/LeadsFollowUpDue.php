@@ -40,7 +40,7 @@ class LeadsFollowUpDue extends Command
     {
         $raised = 0;
 
-        $candidates = Lead::query()->withoutGlobalScopes()
+        $candidates = Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', Lead::STATUS_NEW)
             ->whereNull('follow_up_raised_at')

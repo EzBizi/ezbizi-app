@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
+import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
@@ -1856,6 +1857,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
     final preview = lead['last_contact_preview'] as String?;
+    // Design 159: the avatar, the source chip, "job type · city".
+    final src = LeadSourceFields.from(lead);
     /*
      * THE DOT IS UNREAD. Jose's ruling, 2026-09-15.
      *
@@ -1916,6 +1919,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ),
             ),
             const SizedBox(width: 10),
+            LeadAvatar(
+              key: ValueKey('lead-avatar-$id'),
+              name: leadTitle(lead),
+              url: src.avatarUrl,
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1954,6 +1963,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                 runSpacing: 4,
                                 crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
+                                // Beside the name, in its own colour (design 159).
+                                if (src.sourceKey != null)
+                                  LeadSourceChip(
+                                    src.sourceKey,
+                                    key: ValueKey('source-badge-$id'),
+                                  ),
                                 // A specimen, not a customer. First on the row because
                                 // it changes how everything after it should be read.
                                 if (lead['is_test'] == true) ...[
@@ -2097,10 +2112,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       // and Jose wants it in one place only (2026-09-30, "not
                       // on both").
                       // The source first on the line, in its own colour.
-                      _SourceBadge(
-                        leadSourceWord(lead),
-                        key: ValueKey('source-badge-$id'),
-                      ),
+                      if (src.sourceKey == null)
+                        _SourceBadge(
+                          leadSourceWord(lead),
+                          key: ValueKey('source-badge-$id'),
+                        ),
                       // The channel badge is drawn only when it says
                       // something the source badge does not. "Call · Google"
                       // is two facts; a chat row read "Chat · Chat", one fact
@@ -2137,6 +2153,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                           color: theme.colorScheme.onSurface,
                                         ),
                                       ),
+                                    if (src.adQuestion)
+                                      const TextSpan(text: 'Ad question: '),
                                     TextSpan(text: preview),
                                   ],
                                 ),
@@ -2183,6 +2201,16 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       ),
                     ],
                   ),
+                  if (src.jobLine != null)
+                    Text(
+                      src.jobLine!,
+                      key: ValueKey('lead-job-line-$id'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                 ],
               ),
             ),

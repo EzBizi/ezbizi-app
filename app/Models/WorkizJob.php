@@ -32,7 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'franchise_id', 'connection_id', 'remote_id', 'serial_id', 'client_id',
     'service_area', 'postal_code', 'city', 'state', 'country', 'address', 'unit',
-    'latitude', 'longitude', 'status', 'sub_status', 'job_type', 'job_source',
+    'latitude', 'longitude', 'status', 'sub_status', 'job_type', 'job_source', 'external_company_id', 'external_company_read_at',
     'booked_at', 'scheduled_for', 'scheduled_end', 'last_status_update',
     'created_by', 'payload', 'synced_at', 'job_id', 'projected',
 ])]
@@ -48,6 +48,7 @@ class WorkizJob extends Model implements HoldsPersonalData
     {
         return [
             'payload' => 'array',
+            'external_company_read_at' => 'datetime',
             'projected' => 'array',
             'booked_at' => 'datetime',
             'scheduled_for' => 'datetime',
@@ -260,5 +261,24 @@ class WorkizJob extends Model implements HoldsPersonalData
         }
 
         return $attributes;
+    }
+
+    /**
+     * The source Workiz's own reports credit the job to: its external company
+     * when it was sent by one, else its job source (measured 2026-10-29 against
+     * every branch's Sources report).
+     */
+    public function reportedSource(): ?string
+    {
+        if ($this->external_company_id !== null && $this->external_company_id !== '0') {
+            $name = WorkizRecord::query()->where('franchise_id', $this->franchise_id)->where('type', 'external_company')
+                ->where('remote_id', 'EC-'.$this->external_company_id)->first()?->payload['company_name'] ?? null;
+
+            if (filled($name)) {
+                return trim((string) $name);
+            }
+        }
+
+        return filled($this->job_source) ? trim((string) $this->job_source) : null;
     }
 }

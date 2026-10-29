@@ -1269,10 +1269,11 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
   Widget _sitePanel(SourceItem site, {required bool inPlace}) =>
       LeadsWebsitePanel(
         key: ValueKey('site-panel-${site.id}'),
+        api: widget.api,
         session: widget.session,
         site: site,
-        mayEdit: widget.canEdit,
         inPlace: inPlace,
+        onChanged: _loadSources,
         onClose: () => setState(() => _openSiteId = null),
       );
 

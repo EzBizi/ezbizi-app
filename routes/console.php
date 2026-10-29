@@ -185,6 +185,8 @@ Schedule::command('ezbizi:workiz-web-payments')->everyThirtyMinutes()->withoutOv
 // At :15 and :45, beside the payments read at :00 and :30: one login, one switch at a time (measured 2026-10-29: 90 s for 10 accounts).
 Schedule::command('ezbizi:workiz-web-estimate-links')->cron('15,45 * * * *')->withoutOverlapping(30);
 Schedule::command('ezbizi:workiz-web-lists')->hourly()->withoutOverlapping(60);
+// Each job's external company, which Workiz's Sources report credits (100 per account per run, :50).
+Schedule::command('ezbizi:workiz-web-job-companies')->cron('50 * * * *')->withoutOverlapping(60);
 // A newly connected Workiz account's whole history, paced and resumable.
 Schedule::command('ezbizi:backfill-workiz --pending --since=2000-01-01 --pages=20 --pause=5')->everyFiveMinutes()->withoutOverlapping(60);
 
@@ -401,6 +403,7 @@ Schedule::command('ezbizi:leads-link-profiles')->dailyAt('05:40')->timezone('Ame
 // Business Profile reads (GbpSync); A-1's on Rodrigo's interim grant (2026-10-15). No writes.
 Schedule::command('ezbizi:gbp-sync')->dailyAt('05:10')->timezone('America/New_York')->withoutOverlapping(60);
 Schedule::command('ezbizi:gbp-sync --reviews')->cron('40 */6 * * *')->withoutOverlapping(120);
+Schedule::command('ezbizi:ekomi-reviews sync')->cron('50 */6 * * *')->withoutOverlapping(60);
 // Complaints from bad reviews, Bad Ratings and complaint calls (2026-10-20).
 Schedule::command('ezbizi:complaints-intake')->everyMinute()->withoutOverlapping(5);
 // Google's daily counts per listing, the last ten days re-read (2026-10-20).

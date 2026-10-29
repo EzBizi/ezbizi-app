@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="eKomi">
+  <rect x="3.5" y="3.5" width="41" height="41" rx="9" fill="#FFFFFF"/>
+  <rect x="3.5" y="3.5" width="41" height="41" rx="9" fill="none" stroke="#E3E3E3"/>
+  <path fill="#F5A300" d="M24 10.5l3.9 8.3 9 1.1-6.6 6.2 1.7 8.9L24 30.6l-8 4.4 1.7-8.9-6.6-6.2 9-1.1z"/>
+</svg>
