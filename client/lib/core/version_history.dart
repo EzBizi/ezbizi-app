@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0504',
+      date: '29 Oct 2026',
+      items: [
+        'Reports: a daily "Job assignments" text lists today\'s In Progress jobs by technician for each branch, from EzBizi\'s own jobs, leaving out jobs with a deposit received.',
+        'Task Boards: tasks an automation makes on both a company board and its branch board are linked and stay in sync (title, due date, priority, estimate, About, status, owners).',
+        'Project Management - 2: Created and "Job created by" come from EzBizi\'s own job record.',
+        'Workiz: payments and estimate links are read for every A-1 account, not only one.',
+        'Email: reconnecting a Gmail inbox on Android no longer shows "Could not reach the server" when it worked.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0503',
       date: '29 Oct 2026',
       items: [
