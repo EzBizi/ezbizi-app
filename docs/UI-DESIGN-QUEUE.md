@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 157 · Reports workspace (A1 Leads takeover row 10) — **sent 2026-10-29** (`docs/previews/reports-workspace-layouts.html`)
+### 157 · Reports workspace (A1 Leads takeover row 10) — **sent 2026-10-29 — Jose: "As u recommend" (1 and 4)** (`docs/previews/reports-workspace-layouts.html`)
 
 Reports brief: report picker, place, dates, preview, PDF/Excel, draft→approved→sent, Send to WhatsApp + scheduled rules. 1 = list + preview + actions column (recommended); 2 = tabs; 3 = steps; phones 4-6. Reports builds.
 
