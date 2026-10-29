@@ -23,6 +23,7 @@ class VersionHistory {
         'Reviews: draft AI replies for many reviews at once (saved as drafts, never posted) and a twelve-month rating chart.',
         'Scheduling: a helper booking shows the job its number names, with customer and address.',
         'Business Profile: a reconnected account keeps the listings and reviews of the one it replaced.',
+        'Leads: each source has its own colour (WhatsApp green, Facebook blue, Instagram pink, Google Ads amber, Thumbtack sky, Website teal); rows show a picture and the job and city, and ad leads show the campaign.',
         'Workiz: jobs done by an outside company are credited to it, so sources match Workiz\'s own reports.',
       ],
     ),
