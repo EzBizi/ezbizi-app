@@ -24,14 +24,15 @@ class HiddenLeadsTest extends TestCase
         $lead = $this->lead($t, '+15553334444');
 
         $this->signedInAs($dispatcher)->postJson("/api/v1/leads/{$lead->id}/hide")->assertForbidden();
-        $this->signedInAs($keeper)->postJson("/api/v1/leads/{$lead->id}/hide")->assertOk();
+        $this->signedInAs($keeper)->postJson("/api/v1/leads/{$lead->id}/hide", ['reason' => 'Private'])->assertOk();
 
         $this->signedInAs($dispatcher)->getJson('/api/v1/leads')->assertOk()->assertJsonCount(0, 'data');
         $this->signedInAs($dispatcher)->getJson("/api/v1/leads/{$lead->id}")->assertNotFound();
         $this->signedInAs($dispatcher)->getJson('/api/v1/leads/hidden')->assertForbidden();
 
         $this->signedInAs($keeper)->getJson('/api/v1/leads')->assertOk()->assertJsonCount(1, 'data');
-        $this->signedInAs($keeper)->getJson('/api/v1/leads/hidden?q=3334444')->assertOk()->assertJsonPath('data.leads.0.id', $lead->id);
+        $this->signedInAs($keeper)->getJson('/api/v1/leads/hidden?q=3334444')->assertOk()->assertJsonPath('data.leads.0.id', $lead->id)
+            ->assertJsonPath('data.leads.0.hidden_by.name', $keeper->name)->assertJsonPath('data.leads.0.reason', 'Private');
 
         $this->signedInAs($keeper)->postJson("/api/v1/leads/{$lead->id}/unhide")->assertOk();
         $this->signedInAs($dispatcher)->getJson("/api/v1/leads/{$lead->id}")->assertOk();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Lead;
 use App\Models\LeadHiddenNumber;
+use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,8 @@ class LeadHiddenController extends Controller
             ->orderByDesc('hidden_at')->limit(200)->get();
         $numbers = $match(LeadHiddenNumber::query(), 'digits', 'digits')->orderByDesc('created_at')->limit(200)->get();
         $always = LeadHiddenNumber::query()->pluck('digits');
+        $names = User::query()->whereIn('id', $leads->pluck('hidden_by_user_id')->merge($numbers->pluck('hidden_by_user_id'))->filter()->unique())->pluck('name', 'id');
+        $by = fn (?string $id) => $id !== null && isset($names[$id]) ? ['name' => $names[$id]] : null;
         $counts = Lead::query()->whereNotNull('hidden_at')->whereNotNull('phone_digits')->get(['phone_digits'])
             ->countBy(fn (Lead $l) => LeadHiddenNumber::digitsOf($l->phone_digits));
 
@@ -43,6 +46,8 @@ class LeadHiddenController extends Controller
                 'last_contact_at' => $l->last_contact_at?->toIso8601String(),
                 'last_contact_preview' => $l->last_contact_preview,
                 'hidden_at' => $l->hidden_at?->toIso8601String(),
+                'hidden_by' => $by($l->hidden_by_user_id),
+                'reason' => $l->hidden_reason,
                 'always' => $always->contains(LeadHiddenNumber::digitsOf($l->phone_digits)),
             ])->all(),
             'numbers' => $numbers->map(fn (LeadHiddenNumber $n) => [
@@ -50,6 +55,8 @@ class LeadHiddenController extends Controller
                 'digits' => $n->digits,
                 'leads' => $counts->get($n->digits, 0),
                 'hidden_at' => $n->created_at?->toIso8601String(),
+                'hidden_by' => $by($n->hidden_by_user_id),
+                'reason' => $n->reason,
             ])->all(),
         ]]);
     }
@@ -59,6 +66,7 @@ class LeadHiddenController extends Controller
     {
         $this->authorize('view', $lead);
         $always = $request->boolean('always');
+        $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
         $digits = LeadHiddenNumber::digitsOf($lead->phone_digits ?? $lead->phone);
         if ($always && $digits === null) {
             throw ValidationException::withMessages(['always' => 'This lead has no phone number to hide.']);
@@ -73,7 +81,7 @@ class LeadHiddenController extends Controller
     /** POST /api/v1/leads/hidden-numbers {phone} — hide a number before it ever writes in. */
     public function hideNumberDirectly(Request $request): JsonResponse
     {
-        $digits = LeadHiddenNumber::digitsOf((string) $request->validate(['phone' => ['required', 'string', 'max:40']])['phone']);
+        $digits = LeadHiddenNumber::digitsOf((string) $request->validate(['phone' => ['required', 'string', 'max:40'], 'reason' => ['nullable', 'string', 'max:255']])['phone']);
         if ($digits === null) {
             throw ValidationException::withMessages(['phone' => 'A phone number needs at least ten digits.']);
         }
@@ -91,7 +99,7 @@ class LeadHiddenController extends Controller
         if ($digits !== null) {
             LeadHiddenNumber::query()->where('digits', $digits)->delete();
         }
-        $lead->forceFill(['hidden_at' => null, 'hidden_by_user_id' => null])->save();
+        $lead->forceFill(['hidden_at' => null, 'hidden_by_user_id' => null, 'hidden_reason' => null])->save();
         $this->audit->log('lead.unhidden', $lead, [], actor: $request->user());
 
         return response()->json(['data' => ['id' => $lead->id, 'hidden' => false]]);
@@ -101,7 +109,7 @@ class LeadHiddenController extends Controller
     public function unhideNumber(Request $request, LeadHiddenNumber $number): JsonResponse
     {
         Lead::query()->whereNotNull('hidden_at')->where('phone_digits', 'like', '%'.$number->digits)
-            ->update(['hidden_at' => null, 'hidden_by_user_id' => null]);
+            ->update(['hidden_at' => null, 'hidden_by_user_id' => null, 'hidden_reason' => null]);
         $this->audit->log('lead.number_unhidden', $number, [], actor: $request->user());
         $number->delete();
 
@@ -110,7 +118,7 @@ class LeadHiddenController extends Controller
 
     private function hideNumber(string $digits, Request $request): LeadHiddenNumber
     {
-        $number = LeadHiddenNumber::query()->firstOrCreate(['digits' => $digits], ['hidden_by_user_id' => $request->user()?->id]);
+        $number = LeadHiddenNumber::query()->firstOrCreate(['digits' => $digits], ['hidden_by_user_id' => $request->user()?->id, 'reason' => $request->input('reason')]);
         $this->mark(Lead::query()->where('phone_digits', 'like', '%'.$digits), $request);
 
         return $number;
@@ -118,6 +126,6 @@ class LeadHiddenController extends Controller
 
     private function mark($leads, Request $request): void
     {
-        $leads->whereNull('hidden_at')->update(['hidden_at' => now(), 'hidden_by_user_id' => $request->user()?->id]);
+        $leads->whereNull('hidden_at')->update(['hidden_at' => now(), 'hidden_by_user_id' => $request->user()?->id, 'hidden_reason' => $request->input('reason')]);
     }
 }

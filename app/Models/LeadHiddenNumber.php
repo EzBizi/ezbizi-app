@@ -21,7 +21,7 @@ class LeadHiddenNumber extends Model implements HoldsPersonalData, StatesRetenti
     use BelongsToTenant;
     use HasUuids;
 
-    protected $fillable = ['organization_id', 'digits', 'hidden_by_user_id'];
+    protected $fillable = ['organization_id', 'digits', 'hidden_by_user_id', 'reason'];
 
     /** The last ten digits, the way leads compare phones; null when there are fewer. */
     public static function digitsOf(?string $phone): ?string
