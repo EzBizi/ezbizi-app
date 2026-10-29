@@ -19,6 +19,7 @@ import 'ai_mark.dart';
 import 'async_body.dart';
 import 'book_job_panel.dart';
 import 'lead_edit_panel.dart';
+import 'lead_source_details.dart';
 import 'side_panel.dart';
 import 'search_picker.dart';
 import 'status_pill.dart';
@@ -143,6 +144,9 @@ class _LeadThreadState extends State<LeadThread> {
   /// Account, Google status, and a name/address/ZIP read out of what the
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
+
+  /// The lead's own load, for the source details (design 159).
+  Map<String, dynamic>? _loaded;
 
   /// A website booking's day and window, and where it stands (Jose, 2026-10-08).
   Map<String, dynamic>? _booking;
@@ -416,6 +420,7 @@ class _LeadThreadState extends State<LeadThread> {
           .cast<Map<String, dynamic>>();
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
+      _loaded = data;
       _booking = data['booking'] as Map<String, dynamic>?;
       if (widget.lead['lead_type'] == 'Reschedule' && _offer == null) {
         _loadOffer();
@@ -538,6 +543,37 @@ class _LeadThreadState extends State<LeadThread> {
   /// name line overflowed by 11px in a 740-wide thread.
   // 1300 since Follow Up made the moves six (2026-10-14).
   static const double _besideNameFrom = 1300;
+
+  /// Design 159: the details column beside the thread from this width of
+  /// thread; narrower, they fold under the header.
+  static bool _detailsBeside(double threadWidth) => threadWidth >= 760;
+
+  /// The conversation, with Contact / Job / Came from in a column on its
+  /// right where there is room and something to show.
+  Widget _withDetailsBeside(LeadSourceFields src, Widget conversation) =>
+      LayoutBuilder(
+        builder: (context, area) {
+          if (!src.hasDetails || !_detailsBeside(area.maxWidth)) {
+            return conversation;
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: conversation),
+              const VerticalDivider(width: 1),
+              SizedBox(
+                key: const ValueKey('source-details-column'),
+                width: 240,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  child: LeadDetailsColumn(src),
+                ),
+              ),
+            ],
+          );
+        },
+      );
 
   /// Desktop: the moves, then Book, the one that matters most, last. On a
   /// phone Book is full width and the moves share a row under it.
@@ -669,6 +705,7 @@ class _LeadThreadState extends State<LeadThread> {
     final company = leadCompany(lead);
     // The company is on screen as its tag, so the line does not say it again.
     final line = leadHeaderLine(lead, company: company == null);
+    final src = LeadSourceFields.from(lead, _loaded);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -680,6 +717,13 @@ class _LeadThreadState extends State<LeadThread> {
             builder: (context, box) => Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                LeadAvatar(
+                  key: const ValueKey('thread-avatar'),
+                  name: leadTitle(lead),
+                  url: src.avatarUrl,
+                  radius: 19,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -709,6 +753,15 @@ class _LeadThreadState extends State<LeadThread> {
                                   const AiMark(
                                     key: ValueKey('thread-ai-name'),
                                     tooltip: aiNameTooltip,
+                                  ),
+                                ],
+                                // Beside the name on a desktop; on a phone
+                                // it leads the line under (design 159).
+                                if (!narrow && src.sourceKey != null) ...[
+                                  const SizedBox(width: 6),
+                                  LeadSourceChip(
+                                    src.sourceKey,
+                                    key: const ValueKey('thread-source-chip'),
                                   ),
                                 ],
                                 const SizedBox(width: 8),
@@ -776,6 +829,11 @@ class _LeadThreadState extends State<LeadThread> {
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
+                          if (narrow && src.sourceKey != null)
+                            LeadSourceChip(
+                              src.sourceKey,
+                              key: const ValueKey('thread-source-chip'),
+                            ),
                           if (showsNumberLine(lead) && !narrow)
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -818,6 +876,16 @@ class _LeadThreadState extends State<LeadThread> {
                           ),
                         ],
                       ),
+                      if (src.referralLine != null)
+                        Text(
+                          src.referralLine!,
+                          key: const ValueKey('thread-referral'),
+                          maxLines: narrow ? 1 : null,
+                          overflow: narrow ? TextOverflow.ellipsis : null,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       // What it looks like, read by a model, beside what
                       // somebody decided. Only when a reading exists.
                       if (lead['classification'] is String &&
@@ -841,6 +909,10 @@ class _LeadThreadState extends State<LeadThread> {
                       if (_booking != null) _bookingBlock(theme),
                       if (_offer != null) _offerBlock(theme),
                       if (!narrow || _showDetails) ...[
+                        // Folded under the header where the column beside
+                        // the thread has no room (design 159, option 4).
+                        if (!_detailsBeside(box.maxWidth + 32))
+                          LeadDetailsColumn(src),
                         if (_details != null) _detailsBlock(theme, lead),
                         _noteBlock(theme, lead),
                         if (_customer != null) _customerCard(theme, _customer!),
@@ -889,13 +961,16 @@ class _LeadThreadState extends State<LeadThread> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: ColoredBox(
-            color: theme.colorScheme.surfaceContainerLow,
-            child: AsyncBody(
-              loading: _loading,
-              error: _error,
-              onRetry: _load,
-              child: _conversations.isEmpty ? _nothing(theme) : _thread(theme),
+          child: _withDetailsBeside(
+            src,
+            ColoredBox(
+              color: theme.colorScheme.surfaceContainerLow,
+              child: AsyncBody(
+                loading: _loading,
+                error: _error,
+                onRetry: _load,
+                child: _conversations.isEmpty ? _nothing(theme) : _thread(theme),
+              ),
             ),
           ),
         ),
@@ -2335,17 +2410,29 @@ class _LeadThreadState extends State<LeadThread> {
         : scheme.onPrimary;
     final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
-      decoration: BoxDecoration(
-        color: fill,
-        border: mine ? null : Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
+    // Approved design 158, option 1 + 4: a question the customer TAPPED on a
+    // Meta Click-to-Message ad stays in their position, but with no fill, a
+    // dashed tertiary outline and a tag, so it reads as what they asked
+    // without passing for something they typed. A missing flag is false.
+    final adQuestion = !mine && c['ad_question'] == true;
+    const padding = EdgeInsets.fromLTRB(11, 8, 11, 6);
+
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (adQuestion)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'AD QUESTION (META)',
+                key: ValueKey('ad-question-${c['id']}'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: scheme.tertiary,
+                ),
+              ),
+            ),
           // Selectable, so part of a message can be copied too (the
           // dispatchers, via Jose, 2026-09-29: "copy and paste").
           if ((c['text'] as String?)?.isNotEmpty == true)
@@ -2372,7 +2459,7 @@ class _LeadThreadState extends State<LeadThread> {
               children: [
                 Flexible(
                   child: Text(
-                    '$who · $when',
+                    adQuestion ? '$who · $when · tapped on your ad' : '$who · $when',
                     style: theme.textTheme.labelSmall?.copyWith(color: quiet),
                   ),
                 ),
@@ -2402,7 +2489,23 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
         ],
+      );
+
+    if (adQuestion) {
+      return CustomPaint(
+        key: ValueKey('ad-question-bubble-${c['id']}'),
+        painter: _DashedOutline(color: scheme.tertiary, radius: 12),
+        child: Padding(padding: padding, child: content),
+      );
+    }
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: fill,
+        border: mine ? null : Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: content,
     );
   }
 
@@ -3064,4 +3167,34 @@ String typingLine(String? contactName) {
   return RegExp(r"^[A-Za-z][A-Za-z'’-]+$").hasMatch(first)
       ? '$first is typing…'
       : 'Customer is typing…';
+}
+
+/// A 1.5px dashed rounded-rectangle outline, for the ad-question bubble.
+class _DashedOutline extends CustomPainter {
+  const _DashedOutline({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(0.75);
+    const dash = 5.0, gap = 4.0;
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += dash + gap) {
+        canvas.drawPath(metric.extractPath(d, d + dash), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedOutline old) =>
+      old.color != color || old.radius != radius;
 }

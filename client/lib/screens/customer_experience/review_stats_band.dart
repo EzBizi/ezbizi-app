@@ -38,6 +38,15 @@ class ReviewStatsBand extends StatelessWidget {
     };
   }
 
+  /// `meta.stats.monthly`: twelve {month 'Y-m', count, average}, oldest first.
+  List<Map> get _monthly =>
+      (stats['monthly'] is List ? stats['monthly'] as List : const [])
+          .whereType<Map>()
+          .toList();
+
+  /// Tallest monthly bar, in logical pixels.
+  static const double monthlyBarMax = 40;
+
   int _reply(String k) =>
       ((stats['replies'] as Map?)?[k] as num?)?.toInt() ?? 0;
 
@@ -156,6 +165,66 @@ class ReviewStatsBand extends StatelessWidget {
       ),
     );
 
+    final months = _monthly;
+    final mostInMonth = months.fold<int>(
+      0,
+      (m, r) => ((r['count'] as num?)?.toInt() ?? 0) > m
+          ? (r['count'] as num).toInt()
+          : m,
+    );
+    final latestAverage = months.reversed
+        .map((r) => (r['average'] as num?)?.toDouble())
+        .firstWhere((a) => a != null, orElse: () => null);
+    final monthly = months.isEmpty
+        ? null
+        : Column(
+            key: const ValueKey('cx-monthly'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: monthlyBarMax,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var i = 0; i < months.length; i++)
+                      Tooltip(
+                        message:
+                            '${months[i]['month']}: ${months[i]['count'] ?? 0} '
+                            'reviews'
+                            '${months[i]['average'] == null ? '' : ' · ${(months[i]['average'] as num).toStringAsFixed(1)} ★'}',
+                        child: Container(
+                          key: ValueKey('cx-monthly-bar-$i'),
+                          width: 10,
+                          margin: const EdgeInsets.only(right: 3),
+                          height: mostInMonth == 0
+                              ? 1
+                              : 1 +
+                                    (((months[i]['count'] as num?)?.toInt() ??
+                                                0) /
+                                            mostInMonth) *
+                                        (monthlyBarMax - 1),
+                          decoration: BoxDecoration(
+                            color: scheme.primary,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                latestAverage == null
+                    ? 'Reviews a month, 12 months'
+                    : 'Reviews a month · latest avg '
+                          '${latestAverage.toStringAsFixed(1)} ★',
+                key: const ValueKey('cx-monthly-average'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          );
+
     final replies = Wrap(
       children: [
         figure('rate', rate == null ? '—' : '$rate%', 'replied'),
@@ -203,6 +272,10 @@ class ReviewStatsBand extends StatelessWidget {
                         Expanded(child: replies),
                       ],
                     ),
+                    if (monthly != null) ...[
+                      const SizedBox(height: 8),
+                      monthly,
+                    ],
                     actions,
                   ],
                 )
@@ -212,6 +285,10 @@ class ReviewStatsBand extends StatelessWidget {
                     gauge,
                     const SizedBox(width: 24),
                     SizedBox(width: 260, child: bars),
+                    if (monthly != null) ...[
+                      const SizedBox(width: 24),
+                      monthly,
+                    ],
                     const SizedBox(width: 24),
                     Expanded(
                       child: Column(

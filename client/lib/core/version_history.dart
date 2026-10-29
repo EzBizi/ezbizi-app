@@ -14,6 +14,20 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0506',
+      date: '29 Oct 2026',
+      items: [
+        'Leads: a question a customer tapped on a Meta ad is shown as an outlined "Ad question (Meta)" bubble, apart from what they typed, and does not count as a customer reply.',
+        'Leads: Manage → Connections lets you set each website\'s branch, chat and main site.',
+        'Reports: a new Workspace tab to pick a report, preview it, approve it, download PDF or Excel, or send a daily text to your WhatsApp.',
+        'Reviews: draft AI replies for many reviews at once (saved as drafts, never posted) and a twelve-month rating chart.',
+        'Scheduling: a helper booking shows the job its number names, with customer and address.',
+        'Business Profile: a reconnected account keeps the listings and reviews of the one it replaced.',
+        'Leads: each source has its own colour (WhatsApp green, Facebook blue, Instagram pink, Google Ads amber, Thumbtack sky, Website teal); rows show a picture and the job and city, and ad leads show the campaign.',
+        'Workiz: jobs done by an outside company are credited to it, so sources match Workiz\'s own reports.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0505',
       date: '29 Oct 2026',
       items: [

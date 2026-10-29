@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Customer;
+use App\Models\Job;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -68,6 +71,24 @@ class SchedulingHelpersTest extends TestCase
         // A retired helper takes no new bookings.
         $this->signedInAs($t['admin'])->patchJson("/api/v1/scheduling/helpers/{$helper}", ['is_active' => false])->assertOk();
         $book($tech, 'am', '2026-11-10')->assertUnprocessable();
+    }
+
+    public function test_a_booking_shows_the_job_its_number_names(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $fr = $t['franchise']->id;
+        app(TenantContext::class)->set($t['org']);
+        $customer = Customer::create(['owning_franchise_id' => $fr, 'number' => 'C-1', 'name' => 'Charles O Neil', 'city' => 'Dallas']);
+        Job::create(['franchise_id' => $fr, 'customer_id' => $customer->id, 'number' => '54950', 'title' => 'Sweep', 'status' => 'Submitted', 'scheduled_for' => '2026-11-02 08:00:00']);
+        $as = $this->signedInAs($t['admin']);
+        $helper = $as->postJson('/api/v1/scheduling/helpers', ['franchise_id' => $fr, 'name' => 'Sam'])->json('data.id');
+
+        $found = $as->postJson('/api/v1/scheduling/helpers/bookings', ['helper_id' => $helper, 'date' => '2026-11-02', 'slot' => 'am', 'job_number' => ' 54950 '])
+            ->assertCreated()->json('data.job');
+        $this->assertSame(['Charles O Neil', 'Dallas'], [$found['customer'], $found['address']]);
+        // A number not in EzBizi yet is normal on a fresh job: kept, shown without a job.
+        $as->postJson('/api/v1/scheduling/helpers/bookings', ['helper_id' => $helper, 'date' => '2026-11-02', 'slot' => 'pm', 'job_number' => '99999'])
+            ->assertCreated()->assertJsonPath('data.job', null)->assertJsonPath('data.job_number', '99999');
     }
 
     public function test_another_tenants_helpers_are_out_of_reach(): void

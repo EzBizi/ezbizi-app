@@ -197,10 +197,14 @@ void PumpUntil(const std::function<bool()>& done, ULONGLONG timeout_ms) {
  *  5. Only then destroy the controller, and with it the engine.
  */
 void FlutterWindow::OnDestroy() {
-  MarkShutdownStarted();
-  PlatformShuttingDown().store(true);
-
+  // Only a window that has an engine is shutting down. Create() calls
+  // Destroy() before it builds anything, which runs this at every launch:
+  // marked unconditionally, the flag was set from startup and every
+  // screenshot and specs read answered shutting_down (2026-10-29).
   if (flutter_controller_) {
+    MarkShutdownStarted();
+    PlatformShuttingDown().store(true);
+
     if (watchdog_channel_) {
       auto answered = std::make_shared<bool>(false);
       watchdog_channel_->InvokeMethod(

@@ -42,4 +42,26 @@ class SuggestReplyTest extends TestCase
         $this->assertNull($this->inTenant($t['org'], fn () => $review->fresh()->reply), 'a suggestion is not a draft until a person saves it');
         Process::assertRan(fn ($p) => in_array('--json-schema', (array) $p->command, true));
     }
+
+    /** A1 Leads takeover #22: draft several at once, saved as drafts, never posted. */
+    public function test_batch_drafting_saves_drafts_and_monthly_stats_cover_a_year(): void
+    {
+        config()->set('services.grok_cli.home', '/var/lib/ezbizi-grok');
+        $t = $this->provisionTenant('A1-Group');
+        $ids = $this->inTenant($t['org'], fn () => collect([5, 4])->map(fn ($r) => Review::create([
+            'organization_id' => $t['org']->id, 'remote_name' => 'accounts/1/locations/2/reviews/'.$r,
+            'location_name' => 'accounts/1/locations/2', 'reviewer_name' => 'Dana', 'rating' => $r,
+            'comment' => 'Good.', 'reviewed_at' => now()->subDay(),
+        ])->id)->all());
+        Process::fake(['*' => Process::result(json_encode(['structuredOutput' => ['reply' => 'Thank you!']]))]);
+        $as = $this->signedInAs($t['admin']);
+
+        $data = $as->postJson('/api/v1/reviews/replies/draft-batch', ['ids' => $ids])->assertOk()->json('data');
+        $this->assertSame([true, true], array_column($data, 'ok'));
+        $this->assertSame(2, \App\Models\ReviewReply::withoutGlobalScopes()->where('status', 'draft')->where('drafted_by', 'drafting_job')->count());
+
+        $monthly = $as->getJson('/api/v1/reviews')->assertOk()->json('meta.stats.monthly');
+        $this->assertCount(12, $monthly);
+        $this->assertSame(2, end($monthly)['count'] + (now()->subDay()->month !== now()->month ? $monthly[10]['count'] : 0));
+    }
 }

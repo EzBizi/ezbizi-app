@@ -70,7 +70,9 @@ class LeadPolicy
             return null;
         }
 
+        // A hidden lead is not found for anyone without the Hidden grant (Jose, 2026-10-29).
         return in_array($row->source, Lead::sourcesVisibleTo($user), true)
+            && (! $row->isHidden() || $user->hasPermission(Lead::HIDDEN_PERMISSION))
             ? null
             : Response::denyAsNotFound();
     }

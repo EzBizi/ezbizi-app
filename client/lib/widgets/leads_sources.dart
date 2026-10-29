@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../core/api_client.dart';
 import '../core/branch_options.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
 import '../core/timestamps.dart';
+import 'error_note.dart';
 import 'search_picker.dart';
 import 'side_panel.dart';
 import 'status_pill.dart';
@@ -14,8 +16,7 @@ import 'status_pill.dart';
 /// Read from `GET /leads/sources` (server 6aff39145). Every field name it
 /// carries is read in [parseLeadSources] and nowhere else, so a renamed field
 /// changes one place. A key is absent when the role cannot see that source.
-/// There is no write endpoint yet: the site panel shows its controls
-/// read-only until one lands.
+/// Writes go to `/web/sites/{id}`, each gated by the site's own flag.
 
 /// One source in the list: Website, WhatsApp, Facebook / Messenger, Instagram
 /// or Google Business Profile.
@@ -55,6 +56,9 @@ class SourceItem {
     this.bookingEnabled,
     this.lastLeadAt,
     this.leads,
+    this.mayEdit = false,
+    this.mayEditChat = false,
+    this.maySetPrimary = false,
   });
 
   final String id;
@@ -83,6 +87,12 @@ class SourceItem {
 
   /// Null where the source brings no leads (Business Profile).
   final int? leads;
+
+  /// A site's own permissions: the branch picker, the Chat switch and
+  /// Make primary. False draws the value as text.
+  final bool mayEdit;
+  final bool mayEditChat;
+  final bool maySetPrimary;
 
   /// "Company · Branch", or whichever half is known.
   String get place => [
@@ -128,6 +138,9 @@ List<LeadSource> parseLeadSources(Object? body) {
           bookingEnabled: b(m['booking_on']),
           lastLeadAt: s(m['last_lead_at']),
           leads: n(m['leads']) ?? 0,
+          mayEdit: m['may_edit'] == true,
+          mayEditChat: m['may_edit_chat'] == true,
+          maySetPrimary: m['may_set_primary'] == true,
         ),
     ];
     sources.add(
@@ -427,32 +440,79 @@ class LeadsWebsitePane extends StatelessWidget {
 /// One site: its widgets, where its leads go, primary, and when it was last
 /// seen. Docked beside the table on a desk, in place of it on a phone.
 ///
-/// Read-only until the server has a write for sites: somebody with
-/// `leads.edit` sees the controls switched off and the line saying why;
-/// anybody else sees the values as text.
-class LeadsWebsitePanel extends StatelessWidget {
+/// Each control is drawn only when the site's own flag allows it
+/// (`may_edit`, `may_edit_chat`, `may_set_primary`); otherwise its value is
+/// plain text. Every save reloads, because primary moves between sites.
+class LeadsWebsitePanel extends StatefulWidget {
   const LeadsWebsitePanel({
     super.key,
+    required this.api,
     required this.session,
     required this.site,
-    required this.mayEdit,
+    required this.onChanged,
     required this.onClose,
     this.inPlace = false,
   });
 
+  final ApiClient api;
   final Session session;
   final SourceItem site;
-  final bool mayEdit;
+  final Future<void> Function() onChanged;
   final VoidCallback onClose;
   final bool inPlace;
 
-  static const pendingLine = 'Changes come with the next update';
+  @override
+  State<LeadsWebsitePanel> createState() => _LeadsWebsitePanelState();
+}
+
+class _LeadsWebsitePanelState extends State<LeadsWebsitePanel> {
+  bool _busy = false;
+  String? _error;
+
+  String get _path => '/web/sites/${widget.site.id}';
+
+  Future<void> _run(Future<ApiResponse> Function() write) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final response = await write();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = response.ok ? null : response.message;
+    });
+    if (response.ok) await widget.onChanged();
+  }
+
+  /// The whole widgets config goes back with only chat's flag changed: the
+  /// PUT replaces it, so a partial one would wipe the rest.
+  Future<void> _setChat(bool on) => _run(() async {
+    final read = await widget.api.get('$_path/widgets');
+    if (!read.ok) return read;
+    final data = read.body['data'];
+    final config = Map<String, dynamic>.from(
+      (data is Map ? data['config'] : null) as Map? ?? const {},
+    );
+    config['chat'] = {
+      ...Map<String, dynamic>.from(config['chat'] as Map? ?? const {}),
+      'enabled': on,
+    };
+    return widget.api.put('$_path/widgets', {'config': config});
+  });
+
+  Future<void> _place(String id) =>
+      _run(() => widget.api.patch(_path, {'franchise_id': id}));
+
+  Future<void> _makePrimary() =>
+      _run(() => widget.api.post('$_path/primary', const {}));
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
-    final me = session.me;
+    final site = widget.site;
+    final me = widget.session.me;
     final branches = me == null
         ? const <BranchOption>[]
         : branchOptionsInView(me);
@@ -465,52 +525,47 @@ class LeadsWebsitePanel extends StatelessWidget {
       ),
     );
 
-    String onOff(bool? on) => on == null ? 'Unknown' : (on ? 'On' : 'Off');
-
-    Widget toggle(String key, String title, bool? value) => SwitchListTile(
-      key: ValueKey(key),
-      contentPadding: EdgeInsets.zero,
-      title: Text(title),
-      subtitle: value == null ? const Text('Unknown') : null,
-      value: value ?? false,
-      onChanged: null,
-    );
+    String onOff(bool? on) => on == null ? 'unknown' : (on ? 'on' : 'off');
 
     return SidePanel(
       key: const ValueKey('website-panel'),
       title: site.title,
       subtitle: [
-        'Last seen ${_stamp(session, site.lastSeenAt, 'never')}',
+        'Last seen ${_stamp(widget.session, site.lastSeenAt, 'never')}',
         if (site.pluginVersion != null)
           'plugin ${site.pluginVersion}'
               '${site.pluginBehind ? ' (update available)' : ''}',
       ].join(' · '),
       docked: true,
-      onBack: inPlace ? onClose : null,
-      onClose: inPlace ? null : onClose,
+      onBack: widget.inPlace ? widget.onClose : null,
+      onClose: widget.inPlace ? null : widget.onClose,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (site.detail != null) Text(site.detail!),
-          if (mayEdit) ...[
-            const SizedBox(height: 8),
-            Text(
-              pendingLine,
-              key: const ValueKey('site-pending'),
-              style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            ),
-          ],
           label('Widgets'),
-          if (mayEdit) ...[
-            toggle('site-chat', 'Chat', site.chatEnabled),
-            toggle('site-booking', 'Booking', site.bookingEnabled),
-          ] else
+          if (site.mayEditChat)
+            SwitchListTile(
+              key: const ValueKey('site-chat'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Chat'),
+              subtitle: site.chatEnabled == null ? const Text('Unknown') : null,
+              value: site.chatEnabled ?? false,
+              onChanged: _busy ? null : _setChat,
+            )
+          else
             Text(
-              'Chat ${onOff(site.chatEnabled)} · '
-              'Booking ${onOff(site.bookingEnabled)}',
+              'Chat ${onOff(site.chatEnabled)}',
+              key: const ValueKey('site-chat-text'),
             ),
+          const SizedBox(height: 4),
+          Text('Booking ${onOff(site.bookingEnabled)}'),
+          Text(
+            'Booking is a block on the site\'s pages.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
           label('Leads go to'),
-          if (mayEdit)
+          if (site.mayEdit)
             SearchPickerField<String>(
               key: const ValueKey('site-branch'),
               label: 'Company · Branch',
@@ -519,22 +574,30 @@ class LeadsWebsitePanel extends StatelessWidget {
                 for (final b in branches)
                   SearchOption(value: b.id, label: b.label),
               ],
-              onChanged: null,
+              onChanged: _busy
+                  ? null
+                  : (id) {
+                      if (id != null) _place(id);
+                    },
             )
           else
             Text(site.place.isEmpty ? 'Not set' : site.place),
           const SizedBox(height: 12),
-          if (mayEdit)
-            CheckboxListTile(
-              key: const ValueKey('site-primary'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Primary site for this company'),
-              value: site.isPrimary,
-              onChanged: null,
-            )
-          else if (site.isPrimary)
-            const Text('Primary site for this company'),
+          if (site.isPrimary)
+            const Text('Primary site for this company')
+          else if (site.maySetPrimary)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                key: const ValueKey('site-make-primary'),
+                onPressed: _busy ? null : _makePrimary,
+                child: const Text('Make primary'),
+              ),
+            ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            ErrorNote(_error!),
+          ],
         ],
       ),
     );

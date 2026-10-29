@@ -2965,6 +2965,22 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 160 · Leads threads: WhatsApp phone-echo + media, Hidden tab, merged ad form — **sent 2026-10-29 — Jose: "as u recommend" (A1, B1, C1 + phone 4)** (`docs/previews/leads-whatsapp-hidden-form-layouts.html`)
+
+Desk briefs (owners Meta + Leads). A1 Sent-from-phone line + streamed media bubbles; B1 Hidden table + side panel (leads.hide / leads.hidden.view); C1 form answers in the 159 details column + one system line (all recommended); 2-3 alternatives each; phones 4 with 1.
+
+### 159 · Leads: source colour chips + per-source contact details — **sent 2026-10-29 — Jose: "as u recommend" (1 and 4)** (`docs/previews/leads-source-details-layouts.html`)
+
+Desk/Leads sources audit with Google API + Meta; folds in 158 ad-question bubble. 1 = chip + avatar row, rich header, details column (recommended); 2 = colour edge; 3 = details card; phones 4-6.
+
+### 158 · Leads threads: Meta ad-question bubble — **sent 2026-10-29 — Jose: "Yea" (1 and 4)** (`docs/previews/leads-ad-question-layouts.html`)
+
+Desk/Meta cb4c94743: ad_question flag. 1 = outlined dashed bubble + tag (recommended); 2 = system line; 3 = edge + tag; phones 4-6.
+
+### 157 · Reports workspace (A1 Leads takeover row 10) — **sent 2026-10-29 — Jose: "As u recommend" (1 and 4)** (`docs/previews/reports-workspace-layouts.html`)
+
+Reports brief: report picker, place, dates, preview, PDF/Excel, draft→approved→sent, Send to WhatsApp + scheduled rules. 1 = list + preview + actions column (recommended); 2 = tabs; 3 = steps; phones 4-6. Reports builds.
+
 ### 156 · Leads › Manage › Connections (all lead sources) — **sent 2026-10-29 — Jose: "as u recommend on everything" (1 and 4)** (`docs/previews/leads-connections-sources-layouts.html`)
 
 Via Google API / Leads: Website gets a real sites pane; WhatsApp, Facebook/Messenger, Instagram and GBP (no leads since Google ended chat in 2024) join the list. 1 = extended source list + table + side panel (recommended); 2 = card grid; 3 = one table; phones 4-6.
