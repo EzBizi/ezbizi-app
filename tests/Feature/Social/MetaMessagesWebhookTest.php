@@ -194,6 +194,22 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertSame(3, LeadConversation::query()->withoutGlobalScopes()->count());
     }
 
+    /** A-1, 2026-10-29: questions tapped from a Click-to-Message ad are not typed by the customer. */
+    public function test_questions_tapped_from_an_ad_are_marked_and_typed_text_is_not(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->pageBelongsTo($t);
+
+        $this->deliver($this->body(['mid' => 'm_A1', 'text' => 'How long does the chimney sweep take?',
+            'referral' => ['source' => 'ADS', 'type' => 'OPEN_THREAD', 'ad_id' => '1']]))->assertOk();
+        $this->deliver($this->body(['mid' => 'm_A2', 'text' => 'What is included?', 'quick_reply' => ['payload' => 'q2']]))->assertOk();
+        $this->deliver($this->body(['mid' => 'm_A3', 'text' => 'I need a sweep']))->assertOk();
+
+        $this->assertSame(['m_A1' => true, 'm_A2' => true, 'm_A3' => false], LeadConversation::query()->withoutGlobalScopes()
+            ->orderBy('remote_id')->pluck('is_ad_question', 'remote_id')->map(fn ($v) => (bool) $v)->all());
+    }
+
     public function test_a_retried_delivery_does_not_double_the_message(): void
     {
         $t = $this->provisionTenant('A1-Group');
