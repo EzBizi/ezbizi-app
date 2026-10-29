@@ -248,6 +248,9 @@ class WorkizWebSessionTest extends TestCase
             $this->assertNotNull($ga);
         });
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'goToMaster'));
+        // The list is read from the master, which is reached first.
+        $urls = collect(Http::recorded())->map(fn ($pair) => $pair[0]->url())->values();
+        $this->assertLessThan($urls->search(fn ($u) => str_ends_with($u, '/ajaxc/franchise/')), $urls->search(fn ($u) => str_contains($u, 'goToMaster')));
     }
 
     /** Jobs' Book panel, 2026-10-27: each account's service areas (with ZIPs) and external companies. */

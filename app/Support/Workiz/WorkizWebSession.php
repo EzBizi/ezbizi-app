@@ -115,6 +115,11 @@ final class WorkizWebSession
      */
     public static function accounts(SocialConnection $connection): array
     {
+        // Back to the master first: a session left inside a sub-account (a read
+        // cut short, or the person's own switching) lists no accounts at all
+        // and calls the sub-account "main" (measured on A-1, 2026-10-29: NJ).
+        self::call($connection, '/ajaxc/franchise/goToMaster/');
+
         // The account switcher's own list (main.js getSubAccounts), measured 2026-10-21: A-1's nine.
         $read = self::call($connection, '/ajaxc/franchise/');
         // The signed-in account by its own name ("A1 Chimney - Nationwide"), which is what files it to a branch.
