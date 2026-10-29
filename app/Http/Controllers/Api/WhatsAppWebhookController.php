@@ -2,14 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\Organization;
+use App\Models\WhatsAppContact;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
+use App\Support\Leads\LeadThread;
 use App\Support\Social\WhatsAppCloud;
 use App\Support\Social\WhatsAppGroups;
 use App\Support\Social\WhatsAppPeriodReports;
 use App\Support\Social\WhatsAppStaffBot;
 use App\Support\Tenancy\TenantContext;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -184,7 +189,8 @@ class WhatsAppWebhookController extends Controller
                     // as an empty message somebody sent.
                     'body' => $message['text']['body'] ?? ($picked['title'] ?? ($message['image']['caption'] ?? $message['document']['caption'] ?? null)),
                     // An image or document's caption is its words; its id is how it is fetched.
-                    'media_id' => $message['image']['id'] ?? $message['document']['id'] ?? null,
+                    // Voice notes, video and stickers too, streamed on demand (WhatsAppMediaController).
+                    'media_id' => $message[(string) ($message['type'] ?? '')]['id'] ?? null,
                 ],
             );
 
@@ -288,7 +294,107 @@ class WhatsAppWebhookController extends Controller
             $handled++;
         }
 
+        return $handled + $this->people($value, $phoneNumberId, $organizationId);
+    }
+
+    /**
+     * Everything WhatsApp says about a person beyond the number (Jose,
+     * 2026-10-29), written AFTER the messages so intake has made the contact:
+     *
+     *  - `contacts[].profile.name`: the name on their own WhatsApp profile;
+     *  - `messages[].referral`: the Click-to-WhatsApp ad or post they came from;
+     *  - `state_sync[]` (field smb_app_state_sync, coexistence only): a contact
+     *    the business saved in the WhatsApp Business app, added or removed;
+     *  - `message_echoes[]` (field smb_message_echoes, coexistence only): what
+     *    staff sent from the WhatsApp Business app, so the lead shows it was
+     *    answered.
+     *
+     * A lead with no name gets the saved name, else the profile name. A name
+     * staff typed is never replaced.
+     *
+     * @param  array<string, mixed>  $value
+     */
+    /** A thread row's remote_id prefix for a reply sent from the WhatsApp Business app. */
+    public const FROM_APP = 'wa_app_';
+
+    private function people(array $value, string $phoneNumberId, string $organizationId): int
+    {
+        $handled = 0;
+        $touched = [];
+        $contact = fn (string $who) => WhatsAppContact::query()
+            ->where('phone_number_id', $phoneNumberId)->where('counterparty', $who)->first();
+
+        foreach ((array) ($value['contacts'] ?? []) as $c) {
+            $row = $contact((string) ($c['wa_id'] ?? ''));
+            $name = trim((string) ($c['profile']['name'] ?? ''));
+            if ($row !== null && $name !== '') {
+                $row->forceFill(['profile_name' => mb_substr($name, 0, 255)])->save();
+                $touched[$row->getKey()] = $row;
+            }
+        }
+
+        foreach ((array) ($value['messages'] ?? []) as $m) {
+            if (isset($m['referral']) && ($row = $contact((string) ($m['from'] ?? ''))) !== null) {
+                $row->forceFill(['referral' => $m['referral']])->save();
+            }
+        }
+
+        // Saved contacts and echoes exist only for a number that is also on
+        // the WhatsApp Business app; nothing else should create contacts.
+        $coexists = WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->where('auto_reply', false)->exists();
+
+        foreach ($coexists ? (array) ($value['state_sync'] ?? []) : [] as $sync) {
+            $who = preg_replace('/\D+/', '', (string) ($sync['contact']['phone_number'] ?? '')) ?? '';
+            if (($sync['type'] ?? null) !== 'contact' || $who === '') {
+                continue;
+            }
+            $name = ($sync['action'] ?? 'add') === 'remove' ? null
+                : (trim((string) ($sync['contact']['full_name'] ?? $sync['contact']['first_name'] ?? '')) ?: null);
+            $row = WhatsAppContact::firstOrCreate(
+                ['phone_number_id' => $phoneNumberId, 'counterparty' => $who],
+                ['organization_id' => $organizationId, 'kind' => WhatsAppContact::KIND_UNKNOWN],
+            );
+            $row->forceFill(['saved_name' => $name !== null ? mb_substr($name, 0, 255) : null])->save();
+            $touched[$row->getKey()] = $row;
+            $handled++;
+        }
+
+        foreach ($coexists ? (array) ($value['message_echoes'] ?? []) : [] as $echo) {
+            $row = $contact((string) ($echo['to'] ?? ''));
+            $lead = $row?->lead_id !== null ? Lead::query()->find($row->lead_id) : null;
+            $type = (string) ($echo['type'] ?? 'text');
+            $text = $echo['text']['body'] ?? ($echo[$type]['caption'] ?? null);
+            $media = $echo[$type]['id'] ?? null;
+            if ($lead === null || (! is_string($text) || $text === '') && $media === null || ($echo['id'] ?? '') === '') {
+                continue;
+            }
+            app(LeadThread::class)->store($lead, self::FROM_APP.$echo['id'], [
+                'channel' => LeadConversation::CHANNEL_MESSAGE,
+                'participant' => LeadConversation::FROM_ADVERTISER,
+                'occurred_at' => isset($echo['timestamp']) ? Carbon::createFromTimestamp((int) $echo['timestamp']) : now(),
+                'text' => is_string($text) && $text !== '' ? $text : null,
+                'attachments' => $media !== null ? [WhatsAppMediaController::ref($phoneNumberId, (string) $media, $type)] : null,
+            ]);
+            app(LeadThread::class)->refresh($lead);
+            $handled++;
+        }
+
+        foreach ($touched as $row) {
+            self::nameLead($row);
+        }
+
         return $handled;
+    }
+
+    /** Fill a nameless lead from its WhatsApp contact. Public for the backfill. */
+    public static function nameLead(WhatsAppContact $contact): void
+    {
+        $lead = $contact->lead_id !== null ? Lead::query()->find($contact->lead_id) : null;
+        // Blank, or the profile name we filled earlier: the saved name wins.
+        $ours = $lead !== null && ($lead->contact_name === null || $lead->contact_name === $contact->profile_name);
+        if ($ours && ($name = $contact->name()) !== null && $name !== $lead->contact_name) {
+            $lead->forceFill(['contact_name' => $name])->save();
+        }
     }
 
     /**

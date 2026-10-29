@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Http\Controllers\Api\WhatsAppMediaController;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\Organization;
@@ -204,7 +205,7 @@ final class WhatsAppIntake
 
         $contact->forceFill(['lead_id' => $lead->getKey()])->save();
 
-        foreach ($said->where('kind', 'text') as $message) {
+        foreach ($said as $message) { // hold() keeps words and files only
             $this->hold($lead, $message);
         }
 
@@ -217,8 +218,11 @@ final class WhatsAppIntake
 
     private function hold(Lead $lead, WhatsAppMessage $message): void
     {
-        if ($message->body === null || $message->kind !== 'text') {
-            return; // a tap on the question, an image: not words for the thread
+        // Words, or a file (voice note, photo, video, document) streamed on
+        // demand. A tap on the question is neither.
+        $media = $message->media_id !== null && $message->kind !== 'interactive';
+        if (! $media && ($message->body === null || $message->kind !== 'text')) {
+            return;
         }
 
         $this->thread->store($lead, (string) $message->wamid, [
@@ -226,6 +230,7 @@ final class WhatsAppIntake
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => $message->created_at ?? now(),
             'text' => $message->body,
+            'attachments' => $media ? [WhatsAppMediaController::ref((string) $message->phone_number_id, (string) $message->media_id, (string) $message->kind)] : null,
         ]);
     }
 

@@ -442,6 +442,11 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
+Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
+    ->name('whatsapp.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
