@@ -185,6 +185,9 @@ class LeadsController extends Controller
          */
         $query->sourceVisibleTo($user);
 
+        // Leads › Manage › Hidden (Jose, 2026-10-29): gone from every list, count and search without the grant.
+        $query->notHiddenFrom($user);
+
         return $query;
     }
 

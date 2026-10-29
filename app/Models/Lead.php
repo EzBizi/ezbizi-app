@@ -313,6 +313,38 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         ));
     }
 
+    /** Leads › Manage › Hidden (Jose, 2026-10-29): who may see, hide and unhide private conversations. */
+    public const HIDDEN_PERMISSION = 'leads.hidden.view';
+
+    /**
+     * A lead from a number somebody chose to always hide is hidden as it is
+     * filed, before anything (an alert, a rule, AI) can read it.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Lead $lead) {
+            if ($lead->hidden_at === null && LeadHiddenNumber::covers($lead->phone_digits ?? $lead->phone)) {
+                $lead->hidden_at = now();
+            }
+        });
+    }
+
+    public function isHidden(): bool
+    {
+        return $this->hidden_at !== null;
+    }
+
+    /**
+     * Hidden leads leave every read for anyone without the grant, and for
+     * every job that runs as nobody (alerts, digests, AI). Null user = hidden.
+     */
+    public function scopeNotHiddenFrom(Builder $query, ?User $user = null): Builder
+    {
+        return $user !== null && $user->hasPermission(self::HIDDEN_PERMISSION)
+            ? $query
+            : $query->whereNull($this->getTable().'.hidden_at');
+    }
+
     /**
      * The same rule as a query, because the list is one endpoint.
      *
@@ -506,6 +538,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'is_test' => 'boolean',
             'ai_set' => 'array',
             'referral' => 'array',
+            'hidden_at' => 'datetime',
             'received_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
