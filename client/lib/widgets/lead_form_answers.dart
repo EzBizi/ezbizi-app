@@ -77,10 +77,38 @@ class FormSystemLine extends StatelessWidget {
   }
 }
 
+/// Whether [answer]'s value is one of [facts]: the same text ignoring case,
+/// or for a phone the same last ten digits.
+bool repeatsAFact(Map<String, dynamic> answer, List<String> facts) {
+  final value = '${answer['value'] ?? ''}'.trim().toLowerCase();
+  if (value.isEmpty) return false;
+  String digits(String s) {
+    final d = s.replaceAll(RegExp(r'\D'), '');
+    return d.length > 10 ? d.substring(d.length - 10) : d;
+  }
+
+  for (final f in facts) {
+    final fact = f.trim().toLowerCase();
+    if (fact.isEmpty) continue;
+    if (fact == value) return true;
+    final dv = digits(value);
+    if (dv.length >= 7 && dv == digits(fact)) return true;
+  }
+  return false;
+}
+
 class FormAnswersSection extends StatelessWidget {
-  const FormAnswersSection({super.key, required this.lead});
+  const FormAnswersSection({
+    super.key,
+    required this.lead,
+    this.skipping = const [],
+  });
 
   final Map<String, dynamic> lead;
+
+  /// Facts already on screen (name, phone, email): an answer that only
+  /// repeats one is left out (design 161).
+  final List<String> skipping;
 
   @override
   Widget build(BuildContext context) {
@@ -109,6 +137,7 @@ class FormAnswersSection extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           for (final a in formAnswers(lead))
+            if (!repeatsAFact(a, skipping))
             Padding(
               padding: const EdgeInsets.only(bottom: 3),
               child: Row(

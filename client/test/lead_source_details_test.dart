@@ -86,35 +86,10 @@ void main() {
     expect(f.referralLine, 'via ad: Autumn sweep');
   });
 
-  testWidgets('details leave out every empty field', (tester) async {
-    await _pumpBare(
-      tester,
-      const LeadDetailsColumn(
-        LeadSourceFields(
-          sourceKey: 'instagram',
-          phone: '(555) 010-0177',
-          handle: '@quill.example',
-        ),
-      ),
-    );
-
-    expect(find.text('CONTACT'), findsOneWidget);
-    expect(find.text('(555) 010-0177'), findsOneWidget);
-    expect(find.text('CAME FROM'), findsOneWidget);
-    expect(find.text('@quill.example'), findsOneWidget);
-    expect(find.text('JOB'), findsNothing);
-    expect(find.byKey(const ValueKey('details-ad')), findsNothing);
-    expect(find.byKey(const ValueKey('details-campaign')), findsNothing);
-    expect(find.textContaining('—'), findsNothing);
-  });
-
-  testWidgets('all empty: the details draw nothing', (tester) async {
-    await _pumpBare(tester, const LeadDetailsColumn(LeadSourceFields()));
-    expect(find.byKey(const ValueKey('source-details')), findsNothing);
-  });
-
   group('the header', () {
-    testWidgets('a referral says via ad and campaign; details beside', (
+    // Design 161: the details column is gone; its facts are one labelled
+    // line under the name, each once.
+    testWidgets('a referral is the Via ad fact; no details column', (
       tester,
     ) async {
       await _pumpThread(tester, width: 1200, detail: _referralDetail);
@@ -122,43 +97,30 @@ void main() {
       expect(find.byKey(const ValueKey('thread-avatar')), findsOneWidget);
       expect(find.text('TB'), findsOneWidget);
       expect(find.byKey(const ValueKey('thread-source-chip')), findsOneWidget);
-      expect(
-        find.text('via ad: Autumn sweep · campaign Fall leads'),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('source-details-column')),
-        findsOneWidget,
-      );
-      expect(find.text('Facebook ad “Autumn sweep”'), findsOneWidget);
-      expect(
-        find.text('Campaign Fall leads · Page Brightside'),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('source-details-column')), findsNothing);
+      expect(find.text('Via ad'), findsOneWidget);
+      expect(find.byKey(const ValueKey('details-ad')), findsOneWidget);
+      expect(find.text('Autumn sweep'), findsOneWidget);
       expect(find.text('12 Elm St, Springfield'), findsOneWidget);
     });
 
-    testWidgets('no referral: no via-ad line', (tester) async {
+    testWidgets('no referral: no via-ad fact', (tester) async {
       await _pumpThread(tester, width: 1200, detail: const {});
 
-      expect(find.byKey(const ValueKey('thread-referral')), findsNothing);
-      expect(find.textContaining('via ad'), findsNothing);
+      expect(find.text('Via ad'), findsNothing);
       expect(find.byKey(const ValueKey('thread-source-chip')), findsOneWidget);
     });
 
-    testWidgets('phone at 375: the details fold under Details', (tester) async {
+    testWidgets('phone at 375: the rest folds under More', (tester) async {
       await _pumpThread(tester, width: 375, detail: _referralDetail);
 
       expect(tester.takeException(), isNull);
-      expect(find.byKey(const ValueKey('source-details-column')), findsNothing);
-      expect(find.byKey(const ValueKey('source-details')), findsNothing);
-      expect(find.byKey(const ValueKey('thread-referral')), findsOneWidget);
+      expect(find.byKey(const ValueKey('details-ad')), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('source-details')), findsOneWidget);
-      expect(find.text('Facebook ad “Autumn sweep”'), findsOneWidget);
+      expect(find.byKey(const ValueKey('details-ad')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

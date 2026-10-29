@@ -148,6 +148,13 @@ class _LeadThreadState extends State<LeadThread> {
   /// window").
   bool _showDetails = false;
 
+  /// Design 161: the form answers and the note, each opened in place from
+  /// the header, and the header folded to its name row while the thread is
+  /// scrolled back.
+  bool _formOpen = false;
+  bool _noteOpen = false;
+  bool _collapsed = false;
+
   /// Account, Google status, and a name/address/ZIP read out of what the
   /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
   Map<String, dynamic>? _details;
@@ -289,6 +296,7 @@ class _LeadThreadState extends State<LeadThread> {
       if (fresh != null) {
         _lead = fresh;
         _editingNote = false;
+        _noteOpen = true;
       }
     });
   }
@@ -553,66 +561,24 @@ class _LeadThreadState extends State<LeadThread> {
     return fill ? SizedBox(width: double.infinity, child: control) : control;
   }
 
-  /// Below this a header's name line cannot hold the buttons as well, so
-  /// they go under the lines instead. 880 since the moves became three
-  /// (Archive, Not a lead, Lead) and a gap before Call and Book: at 640 the
-  /// name line overflowed by 11px in a 740-wide thread.
-  // 1300 since Follow Up made the moves six (2026-10-14).
-  static const double _besideNameFrom = 1300;
-
-  /// Design 159: the details column beside the thread from this width of
-  /// thread; narrower, they fold under the header.
-  /// 159's column with 160's form answers at its foot (C1).
-  Widget _detailsColumn(LeadSourceFields src) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      LeadDetailsColumn(src),
-      if (hasFormAnswers(_formLead)) FormAnswersSection(lead: _formLead),
-    ],
-  );
-
-  static bool _detailsBeside(double threadWidth) => threadWidth >= 760;
-
-  /// The conversation, with Contact / Job / Came from in a column on its
-  /// right where there is room and something to show.
-  Widget _withDetailsBeside(LeadSourceFields src, Widget conversation) =>
-      LayoutBuilder(
-        builder: (context, area) {
-          final form = hasFormAnswers(_formLead);
-          if ((!src.hasDetails && !form) || !_detailsBeside(area.maxWidth)) {
-            return conversation;
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(child: conversation),
-              const VerticalDivider(width: 1),
-              SizedBox(
-                key: const ValueKey('source-details-column'),
-                width: 240,
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                  child: _detailsColumn(src),
-                ),
-              ),
-            ],
-          );
-        },
-      );
+  /// From this width of header the six moves are one segmented control on
+  /// the name row; narrower, the same moves as a picker (design 161).
+  static const double _segmentsFrom = 1100;
 
   /// Desktop: the moves, then Book, the one that matters most, last. On a
   /// phone Book is full width and the moves share a row under it.
   /// Two groups, apart (Jose, 2026-09-30): where the lead stands - Archive,
   /// Not a lead, Lead - and what to do about the customer - Call, Book.
-  Widget _actions(Map<String, dynamic> lead) => Wrap(
-    spacing: 24,
+  Widget _actions(Map<String, dynamic> lead, {bool picker = false}) => Wrap(
+    spacing: 16,
     runSpacing: 8,
     alignment: WrapAlignment.end,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      if (widget.onStatusChanged != null) _moves(lead),
+      if (widget.onStatusChanged != null)
+        picker
+            ? SizedBox(width: 150, child: _moves(lead, fill: true))
+            : _moves(lead),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -650,6 +616,378 @@ class _LeadThreadState extends State<LeadThread> {
         ],
       ),
     ],
+  );
+
+  /// Design 161: the avatar, the name with its marks and chips (one source
+  /// chip, the status, who else is viewing, the note), and on a desktop the
+  /// moves and Edit / Book / ... at its end.
+  Widget _nameRow(
+    ThemeData theme,
+    Map<String, dynamic> lead,
+    LeadSourceFields src, {
+    required bool narrow,
+    required double width,
+  }) {
+    final starred = lead['starred'] == true;
+    final note = ((lead['note'] as String?) ?? '').trim();
+    final canEdit = widget.onNote != null;
+
+    final marks = Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: width * (narrow ? 0.6 : 0.4)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  leadTitle(lead),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              // Jose, 2026-10-19: "Leads - copy name".
+              _copyButton(
+                leadTitle(lead),
+                key: const ValueKey('copy-name'),
+                what: 'Name',
+              ),
+            ],
+          ),
+        ),
+        if (leadNameIsAi(lead))
+          const AiMark(key: ValueKey('thread-ai-name'), tooltip: aiNameTooltip),
+        if (src.sourceKey != null)
+          LeadSourceChip(src.sourceKey, key: const ValueKey('thread-source-chip')),
+        leadStatusPill(lead['status'], key: const ValueKey('thread-status')),
+        if (leadAiHolds(lead, 'status'))
+          AiMark(
+            key: const ValueKey('thread-ai-status'),
+            tooltip: [
+              'Status set by AI from the conversation. Change it to override.',
+              ?(lead['ai_reason'] as String?),
+            ].join('\n'),
+          ),
+        if (widget.onStar != null)
+          IconButton(
+            key: const ValueKey('thread-star'),
+            tooltip: starred ? 'Unstar' : 'Star',
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            onPressed: _star,
+            icon: Icon(
+              starred ? Icons.star : Icons.star_border,
+              color: starred
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
+            ),
+          ),
+        if (_viewers.isNotEmpty) _viewingChip(),
+        if (note.isNotEmpty)
+          _headerChip(
+            theme,
+            key: const ValueKey('note-chip'),
+            icon: Icons.sticky_note_2_outlined,
+            label: _noteOpen ? 'Note ▴' : 'Note ▾',
+            tone: ToneColours.of(context, Tone.caution),
+            onTap: () => setState(() => _noteOpen = !_noteOpen),
+          )
+        else if (canEdit && !_editingNote)
+          _headerChip(
+            theme,
+            key: const ValueKey('note-add'),
+            icon: Icons.edit_outlined,
+            label: 'Add a note',
+            onTap: () {
+              _note.clear();
+              setState(() => _editingNote = true);
+            },
+          ),
+      ],
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        LeadAvatar(
+          key: const ValueKey('thread-avatar'),
+          name: leadTitle(lead),
+          url: src.avatarUrl,
+          radius: 16,
+        ),
+        const SizedBox(width: 10),
+        Expanded(flex: 2, child: marks),
+        if (!narrow) ...[
+          const SizedBox(width: 12),
+          // Wraps under itself rather than push the row past its edge.
+          Flexible(
+            flex: 3,
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: _actions(lead, picker: width < _segmentsFrom),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// A small rounded chip in the header: the note, the viewers.
+  Widget _headerChip(
+    ThemeData theme, {
+    required Key key,
+    required IconData icon,
+    required String label,
+    ToneColours? tone,
+    VoidCallback? onTap,
+    String? tooltip,
+  }) {
+    final fill = tone?.fill ?? theme.colorScheme.surfaceContainerHighest;
+    final ink = tone?.ink ?? theme.colorScheme.onSurfaceVariant;
+    Widget chip = Material(
+      color: fill,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: ink),
+              const SizedBox(width: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 100),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (tooltip != null) chip = Tooltip(message: tooltip, child: chip);
+    return chip;
+  }
+
+  /// Design 161: one wrapping line of labelled facts, each field once and
+  /// only when it has something; a phone shows Phone and Job, then More.
+  Widget _facts(
+    ThemeData theme,
+    Map<String, dynamic> lead,
+    LeadSourceFields src, {
+    required String? company,
+    required String line,
+    required bool narrow,
+  }) {
+    final quiet = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final labelStyle = theme.textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final all = !narrow || _showDetails;
+
+    Widget fact(String label, Widget value, {Key? key}) => Row(
+      key: key,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: labelStyle),
+        const SizedBox(width: 4),
+        Flexible(child: value),
+      ],
+    );
+    Widget text(String v, {Key? key}) => Text(
+      v,
+      key: key,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodySmall,
+    );
+
+    final phone = lead['phone'] as String?;
+    final d = _details;
+    final named = (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
+    final zip = d?['zip'] as String?;
+    final address = (d?['address'] as String?) ?? src.address;
+    final checked = (d?['checked_address'] as Map?)?['exact'] == true
+        ? '${(d!['checked_address'] as Map)['address']}'
+        : null;
+    final mayCheck =
+        d != null &&
+        widget.session?.me?.can('scheduling.availability.view') == true;
+    final where = [
+      ?address,
+      if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
+    ].join(' · ');
+
+    final availability = TextButton(
+      key: const ValueKey('check-availability'),
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      // No zip yet: the address they wrote, which the pane looks up.
+      onPressed: () => _openAvailability(zip ?? address),
+      child: Text(
+        zip == null ? 'Check availability' : 'Check availability for $zip',
+      ),
+    );
+
+    final children = <Widget>[
+      if (showsNumberLine(lead))
+        fact(
+          'Phone',
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: text(formatPhoneNumber(phone))),
+              _copyButton(
+                phone!,
+                key: const ValueKey('copy-phone'),
+                what: 'Number',
+              ),
+            ],
+          ),
+        ),
+      if (all && src.email != null)
+        fact('Email', SelectableText(src.email!, style: theme.textTheme.bodySmall)),
+      if (all && !named && d?['name'] is String)
+        fact('Name', text('${d!['name']}')),
+      if (all && checked != null)
+        fact(
+          'Address',
+          Row(
+            key: const ValueKey('lead-address-checked'),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.verified_outlined,
+                size: 14,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Tooltip(
+                  message:
+                      'Checked with Google. The customer wrote: ${address ?? ''}',
+                  child: text(checked),
+                ),
+              ),
+              if (mayCheck) ...[const SizedBox(width: 4), availability],
+            ],
+          ),
+        )
+      else if (all && where.isNotEmpty)
+        fact(
+          'Address',
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              text(where, key: const ValueKey('lead-address')),
+              // Only when the ZIP shown is the one AI wrote.
+              if (zip != null &&
+                  leadAiHolds(lead, 'postal_code') &&
+                  lead['postal_code'] == zip) ...[
+                const SizedBox(width: 4),
+                const AiMark(
+                  key: ValueKey('lead-ai-zip'),
+                  tooltip:
+                      'ZIP filled in by AI from what the customer said. '
+                      'Edit it to change it.',
+                ),
+              ],
+              if (mayCheck) ...[
+                Text(' · ', style: quiet),
+                availability,
+              ],
+            ],
+          ),
+        )
+      else if (all && mayCheck)
+        availability,
+      if (src.jobType != null)
+        fact('Job', text(src.jobType!, key: const ValueKey('details-job'))),
+      if (all && src.adName != null)
+        fact(
+          'Via ad',
+          Tooltip(
+            message: [
+              ?src.headline,
+              if (src.campaignName != null) 'Campaign ${src.campaignName}',
+              if (src.pageName != null) 'Page ${src.pageName}',
+            ].join('\n'),
+            child: text(src.adName!, key: const ValueKey('details-ad')),
+          ),
+        ),
+      if (all && src.handle != null)
+        fact('Handle', text(src.handle!, key: const ValueKey('details-handle'))),
+      // Whose lead it is: chimney prices went to a garage-door lead (Jose,
+      // 2026-09-30).
+      if (all && company != null)
+        CompanyTag(company, key: const ValueKey('thread-company')),
+      if (all && d != null) ..._factPills(lead, d),
+      if (all && line.isNotEmpty)
+        Text(line, style: quiet, maxLines: 1, overflow: TextOverflow.ellipsis),
+      if (all && hasFormAnswers(_formLead))
+        _foldLink(
+          theme,
+          key: const ValueKey('form-answers-toggle'),
+          label: 'Form answers',
+          open: _formOpen,
+          onTap: () => setState(() => _formOpen = !_formOpen),
+        ),
+      if (narrow)
+        _foldLink(
+          theme,
+          key: const ValueKey('thread-details-toggle'),
+          label: _showDetails ? 'Less' : 'More',
+          open: _showDetails,
+          onTap: () => setState(() => _showDetails = !_showDetails),
+        ),
+    ];
+
+    return Wrap(
+      key: const ValueKey('thread-facts'),
+      spacing: 14,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: children,
+    );
+  }
+
+  Widget _foldLink(
+    ThemeData theme, {
+    required Key key,
+    required String label,
+    required bool open,
+    required VoidCallback onTap,
+  }) => InkWell(
+    key: key,
+    onTap: onTap,
+    child: Text(
+      '$label ${open ? '▴' : '▾'}',
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.primary,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
   );
 
   Future<void> _edit() async {
@@ -734,270 +1072,125 @@ class _LeadThreadState extends State<LeadThread> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lead = _lead;
-    final starred = lead['starred'] == true;
     final narrow = MediaQuery.sizeOf(context).width < 600;
     final company = leadCompany(lead);
-    // The company is on screen as its tag, so the line does not say it again.
-    final line = leadHeaderLine(lead, company: company == null);
     final src = LeadSourceFields.from(lead, _loaded);
+    // The company is on screen as its tag, so the line does not say it again.
+    // Without the source's word: its chip says it (design 161, one chip).
+    final line = leadHeaderLine(
+      lead,
+      company: company == null,
+      withSource: src.sourceKey == null,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           key: const ValueKey('thread-header'),
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: LayoutBuilder(
-            builder: (context, box) => Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LeadAvatar(
-                  key: const ValueKey('thread-avatar'),
-                  name: leadTitle(lead),
-                  url: src.avatarUrl,
-                  radius: 19,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          // The name, its pill and its star take the line, and
-                          // what follows sits at its end: beside a Spacer the
-                          // name got half the room and wrapped on a phone.
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    leadTitle(lead),
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                ),
-                                // Jose, 2026-10-19: "Leads - copy name".
-                                _copyButton(
-                                  leadTitle(lead),
-                                  key: const ValueKey('copy-name'),
-                                  what: 'Name',
-                                ),
-                                if (leadNameIsAi(lead)) ...[
-                                  const SizedBox(width: 6),
-                                  const AiMark(
-                                    key: ValueKey('thread-ai-name'),
-                                    tooltip: aiNameTooltip,
-                                  ),
-                                ],
-                                // Beside the name on a desktop; on a phone
-                                // it leads the line under (design 159).
-                                if (!narrow && src.sourceKey != null) ...[
-                                  const SizedBox(width: 6),
-                                  LeadSourceChip(
-                                    src.sourceKey,
-                                    key: const ValueKey('thread-source-chip'),
-                                  ),
-                                ],
-                                const SizedBox(width: 8),
-                                // What it is, said as a pill: the corner
-                                // field that read as a search box is gone
-                                // (design 28).
-                                leadStatusPill(
-                                  lead['status'],
-                                  key: const ValueKey('thread-status'),
-                                ),
-                                if (leadAiHolds(lead, 'status')) ...[
-                                  const SizedBox(width: 4),
-                                  AiMark(
-                                    key: const ValueKey('thread-ai-status'),
-                                    tooltip: [
-                                      'Status set by AI from the '
-                                          'conversation. Change it to override.',
-                                      ?(lead['ai_reason'] as String?),
-                                    ].join('\n'),
-                                  ),
-                                ],
-                                if (widget.onStar != null)
-                                  IconButton(
-                                    key: const ValueKey('thread-star'),
-                                    tooltip: starred ? 'Unstar' : 'Star',
-                                    iconSize: 18,
-                                    onPressed: _star,
-                                    icon: Icon(
-                                      starred ? Icons.star : Icons.star_border,
-                                      color: starred
-                                          ? theme.colorScheme.primary
-                                          : theme.colorScheme.outline,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          if (narrow)
-                            TextButton.icon(
-                              key: const ValueKey('thread-details-toggle'),
-                              onPressed: () =>
-                                  setState(() => _showDetails = !_showDetails),
-                              icon: Icon(
-                                _showDetails
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
-                                size: 18,
-                              ),
-                              label: const Text('Details'),
-                            ),
-                          // Beside the name, sharing only its line: set beside
-                          // the whole header they squeezed the lines under it.
-                          if (!narrow && box.maxWidth >= _besideNameFrom) ...[
-                            const SizedBox(width: 12),
-                            _actions(lead),
-                          ],
+            builder: (context, box) {
+              // Design 161: scrolled back, only the name row stays.
+              final folded = _collapsed && !_editingNote;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _nameRow(theme, lead, src, narrow: narrow, width: box.maxWidth),
+                  if (!folded) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: _facts(
+                        theme,
+                        lead,
+                        src,
+                        company: company,
+                        line: line,
+                        narrow: narrow,
+                      ),
+                    ),
+                    if (_formOpen && hasFormAnswers(_formLead))
+                      FormAnswersSection(
+                        lead: _formLead,
+                        skipping: [
+                          leadTitle(lead),
+                          ?src.phone,
+                          ?(lead['phone'] as String?),
+                          ?src.email,
                         ],
                       ),
-                      // One wrapping line (UI queue 108): the number (only
-                      // when the title is a name; when the title IS the
-                      // number, saying it twice adds nothing), whose lead it
-                      // is, the account and Google's status, the source.
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (narrow && src.sourceKey != null)
-                            LeadSourceChip(
-                              src.sourceKey,
-                              key: const ValueKey('thread-source-chip'),
-                            ),
-                          if (showsNumberLine(lead) && !narrow)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  formatPhoneNumber(lead['phone'] as String?),
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                                _copyButton(
-                                  lead['phone'] as String,
-                                  key: const ValueKey('copy-phone'),
-                                  what: 'Number',
-                                ),
-                              ],
-                            ),
-                          // Whose lead it is, first on the line: chimney prices
-                          // went to a garage-door lead (Jose, 2026-09-30).
-                          if (company != null)
-                            CompanyTag(
-                              company,
-                              key: const ValueKey('thread-company'),
-                            ),
-                          if (_details != null &&
-                              (!narrow || _showDetails))
-                            ..._factPills(lead, _details!),
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxWidth: box.maxWidth,
-                            ),
-                            child: Text(
-                              narrow && showsNumberLine(lead)
-                                  ? '${formatPhoneNumber(lead['phone'] as String?)} · $line'
-                                  : line,
-                              maxLines: narrow ? 1 : null,
-                              overflow: narrow ? TextOverflow.ellipsis : null,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
+                    // What it looks like, read by a model, beside what
+                    // somebody decided. Only when a reading exists.
+                    if (lead['classification'] is String &&
+                        (!narrow || _showDetails))
+                      Text(
+                        [
+                          'Looks like ${classificationWord(lead['classification'] as String)}',
+                          if ((lead['summary'] as String?)?.isNotEmpty == true)
+                            lead['summary'] as String,
+                        ].join(' · '),
+                        key: const ValueKey('classification-line'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
-                      if (src.referralLine != null)
-                        Text(
-                          src.referralLine!,
-                          key: const ValueKey('thread-referral'),
-                          maxLines: narrow ? 1 : null,
-                          overflow: narrow ? TextOverflow.ellipsis : null,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      // What it looks like, read by a model, beside what
-                      // somebody decided. Only when a reading exists.
-                      if (lead['classification'] is String &&
-                          (!narrow || _showDetails))
-                        Text(
-                          [
-                            'Looks like ${classificationWord(lead['classification'] as String)}',
-                            if ((lead['summary'] as String?)?.isNotEmpty ==
-                                true)
-                              lead['summary'] as String,
-                          ].join(' · '),
-                          key: const ValueKey('classification-line'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      if (lead['credit'] is Map)
-                        _creditLine(theme, lead['credit'] as Map),
-                      if (_viewers.isNotEmpty) _viewingBanner(compact: narrow),
-                      if (_booking != null) _bookingBlock(theme),
-                      if (_offer != null) _offerBlock(theme),
-                      if (!narrow || _showDetails) ...[
-                        // Folded under the header where the column beside
-                        // the thread has no room (design 159, option 4).
-                        if (!_detailsBeside(box.maxWidth + 32))
-                          _detailsColumn(src),
-                        if (_details != null) _detailsBlock(theme, lead),
-                        _noteBlock(theme, lead),
-                        if (_customer != null) _customerCard(theme, _customer!),
-                      ],
-                      if (lead['job'] is Map)
-                        _bookedLine(
-                          theme,
-                          lead['job'] as Map,
-                          matched: lead['job_matched_by'] == 'phone',
-                        ),
-                      // One line on a phone: where the lead stands, then
-                      // Book. They were two full-width rows.
-                      if (narrow &&
-                          (_canBook || widget.onStatusChanged != null))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            children: [
-                              if (widget.onStatusChanged != null)
-                                Expanded(child: _moves(lead, fill: true)),
-                              if (_canBook) ...[
-                                const SizedBox(width: 8),
-                                FilledButton(
-                                  key: const ValueKey('book-open'),
-                                  onPressed: _openBooking,
-                                  child: const Text('Book'),
-                                ),
-                              ],
+                    if (lead['credit'] is Map)
+                      _creditLine(theme, lead['credit'] as Map),
+                    if (_noteOpen || _editingNote) _noteBlock(theme, lead),
+                    if (_booking != null) _bookingBlock(theme),
+                    if (_offer != null) _offerBlock(theme),
+                    if (_customer != null && (!narrow || _showDetails))
+                      _customerCard(theme, _customer!),
+                    if (lead['job'] is Map)
+                      _bookedLine(
+                        theme,
+                        lead['job'] as Map,
+                        matched: lead['job_matched_by'] == 'phone',
+                      ),
+                    // One line on a phone: where the lead stands, then
+                    // Book. They were two full-width rows.
+                    if (narrow && (_canBook || widget.onStatusChanged != null))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            if (widget.onStatusChanged != null)
+                              Expanded(child: _moves(lead, fill: true)),
+                            if (_canBook) ...[
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                key: const ValueKey('book-open'),
+                                onPressed: _openBooking,
+                                child: const Text('Book'),
+                              ),
                             ],
-                          ),
+                          ],
                         ),
-                      if (!narrow && box.maxWidth < _besideNameFrom)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10),
-                          child: Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: _actions(lead),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+                      ),
+                  ],
+                ],
+              );
+            },
           ),
         ),
         const Divider(height: 1),
         Expanded(
-          child: _withDetailsBeside(
-            src,
-            ColoredBox(
+          // Design 161: the thread gets the space - scrolled back from the
+          // newest message, the header folds to its name row.
+          child: NotificationListener<ScrollUpdateNotification>(
+            onNotification: (n) {
+              if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+              final px = n.metrics.pixels;
+              if (!_collapsed && px > 40) {
+                setState(() => _collapsed = true);
+              } else if (_collapsed && px < 8) {
+                setState(() => _collapsed = false);
+              }
+              return false;
+            },
+            child: ColoredBox(
               color: theme.colorScheme.surfaceContainerLow,
               child: AsyncBody(
                 loading: _loading,
@@ -1115,8 +1308,8 @@ class _LeadThreadState extends State<LeadThread> {
         if (_templates.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: LayoutBuilder(
-              builder: (context, box) {
+            child: Builder(
+              builder: (context) {
                 final chips = [
                   for (final t in _templates)
                     ActionChip(
@@ -1140,8 +1333,8 @@ class _LeadThreadState extends State<LeadThread> {
                 // A phone keeps them to one line that scrolls sideways: as
                 // rows they took a quarter of the screen from the thread
                 // (Jose, 2026-10-01, the same complaint as the header).
-                if (box.maxWidth < 600) {
-                  return SingleChildScrollView(
+                // Design 161: at every width now.
+                return SingleChildScrollView(
                     key: const ValueKey('reply-templates'),
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -1153,15 +1346,6 @@ class _LeadThreadState extends State<LeadThread> {
                       ],
                     ),
                   );
-                }
-
-                return Wrap(
-                  key: const ValueKey('reply-templates'),
-                  alignment: WrapAlignment.end,
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: chips,
-                );
               },
             ),
           ),
@@ -1499,20 +1683,8 @@ class _LeadThreadState extends State<LeadThread> {
     }
 
     if (note == null || note.isEmpty) {
-      // Drawn on the details line instead, when there is one (UI queue 108).
-      if (!canEdit || _details != null) return const SizedBox.shrink();
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: TextButton.icon(
-          key: const ValueKey('note-add'),
-          onPressed: () {
-            _note.clear();
-            setState(() => _editingNote = true);
-          },
-          icon: const Icon(Icons.edit_outlined, size: 16),
-          label: const Text('Add a note'),
-        ),
-      );
+      // Its "Add a note" chip is on the name row (design 161).
+      return const SizedBox.shrink();
     }
 
     // The byline goes on the LABEL line - "Note · Maya · 2h ago" - never
@@ -1978,112 +2150,6 @@ class _LeadThreadState extends State<LeadThread> {
   /// The account it came through, Google's own status, and what the customer
   /// told us about themselves - with a way to check availability for the ZIP
   /// without leaving Leads (Jose, 2026-09-28).
-  Widget _detailsBlock(ThemeData theme, Map<String, dynamic> lead) {
-    final d = _details!;
-    final quiet = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    final named = (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
-    final zip = d['zip'] as String?;
-    final address = d['address'] as String?;
-    final mayCheck =
-        widget.session?.me?.can('scheduling.availability.view') == true;
-
-    return Column(
-      key: const ValueKey('lead-details'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (!named && d['name'] is String)
-          Text('Name, from the conversation: ${d['name']}', style: quiet),
-        // Google placed the address exactly: show its version, marked.
-        if ((d['checked_address'] as Map?)?['exact'] == true)
-          Row(
-            key: const ValueKey('lead-address-checked'),
-            children: [
-              Icon(Icons.verified_outlined, size: 14, color: theme.colorScheme.primary),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Tooltip(
-                  message: 'Checked with Google. The customer wrote: ${address ?? ''}',
-                  child: Text(
-                    '${(d['checked_address'] as Map)['address']}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ),
-            ],
-          )
-        else if (address != null || zip != null)
-          Row(
-            children: [
-              Flexible(
-                child: Text(
-                  [
-                    ?address,
-                    if (zip != null && !(address ?? '').contains(zip))
-                      'ZIP $zip',
-                  ].join(' · '),
-                  key: const ValueKey('lead-address'),
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-              // Only when the ZIP shown is the one AI wrote: a ZIP from
-              // Google's own details is not AI's, whatever AI also guessed.
-              if (zip != null &&
-                  leadAiHolds(lead, 'postal_code') &&
-                  lead['postal_code'] == zip) ...[
-                const SizedBox(width: 6),
-                const AiMark(
-                  key: ValueKey('lead-ai-zip'),
-                  tooltip: 'ZIP filled in by AI from what the customer said. '
-                      'Edit it to change it.',
-                ),
-              ],
-            ],
-          ),
-        // Check availability and Add a note as small links on one line
-        // (UI queue 108), not a full-width row each.
-        Wrap(
-          spacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (mayCheck)
-              TextButton.icon(
-                key: const ValueKey('check-availability'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
-                // No zip yet: the address they wrote, which the pane looks up.
-                onPressed: () => _openAvailability(zip ?? address),
-                icon: const Icon(Icons.event_available_outlined, size: 16),
-                label: Text(
-                  zip == null
-                      ? 'Check availability'
-                      : 'Check availability for $zip',
-                ),
-              ),
-            if (_noteIsEmpty(lead) && widget.onNote != null && !_editingNote)
-              TextButton.icon(
-                key: const ValueKey('note-add'),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: () {
-                  _note.clear();
-                  setState(() => _editingNote = true);
-                },
-                icon: const Icon(Icons.edit_outlined, size: 16),
-                label: const Text('Add a note'),
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  static bool _noteIsEmpty(Map<String, dynamic> lead) =>
-      ((lead['note'] as String?) ?? '').isEmpty;
-
   /// The account and the source's own status, in colour, as A1 Tools draws
   /// them (Jose, 2026-09-29): the account in orange, Google's status in its
   /// meaning. On the header's source line since UI queue 108.
@@ -2320,35 +2386,22 @@ class _LeadThreadState extends State<LeadThread> {
     );
   }
 
-  /// "Tanya is viewing this lead" - somebody else may be answering it.
-  Widget _viewingBanner({bool compact = false}) {
-    final colours = ToneColours.of(context, Tone.caution);
+  /// "Tanya viewing", a chip beside the name (design 161): somebody else
+  /// may be answering it. The whole sentence is its tooltip.
+  Widget _viewingChip() {
     final names = _viewers.length == 1
         ? _viewers.first
         : '${_viewers.sublist(0, _viewers.length - 1).join(', ')} and ${_viewers.last}';
 
-    return Container(
+    return _headerChip(
+      Theme.of(context),
       key: const ValueKey('lead-viewers'),
-      margin: const EdgeInsets.only(top: 6, bottom: 2),
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 3 : 5),
-      decoration: BoxDecoration(
-        color: colours.fill,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.visibility_outlined, size: 16, color: colours.ink),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              '$names ${_viewers.length == 1 ? 'is' : 'are'} viewing this lead',
-              maxLines: compact ? 1 : null,
-              overflow: compact ? TextOverflow.ellipsis : null,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colours.ink),
-            ),
-          ),
-        ],
-      ),
+      icon: Icons.visibility_outlined,
+      label:
+          '${_viewers.first}${_viewers.length > 1 ? ' +${_viewers.length - 1}' : ''} viewing',
+      tone: ToneColours.of(context, Tone.caution),
+      tooltip:
+          '$names ${_viewers.length == 1 ? 'is' : 'are'} viewing this lead',
     );
   }
 
@@ -2939,7 +2992,11 @@ String leadTitle(Map<String, dynamic> lead) {
 ///
 /// [company] false leaves the company name out of the place, for where it is
 /// already on screen as its [CompanyTag].
-String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
+String leadHeaderLine(
+  Map<String, dynamic> lead, {
+  bool company = true,
+  bool withSource = true,
+}) {
   final service = humaniseService(lead['service'] as String?);
   final source = lead['source'] as String?;
 
@@ -2974,7 +3031,7 @@ String leadHeaderLine(Map<String, dynamic> lead, {bool company = true}) {
 
   return [
     ?service,
-    sourceWord(source),
+    if (withSource) sourceWord(source),
     if (place != null && place.isNotEmpty) place,
   ].join(' · ');
 }

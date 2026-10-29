@@ -12,6 +12,7 @@ import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
+import '../widgets/module_page_header.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tab_help.dart';
@@ -374,8 +375,40 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
 
+  /// Design 161 T1: the shell's title row, where a desktop's search and
+  /// quick filters go. Null outside the shell (tests): drawn over the list.
+  ValueNotifier<Widget?>? _toolbarSlot;
+  Widget? _offered;
+  bool _toolbarInHeader = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _toolbarSlot = ModuleToolbarScope.maybeOf(context);
+  }
+
+  /// After the frame: a notifier set while building would rebuild the
+  /// header mid-build.
+  void _offerToolbar(Widget? bar) {
+    final slot = _toolbarSlot;
+    if (slot == null) return;
+    _offered = bar;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(_offered, bar) && slot.value != bar) {
+        slot.value = bar;
+      }
+    });
+  }
+
   @override
   void dispose() {
+    final slot = _toolbarSlot;
+    final mine = _offered;
+    if (slot != null && mine != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (identical(slot.value, mine)) slot.value = null;
+      });
+    }
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
@@ -708,6 +741,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   Widget _googleTab(ThemeData theme) {
     if (_managing) {
+      _toolbarInHeader = false;
+      _offerToolbar(null);
       return LeadsConnections(
         api: widget.api,
         session: widget.session,
@@ -724,8 +759,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // conversation runs from the title to the bottom. On a phone one button
     // says which source is showing and opens a page of them.
     final body = LayoutBuilder(
-      builder: (context, constraints) =>
-          constraints.maxWidth >= 900 ? _desk(theme) : _phone(theme),
+      builder: (context, constraints) {
+        final desk = constraints.maxWidth >= 900;
+        _toolbarInHeader = desk && _toolbarSlot != null;
+        _offerToolbar(_toolbarInHeader ? _toolbar(theme) : null);
+        return desk ? _desk(theme) : _phone(theme);
+      },
     );
     // (?) runs the open source's own walkthrough, by the server's name for
     // its tab (Jose, 2026-10-14: walkthroughs for "all the sub tabs"). The
@@ -1016,6 +1055,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      // Design 161 T1: in the shell's title row instead, on a desktop.
+      if (!_toolbarInHeader) ...[
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         child: LayoutBuilder(
@@ -1034,6 +1075,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
       ),
       _filterRow(theme, withStatus: false),
+      ] else
+        const SizedBox(height: 6),
       if (_moreFilters) ...[
         _takeoverFilters(),
         if (_source == null && _visibleSources.length > 1) _inAll(theme),
@@ -1073,14 +1116,62 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Approved triage layout (18012c74): the three narrow together. Mark all
   /// read follows them in the same run, beside what it reads (design 28:
   /// pinned to the far edge it read as "floating in the air").
-  Widget _filterRow(ThemeData theme, {required bool withStatus}) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-    child: Wrap(
-      key: const ValueKey('tour-leads-filters'),
-      spacing: 6,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
+  Widget _filterRow(ThemeData theme, {required bool withStatus}) {
+    final chips = _quickFilters(theme, withStatus: withStatus);
+    // Design 161, phone 4: one row that scrolls sideways.
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: SingleChildScrollView(
+          key: const ValueKey('tour-leads-filters'),
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              for (final (i, c) in chips.indexed) ...[
+                if (i > 0) const SizedBox(width: 6),
+                c,
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: Wrap(
+        key: const ValueKey('tour-leads-filters'),
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: chips,
+      ),
+    );
+  }
+
+  /// Design 161 T1: search, status, Filters and the quick filters, in the
+  /// module's title row on a desktop.
+  Widget _toolbar(ThemeData theme) => Wrap(
+    key: const ValueKey('leads-toolbar'),
+    alignment: WrapAlignment.end,
+    spacing: 6,
+    runSpacing: 4,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      SizedBox(width: 240, child: _searchField()),
+      SizedBox(width: 140, child: _statusPicker()),
+      _filtersButton(),
+      Wrap(
+        key: const ValueKey('tour-leads-filters'),
+        spacing: 6,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: _quickFilters(theme, withStatus: false),
+      ),
+    ],
+  );
+
+  List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
         FilterChip(
           key: const ValueKey('filter-unread'),
           label: const Text('Unread'),
@@ -1139,9 +1230,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           onPressed: _leads.isEmpty ? null : _readAll,
           icon: const Icon(Icons.done_all, size: 20),
         ),
-      ],
-    ),
-  );
+  ];
 
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
@@ -1898,12 +1987,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
         // unmistakable at a glance where a 3px rule is not. No leading-edge
         // accent bar anywhere, on Jose's ruling of 2026-09-08.
         color: selected ? theme.colorScheme.primaryContainer : null,
-        padding: const EdgeInsets.fromLTRB(14, 9, 8, 7),
+        // Design 161: tighter, with the picture centred on the row.
+        padding: const EdgeInsets.fromLTRB(12, 5, 6, 5),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: EdgeInsets.zero,
               child: SizedBox(
                 width: 8,
                 height: 8,
@@ -1935,6 +2025,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         child: Row(
                           children: [
                             Flexible(
+                              flex: 3,
                               child: Text(
                                 leadTitle(lead),
                                 style: theme.textTheme.titleSmall?.copyWith(
@@ -1957,12 +2048,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             // warning + Google row overflowed by 118px (Jose,
                             // 2026-09-28).
                             const SizedBox(width: 8),
+                            // Design 161: one line. The chips never wrap;
+                            // past the edge they are clipped and the name
+                            // ellipsizes first.
                             Flexible(
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
+                              flex: 2,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: _spaced([
                                 // Beside the name, in its own colour (design 159).
                                 if (src.sourceKey != null)
                                   LeadSourceChip(
@@ -2011,7 +2105,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                         const SizedBox(width: 3),
                                         // Flexible, so a long name ellipsizes in a
                                         // narrow list rather than running past it.
-                                        Flexible(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 90),
                                           child: Text(
                                             '${(lead['viewers'] as List).first}'
                                             '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
@@ -2086,7 +2181,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                     ),
                                   ),
                                 ],
-                                ],
+                                ]),
                               ),
                             ),
                           ],
@@ -2105,9 +2200,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       const SizedBox(width: 6),
                     ],
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 1),
                   Row(
                     children: [
+                      // Design 161: job and city lead the one muted line.
+                      if (src.jobLine != null)
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Text(
+                              src.jobLine!,
+                              key: ValueKey('lead-job-line-$id'),
+                              style: muted,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
                       // No company tag here: it is on the lead's own header,
                       // and Jose wants it in one place only (2026-09-30, "not
                       // on both").
@@ -2201,16 +2310,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       ),
                     ],
                   ),
-                  if (src.jobLine != null)
-                    Text(
-                      src.jobLine!,
-                      key: ValueKey('lead-job-line-$id'),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
                 ],
               ),
             ),
@@ -2221,6 +2320,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 }
+
+/// A row of chips, 6 apart (design 161: one line, never wrapped).
+Widget _spaced(List<Widget> chips) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    for (final (i, c) in chips.indexed) ...[
+      if (i > 0) const SizedBox(width: 6),
+      c,
+    ],
+  ],
+);
 
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 /// "POSSIBLE_SPAM" → "Possible spam".
