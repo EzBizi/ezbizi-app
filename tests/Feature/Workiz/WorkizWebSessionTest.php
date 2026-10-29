@@ -286,4 +286,31 @@ class WorkizWebSessionTest extends TestCase
 
         $this->artisan('ezbizi:workiz-web-payments')->expectsOutputToContain(WorkizWebSession::BUSY)->assertSuccessful();
     }
+
+    /** Takeover row 8, 2026-10-29: Workiz's Sources report credits a sub-contracted job to its external company. */
+    public function test_a_jobs_external_company_is_read_and_becomes_its_reported_source(): void
+    {
+        $c = $this->connected();
+        [$sent, $own] = $this->inTenant($this->t['org'], function () {
+            $v2 = \App\Models\SocialConnection::query()->first();
+            \App\Models\WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $v2->id, 'type' => 'external_company',
+                'remote_id' => 'EC-77', 'payload' => ['company_name' => 'ChimCare '], 'synced_at' => now()]);
+            $make = fn ($uuid) => \App\Models\WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $v2->id,
+                'remote_id' => $uuid, 'status' => 'Submitted', 'job_source' => 'LS Ads', 'booked_at' => now()->subDay(), 'payload' => [], 'synced_at' => now()]);
+
+            return [$make('SUB001'), $make('OWN001')];
+        });
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/job/get/SUB001/' => Http::response(['flag' => true, 'data' => ['company_id' => '77']]),
+            'app.workiz.com/ajaxc/job/get/OWN001/' => Http::response(['flag' => true, 'data' => ['company_id' => '0']]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-job-companies')->expectsOutputToContain('2 Workiz job(s) read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($sent, $own) {
+            $this->assertSame(['ChimCare', 'LS Ads'], [$sent->fresh()->reportedSource(), $own->fresh()->reportedSource()]);
+            $this->assertNotNull($own->fresh()->external_company_read_at, 'read once, even with no company');
+        });
+    }
 }
