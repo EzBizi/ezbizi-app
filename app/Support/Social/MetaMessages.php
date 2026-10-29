@@ -141,6 +141,21 @@ final class MetaMessages
     }
 
     /**
+     * The phone a lead-ad form put in the chat's first message ("Phone number:
+     * (973) 678-2560"), as its last ten digits, or null.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function formPhone(array $event): ?string
+    {
+        $text = (string) ($event['message']['text'] ?? '');
+
+        // The last ten digits: the form stores "+1973...", the chat says "(973) ...".
+        return preg_match('/^\s*Phone number:\s*(.+)$/mi', $text, $m) === 1 && strlen((string) Lead::digits($m[1])) >= 10
+            ? substr((string) Lead::digits($m[1]), -10) : null;
+    }
+
+    /**
      * A question the customer TAPPED from a Click-to-Message ad (A-1,
      * 2026-10-29). Meta sends it as their message: the first carries the ad's
      * `referral`, a suggested question carries a `quick_reply` payload.
@@ -191,6 +206,33 @@ final class MetaMessages
             }
 
             return $lead;
+        }
+
+        /*
+         * ONE PERSON, ONE LEAD (A-1, 2026-10-29). A lead ad that opens
+         * Messenger delivers twice: the form (MetaLeadForms, no sender id) and
+         * then this chat, whose first message repeats the answers. The form's
+         * lead becomes this chat's lead, so replies go through Messenger.
+         */
+        $digits = self::formPhone($event);
+        $form = $digits === null ? null : Lead::query()->withoutGlobalScopes()
+            ->where('organization_id', $connection->organization_id)
+            // Source, not connection: an Instagram form arrives through the
+            // Page, its DM through the Instagram account (A-1, "Pritesh").
+            ->where('source', $source)
+            ->where('lead_type', LeadNotificationText::META_FORM)
+            ->where('phone_digits', 'like', '%'.$digits)
+            ->where('created_at', '>=', now()->subDay())
+            ->latest()->first();
+
+        if ($form !== null) {
+            $form->forceFill([
+                'lead_type' => LeadNotificationText::META_TEXT,
+                'remote_id' => $senderId,
+                'contact_name' => $this->nameOf($connection, $senderId) ?? $form->contact_name,
+            ])->save();
+
+            return $form;
         }
 
         $lead = Lead::query()->withoutGlobalScopes()->create([
