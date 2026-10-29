@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 157 · Reports workspace (A1 Leads takeover row 10) — **sent 2026-10-29** (`docs/previews/reports-workspace-layouts.html`)
+
+Reports brief: report picker, place, dates, preview, PDF/Excel, draft→approved→sent, Send to WhatsApp + scheduled rules. 1 = list + preview + actions column (recommended); 2 = tabs; 3 = steps; phones 4-6. Reports builds.
+
 ### 156 · Leads › Manage › Connections (all lead sources) — **sent 2026-10-29 — Jose: "as u recommend on everything" (1 and 4)** (`docs/previews/leads-connections-sources-layouts.html`)
 
 Via Google API / Leads: Website gets a real sites pane; WhatsApp, Facebook/Messenger, Instagram and GBP (no leads since Google ended chat in 2024) join the list. 1 = extended source list + table + side panel (recommended); 2 = card grid; 3 = one table; phones 4-6.
