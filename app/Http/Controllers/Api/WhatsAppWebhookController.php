@@ -189,7 +189,8 @@ class WhatsAppWebhookController extends Controller
                     // as an empty message somebody sent.
                     'body' => $message['text']['body'] ?? ($picked['title'] ?? ($message['image']['caption'] ?? $message['document']['caption'] ?? null)),
                     // An image or document's caption is its words; its id is how it is fetched.
-                    'media_id' => $message['image']['id'] ?? $message['document']['id'] ?? null,
+                    // Voice notes, video and stickers too, streamed on demand (WhatsAppMediaController).
+                    'media_id' => $message[(string) ($message['type'] ?? '')]['id'] ?? null,
                 ],
             );
 
@@ -313,6 +314,9 @@ class WhatsAppWebhookController extends Controller
      *
      * @param  array<string, mixed>  $value
      */
+    /** A thread row's remote_id prefix for a reply sent from the WhatsApp Business app. */
+    public const FROM_APP = 'wa_app_';
+
     private function people(array $value, string $phoneNumberId, string $organizationId): int
     {
         $handled = 0;
@@ -358,15 +362,18 @@ class WhatsAppWebhookController extends Controller
         foreach ($coexists ? (array) ($value['message_echoes'] ?? []) : [] as $echo) {
             $row = $contact((string) ($echo['to'] ?? ''));
             $lead = $row?->lead_id !== null ? Lead::query()->find($row->lead_id) : null;
-            $text = $echo['text']['body'] ?? null;
-            if ($lead === null || ! is_string($text) || $text === '' || ($echo['id'] ?? '') === '') {
+            $type = (string) ($echo['type'] ?? 'text');
+            $text = $echo['text']['body'] ?? ($echo[$type]['caption'] ?? null);
+            $media = $echo[$type]['id'] ?? null;
+            if ($lead === null || (! is_string($text) || $text === '') && $media === null || ($echo['id'] ?? '') === '') {
                 continue;
             }
-            app(LeadThread::class)->store($lead, (string) $echo['id'], [
+            app(LeadThread::class)->store($lead, self::FROM_APP.$echo['id'], [
                 'channel' => LeadConversation::CHANNEL_MESSAGE,
                 'participant' => LeadConversation::FROM_ADVERTISER,
                 'occurred_at' => isset($echo['timestamp']) ? Carbon::createFromTimestamp((int) $echo['timestamp']) : now(),
-                'text' => $text,
+                'text' => is_string($text) && $text !== '' ? $text : null,
+                'attachments' => $media !== null ? [WhatsAppMediaController::ref($phoneNumberId, (string) $media, $type)] : null,
             ]);
             app(LeadThread::class)->refresh($lead);
             $handled++;

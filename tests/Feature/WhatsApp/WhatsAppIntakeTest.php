@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Http\Controllers\Api\WhatsAppMediaController;
 use App\Models\AutomationEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
@@ -284,8 +285,21 @@ class WhatsAppIntakeTest extends TestCase
 
         $this->change(['message_echoes' => [['id' => 'wamid.OUT1', 'from' => '18885195311', 'to' => self::STRANGER,
             'timestamp' => '1793300000', 'type' => 'text', 'text' => ['body' => 'Yes, Friday works']]]]);
-        $this->assertSame(LeadConversation::FROM_ADVERTISER, LeadConversation::query()->withoutGlobalScopes()->where('remote_id', 'wamid.OUT1')->value('participant'));
+        $this->assertSame(LeadConversation::FROM_ADVERTISER, LeadConversation::query()->withoutGlobalScopes()->where('remote_id', 'wa_app_wamid.OUT1')->value('participant'));
         $this->assertSame([], $this->sent);
+    }
+
+    /** Jose, 2026-10-29: a voice note shows in the thread, as a link streamed from Meta, never a stored file. */
+    public function test_a_voice_note_lands_on_the_lead_as_a_streamed_attachment(): void
+    {
+        DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->update(['auto_reply' => false]);
+        $this->inbound(['type' => 'audio', 'audio' => ['id' => '777', 'mime_type' => 'audio/ogg']], 'wamid.V1')->assertOk();
+
+        $this->assertSame(['wa-media:'.self::BOT.':777:audio'], LeadConversation::query()->withoutGlobalScopes()->sole()->attachments);
+        $url = WhatsAppMediaController::url('wa-media:'.self::BOT.':777:audio');
+        $this->assertStringContainsString('/api/v1/whatsapp/media/'.self::BOT.'/777', $url);
+        $this->assertStringContainsString('signature=', $url);
+        $this->get('/api/v1/whatsapp/media/'.self::BOT.'/777')->assertForbidden();
     }
 
     /** @param array<string, mixed> $value */
