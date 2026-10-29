@@ -274,4 +274,16 @@ class WorkizWebSessionTest extends TestCase
             $this->assertArrayNotHasKey('company_notes', $company->payload);
         });
     }
+
+    /** 2026-10-29: payments and estimate links share one login; a held lock ends the run quietly instead of throwing. */
+    public function test_a_login_another_reader_holds_is_skipped_this_run(): void
+    {
+        $this->connected();
+        Http::fake(['app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []])]);
+        $held = \Illuminate\Support\Facades\Cache::lock('workiz-web:'.$this->inTenant($this->t['org'], fn () => SocialConnection::query()->sole()->id), 300);
+        $held->get();
+        \Illuminate\Support\Facades\Cache::shouldReceive('lock')->andReturn(new class { public function block($s, $cb) { throw new \Illuminate\Contracts\Cache\LockTimeoutException; } });
+
+        $this->artisan('ezbizi:workiz-web-payments')->expectsOutputToContain(WorkizWebSession::BUSY)->assertSuccessful();
+    }
 }

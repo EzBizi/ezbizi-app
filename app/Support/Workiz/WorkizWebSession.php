@@ -28,6 +28,8 @@ final class WorkizWebSession
 
     public const UNMATCHED = 'No branch matches this account. Choose one.';
 
+    public const BUSY = 'Another Workiz read was using this login; it is read next time.';
+
     public const EXPIRED = 'Workiz signed this session out. Sign in to Workiz and send the session to EzBizi again.';
 
     /**
@@ -141,6 +143,16 @@ final class WorkizWebSession
      * and come back to the main account after.
      */
     public static function inAccount(SocialConnection $connection, string $account, callable $read): mixed
+    {
+        // Another reader holds the login (payments, estimate links and lists share it): this account waits for the next run.
+        try {
+            return self::locked($connection, $account, $read);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return ['data' => null, 'refused' => self::BUSY];
+        }
+    }
+
+    private static function locked(SocialConnection $connection, string $account, callable $read): mixed
     {
         return Cache::lock('workiz-web:'.$connection->getKey(), 300)->block(120, function () use ($connection, $account, $read) {
             if ($account !== 'main') {
