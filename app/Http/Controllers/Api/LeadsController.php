@@ -1097,6 +1097,10 @@ class LeadsController extends Controller
             && (str_starts_with((string) $c->remote_id, 'sms_') || str_starts_with((string) $c->remote_id, 'ez_sent_'))) {
             $sentBy = 'EzBizi';
         }
+        // Sent by staff from the WhatsApp Business app on the phone (coexistence).
+        if (str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP)) {
+            $sentBy = 'Phone (WhatsApp Business app)';
+        }
 
         return [
             'id' => $c->id,
@@ -1104,6 +1108,8 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            // Tapped from a Click-to-Message ad's suggested questions, not typed.
+            'ad_question' => (bool) $c->is_ad_question,
             'reaction' => self::reaction($c->text),
             'channel' => $c->channel,
             'from' => $c->participant,
@@ -1132,7 +1138,8 @@ class LeadsController extends Controller
                 && $c->recording_url !== null && $c->duration_ms !== null
                 && $c->occurred_at?->gte(now()->subDays(7)) === true
                 && app(CallTranscripts::class)->enabled(),
-            'attachments' => $c->attachments ?? [],
+            // A WhatsApp file becomes a short-lived signed link, streamed from Meta.
+            'attachments' => array_map(WhatsAppMediaController::url(...), $c->attachments ?? []),
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,

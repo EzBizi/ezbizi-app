@@ -518,7 +518,9 @@ final class ModuleDefinition
      */
     // `anywhere` (Clock in, 2026-10-16) exempts a role from the clock-in
     // zone; like `lock_screen` it changes how a punch is checked, not data.
-    public const READ_ONLY_ACTIONS = ['view', 'export', 'monitor', 'lock_screen', 'anywhere'];
+    // `lock_screen_skip` (2026-10-28) only lifts the lock for a day; the skip
+    // is recorded as an audit row, not a record.
+    public const READ_ONLY_ACTIONS = ['view', 'export', 'monitor', 'lock_screen', 'anywhere', 'lock_screen_skip'];
 
     /**
      * Can this module change anything? Only a module that writes can owe an

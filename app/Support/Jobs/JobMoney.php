@@ -16,8 +16,8 @@ use Illuminate\Support\Collection;
  * that changes.
  *
  * - Total: the job's invoice (its own lines, `amount_minor`, else the total
- *   Workiz mirrors), else its latest live estimate (its own, else Workiz's).
- *   Neither: no total.
+ *   Workiz mirrors), else its latest live estimate (its own, else Workiz's)
+ *   that has an amount. Neither: no total.
  * - Paid: succeeded payments less refunds, from the Workiz mirror until EzBizi
  *   records its own.
  * - Due: Total less Paid, never below nothing.
@@ -137,8 +137,11 @@ final class JobMoney
         return 'COALESCE('
             .'NULLIF(jobs.amount_minor, 0), '
             ."NULLIF((SELECT ROUND(100 * CAST(JSON_UNQUOTE(JSON_EXTRACT(w.payload, '$.JobTotalPrice')) AS DECIMAL(12,2))) FROM workiz_jobs w WHERE w.job_id = jobs.id LIMIT 1), 0), "
-            ."(SELECT e.total_minor FROM estimates e WHERE e.job_id = jobs.id AND LOWER(e.status) NOT IN ({$dead}) ORDER BY COALESCE(e.issued_on, e.created_at) DESC, e.created_at DESC LIMIT 1), "
-            ."(SELECT ROUND(100 * r.amount) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'estimate' AND LOWER(COALESCE(r.status, '')) NOT IN ({$dead}) ORDER BY COALESCE(r.starts_at, r.created_at) DESC LIMIT 1)"
+            // A $0 estimate is an empty draft, never a price: on Workiz job 500033871 an
+            // Unsent $0 tied a Pending $7,597 on date and won (51 jobs at $0, 2026-10-28).
+            // Two priced ones on one date: the larger, so the pick is stable.
+            ."(SELECT e.total_minor FROM estimates e WHERE e.job_id = jobs.id AND e.total_minor > 0 AND LOWER(e.status) NOT IN ({$dead}) ORDER BY COALESCE(e.issued_on, e.created_at) DESC, e.created_at DESC, e.total_minor DESC LIMIT 1), "
+            ."(SELECT ROUND(100 * r.amount) FROM workiz_records r WHERE r.job_id = jobs.id AND r.type = 'estimate' AND r.amount > 0 AND LOWER(COALESCE(r.status, '')) NOT IN ({$dead}) ORDER BY COALESCE(r.starts_at, r.created_at) DESC, r.amount DESC LIMIT 1)"
             .')';
     }
 

@@ -58,6 +58,15 @@ final class OnboardWhatsAppNumber implements ShouldQueue
             return; // Disconnected between the connect and this running.
         }
 
+        // A queued job has no tenant, and saving the connection's PIN needs one.
+        app(TenantContext::class)->run(
+            Organization::findOrFail($connection->organization_id),
+            fn () => $this->onboard($connection, $token),
+        );
+    }
+
+    private function onboard(SocialConnection $connection, string $token): void
+    {
         $phoneNumberId = (string) $connection->remote_id;
         $graph = 'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION;
 
@@ -83,30 +92,38 @@ final class OnboardWhatsAppNumber implements ShouldQueue
             $connection->forceFill(['credentials' => [...$credentials, 'pin' => $pin]])->save();
         }
 
-        $register = Http::withToken($token)->timeout(self::TIMEOUT)
-            ->post($graph.'/'.$phoneNumberId.'/register', ['messaging_product' => 'whatsapp', 'pin' => $pin]);
-
-        // ponytail: matched on Meta's wording; no stable error code is documented for it.
-        if (! str_contains(strtolower((string) $register->json('error.message')), 'already registered')) {
-            $this->ok($register, 'register number '.$phoneNumberId);
-        }
-
         $info = Http::withToken($token)->timeout(self::TIMEOUT)
-            ->get($graph.'/'.$phoneNumberId, ['fields' => 'display_phone_number,verified_name']);
+            ->get($graph.'/'.$phoneNumberId, ['fields' => 'display_phone_number,verified_name,is_on_biz_app']);
+
+        if ($info->json('is_on_biz_app') === true) {
+            // Coexistence: the number stays in the business's WhatsApp app and
+            // is never registered (that would take it off the phone). Meta
+            // allows the contacts and history sync once, within 24 hours.
+            foreach (['smb_app_state_sync', 'history'] as $sync) {
+                $this->ok(Http::withToken($token)->timeout(self::TIMEOUT)
+                    ->post($graph.'/'.$phoneNumberId.'/smb_app_data', ['messaging_product' => 'whatsapp', 'sync_type' => $sync]), $sync.' '.$phoneNumberId);
+            }
+        } else {
+            $register = Http::withToken($token)->timeout(self::TIMEOUT)
+                ->post($graph.'/'.$phoneNumberId.'/register', ['messaging_product' => 'whatsapp', 'pin' => $pin]);
+
+            // ponytail: matched on Meta's wording; no stable error code is documented for it.
+            if (! str_contains(strtolower((string) $register->json('error.message')), 'already registered')) {
+                $this->ok($register, 'register number '.$phoneNumberId);
+            }
+        }
         $digits = preg_replace('/\D+/', '', (string) ($info->json('display_phone_number') ?: $connection->handle)) ?? '';
 
-        app(TenantContext::class)->run(
-            Organization::findOrFail($connection->organization_id),
-            fn () => WhatsAppNumber::query()->updateOrCreate(
-                ['phone_number_id' => $phoneNumberId],
-                [
-                    'organization_id' => $connection->organization_id,
-                    'waba_id' => $this->wabaId,
-                    'display_number' => $digits === '' ? null : '+'.$digits,
-                    'display_name' => $info->json('verified_name') ?: null,
-                    'social_connection_id' => $connection->getKey(),
-                ],
-            ),
+        WhatsAppNumber::query()->updateOrCreate(
+            ['phone_number_id' => $phoneNumberId],
+            [
+                'organization_id' => $connection->organization_id,
+                'waba_id' => $this->wabaId,
+                'display_number' => $digits === '' ? null : '+'.$digits,
+                'display_name' => $info->json('verified_name') ?: null,
+                'social_connection_id' => $connection->getKey(),
+                'auto_reply' => $info->json('is_on_biz_app') !== true,
+            ],
         );
     }
 

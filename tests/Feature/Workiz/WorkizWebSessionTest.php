@@ -248,6 +248,9 @@ class WorkizWebSessionTest extends TestCase
             $this->assertNotNull($ga);
         });
         Http::assertSent(fn (Request $r) => str_contains($r->url(), 'goToMaster'));
+        // The list is read from the master, which is reached first.
+        $urls = collect(Http::recorded())->map(fn ($pair) => $pair[0]->url())->values();
+        $this->assertLessThan($urls->search(fn ($u) => str_ends_with($u, '/ajaxc/franchise/')), $urls->search(fn ($u) => str_contains($u, 'goToMaster')));
     }
 
     /** Jobs' Book panel, 2026-10-27: each account's service areas (with ZIPs) and external companies. */
@@ -269,6 +272,45 @@ class WorkizWebSessionTest extends TestCase
             $company = WorkizRecord::query()->where('type', 'external_company')->sole();
             $this->assertSame('Home Warranty Co', $company->payload['company_name']);
             $this->assertArrayNotHasKey('company_notes', $company->payload);
+        });
+    }
+
+    /** 2026-10-29: payments and estimate links share one login; a held lock ends the run quietly instead of throwing. */
+    public function test_a_login_another_reader_holds_is_skipped_this_run(): void
+    {
+        $this->connected();
+        Http::fake(['app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []])]);
+        $held = \Illuminate\Support\Facades\Cache::lock('workiz-web:'.$this->inTenant($this->t['org'], fn () => SocialConnection::query()->sole()->id), 300);
+        $held->get();
+        \Illuminate\Support\Facades\Cache::shouldReceive('lock')->andReturn(new class { public function block($s, $cb) { throw new \Illuminate\Contracts\Cache\LockTimeoutException; } });
+
+        $this->artisan('ezbizi:workiz-web-payments')->expectsOutputToContain(WorkizWebSession::BUSY)->assertSuccessful();
+    }
+
+    /** Takeover row 8, 2026-10-29: Workiz's Sources report credits a sub-contracted job to its external company. */
+    public function test_a_jobs_external_company_is_read_and_becomes_its_reported_source(): void
+    {
+        $c = $this->connected();
+        [$sent, $own] = $this->inTenant($this->t['org'], function () {
+            $v2 = \App\Models\SocialConnection::query()->first();
+            \App\Models\WorkizRecord::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $v2->id, 'type' => 'external_company',
+                'remote_id' => 'EC-77', 'payload' => ['company_name' => 'ChimCare '], 'synced_at' => now()]);
+            $make = fn ($uuid) => \App\Models\WorkizJob::query()->create(['franchise_id' => $this->t['franchise']->id, 'connection_id' => $v2->id,
+                'remote_id' => $uuid, 'status' => 'Submitted', 'job_source' => 'LS Ads', 'booked_at' => now()->subDay(), 'payload' => [], 'synced_at' => now()]);
+
+            return [$make('SUB001'), $make('OWN001')];
+        });
+        Http::fake([
+            'app.workiz.com/ajaxc/franchise/' => Http::response(['flag' => true, 'data' => []]),
+            'app.workiz.com/ajaxc/job/get/SUB001/' => Http::response(['flag' => true, 'data' => ['company_id' => '77']]),
+            'app.workiz.com/ajaxc/job/get/OWN001/' => Http::response(['flag' => true, 'data' => ['company_id' => '0']]),
+        ]);
+
+        $this->artisan('ezbizi:workiz-web-job-companies')->expectsOutputToContain('2 Workiz job(s) read')->assertSuccessful();
+
+        $this->inTenant($this->t['org'], function () use ($sent, $own) {
+            $this->assertSame(['ChimCare', 'LS Ads'], [$sent->fresh()->reportedSource(), $own->fresh()->reportedSource()]);
+            $this->assertNotNull($own->fresh()->external_company_read_at, 'read once, even with no company');
         });
     }
 }

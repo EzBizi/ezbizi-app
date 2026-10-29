@@ -693,17 +693,20 @@ class JobsProjectManagementController extends Controller
         $stages = [];
         $seen = [];
         foreach (ProjectStages::KEYS as $key) {
-            $rule = $stageRules[$key][0]['rule'] ?? null;
-            if ($rule === null) {
+            // A stage's rules, any of which puts a job in it.
+            $rules = array_column($stageRules[$key] ?? [], 'rule');
+            if ($rules === []) {
                 continue;
             }
-            foreach ($rule['statuses'] as $st) {
-                $seen[$st][$key] = $rule;
+            foreach ($rules as $rule) {
+                foreach ($rule['statuses'] as $st) {
+                    $seen[$st][$key] = $rule;
+                }
             }
-            $stages[] = ['key' => $key, 'statuses' => $rule['statuses'],
-                'sentence' => 'Status '.$label($rule['statuses'])
+            $stages[] = ['key' => $key, 'statuses' => array_values(array_unique(array_merge(...array_column($rules, 'statuses')))),
+                'sentence' => implode(' ', array_map(fn (array $rule, int $i) => ($i ? 'Or status ' : 'Status ').$label($rule['statuses'])
                     .($rule['scheduled'] === null ? '' : ($rule['scheduled'] ? ', scheduled' : ', not scheduled'))
-                    .($rule['due'] === null ? '' : ($rule['due'] ? ', money still due' : ', nothing due')).'.',
+                    .($rule['due'] === null ? '' : ($rule['due'] ? ', money still due' : ', nothing due')).'.', $rules, array_keys($rules))),
                 'count' => ProjectStages::scope($inScope(), $stageRules[$key])->count()];
         }
 

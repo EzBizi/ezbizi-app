@@ -158,7 +158,7 @@ final class SameDayReport
         $out = ['jobs' => null, 'sources' => [], 'areas' => [], 'techs' => null, 'deposits' => null, 'reviews' => self::reviews($branch, $date)];
 
         if ($fresh('jobs', self::JOBS_STALE_MINUTES)) {
-            $booked = (clone $jobs)->whereBetween('booked_at', $day)->get();
+            $booked = (clone $jobs)->whereBetween('j.booked_at', $day)->get();
             $out['jobs'] = $booked->count();
             $out['sources'] = self::tally($booked->pluck('job_source'), 'No source');
             $out['areas'] = self::tally($booked->pluck('service_area'), 'No service area');
@@ -167,8 +167,8 @@ final class SameDayReport
             // done today and edited tomorrow leaves today's count; Workiz has no
             // "completed at" in the API.
             $techs = [];
-            $closed = (clone $jobs)->whereBetween('last_status_update', $day)
-                ->whereIn('status', ['Done', 'Canceled'])->get();
+            $closed = (clone $jobs)->whereBetween('j.last_status_update', $day)
+                ->whereIn('j.status', ['Done', 'Canceled'])->get();
 
             foreach ($closed as $job) {
                 $team = ReportJobs::team($job);

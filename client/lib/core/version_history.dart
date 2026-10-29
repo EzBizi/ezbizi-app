@@ -14,6 +14,80 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0506',
+      date: '29 Oct 2026',
+      items: [
+        'Leads: a question a customer tapped on a Meta ad is shown as an outlined "Ad question (Meta)" bubble, apart from what they typed, and does not count as a customer reply.',
+        'Leads: Manage → Connections lets you set each website\'s branch, chat and main site.',
+        'Reports: a new Workspace tab to pick a report, preview it, approve it, download PDF or Excel, or send a daily text to your WhatsApp.',
+        'Reviews: draft AI replies for many reviews at once (saved as drafts, never posted) and a twelve-month rating chart.',
+        'Scheduling: a helper booking shows the job its number names, with customer and address.',
+        'Business Profile: a reconnected account keeps the listings and reviews of the one it replaced.',
+        'Leads: each source has its own colour (WhatsApp green, Facebook blue, Instagram pink, Google Ads amber, Thumbtack sky, Website teal); rows show a picture and the job and city, and ad leads show the campaign.',
+        'Workiz: jobs done by an outside company are credited to it, so sources match Workiz\'s own reports.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0505',
+      date: '29 Oct 2026',
+      items: [
+        'Reports: calls from every connected RingCentral account are transcribed and summarised, not only the first account\'s.',
+        'Websites: the booking widget can keep the chat bubble on its page.',
+        'WhatsApp: messages to a business\'s own connected number arrive in Leads; with auto-reply off nothing is sent back.',
+        'Leads: Manage → Connections lists every lead source, with each website\'s chat, booking widget and plugin version.',
+        'Leads: texts EzBizi sent from Re-Scheduling show as EzBizi\'s and can be replied to from the same line.',
+        'Project Management - 2: money columns read Paid, Pending, Total.',
+        'Websites now report whether they carry the booking widget.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0504',
+      date: '29 Oct 2026',
+      items: [
+        'Reports: a daily "Job assignments" text lists today\'s In Progress jobs by technician for each branch, from EzBizi\'s own jobs, leaving out jobs with a deposit received.',
+        'Task Boards: tasks an automation makes on both a company board and its branch board are linked and stay in sync (title, due date, priority, estimate, About, status, owners).',
+        'Project Management - 2: Created and "Job created by" come from EzBizi\'s own job record.',
+        'Workiz: payments and estimate links are read for every A-1 account, not only one.',
+        'WhatsApp: Connect WhatsApp offers "Connect your existing WhatsApp Business app", so a business keeps its own number and phone app.',
+        'Monitoring: computers whose screen capture reports an unexpected reason stay online instead of dropping offline.',
+        'Email: reconnecting a Gmail inbox on Android no longer shows "Could not reach the server" when it worked.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0503',
+      date: '29 Oct 2026',
+      items: [
+        'Monitoring: office computers no longer show offline while their people are working; their check-ins and screenshots are no longer turned away.',
+        'Email: the inbox list refreshes as soon as you return from connecting a mailbox.',
+        'Email: the mailbox Connected page now says what EzBizi does: reading, archiving and Trash mirror to the mailbox, and nothing is deleted permanently.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0502',
+      date: '28 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'WhatsApp: a business can connect its own WhatsApp Business number and keep using the phone app; customer messages arrive in Leads with no automatic reply.',
+        'Scheduling: online booking can offer today\'s windows until they start (a setting per company); a branch\'s first real area replaces its "All areas" placeholder; any real ZIP works as a circle centre; drag with the mouse wheel to move the map while drawing.',
+        'Automations: rules a tab depends on are marked Core, with a warning before switching one off.',
+        'Leads: texts EzBizi sent show as EzBizi\'s and can be replied to from the same line.',
+        'Project Management: a job\'s price no longer reads \$0.00 from an empty draft estimate; Project Management - 1 stages can match several rules.',
+        'Email: the reading pane follows dark mode, and inboxes stay fast between background refreshes.',
+        'Reports: company-wide report downloads no longer fail to build.',
+        'Scheduling: ZIP codes and time slots are per company, so one company no longer blocks another; pick whole states when drawing an area; Move appointment in one click when a customer accepts an earlier opening, in Workiz too.',
+        'Clock in: people allowed to can continue without clocking in from the lock screen; each skip is recorded.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0501',
+      date: '28 Oct 2026',
+      items: [
+        'Email: inboxes and All inboxes open much faster; their first page is kept ready in the background.',
+        'Email: inboxes really open fast now; the pages kept ready in the background are used.',
+        'Scheduling: "Used by" on time slots counts only the company or branch you are viewing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0500',
       date: '28 Oct 2026',
       items: [

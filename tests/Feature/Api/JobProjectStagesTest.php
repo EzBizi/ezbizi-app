@@ -164,4 +164,31 @@ class JobProjectStagesTest extends TestCase
         $this->artisan('jobs:warn-paid-not-started')->assertSuccessful();
         $this->artisan('jobs:emit-estimate-aging')->assertSuccessful();
     }
+
+    /** A stage's rules are alternatives (Jose, 2026-10-28): done pending approval whatever its money, Done only while money is due. */
+    public function test_a_stage_with_two_rules_holds_a_job_either_puts_there(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->inTenant($alpha['org'], function () use ($alpha) {
+            $s = app(SettingsResolver::class);
+            $s->set('jobs.statuses', $alpha['org'], [['value' => 'dpa', 'label' => 'Dpa'], ['value' => 'done', 'label' => 'Done']]);
+            $s->set('jobs.pm_stages', $alpha['company'], [
+                ['key' => 'done_waiting_payment', 'statuses' => ['dpa']],
+                ['key' => 'done_waiting_payment', 'statuses' => ['done'], 'due' => true],
+            ]);
+            $f = $alpha['franchise']->id;
+            $customer = Customer::create(['owning_franchise_id' => $f, 'number' => 'C-1', 'name' => 'A Customer']);
+            foreach (['A' => ['dpa', null], 'B' => ['dpa', 5000], 'C' => ['done', null], 'D' => ['done', 7000]] as $n => [$status, $amount]) {
+                Job::create(['franchise_id' => $f, 'customer_id' => $customer->id, 'number' => $n, 'title' => $n,
+                    'currency' => 'USD', 'status' => $status, 'amount_minor' => $amount]);
+            }
+        });
+        $get = fn (string $url) => $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs/project-management'.$url)->assertOk()->json();
+
+        $this->assertSame(['A', 'B', 'D'], collect($get('/jobs?stage=done_waiting_payment')['data'])->pluck('number')->sort()->values()->all(),
+            'A has no price and still shows; C is Done with nothing due');
+        $stage = collect($get('/rules')['data']['configs'][0]['stages'])->firstWhere('key', 'done_waiting_payment');
+        $this->assertSame('Status Dpa. Or status Done, money still due.', $stage['sentence']);
+        $this->assertSame(3, $stage['count']);
+    }
 }

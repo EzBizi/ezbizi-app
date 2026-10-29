@@ -24,17 +24,27 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReportJobs
 {
-    /** A branch's jobs, one row each. */
+    /**
+     * A branch's jobs, one row each. job_source is what Workiz's own Sources
+     * report credits (WorkizJob::reportedSource): a sub-contracted job's
+     * external company, else the job's source. Filter on the raw one as
+     * j.job_source.
+     */
     public static function jobs(string $branchId): Builder
     {
-        return DB::table('workiz_jobs')->where('franchise_id', $branchId)->select([
-            'remote_id as ref',
-            DB::raw("json_unquote(json_extract(payload, '$.SerialId')) as serial"),
-            'job_source', 'service_area', 'status', 'booked_at',
-            'last_status_update as closed_at',
-            DB::raw("cast(coalesce(json_unquote(json_extract(payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
-            DB::raw("coalesce(json_extract(payload, '$.Team'), json_array()) as team"),
-        ]);
+        return DB::table('workiz_jobs as j')->where('j.franchise_id', $branchId)
+            ->leftJoin('workiz_records as ec', fn ($on) => $on->on('ec.franchise_id', '=', 'j.franchise_id')
+                ->where('ec.type', 'external_company')
+                ->whereRaw("ec.remote_id = concat('EC-', j.external_company_id)"))
+            ->select([
+                'j.remote_id as ref',
+                DB::raw("json_unquote(json_extract(j.payload, '$.SerialId')) as serial"),
+                DB::raw("coalesce(nullif(trim(json_unquote(json_extract(ec.payload, '$.company_name'))), ''), j.job_source) as job_source"),
+                'j.service_area', 'j.status', 'j.booked_at',
+                'j.last_status_update as closed_at',
+                DB::raw("cast(coalesce(json_unquote(json_extract(j.payload, '$.JobTotalPrice')), 0) as decimal(12,2)) as total"),
+                DB::raw("coalesce(json_extract(j.payload, '$.Team'), json_array()) as team"),
+            ]);
     }
 
     /** A branch's payments received, one row each. */

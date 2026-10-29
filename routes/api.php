@@ -442,6 +442,11 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
+Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
+    ->name('whatsapp.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
@@ -539,6 +544,10 @@ Route::get('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeContr
 Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeController::class, 'store'])
     ->middleware('throttle:30,1')
     ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::get('v1/social/whatsapp/launch', \App\Http\Controllers\Api\WhatsAppLaunchController::class)
+    ->middleware('throttle:30,1')
+    ->name('social.whatsapp.launch');
 
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
@@ -998,6 +1007,7 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
@@ -1491,6 +1501,13 @@ Route::prefix('v1')
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
+        // The Reports workspace (takeover row 10, UI queue 157).
+        Route::middleware('permission:reports.view')->group(function () {
+            Route::get('reports/texts/{kind}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'text']);
+            Route::post('reports/texts/{kind}/send', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'send']);
+            Route::get('reports/batches/{period}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'batch']);
+            Route::post('reports/batches/{batch}/approve', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'approve']);
+        });
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
@@ -1601,6 +1618,8 @@ Route::prefix('v1')
             Route::get('scheduling/overbooking/fill', [SchedulingOverbookingController::class, 'fill']);
             Route::post('scheduling/overbooking/offers/preview', [SchedulingOverbookingController::class, 'previewOffers']);
             Route::post('scheduling/overbooking/offers/send', [SchedulingOverbookingController::class, 'sendOffers']);
+            Route::get('scheduling/reschedule-offers', [SchedulingOverbookingController::class, 'offerForLead']);
+            Route::post('scheduling/reschedule-offers/{offer}/move', [SchedulingOverbookingController::class, 'moveOffer']);
         });
 
         Route::middleware('permission:scheduling.schedule.view')->group(function () {
@@ -1893,6 +1912,8 @@ Route::prefix('v1')
         Route::post('time-clock/clock-out', [TimeClockController::class, 'clockOut']);
         // Push the scheduled end out by the org's extension length (design 2026-09-08 §7).
         Route::post('time-clock/extend', [TimeClockController::class, 'extend']);
+        // Continue without clocking in: no lock for the rest of today (2026-10-28).
+        Route::post('time-clock/skip-lock', [TimeClockController::class, 'skipLock']);
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
         // Address → formatted address + coordinates (Google), for any module's
@@ -3569,13 +3590,17 @@ Route::prefix('v1')
 Route::prefix('v1')
     ->middleware(['auth:sanctum', 'tenant'])
     ->group(function () {
+        // Each agent route counts in its OWN bucket (the third throttle
+        // argument). Unnamed, Laravel keys every throttle by user id alone,
+        // so the fast polls (input, files, live, lighting) used up the
+        // heartbeat's allowance and offices read offline (2026-10-29).
         Route::post('monitoring/heartbeat', [MonitoringHeartbeatController::class, 'store'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-heartbeat');
 
         // A device's own periodic screen capture — same idle-less reasoning
         // as the heartbeat above (see ScreenshotsController's docblock).
         Route::post('monitoring/screenshots', [MonitoringScreenshotsController::class, 'store'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:60,1,mon-screenshots');
 
         // Live View's agent half — "is anyone watching me" and "here is my
         // latest frame", polled/sent every ~1-2s for as long as the agent
@@ -3586,27 +3611,27 @@ Route::prefix('v1')
         // controller already assumes, the same margin ScreenshotsController
         // and HeartbeatController leave themselves.
         Route::get('monitoring/live-wanted', [MonitoringLiveViewController::class, 'liveWanted'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-live-wanted');
         Route::post('monitoring/live-frame', [MonitoringLiveViewController::class, 'liveFrame'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-live-frame');
 
         // Remote Control's agent half — "what should I apply, and is
         // anyone still driving me" — same idle-less and throttle reasoning
         // as `live-wanted` just above. See RemoteControlController's
         // docblock.
         Route::get('monitoring/input-pending', [MonitoringRemoteControlController::class, 'inputPending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-input');
 
         // Remote file access's agent half — "what should I read" and "here is
         // the answer" — same idle-less and throttle reasoning as
         // `input-pending` just above. See FilesController.
         Route::get('monitoring/file-requests', [MonitoringFilesController::class, 'pending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-files-pending');
         Route::post('monitoring/file-requests/{requestId}', [MonitoringFilesController::class, 'answer'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-files-answer');
         // The PC's agent asking which lighting to show (LightingController).
         Route::get('monitoring/lighting', [MonitoringLightingController::class, 'pending'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:120,1,mon-lighting');
     });
 
 /*

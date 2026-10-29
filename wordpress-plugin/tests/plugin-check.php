@@ -913,6 +913,12 @@ check('and asks what the lead already holds', str_contains($booking, "'/api/v1/w
 check('the preferred window goes first in its day', str_contains($booking, 'pf.date===d.date'), true);
 check('a ZIP with no online times still takes a request as a lead', str_contains($booking, "to='/api/v1/web/form'") && str_contains($booking, 'st.req=1'), true);
 check('the short booking link is forwarded', str_contains((string) file_get_contents(__DIR__.'/../ezbizi/ezbizi.php'), "home_url('/booking/') . '?l=' . $m[1]"), true);
+unset($GLOBALS['ezbizi_chat_hidden']);
+$GLOBALS['sc']['ezbizi_booking'](['chat' => 'keep']);
+check('chat="keep" leaves the chat bubble (suggestion 01a1889b)', ! empty($GLOBALS['ezbizi_chat_hidden']), false);
+$GLOBALS['sc']['ezbizi_booking']([]);
+check('and by default the booking page hides it', ! empty($GLOBALS['ezbizi_chat_hidden']), true);
+unset($GLOBALS['ezbizi_chat_hidden']);
 check('the secret never reaches the page', str_contains($form, '0xTESTSECRET'), false);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);

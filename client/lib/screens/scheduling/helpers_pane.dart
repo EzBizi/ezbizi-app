@@ -819,6 +819,7 @@ class _HelpersPaneState extends State<HelpersPane> {
     final slot = '${b['slot']}';
     final tone = ToneColours.of(context, _slotTone(slot));
     final job = '${b['job_number'] ?? ''}'.trim();
+    final found = b['job'] as Map?;
     final note = '${b['note'] ?? ''}'.trim();
     return Padding(
       key: ValueKey('helpers-booking-${b['id']}'),
@@ -845,6 +846,8 @@ class _HelpersPaneState extends State<HelpersPane> {
                   Text(
                     [
                       if (job.isNotEmpty) 'Job $job',
+                      if (found?['customer'] != null) '${found!['customer']}',
+                      if (found?['address'] != null) '${found!['address']}',
                       if (note.isNotEmpty) note,
                     ].join(' · '),
                     style: theme.textTheme.bodySmall?.copyWith(

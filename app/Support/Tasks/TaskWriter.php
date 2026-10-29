@@ -3,6 +3,7 @@
 namespace App\Support\Tasks;
 
 use App\Http\Controllers\Api\TasksController;
+use App\Models\Franchise;
 use App\Models\Task;
 use App\Models\TaskAssignee;
 use App\Models\TaskBoard;
@@ -101,6 +102,10 @@ class TaskWriter
                 $this->writeValues($task, $input['values'], $actor);
             }
 
+            if ($automationId !== null && $parent === null) {
+                $this->linkTwins($task);
+            }
+
             $this->audit->log('task.created', $task, actor: $actor);
             $this->events->emitAfterCommit('task.created', $task, [
                 'assignee_user_id' => $task->assignee_user_id,
@@ -159,9 +164,14 @@ class TaskWriter
             }
 
             if (! $task->isDirty()) {
+                if ($ownersChanged) {
+                    $this->syncLinked($task, [], false, true, $actor);
+                }
+
                 return $task;
             }
 
+            $synced = array_keys(array_intersect_key($task->getDirty(), array_flip(self::SYNCED)));
             $statusChanged = $task->isDirty('status_id') || $task->isDirty('status');
             $groupChanged = $task->isDirty('group_id');
             $this->audit->logChange('task.updated', $task, $actor);
@@ -180,36 +190,106 @@ class TaskWriter
                     'before' => $before,
                     'after' => $this->snapshot($task),
                 ]);
-                $done = $this->statusOf($task)['is_done'];
-                if ($done !== $before['is_done']) {
-                    $this->carryToLinked($task, $done, $actor);
-                }
             }
+            $this->syncLinked($task, $synced, $statusChanged, $ownersChanged, $actor);
 
             return $task;
         });
     }
 
     /**
-     * Done or reopened carries to linked tasks (Jose, 2026-10-28): each takes
-     * its own board's first done status, or Not started (else the first open
-     * one). A task already on that side is left alone, which also ends the walk.
+     * An automation filed the same task on a company board and on one of its
+     * branches' (Jose, 2026-10-29: both remain, synced): link it at once to
+     * an open twin from the last day, by the key ezbizi:link-duplicate-tasks
+     * uses (automation-made, top level, same title any case, same About).
      */
-    private function carryToLinked(Task $task, bool $done, ?User $actor): void
+    private function linkTwins(Task $task): void
     {
-        foreach (TaskLinks::of($task) as $other) {
-            if ($other->board === null || $this->statusOf($other)['is_done'] === $done) {
-                continue;
-            }
-            $statuses = $other->board->statuses()->get();
-            $target = $done
-                ? $statuses->firstWhere('is_done', true)
-                : ($statuses->first(fn (TaskStatus $s) => ! $s->is_done && $s->key === Task::STATUS_NOT_STARTED)
-                    ?? $statuses->firstWhere('is_done', false));
-            if ($target !== null) {
-                $this->update($other, ['status_id' => $target->id], $actor);
-            }
+        $board = $task->board;
+        $companyId = TaskBoards::companyIdOf($board);
+        if ($companyId === null || ! in_array($board->kind, [TaskBoard::KIND_COMPANY, TaskBoard::KIND_FRANCHISE], true)) {
+            return;
         }
+        $related = $board->kind === TaskBoard::KIND_COMPANY
+            ? TaskBoard::query()->where('kind', TaskBoard::KIND_FRANCHISE)
+                ->whereIn('franchise_id', Franchise::query()->where('company_id', $companyId)->select('id'))
+            : TaskBoard::query()->where('kind', TaskBoard::KIND_COMPANY)->where('company_id', $companyId);
+
+        Task::query()->whereIn('board_id', $related->select('id'))
+            ->whereNull('parent_task_id')->whereNotNull('created_by_automation_id')->whereNull('completed_at')
+            ->where('created_at', '>=', now()->subDay())
+            ->where('about_type', $task->about_type)->where('about_id', $task->about_id)
+            ->get()
+            ->filter(fn (Task $t) => mb_strtolower(trim($t->title)) === mb_strtolower(trim($task->title)))
+            ->each(fn (Task $t) => TaskLinks::link($task, $t, null));
+    }
+
+    /** Fields a linked task keeps the same (Jose, 2026-10-29: "both remain and should be synced"). */
+    private const SYNCED = ['title', 'due_on', 'priority', 'estimate_minutes', 'about_type', 'about_id'];
+
+    /** True while a change is being copied across a link: the copies do not copy on. */
+    private bool $syncing = false;
+
+    /**
+     * Copy what changed to every linked task. Status goes by name on the
+     * other board, else Done / reopened by its first done status or Not
+     * started; owners go when the other board can take them.
+     *
+     * @param  list<string>  $fields
+     */
+    private function syncLinked(Task $task, array $fields, bool $statusChanged, bool $ownersChanged, ?User $actor): void
+    {
+        if ($this->syncing || ($fields === [] && ! $statusChanged && ! $ownersChanged) || $task->parent_task_id !== null) {
+            return;
+        }
+        $this->syncing = true;
+        try {
+            foreach (TaskLinks::of($task) as $other) {
+                if ($other->board === null) {
+                    continue;
+                }
+                $input = [];
+                foreach ($fields as $f) {
+                    $input[$f] = $f === 'due_on' ? $task->due_on?->toDateString() : $task->getAttribute($f);
+                }
+                if ($statusChanged && ($target = $this->matchingStatus($task, $other)) !== null) {
+                    $input['status_id'] = $target->id;
+                }
+                $owners = $ownersChanged ? ['assignee_user_ids' => $this->ownerIds($task)] : [];
+                if ($input === [] && $owners === []) {
+                    continue;
+                }
+                try {
+                    $this->update($other, $input + $owners, $actor);
+                } catch (ValidationException) {
+                    // An owner the other board cannot take: the rest still goes.
+                    if ($owners !== [] && $input !== []) {
+                        $this->update($other, $input, $actor);
+                    }
+                }
+            }
+        } finally {
+            $this->syncing = false;
+        }
+    }
+
+    private function matchingStatus(Task $task, Task $other): ?TaskStatus
+    {
+        $statuses = $other->board->statuses()->get();
+        $name = mb_strtolower(trim((string) $task->statusRow?->name));
+        $same = $statuses->first(fn (TaskStatus $s) => mb_strtolower(trim($s->name)) === $name);
+        if ($same !== null) {
+            return $same->id === $other->status_id ? null : $same;
+        }
+        $done = $this->statusOf($task)['is_done'];
+        if ($this->statusOf($other)['is_done'] === $done) {
+            return null;
+        }
+
+        return $done
+            ? $statuses->firstWhere('is_done', true)
+            : ($statuses->first(fn (TaskStatus $s) => ! $s->is_done && $s->key === Task::STATUS_NOT_STARTED)
+                ?? $statuses->firstWhere('is_done', false));
     }
 
     /**

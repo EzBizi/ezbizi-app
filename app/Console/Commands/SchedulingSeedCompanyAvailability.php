@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\DB;
  */
 class SchedulingSeedCompanyAvailability extends Command
 {
+    /** The seeded catch-all's name; a branch's first real area takes it over. */
+    public const NAME = 'All areas';
+
     protected $signature = 'scheduling:seed-company-availability
         {--from= : The source company name (e.g. "A-1 Chimney")}
         {--organization= : The organization name, when the company name is in several}
@@ -67,7 +70,7 @@ class SchedulingSeedCompanyAvailability extends Command
                     continue;
                 }
                 DB::transaction(function () use ($franchise, $pattern) {
-                    $area = ServiceArea::create(['franchise_id' => $franchise->id, 'name' => 'All areas', 'covers_all_zips' => true]);
+                    $area = ServiceArea::create(['franchise_id' => $franchise->id, 'name' => self::NAME, 'covers_all_zips' => true]);
                     foreach ($pattern as $p) {
                         ServiceAreaSlot::create($p + ['service_area_id' => $area->id]);
                     }

@@ -153,6 +153,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('helpers-change-b-1')));
     await tester.pumpAndSettle();
     expect(find.text('Change booking'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('helpers-slot-pm')));
     await tester.tap(find.byKey(const ValueKey('helpers-slot-pm')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('helpers-form-submit')));
@@ -246,6 +247,7 @@ void main() {
     expect(find.byKey(const Key('helpers-day')), findsNothing);
     // Today's bookings, under the month.
     expect(find.byKey(const ValueKey('helpers-booking-b-1')), findsOneWidget);
+    expect(find.text('Job 4417 · Charles O Neil · Dallas'), findsOneWidget);
     expect(find.byKey(const ValueKey('helpers-booking-b-3')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('helpers-day-2026-10-21')));
@@ -398,6 +400,7 @@ const _bookings = [
     'date': '2026-10-20',
     'slot': 'am',
     'job_number': '4417',
+    'job': {'customer': 'Charles O Neil', 'address': 'Dallas'},
     'note': null,
     'can_change': true,
   },

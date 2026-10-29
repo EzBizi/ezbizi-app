@@ -29,7 +29,7 @@ class ReportPeriodController extends Controller
             'year' => ['required_without:from', 'integer', 'between:2000,2100'],
             'from' => ['required_without:year', 'date_format:Y-m-d'],
             'to' => ['required_with:from', 'date_format:Y-m-d', 'after_or_equal:from'],
-            'format' => ['sometimes', 'in:pdf,xlsx'],
+            'format' => ['sometimes', 'in:pdf,xlsx,json'],
             'report' => ['sometimes', 'in:period,job_profitability'],
         ]);
         [$from, $to] = isset($in['year']) ? [$in['year'].'-01-01', $in['year'].'-12-31'] : [$in['from'], $in['to']];
@@ -46,6 +46,9 @@ class ReportPeriodController extends Controller
         if (($in['report'] ?? 'period') === 'job_profitability') {
             $rows = $this->profitability((string) $request->user()->organization_id, $branches, $from, $to);
             $name = "Job profitability {$name}";
+            if (($in['format'] ?? '') === 'json') {
+                return response()->json(['data' => ['name' => $name, 'sheets' => ['Jobs' => $rows]]]);
+            }
             if ($xlsx) {
                 return $this->xlsx(['Jobs' => $rows], $name);
             }
@@ -57,8 +60,12 @@ class ReportPeriodController extends Controller
         if ($xlsx) {
             return $this->xlsx($this->workbook($report, $branches, $from, $to), $name);
         }
+        // The Reports workspace's preview: the workbook's sheets, header row first.
+        if (($in['format'] ?? '') === 'json') {
+            return response()->json(['data' => ['name' => $name, 'sheets' => $this->workbook($report, $branches, $from, $to)]]);
+        }
         $pdf = $branch !== null ? $report->forFranchise($branch, $from, $to)
-            : HardenedPdf::render($report->consolidated($request->user()->organization, $from, $to), 'letter');
+            : $report->consolidated($request->user()->organization, $from, $to); // already a PDF
 
         return $this->file($pdf, "{$name}.pdf", 'application/pdf');
     }

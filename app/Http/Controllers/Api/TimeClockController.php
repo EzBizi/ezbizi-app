@@ -149,6 +149,14 @@ class TimeClockController extends Controller
         ]);
     }
 
+    /** POST /api/v1/time-clock/skip-lock — off the lock screen for today, still not clocked in. */
+    public function skipLock(Request $request): JsonResponse
+    {
+        return response()->json([
+            'data' => ['time_clock' => $this->timeClock->skipLock($request->user())],
+        ]);
+    }
+
     public function clockOut(Request $request): JsonResponse
     {
         return response()->json([

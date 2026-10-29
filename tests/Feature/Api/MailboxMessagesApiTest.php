@@ -1285,6 +1285,33 @@ class MailboxMessagesApiTest extends TestCase
      * Inboxes load from a warmed cache (Jose, 2026-10-27: slow inbox loading).
      * The warmer re-reads an inbox only when the provider's mark moved.
      */
+    /**
+     * Production's database cache refuses objects (serializable_classes false):
+     * a page put as a MessagePage read back incomplete and every open missed
+     * (0 of 66, 2026-10-28). The array store used elsewhere cannot show that.
+     */
+    public function test_a_cached_page_reads_back_from_the_database_store(): void
+    {
+        config(['cache.default' => 'database']);
+        $t       = $this->provisionTenant('A1-Group');
+        $mailbox = $this->inbox($t);
+        $cache   = app(\App\Support\Email\HeaderCache::class);
+        $page    = new MessagePage([$this->summary('m-1')]);
+
+        $this->inTenant($t['org'], fn () => $cache->warm($mailbox, 'mark-1', fn () => $page));
+        $read = $this->inTenant($t['org'], fn () => $cache->remember($mailbox, null, 10, fn () => $this->fail('Missed the warmed page.')));
+
+        $this->assertTrue($read->fromCache);
+        $this->assertSame('m-1', $read->messages[0]->id);
+        $this->assertSame('2026-08-11', $read->messages[0]->sentAt->toDateString());
+
+        // A live first page outlives a minute, so it is not gone between warmer passes.
+        $this->inTenant($t['org'], fn () => $cache->forget($mailbox));
+        $this->inTenant($t['org'], fn () => $cache->remember($mailbox, null, 10, fn () => $page));
+        $this->travel(2)->minutes();
+        $this->assertTrue($this->inTenant($t['org'], fn () => $cache->remember($mailbox, null, 10, fn () => $this->fail('Expired after a minute.')))->fromCache);
+    }
+
     public function test_the_warmer_keeps_first_pages_cached_and_rereads_only_on_change(): void
     {
         $this->withFakeProvider();

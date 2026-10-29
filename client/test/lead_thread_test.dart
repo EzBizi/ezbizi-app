@@ -127,6 +127,34 @@ void main() {
   });
 
   /// Jose, 2026-10-08: a website booking waits for a dispatcher's answer.
+  testWidgets('an accepted earlier opening moves the job in one click', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      offer: const {
+        'id': 'o-1',
+        'open_date': '2026-10-29',
+        'start_time': '11:00',
+        'end_time': '14:00',
+        'booked_for': '2026-11-02 11:00',
+        'moved_at': null,
+        'can_move': true,
+      },
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Offered: 2026-10-29 · 11:00 AM - 2:00 PM'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reschedule-move')));
+    await tester.pumpAndSettle();
+
+    expect(_booked.last['moved'], isTrue);
+    expect(find.byKey(const ValueKey('reschedule-move')), findsNothing);
+    expect(find.text('Moved to: 2026-10-29 · 11:00 AM - 2:00 PM'), findsOneWidget);
+  });
+
   testWidgets('a website booking shows its window and can be approved', (
     tester,
   ) async {
@@ -1282,6 +1310,7 @@ Future<void> _pump(
   String? replying,
   String? conflictOnce,
   bool bookable = false,
+  Map<String, dynamic>? offer,
 }) async {
   _sent.clear();
   _booked.clear();
@@ -1340,6 +1369,24 @@ Future<void> _pump(
             },
           }),
           201,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
+      if (request.url.path.endsWith('/scheduling/reschedule-offers')) {
+        return http.Response(
+          jsonEncode({'data': offer}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/reschedule-offers/o-1/move')) {
+        _booked.add({'moved': true});
+        offer = {...?offer, 'moved_at': '2026-10-28T12:00:00Z', 'can_move': false};
+        return http.Response(
+          jsonEncode({'data': {'job_id': 'j-1'}}),
+          200,
           headers: {'content-type': 'application/json'},
         );
       }
@@ -1523,6 +1570,7 @@ Future<void> _pump(
             'ai': ?ai,
             'postal_code': ?postalCode,
             'credit': ?credit,
+            if (offer != null) 'lead_type': 'Reschedule',
           },
           onStatusChanged: (_) async {},
           onRead: onRead,

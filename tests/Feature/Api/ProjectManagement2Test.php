@@ -35,6 +35,8 @@ class ProjectManagement2Test extends TestCase
             foreach ([['E1', '300.00', 'Pending', '2026-09-02'], ['E2', '450.00', null, '2026-09-03'], ['E3', '999.00', 'Declined', '2026-09-04']] as [$remote, $amount, $status, $at]) {
                 $this->record($alpha, $id, 'estimate', $remote, $amount, $status, $at);
             }
+            // An empty draft on E2's date is not a price (Workiz 500033871, 2026-10-28).
+            $this->record($alpha, $id, 'estimate', 'E0', '0.00', 'Unsent', '2026-09-03');
             $this->record($alpha, $id, 'payment', 'P1', '100.00', 'succeeded', '2026-09-05');
             $this->record($alpha, $id, 'payment', 'P2', '50.00', 'failed', '2026-09-05');
 
@@ -98,7 +100,7 @@ class ProjectManagement2Test extends TestCase
         $beta = $this->provisionTenant('Beta');
         $other = $this->inTenant($beta['org'], fn () => $this->job($beta, 'B-1', 'done pending approval'));
         [$id, $bare, $native] = $this->inTenant($alpha['org'], function () use ($alpha) {
-            $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 10:00:00']);
+            $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 14:00:00', 'CreatedBy' => 'Ann Office']);
             // Workiz's invoice total wins over the estimate.
             $this->record($alpha, $id, 'estimate', 'E9', '999.00', 'Pending', '2026-09-02');
             $this->record($alpha, $id, 'payment', 'P1', '500.00', 'succeeded', '2026-09-05');
@@ -116,7 +118,11 @@ class ProjectManagement2Test extends TestCase
             $native = Job::create(['franchise_id' => $alpha['franchise']->id, 'customer_id' => Job::find($id)->customer_id, 'number' => 'N-1',
                 'title' => 'Ours', 'status' => 'done pending approval', 'currency' => 'USD', 'amount_minor' => 5000])->id;
 
-            return [$id, $this->job($alpha, 'J-6', 'done pending approval'), $native];
+            // Its only estimate is an empty draft: no price, so no zero either.
+            $bare = $this->job($alpha, 'J-6', 'done pending approval');
+            $this->record($alpha, $bare, 'estimate', 'E6', '0.00', 'Unsent', '2026-09-02');
+
+            return [$id, $bare, $native];
         });
 
         $job = $this->signedInAs($alpha['admin'])->getJson("/api/v1/project-management-2/jobs/{$id}")->assertOk()->json('data');
@@ -125,6 +131,7 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame(['Job created', 'Estimate Pending'], array_slice(array_column($job['timeline'], 'what'), 0, 2));
         $this->assertStringStartsWith('Status Scheduled → ', $job['timeline'][2]['what']);
         $this->assertSame('Ada', $job['timeline'][2]['by']);
+        $this->assertSame(['2026-09-01', 'Ann Office'], [substr($job['timeline'][0]['at'], 0, 10), $job['timeline'][0]['by']], "the job's own birth and creator");
         $this->assertSame([99900, 50000, -10000], array_values(array_filter(array_map(fn ($s) => $s['amount'] ?? null, $job['timeline']))));
         $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
 
@@ -153,8 +160,10 @@ class ProjectManagement2Test extends TestCase
             $this->record($alpha, $paid, 'payment', 'P8', '100.00', 'succeeded', '2026-10-20');
             // Submitted from done pending approval, in Workiz: tracked. A new job Workiz opened as Submitted: not.
             $submitted = $this->job($alpha, 'J-9', 'Submitted');
+            // A day earlier: "latest first" below needs it older than the Submit, not the same second.
             app(EventEmitter::class)->emit('job.status_changed', Job::find($submitted),
-                ['before' => ['status' => 'done pending approval'], 'after' => ['status' => 'Submitted']]);
+                ['before' => ['status' => 'done pending approval'], 'after' => ['status' => 'Submitted']])
+                ->forceFill(['occurred_at' => now()->subDay()])->save();
             $this->job($alpha, 'J-10', 'Submitted');
 
             return [$unpaid, $paid, $submitted];
@@ -193,6 +202,10 @@ class ProjectManagement2Test extends TestCase
             'address_line1' => '1 Main St', 'city' => 'Columbus', 'state' => 'OH', 'postal_code' => '43004']);
         $job = Job::create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $customer->id, 'number' => $number,
             'title' => 'A job', 'status' => $status, 'currency' => 'USD', 'tags' => ['DEPOSIT']]);
+        // As Jobs' backfill leaves a mirrored job: its birth and creator are Workiz's, on the job.
+        if (isset($money['CreatedDate'])) {
+            $job->forceFill(['created_at' => $money['CreatedDate'], 'created_by_label' => $money['CreatedBy'] ?? null])->save();
+        }
 
         $mirror = WorkizJob::create(['franchise_id' => $job->franchise_id, 'remote_id' => "JOB-{$number}", 'serial_id' => '700'.preg_replace('/\D/', '', $number),
             'status' => 'x', 'payload' => $money, 'last_status_update' => '2026-10-20 08:00:00', 'synced_at' => now()]);

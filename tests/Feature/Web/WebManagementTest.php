@@ -254,6 +254,17 @@ class WebManagementTest extends TestCase
 
         $this->assertNotNull($after['connected_at']);
         $this->assertSame('1.0.0', $after['plugin_version']);
+
+        // Leads' Website panel (2026-10-29): null until a plugin reports its booking widget,
+        // then what it said; an older plugin that sends nothing leaves it as it was.
+        $booking = fn () => $this->inTenant($tenant['org'], fn () => \App\Models\WebSite::query()->findOrFail($id)->has_booking);
+        $this->assertNull($booking());
+        $this->getJson('/api/v1/web/plugin/values?host=a-1chimney.com&plugin_version=1.26.23&has_booking=1',
+            ['Authorization' => 'Bearer '.$site['token']])->assertOk();
+        $this->assertTrue($booking());
+        $this->getJson('/api/v1/web/plugin/values?host=a-1chimney.com&plugin_version=1.0.0',
+            ['Authorization' => 'Bearer '.$site['token']])->assertOk();
+        $this->assertTrue($booking());
     }
 
     // ── 5. values: blank clears, unknown keys are refused ───────────

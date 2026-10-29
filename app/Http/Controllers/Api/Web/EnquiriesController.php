@@ -535,13 +535,23 @@ class EnquiriesController extends Controller
      */
     private function bookingOpen(ServiceArea $area, mixed $organization): array
     {
-        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $organization));
+        $settings = app(SettingsResolver::class);
+        $zone = (string) $settings->get('timezone', $organization);
+        $from = Openings::tomorrow($zone);
+        // Today too, unless the branch or company turned it off (Jose, 2026-10-28:
+        // A-1 Chimney books from tomorrow); only windows that have not started.
+        $franchise = Franchise::query()->find($area->franchise_id);
+        if ($settings->get('scheduling.offer_today', $franchise ?? $organization)) {
+            $from = $from->subDay();
+        }
+        $now = CarbonImmutable::now($zone);
         $open = [];
 
         foreach (app(Openings::class)->days($area, $from, 60) as $day) {
             $windows = array_values(array_map(
                 fn (array $w) => ['start_time' => $w['start_time'], 'end_time' => $w['end_time']],
-                array_filter($day['windows'], fn (array $w) => $w['remaining'] > 0),
+                array_filter($day['windows'], fn (array $w) => $w['remaining'] > 0
+                    && ($day['date'] !== $now->toDateString() || $w['start_time'] > $now->format('H:i'))),
             ));
 
             if ($windows !== []) {

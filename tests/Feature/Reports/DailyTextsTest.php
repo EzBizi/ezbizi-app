@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Customer;
 use App\Models\FinancialResult;
+use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
 use App\Services\Ads\CampaignPerformance;
@@ -100,6 +102,34 @@ class DailyTextsTest extends TestCase
         $this->assertStringContainsString('Branch area', $text);
         $this->assertStringNotContainsString('HQ area', $text);
         $this->assertStringContainsString('whole organization only', $render('dispatchers'));
+    }
+
+    /** Desk, 2026-10-29: A1 Leads' 8:30 assignments, from EzBizi's own jobs; Deposit Received left out. */
+    public function test_job_assignments_count_today_in_progress_per_technician(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            $b = $this->t['franchise'];
+            $tech = (string) Str::uuid();
+            DB::table('scheduling_technicians')->insert(['id' => $tech, 'organization_id' => $this->t['org']->id, 'franchise_id' => $b->id, 'name' => 'Ann', 'created_at' => now(), 'updated_at' => now()]);
+            $customer = Customer::factory()->create(['owning_franchise_id' => $b->id]);
+            $job = fn (string $status, string $when, array $tags = []) => Job::factory()->create(['franchise_id' => $b->id, 'customer_id' => $customer->id, 'status' => $status, 'scheduled_for' => $when, 'tags' => $tags]);
+            foreach ([$job('In progress', '2026-10-20 09:00:00'), $job('In Progress', '2026-10-20 15:00:00')] as $j) {
+                DB::table('job_technicians')->insert(['job_id' => $j->id, 'technician_id' => $tech, 'source' => 'ezbizi', 'created_at' => now(), 'updated_at' => now()]);
+            }
+            $job('In progress', '2026-10-20 11:00:00');
+            $job('In progress', '2026-10-20 12:00:00', ['Deposit Received']);
+            $job('In progress', '2026-10-20 13:00:00', ['DEPOSIT RECIEVED']);
+            $job('In progress', '2026-10-21 09:00:00');
+            $job('Done', '2026-10-20 09:00:00');
+        });
+
+        $text = $this->text('job_assignments');
+
+        $this->assertStringContainsString('• Ann — 2 jobs', $text);
+        $this->assertStringContainsString('Unassigned — 1 job', $text);
+        $this->assertStringContainsString('*All branches — 3 In Progress jobs*', $text);
+        $this->assertStringContainsString('2 assigned · 1 unassigned', $text);
+        $this->assertStringContainsString('measured ', $text);
     }
 
     public function test_weekly_losses_list_only_negative_branches(): void

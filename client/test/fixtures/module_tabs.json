@@ -291,7 +291,8 @@
                 "Scoring",
                 "Marketing",
                 "Meta",
-                "Thumbtack"
+                "Thumbtack",
+                "Workspace"
             ]
         },
         "reviews": {
@@ -593,6 +594,7 @@
         "reports.settings",
         "reports.thumbtack.view",
         "reports.view",
+        "reports.workspace.view",
         "reviews.create",
         "reviews.delete",
         "reviews.edit",
@@ -628,6 +630,7 @@
         "tasks.view_all",
         "time_clock.anywhere",
         "time_clock.lock_screen",
+        "time_clock.lock_screen_skip",
         "time_clock.view",
         "training.assign",
         "training.manage",

@@ -29,7 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * is silent in one direction only — a reverted correction looks like the person
  * never made it.
  */
-#[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip', 'city', 'source'])]
+#[Fillable(['organization_id', 'company_id', 'franchise_id', 'service_area_id', 'zip', 'city', 'source'])]
 class ServiceAreaZip extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
@@ -42,6 +42,16 @@ class ServiceAreaZip extends Model implements StatesRetention
 
     use BelongsToTenant;
     use HasUuids;
+
+    /** Ownership is per company (2026-10-28): the row carries its branch's company. */
+    protected static function booted(): void
+    {
+        static::saving(function (self $z) {
+            if ($z->isDirty('franchise_id') || $z->company_id === null) {
+                $z->company_id = Franchise::query()->whereKey($z->franchise_id)->value('company_id');
+            }
+        });
+    }
 
     public function serviceArea(): BelongsTo
     {

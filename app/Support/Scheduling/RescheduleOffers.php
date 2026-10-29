@@ -5,6 +5,7 @@ namespace App\Support\Scheduling;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SchedulingRescheduleOffer;
@@ -123,6 +124,7 @@ final class RescheduleOffers
             SchedulingRescheduleOffer::create([
                 'franchise_id' => $franchise->id, 'service_area_id' => $area->id, 'job_id' => $c['job_id'],
                 'lead_id' => $lead->id, 'open_date' => $date->toDateString(), 'booked_for' => $c['scheduled_for'], 'sent_by' => $by->id,
+                'start_time' => $window['start_time'], 'end_time' => $window['end_time'],
             ]);
             $sent[] = $c['job_id'];
         }
@@ -132,6 +134,31 @@ final class RescheduleOffers
         ]);
 
         return ['sent' => $sent, 'failed' => $failed];
+    }
+
+    /**
+     * The customer said yes (Jose, 2026-10-28: Charles O'Neil): the job moves
+     * to the offered day and window in EzBizi, mirrored to Workiz. One click,
+     * not on the reply itself: a "yes" read by a model is not a booking. The
+     * window must still have room, or the move is refused by name.
+     */
+    public function move(SchedulingRescheduleOffer $offer): Job
+    {
+        abort_if($offer->moved_at !== null, 409, 'This appointment was already moved.');
+        $job = Job::query()->findOrFail($offer->job_id);
+        $area = ServiceArea::query()->findOrFail($offer->service_area_id);
+        $date = CarbonImmutable::parse($offer->open_date);
+        $windows = collect($this->openings->days($area, $date, 1)[0]['windows'] ?? []);
+        $window = $offer->start_time === null
+            ? $windows->firstWhere(fn ($w) => $w['remaining'] > 0)
+            : $windows->first(fn ($w) => $w['start_time'] === substr((string) $offer->start_time, 0, 5));
+        abort_if($window === null || $window['remaining'] < 1, 409,
+            'That window on '.$date->format('D M j').' is full now. Pick another time on the board.');
+
+        JobMove::to($job, $date->toDateString(), $window['start_time'], $window['end_time'], ['reschedule_offer' => $offer->id]);
+        $offer->forceFill(['moved_at' => now(), 'start_time' => $window['start_time'], 'end_time' => $window['end_time']])->save();
+
+        return $job;
     }
 
     /** @return Collection<int, array<string, mixed>> */

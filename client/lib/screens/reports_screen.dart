@@ -21,6 +21,7 @@ import 'reports/report_builder.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
 import 'reports/report_run_view.dart';
+import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
@@ -420,6 +421,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
             api: widget.api,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
+        ),
+      // Pick a report, preview it, export, approve or send it (takeover
+      // row 10, UI queue 157, Jose 2026-10-29).
+      if (_mayOpen('workspace'))
+        (
+          'Workspace',
+          Icons.dashboard_customize_outlined,
+          () => ReportWorkspace(api: widget.api, session: widget.session),
         ),
       if (me != null)
         for (final module in me.reachableModules)

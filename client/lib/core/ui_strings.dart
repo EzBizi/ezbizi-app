@@ -141,6 +141,7 @@ class UiStrings {
     'time_clock.extend': 'Extend {minutes} min',
     'time_clock.lock_sentence': 'Clock in to start your day.',
     'time_clock.sign_out': 'Sign out',
+    'time_clock.skip_lock': 'Continue without clocking in',
     'time_clock.auto': 'Auto',
     'time_clock.outside': 'Outside schedule',
     'time_clock.day_off': 'Day off',

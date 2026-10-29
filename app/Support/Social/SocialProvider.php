@@ -116,6 +116,9 @@ enum SocialProvider: string
     // per organization; its webhook secret is what routes an update to it.
     case Telegram = 'telegram';
 
+    // Review requests and published reviews, read with a shop id and password (A1 Leads takeover #43).
+    case Ekomi = 'ekomi';
+
     public function label(): string
     {
         return match ($this) {
@@ -139,6 +142,7 @@ enum SocialProvider: string
             self::RingCentral => 'RingCentral',
             self::WhatsApp => 'WhatsApp',
             self::Telegram => 'Telegram',
+            self::Ekomi => 'eKomi',
         };
     }
 
@@ -171,6 +175,7 @@ enum SocialProvider: string
             self::RingCentral => 'ringcentral',
             self::WhatsApp => 'whatsapp',
             self::Telegram => 'telegram',
+            self::Ekomi => 'ekomi',
         };
     }
 
@@ -197,6 +202,7 @@ enum SocialProvider: string
             self::Airtable => 'api_key',
             self::RingCentral => 'api_key',
             self::Telegram => 'api_key',
+            self::Ekomi => 'api_key',
             default => 'sign_in',
         };
     }
@@ -243,7 +249,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::WorkizWeb, self::Airtable, self::FacebookAds, self::RingCentral, self::Ekomi];
     }
 
     /**
@@ -409,6 +415,8 @@ enum SocialProvider: string
             // `ai_assistance.manage` is that module's write grant.
             self::Telegram => 'ai_assistance.manage',
 
+            self::Ekomi => 'reviews.edit',
+
             default => 'marketing.edit',
         };
     }
@@ -455,6 +463,7 @@ enum SocialProvider: string
             self::RingCentral => 'connect a RingCentral account',
             self::WhatsApp => 'connect a WhatsApp number',
             self::Telegram => 'connect a Telegram bot',
+            self::Ekomi => 'connect an eKomi account',
             default => 'connect a social account',
         };
     }
@@ -598,6 +607,8 @@ enum SocialProvider: string
 
             // The nine publishing networks. "Page" is their word and Social
             // Media Management is genuinely where they are used.
+            self::Ekomi => sprintf('%s is connected to EzBizi. Its reviews arrive in Reviews.', $name),
+
             default => $many
                 ? sprintf(
                     '%d %s Pages are connected to EzBizi. You can close this window and compose '

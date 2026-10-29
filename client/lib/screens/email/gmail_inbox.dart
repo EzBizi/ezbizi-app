@@ -215,6 +215,8 @@ class _GmailInboxState extends State<GmailInbox> {
   /// The rail laid over the list, below [_railBeside].
   bool _drawer = false;
 
+  late final AppLifecycleListener _resume;
+
   String get _paneKey => 'email_reading_pane_${widget.session.me?.id ?? ''}';
 
   @override
@@ -226,12 +228,15 @@ class _GmailInboxState extends State<GmailInbox> {
       _ => ReadingPane.right,
     };
     DeepLinks.pending.addListener(_followLink);
+    // Connecting an inbox happens in the browser; coming back must show it.
+    _resume = AppLifecycleListener(onResume: _loadMailboxes);
     _loadMailboxes();
   }
 
   @override
   void dispose() {
     DeepLinks.pending.removeListener(_followLink);
+    _resume.dispose();
     _debounce?.cancel();
     _search.dispose();
     super.dispose();
@@ -1557,10 +1562,10 @@ class _GmailInboxState extends State<GmailInbox> {
     final mailbox = _mailboxById(_fromId);
     final open = _open;
 
-    // White, like the page Gmail puts mail on.
+    // The theme's surface: the text is drawn in theme colours, so fixed white was unreadable in dark mode (Jose, 2026-10-28).
     return ColoredBox(
       key: const ValueKey('email-reader'),
-      color: Colors.white,
+      color: theme.colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

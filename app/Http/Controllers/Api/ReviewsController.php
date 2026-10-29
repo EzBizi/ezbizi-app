@@ -267,7 +267,19 @@ class ReviewsController extends Controller
             ->toBase()->select('status', 'drafted_by', DB::raw('count(*) as n'))->groupBy('status', 'drafted_by')->get();
         $published = $replies->where('status', ReviewReply::STATUS_PUBLISHED);
 
+        // The last twelve months, oldest first, for the monthly chart.
+        $since = $now->copy()->subMonths(11);
+        $byMonth = (clone $query)->reorder()->whereNotNull('rating')->where('reviewed_at', '>=', $since)->get(['rating', 'reviewed_at'])
+            ->groupBy(fn ($r) => $r->reviewed_at->format('Y-m'));
+        $monthly = collect(range(0, 11))->map(function ($i) use ($since, $byMonth) {
+            $key = $since->copy()->addMonths($i)->format('Y-m');
+            $set = $byMonth->get($key, collect());
+
+            return ['month' => $key, 'count' => $set->count(), 'average' => $set->isEmpty() ? null : round($set->avg('rating'), 2)];
+        })->all();
+
         return $months + [
+            'monthly' => $monthly,
             'histogram' => collect(range(1, 5))->mapWithKeys(fn ($r) => [$r => (int) ($histogram[$r] ?? 0)])->all(),
             'replies' => [
                 'published' => (int) $published->sum('n'),
@@ -364,6 +376,38 @@ class ReviewsController extends Controller
         return response()->json(['data' => ['body' => $body]]);
     }
 
+    /**
+     * POST /api/v1/reviews/replies/draft-batch {ids: [review id]} (A1 Leads takeover #22).
+     * AI drafts for unanswered reviews, saved as drafts for a person to post; up to 20 at a time.
+     */
+    public function draftBatch(Request $request): JsonResponse
+    {
+        $ids = $request->validate(['ids' => ['required', 'array', 'min:1', 'max:20'], 'ids.*' => ['uuid']])['ids'];
+        $results = [];
+        foreach (Review::query()->whereKey($ids)->with('reply')->get() as $review) {
+            $this->authorize('update', $review);
+            if ($review->reply !== null && ! $review->reply->isEditable()) {
+                $results[] = ['id' => $review->id, 'ok' => false, 'message' => 'Already answered on Google.'];
+
+                continue;
+            }
+            try {
+                $body = \App\Support\Reviews\ReviewReplyWriter::write($review);
+            } catch (RuntimeException) {
+                $results[] = ['id' => $review->id, 'ok' => false, 'message' => 'AI could not draft a reply just now.'];
+
+                continue;
+            }
+            $reply = $review->reply ?? new ReviewReply(['organization_id' => $review->organization_id,
+                'review_id' => $review->getKey(), 'drafted_by' => ReviewReply::BY_DRAFTING_JOB]);
+            $reply->fill(['body' => $body, 'status' => ReviewReply::STATUS_DRAFT, 'failure_reason' => null])->save();
+            $this->audit->log('review.reply_drafted', $review, metadata: ['length' => strlen($body), 'batch' => true]);
+            $results[] = ['id' => $review->id, 'ok' => true, 'body' => $body];
+        }
+
+        return response()->json(['data' => $results]);
+    }
+
     /** DELETE /api/v1/reviews/{review}/reply — discard a draft. */
     public function discardReply(Review $review): JsonResponse
     {
@@ -397,6 +441,9 @@ class ReviewsController extends Controller
     public function publishReply(Request $request, Review $review): JsonResponse
     {
         $this->authorize('publish', $review);
+        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
+            return response()->json(['message' => 'Only Google reviews can be answered from EzBizi.'], Response::HTTP_CONFLICT);
+        }
 
         $reply = $review->reply;
 
@@ -558,6 +605,7 @@ class ReviewsController extends Controller
 
         return [
             'id'            => $review->id,
+            'source'        => $review->source ?? Review::SOURCE_GOOGLE,
             'reviewer_name' => $review->reviewer_name,
             'reviewer_photo_url' => $review->reviewer_photo_url,
             'rating'        => $review->rating,
