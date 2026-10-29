@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\SubscriptionLapsedException;
 use App\Jobs\OnboardWhatsAppNumber;
 use App\Jobs\RegisterThumbtackWebhook;
+use App\Jobs\SyncBusinessProfileConnection;
 use App\Jobs\SubscribeMetaMessages;
 use App\Models\SocialConnection;
 use App\Models\SocialSignIn;
@@ -324,6 +325,11 @@ class SocialAuthController extends Controller
                         RegisterThumbtackWebhook::dispatch((string) $connection->getKey());
                         // And its enquiries from before a disconnect come back.
                         app(ThumbtackLeads::class)->reclaim($connection);
+                    }
+
+                    // A Business Profile reads its listings now, not at tomorrow's sync (Jose, 2026-10-29).
+                    if ($provider === SocialProvider::GoogleBusinessProfile) {
+                        SyncBusinessProfileConnection::start($connection);
                     }
 
                     // Meta the same way: a Page or Instagram account sends its

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -72,6 +74,10 @@ const double _paneBesideFrom = 1100;
 class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   bool _loading = true;
   bool _syncing = false;
+
+  /// A just-connected account still reading its listings on the server.
+  bool _serverSyncing = false;
+  Timer? _syncPoll;
   String? _error;
   String? _notice;
 
@@ -114,6 +120,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   @override
   void dispose() {
+    _syncPoll?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -149,6 +156,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+      // Look again until the connect-time sync has read the listings.
+      _serverSyncing = meta['syncing'] == true;
+      _syncPoll?.cancel();
+      _syncPoll = _serverSyncing
+          ? Timer(const Duration(seconds: 10), _load)
+          : null;
 
       if (_openId != null && !_locations.any((l) => l['id'] == _openId)) {
         _openId = null;
@@ -470,15 +483,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     final check = FilledButton.tonalIcon(
       key: const ValueKey('tour-customer_experience-check-google'),
-      onPressed: _syncing ? null : _sync,
-      icon: _syncing
+      onPressed: _syncing || _serverSyncing ? null : _sync,
+      icon: _syncing || _serverSyncing
           ? const SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.sync, size: 18),
-      label: Text(_syncing ? 'Checking…' : 'Check Google'),
+      label: Text(
+        _serverSyncing
+            ? 'Syncing…'
+            : _syncing
+            ? 'Checking…'
+            : 'Check Google',
+      ),
     );
 
     final phoneCheck = IconButton(

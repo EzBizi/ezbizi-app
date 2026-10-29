@@ -66,6 +66,9 @@ class BusinessProfileController extends Controller
                 // in the tab badge and the number in the list cannot disagree.
                 'not_live'    => $locations->reject(fn (BusinessLocation $l) => $l->isLive())->count(),
                 'connections' => $this->access->presentableInView($user, SocialProvider::GoogleBusinessProfile),
+                // A just-connected account still reading its listings: the screen says "Syncing…".
+                'syncing' => SocialConnection::query()->where('provider', SocialProvider::GoogleBusinessProfile->value)->pluck('id')
+                    ->contains(fn ($id) => \Illuminate\Support\Facades\Cache::has(\App\Jobs\SyncBusinessProfileConnection::SYNCING_KEY.$id)),
             ],
         ]);
     }
