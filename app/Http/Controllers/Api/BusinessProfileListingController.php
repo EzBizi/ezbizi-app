@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Models\BusinessLocation;
 use App\Models\PhoneNumber;
 use App\Models\Review;
+use App\Models\SocialConnection;
 use App\Models\WhatsAppNumber;
 use App\Services\BusinessProfile\BusinessProfileApi;
 use App\Support\CustomerExperience\Places;
 use App\Support\Memberships\CustomerLinks;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -136,17 +138,19 @@ class BusinessProfileListingController extends Controller
     public function sources(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Review::class);
-        $query = Review::query();
+        $query = Review::query()->whereNotNull('rating');
         Places::scope($query, $request->user());
-        $google = $query->whereNotNull('rating')->toBase()->select(DB::raw('avg(rating) as average, count(*) as n'))->first();
+        $by = $query->toBase()->select('source', DB::raw('avg(rating) as average, count(*) as n'))->groupBy('source')->get()->keyBy('source');
+        $row = fn (string $source, bool $connected, $last) => ['source' => $source, 'connected' => $connected,
+            'count' => (int) ($by[$source]->n ?? 0), 'average' => isset($by[$source]) ? round((float) $by[$source]->average, 2) : null,
+            'last_sync' => $last];
+        $ekomi = SocialConnection::query()->where('provider', SocialProvider::Ekomi->value);
 
         return response()->json(['data' => [
-            ['source' => 'google', 'connected' => true, 'count' => (int) ($google->n ?? 0),
-                'average' => $google?->n ? round((float) $google->average, 2) : null,
-                'last_sync' => BusinessLocation::query()->max('synced_at')],
-            // ponytail: no eKomi or Thumbtack review import yet; each needs its own credentials.
-            ['source' => 'ekomi', 'connected' => false, 'count' => 0, 'average' => null],
-            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null],
+            $row(Review::SOURCE_GOOGLE, true, BusinessLocation::query()->max('synced_at')),
+            $row(Review::SOURCE_EKOMI, (clone $ekomi)->exists(), $ekomi->max('last_reached_at')),
+            // ponytail: Thumbtack exposes no reviews API to partners; stays unconnected until it does.
+            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
         ], 'reply_rule_id' => $this->replyRuleId()]);
     }
 
