@@ -10,6 +10,7 @@ use App\Models\TaskBoard;
 use App\Models\TaskBoardMember;
 use App\Models\TaskColumn;
 use App\Models\TaskGroup;
+use App\Models\TaskLink;
 use App\Models\TaskStatus;
 use App\Models\User;
 use App\Support\Scoping\OwnedScope;
@@ -96,6 +97,9 @@ class TaskBoardsController extends Controller
         $sources = $this->boards->rolledUpBoards($user, $taskBoard)->keyBy('id');
         $rolled = $sources->isEmpty() ? collect() : Task::query()
             ->whereIn('board_id', $sources->keys())
+            // Linked to a task this board already holds: that row is the one shown.
+            ->whereNotIn('id', TaskLink::query()->whereIn('linked_task_id', $taskBoard->tasks()->select('id'))->select('task_id'))
+            ->whereNotIn('id', TaskLink::query()->whereIn('task_id', $taskBoard->tasks()->select('id'))->select('linked_task_id'))
             ->with([...TasksController::WITH, 'group:id,name'])
             ->withCount(TasksController::counts())
             ->orderBy('position')

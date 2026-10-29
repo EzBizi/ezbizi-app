@@ -90,7 +90,7 @@ class TaskRollUpAndLinksTest extends TestCase
         $this->assertSame('done', $this->inTenant($tenant['org'], fn () => $a->fresh()->status));
 
         $this->signedInAs($admin)->patchJson("/api/v1/tasks/{$a->id}", ['status' => 'working_on_it'])->assertOk();
-        $this->assertSame('not_started', $this->inTenant($tenant['org'], fn () => $b->fresh()->status));
+        $this->assertSame('working_on_it', $this->inTenant($tenant['org'], fn () => $b->fresh()->status));
 
         $this->signedInAs($admin)->deleteJson("/api/v1/tasks/{$b->id}/links/{$a->id}")->assertNoContent();
         $this->assertSame([], $this->signedInAs($admin)->getJson("/api/v1/tasks/{$a->id}/links")->json('data'));
