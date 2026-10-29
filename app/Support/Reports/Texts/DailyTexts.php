@@ -32,6 +32,7 @@ final class DailyTexts
         'technician_sales' => 'Technician sales · daily',
         'weekly_losses' => 'Weekly net loss report',
         'weekly_reviews' => 'Weekly reviews by branch',
+        'job_assignments' => 'Daily job assignments · In Progress by technician',
     ];
 
     public function __construct(
@@ -54,6 +55,7 @@ final class DailyTexts
             'technician_sales' => $this->technicianSales($list, $day),
             'weekly_losses' => $this->weeklyLosses($list, $day),
             'weekly_reviews' => $this->weeklyReviews($list, $day),
+            'job_assignments' => $this->jobAssignments($list, $day),
         };
     }
 
@@ -156,6 +158,58 @@ final class DailyTexts
             $lines[] = '• *'.$p['person'].'*: '.(int) ($p['jobs'] ?? 0).' jobs created · '.(int) ($p['answered'] ?? 0).' answered'
                 .($new > 0 ? ' · '.number_format(($p['jobs'] ?? 0) / $new * 100, 1).'% of new-client calls' : '');
         }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Today's In Progress jobs per technician per branch, from EzBizi's own
+     * jobs and crews (A1 Leads' daily-job-assignments, which read Workiz's
+     * Jobs tab and under-counted). Jobs tagged Deposit Received are left out.
+     * ponytail: "today" is $day's date in every branch's own wall time, as
+     * jobs store it.
+     */
+    private function jobAssignments(Collection $branches, CarbonImmutable $day): string
+    {
+        $jobs = DB::table('jobs')->whereIn('franchise_id', $branches->pluck('id'))->whereNull('deleted_at')
+            ->whereRaw('lower(status) = ?', ['in progress'])->whereDate('scheduled_for', $day->toDateString())
+            ->get(['id', 'franchise_id', 'tags'])
+            ->reject(fn ($j) => in_array('deposit received', array_map(fn ($t) => mb_strtolower(trim((string) $t)), (array) json_decode((string) $j->tags, true)), true));
+        $crew = DB::table('job_technicians as jt')->join('scheduling_technicians as t', 't.id', '=', 'jt.technician_id')
+            ->whereIn('jt.job_id', $jobs->pluck('id'))->get(['jt.job_id', 't.name'])->groupBy('job_id');
+        $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
+
+        $lines = ["\u{1F9F0} *Today's In Progress jobs by technician*",
+            '_'.$day->format('D, M j, Y').' · measured '.now('America/New_York')->format('g:i A').' ET from EzBizi jobs_',
+            '_Excludes jobs tagged Deposit Received._'];
+        $empty = [];
+        $assigned = 0;
+        foreach ($branches as $branch) {
+            $mine = $jobs->where('franchise_id', $branch->getKey());
+            if ($mine->isEmpty()) {
+                $empty[] = BranchName::of($branch);
+
+                continue;
+            }
+            $lines[] = '';
+            $lines[] = '*'.BranchName::of($branch).' — '.$plural($mine->count()).'*';
+            $byTech = $mine->flatMap(fn ($j) => $crew->get($j->id, collect())->pluck('name'))->countBy()->sortKeys();
+            foreach ($byTech as $name => $n) {
+                $lines[] = '• '.$name.' — '.$plural($n);
+            }
+            $unassigned = $mine->filter(fn ($j) => ! $crew->has($j->id))->count();
+            if ($unassigned > 0) {
+                $lines[] = "• \u{26A0} Unassigned — ".$plural($unassigned);
+            }
+            $assigned += $mine->count() - $unassigned;
+        }
+        if ($empty !== []) {
+            $lines[] = '';
+            $lines[] = '_No jobs: '.implode(', ', $empty).'_';
+        }
+        $lines[] = '';
+        $lines[] = '*All branches — '.$jobs->count().' In Progress '.($jobs->count() === 1 ? 'job' : 'jobs').'*';
+        $lines[] = $assigned.' assigned · '.($jobs->count() - $assigned).' unassigned';
 
         return implode("\n", $lines);
     }
