@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 156 · Leads › Manage › Connections (all lead sources) — **sent 2026-10-29** (`docs/previews/leads-connections-layouts.html`)
+
+Via Google API / Leads: Website gets a real sites pane; WhatsApp, Facebook/Messenger, Instagram and GBP (no leads since Google ended chat in 2024) join the list. 1 = extended source list + table + side panel (recommended); 2 = card grid; 3 = one table; phones 4-6.
+
 ### 155 · Scheduling › Settings › Technicians (native roster) — **sent 2026-10-27** (`docs/previews/scheduling-technicians-layouts.html`)
 
 Jose 10-27 "EzBizi is the master" via Scheduling and the desk: native roster on ad56e9f0e replaces Settings › Schedule Workiz linking. 1 = table + side-panel editor (recommended); 2 = cards by branch; 3 = areas × technicians grid; phones 4-6.
