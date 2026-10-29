@@ -129,6 +129,22 @@ class WhatsAppIntakeTest extends TestCase
         );
     }
 
+    /** A-1, 2026-10-29: Jose's own test text went to the staff bot, not Leads. */
+    public function test_a_number_with_auto_reply_off_has_no_staff_bot_even_for_staff(): void
+    {
+        DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->update(['auto_reply' => false]);
+        $staff = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);
+        DB::table('users')->where('id', $staff->id)->update(['phone' => '(305) 555-0123']);
+        // The tenant's own number, not EzBizi's bot number: the webhook routed only the bot's.
+        config(['services.meta.whatsapp_bot_number_id' => '999999999']);
+
+        $this->inbound(['type' => 'text', 'text' => ['body' => 'hello']], 'wamid.IN1')->assertOk();
+
+        $this->assertSame([], $this->sent);
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame(['hello'], LeadConversation::query()->withoutGlobalScopes()->where('lead_id', $lead->id)->pluck('text')->all());
+    }
+
     public function test_i_want_to_work_with_you_tells_hr_and_makes_no_lead(): void
     {
         $leads = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);

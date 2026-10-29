@@ -101,6 +101,15 @@ final class WhatsAppStaffBot
     {
         $to = (string) $inbound->counterparty;
 
+        // A number that does not answer (coexistence, staff reply from the
+        // WhatsApp Business app) has no staff bot: everyone who writes, staff
+        // included, lands in Leads and nothing is sent back (A-1, 2026-10-29).
+        if ($number->auto_reply === false) {
+            $this->intake->handle($number, $inbound, $choice);
+
+            return;
+        }
+
         // Asked on every message, never remembered. A menu sent while somebody
         // was staff stays in their chat after they are deactivated, and tapping
         // it later must not still hand over what the company pays each lender.
