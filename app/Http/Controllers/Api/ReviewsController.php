@@ -441,6 +441,9 @@ class ReviewsController extends Controller
     public function publishReply(Request $request, Review $review): JsonResponse
     {
         $this->authorize('publish', $review);
+        if (($review->source ?? Review::SOURCE_GOOGLE) !== Review::SOURCE_GOOGLE) {
+            return response()->json(['message' => 'Only Google reviews can be answered from EzBizi.'], Response::HTTP_CONFLICT);
+        }
 
         $reply = $review->reply;
 
@@ -602,6 +605,7 @@ class ReviewsController extends Controller
 
         return [
             'id'            => $review->id,
+            'source'        => $review->source ?? Review::SOURCE_GOOGLE,
             'reviewer_name' => $review->reviewer_name,
             'reviewer_photo_url' => $review->reviewer_photo_url,
             'rating'        => $review->rating,
