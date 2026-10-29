@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 158 · Leads threads: Meta ad-question bubble — **sent 2026-10-29** (`docs/previews/leads-ad-question-layouts.html`)
+### 158 · Leads threads: Meta ad-question bubble — **sent 2026-10-29 — Jose: "Yea" (1 and 4)** (`docs/previews/leads-ad-question-layouts.html`)
 
 Desk/Meta cb4c94743: ad_question flag. 1 = outlined dashed bubble + tag (recommended); 2 = system line; 3 = edge + tag; phones 4-6.
 
