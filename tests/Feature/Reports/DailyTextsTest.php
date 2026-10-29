@@ -118,6 +118,7 @@ class DailyTextsTest extends TestCase
             }
             $job('In progress', '2026-10-20 11:00:00');
             $job('In progress', '2026-10-20 12:00:00', ['Deposit Received']);
+            $job('In progress', '2026-10-20 13:00:00', ['DEPOSIT RECIEVED']);
             $job('In progress', '2026-10-21 09:00:00');
             $job('Done', '2026-10-20 09:00:00');
         });

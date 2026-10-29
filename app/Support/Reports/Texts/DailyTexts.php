@@ -165,7 +165,8 @@ final class DailyTexts
     /**
      * Today's In Progress jobs per technician per branch, from EzBizi's own
      * jobs and crews (A1 Leads' daily-job-assignments, which read Workiz's
-     * Jobs tab and under-counted). Jobs tagged Deposit Received are left out.
+     * Jobs tab and under-counted). Jobs tagged Deposit Received (Workiz also spells it
+     * "DEPOSIT RECIEVED") are left out.
      * ponytail: "today" is $day's date in every branch's own wall time, as
      * jobs store it.
      */
@@ -174,7 +175,7 @@ final class DailyTexts
         $jobs = DB::table('jobs')->whereIn('franchise_id', $branches->pluck('id'))->whereNull('deleted_at')
             ->whereRaw('lower(status) = ?', ['in progress'])->whereDate('scheduled_for', $day->toDateString())
             ->get(['id', 'franchise_id', 'tags'])
-            ->reject(fn ($j) => in_array('deposit received', array_map(fn ($t) => mb_strtolower(trim((string) $t)), (array) json_decode((string) $j->tags, true)), true));
+            ->reject(fn ($j) => array_intersect(['deposit received', 'deposit recieved'], array_map(fn ($t) => mb_strtolower(trim((string) $t)), (array) json_decode((string) $j->tags, true))) !== []);
         $crew = DB::table('job_technicians as jt')->join('scheduling_technicians as t', 't.id', '=', 'jt.technician_id')
             ->whereIn('jt.job_id', $jobs->pluck('id'))->get(['jt.job_id', 't.name'])->groupBy('job_id');
         $plural = fn (int $n) => $n.' job'.($n === 1 ? '' : 's');
