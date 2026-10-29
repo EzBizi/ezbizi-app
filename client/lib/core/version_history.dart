@@ -17,6 +17,7 @@ class VersionHistory {
       version: '0.0.0503',
       date: '29 Oct 2026',
       items: [
+        'Monitoring: office computers no longer show offline while their people are working; their check-ins and screenshots are no longer turned away.',
         'Email: the inbox list refreshes as soon as you return from connecting a mailbox.',
         'Email: the mailbox Connected page now says what EzBizi does: reading, archiving and Trash mirror to the mailbox, and nothing is deleted permanently.',
       ],
