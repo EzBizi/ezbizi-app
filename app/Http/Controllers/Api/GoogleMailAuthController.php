@@ -503,8 +503,8 @@ class GoogleMailAuthController extends Controller
             $said = sprintf(
                 '%s is connected to EzBizi and can be opened from the Email tab by everybody '
                 .'whose role has been given this inbox. You can close this window. EzBizi '
-                .'reads and replies to this mailbox only; it does not delete anything and it '
-                .'does not mark anything as read in Gmail.',
+                .'works on this mailbox only. Reading, starring, archiving or moving a message '
+                .'to Trash in EzBizi does the same in Gmail. Nothing is ever deleted permanently.',
                 $mailbox->address,
             );
 
