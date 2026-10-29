@@ -166,7 +166,9 @@ class WhatsAppConnectTest extends TestCase
             ? Http::response(['display_phone_number' => '+1 305-555-0100', 'is_on_biz_app' => true])
             : Http::response(['success' => true]));
 
-        $this->inTenant($t['org'], fn () => (new OnboardWhatsAppNumber($connection->id, self::WABA))->handle());
+        // Run as the queue runs it: no tenant in context (prod, 2026-10-29).
+        app(\App\Support\Tenancy\TenantContext::class)->forget();
+        (new OnboardWhatsAppNumber($connection->id, self::WABA))->handle();
 
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/register'));
         Http::assertSent(fn ($r) => str_ends_with($r->url(), self::PHONE_ID.'/smb_app_data') && $r['sync_type'] === 'smb_app_state_sync');
