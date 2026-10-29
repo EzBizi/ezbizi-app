@@ -1103,6 +1103,8 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            // Sent by staff from the WhatsApp Business app on the phone.
+            'sent_from_phone' => str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP),
             // Tapped from a Click-to-Message ad's suggested questions, not typed.
             'ad_question' => (bool) $c->is_ad_question,
             'reaction' => self::reaction($c->text),
@@ -1955,6 +1957,10 @@ class LeadsController extends Controller
             'phone' => $lead->phone,
             'email' => $lead->email,
             'postal_code' => $lead->postal_code,
+            // A Meta lead-ad form's answers, [{label, value}] in the form's order.
+            'form_answers' => $lead->form_answers,
+            'form_name' => $lead->form_name,
+            'form_submitted_at' => $lead->form_submitted_at?->toIso8601String(),
             'lead_type' => $lead->lead_type,
             'category' => $lead->category,
             'service' => $lead->service,

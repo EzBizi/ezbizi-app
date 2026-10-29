@@ -119,6 +119,8 @@ Zip code: 07050'],
         $this->assertSame('MESSAGE', $lead->lead_type);
         $this->assertStringEndsWith('9736782560', (string) $lead->phone_digits);
         $this->assertSame('07050', $lead->postal_code);
+        $this->assertContains(['label' => 'Zip code', 'value' => '07050'], $lead->form_answers);
+        $this->assertNotNull($lead->form_submitted_at);
     }
 
     private function post_(string $object, array $body)

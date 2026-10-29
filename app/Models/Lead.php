@@ -5,13 +5,18 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Leads\LeadOfficeHours;
+use App\Support\Leads\RequestedWindow;
 use App\Support\Notifications\LeadNotificationText;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use App\Support\Scheduling\Openings;
+use App\Support\Scheduling\SlotOffer;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Web\BookingLink;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -442,6 +447,13 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 .'what they said. Free text, so it can contain anything they mentioned — an '
                 .'address, a name, a reason for the work.',
                 Erasure::erase()),
+            new PersonalDataEntry('form_answers', PersonalDataEntry::CONTENT,
+                'Their answers to a Facebook or Instagram lead-ad form, question by question: '
+                .'name, phone, ZIP and whatever else the form asked.',
+                Erasure::erase()),
+            new PersonalDataEntry('form_name, form_submitted_at', PersonalDataEntry::ACTIVITY,
+                'Which lead-ad form they sent, and when.',
+                Erasure::erase()),
             new PersonalDataEntry('note', PersonalDataEntry::CONTENT,
                 'What somebody at the business wrote down about this enquiry for their own '
                 .'use. Free text about a person, written by somebody else.',
@@ -498,6 +510,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         'lead_type', 'category', 'service', 'locale', 'summary', 'site_host', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'dispatcher', 'dispatcher_by_user_id', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'lead_cost_minor', 'lead_cost_currency', 'service_state', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
+        'form_answers', 'form_name', 'form_submitted_at',
     ];
 
     protected function casts(): array
@@ -515,6 +528,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'classified_at' => 'datetime',
             'credit_requested_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
+            'form_answers' => 'array',
+            'form_submitted_at' => 'datetime',
         ];
     }
 
@@ -712,7 +727,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
 
         // A page that can offer no day is worse than no link (Bar, 2026-10-21:
         // garage-door customers were sent links with no availability).
-        return $url === '' || ! $this->bookableOnline() ? '' : \App\Support\Web\BookingLink::forLead($this, $url);
+        return $url === '' || ! $this->bookableOnline() ? '' : BookingLink::forLead($this, $url);
     }
 
     /**
@@ -730,7 +745,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         }
 
         return ServiceArea::query()->whereIn('id', $zips->select('service_area_id'))->get()
-            ->contains(fn (ServiceArea $area) => \App\Support\Scheduling\Openings::hasCapacity($area));
+            ->contains(fn (ServiceArea $area) => Openings::hasCapacity($area));
     }
 
     /**
@@ -746,11 +761,11 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             return '';
         }
         $zone = (string) app(SettingsResolver::class)->get('timezone', $this->organization);
-        $today = \Carbon\CarbonImmutable::now($zone)->startOfDay();
+        $today = CarbonImmutable::now($zone)->startOfDay();
         $said = (string) $this->conversations()->reorder()->where('participant', LeadConversation::FROM_CONSUMER)
             ->orderByDesc('occurred_at')->value('text');
-        $offer = app(\App\Support\Scheduling\SlotOffer::class)
-            ->for((string) $this->postal_code, $today, \App\Support\Leads\RequestedWindow::from($said, $today));
+        $offer = app(SlotOffer::class)
+            ->for((string) $this->postal_code, $today, RequestedWindow::from($said, $today));
 
         return $offer['label'] ?? '';
     }

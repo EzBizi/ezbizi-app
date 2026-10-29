@@ -53,6 +53,12 @@ final class MetaLeadForms
         }
 
         $answers = $this->read($leadgenId, $page);
+        $form = [
+            'form_answers' => collect($answers)->reject(fn ($v, $k) => str_starts_with((string) $k, '@'))
+                ->map(fn ($v, $k) => ['label' => ucfirst(str_replace('_', ' ', rtrim((string) $k, '?'))), 'value' => (string) $v])->values()->all(),
+            'form_name' => $this->formName((string) ($value['form_id'] ?? ''), $page),
+            'form_submitted_at' => isset($answers['@created_time']) ? Carbon::parse($answers['@created_time']) : now(),
+        ];
         $pick = fn (array $names) => collect($names)->map(fn ($n) => $answers[$n] ?? null)->first(fn ($v) => $v !== null && $v !== '');
 
         $phone = $pick(self::PHONE);
@@ -86,7 +92,7 @@ final class MetaLeadForms
                 'phone_digits' => $chat->phone_digits ?? Lead::digits($phone),
                 'email' => $chat->email ?? $pick(self::EMAIL),
                 'postal_code' => $chat->postal_code ?? ($zip !== null && preg_match('/^\d{5}(?:-\d{4})?$/', $zip) === 1 ? $zip : null),
-            ], fn ($v) => $v !== null))->save();
+            ], fn ($v) => $v !== null) + $form)->save();
 
             return true;
         }
@@ -109,6 +115,7 @@ final class MetaLeadForms
             'summary' => LeadNotificationText::clip($rest !== '' ? $rest : $page->display_name, 255),
             'status' => Lead::STATUS_NEW,
             'received_at' => isset($answers['@created_time']) ? Carbon::parse($answers['@created_time']) : now(),
+            ...$form,
         ]);
 
         $this->events->emitAfterCommit('lead.received', $lead, [
@@ -118,6 +125,18 @@ final class MetaLeadForms
         ]);
 
         return true;
+    }
+
+    /** The form's own name ("Chimney sweep - fall"), or null when Meta will not say. */
+    private function formName(string $formId, SocialConnection $page): ?string
+    {
+        if ($formId === '') {
+            return null;
+        }
+        $name = Http::timeout(self::TIMEOUT)->get('https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$formId,
+            ['fields' => 'name', 'access_token' => $page->credentials['access_token'] ?? ''])->json('name');
+
+        return is_string($name) && $name !== '' ? mb_substr($name, 0, 255) : null;
     }
 
     /**
