@@ -213,7 +213,10 @@ class WhatsAppWebhookController extends Controller
                 continue;
             }
 
-            if ($row->wasRecentlyCreated && $this->bot->handles($phoneNumberId)) {
+            // A tenant's own number that does not answer (coexistence) still
+            // routes every sender to Leads; only the bot number answers.
+            if ($row->wasRecentlyCreated && ($this->bot->handles($phoneNumberId)
+                || WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->where('auto_reply', false)->exists())) {
                 $this->answer($row, $phoneNumberId, isset($picked['id']) ? (string) $picked['id'] : null);
             }
         }

@@ -135,6 +135,8 @@ class WhatsAppIntakeTest extends TestCase
         DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->update(['auto_reply' => false]);
         $staff = $this->userWithRole($this->t, 'Leads desk', ['leads.view']);
         DB::table('users')->where('id', $staff->id)->update(['phone' => '(305) 555-0123']);
+        // The tenant's own number, not EzBizi's bot number: the webhook routed only the bot's.
+        config(['services.meta.whatsapp_bot_number_id' => '999999999']);
 
         $this->inbound(['type' => 'text', 'text' => ['body' => 'hello']], 'wamid.IN1')->assertOk();
 
