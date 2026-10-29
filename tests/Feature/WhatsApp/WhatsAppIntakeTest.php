@@ -266,6 +266,39 @@ class WhatsAppIntakeTest extends TestCase
     }
 
     /** @param array<string, mixed> $message */
+    /** Jose, 2026-10-29: a lead shows who wrote, not only the number, and staff replies from the app show on it. */
+    public function test_a_coexistence_lead_is_named_and_shows_replies_sent_from_the_business_app(): void
+    {
+        DB::table('whatsapp_numbers')->where('phone_number_id', self::BOT)->update(['auto_reply' => false]);
+        $this->change(['messages' => [['id' => 'wamid.IN1', 'from' => self::STRANGER, 'type' => 'text', 'text' => ['body' => 'Sweep?'],
+            'referral' => ['source_type' => 'ad', 'source_id' => '42', 'headline' => 'Fall sweep']]],
+            'contacts' => [['wa_id' => self::STRANGER, 'profile' => ['name' => 'Kel']]]]);
+
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame('Kel', $lead->contact_name);
+
+        $this->change(['state_sync' => [['type' => 'contact', 'action' => 'add',
+            'contact' => ['full_name' => 'Kelvin Badger', 'phone_number' => '+'.self::STRANGER]]]]);
+        $this->assertSame('Kelvin Badger', $lead->fresh()->contact_name);
+        $this->assertSame('42', DB::table('whatsapp_contacts')->value('referral') ? json_decode(DB::table('whatsapp_contacts')->value('referral'), true)['source_id'] : null);
+
+        $this->change(['message_echoes' => [['id' => 'wamid.OUT1', 'from' => '18885195311', 'to' => self::STRANGER,
+            'timestamp' => '1793300000', 'type' => 'text', 'text' => ['body' => 'Yes, Friday works']]]]);
+        $this->assertSame(LeadConversation::FROM_ADVERTISER, LeadConversation::query()->withoutGlobalScopes()->where('remote_id', 'wamid.OUT1')->value('participant'));
+        $this->assertSame([], $this->sent);
+    }
+
+    /** @param array<string, mixed> $value */
+    private function change(array $value)
+    {
+        $json = (string) json_encode(['entry' => [['changes' => [['value' => ['metadata' => ['phone_number_id' => self::BOT], ...$value]]]]]]);
+
+        return $this->call('POST', '/api/v1/social/whatsapp/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $json, self::SECRET),
+        ], $json)->assertOk();
+    }
+
     private function inbound(array $message, string $wamid)
     {
         $json = (string) json_encode(['entry' => [['changes' => [['value' => [
