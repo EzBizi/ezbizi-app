@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Job;
 use App\Models\SchedulingHelper;
 use App\Models\SchedulingHelperBooking;
 use App\Models\User;
@@ -40,8 +41,8 @@ final class SchedulingHelpersController extends Controller
 
         return response()->json([
             'data' => SchedulingHelper::query()
-            ->where('franchise_id', $franchise)->orderByDesc('is_active')->orderBy('name')
-            ->get(['id', 'franchise_id', 'name', 'notes', 'is_active']),
+                ->where('franchise_id', $franchise)->orderByDesc('is_active')->orderBy('name')
+                ->get(['id', 'franchise_id', 'name', 'notes', 'is_active']),
             // Who "For" can name: the same people technician() accepts, and
             // only to those who may book for others.
             'people' => $request->user()->hasPermission('scheduling.edit')
@@ -233,6 +234,26 @@ final class SchedulingHelpersController extends Controller
             'Booking for others and the helper list need the right to edit Scheduling.');
     }
 
+    /**
+     * The job a booking names, as A1 Tools' job_lookup showed it: who and
+     * where. Null when the number is not one of this branch's jobs yet, which
+     * is normal on a fresh job, so it is shown, never refused.
+     * ponytail: one query per row; a month holds a few dozen bookings.
+     */
+    private function job(SchedulingHelperBooking $b): ?array
+    {
+        if ($b->job_number === null || trim($b->job_number) === '') {
+            return null;
+        }
+        $job = Job::query()->with('customer')->where('franchise_id', $b->franchise_id)
+            ->where('number', trim($b->job_number))->first();
+
+        return $job === null ? null : [
+            'id' => $job->id, 'customer' => $job->customer_name, 'address' => $job->customer_address,
+            'scheduled_for' => $job->getRawOriginal('scheduled_for'),
+        ];
+    }
+
     private function shown(SchedulingHelperBooking $b, User $me): array
     {
         return [
@@ -242,6 +263,7 @@ final class SchedulingHelpersController extends Controller
             'date' => $b->date->toDateString(),
             'slot' => $b->slot,
             'job_number' => $b->job_number,
+            'job' => $this->job($b),
             'note' => $b->note,
             // The screen hides edit buttons it cannot use; the rule is above.
             'can_change' => $b->technician_id === $me->id || $b->created_by === $me->id || $me->hasPermission('scheduling.edit'),
