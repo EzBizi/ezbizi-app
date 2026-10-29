@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 159 · Leads: source colour chips + per-source contact details — **sent 2026-10-29** (`docs/previews/leads-source-details-layouts.html`)
+### 159 · Leads: source colour chips + per-source contact details — **sent 2026-10-29 — Jose: "as u recommend" (1 and 4)** (`docs/previews/leads-source-details-layouts.html`)
 
 Desk/Leads sources audit with Google API + Meta; folds in 158 ad-question bubble. 1 = chip + avatar row, rich header, details column (recommended); 2 = colour edge; 3 = details card; phones 4-6.
 
