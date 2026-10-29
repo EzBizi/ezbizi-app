@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.26.21
+ * Version:           1.26.23
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.26.21';
+const EZBIZI_VERSION = '1.26.23';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -200,6 +200,34 @@ add_action('ezbizi_refresh', 'ezbizi_fetch');
  * Returns the last known good payload on any failure, and an empty shape only
  * when this site has never had a successful read.
  */
+/**
+ * Whether any published page or post carries the booking widget, as a
+ * shortcode or an Elementor widget (Leads' Website panel, 2026-10-29). Counted
+ * once an hour, not on every fetch.
+ */
+function ezbizi_has_booking() {
+    $cached = get_transient('ezbizi_has_booking');
+
+    if ($cached !== false) {
+        return $cached === 'yes';
+    }
+
+    global $wpdb;
+
+    if (! is_object($wpdb)) {
+        return false;
+    }
+
+    $found = (bool) $wpdb->get_var(
+        "SELECT 1 FROM {$wpdb->posts} p WHERE p.post_status = 'publish' AND p.post_type IN ('page','post','elementor_library')"
+        . " AND (p.post_content LIKE '%[ezbizi_booking%' OR EXISTS (SELECT 1 FROM {$wpdb->postmeta} m WHERE m.post_id = p.ID"
+        . " AND m.meta_key = '_elementor_data' AND (m.meta_value LIKE '%ezbizi_booking%' OR m.meta_value LIKE '%ezbizi-booking%'))) LIMIT 1"
+    );
+    set_transient('ezbizi_has_booking', $found ? 'yes' : 'no', HOUR_IN_SECONDS);
+
+    return $found;
+}
+
 function ezbizi_fetch() {
     $settings = ezbizi_settings();
     $empty = array('values' => array(), 'pages' => array(), 'fields' => array());
@@ -211,6 +239,7 @@ function ezbizi_fetch() {
     $url = rtrim($settings['api'], '/') . '/api/v1/web/plugin/values?' . http_build_query(array(
         'host'           => ezbizi_host(),
         'plugin_version' => EZBIZI_VERSION,
+        'has_booking'    => ezbizi_has_booking() ? 1 : 0,
     ));
 
     $response = wp_remote_get($url, array(

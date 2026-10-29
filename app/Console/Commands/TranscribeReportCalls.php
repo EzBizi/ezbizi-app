@@ -77,10 +77,17 @@ class TranscribeReportCalls extends Command
         $start = max($end->subDays(max(1, (int) $this->option('days')) - 1)->startOfDay(), LabelReportCalls::aiSince());
         $until = now()->addMinutes((int) $this->option('minutes'));
 
-        $wanted = array_values(array_filter(
-            $calls->forPeriod($start, $end),
-            fn (array $call) => $call['recording_id'] !== null && $call['answered_by'] !== null,
-        ));
+        // Every connected account's calls, each marked with its account so the
+        // recording is fetched from the right one (EverDoors, 2026-10-29).
+        $wanted = [];
+        foreach ($calls->accounts() as $account) {
+            $calls->only($account);
+            foreach ($calls->forPeriod($start, $end) as $call) {
+                if ($call['recording_id'] !== null && $call['answered_by'] !== null) {
+                    $wanted[] = $call + ['account' => $account];
+                }
+            }
+        }
 
         $done = ['lead' => 0, 'whisper' => 0, 'failed' => 0];
 
@@ -113,6 +120,7 @@ class TranscribeReportCalls extends Command
                     continue;
                 }
 
+                $calls->only($call['account']);
                 $redo = CallReportTranscript::query()->where('call_id', $call['id'])->exists();
                 [$source, $words] = ($redo ? null : $this->fromLead($call)) ?? $this->fromWhisper($call, $calls, $whisper);
 
@@ -135,6 +143,7 @@ class TranscribeReportCalls extends Command
             }
         });
 
+        $calls->only(null);
         $this->info("From Local Services: {$done['lead']}, Whisper: {$done['whisper']}, failed: {$done['failed']}.");
 
         return self::SUCCESS;

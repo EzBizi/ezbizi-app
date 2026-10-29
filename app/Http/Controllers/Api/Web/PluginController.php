@@ -117,6 +117,8 @@ class PluginController extends Controller
                 ->get(['path', 'key', 'value']);
 
             $version = $request->query('plugin_version');
+            // 1/0 from a plugin that counts its booking widget (1.26.23+); absent from older ones.
+            $booking = $request->query('has_booking');
 
             $site->forceFill([
                 'connected_at' => $site->connected_at ?? now(),
@@ -129,6 +131,7 @@ class PluginController extends Controller
                  */
                 'went_quiet_at' => null,
                 'plugin_version' => is_string($version) ? substr($version, 0, 32) : $site->plugin_version,
+                'has_booking' => in_array($booking, ['0', '1'], true) ? $booking === '1' : $site->has_booking,
             ])->save();
 
             return response()->json([

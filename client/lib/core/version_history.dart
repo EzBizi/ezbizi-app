@@ -14,6 +14,19 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0505',
+      date: '29 Oct 2026',
+      items: [
+        'Reports: calls from every connected RingCentral account are transcribed and summarised, not only the first account\'s.',
+        'Websites: the booking widget can keep the chat bubble on its page.',
+        'WhatsApp: messages to a business\'s own connected number arrive in Leads; with auto-reply off nothing is sent back.',
+        'Leads: Manage → Connections lists every lead source, with each website\'s chat, booking widget and plugin version.',
+        'Leads: texts EzBizi sent from Re-Scheduling show as EzBizi\'s and can be replied to from the same line.',
+        'Project Management - 2: money columns read Paid, Pending, Total.',
+        'Websites now report whether they carry the booking widget.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0504',
       date: '29 Oct 2026',
       items: [
