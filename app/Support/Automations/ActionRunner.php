@@ -3712,12 +3712,6 @@ class ActionRunner
         if (! array_key_exists($kind, \App\Support\Reports\Texts\DailyTexts::KINDS)) {
             return ['type' => $type, 'ok' => false, 'detail' => 'Choose which report to send.'];
         }
-        $from = (string) ($action['from'] ?? '');
-        $number = \App\Models\WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
-        if ($number === null) {
-            return ['type' => $type, 'ok' => false, 'detail' => 'This organization has no WhatsApp number to send from.'];
-        }
-
         $org = \App\Models\Organization::query()->findOrFail($automation->organization_id);
         $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $org) ?: config('app.timezone'));
         $day = \Carbon\CarbonImmutable::now($zone);
@@ -3727,26 +3721,49 @@ class ActionRunner
         $text = app(\App\Support\Reports\Texts\DailyTexts::class)->render($kind, $org, $day, $branches);
         $title = \App\Support\Reports\Texts\DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
-        $sent = 0;
-        foreach (User::query()->where('is_active', true)->whereIn('id', self::idList($action['user_ids'] ?? []))->get() as $user) {
-            // The text carries money: each recipient must be allowed to see it here.
-            if (! self::mayReceiveReportText($user, $automation->scope_type, $automation->scope_id)) {
-                continue;
-            }
-            // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
-            if (! \Illuminate\Support\Facades\Cache::add("report.text:{$automation->id}:{$kind}:{$day->toDateString()}:{$user->id}", true, now()->addDays(2))) {
-                continue;
-            }
-            try {
-                $sent += app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
-            } catch (RuntimeException $refusal) {
-                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
-            }
+        // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
+        $sent = self::deliverReportText((string) ($action['from'] ?? ''), self::idList($action['user_ids'] ?? []),
+            $automation->scope_type, $automation->scope_id, $title, $text, "report.text:{$automation->id}:{$kind}:{$day->toDateString()}");
+        if (is_string($sent)) {
+            return ['type' => $type, 'ok' => false, 'detail' => $sent];
         }
 
         return $sent === 0
             ? ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Nobody chosen has a phone number, so nothing was sent.']
             : ['type' => $type, 'ok' => true, 'detail' => "Handed \"{$title}\" to WhatsApp for {$sent} ".($sent === 1 ? 'person' : 'people').'.'];
+    }
+
+    /**
+     * A report text WhatsApped 1:1 to each person who may see it at the place
+     * (a rule, or the Reports workspace's "Send now"). $once: a key per person
+     * so a re-run sends nothing twice; null sends every time. Inside the tenant.
+     *
+     * @param  list<string>  $userIds
+     * @return int|string how many it went to, or why nothing could go
+     */
+    public static function deliverReportText(string $from, array $userIds, ?string $scopeType, ?string $scopeId, string $title, string $text, ?string $once = null): int|string
+    {
+        $number = \App\Models\WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        if ($number === null) {
+            return 'This organization has no WhatsApp number to send from.';
+        }
+        $sent = 0;
+        foreach (User::query()->where('is_active', true)->whereIn('id', $userIds)->get() as $user) {
+            // The text carries money: each recipient must be allowed to see it here.
+            if (! self::mayReceiveReportText($user, $scopeType, $scopeId)) {
+                continue;
+            }
+            if ($once !== null && ! \Illuminate\Support\Facades\Cache::add("{$once}:{$user->id}", true, now()->addDays(2))) {
+                continue;
+            }
+            try {
+                $sent += app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
+            } catch (RuntimeException $refusal) {
+                return $refusal->getMessage();
+            }
+        }
+
+        return $sent;
     }
 
     /** Holds reports.view and reaches the rule's place (the organization when unscoped). */

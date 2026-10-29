@@ -1488,6 +1488,13 @@ Route::prefix('v1')
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
+        // The Reports workspace (takeover row 10, UI queue 157).
+        Route::middleware('permission:reports.view')->group(function () {
+            Route::get('reports/texts/{kind}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'text']);
+            Route::post('reports/texts/{kind}/send', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'send']);
+            Route::get('reports/batches/{period}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'batch']);
+            Route::post('reports/batches/{batch}/approve', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'approve']);
+        });
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');
