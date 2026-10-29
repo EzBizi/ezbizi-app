@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 161 · Leads: details column folded into the header, tighter list rows — **sent 2026-10-29** (`docs/previews/leads-header-facts-layouts.html`)
+### 161 · Leads: details column folded into the header, tighter list rows — **sent 2026-10-29 — Jose: "as u recommend" (1 + T1 + phone 4)** (`docs/previews/leads-header-facts-layouts.html`)
 
 Jose on 0.0.0507: the CONTACT / JOB column is pointless and duplicates the header (phone twice); list avatars sit at the top and name/chips wrap. Recommended 1 + phone 4: one labelled facts line under the name, each field once, form answers behind a fold that skips repeated answers; rows centre the avatar, name ellipsizes before chips wrap.
 
