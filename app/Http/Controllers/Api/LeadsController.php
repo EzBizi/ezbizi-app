@@ -26,6 +26,7 @@ use App\Support\Leads\CallTypeCorrections;
 use App\Support\Leads\EzLeadCalls;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadRecordings;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\RingCentralLeadCalls;
@@ -45,6 +46,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -1934,6 +1936,25 @@ class LeadsController extends Controller
             fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
     }
 
+    /** The work asked for, in words: Google's service key, else the provider's category. Call lines' category is the line, not a job. */
+    private static function jobType(Lead $lead): ?string
+    {
+        return match ($lead->source) {
+            Lead::SOURCE_LOCAL_SERVICES => $lead->service !== null ? Str::headline($lead->service) : null,
+            Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_EZ_TEXTS => $lead->service,
+            default => $lead->service ?? $lead->category,
+        };
+    }
+
+    /** What sent them: the stored referral, else the tracking line a call or text came in on ("NY - GMB"). */
+    private static function referral(Lead $lead): ?array
+    {
+        $line = in_array($lead->source, [Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_EZ_TEXTS], true) && $lead->category !== null
+            ? ['campaign_name' => $lead->category] : [];
+
+        return LeadReferral::clean([...$line, ...($lead->referral ?? [])]);
+    }
+
     private function present(Lead $lead): array
     {
         return [
@@ -1948,6 +1969,13 @@ class LeadsController extends Controller
             'phone' => $lead->phone,
             'email' => $lead->email,
             'postal_code' => $lead->postal_code,
+            // Design 159 (Jose, 2026-10-29): what the provider said beyond the phone.
+            'handle' => $lead->handle,
+            'avatar_url' => $lead->avatar_url,
+            'address' => $lead->address,
+            'city' => $lead->city,
+            'job_type' => self::jobType($lead),
+            'referral' => self::referral($lead),
             'lead_type' => $lead->lead_type,
             'category' => $lead->category,
             'service' => $lead->service,
