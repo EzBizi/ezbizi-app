@@ -2335,17 +2335,29 @@ class _LeadThreadState extends State<LeadThread> {
         : scheme.onPrimary;
     final quiet = mine ? ink.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
-      decoration: BoxDecoration(
-        color: fill,
-        border: mine ? null : Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
+    // Approved design 158, option 1 + 4: a question the customer TAPPED on a
+    // Meta Click-to-Message ad stays in their position, but with no fill, a
+    // dashed tertiary outline and a tag, so it reads as what they asked
+    // without passing for something they typed. A missing flag is false.
+    final adQuestion = !mine && c['ad_question'] == true;
+    const padding = EdgeInsets.fromLTRB(11, 8, 11, 6);
+
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (adQuestion)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text(
+                'AD QUESTION (META)',
+                key: ValueKey('ad-question-${c['id']}'),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: scheme.tertiary,
+                ),
+              ),
+            ),
           // Selectable, so part of a message can be copied too (the
           // dispatchers, via Jose, 2026-09-29: "copy and paste").
           if ((c['text'] as String?)?.isNotEmpty == true)
@@ -2372,7 +2384,7 @@ class _LeadThreadState extends State<LeadThread> {
               children: [
                 Flexible(
                   child: Text(
-                    '$who · $when',
+                    adQuestion ? '$who · $when · tapped on your ad' : '$who · $when',
                     style: theme.textTheme.labelSmall?.copyWith(color: quiet),
                   ),
                 ),
@@ -2402,7 +2414,23 @@ class _LeadThreadState extends State<LeadThread> {
             ),
           ),
         ],
+      );
+
+    if (adQuestion) {
+      return CustomPaint(
+        key: ValueKey('ad-question-bubble-${c['id']}'),
+        painter: _DashedOutline(color: scheme.tertiary, radius: 12),
+        child: Padding(padding: padding, child: content),
+      );
+    }
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: fill,
+        border: mine ? null : Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: content,
     );
   }
 
@@ -3064,4 +3092,34 @@ String typingLine(String? contactName) {
   return RegExp(r"^[A-Za-z][A-Za-z'’-]+$").hasMatch(first)
       ? '$first is typing…'
       : 'Customer is typing…';
+}
+
+/// A 1.5px dashed rounded-rectangle outline, for the ad-question bubble.
+class _DashedOutline extends CustomPainter {
+  const _DashedOutline({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    ).deflate(0.75);
+    const dash = 5.0, gap = 4.0;
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += dash + gap) {
+        canvas.drawPath(metric.extractPath(d, d + dash), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedOutline old) =>
+      old.color != color || old.radius != radius;
 }
