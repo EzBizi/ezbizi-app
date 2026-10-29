@@ -828,3 +828,39 @@ class EmailInk {
   static const footer = Color(0xFFF5F8FA);
   static const footerInk = Color(0xFF5B6672);
 }
+
+/// A lead source's chip, by source key (approved design 159, options 1 + 4):
+/// WhatsApp green, Facebook blue, Instagram pink, Google Ads amber, Thumbtack
+/// sky, Website violet. Always drawn with the source's name, so colour is
+/// never the only cue. A key not listed gets [Tone.neutral].
+abstract final class SourceColours {
+  static const _light = {
+    'whatsapp': ToneColours(Color(0xFFDCFCE7), Color(0xFF166534)),
+    'facebook': ToneColours(Color(0xFFDBEAFE), Color(0xFF1E40AF)),
+    'instagram': ToneColours(Color(0xFFFCE7F3), Color(0xFF9D174D)),
+    'google_ads': ToneColours(Color(0xFFFEF3C7), Color(0xFF92400E)),
+    'thumbtack': ToneColours(Color(0xFFE0F2FE), Color(0xFF075985)),
+    'website': ToneColours(Color(0xFFEDE9FE), Color(0xFF5B21B6)),
+  };
+
+  static const _dark = {
+    'whatsapp': ToneColours(Color(0xFF14532D), Color(0xFF86EFAC)),
+    'facebook': ToneColours(Color(0xFF1E3A8A), Color(0xFFBFDBFE)),
+    'instagram': ToneColours(Color(0xFF831843), Color(0xFFFBCFE8)),
+    'google_ads': ToneColours(Color(0xFF78350F), Color(0xFFFDE68A)),
+    'thumbtack': ToneColours(Color(0xFF0C4A6E), Color(0xFFBAE6FD)),
+    'website': ToneColours(Color(0xFF4C1D95), Color(0xFFDDD6FE)),
+  };
+
+  /// The keys with a colour of their own.
+  static Iterable<String> get keys => _light.keys;
+
+  static ToneColours of(BuildContext context, String? key) =>
+      forKey(key, Theme.of(context).brightness);
+
+  static ToneColours forKey(String? key, Brightness brightness) {
+    final table = brightness == Brightness.dark ? _dark : _light;
+
+    return table[key] ?? ToneColours.table(brightness)[Tone.neutral]!;
+  }
+}
