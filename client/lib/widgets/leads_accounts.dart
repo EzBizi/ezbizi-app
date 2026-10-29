@@ -38,6 +38,7 @@ import 'connect_account.dart';
 import 'error_note.dart';
 import 'grouped_rows.dart';
 import 'leads_dashboard.dart';
+import 'leads_hidden.dart';
 import 'leads_office_hours.dart';
 import 'leads_sources.dart';
 import 'leads_stats.dart';
@@ -393,6 +394,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
               Offstage(offstage: _tab != 'dashboard', child: _dashboard()),
               Offstage(offstage: _tab != 'stats', child: _stats()),
               Offstage(offstage: _tab != 'office_hours', child: _officeHours()),
+              Offstage(offstage: _tab != 'hidden', child: _hidden()),
             ],
           ),
         ),
@@ -486,6 +488,23 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
                 key: const ValueKey('office-hours-body'),
                 child: _officeHours(),
               ),
+            ],
+          ),
+        ),
+        Offstage(
+          offstage: _tab != 'hidden',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(
+                context,
+                title: 'Manage',
+                backTooltip: 'Back to the leads',
+                onBack: widget.onBack,
+              ),
+              _tabStrip(context),
+              const Divider(height: 1),
+              Expanded(child: _hidden()),
             ],
           ),
         ),
@@ -586,7 +605,14 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
     );
   }
 
-  static const _manageTabs = [
+  List<(String, String, IconData)> get _manageTabs => [
+    ..._allManageTabs,
+    // Design 160, B1: only with the tick.
+    if (widget.session.me?.can(leadsHiddenPermission) == true)
+      ('hidden', 'Hidden', Icons.visibility_off_outlined),
+  ];
+
+  static const _allManageTabs = [
     ('connections', 'Connections', Icons.link),
     ('templates', 'Templates', Icons.bolt_outlined),
     ('dashboard', 'Dashboard', Icons.insights_outlined),
@@ -608,6 +634,7 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
         if (_tab == 'dashboard') _dashboardOpened = true;
         if (_tab == 'stats') _statsOpened = true;
         if (_tab == 'office_hours') _officeHoursOpened = true;
+        if (_tab == 'hidden') _hiddenOpened = true;
       }),
     ),
   );
@@ -633,6 +660,12 @@ class _LeadsConnectionsState extends State<LeadsConnections> {
           api: widget.api,
           onDeeper: (deep) => setState(() => _officeHoursDeep = deep),
         )
+      : const SizedBox.shrink();
+
+  bool _hiddenOpened = false;
+
+  Widget _hidden() => _hiddenOpened
+      ? LeadsHidden(api: widget.api, session: widget.session)
       : const SizedBox.shrink();
 
   Widget _dashboard() => _dashboardOpened
