@@ -2965,6 +2965,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 160 · Leads threads: WhatsApp phone-echo + media, Hidden tab, merged ad form — **sent 2026-10-29** (`docs/previews/leads-whatsapp-hidden-form-layouts.html`)
+
+Desk briefs (owners Meta + Leads). A1 Sent-from-phone line + streamed media bubbles; B1 Hidden table + side panel (leads.hide / leads.hidden.view); C1 form answers in the 159 details column + one system line (all recommended); 2-3 alternatives each; phones 4 with 1.
+
 ### 159 · Leads: source colour chips + per-source contact details — **sent 2026-10-29 — Jose: "as u recommend" (1 and 4)** (`docs/previews/leads-source-details-layouts.html`)
 
 Desk/Leads sources audit with Google API + Meta; folds in 158 ad-question bubble. 1 = chip + avatar row, rich header, details column (recommended); 2 = colour edge; 3 = details card; phones 4-6.
