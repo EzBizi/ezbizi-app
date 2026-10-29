@@ -49,6 +49,7 @@ class LeadSourcesTest extends TestCase
         $this->assertSame([['a.example.com', false, 2], ['b.example.com', true, 0]],
             array_map(fn ($s) => [$s['host'], $s['outdated'], $s['leads']], $r->json('data.web.sites')));
         $this->assertNull($r->json('data.web.sites.0.booking_on'));
+        $this->assertTrue($r->json('data.web.sites.0.may_edit_chat'));
         $this->assertSame(1, $r->json('data.whatsapp.0.leads'));
         $this->assertSame([['Chimney Page', 1]], array_map(fn ($c) => [$c['name'], $c['leads']], $r->json('data.facebook')));
         $this->assertSame([], $r->json('data.instagram'));
@@ -60,9 +61,16 @@ class LeadSourcesTest extends TestCase
         $t = $this->provisionTenant();
         $viewer = $this->userWithRole($t, 'Web only', ['leads.view', 'leads.website_chat.view']);
 
+        $this->inTenant($t['org'], function () use ($t) {
+            $site = new WebSite(['company_id' => $t['company']->id, 'host' => 'a.example.com']);
+            $site->forceFill(['token_hash' => hash('sha256', 'a')])->save();
+        });
+
         $data = $this->signedInAs($viewer)->getJson('/api/v1/leads/sources')->assertOk()->json('data');
 
         $this->assertSame(['web', 'google_business_profile'], array_keys($data));
+        // A leads role edits no website: that is Web's gate.
+        $this->assertSame([false, false, false], [$data['web']['sites'][0]['may_edit'], $data['web']['sites'][0]['may_edit_chat'], $data['web']['sites'][0]['may_set_primary']]);
     }
 
     private function lead(array $t, string $source, array $extra = []): Lead

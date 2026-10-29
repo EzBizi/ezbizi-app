@@ -45,7 +45,7 @@ class LeadSourcesController extends Controller
         if (array_intersect(self::WEB, $visible) !== []) {
             $view = ViewScope::forUser($user);
             $reach = $user->reachableCompanies()->pluck('id')->all();
-            $sites = WebSite::query()->with('company:id,name', 'franchise:id,name')->orderBy('host')->get()
+            $sites = WebSite::query()->with('company', 'franchise:id,name')->orderBy('host')->get()
                 ->filter(fn (WebSite $s) => in_array($s->company_id, $reach, true) && $view->coversCompany($s->company_id))
                 ->values();
             $counts = $tally($leads(array_values(array_intersect(self::WEB, $visible)))->whereIn('leads.site_host', $sites->pluck('host')), 'leads.site_host');
@@ -65,6 +65,17 @@ class LeadSourcesController extends Controller
                     'outdated' => $s->plugin_version !== null && $latest !== null && version_compare($s->plugin_version, $latest, '<'),
                     'last_seen_at' => $s->last_seen_at?->toIso8601String(),
                     'chat_on' => WebWidget::chatIsOn($s),
+                    /*
+                     * Edits go through Web's own endpoints and gates, never a
+                     * leads tick: leads.edit changing what a website publishes
+                     * would widen Web's gate. Branch: PATCH web/sites/{id};
+                     * chat: PUT web/sites/{id}/widgets; primary: POST
+                     * web/sites/{id}/primary. Booking is a shortcode on the
+                     * site's pages, so nothing here can switch it.
+                     */
+                    'may_edit' => $mayEdit = $user->can('update', $s),
+                    'may_edit_chat' => $mayEdit && $user->hasPermission('web_management.widgets.view'),
+                    'may_set_primary' => $mayEdit && $user->hasPermission('web_management.seo.view'),
                     // Null until the plugin reports it: unknown, not off.
                     'booking_on' => ($b = $s->getAttribute('has_booking')) === null ? null : (bool) $b,
                     ...$this->counted($counts->get($s->host)),
