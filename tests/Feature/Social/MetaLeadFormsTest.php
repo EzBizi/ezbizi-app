@@ -91,7 +91,7 @@ class MetaLeadFormsTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
         $this->page($t);
         Http::fake(['graph.facebook.com/*' => Http::response([
-            'platform' => 'fb',
+            'platform' => 'fb', 'campaign_name' => 'Fall', 'ad_name' => 'Sweep ad',
             'field_data' => [
                 ['name' => 'full_name', 'values' => ['N Patterson']],
                 ['name' => 'phone_number', 'values' => ['+19736782560']],
@@ -121,6 +121,8 @@ Zip code: 07050'],
         $this->assertSame('07050', $lead->postal_code);
         $this->assertContains(['label' => 'Zip code', 'value' => '07050'], $lead->form_answers);
         $this->assertNotNull($lead->form_submitted_at);
+        $this->assertSame('Fall', $lead->referral['campaign_name']);
+        $this->assertSame('Sweep ad', $lead->referral['ad_name']);
     }
 
     private function post_(string $object, array $body)

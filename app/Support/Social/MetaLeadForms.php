@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -57,6 +58,12 @@ final class MetaLeadForms
             'form_answers' => collect($answers)->reject(fn ($v, $k) => str_starts_with((string) $k, '@'))
                 ->map(fn ($v, $k) => ['label' => ucfirst(str_replace('_', ' ', rtrim((string) $k, '?'))), 'value' => (string) $v])->values()->all(),
             'form_name' => $this->formName((string) ($value['form_id'] ?? ''), $page),
+            'referral' => LeadReferral::clean([
+                'source' => ($answers['@platform'] ?? null) === 'ig' ? 'Instagram ad' : 'Facebook ad',
+                'campaign_name' => $answers['@campaign_name'] ?? null,
+                'ad_name' => $answers['@ad_name'] ?? null,
+                'page_name' => $page->display_name,
+            ]),
             'form_submitted_at' => isset($answers['@created_time']) ? Carbon::parse($answers['@created_time']) : now(),
         ];
         $pick = fn (array $names) => collect($names)->map(fn ($n) => $answers[$n] ?? null)->first(fn ($v) => $v !== null && $v !== '');
@@ -149,7 +156,7 @@ final class MetaLeadForms
         $response = Http::timeout(self::TIMEOUT)->get(
             'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$leadgenId,
             [
-                'fields' => 'created_time,field_data,platform',
+                'fields' => 'created_time,field_data,platform,ad_name,adset_name,campaign_name',
                 'access_token' => $page->credentials['access_token'] ?? '',
             ],
         );
@@ -170,6 +177,8 @@ final class MetaLeadForms
         return $answers + array_filter([
             '@platform' => $response->json('platform'),
             '@created_time' => $response->json('created_time'),
+            '@ad_name' => $response->json('ad_name'),
+            '@campaign_name' => $response->json('campaign_name'),
         ]);
     }
 }

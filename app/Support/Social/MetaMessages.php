@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadThread;
 use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Http\Client\ConnectionException;
@@ -121,6 +122,21 @@ final class MetaMessages
         }
 
         $lead = $this->lead($connection, $source, $senderId, $event);
+
+        // The ad they came from, on the first message that carries it.
+        if ($lead->referral === null && ($referral = self::referral($event, $source)) !== null) {
+            $lead->forceFill(['referral' => $referral])->save();
+        }
+
+        // Instagram gives a @handle and a picture; Messenger's PSID profile is
+        // refused without Business Asset User Profile Access (see nameOf).
+        if ($lead->handle === null && $connection->provider === SocialProvider::InstagramProfessional->value) {
+            $profile = $this->instagramProfile($connection, $senderId);
+            $lead->forceFill(array_filter([
+                'handle' => isset($profile['username']) ? '@'.$profile['username'] : null,
+                'avatar_url' => $profile['profile_pic'] ?? null,
+            ]))->save();
+        }
 
         // Meta's timestamp is milliseconds since the epoch. Read as seconds it
         // lands in the year 57000 and the thread sorts wrongly forever.
@@ -318,6 +334,45 @@ final class MetaMessages
         }
 
         return $adopted;
+    }
+
+    /**
+     * A Click-to-Messenger / Instagram ad's context as a lead referral, or null.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function referral(array $event, string $source): ?array
+    {
+        $r = (array) ($event['referral'] ?? $event['message']['referral'] ?? []);
+        if (($r['source'] ?? null) !== 'ADS') {
+            return null;
+        }
+        $ad = (array) ($r['ads_context_data'] ?? []);
+
+        return LeadReferral::clean([
+            'source' => $source === Lead::SOURCE_INSTAGRAM ? 'Instagram ad' : 'Facebook ad',
+            'ad_name' => $ad['ad_title'] ?? ($r['ad_id'] ?? null),
+            'headline' => $ad['ad_title'] ?? null,
+            'page_url' => $ad['photo_url'] ?? ($ad['video_url'] ?? null),
+        ]);
+    }
+
+    /** @return array{username?: string, profile_pic?: string} */
+    public function instagramProfile(SocialConnection $connection, string $senderId): array
+    {
+        $token = $connection->credentials['access_token'] ?? null;
+        if (! is_string($token) || $token === '') {
+            return [];
+        }
+        try {
+            $p = (array) Http::timeout(self::TIMEOUT)->get('https://graph.instagram.com/v21.0/'.$senderId,
+                ['fields' => 'username,profile_pic', 'access_token' => $token])->json();
+        } catch (ConnectionException) {
+            return [];
+        }
+
+        return array_filter(['username' => $p['username'] ?? null, 'profile_pic' => $p['profile_pic'] ?? null],
+            fn ($v) => is_string($v) && $v !== '');
     }
 
     /**
