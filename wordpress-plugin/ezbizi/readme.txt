@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.26.21
+Stable tag: 1.26.22
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.26.22 =
+* CHANGE: [ezbizi_booking chat="keep"] leaves the chat bubble on its page; the
+  ezbizi_booking_hides_chat filter sets it for a whole site. Hidden by default.
 
 = 1.26.21 =
 * CHANGE: The green face reads "Share your experience with us".
