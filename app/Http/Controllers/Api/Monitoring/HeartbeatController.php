@@ -11,7 +11,9 @@ use App\Support\Monitoring\SecurityPosture;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * A person's own device reporting its presence (2026-08-28-monitoring-pc-specs).
@@ -43,22 +45,40 @@ class HeartbeatController extends Controller
 
     public function store(Request $request): Response
     {
-        $data = $request->validate([
-            'device_key'          => ['required', 'string', 'max:64'],
-            'platform'            => ['required', Rule::in(self::PLATFORMS)],
-            'capabilities'        => ['required', 'array'],
-            'capabilities.*'      => [Rule::in(self::CAPABILITIES)],
-            'label'               => ['nullable', 'string', 'max:120'],
-            'current_module'      => ['nullable', 'string', 'max:64'],
-            'specs'               => ['nullable', 'array'],
-            'segment'             => ['nullable', 'array'],
-            'segment.module_key'  => ['required_with:segment', 'string', 'max:64'],
+        // A refused beat reads as offline with no trace; say which fields
+        // failed (names only, never values) so the next one is measurable.
+        try {
+            $data = $this->rules($request);
+        } catch (ValidationException $e) {
+            Log::warning('monitoring.heartbeat.refused', ['fields' => array_keys($e->errors())]);
+            throw $e;
+        }
+
+        return $this->accept($request, $data);
+    }
+
+    private function rules(Request $request): array
+    {
+        return $request->validate([
+            'device_key' => ['required', 'string', 'max:64'],
+            'platform' => ['required', Rule::in(self::PLATFORMS)],
+            'capabilities' => ['required', 'array'],
+            'capabilities.*' => [Rule::in(self::CAPABILITIES)],
+            'label' => ['nullable', 'string', 'max:120'],
+            'current_module' => ['nullable', 'string', 'max:64'],
+            'specs' => ['nullable', 'array'],
+            'segment' => ['nullable', 'array'],
+            'segment.module_key' => ['required_with:segment', 'string', 'max:64'],
             'segment.dwell_seconds' => ['required_with:segment', 'integer', 'min:0'],
-            'capture'             => ['nullable', 'array'],
-            'capture.ok'          => ['required_with:capture', 'boolean'],
-            'capture.at'          => ['required_with:capture', 'date'],
-            'capture.reason'      => ['nullable', 'string', 'max:40', self::CAPTURE_REASON],
+            'capture' => ['nullable', 'array'],
+            'capture.ok' => ['required_with:capture', 'boolean'],
+            'capture.at' => ['required_with:capture', 'date'],
+            'capture.reason' => ['nullable', 'string', 'max:40', self::CAPTURE_REASON],
         ]);
+    }
+
+    private function accept(Request $request, array $data): Response
+    {
 
         // SECURITY exemption: the Lead Developer's own device advertises no
         // screen-reaching capability, so the Desktop Monitoring picker (which
@@ -85,18 +105,18 @@ class HeartbeatController extends Controller
 
         $device = MonitoredDevice::query()->firstOrNew([
             'organization_id' => $this->tenant->idOrFail(),
-            'user_id'         => $request->user()->getKey(),
-            'device_key'      => $data['device_key'],
+            'user_id' => $request->user()->getKey(),
+            'device_key' => $data['device_key'],
         ]);
         $isNew = ! $device->exists;
 
         $device->fill([
-            'label'          => $data['label'] ?? $device->label,
-            'platform'       => $data['platform'],
-            'capabilities'   => $data['capabilities'],
-            'user_agent'     => substr((string) $request->userAgent(), 0, 400),
-            'ip_address'     => $request->ip(),
-            'last_seen_at'   => now(),
+            'label' => $data['label'] ?? $device->label,
+            'platform' => $data['platform'],
+            'capabilities' => $data['capabilities'],
+            'user_agent' => substr((string) $request->userAgent(), 0, 400),
+            'ip_address' => $request->ip(),
+            'last_seen_at' => now(),
             'current_module' => $data['current_module'] ?? $device->current_module,
             'offline_alerted_at' => null, // a beat re-arms the offline alert
         ]);
@@ -152,18 +172,18 @@ class HeartbeatController extends Controller
         if (isset($data['segment'])) {
             MonitoringActivity::create([
                 'organization_id' => $this->tenant->idOrFail(),
-                'device_id'       => $device->id,
-                'user_id'         => $request->user()->getKey(),
-                'module_key'      => $data['segment']['module_key'],
-                'dwell_seconds'   => $data['segment']['dwell_seconds'],
-                'occurred_at'     => now(),
+                'device_id' => $device->id,
+                'user_id' => $request->user()->getKey(),
+                'module_key' => $data['segment']['module_key'],
+                'dwell_seconds' => $data['segment']['dwell_seconds'],
+                'occurred_at' => now(),
             ]);
         }
 
         if ($isNew) {
             $this->events->emit('monitoring.new_device_seen', $device, [
                 'platform' => $device->platform,
-                'label'    => $device->label,
+                'label' => $device->label,
             ]);
         }
 
@@ -234,12 +254,12 @@ class HeartbeatController extends Controller
         // healthy area says "ok" rather than being absent, because an absent
         // key cannot be filtered on and reads as "no answer".
         $this->events->emit('monitoring.security_needs_attention', $device, [
-            'areas'     => implode(', ', array_keys($unhealthy)),
+            'areas' => implode(', ', array_keys($unhealthy)),
             'antivirus' => $unhealthy['antivirus'] ?? 'ok',
-            'firewall'  => $unhealthy['firewall'] ?? 'ok',
-            'updates'   => $unhealthy['updates'] ?? 'ok',
-            'platform'  => $device->platform,
-            'label'     => $device->label,
+            'firewall' => $unhealthy['firewall'] ?? 'ok',
+            'updates' => $unhealthy['updates'] ?? 'ok',
+            'platform' => $device->platform,
+            'label' => $device->label,
         ]);
     }
 }
