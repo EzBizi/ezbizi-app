@@ -136,7 +136,23 @@ final class MetaMessages
             // null body and the right channel, which is honest - an empty
             // string would read as somebody having sent nothing.
             'text' => isset($message['text']) && $message['text'] !== '' ? (string) $message['text'] : null,
+            'is_ad_question' => self::adQuestion($event),
         ]);
+    }
+
+    /**
+     * A question the customer TAPPED from a Click-to-Message ad (A-1,
+     * 2026-10-29). Meta sends it as their message: the first carries the ad's
+     * `referral`, a suggested question carries a `quick_reply` payload.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function adQuestion(array $event): bool
+    {
+        $message = (array) ($event['message'] ?? []);
+
+        return isset($message['quick_reply']) || isset($message['referral'])
+            || (($event['referral']['source'] ?? null) === 'ADS');
     }
 
     /**

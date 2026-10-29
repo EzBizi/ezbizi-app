@@ -27,9 +27,11 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     use HasUuids;
 
     public const CHANNEL_PHONE_CALL = 'PHONE_CALL';
-    public const CHANNEL_MESSAGE    = 'MESSAGE';
 
-    public const FROM_CONSUMER   = 'CONSUMER';
+    public const CHANNEL_MESSAGE = 'MESSAGE';
+
+    public const FROM_CONSUMER = 'CONSUMER';
+
     public const FROM_ADVERTISER = 'ADVERTISER';
 
     /**
@@ -44,7 +46,6 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
      * not somebody answering, and "unreplied" is the list a business uses to
      * find the people nobody has got back to.
      */
-
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::withParent(
@@ -125,7 +126,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
         'occurred_at', 'duration_ms', 'line_number', 'line_name', 'answered_by', 'rang', 'recording_url', 'text', 'transcript', 'attachments',
-        'is_automatic',
+        'is_automatic', 'is_ad_question',
     ];
 
     protected function casts(): array
@@ -136,6 +137,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
             'duration_ms' => 'integer',
             'attachments' => 'array',
             'is_automatic' => 'boolean',
+            'is_ad_question' => 'boolean',
         ];
     }
 

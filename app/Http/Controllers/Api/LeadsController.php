@@ -1099,6 +1099,8 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            // Tapped from a Click-to-Message ad's suggested questions, not typed.
+            'ad_question' => (bool) $c->is_ad_question,
             'reaction' => self::reaction($c->text),
             'channel' => $c->channel,
             'from' => $c->participant,
