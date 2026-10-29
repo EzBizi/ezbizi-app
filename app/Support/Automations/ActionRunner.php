@@ -2,84 +2,100 @@
 
 namespace App\Support\Automations;
 
+use App\Mail\AutomationMessage;
 use App\Mail\InspectionReportMail;
+use App\Models\Alert;
 use App\Models\Automation;
-use App\Models\TimeClockReport;
-use App\Support\TimeClock\TimeClockReports;
-use App\Support\Modules\ModuleRegistry;
-use App\Support\Social\WhatsAppGroups;
 use App\Models\AutomationEvent;
+use App\Models\BusinessLocation;
+use App\Models\Company;
+use App\Models\Contract;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
-use App\Models\WorkizJob;
-use App\Support\Workiz\WorkizJobWriter;
-use App\Models\Job;
-use App\Models\Task;
-use App\Models\TaskBoard;
-use App\Support\Tasks\TaskBoards;
-use App\Support\Tasks\TaskWriter;
-use App\Models\Lead;
-use App\Support\Reports\SendSavedReport;
-use App\Models\SavedReport;
-use App\Support\Leads\LeadReplies;
-use App\Models\Invitation;
-use App\Support\Hr\CannotActOnInvitation;
-use App\Support\Hr\InvitationActions;
-use App\Support\Fleet\CannotAssignVehicle;
-use App\Support\Fleet\VehicleAssignments;
-use App\Support\Access\AdministratorFloor;
-use App\Support\Social\WhatsAppCloud;
-use Illuminate\Support\Facades\Cache;
-use App\Models\Company;
-use App\Mail\AutomationMessage;
-use App\Support\Inventory\InventoryItemStatus;
-use App\Support\Inventory\InventoryUnit;
-use App\Support\Fleet\VehicleFuelType;
-use App\Support\Fleet\VehicleBodyType;
 use App\Models\InventoryItem;
+use App\Models\Invitation;
+use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Mailbox;
+use App\Models\NewsletterAudience;
+use App\Models\NewsletterUnsubscribe;
+use App\Models\Onboarding;
 use App\Models\Organization;
 use App\Models\PhoneCall;
+use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
-use App\Models\TrainingAssignment;
 use App\Models\Review;
 use App\Models\ReviewReply;
-use App\Models\Contract;
-use App\Models\Onboarding;
-use App\Models\NewsletterUnsubscribe;
-use App\Models\NewsletterAudience;
-use App\Models\SocialConnection;
-use App\Support\Newsletter\MailchimpClient;
-use App\Support\Newsletter\NewsletterSendFailed;
-use App\Support\Social\SocialProvider;
 use App\Models\Role;
-use App\Support\Customers\ReassignCustomerOwner;
-use Illuminate\Support\Facades\Gate;
+use App\Models\SavedReport;
+use App\Models\SocialConnection;
+use App\Models\Task;
+use App\Models\TaskBoard;
+use App\Models\TimeClockReport;
+use App\Models\TrainingAssignment;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\WhatsAppNumber;
+use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
+use App\Services\Reviews\BusinessProfileReviews;
+use App\Support\Access\AdministratorFloor;
+use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
+use App\Support\Customers\ReassignCustomerOwner;
 use App\Support\Email\DealtState;
+use App\Support\Email\MailboxReaders;
+use App\Support\Fleet\CannotAssignVehicle;
+use App\Support\Fleet\VehicleAssignments;
+use App\Support\Fleet\VehicleBodyType;
+use App\Support\Fleet\VehicleFuelType;
 use App\Support\Fleet\VehicleStatus;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Inspection\ReportPdf;
+use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryUnit;
+use App\Support\Leads\LeadReplies;
+use App\Support\Leads\LeadTexts;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailTransport;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Newsletter\MailchimpClient;
+use App\Support\Newsletter\NewsletterSendFailed;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Numbering\RecordNumberGenerator;
+use App\Support\Phone\SmsCompliance;
+use App\Support\Phone\TwilioGateway;
+use App\Support\Reports\SendSavedReport;
+use App\Support\Reports\Texts\DailyTexts;
+use App\Support\Reviews\ReviewReplyWriter;
 use App\Support\Scoping\ViewScope;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Social\LeadWhatsApp;
+use App\Support\Social\SocialProvider;
+use App\Support\Social\WhatsAppCloud;
+use App\Support\Social\WhatsAppGroups;
+use App\Support\Tasks\TaskBoards;
+use App\Support\Tasks\TaskWriter;
+use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\TimeClock;
+use App\Support\TimeClock\TimeClockReports;
 use App\Support\Training\AssignmentWriter;
+use App\Support\Workiz\WorkizJobWriter;
+use App\Support\Workiz\WorkizMirror;
+use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use App\Models\PhoneMessage;
-use App\Support\Phone\SmsCompliance;
-use App\Support\Phone\TwilioGateway;
 
 /**
  * Performing one action from an automation (plan §5.5).
@@ -336,7 +352,7 @@ class ActionRunner
     public static function optionsFor(?string $model, string $field): ?array
     {
         if ($model === Job::class && $field === 'status') {
-            $org = \App\Models\Organization::query()->find(app(\App\Support\Tenancy\TenantContext::class)->id());
+            $org = Organization::query()->find(app(TenantContext::class)->id());
 
             return $org === null ? null : collect(Job::statusEntries($org))->pluck('label', 'value')->all();
         }
@@ -466,7 +482,6 @@ class ActionRunner
         if ($notConnected !== null) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not connected: '.$notConnected];
         }
-
 
         return match ($type) {
             'update_field' => $this->updateField($action, $event, $subject),
@@ -717,8 +732,7 @@ class ActionRunner
      * own status, sub-status, tags (replaced, not added to) and scheduled
      * time are written first, each audited and announced like any change;
      * then its Workiz copy is brought in line, when there is one and Workiz
-     * is connected. Until Workiz's outbound mirror ships this step writes
-     * Workiz itself; afterwards that call can go without changing anything.
+     * is connected, through WorkizMirror's queue.
      */
     private function setJob(array $action, AutomationEvent $event, ?Model $subject): array
     {
@@ -762,13 +776,19 @@ class ActionRunner
             $done[] = 'tags '.implode(', ', $tags);
         }
 
-        $line = 'Set '.implode('; ', $done).' on the job.';
-        if (StepReadiness::at(null, null)['workiz.job_update'] !== null) {
-            return ['type' => $type, 'ok' => true, 'detail' => $line];
+        // Workiz follows through the shared mirror queue (no-op when the branch does not mirror).
+        $job = $subject->fresh();
+        if ($status !== '' || $sub !== '') {
+            WorkizMirror::queue($job, 'status', ['status' => $status !== '' ? $status : (string) $job->status, 'sub_status' => $sub === '' ? null : $sub]);
         }
-        $workiz = $this->updateWorkizJob($action, $subject->fresh());
+        if ($tags !== []) {
+            WorkizMirror::queue($job, 'tags', ['tags' => $job->tags]);
+        }
+        if ($unschedule) {
+            WorkizMirror::queue($job, 'unschedule');
+        }
 
-        return ['type' => $type, 'ok' => $workiz['ok'], 'detail' => $line.' Workiz: '.$workiz['detail']];
+        return ['type' => $type, 'ok' => true, 'detail' => 'Set '.implode('; ', $done).' on the job.'];
     }
 
     private function updateWorkizJob(array $action, ?Model $subject): array
@@ -782,8 +802,8 @@ class ActionRunner
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'This job is not linked to Workiz, so nothing was changed there.'];
         }
         // Workiz disconnected (2026-10-27: EzBizi master until then): the mirror stays, the key is gone.
-        if (! \App\Models\SocialConnection::query()->where('provider', \App\Support\Social\SocialProvider::Workiz->value)
-            ->where('scope_type', \App\Models\SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $subject->franchise_id)->exists()) {
+        if (! SocialConnection::query()->where('provider', SocialProvider::Workiz->value)
+            ->where('scope_type', SocialConnection::SCOPE_FRANCHISE)->where('scope_id', $subject->franchise_id)->exists()) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'This branch is no longer connected to Workiz, so nothing was changed there.'];
         }
         $status = trim((string) ($action['status'] ?? ''));
@@ -847,7 +867,6 @@ class ActionRunner
     private function emailInspectionReport(array $action, ?Model $subject, ?Automation $automation): array
     {
         $type = 'inspection_report.email';
-
 
         if (! $subject instanceof InspectionReport) {
             return [
@@ -1558,7 +1577,7 @@ class ActionRunner
             }
 
             try {
-                app(\App\Support\Social\LeadWhatsApp::class)->sendTemplate($subject, $template, array_map(
+                app(LeadWhatsApp::class)->sendTemplate($subject, $template, array_map(
                     fn ($value) => $this->interpolate((string) $value, $event, $subject),
                     array_values((array) ($action['parameters'] ?? [])),
                 ), automatic: true, from: ($action['from'] ?? '') !== '' ? (string) $action['from'] : null);
@@ -2239,15 +2258,15 @@ class ActionRunner
             || preg_match('/(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce)/', $from) === 1) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Not answered: the sender is this inbox or an automatic address.'];
         }
-        if (! \Illuminate\Support\Facades\Cache::add("message.reply:{$subject->getKey()}:{$from}", true, now()->addDay())) {
+        if (! Cache::add("message.reply:{$subject->getKey()}:{$from}", true, now()->addDay())) {
             return ['type' => $type, 'ok' => true, 'skipped' => true, 'detail' => 'Already answered this sender today.'];
         }
 
         try {
-            app(\App\Support\Email\MailboxReaders::class)->for($subject)
+            app(MailboxReaders::class)->for($subject)
                 ->reply($subject, $messageId, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Cache::forget("message.reply:{$subject->getKey()}:{$from}");
+            Cache::forget("message.reply:{$subject->getKey()}:{$from}");
 
             return ['type' => $type, 'ok' => false, 'detail' => $e->getMessage()];
         }
@@ -3024,8 +3043,8 @@ class ActionRunner
     {
         if (($action['ai'] ?? false) === true) {
             try {
-                return \App\Support\Reviews\ReviewReplyWriter::write($review);
-            } catch (\RuntimeException) {
+                return ReviewReplyWriter::write($review);
+            } catch (RuntimeException) {
                 return null;
             }
         }
@@ -3061,7 +3080,7 @@ class ActionRunner
         }
 
         $tail = preg_match('~(locations/[^/]+)$~', (string) $subject->location_name, $m) ? $m[1] : null;
-        $location = $tail === null ? null : \App\Models\BusinessLocation::query()
+        $location = $tail === null ? null : BusinessLocation::query()
             ->where('remote_name', 'like', '%'.addcslashes($tail, '%_'))->first();
 
         if ($location === null || ! $location->auto_reply) {
@@ -3073,7 +3092,7 @@ class ActionRunner
             ? User::query()->find($automation->activeVersion->created_by)
             : null;
 
-        if ($author === null || ! \Illuminate\Support\Facades\Gate::forUser($author)->allows('publish', $subject)) {
+        if ($author === null || ! Gate::forUser($author)->allows('publish', $subject)) {
             return ['type' => $type, 'ok' => false,
                 'detail' => 'The person who built this rule may not publish replies to this review, so nothing '
                     .'was posted. Somebody who can should open the rule and save it again.'];
@@ -3105,8 +3124,8 @@ class ActionRunner
         $reply->fill(['body' => $body, 'drafted_by' => ReviewReply::BY_AUTOMATION, 'status' => ReviewReply::STATUS_DRAFT])->save();
 
         try {
-            app(\App\Services\Reviews\BusinessProfileReviews::class)->publish($reply);
-        } catch (\RuntimeException $e) {
+            app(BusinessProfileReviews::class)->publish($reply);
+        } catch (RuntimeException $e) {
             DB::transaction(function () use ($reply, $subject, $e) {
                 $reply->forceFill(['status' => ReviewReply::STATUS_FAILED, 'failure_reason' => $e->getMessage()])->save();
                 app(AuditLogger::class)->log('review.reply_failed', $subject, metadata: ['reason' => $e->getMessage(), 'by' => 'automation']);
@@ -3383,7 +3402,7 @@ class ActionRunner
             $team = $subject instanceof Job
                 ? collect(WorkizJob::query()->where('job_id', $subject->getKey())->first()?->payload['team'] ?? [])->pluck('id')->filter()->all()
                 : [];
-            $techs = $team === [] ? [] : \App\Models\WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->pluck('user_id')->all();
+            $techs = $team === [] ? [] : WorkizTeamMember::query()->whereIn('remote_id', $team)->whereNotNull('user_id')->pluck('user_id')->all();
             if ($techs !== []) {
                 array_push($userIds, ...$techs);
             } elseif ($userIds === [] && $roleIds === []) {
@@ -3415,8 +3434,8 @@ class ActionRunner
             // "Customer Waiting Warning" off. Cut with an ellipsis; the full
             // text goes in the body, ahead of any second line.
             if (mb_strlen($title) > 255) {
-                $details = trim($title."
-".$details);
+                $details = trim($title.'
+'.$details);
                 $title = mb_substr($title, 0, 254).'…';
             }
 
@@ -3556,6 +3575,7 @@ class ActionRunner
         return (string) (is_scalar($a) || $a === null ? $a : json_encode($a))
             === (string) (is_scalar($b) || $b === null ? $b : json_encode($b));
     }
+
     /**
      * A task step, written as the rule's creator standing in the rule's own
      * place (Task Board, 2026-10-13): TaskBoards::canEdit reads write authority
@@ -3573,7 +3593,7 @@ class ActionRunner
 
         [$actor] = $this->taskContext($automation);
         $previous = app('request');
-        $request = \Illuminate\Http\Request::create('/');
+        $request = Request::create('/');
         $request->setUserResolver(fn () => $actor);
         $request->headers->set('X-EzBizi-View', $automation?->scope_type
             ? $automation->scope_type.':'.$automation->scope_id
@@ -3709,23 +3729,23 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => 'The person who made this rule cannot see reports, so it sends none.'];
         }
         $kind = (string) ($action['kind'] ?? '');
-        if (! array_key_exists($kind, \App\Support\Reports\Texts\DailyTexts::KINDS)) {
+        if (! array_key_exists($kind, DailyTexts::KINDS)) {
             return ['type' => $type, 'ok' => false, 'detail' => 'Choose which report to send.'];
         }
         $from = (string) ($action['from'] ?? '');
-        $number = \App\Models\WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
+        $number = WhatsAppNumber::query()->when($from !== '', fn ($q) => $q->where('display_number', $from))->first();
         if ($number === null) {
             return ['type' => $type, 'ok' => false, 'detail' => 'This organization has no WhatsApp number to send from.'];
         }
 
-        $org = \App\Models\Organization::query()->findOrFail($automation->organization_id);
-        $zone = (string) (app(\App\Support\Settings\SettingsResolver::class)->get('timezone', $org) ?: config('app.timezone'));
-        $day = \Carbon\CarbonImmutable::now($zone);
+        $org = Organization::query()->findOrFail($automation->organization_id);
+        $zone = (string) (app(SettingsResolver::class)->get('timezone', $org) ?: config('app.timezone'));
+        $day = CarbonImmutable::now($zone);
         // A company's sub-companies are in it too (desk review, 2026-10-27).
         $branches = $automation->scope_type === null ? null
-            : \App\Support\Scoping\ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
-        $text = app(\App\Support\Reports\Texts\DailyTexts::class)->render($kind, $org, $day, $branches);
-        $title = \App\Support\Reports\Texts\DailyTexts::KINDS[$kind].' · '.$day->format('M j');
+            : ViewScope::forStoredAutomationScope($creator, $automation->scope_type, $automation->scope_id)->franchiseIds();
+        $text = app(DailyTexts::class)->render($kind, $org, $day, $branches);
+        $title = DailyTexts::KINDS[$kind].' · '.$day->format('M j');
 
         $sent = 0;
         foreach (User::query()->where('is_active', true)->whereIn('id', self::idList($action['user_ids'] ?? []))->get() as $user) {
@@ -3734,11 +3754,11 @@ class ActionRunner
                 continue;
             }
             // Once per rule, report, day and person: a retried or re-run rule does not send it twice.
-            if (! \Illuminate\Support\Facades\Cache::add("report.text:{$automation->id}:{$kind}:{$day->toDateString()}:{$user->id}", true, now()->addDays(2))) {
+            if (! Cache::add("report.text:{$automation->id}:{$kind}:{$day->toDateString()}:{$user->id}", true, now()->addDays(2))) {
                 continue;
             }
             try {
-                $sent += app(\App\Support\Social\WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
+                $sent += app(WhatsAppGroups::class)->deliverTextToUser($number, $user, $title, $text) ? 1 : 0;
             } catch (RuntimeException $refusal) {
                 return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
             }
@@ -3753,7 +3773,7 @@ class ActionRunner
     public static function mayReceiveReportText(User $user, ?string $scopeType, ?string $scopeId): bool
     {
         return $user->hasPermission('reports.view')
-            && app(\App\Support\Access\ScopeReach::class)->covers($user, $scopeType ?? 'organization', $scopeId ?? $user->organization_id);
+            && app(ScopeReach::class)->covers($user, $scopeType ?? 'organization', $scopeId ?? $user->organization_id);
     }
 
     /**
@@ -3823,7 +3843,7 @@ class ActionRunner
             return ['type' => 'alert.send', 'ok' => false, 'detail' => $message === '' ? 'The alert has no message.' : 'Nobody to alert.'];
         }
 
-        $alert = \App\Models\Alert::create(['organization_id' => $actor->organization_id, 'sender_id' => $actor->id, 'message' => $message]);
+        $alert = Alert::create(['organization_id' => $actor->organization_id, 'sender_id' => $actor->id, 'message' => $message]);
         $told = 0;
         foreach ($people as $person) {
             $told += $this->notifications->dispatch(
@@ -3858,8 +3878,8 @@ class ActionRunner
         [$actor] = $this->taskContext($automation);
 
         try {
-            app(\App\Support\Leads\LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
-        } catch (\RuntimeException $e) {
+            app(LeadTexts::class)->send($subject, $this->interpolate((string) ($action['body'] ?? ''), $event, $subject), $actor, automatic: true);
+        } catch (RuntimeException $e) {
             return ['type' => 'lead.text', 'ok' => false, 'detail' => $e->getMessage()];
         }
 
