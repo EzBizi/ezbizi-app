@@ -102,27 +102,19 @@ void main() {
       },
     );
 
-    expect(find.byKey(const ValueKey('lead-details')), findsNothing);
+    // Design 161: the address is behind More on a phone.
+    expect(find.byKey(const ValueKey('lead-address')), findsNothing);
     expect(
       tester.getSize(find.byKey(const ValueKey('thread-header'))).height,
       lessThan(844 * 0.3),
       reason: 'the header took two thirds of a phone',
-    );
-    // The test font is too wide for the name to fit a phone's line; it must
-    // still get all the room up to Details. Beside a Spacer it got half and
-    // wrapped with the other half empty.
-    expect(
-      tester.getRect(find.byKey(const ValueKey('thread-details-toggle'))).left -
-          tester.getRect(find.byKey(const ValueKey('thread-status'))).right,
-      lessThan(1),
-      reason: 'the name wrapped with room left beside it',
     );
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byKey(const ValueKey('thread-details-toggle')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('lead-details')), findsOneWidget);
+    expect(find.byKey(const ValueKey('lead-address')), findsOneWidget);
     expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
   });
 
@@ -553,7 +545,11 @@ void main() {
 
     expect(find.textContaining('Tanya Ruiz · '), findsOneWidget);
     expect(find.textContaining('Automation · '), findsOneWidget);
-    expect(find.text('Tanya Ruiz and Marco Diaz are viewing this lead'), findsOneWidget);
+    // Design 161: a chip beside the name; the sentence is its tooltip.
+    expect(
+      find.byTooltip('Tanya Ruiz and Marco Diaz are viewing this lead'),
+      findsOneWidget,
+    );
   });
 
   // The dispatchers, via Jose, 2026-09-29: opening a lead showed the FIRST

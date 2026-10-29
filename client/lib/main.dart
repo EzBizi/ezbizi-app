@@ -2024,23 +2024,34 @@ class _HomeShellState extends State<HomeShell> {
   /// Only the module rail passes through here. Settings, Development and Your
   /// account are the other branches of that switch: they are not modules, they
   /// have no server label, and each already says what it is.
+  /// Design 161 T1: one toolbar slot per module, filled by its screen.
+  final Map<String, ValueNotifier<Widget?>> _toolbars = {};
+
   Widget _titled(Destination destination) {
+    final toolbar = _toolbars.putIfAbsent(
+      destination.id,
+      () => ValueNotifier<Widget?>(null),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // UI queue 67: a phone's browser hears about the app on every page;
         // a computer, once, on the Dashboard. Both draw nothing otherwise.
         PhoneAppBanner(session: widget.session),
-        ModulePageHeader(
-          title: destination.label,
-          subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
-          // UI queue 81: the walkthrough and the how-to video, as A1 Tools
-          // had them, each only where the tab has one.
-          beside: TabHelpButtons(
-            module: destination.id,
-            label: destination.label,
-            api: widget.api,
-            session: widget.session,
+        ValueListenableBuilder<Widget?>(
+          valueListenable: toolbar,
+          builder: (context, bar, _) => ModulePageHeader(
+            title: destination.label,
+            subtitle: UiStrings.maybe('module.${destination.id}.subtitle'),
+            // UI queue 81: the walkthrough and the how-to video, as A1 Tools
+            // had them, each only where the tab has one.
+            beside: TabHelpButtons(
+              module: destination.id,
+              label: destination.label,
+              api: widget.api,
+              session: widget.session,
+            ),
+            toolbar: bar,
           ),
         ),
         TourOffer(
@@ -2050,7 +2061,12 @@ class _HomeShellState extends State<HomeShell> {
         ),
         if (destination.id == 'dashboard')
           PhoneAppCard(session: widget.session),
-        Expanded(child: destination.screen),
+        Expanded(
+          child: ModuleToolbarScope(
+            slot: toolbar,
+            child: destination.screen,
+          ),
+        ),
       ],
     );
   }

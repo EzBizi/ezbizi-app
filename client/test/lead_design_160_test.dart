@@ -308,6 +308,9 @@ void main() {
           ],
         },
       );
+      // Design 161: behind "Form answers ▾" on the facts line.
+      await tester.tap(find.byKey(const ValueKey('form-answers-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Form answers · Free quote'), findsOneWidget);
       expect(find.text('62701'), findsOneWidget);
       expect(
@@ -336,6 +339,8 @@ void main() {
           ],
         },
       );
+      await tester.tap(find.byKey(const ValueKey('form-answers-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Form answers'), findsOneWidget);
       expect(find.text('Dana Reyes sent a form'), findsOneWidget);
     });
