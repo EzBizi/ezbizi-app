@@ -82,7 +82,7 @@ class SyncWorkizWebLists extends Command
             if ($refused !== null) {
                 $this->warn($name.': '.$refused);
 
-                if ($refused === WorkizWebSession::EXPIRED) {
+                if (in_array($refused, [WorkizWebSession::EXPIRED, WorkizWebSession::BUSY], true)) {
                     break;
                 }
 

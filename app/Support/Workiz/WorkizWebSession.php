@@ -28,6 +28,8 @@ final class WorkizWebSession
 
     public const UNMATCHED = 'No branch matches this account. Choose one.';
 
+    public const BUSY = 'Another Workiz read was using this login; it is read next time.';
+
     public const EXPIRED = 'Workiz signed this session out. Sign in to Workiz and send the session to EzBizi again.';
 
     /**
@@ -115,6 +117,11 @@ final class WorkizWebSession
      */
     public static function accounts(SocialConnection $connection): array
     {
+        // Back to the master first: a session left inside a sub-account (a read
+        // cut short, or the person's own switching) lists no accounts at all
+        // and calls the sub-account "main" (measured on A-1, 2026-10-29: NJ).
+        self::call($connection, '/ajaxc/franchise/goToMaster/');
+
         // The account switcher's own list (main.js getSubAccounts), measured 2026-10-21: A-1's nine.
         $read = self::call($connection, '/ajaxc/franchise/');
         // The signed-in account by its own name ("A1 Chimney - Nationwide"), which is what files it to a branch.
@@ -136,6 +143,16 @@ final class WorkizWebSession
      * and come back to the main account after.
      */
     public static function inAccount(SocialConnection $connection, string $account, callable $read): mixed
+    {
+        // Another reader holds the login (payments, estimate links and lists share it): this account waits for the next run.
+        try {
+            return self::locked($connection, $account, $read);
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return ['data' => null, 'refused' => self::BUSY];
+        }
+    }
+
+    private static function locked(SocialConnection $connection, string $account, callable $read): mixed
     {
         return Cache::lock('workiz-web:'.$connection->getKey(), 300)->block(120, function () use ($connection, $account, $read) {
             if ($account !== 'main') {
