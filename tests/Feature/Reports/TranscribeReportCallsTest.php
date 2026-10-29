@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Models\CallReportTranscript;
 use App\Models\Lead;
 use App\Models\LeadConversation;
+use App\Models\SocialConnection;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -81,6 +82,33 @@ class TranscribeReportCallsTest extends TestCase
             ->assertSuccessful();
 
         $this->assertSame('failed', CallReportTranscript::withoutGlobalScopes()->sole()->source, 'left to Whisper');
+    }
+
+    /** Triplex holds A1 Chimney's and EverDoors' accounts (2026-10-29): both are transcribed, not only the first. */
+    public function test_every_connected_account_is_transcribed(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-05 15:00', 'America/New_York'));
+        config(['app.timezone' => 'America/New_York', 'services.whisper.python' => '', 'experimental_reports.transcribe' => true]);
+        $tenant = $this->asRingCentralEnvOwner($this->provisionTenant('Alpha'));
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            foreach (['a1' => 'rc-a1.test', 'ever' => 'rc-ever.test'] as $remote => $host) {
+                $c = new SocialConnection;
+                $c->forceFill(['organization_id' => $tenant['org']->id, 'scope_type' => SocialConnection::SCOPE_ORGANIZATION,
+                    'scope_id' => (string) $tenant['org']->id, 'provider' => 'ringcentral', 'remote_id' => $remote, 'display_name' => $remote, 'handle' => $remote]);
+                $c->connect(['server' => "https://{$host}", 'client_id' => 'id', 'client_secret' => 's', 'jwt' => 'j']);
+                $c->save();
+            }
+        });
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            'rc-a1.test/*call-log*' => Http::response(['records' => [$this->rcCall('rc-a1', '+12125550001', '2026-10-05T17:00:00Z', 'A1 - New Client')], 'paging' => ['page' => 1]]),
+            'rc-ever.test/*call-log*' => Http::response(['records' => [$this->rcCall('rc-ever', '+12125550002', '2026-10-05T17:10:00Z', 'EverDoors')], 'paging' => ['page' => 1]]),
+            '*' => Http::response([]),
+        ]);
+
+        $this->artisan('ezbizi:transcribe-report-calls', ['--organization' => $tenant['org']->id, '--days' => 1])->assertSuccessful();
+
+        $this->assertEqualsCanonicalizing(['rc-a1', 'rc-ever'], CallReportTranscript::withoutGlobalScopes()->pluck('call_id')->all());
     }
 
     /** Off by default: nothing is read or written until it is switched on. */

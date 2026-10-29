@@ -105,6 +105,36 @@ final class RingCentralCallLog
         return config('experimental_reports.ringcentral.company_id') ?: null;
     }
 
+    /** Set by only(): read just this connection. */
+    private ?string $only = null;
+
+    /**
+     * Read one connected account. An organization can hold several (Triplex:
+     * A1 Chimney's and EverDoors', 2026-10-29); without this, first() wins and
+     * the others' calls are never transcribed. Null: back to the default.
+     */
+    public function only(?string $connectionId): void
+    {
+        $this->only = $connectionId;
+    }
+
+    /**
+     * Every connected account of the organization (the tenant, or A1-Group for
+     * a console run); [null] when there is none, the env account's case.
+     *
+     * @return list<string|null>
+     */
+    public function accounts(): array
+    {
+        $tenant = app(TenantContext::class)->get()
+            ?? Organization::query()->where('slug', self::ENV_ORGANIZATION_SLUG)->first();
+        $ids = $tenant === null ? [] : SocialConnection::query()->withoutGlobalScopes()
+            ->where('organization_id', $tenant->getKey())->where('provider', SocialProvider::RingCentral->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)->orderBy('created_at')->pluck('id')->map(fn ($id) => (string) $id)->all();
+
+        return $ids === [] ? [null] : $ids;
+    }
+
     public function configured(): bool
     {
         return $this->credentials() !== null;
@@ -139,6 +169,7 @@ final class RingCentralCallLog
             ->where('organization_id', $tenant->getKey())
             ->where('provider', SocialProvider::RingCentral->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->when($this->only !== null, fn ($q) => $q->whereKey($this->only))
             ->get();
 
         $user = auth()->user();

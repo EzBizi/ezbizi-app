@@ -91,7 +91,12 @@ class LabelReportCalls extends Command
         }
 
         // The queue decides the question, so it comes from the call log.
-        $queues = array_column($calls->forPeriod($start, $end), 'queue', 'id');
+        $queues = [];
+        foreach ($calls->accounts() as $account) {
+            $calls->only($account);
+            $queues += array_column($calls->forPeriod($start, $end), 'queue', 'id');
+        }
+        $calls->only(null);
         $done = [];
 
         // A label set that grew (2026-10-12) leaves old "other" rows behind;
