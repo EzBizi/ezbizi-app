@@ -6,7 +6,6 @@ use App\Jobs\DeliverAutomationEvent;
 use App\Models\AutomationEvent;
 use App\Models\Franchise;
 use App\Models\Lead;
-use App\Support\Leads\LeadReferral;
 use App\Models\LeadConversation;
 use App\Models\ServiceArea;
 use App\Models\WebBooking;
@@ -14,6 +13,7 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadThread;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -330,9 +330,6 @@ final class WebsiteEnquiries
             $visitor['comment'] = $fields['What happened?'] ?? null;
         }
 
-        // The same phone sending a form again within a day joins its earlier
-        // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
-        // twice, 6 minutes apart, and showed as two leads - "yes, it should").
         // The form's own address, city, service and ZIP onto the lead (design 159, 2026-10-29).
         [$f] = self::place($fields);
         foreach (['address' => trim($f['line1'].' '.$f['line2']), 'city' => $f['city'], 'service' => $f['service'], 'zip' => $f['zip']] as $key => $value) {
@@ -341,8 +338,21 @@ final class WebsiteEnquiries
             }
         }
 
+        // The same phone sending a form again within a day joins its earlier
+        // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
+        // twice, 6 minutes apart, and showed as two leads - "yes, it should").
         $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
+        // A repeat form fills what the earlier lead lacks; it never overwrites.
+        $lead->fill(array_filter([
+            'address' => $lead->address === null && ($visitor['address'] ?? '') !== '' ? mb_substr($visitor['address'], 0, 255) : null,
+            'city' => $lead->city === null && ($visitor['city'] ?? '') !== '' ? mb_substr($visitor['city'], 0, 120) : null,
+            'service' => $lead->service === null && ($visitor['service'] ?? '') !== '' ? mb_substr($visitor['service'], 0, 120) : null,
+            'postal_code' => $lead->postal_code === null && preg_match('/^\d{5}(?:-\d{4})?$/', (string) ($visitor['zip'] ?? '')) === 1 ? $visitor['zip'] : null,
+        ]));
+        if ($lead->isDirty()) {
+            $lead->save();
+        }
 
         $lines = self::condensed($fields, $visitor);
 

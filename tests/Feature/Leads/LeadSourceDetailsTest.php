@@ -62,6 +62,11 @@ class LeadSourceDetailsTest extends TestCase
             [$lead->address, $lead->city, $lead->service, $lead->postal_code, $lead->referral['campaign_name'] ?? null]);
         $this->signedInAs($t['admin'])->getJson("/api/v1/leads/{$lead->id}")->assertOk()
             ->assertJsonPath('data.job_type', 'Chimney sweep')->assertJsonPath('data.city', 'Danbury');
+        // The same phone again joins that lead, and fills only what it lacked.
+        $this->inTenant($t['org'], fn () => $lead->forceFill(['address' => null])->save());
+        $this->postJson('/api/v1/web/form', ['key' => $site->public_key, 'name' => 'Ada', 'phone' => '2035550101',
+            'fields' => ['Street Address' => '12 Oak Ave', 'City' => 'Bethel']])->assertCreated();
+        $this->assertSame(['12 Oak Ave', 'Danbury'], $this->inTenant($t['org'], fn () => [Lead::query()->sole()->address, Lead::query()->sole()->city]));
     }
 
     public function test_a_call_line_is_where_it_came_from_and_a_known_customer_names_the_number(): void
