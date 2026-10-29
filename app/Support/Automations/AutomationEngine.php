@@ -97,6 +97,12 @@ class AutomationEngine
                 }
                 $event->forceFill(['attempts' => $event->attempts + 1])->save();
                 $subject = $this->subjectOf($event);
+                // Leads › Manage › Hidden (Jose, 2026-10-29): no rule, alert or text acts on a hidden lead.
+                if ($subject instanceof \App\Models\Lead && $subject->isHidden()) {
+                    $this->stop($event, 'Not run: this lead is hidden.');
+
+                    return 0;
+                }
                 $scope = $event->scope_snapshot ?? EventScope::capture($subject);
                 if ($event->version_ids === null) {
                     $ids = Automation::query()->where('trigger_key', $event->event_key)

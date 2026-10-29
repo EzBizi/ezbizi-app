@@ -33,7 +33,7 @@ class LeadsReplyOverdue extends Command
     {
         $raised = 0;
 
-        $waiting = Lead::query()->withoutGlobalScopes()
+        $waiting = Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', Lead::STATUS_NEW)
             ->where('last_contact_from', LeadConversation::FROM_CONSUMER)
