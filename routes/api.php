@@ -540,6 +540,10 @@ Route::post('v1/newsletter/unsubscribe/{newsletter}', [NewsletterUnsubscribeCont
     ->middleware('throttle:30,1')
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+Route::get('v1/social/whatsapp/launch', \App\Http\Controllers\Api\WhatsAppLaunchController::class)
+    ->middleware('throttle:30,1')
+    ->name('social.whatsapp.launch');
+
 Route::get('v1/social/{network}/callback', [SocialAuthController::class, 'callback'])
     ->middleware('throttle:30,1')
     ->where('network', SocialProvider::oauthRoutePattern())
