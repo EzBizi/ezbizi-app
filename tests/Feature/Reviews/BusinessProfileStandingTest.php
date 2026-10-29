@@ -111,4 +111,23 @@ class BusinessProfileStandingTest extends TestCase
         $this->assertStringContainsString('North - phone: 555-0101 -> 555-0199', $digest['summary']);
         $this->assertStringContainsString('2 new review(s), 1 of 2 stars or fewer.', $digest['summary']);
     }
+    /** 2026-10-29: A-1 reconnected on EzBizi's own client and its 38 listings stayed orphaned. */
+    public function test_a_listing_left_by_a_disconnected_account_is_adopted_and_keeps_its_branch(): void
+    {
+        $other = $this->inTenant($this->t['org'], fn () => \App\Models\Company::create(['organization_id' => $this->t['org']->id, 'name' => 'Other']));
+        $branch = $this->inTenant($this->t['org'], fn () => \App\Models\Franchise::create(['organization_id' => $this->t['org']->id, 'company_id' => $other->id, 'name' => 'North', 'is_active' => true]));
+        $this->inTenant($this->t['org'], function () use ($other, $branch) {
+            foreach (['locations/1' => $branch->id, 'locations/2' => null] as $remote => $franchise) {
+                BusinessLocation::create(['organization_id' => $this->t['org']->id, 'company_id' => $other->id, 'franchise_id' => $franchise,
+                    'connection_id' => null, 'remote_name' => $remote, 'title' => 'Old']);
+            }
+            $this->c->forceFill(['scope_type' => SocialConnection::SCOPE_COMPANY, 'scope_id' => $this->t['company']->id])->save();
+        });
+
+        $this->sync();
+
+        $rows = BusinessLocation::withoutGlobalScopes()->orderBy('remote_name')->get();
+        $this->assertSame([[$this->c->id, $other->id, $branch->id], [$this->c->id, $this->t['company']->id, null]],
+            $rows->map(fn ($l) => [$l->connection_id, $l->company_id, $l->franchise_id])->all());
+    }
 }
