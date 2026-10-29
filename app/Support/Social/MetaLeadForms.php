@@ -65,6 +65,32 @@ final class MetaLeadForms
             ->map(fn ($answer, $question) => str_replace('_', ' ', ucfirst((string) $question)).': '.$answer)
             ->implode('; ');
 
+        /*
+         * The chat came first (A-1, 2026-10-29): the Messenger lead this form
+         * opened already exists and its first message carries the phone. The
+         * answers go on that lead instead of a second one.
+         */
+        $digits = $phone !== null && strlen((string) Lead::digits($phone)) >= 10 ? substr((string) Lead::digits($phone), -10) : null;
+        $chat = $digits === null ? null : Lead::query()
+            ->where('source', ($answers['@platform'] ?? null) === 'ig' ? Lead::SOURCE_INSTAGRAM : Lead::SOURCE_FACEBOOK)
+            ->where('lead_type', LeadNotificationText::META_TEXT)
+            ->where('created_at', '>=', now()->subDay())
+            ->whereHas('conversations', fn ($q) => $q->where('text', 'like', '%Phone number:%'))
+            ->latest()->get()
+            ->first(fn (Lead $l) => $l->conversations()->where('text', 'like', '%Phone number:%')->get()
+                ->contains(fn ($c) => MetaMessages::formPhone(['message' => ['text' => $c->text]]) === $digits));
+
+        if ($chat !== null) {
+            $chat->forceFill(array_filter([
+                'phone' => $chat->phone ?? $phone,
+                'phone_digits' => $chat->phone_digits ?? Lead::digits($phone),
+                'email' => $chat->email ?? $pick(self::EMAIL),
+                'postal_code' => $chat->postal_code ?? ($zip !== null && preg_match('/^\d{5}(?:-\d{4})?$/', $zip) === 1 ? $zip : null),
+            ], fn ($v) => $v !== null))->save();
+
+            return true;
+        }
+
         $lead = Lead::query()->create([
             'organization_id' => $page->organization_id,
             'company_id' => $page->scope_type === SocialConnection::SCOPE_COMPANY ? $page->scope_id : null,

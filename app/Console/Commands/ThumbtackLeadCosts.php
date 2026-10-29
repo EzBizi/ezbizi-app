@@ -49,7 +49,7 @@ class ThumbtackLeadCosts extends Command
 
                         continue;
                     }
-                    $lead->forceFill(array_filter(ThumbtackLeads::cost($raw), fn ($v) => $v !== null))->save();
+                    $lead->forceFill(array_filter(ThumbtackLeads::cost($raw), fn ($v) => $v !== null) + ThumbtackLeads::details($raw))->save();
                     $done++;
                 }
             });

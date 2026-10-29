@@ -717,8 +717,7 @@ class ActionRunner
      * own status, sub-status, tags (replaced, not added to) and scheduled
      * time are written first, each audited and announced like any change;
      * then its Workiz copy is brought in line, when there is one and Workiz
-     * is connected. Until Workiz's outbound mirror ships this step writes
-     * Workiz itself; afterwards that call can go without changing anything.
+     * is connected, through WorkizMirror's queue.
      */
     private function setJob(array $action, AutomationEvent $event, ?Model $subject): array
     {
@@ -762,13 +761,19 @@ class ActionRunner
             $done[] = 'tags '.implode(', ', $tags);
         }
 
-        $line = 'Set '.implode('; ', $done).' on the job.';
-        if (StepReadiness::at(null, null)['workiz.job_update'] !== null) {
-            return ['type' => $type, 'ok' => true, 'detail' => $line];
+        // Workiz follows through the shared mirror queue (no-op when the branch does not mirror).
+        $job = $subject->fresh();
+        if ($status !== '' || $sub !== '') {
+            \App\Support\Workiz\WorkizMirror::queue($job, 'status', ['status' => $status !== '' ? $status : (string) $job->status, 'sub_status' => $sub === '' ? null : $sub]);
         }
-        $workiz = $this->updateWorkizJob($action, $subject->fresh());
+        if ($tags !== []) {
+            \App\Support\Workiz\WorkizMirror::queue($job, 'tags', ['tags' => $job->tags]);
+        }
+        if ($unschedule) {
+            \App\Support\Workiz\WorkizMirror::queue($job, 'unschedule');
+        }
 
-        return ['type' => $type, 'ok' => $workiz['ok'], 'detail' => $line.' Workiz: '.$workiz['detail']];
+        return ['type' => $type, 'ok' => true, 'detail' => 'Set '.implode('; ', $done).' on the job.'];
     }
 
     private function updateWorkizJob(array $action, ?Model $subject): array

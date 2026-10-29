@@ -442,6 +442,11 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
+Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
+    ->name('whatsapp.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
@@ -1062,6 +1067,14 @@ Route::prefix('v1')
         Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
         Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
         Route::get('leads/sources', [\App\Http\Controllers\Api\LeadSourcesController::class, 'index']);
+        // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
+        Route::middleware('permission:'.\App\Models\Lead::HIDDEN_PERMISSION)->group(function () {
+            Route::get('leads/hidden', [\App\Http\Controllers\Api\LeadHiddenController::class, 'index']);
+            Route::post('leads/hidden-numbers', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hideNumberDirectly']);
+            Route::delete('leads/hidden-numbers/{number}', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhideNumber']);
+            Route::post('leads/{lead}/hide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hide']);
+            Route::post('leads/{lead}/unhide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhide']);
+        });
         // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
         Route::middleware('permission:leads.manage')->group(function () {
             Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);

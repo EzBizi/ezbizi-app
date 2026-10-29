@@ -190,7 +190,8 @@
                 "WhatsApp",
                 "RC Calls",
                 "EZ Calls",
-                "EZ Texts"
+                "EZ Texts",
+                "Hidden"
             ]
         },
         "marketing": {
@@ -517,6 +518,7 @@
         "leads.ez_calls.view",
         "leads.ez_texts.view",
         "leads.facebook.view",
+        "leads.hidden.view",
         "leads.instagram.view",
         "leads.local_services.view",
         "leads.manage",

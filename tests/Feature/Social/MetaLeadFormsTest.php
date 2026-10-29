@@ -74,6 +74,63 @@ class MetaLeadFormsTest extends TestCase
         Http::assertSent(fn ($request) => $request['subscribed_fields'] === 'messages,messaging_postbacks');
     }
 
+    /** A-1, 2026-10-29: a lead ad that opens Messenger made two leads per person. */
+    public function test_a_form_then_the_chat_it_opens_are_one_lead(): void
+    {
+        $this->formAndChat(formFirst: true);
+    }
+
+    public function test_a_chat_then_its_form_are_one_lead(): void
+    {
+        $this->formAndChat(formFirst: false);
+    }
+
+    private function formAndChat(bool $formFirst): void
+    {
+        config(['services.meta.client_secret' => self::SECRET]);
+        $t = $this->provisionTenant('A1-Group');
+        $this->page($t);
+        Http::fake(['graph.facebook.com/*' => Http::response([
+            'platform' => 'fb',
+            'field_data' => [
+                ['name' => 'full_name', 'values' => ['N Patterson']],
+                ['name' => 'phone_number', 'values' => ['+19736782560']],
+                ['name' => 'zip_code', 'values' => ['07050']],
+            ],
+        ])]);
+        $chat = fn () => $this->post_('page', ['entry' => [['id' => self::PAGE_ID, 'messaging' => [[
+            'sender' => ['id' => 'PSID1'], 'recipient' => ['id' => self::PAGE_ID], 'timestamp' => 1789000000000,
+            'message' => ['mid' => 'm_1', 'text' => 'Hello! I filled out your form.
+Full name: N Patterson
+Phone number: (973) 678-2560
+Zip code: 07050'],
+        ]]]]]);
+
+        if ($formFirst) {
+            $this->deliver()->assertOk();
+            $chat();
+        } else {
+            $chat();
+            $this->deliver()->assertOk();
+        }
+
+        $lead = Lead::query()->withoutGlobalScopes()->sole();
+        $this->assertSame('PSID1', $lead->remote_id);
+        $this->assertSame('MESSAGE', $lead->lead_type);
+        $this->assertStringEndsWith('9736782560', (string) $lead->phone_digits);
+        $this->assertSame('07050', $lead->postal_code);
+    }
+
+    private function post_(string $object, array $body)
+    {
+        $json = (string) json_encode(['object' => $object, ...$body]);
+
+        return $this->call('POST', '/api/v1/social/meta/messages/webhook', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $json, self::SECRET),
+        ], $json)->assertOk();
+    }
+
     private function page(array $t): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t) {

@@ -206,7 +206,7 @@ final class PeriodReport
         $excluded = array_flip(array_map('strval', $this->options['exclude_jobs'] ?? []));
         $kept = fn ($job) => $excluded === [] || ! (isset($excluded[(string) $job->ref]) || isset($excluded[(string) $job->serial]));
 
-        foreach ($jobs()->whereBetween('booked_at', $range)->get()->filter($kept) as $job) {
+        foreach ($jobs()->whereBetween('j.booked_at', $range)->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $created[$s] ??= $row();
             $created[$s]['all']++;
@@ -222,7 +222,7 @@ final class PeriodReport
         // "completed at".
         $closed = [];
         $techs = [];
-        foreach ($jobs()->whereBetween('last_status_update', $range)->whereIn('status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
+        foreach ($jobs()->whereBetween('j.last_status_update', $range)->whereIn('j.status', ['Done', 'Canceled'])->get()->filter($kept) as $job) {
             $s = $source($job->job_source);
             $kind = self::kind($job->status);
             $price = $kind === 'done' ? (float) $job->total : 0.0;
