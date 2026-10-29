@@ -21,6 +21,7 @@ class VersionHistory {
         'Task Boards: tasks an automation makes on both a company board and its branch board are linked and stay in sync (title, due date, priority, estimate, About, status, owners).',
         'Project Management - 2: Created and "Job created by" come from EzBizi\'s own job record.',
         'Workiz: payments and estimate links are read for every A-1 account, not only one.',
+        'WhatsApp: Connect WhatsApp offers "Connect your existing WhatsApp Business app", so a business keeps its own number and phone app.',
         'Email: reconnecting a Gmail inbox on Android no longer shows "Could not reach the server" when it worked.',
       ],
     ),
