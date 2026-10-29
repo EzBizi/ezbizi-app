@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0505',
+      date: '29 Oct 2026',
+      items: [
+        'Reports: calls from every connected RingCentral account are transcribed and summarised, not only the first account\'s.',
+        'Websites: the booking widget can keep the chat bubble on its page.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0504',
       date: '29 Oct 2026',
       items: [
