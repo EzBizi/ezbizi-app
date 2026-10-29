@@ -31,7 +31,7 @@ are separate projects; the shared numbering only produced gaps whenever an item 
 | 41 | **Google listings editing (services, categories, WhatsApp link on 136 locations)** | **[JOSE]** | Built and off (`GBP_WRITE=false`) because Rodrigo's `a1leads.service` on the app box may still edit the same listings. Rodrigo has left, so stopping it is ours to do. Reminder scheduled for Jose 2026-10-30 10:00. |
 | 42 | **A1 Leads final switch-off** | **[CLAUDE]** after #30 | Leads holds the cutover list (9 `A1LEADS_*` keys, a1leads.service + a1leads-refresh.timer, ~25 files). Also: export the review cards, approval history and lead corrections; rotate the keys Rodrigo held. Status page: https://claude.ai/artifact/RCB5MCq6qiqbWwfF6ffjqp |
 | 43 | **PM-1 Action 2: 30-day estimate cancel** | **[JOSE]** | Rule built and OFF. Proposal: texts on day 7, 21 and 28, cancel in EzBizi + Workiz on day 30, grace starts at switch-on. Waiting on Jose's OK of days and wording. |
-| 44 | **ACE intake over WhatsApp** | **[JOSE]** | Blocked since 10-20 on a pick between options A/B/C; Meta is writing them up in plain words. |
+| 44 | ~~**ACE intake over WhatsApp**~~ | ✅ | Decided: option A. ACE results are entered and approved in Financials (financial_results, source ACE); Reports reads the approved ones (DailyTexts marketing_ppc, 2026-10-27). |
 | 45 | **Thumbtack reviews** | **[THUMBTACK]** | The partner API exposes no reviews endpoint. eKomi is unblocked (credentials found in A1 Tools' env, CX building it). |
 | 46 | **WhatsApp Official Business Account / groups** | **[META]** | Meta hasn't opened OBA requests; reports go 1:1 on WhatsApp to Jose, Eve and Shoval instead (live from 10-30 08:30 ET). |
 
