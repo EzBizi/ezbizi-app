@@ -22,6 +22,7 @@ class VersionHistory {
         'Project Management - 2: Created and "Job created by" come from EzBizi\'s own job record.',
         'Workiz: payments and estimate links are read for every A-1 account, not only one.',
         'WhatsApp: Connect WhatsApp offers "Connect your existing WhatsApp Business app", so a business keeps its own number and phone app.',
+        'Monitoring: computers whose screen capture reports an unexpected reason stay online instead of dropping offline.',
         'Email: reconnecting a Gmail inbox on Android no longer shows "Could not reach the server" when it worked.',
       ],
     ),
