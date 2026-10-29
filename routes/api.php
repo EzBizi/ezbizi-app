@@ -1056,6 +1056,7 @@ Route::prefix('v1')
         Route::get('leads/dashboard', [LeadDashboardController::class, 'show']);
         Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
         Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
+        Route::get('leads/sources', [\App\Http\Controllers\Api\LeadSourcesController::class, 'index']);
         // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
         Route::middleware('permission:leads.manage')->group(function () {
             Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);
