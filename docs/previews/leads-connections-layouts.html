@@ -1,246 +1,382 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Leads Connections</title>
+<title>Leads · managing connections</title>
 <style>
-/* Palette from client/lib/core/theme.dart (light). One 10px radius for every control and card; the
-   window and phone frames are frames, not cards. Every name, message and number is invented. */
+/* Palette from client/lib/core/theme.dart (light); tones are ToneColours. Every account name,
+   number, place and count here is invented; the fields are the ones /social/connections serves
+   today (name, number, id, where its leads go, lead count, certification and its problems). */
 :root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.10);
- --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;--edge:#a9d3e1;
- --ok:#16662d;--okc:#e1f2e5;--cau:#734600;--cauc:#fff0d2;--caue:#e9c27a;--bad:#9f1d1d;--badc:#fdecec;
- --neu:#33404a;--neuc:#e8ecf0;--r:10px}
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--prid:#00485c;
+ --ok:#16662d;--okc:#e1f2e5;--warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;
+ --neu:#33404a;--neuc:#e8ecf0;--info:#00566e;--infoc:#d9eff8;--r:10px}
 *{box-sizing:border-box}
 body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
 .wrap{max-width:1240px;margin:0 auto}
 h1{font-size:22px;margin:0 0 6px}
-.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
-h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sub{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1000px}
+h2{font-size:17px;margin:44px 0 4px;display:flex;align-items:center;gap:10px}
 h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
-.rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
-.cap{color:var(--muted);margin:0 0 10px;font-size:12.5px;max-width:1080px}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:1000px}
 .cap b{color:var(--ink)}
-.need{margin:10px 0 12px;font-size:12px;color:#3d4a52;max-width:1080px;border-left:3px solid #93aab3;padding:2px 0 2px 10px}
-.need b{color:var(--ink)}
-code{font:11.5px/1.5 ui-monospace,Consolas,monospace;background:#dfe6ea;border-radius:4px;padding:0 4px}
-.lab{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
-/* the window */
-.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;height:600px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
-.top{height:40px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
+ul.cap{padding-left:18px}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1200px;max-width:100%;height:720px;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex;flex-direction:column}
+.top{height:42px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 14px;font-weight:800}
 .top .logo{color:var(--pri);font-size:15px}
-.top .org{font:600 11.5px Inter,"Segoe UI",sans-serif;border:1px solid var(--line);border-radius:var(--r);padding:3px 8px;color:var(--neu)}
-.top .bell{margin-left:auto;font-size:15px;color:var(--neu)}
-.shell{flex:1;display:flex;min-height:0;position:relative}
+.top .org{font:600 11.5px Inter,sans-serif;border:1px solid var(--line);border-radius:8px;padding:3px 8px;color:var(--neu)}
+.shell{flex:1;display:flex;min-height:0}
 .nav{width:58px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:15px;padding:14px 0;flex:0 0 auto}
 .nav i{width:20px;height:20px;border-radius:6px;background:#dfe6ea;display:block}
-.nav i.on{background:var(--pri)}
-.page{flex:1;min-width:0;overflow:hidden;padding:18px 24px;display:flex;flex-direction:column;gap:10px}
-.page .t{font-size:20px;font-weight:800;line-height:1.2}
-.page .st{font-size:12px;color:var(--muted);margin-top:-6px}
-.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);flex:0 0 auto}
-.tabs span{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
-.tabs span.on{color:var(--pri);border-color:var(--pri)}
-.cols{display:flex;gap:16px;min-height:0;flex:1}
-.main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
-.side{width:420px;flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
-/* cards and controls */
-.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;display:flex;flex-direction:column;gap:9px;min-width:0;flex:0 0 auto}
-.card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
-.card .lead{font-size:12px;color:var(--muted);margin:0}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12px Inter,"Segoe UI",sans-serif;height:32px;padding:0 12px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap;flex:0 0 auto}
+.nav i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.bk{display:flex;align-items:center;gap:10px;padding:10px 16px 8px}
+.bk .ar{font-size:18px;color:var(--ink);width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:var(--r)}
+.bk .t{font-size:19px;font-weight:800;line-height:1.1}
+.bk .s{font-size:11.5px;color:var(--muted)}
+.sp{flex:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;height:32px;padding:0 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
 .btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
-.btn.t{border-color:transparent;background:transparent}
-.btn.sm{height:28px;font-size:11.5px;padding:0 10px}
-.pill{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55;flex:0 0 auto}
-.p-neu{background:var(--neuc);color:var(--neu)} .p-cau{background:var(--cauc);color:var(--cau)} .p-ok{background:var(--okc);color:var(--ok)}
-.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700} .sp{flex:1}
-.fld{display:flex;flex-direction:column;gap:3px;min-width:0}
-.fld label{font-size:11px;color:var(--muted);font-weight:600}
-.in{min-height:34px;border:1px solid #b9c7cd;border-radius:var(--r);padding:4px 8px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;background:var(--paper);font-size:12.5px}
-.in .ph{color:#8a969e}
-.in.area{min-height:86px;align-items:flex-start;padding:8px 10px}
-.chip{display:inline-flex;align-items:center;gap:5px;background:var(--pric);color:var(--prid);border-radius:999px;padding:2px 6px 2px 4px;font-size:11.5px;font-weight:600}
-.chip .av{width:18px;height:18px;font-size:9px}
-.av{width:26px;height:26px;border-radius:50%;background:#c9dbe2;color:var(--prid);font-weight:800;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
-.foot{display:flex;align-items:center;gap:10px}
-/* sent alerts */
-.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line2);font-size:12.5px}
-.srow:first-of-type{border-top:0}
-.srow .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.srow .w{font-size:11px;color:var(--muted)}
-.who{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;background:var(--ground);border-radius:8px;padding:8px 10px;margin-top:4px}
-.who div{display:flex;align-items:center;gap:7px;font-size:11.5px}
-.who .av{width:20px;height:20px;font-size:9px}
-.who .when{margin-left:auto;color:var(--muted)}
-.who .when.no{color:var(--cau);font-weight:700}
-/* what the recipient is looking at, behind the alert */
-.jobs .jr{display:grid;grid-template-columns:90px minmax(0,1fr) 140px 90px;gap:10px;align-items:center;height:40px;border-top:1px solid var(--line2);font-size:12px}
-.jobs .jr:first-child{border-top:0}
-.bar{height:8px;border-radius:4px;background:#dfe6ea}
-/* the alert itself */
-.alert{background:var(--paper);border:1px solid var(--caue);border-radius:var(--r);box-shadow:0 10px 28px rgba(6,8,8,.18);padding:12px 14px;display:flex;flex-direction:column;gap:8px;width:360px}
-.alert .hd{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--cau);font-weight:800}
-.alert .hd .ico{width:22px;height:22px;border-radius:50%;background:var(--cauc);display:inline-flex;align-items:center;justify-content:center;font-size:12px}
-.alert .hd .when{margin-left:auto;color:var(--muted);font-weight:600}
-.alert .msg{font-size:14px;font-weight:700;line-height:1.35}
-.alert .ft{display:flex;align-items:center;gap:8px}
-.stack{position:absolute;top:12px;right:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-.stack .more{font-size:11.5px;font-weight:700;color:var(--neu);background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:3px 10px;box-shadow:0 4px 12px rgba(6,8,8,.10)}
-.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center}
-.scrim .alert{width:460px;padding:18px 20px}
-.scrim .alert .msg{font-size:16px}
-.strip{background:var(--cauc);border:1px solid var(--caue);border-radius:var(--r);padding:8px 10px 8px 12px;display:flex;align-items:center;gap:10px;color:var(--cau);font-size:12.5px;flex:0 0 auto}
-.strip .msg{color:var(--ink);font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.strip .pg{font-size:11.5px;font-weight:700;white-space:nowrap}
-/* side panel */
-.panel{position:absolute;top:0;right:0;bottom:0;width:440px;background:var(--paper);box-shadow:-8px 0 24px rgba(0,0,0,.12);display:flex;flex-direction:column}
-.panel .phd{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
-.panel .phd b{font-size:16px}
-.panel .pbd{padding:16px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
-.panel .pf{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
-.panel-scrim{position:absolute;inset:0;background:rgba(0,0,0,.28)}
+.btn.q{border-color:transparent}
+.btn.s{height:28px;padding:0 10px;font-size:12px}
+.btn.d{color:var(--bad);border-color:#e3b4b4}
+.btn.dq{color:var(--bad);border-color:transparent}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:var(--prid)}
+.chip .c{color:var(--muted);font-weight:500}
+.chip.on .c{color:var(--prid)}
+.srch{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:var(--r);padding:0 10px;height:32px;color:var(--muted);background:var(--paper);font-size:12.5px;white-space:nowrap;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.55}
+.p-neu{background:var(--neuc);color:var(--neu)} .p-info{background:var(--infoc);color:var(--info)}
+.p-warn{background:var(--warnc);color:var(--warn)} .p-ok{background:var(--okc);color:var(--ok)} .p-bad{background:var(--badc);color:var(--bad)}
+.muted{color:var(--muted)} .tiny{font-size:11px;color:var(--muted)} .b{font-weight:700}
+.bad{color:var(--bad)} .warn{color:var(--warn)}
+.body{flex:1;min-height:0;display:flex}
+/* the provider column */
+.prov{width:205px;flex:0 0 auto;border-right:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;padding:10px 8px;gap:4px}
+.pv{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:var(--r);border:1px solid transparent}
+.pv.on{background:var(--pric);border-color:#a9d3e1}
+.pv .g{flex:1;min-width:0}
+.pv .g b{display:block;font-size:13px}
+.pv .g span{display:block;font-size:11px;color:var(--muted)}
+.pv.on .g span{color:var(--prid)}
+.mk{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 auto;color:#fff}
+.mk.gg{background:#1a73e8} .mk.tt{background:#e0621b} .mk.ww{background:#33404a}
+.lst{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;padding:12px 16px 0}
+.bar{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.bar .chips{flex-wrap:nowrap}
+.tbl{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tr{display:grid;align-items:center;padding:0 14px;min-height:48px;border-bottom:1px solid var(--line2);font-size:12.5px;gap:12px}
+.tr:last-child{border-bottom:0}
+.tr.hd{min-height:30px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:#f7f9fa}
+.tr.sel{background:#e8f4f8}
+.tr.grp{min-height:34px;background:#f7f9fa;font-weight:700;font-size:12px}
+.tr .el{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .two>b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tr .two>span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.cols{grid-template-columns:minmax(0,1.3fr) minmax(0,1.2fr) 44px 122px}
+.foot{display:flex;align-items:center;gap:10px;padding:10px 2px 12px}
+.link{color:var(--pri);font-weight:700;white-space:nowrap}
+.pan{width:340px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.pan .ph{padding:14px 18px 10px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:flex-start}
+.pan .ph .t{font-size:16px;font-weight:800}
+.pan .ph .s{font-size:11.5px;color:var(--muted)}
+.pan .pb{flex:1;min-height:0;overflow:hidden;padding:12px 18px;display:flex;flex-direction:column;gap:14px}
+.pan .pf{padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.lbl{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.fld{display:flex;align-items:center;gap:7px;border:1px solid #b9c7cd;border-radius:var(--r);padding:0 10px;height:36px;color:var(--ink);background:var(--paper);font-size:12.5px;white-space:nowrap;overflow:hidden}
+.fld .v{font-weight:600}
+.help{font-size:11px;color:var(--muted);margin-top:4px}
+.cert{border-radius:12px;padding:10px 12px;background:var(--warnc);color:var(--warn);font-size:12px;display:flex;flex-direction:column;gap:5px}
+.cert.bad{background:var(--badc);color:var(--bad)}
+.cert b{font-size:12.5px}
+.cert .pr{display:flex;gap:6px}
+.cert .src{font-size:11px;opacity:.85}
+.stat{display:flex;gap:18px}
+.stat div b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+.stat div span{font-size:11px;color:var(--muted)}
+/* option 2: the panel over the leads */
+.under{flex:1;min-width:0;display:flex;opacity:.45;filter:saturate(.6)}
+.rail{width:88px;background:var(--paper);border-right:1px solid var(--line);flex:0 0 auto}
+.ll{width:330px;background:var(--paper);border-right:1px solid var(--line);flex:0 0 auto;padding:12px}
+.ll i{display:block;height:44px;border-radius:8px;background:#eef2f4;margin-bottom:8px}
+.th{flex:1;padding:16px}
+.th i{display:block;height:34px;width:60%;border-radius:12px;background:#eef2f4;margin-bottom:10px}
+.th i:nth-child(even){margin-left:auto;background:#cfe6ee}
+.side{width:600px;flex:0 0 auto;background:var(--paper);border-left:1px solid var(--line);box-shadow:-10px 0 26px rgba(6,8,8,.10);display:flex;flex-direction:column;min-height:0}
+.seg{display:flex;gap:0}
+.seg>span{font-size:12px;font-weight:700;padding:6px 12px;border:1px solid var(--line);background:var(--paper);color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.seg>span+span{border-left:0}
+.seg>span:first-child{border-radius:var(--r) 0 0 var(--r)}
+.seg>span:last-child{border-radius:0 var(--r) var(--r) 0}
+.seg>span.on{background:var(--pric);color:var(--prid);border-color:#a9d3e1}
+.acc{border-bottom:1px solid var(--line2)}
+.acc .ln{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 50px 118px 16px;gap:10px;align-items:center;padding:9px 14px;font-size:12.5px}
+.acc .ln .two>b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acc .ln .two>span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acc.open{background:#f6fafb}
+.acc .more{padding:2px 14px 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+.acc .more .wide{grid-column:1/-1}
+/* option 3: health first */
+.att{background:var(--paper);border:1px solid #efd9ad;border-radius:12px;overflow:hidden;margin:0 16px 12px}
+.att .ah{padding:8px 14px;background:var(--warnc);color:var(--warn);font-weight:800;font-size:12px;display:flex;gap:8px;align-items:center}
+.att .ar2{display:grid;grid-template-columns:26px 250px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 14px;border-top:1px solid var(--line2);font-size:12.5px}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 16px 12px}
+.pcard{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:118px}
+.pcard.on{border-color:#a9d3e1;box-shadow:0 0 0 2px #d6edf5}
+.pcard .hd{display:flex;gap:10px;align-items:center}
+.pcard .hd b{font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 16px}
+.tile{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;height:98px}
+.tile.sel{border-color:#a9d3e1;background:#f2f9fb}
+.tile b{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .l{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .bt{display:flex;align-items:center;gap:6px;margin-top:auto}
+.sect{padding:4px 16px 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
 /* phones */
-.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
-.pcol{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-.pcol .pl{font-size:12px;font-weight:700}
-.phn{width:340px;height:700px;border:9px solid #111;border-radius:38px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);background:var(--ground);display:flex;flex-direction:column;position:relative}
-.phn .sb{height:28px;flex:0 0 auto;background:var(--paper)}
-.phn .ab{height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--paper);border-bottom:1px solid var(--line)}
-.phn .ab .t{font-size:15px;font-weight:800}
-.phn .pb{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:10px;padding:12px}
-.phn .pb > *{flex:0 0 auto}
-.phn .tabs span{padding:7px 9px;font-size:12px}
-.phn .alert{width:auto}
-.phn .stack{left:10px;right:10px;top:84px;align-items:stretch}
-.phn .scrim .alert{width:290px;padding:16px}
-.lst{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:0 12px}
-.li{display:flex;align-items:center;gap:10px;min-height:48px;border-top:1px solid var(--line2);font-size:12.5px}
-.li:first-child{border-top:0}
-.li .g{flex:1;min-width:0}
-.li .g b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
-.li .g span{display:block;font-size:11px;color:var(--muted)}
+.pairp{display:flex;gap:30px;flex-wrap:wrap;margin-top:18px}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.phn{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:24px;display:flex;justify-content:space-between;padding:5px 22px 0;font-size:11px;font-weight:700;background:var(--paper);flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line);flex:0 0 auto}
+.ab .t{font-size:17px;font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;background:var(--paper)}
+.hs{display:flex;gap:6px;overflow:hidden;padding:8px 12px;flex:0 0 auto}
+.et{padding:10px 14px;border-bottom:1px solid var(--line2)}
+.et .l1{display:flex;gap:8px;align-items:center}
+.et .l1 .ti{font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.et .l2{font-size:11.5px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pscr{flex:1;min-height:0;overflow:hidden;padding:12px 14px;display:flex;flex-direction:column;gap:12px;background:var(--paper)}
+.pbar{padding:9px 12px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1}
+.psect{padding:10px 14px 4px;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ptile{display:flex;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line2)}
+.ptile .g{flex:1;min-width:0}
+.ptile .g b{display:block}
+.ptile .g span{display:block;font-size:11.5px;color:var(--muted)}
+.ptiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px}
+.ptiles .tile{height:92px}
+.list-now{background:#fff;border:1px solid #c9d4d9;border-radius:12px;padding:12px 16px;width:1200px;max-width:100%;font-size:12.5px}
 </style>
-<style>
-.pills{display:flex;gap:8px;flex-wrap:wrap}
-.pill2{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid #c9d4d9;border-radius:10px;background:#fff;font-size:12.5px;font-weight:600;color:#33404a}
-.pill2.on{background:var(--pric);border-color:var(--pric);color:var(--prid)}
-.under{display:flex;gap:22px;border-bottom:1px solid var(--line);padding:0 2px}
-.under span{padding:8px 0 9px;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
-.under span.on{color:var(--pri);border-color:var(--pri)}
-.seg{display:inline-flex;border:1px solid #b9c7cd;border-radius:10px;overflow:hidden}
-.seg span{padding:6px 14px;font-size:12px;font-weight:600;color:#33404a;border-left:1px solid #b9c7cd}
-.seg span:first-child{border-left:0}.seg span.on{background:var(--pric);color:var(--prid)}
-.side2{width:180px;flex:0 0 auto;display:flex;flex-direction:column;gap:2px}
-.side2 span{padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:600;color:#33404a}
-.side2 span.on{background:var(--pric);color:var(--prid)}
-.drop{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid #b9c7cd;border-radius:10px;background:#fff;font-size:13px;font-weight:700}
-.band{background:#fff;border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-direction:column;gap:8px}
-.lv{font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#93a3ab;text-transform:uppercase}
-</style>
-<style>
-.win.tall{height:720px}
-.subt{color:#2b3a41;margin:0 0 4px;font-size:13.5px;max-width:1040px}
-.bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.map{position:relative;border-radius:var(--r);overflow:hidden;background:#e9efe9;border:1px solid var(--line);min-height:0}
-.map svg.bg{position:absolute;inset:0;width:100%;height:100%}
-.dot{position:absolute;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
-.dot.j{background:#00708f}.dot.me{background:#9f1d1d;width:18px;height:18px}.dot.web{background:#734600}.dot.hov{width:20px;height:20px;box-shadow:0 0 0 4px rgba(0,112,143,.25),0 1px 3px rgba(0,0,0,.35)}
-.zoom{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}
-.zoom span{width:32px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:var(--neu);border-top:1px solid var(--line)}
-.zoom span:first-child{border-top:0}
-.tip{position:absolute;background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:0 8px 22px rgba(6,8,8,.18);padding:10px 12px;width:230px;font-size:12px;display:flex;flex-direction:column;gap:3px}
-.tip b{font-size:13px}
-.tip .r{display:flex;gap:6px;align-items:center;color:var(--muted)}
-.tip.small{width:auto;padding:5px 9px;white-space:nowrap}
-.mv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;align-items:center;min-height:52px;border-top:1px solid var(--line2);font-size:12.5px;padding:4px 10px}
-.mv:first-child{border-top:0}
-.mv.sel{background:var(--pric);border-radius:8px}
-.mv .g b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mv .g span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.arrow{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
-.arrow .from{color:var(--muted);text-decoration:line-through}
-.arrow .to{font-weight:700;color:var(--prid)}
-.save{font-weight:800;color:var(--ok);text-align:right;font-size:12.5px}
-.hdr{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.5fr) minmax(0,1fr) 80px;gap:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--muted)}
-.ba{display:grid;grid-template-columns:1fr 26px 1fr;gap:6px;align-items:stretch}
-.day{background:var(--ground);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
-.day .k{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.day.to{background:var(--okc)}
-.day b{font-size:13px}
-.ba .ar{display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
-.slots{display:flex;gap:3px;margin-top:2px}.slots i{flex:1;height:8px;border-radius:3px;background:#dfe6ea;display:block}.slots i.on{background:var(--ok)}.slots i.cur{background:#c08a2b}
-.rc{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px}
-.rc.sel{border-color:var(--pri);box-shadow:0 0 0 2px var(--pric)}
-.rc .hd{display:flex;align-items:center;gap:8px}
-.rc .hd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;flex:1;min-height:0}
-.lane{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.lane h4{margin:0;font-size:13px;display:flex;gap:8px;align-items:center}
-.jb{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;display:flex;gap:8px;align-items:center;background:#fff}
-.jb.ghost{border-style:dashed;color:var(--muted);background:var(--ground)}
-.jb.new{border-color:var(--ok);background:var(--okc)}
-.jb .t{font-weight:700;width:62px;flex:0 0 auto}
-</style>
-<style>
-.lc-help{font-size:11px;color:var(--muted)}
-.lc-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.lc-fld{border:1px solid #b9c7cd;border-radius:8px;padding:6px 9px;font-size:11.5px;background:#fff;white-space:nowrap}
-.lc-nav{width:190px;border-right:1px solid var(--line);background:#fff;padding:8px;display:flex;flex-direction:column;gap:3px;font-size:12px}
-.lc-nav span{padding:6px 8px;border-radius:6px;display:flex;justify-content:space-between}.lc-nav span.on{background:var(--pric);font-weight:700}
-.lc-ch{font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;white-space:nowrap;margin-right:3px}.lc-ok{background:var(--okc);color:var(--ok)}.lc-gr{background:#eef2f4;color:#33404a}.lc-wa{background:#fef3c7;color:#92400e}
-table.lc-t{border-collapse:collapse;width:100%;font-size:11.5px;background:#fff}table.lc-t td,table.lc-t th{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}table.lc-t th{font-size:10px;color:var(--muted)}
-.lc-side{width:280px;background:#fff;border-left:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:7px;font-size:12px}
-.lc-lbl{font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
-.lc-cd{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11.5px;display:flex;flex-direction:column;gap:4px}
-.lc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-</style>
+
 <div class="wrap">
-<h1>Leads › Manage › Connections: every lead source in one place</h1>
-<p class="subt">Website gets a real pane listing its sites. WhatsApp, Facebook/Messenger, Instagram and Google Business Profile join the list. People without leads.edit see no controls, a source is hidden without its view tick, and every list has a search bar. Every name here is invented.</p>
+<h1>Leads · managing connections</h1>
+<p class="sub">Jose, 2026-09-30, on Leads › Manage: <i>“i feel we could also use a revamp on the manage of leads, see what you can do about it”</i>.</p>
+<p class="cap">Today Manage opens one narrow panel with every provider stacked: Google Ads (22 accounts), then Thumbtack, then Website. Each account row carries three text buttons (Name it, Change, Disconnect) that wrap onto a second line. Certification problems are loose red lines under the row. Disconnect all sits next to the search box. Nothing says how many accounts need you until you scroll through all 22.</p>
+<p class="cap"><b>Every option keeps:</b> the name you give an account with its number beside it, the Google id that tells twins apart, where each account's leads go (and “Placed somewhere you cannot see”), the lead count, the certification check, the fold for accounts that have never sent a lead, and disconnecting confirmed in place. A person who can only view Leads sees the same page with no buttons. <b>No new server fields:</b> “Needs attention” is a certification in attention or a broken or revoked connection, and “Never sent a lead” is a lead count of 0, both served today.</p>
 
-<h2><span class="n">1</span> Today's source list, extended, with a table per source and a side panel <span class="rec">RECOMMENDED</span></h2>
-<ul class="cap">
- <li><b>Left:</b> the same source list as today, now with Google Ads, Thumbtack, Website, WhatsApp, Facebook/Messenger, Instagram and Google Business Profile. Each source shows its count and a warning dot when something needs attention.</li>
- <li><b>Website:</b> one row per site with host, Company · Branch, chat and booking chips, the plugin version (amber when it's behind), the last lead and the leads count in the last 30 days.
-  <ul><li>Clicking a site opens the side panel: chat and booking switches, where its leads go, the primary site, and when it was last seen.</li></ul>
- </li>
- <li><b>Google Business Profile:</b> lists listings mapped to branches, with a plain line: "Google ended Business Profile chat in 2024, so listings bring no leads here."</li>
- <li><b>Why:</b> it's the pattern people already know from Google Ads and Thumbtack, and it's the smallest change.</li>
-</ul>
-<div class="win" style="height:400px"><div class="top"><span class="logo">EzBizi</span><span class="org">Brightside Home Services</span></div>
-<div class="page" style="flex-direction:row;gap:0;padding:0">
- <div class="lc-nav"><span>Google Ads <b>3</b></span><span>Thumbtack <b>2</b></span><span class="on">Website <b>2 ●</b></span><span>WhatsApp <b>1</b></span><span>Facebook / Messenger <b>1</b></span><span>Instagram <b>1</b></span><span>Google Business Profile <b>4</b></span></div>
- <div style="flex:1;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0">
-  <div class="lc-row"><span class="lc-fld" style="width:200px">🔍 Host, company or branch</span></div>
-  <table class="lc-t"><tr><th>SITE</th><th>LEADS GO TO</th><th>WIDGETS</th><th>PLUGIN</th><th>LAST LEAD</th><th>30 DAYS</th></tr>
-   <tr style="background:var(--pric)"><td><b>brightside.example</b> <span class="lc-ch lc-gr">Primary</span></td><td>Brightside · Springfield</td><td><span class="lc-ch lc-ok">Chat</span><span class="lc-ch lc-ok">Booking</span></td><td><span class="lc-ch lc-wa">1.4.2 · update</span></td><td>Today 9:12</td><td>38</td></tr>
-   <tr><td><b>riverton.brightside.example</b></td><td>Brightside · Riverton</td><td><span class="lc-ch lc-ok">Chat</span><span class="lc-ch lc-gr">Booking off</span></td><td><span class="lc-ch lc-ok">1.5.0</span></td><td>Oct 26</td><td>7</td></tr>
-  </table>
- </div>
- <div class="lc-side"><b style="font-size:14px">brightside.example</b><span class="lc-help">Last seen 4 min ago · plugin 1.4.2 (1.5.0 available)</span>
-  <span class="lc-row">Chat <span class="lc-ch lc-ok">On</span> &nbsp; Booking <span class="lc-ch lc-ok">On</span></span>
-  <span class="lc-lbl">Leads go to</span><span class="lc-fld">Brightside · Springfield ▾</span>
-  <span class="lc-help">☑ Primary site for this company</span>
- </div>
-</div></div>
-
-<h2><span class="n">2</span> A card grid of all sources, opening one source full width</h2>
-<p class="cap">A card per source shows its status and leads count. It's a good overview, but it takes an extra click to reach the sites or accounts.</p>
-<div class="win" style="height:200px"><div class="top"><span class="logo">EzBizi</span></div><div class="page"><div class="lc-grid">
- <div class="lc-cd"><b>Website</b><span class="lc-help">2 sites · 45 leads · 1 update</span></div><div class="lc-cd"><b>WhatsApp</b><span class="lc-help">1 number · connecting</span></div><div class="lc-cd"><b>Google Business Profile</b><span class="lc-help">4 listings · no leads (chat ended 2024)</span></div>
-</div></div></div>
-
-<h2><span class="n">3</span> One table of every connection, filtered by source</h2>
-<p class="cap">Sites, numbers, pages and listings all in one searchable table with a Source column. It's quickest for searching, but each source has different columns, so many cells stay blank.</p>
-
-<h2><span class="n">4</span>–<span class="n">6</span> On a phone</h2>
-<div class="phones">
- <div class="pcol"><span class="pl">4 · goes with 1 (recommended)</span><div class="phn"><div class="sb"></div><div class="ab"><span>←</span><span class="t">Website</span></div><div class="pb">
-  <span class="lc-fld">🔍 Host, company or branch</span>
-  <div class="lc-cd"><b>brightside.example</b><span class="lc-help">Springfield · 38 leads · today 9:12</span><span><span class="lc-ch lc-ok">Chat</span><span class="lc-ch lc-ok">Booking</span><span class="lc-ch lc-wa">update</span></span></div>
-  <div class="lc-cd"><b>riverton.brightside.example</b><span class="lc-help">Riverton · 7 leads</span></div>
-  <span class="lc-help">The source list comes first, then a source's list, then its panel in place.</span>
- </div></div></div>
- <div class="pcol"><span class="pl">5 · goes with 2</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Connections</span></div><div class="pb"><span class="lc-help">Source cards, stacked.</span></div></div></div>
- <div class="pcol"><span class="pl">6 · goes with 3</span><div class="phn"><div class="sb"></div><div class="ab"><span>☰</span><span class="t">Connections</span></div><div class="pb"><span class="lc-help">One list with source chips to filter.</span></div></div></div>
+<!-- ═════════ 1 ═════════ -->
+<h2><span class="n">1</span>A Connections page in place: providers, a table, the account beside it <span class="rec">Recommended</span></h2>
+<p class="cap">Manage opens a page inside Leads, with ← back to the leads. Providers on the left, each with its count and how many need attention. The selected provider's accounts fill a table (Account, Goes to, Leads, Status) with chips for <b>All · Needs attention · Never sent a lead</b>. Clicking a row opens the account beside the table: its name, where its leads go (a search picker), its certification with each problem on its own line, and Disconnect at the foot. Rows carry no buttons. Disconnect all moves to the foot of the table. This is the list-and-panel shape Estimates and Reports already use.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="bk"><span class="ar">←</span><div><div class="t">Connections</div><div class="s">Where enquiries come from, and where each account's leads go.</div></div><span class="sp"></span><span class="btn f">+ Connect an account</span></div>
+  <div class="body" style="border-top:1px solid var(--line)">
+   <div class="prov">
+    <div class="pv on"><span class="mk gg">G</span><div class="g"><b>Google Ads</b><span>22 accounts · 13 sending leads</span></div><span class="pill p-warn">3</span></div>
+    <div class="pv"><span class="mk tt">T</span><div class="g"><b>Thumbtack</b><span>1 business · enquiries not fetched yet</span></div></div>
+    <div class="pv"><span class="mk ww">W</span><div class="g"><b>Website</b><span>Chat and forms, through the WordPress plugin</span></div></div>
+   </div>
+   <div class="lst">
+    <div class="bar"><div class="chips"><span class="chip on">All <span class="c">22</span></span><span class="chip">Needs attention <span class="c">3</span></span><span class="chip">Never sent a lead <span class="c">9</span></span></div><span class="sp"></span><span class="srch" style="width:150px">🔍 Find an account</span></div>
+    <div class="tbl">
+     <div class="tr hd cols"><span>Account</span><span>Goes to</span><span class="num">Leads</span><span>Status</span></div>
+     <div class="tr cols"><span class="two"><b>North Miami LSA</b><span>482-117-3301</span></span><span class="el">North Miami</span><span class="num">214</span><span><span class="pill p-ok">Certified</span></span></div>
+     <div class="tr cols sel"><span class="two"><b>Broward LSA</b><span>482-117-5520</span></span><span class="el">Fort Lauderdale</span><span class="num">167</span><span><span class="pill p-warn">Needs attention</span></span></div>
+     <div class="tr cols"><span class="two"><b>Orlando LSA</b><span>519-204-7711</span></span><span class="el">Orlando</span><span class="num">98</span><span><span class="pill p-ok">Certified</span></span></div>
+     <div class="tr cols"><span class="two"><b>Harbor Garage Doors</b><span>519-204-9036 · not named yet</span></span><span class="el muted">Company level</span><span class="num">41</span><span><span class="pill p-ok">Certified</span></span></div>
+     <div class="tr cols"><span class="two"><b>Tampa Bay LSA</b><span>640-331-2208</span></span><span class="el">Tampa</span><span class="num">36</span><span><span class="pill p-bad">Reconnect</span></span></div>
+     <div class="tr cols"><span class="two"><b>Harbor Plumbing</b><span>640-331-7415 · not named yet</span></span><span class="el muted">Company level</span><span class="num">12</span><span><span class="pill p-warn">Needs attention</span></span></div>
+     <div class="tr cols"><span class="two"><b>Palm Beach LSA</b><span>702-118-4410</span></span><span class="el">West Palm Beach</span><span class="num">9</span><span><span class="pill p-ok">Certified</span></span></div>
+     <div class="tr cols"><span class="two"><b>Naples LSA</b><span>702-118-6093</span></span><span class="el"><i class="muted">Placed somewhere you cannot see</i></span><span class="num">7</span><span><span class="pill p-ok">Certified</span></span></div>
+     <div class="tr grp" style="grid-template-columns:1fr auto"><span>9 that have never sent a lead</span><span class="muted">›</span></div>
+    </div>
+    <div class="foot"><span class="tiny">7 on franchises · 15 at company level</span><span class="sp"></span><span class="btn dq s">Disconnect all 22 Google Ads accounts</span></div>
+   </div>
+   <div class="pan">
+    <div class="ph"><div style="flex:1"><div class="t">Broward LSA</div><div class="s">Harbor Garage Doors · 482-117-5520</div></div><span style="font-size:18px;color:var(--muted)">✕</span></div>
+    <div class="pb">
+     <div class="stat"><div><b>167</b><span>leads</span></div><div><b>Fort Lauderdale</b><span>where they go</span></div></div>
+     <div><div class="lbl">Name</div><div class="fld"><span class="v">Broward LSA</span><span class="sp"></span><span class="link" style="font-size:12px">Save</span></div><div class="help">What this account is, in your words. Empty goes back to the number.</div></div>
+     <div><div class="lbl">Leads go to</div><div class="fld"><span class="v">Fort Lauderdale</span><span class="sp"></span><span class="muted">⌄</span></div><div class="help">Moving it moves its 167 leads with it.</div></div>
+     <div><div class="lbl">Certification</div><div class="cert"><b>Needs attention</b><div class="pr">• <span>Insurance expires on Oct 12, 2026.</span></div><div class="pr">• <span>Background check: pending review.</span></div><div class="src">Licence, insurance and background check, as Google holds them. Checked daily.</div></div></div>
+    </div>
+    <div class="pf"><span class="btn d">Disconnect</span><span class="sp"></span><span class="tiny">Nothing already in EzBizi is deleted.</span></div>
+   </div>
+  </div>
+ </div></div>
 </div>
+
+<!-- ═════════ 2 ═════════ -->
+<h2><span class="n">2</span>The same panel, wider, one line per account that opens in place</h2>
+<p class="cap">Manage stays a side panel over the leads, wider than today. Providers become a switch at the top, so Google Ads, Thumbtack and Website are never stacked in one scroll. Each account is one line (name, where its leads go, leads, status); clicking it opens the line in place with its name, where its leads go, its certification problems and Disconnect. The same chips filter to what needs attention. Disconnect all sits at the panel's foot.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod" style="flex-direction:row">
+  <div class="under"><div class="rail"></div><div class="ll"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="th"><i></i><i></i><i></i><i></i></div></div>
+  <div class="side">
+   <div class="ph" style="padding:14px 18px 10px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><div style="font-size:16px;font-weight:800">Connected sources</div><div class="tiny">Where enquiries come from, and where each account's leads go.</div></div><span style="font-size:18px;color:var(--muted)">✕</span></div>
+   <div style="padding:10px 14px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line2)"><div class="seg"><span class="on">Google Ads <span class="pill p-warn">3</span></span><span>Thumbtack</span><span>Website</span></div><span class="sp"></span><span class="btn s">+ Connect</span></div>
+   <div style="padding:10px 14px 6px;display:flex;gap:8px;align-items:center"><div class="chips"><span class="chip on">All <span class="c">22</span></span><span class="chip">Needs attention <span class="c">3</span></span><span class="chip">Never sent <span class="c">9</span></span></div><span class="sp"></span><span class="srch" style="width:150px">🔍 Find</span></div>
+   <div style="flex:1;min-height:0;overflow:hidden">
+    <div class="acc"><div class="ln"><span class="two"><b>North Miami LSA</b><span>482-117-3301</span></span><span class="el">North Miami</span><span class="num">214</span><span><span class="pill p-ok">Certified</span></span><span class="muted">⌄</span></div></div>
+    <div class="acc open"><div class="ln"><span class="two"><b>Broward LSA</b><span>482-117-5520</span></span><span class="el">Fort Lauderdale</span><span class="num">167</span><span><span class="pill p-warn">Needs attention</span></span><span class="muted">⌃</span></div>
+     <div class="more">
+      <div><div class="lbl">Name</div><div class="fld"><span class="v">Broward LSA</span><span class="sp"></span><span class="link" style="font-size:12px">Save</span></div></div>
+      <div><div class="lbl">Leads go to</div><div class="fld"><span class="v">Fort Lauderdale</span><span class="sp"></span><span class="muted">⌄</span></div></div>
+      <div class="wide cert"><b>Certification needs attention</b><div class="pr">• <span>Insurance expires on Oct 12, 2026.</span></div><div class="pr">• <span>Background check: pending review.</span></div></div>
+      <div class="wide" style="display:flex;align-items:center;gap:8px"><span class="tiny">Moving it moves its 167 leads with it.</span><span class="sp"></span><span class="btn d s">Disconnect</span></div>
+     </div>
+    </div>
+    <div class="acc"><div class="ln"><span class="two"><b>Orlando LSA</b><span>519-204-7711</span></span><span class="el">Orlando</span><span class="num">98</span><span><span class="pill p-ok">Certified</span></span><span class="muted">⌄</span></div></div>
+    <div class="acc"><div class="ln"><span class="two"><b>Harbor Garage Doors</b><span>519-204-9036 · not named yet</span></span><span class="el muted">Company level</span><span class="num">41</span><span><span class="pill p-ok">Certified</span></span><span class="muted">⌄</span></div></div>
+    <div class="acc"><div class="ln"><span class="two"><b>Tampa Bay LSA</b><span>640-331-2208</span></span><span class="el">Tampa</span><span class="num">36</span><span><span class="pill p-bad">Reconnect</span></span><span class="muted">⌄</span></div></div>
+    <div class="acc"><div class="ln"><span class="two"><b>Harbor Plumbing</b><span>640-331-7415 · not named yet</span></span><span class="el muted">Company level</span><span class="num">12</span><span><span class="pill p-warn">Needs attention</span></span><span class="muted">⌄</span></div></div>
+    <div class="acc" style="padding:9px 14px;font-weight:700;font-size:12px;background:#f7f9fa">9 that have never sent a lead ›</div>
+   </div>
+   <div style="padding:10px 14px;border-top:1px solid var(--line);display:flex;align-items:center"><span class="tiny">22 accounts · 7 on franchises</span><span class="sp"></span><span class="btn dq s">Disconnect all 22</span></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ 3 ═════════ -->
+<h2><span class="n">3</span>What needs you first, then each provider as a card</h2>
+<p class="cap">The page opens on what needs attention across every provider, one line each with the fix named, and a Reconnect button where reconnecting is the fix. Below it, one card per provider with its numbers. Opening a card shows its accounts as tiles, all the same size. Clicking a tile opens the account beside them, as in 1.</p>
+<div class="win">
+ <div class="top"><span class="logo">EzBizi</span><span class="org">Harbor Group ⌄</span></div>
+ <div class="shell"><div class="nav"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="mod">
+  <div class="bk"><span class="ar">←</span><div><div class="t">Connections</div><div class="s">Where enquiries come from, and where each account's leads go.</div></div><span class="sp"></span><span class="btn f">+ Connect an account</span></div>
+  <div style="flex:1;min-height:0;overflow:hidden">
+   <div class="att"><div class="ah">⚠ Needs attention · 3</div>
+    <div class="ar2"><span class="mk gg">G</span><span class="two"><b>Tampa Bay LSA</b> <span class="tiny">640-331-2208</span></span><span class="bad">The connection stopped working. No leads are fetched from it until it is reconnected.</span><span class="btn s">Reconnect</span></div>
+    <div class="ar2"><span class="mk gg">G</span><span class="two"><b>Broward LSA</b> <span class="tiny">482-117-5520</span></span><span class="warn">Insurance expires on Oct 12, 2026. Background check: pending review.</span><span class="link">Open ›</span></div>
+    <div class="ar2"><span class="mk gg">G</span><span class="two"><b>Harbor Plumbing</b> <span class="tiny">640-331-7415</span></span><span class="warn">Licence: pending review.</span><span class="link">Open ›</span></div>
+   </div>
+   <div class="cards">
+    <div class="pcard on"><div class="hd"><span class="mk gg">G</span><b>Google Ads</b><span class="sp"></span><span class="pill p-warn">3 need attention</span></div><div class="stat"><div><b>22</b><span>accounts</span></div><div><b>13</b><span>sending leads</span></div><div><b>9</b><span>never sent one</span></div></div></div>
+    <div class="pcard"><div class="hd"><span class="mk tt">T</span><b>Thumbtack</b></div><div class="stat"><div><b>1</b><span>business</span></div></div><div class="tiny">Connected: phone numbers kept in step. Enquiries not fetched yet.</div></div>
+    <div class="pcard"><div class="hd"><span class="mk ww">W</span><b>Website</b></div><div class="tiny">Chat and form enquiries arrive through the EzBizi WordPress plugin on your site.</div></div>
+   </div>
+   <div class="sect">Google Ads accounts <span class="sp"></span><span class="srch" style="width:180px;text-transform:none;letter-spacing:0;font-weight:500">🔍 Find an account</span></div>
+   <div class="tiles">
+    <div class="tile"><b>North Miami LSA</b><span class="l">482-117-3301</span><span class="l">North Miami · 214 leads</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile sel"><b>Broward LSA</b><span class="l">482-117-5520</span><span class="l">Fort Lauderdale · 167 leads</span><div class="bt"><span class="pill p-warn">Needs attention</span></div></div>
+    <div class="tile"><b>Orlando LSA</b><span class="l">519-204-7711</span><span class="l">Orlando · 98 leads</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile"><b>Harbor Garage Doors</b><span class="l">519-204-9036 · not named yet</span><span class="l">Company level · 41 leads</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile"><b>Tampa Bay LSA</b><span class="l">640-331-2208</span><span class="l">Tampa · 36 leads</span><div class="bt"><span class="pill p-bad">Reconnect</span></div></div>
+    <div class="tile"><b>Harbor Plumbing</b><span class="l">640-331-7415 · not named yet</span><span class="l">Company level · 12 leads</span><div class="bt"><span class="pill p-warn">Needs attention</span></div></div>
+    <div class="tile"><b>Palm Beach LSA</b><span class="l">702-118-4410</span><span class="l">West Palm Beach · 9 leads</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile"><b>+ 15 more</b><span class="l">6 sending leads</span><span class="l">9 that have never sent one</span><div class="bt"><span class="link">Show all ›</span></div></div>
+   </div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ═════════ phones ═════════ -->
+<h2><span class="n">4</span>Phone: 1 as three steps, each with ← back <span class="rec">Recommended</span></h2>
+<p class="cap">Connections, then a provider's accounts, then one account, each in place of the last with ← back. A row is two lines: name and status, then where its leads go and the count.</p>
+<div class="pairp">
+ <div><div class="pl">Connections</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Connections</span></div>
+  <div class="scr">
+   <div class="tiny" style="padding:10px 14px 4px">Where enquiries come from, and where each account's leads go.</div>
+   <div class="ptile"><span class="mk gg">G</span><div class="g"><b>Google Ads</b><span>22 accounts · 13 sending leads</span></div><span class="pill p-warn">3</span><span class="muted">›</span></div>
+   <div class="ptile"><span class="mk tt">T</span><div class="g"><b>Thumbtack</b><span>1 business · enquiries not fetched yet</span></div><span class="muted">›</span></div>
+   <div class="ptile"><span class="mk ww">W</span><div class="g"><b>Website</b><span>Chat and forms, through the WordPress plugin</span></div><span class="muted">›</span></div>
+   <div style="padding:14px"><span class="btn f" style="width:100%">+ Connect an account</span></div>
+  </div>
+ </div></div>
+ <div><div class="pl">Google Ads</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Google Ads</span></div>
+  <div class="scr">
+   <div class="hs"><span class="chip on">All <span class="c">22</span></span><span class="chip">Needs attention <span class="c">3</span></span><span class="chip">Never sent <span class="c">9</span></span></div>
+   <div style="padding:0 12px 8px"><span class="srch" style="width:100%">🔍 Find an account</span></div>
+   <div class="et"><div class="l1"><span class="ti">North Miami LSA</span><span class="pill p-ok">Certified</span></div><div class="l2">North Miami · 214 leads</div></div>
+   <div class="et" style="background:#e8f4f8"><div class="l1"><span class="ti">Broward LSA</span><span class="pill p-warn">Needs attention</span></div><div class="l2">Fort Lauderdale · 167 leads</div></div>
+   <div class="et"><div class="l1"><span class="ti">Orlando LSA</span><span class="pill p-ok">Certified</span></div><div class="l2">Orlando · 98 leads</div></div>
+   <div class="et"><div class="l1"><span class="ti">Harbor Garage Doors</span><span class="pill p-ok">Certified</span></div><div class="l2">519-204-9036 · Company level · 41 leads</div></div>
+   <div class="et"><div class="l1"><span class="ti">Tampa Bay LSA</span><span class="pill p-bad">Reconnect</span></div><div class="l2">Tampa · 36 leads</div></div>
+   <div class="et"><div class="l1"><span class="ti">Harbor Plumbing</span><span class="pill p-warn">Needs attention</span></div><div class="l2">640-331-7415 · Company level · 12 leads</div></div>
+   <div class="et" style="font-weight:700;font-size:12px;background:#f7f9fa">9 that have never sent a lead ›</div>
+   <div style="padding:12px 14px"><span class="btn dq s">Disconnect all 22</span></div>
+  </div>
+ </div></div>
+ <div><div class="pl">One account</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Broward LSA</span></div>
+  <div class="pscr">
+   <div class="tiny">Harbor Garage Doors · 482-117-5520</div>
+   <div class="stat"><div><b>167</b><span>leads</span></div><div><b>Fort Lauderdale</b><span>where they go</span></div></div>
+   <div><div class="lbl">Name</div><div class="fld"><span class="v">Broward LSA</span><span class="sp"></span><span class="link" style="font-size:12px">Save</span></div><div class="help">Empty goes back to the number.</div></div>
+   <div><div class="lbl">Leads go to</div><div class="fld"><span class="v">Fort Lauderdale</span><span class="sp"></span><span class="muted">⌄</span></div><div class="help">Moving it moves its 167 leads with it.</div></div>
+   <div><div class="lbl">Certification</div><div class="cert"><b>Needs attention</b><div class="pr">• <span>Insurance expires on Oct 12, 2026.</span></div><div class="pr">• <span>Background check: pending review.</span></div><div class="src">As Google holds them. Checked daily.</div></div></div>
+  </div>
+  <div class="pbar"><span class="btn d">Disconnect</span></div>
+ </div></div>
+</div>
+
+<h2><span class="n">5</span>Phone: 2, the panel in place with lines that open</h2>
+<p class="cap">The panel fills the screen in place of the leads, with ← back. The provider switch and chips on top; an account opens where it is.</p>
+<div class="pairp">
+ <div><div class="pl">Google Ads, one open</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Connected sources</span></div>
+  <div class="scr">
+   <div style="padding:10px 12px 0"><div class="seg"><span class="on">Google Ads <span class="pill p-warn">3</span></span><span>Thumbtack</span><span>Website</span></div></div>
+   <div class="hs"><span class="chip on">All <span class="c">22</span></span><span class="chip">Needs attention <span class="c">3</span></span><span class="chip">Never sent <span class="c">9</span></span></div>
+   <div class="et"><div class="l1"><span class="ti">North Miami LSA</span><span class="pill p-ok">Certified</span><span class="muted">⌄</span></div><div class="l2">North Miami · 214 leads</div></div>
+   <div class="et" style="background:#f6fafb"><div class="l1"><span class="ti">Broward LSA</span><span class="pill p-warn">Needs attention</span><span class="muted">⌃</span></div><div class="l2">Fort Lauderdale · 167 leads</div>
+    <div style="display:flex;flex-direction:column;gap:9px;margin-top:10px">
+     <div class="fld"><span class="muted" style="font-size:10.5px;font-weight:700">Name</span><span class="v">Broward LSA</span><span class="sp"></span><span class="link" style="font-size:12px">Save</span></div>
+     <div class="fld"><span class="muted" style="font-size:10.5px;font-weight:700">Goes to</span><span class="v">Fort Lauderdale</span><span class="sp"></span><span class="muted">⌄</span></div>
+     <div class="cert"><b>Certification needs attention</b><div class="pr">• <span>Insurance expires on Oct 12, 2026.</span></div><div class="pr">• <span>Background check: pending review.</span></div></div>
+     <div style="display:flex"><span class="sp"></span><span class="btn d s">Disconnect</span></div>
+    </div>
+   </div>
+   <div class="et"><div class="l1"><span class="ti">Orlando LSA</span><span class="pill p-ok">Certified</span><span class="muted">⌄</span></div><div class="l2">Orlando · 98 leads</div></div>
+   <div class="et"><div class="l1"><span class="ti">Tampa Bay LSA</span><span class="pill p-bad">Reconnect</span><span class="muted">⌄</span></div><div class="l2">Tampa · 36 leads</div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">Thumbtack</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Connected sources</span></div>
+  <div class="scr">
+   <div style="padding:10px 12px 0"><div class="seg"><span>Google Ads <span class="pill p-warn">3</span></span><span class="on">Thumbtack</span><span>Website</span></div></div>
+   <div class="et" style="margin-top:8px"><div class="l1"><span class="ti">Harbor Home Services</span><span class="pill p-info">Connected</span><span class="muted">⌄</span></div><div class="l2">Company level · no leads</div></div>
+   <div style="padding:12px 14px" class="tiny">EzBizi keeps this business's associate phone numbers in step with Thumbtack, so calls from your team are recognised as coming from the business. Reading enquiries into Leads is not switched on yet: until it is, your Thumbtack leads are on Thumbtack, not missing.</div>
+  </div>
+ </div></div>
+</div>
+
+<h2><span class="n">6</span>Phone: 3, what needs you first</h2>
+<p class="cap">What needs attention on top, then the provider cards, then that provider's accounts as tiles two to a row. A tile opens the account in place, as in 4.</p>
+<div class="pairp">
+ <div><div class="pl">Connections</div><div class="phn"><div class="sbar"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span>←</span><span class="t">Connections</span></div>
+  <div class="scr" style="background:var(--ground);gap:10px;padding-top:10px">
+   <div class="att" style="margin:0 12px"><div class="ah">⚠ Needs attention · 3</div>
+    <div style="padding:9px 12px;border-top:1px solid var(--line2);font-size:12px"><b>Tampa Bay LSA</b><div class="bad" style="font-size:11.5px">The connection stopped working.</div><div style="margin-top:6px"><span class="btn s">Reconnect</span></div></div>
+    <div style="padding:9px 12px;border-top:1px solid var(--line2);font-size:12px"><b>Broward LSA</b><div class="warn" style="font-size:11.5px">Insurance expires on Oct 12, 2026.</div></div>
+    <div style="padding:9px 12px;border-top:1px solid var(--line2);font-size:12px"><b>Harbor Plumbing</b><div class="warn" style="font-size:11.5px">Licence: pending review.</div></div>
+   </div>
+   <div class="pcard on" style="margin:0 12px;min-height:0"><div class="hd"><span class="mk gg">G</span><b>Google Ads</b><span class="sp"></span><span class="muted">⌃</span></div><div class="stat"><div><b>22</b><span>accounts</span></div><div><b>13</b><span>sending</span></div><div><b>9</b><span>never sent</span></div></div></div>
+   <div class="ptiles">
+    <div class="tile"><b>North Miami LSA</b><span class="l">North Miami · 214</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile sel"><b>Broward LSA</b><span class="l">Fort Lauderdale · 167</span><div class="bt"><span class="pill p-warn">Attention</span></div></div>
+    <div class="tile"><b>Orlando LSA</b><span class="l">Orlando · 98</span><div class="bt"><span class="pill p-ok">Certified</span></div></div>
+    <div class="tile"><b>Tampa Bay LSA</b><span class="l">Tampa · 36</span><div class="bt"><span class="pill p-bad">Reconnect</span></div></div>
+   </div>
+   <div class="pcard" style="margin:0 12px;min-height:0"><div class="hd"><span class="mk tt">T</span><b>Thumbtack</b><span class="sp"></span><span class="tiny">1 business</span><span class="muted">⌄</span></div></div>
+  </div>
+ </div></div>
+</div>
+
+<h2 style="margin-top:50px">What changes for the owners</h2>
+<ul class="cap">
+ <li><b>Client only, in every option.</b> <code>leads_accounts.dart</code> and the Manage section of <code>leads_screen.dart</code> are the Leads module's; the rows keep their calls (<code>/social/connections/{id}/label</code>, <code>/leads-franchise</code>, the disconnects).</li>
+ <li>“Leads go to” becomes the search picker the rest of the app uses, in place of a row of chips, one per franchise.</li>
+ <li>“Reconnect” is the Connect button that exists today, started for that provider.</li>
+</ul>
 </div>
