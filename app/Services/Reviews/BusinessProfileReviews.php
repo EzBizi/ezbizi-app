@@ -366,6 +366,8 @@ class BusinessProfileReviews
                 ]);
             } else {
                 $review->fill($fromGoogle);
+                // Left behind by a disconnected account: the one that returns it now replies to it.
+                $review->connection_id ??= $connection->getKey();
             }
 
             $review->save();
