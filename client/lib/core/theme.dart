@@ -831,7 +831,8 @@ class EmailInk {
 
 /// A lead source's chip, by source key (approved design 159, options 1 + 4):
 /// WhatsApp green, Facebook blue, Instagram pink, Google Ads amber, Thumbtack
-/// sky, Website violet. Always drawn with the source's name, so colour is
+/// sky, Website teal (not the design's violet: no purple, see the top of
+/// this file). Always drawn with the source's name, so colour is
 /// never the only cue. A key not listed gets [Tone.neutral].
 abstract final class SourceColours {
   static const _light = {
@@ -840,7 +841,7 @@ abstract final class SourceColours {
     'instagram': ToneColours(Color(0xFFFCE7F3), Color(0xFF9D174D)),
     'google_ads': ToneColours(Color(0xFFFEF3C7), Color(0xFF92400E)),
     'thumbtack': ToneColours(Color(0xFFE0F2FE), Color(0xFF075985)),
-    'website': ToneColours(Color(0xFFEDE9FE), Color(0xFF5B21B6)),
+    'website': ToneColours(Color(0xFFCCFBF1), Color(0xFF115E59)),
   };
 
   static const _dark = {
@@ -849,7 +850,7 @@ abstract final class SourceColours {
     'instagram': ToneColours(Color(0xFF831843), Color(0xFFFBCFE8)),
     'google_ads': ToneColours(Color(0xFF78350F), Color(0xFFFDE68A)),
     'thumbtack': ToneColours(Color(0xFF0C4A6E), Color(0xFFBAE6FD)),
-    'website': ToneColours(Color(0xFF4C1D95), Color(0xFFDDD6FE)),
+    'website': ToneColours(Color(0xFF134E4A), Color(0xFF99F6E4)),
   };
 
   /// The keys with a colour of their own.
