@@ -62,6 +62,18 @@ void main() {
     expect(reloaded, 1);
   });
 
+  // Design 160, B1: Manage › Hidden only with leads.hidden.view.
+  testWidgets('the Hidden tab is drawn only with its tick', (tester) async {
+    await _pump(tester, connections: const []);
+    expect(find.text('Hidden'), findsNothing);
+    await _pump(
+      tester,
+      connections: const [],
+      permissions: const ['leads.view', 'leads.edit', 'leads.hidden.view'],
+    );
+    expect(find.text('Hidden'), findsOneWidget);
+  });
+
   testWidgets('a single account has no Disconnect all; its own is enough', (
     tester,
   ) async {
@@ -738,6 +750,7 @@ Future<void> _pump(
   Future<void> Function()? onChanged,
   VoidCallback? onBack,
   String? campaignRefusal,
+  List<String> permissions = const ['leads.view', 'leads.edit'],
 }) async {
   _deleted.clear();
   _patched.clear();
@@ -752,7 +765,7 @@ Future<void> _pump(
         return _json({
           'data': {
             ..._me,
-            'permissions': const ['leads.view', 'leads.edit'],
+            'permissions': permissions,
           },
         });
       }

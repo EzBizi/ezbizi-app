@@ -14,6 +14,9 @@ import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/call_tab.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
+import 'lead_form_answers.dart';
+import 'lead_media.dart';
+import 'leads_hidden.dart';
 import '../screens/scheduling/availability_pane.dart';
 import 'ai_mark.dart';
 import 'async_body.dart';
@@ -67,6 +70,7 @@ class LeadThread extends StatefulWidget {
     this.onNote,
     this.session,
     this.onBooked,
+    this.onHidden,
   });
 
   final ApiClient api;
@@ -112,6 +116,9 @@ class LeadThread extends StatefulWidget {
   final Future<Map<String, dynamic>?> Function(Map<String, dynamic> result)?
   onBooked;
 
+  /// After this lead was hidden (design 160): it leaves the list.
+  final Future<void> Function()? onHidden;
+
   @override
   State<LeadThread> createState() => _LeadThreadState();
 }
@@ -146,6 +153,9 @@ class _LeadThreadState extends State<LeadThread> {
 
   /// A website booking's day and window, and where it stands (Jose, 2026-10-08).
   Map<String, dynamic>? _booking;
+
+  /// The lead's merged ad form (design 160, C1), from the read or the row.
+  late Map<String, dynamic> _formLead = widget.lead;
 
   /// An earlier-opening offer this thread is about (Scheduling, 2026-10-28):
   /// the customer said yes, so the job moves in one click.
@@ -417,6 +427,12 @@ class _LeadThreadState extends State<LeadThread> {
       _customer = data['customer'] as Map<String, dynamic>?;
       _details = data['details'] as Map<String, dynamic>?;
       _booking = data['booking'] as Map<String, dynamic>?;
+      _formLead = {
+        ...widget.lead,
+        ...?(data['lead'] as Map<String, dynamic>?),
+        for (final k in const ['form_answers', 'form_name', 'form_submitted_at'])
+          if (data.containsKey(k)) k: data[k],
+      };
       if (widget.lead['lead_type'] == 'Reschedule' && _offer == null) {
         _loadOffer();
       }
@@ -576,6 +592,13 @@ class _LeadThreadState extends State<LeadThread> {
               key: const ValueKey('book-open'),
               onPressed: _openBooking,
               child: const Text('Book'),
+            ),
+          if (widget.session?.me?.can(leadsHiddenPermission) == true &&
+              widget.onStatusChanged != null)
+            LeadHideMenu(
+              api: widget.api,
+              lead: lead,
+              onHidden: widget.onHidden,
             ),
         ],
       ),
@@ -842,6 +865,8 @@ class _LeadThreadState extends State<LeadThread> {
                       if (_offer != null) _offerBlock(theme),
                       if (!narrow || _showDetails) ...[
                         if (_details != null) _detailsBlock(theme, lead),
+                        if (hasFormAnswers(_formLead))
+                          FormAnswersSection(lead: _formLead),
                         _noteBlock(theme, lead),
                         if (_customer != null) _customerCard(theme, _customer!),
                       ],
@@ -1481,7 +1506,7 @@ class _LeadThreadState extends State<LeadThread> {
   );
 
   Widget _thread(ThemeData theme) {
-    final items = threadItems(_conversations);
+    final items = withFormLine(threadItems(_conversations), _formLead);
 
     // Opens on the NEWEST message, as a chat does (the dispatchers, via Jose,
     // 2026-09-29: "it sends them to the top ... it should be sending them to
@@ -1495,6 +1520,7 @@ class _LeadThreadState extends State<LeadThread> {
     itemBuilder: (context, i) {
       final item = items[items.length - 1 - i];
       if (item is String) return _dayDivider(theme, item);
+      if (item is FormLine) return FormSystemLine(lead: _formLead);
       final c = item as Map<String, dynamic>;
       final mine = c['from'] == 'ADVERTISER';
       // Our replies say who sent them (Jose, 2026-09-29). A reply with no
@@ -1522,7 +1548,11 @@ class _LeadThreadState extends State<LeadThread> {
           mine: mine,
           // Ours, not automatic, and nobody in EzBizi named as sending it:
           // it went out from A1 Tools or Google directly.
-          outside: mine && c['automatic'] != true && c['sent_by'] == null,
+          outside:
+              mine &&
+              c['automatic'] != true &&
+              c['sent_by'] == null &&
+              !sentFromPhone(c),
           automatic: mine && c['automatic'] == true,
           who: who,
           when: when,
@@ -2299,7 +2329,10 @@ class _LeadThreadState extends State<LeadThread> {
     bool outside = false,
     bool automatic = false,
   }) {
-    final attachments = (c['attachments'] as List? ?? const []).cast<String>();
+    final all = (c['attachments'] as List? ?? const []).cast<String>();
+    final media = [for (final a in all) if (mediaKind(a) != null) a];
+    final attachments = [for (final a in all) if (mediaKind(a) == null) a];
+    final phone = mine && sentFromPhone(c);
 
     // Approved colour layout 3 / 6 (c31b50ad): ours is `primary` with
     // `onPrimary` text, the loudest this palette allows without red; theirs
@@ -2353,6 +2386,19 @@ class _LeadThreadState extends State<LeadThread> {
               c['text'] as String,
               style: theme.textTheme.bodyMedium?.copyWith(color: ink),
             ),
+          for (var i = 0; i < media.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: LeadMedia(
+                key: ValueKey('media-${c['id']}-$i'),
+                url: media[i],
+                kind: mediaKind(media[i])!,
+                api: widget.api,
+                player: _player,
+                ink: ink,
+                onExpired: () => _load(quiet: true),
+              ),
+            ),
           if (attachments.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -2370,9 +2416,19 @@ class _LeadThreadState extends State<LeadThread> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (phone)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 3),
+                    child: Icon(
+                      Icons.smartphone,
+                      key: ValueKey('sent-from-phone-${c['id']}'),
+                      size: 12,
+                      color: quiet,
+                    ),
+                  ),
                 Flexible(
                   child: Text(
-                    '$who · $when',
+                    phone ? 'Sent from phone · $when' : '$who · $when',
                     style: theme.textTheme.labelSmall?.copyWith(color: quiet),
                   ),
                 ),

@@ -1479,6 +1479,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
             session: widget.session,
             onBooked: _booked,
+            onHidden: () async {
+              close();
+              await _load();
+            },
           ),
         ),
       ],
@@ -1656,6 +1660,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           _mark(selected, note: text, clearNote: text == null),
                       session: widget.session,
                       onBooked: _booked,
+                      onHidden: _load,
                     ),
             ),
           ],
