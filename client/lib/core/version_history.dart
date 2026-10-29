@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0508',
+      date: '29 Oct 2026',
+      items: [
+        'Leads: the conversation gets most of the screen; the lead facts sit in the header, notes are a chip, status and Book are on the name row, and quick replies scroll in one line.',
+        'Every module: the page title row is slimmer; the description moved behind the help icon and the module\'s tools sit on the right.',
+        'Workiz: each job\'s sales (profit, cost, labour, card fees, parts, paid) are read into EzBizi.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0507',
       date: '29 Oct 2026',
       items: [
