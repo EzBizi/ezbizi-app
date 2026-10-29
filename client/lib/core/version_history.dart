@@ -14,6 +14,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0507',
+      date: '29 Oct 2026',
+      items: [
+        'WhatsApp: voice notes, photos, videos and documents play in the lead thread (streamed, never stored), and replies typed on the phone show as "Sent from phone".',
+        'WhatsApp: leads are named from the WhatsApp profile or the name saved in the Business app.',
+        'Leads: a Meta form and the Messenger or Instagram chat it opens are one lead, with the form answers shown in the details.',
+        'Leads: ad and campaign details on WhatsApp, Messenger, Instagram and form leads; Instagram username and picture; website address, city and service; Thumbtack details; caller names on RingCentral calls.',
+        'Leads: Manage → Hidden hides a conversation or a number from everyone without access, including search, counts, automations and AI.',
+        'Business Profile: a newly connected account loads its listings straight away.',
+        'Reviews: eKomi reviews appear in Reviews and Sources.',
+        'Reports: jobs done by an outside company count under that company.',
+        'Automations: job changes reach Workiz through the same mirror as the rest of EzBizi.',
+        'Desktop: screenshots and computer specs work again (the app no longer reports shutting down at launch).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0506',
       date: '29 Oct 2026',
       items: [
