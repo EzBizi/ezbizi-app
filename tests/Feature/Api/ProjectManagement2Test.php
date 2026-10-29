@@ -100,7 +100,7 @@ class ProjectManagement2Test extends TestCase
         $beta = $this->provisionTenant('Beta');
         $other = $this->inTenant($beta['org'], fn () => $this->job($beta, 'B-1', 'done pending approval'));
         [$id, $bare, $native] = $this->inTenant($alpha['org'], function () use ($alpha) {
-            $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 10:00:00']);
+            $id = $this->job($alpha, 'J-5', 'done pending approval', ['JobTotalPrice' => 1200, 'CreatedDate' => '2026-09-01 14:00:00', 'CreatedBy' => 'Ann Office']);
             // Workiz's invoice total wins over the estimate.
             $this->record($alpha, $id, 'estimate', 'E9', '999.00', 'Pending', '2026-09-02');
             $this->record($alpha, $id, 'payment', 'P1', '500.00', 'succeeded', '2026-09-05');
@@ -131,6 +131,7 @@ class ProjectManagement2Test extends TestCase
         $this->assertSame(['Job created', 'Estimate Pending'], array_slice(array_column($job['timeline'], 'what'), 0, 2));
         $this->assertStringStartsWith('Status Scheduled → ', $job['timeline'][2]['what']);
         $this->assertSame('Ada', $job['timeline'][2]['by']);
+        $this->assertSame(['2026-09-01', 'Ann Office'], [substr($job['timeline'][0]['at'], 0, 10), $job['timeline'][0]['by']], "the job's own birth and creator");
         $this->assertSame([99900, 50000, -10000], array_values(array_filter(array_map(fn ($s) => $s['amount'] ?? null, $job['timeline']))));
         $this->assertSame(['Payment', 'Refund', 'Tags +DEPOSIT'], array_slice(array_column($job['timeline'], 'what'), 3));
 
@@ -201,6 +202,10 @@ class ProjectManagement2Test extends TestCase
             'address_line1' => '1 Main St', 'city' => 'Columbus', 'state' => 'OH', 'postal_code' => '43004']);
         $job = Job::create(['franchise_id' => $tenant['franchise']->id, 'customer_id' => $customer->id, 'number' => $number,
             'title' => 'A job', 'status' => $status, 'currency' => 'USD', 'tags' => ['DEPOSIT']]);
+        // As Jobs' backfill leaves a mirrored job: its birth and creator are Workiz's, on the job.
+        if (isset($money['CreatedDate'])) {
+            $job->forceFill(['created_at' => $money['CreatedDate'], 'created_by_label' => $money['CreatedBy'] ?? null])->save();
+        }
 
         $mirror = WorkizJob::create(['franchise_id' => $job->franchise_id, 'remote_id' => "JOB-{$number}", 'serial_id' => '700'.preg_replace('/\D/', '', $number),
             'status' => 'x', 'payload' => $money, 'last_status_update' => '2026-10-20 08:00:00', 'synced_at' => now()]);

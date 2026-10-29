@@ -58,6 +58,15 @@ final class OnboardWhatsAppNumber implements ShouldQueue
             return; // Disconnected between the connect and this running.
         }
 
+        // A queued job has no tenant, and saving the connection's PIN needs one.
+        app(TenantContext::class)->run(
+            Organization::findOrFail($connection->organization_id),
+            fn () => $this->onboard($connection, $token),
+        );
+    }
+
+    private function onboard(SocialConnection $connection, string $token): void
+    {
         $phoneNumberId = (string) $connection->remote_id;
         $graph = 'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION;
 
@@ -105,19 +114,16 @@ final class OnboardWhatsAppNumber implements ShouldQueue
         }
         $digits = preg_replace('/\D+/', '', (string) ($info->json('display_phone_number') ?: $connection->handle)) ?? '';
 
-        app(TenantContext::class)->run(
-            Organization::findOrFail($connection->organization_id),
-            fn () => WhatsAppNumber::query()->updateOrCreate(
-                ['phone_number_id' => $phoneNumberId],
-                [
-                    'organization_id' => $connection->organization_id,
-                    'waba_id' => $this->wabaId,
-                    'display_number' => $digits === '' ? null : '+'.$digits,
-                    'display_name' => $info->json('verified_name') ?: null,
-                    'social_connection_id' => $connection->getKey(),
-                    'auto_reply' => $info->json('is_on_biz_app') !== true,
-                ],
-            ),
+        WhatsAppNumber::query()->updateOrCreate(
+            ['phone_number_id' => $phoneNumberId],
+            [
+                'organization_id' => $connection->organization_id,
+                'waba_id' => $this->wabaId,
+                'display_number' => $digits === '' ? null : '+'.$digits,
+                'display_name' => $info->json('verified_name') ?: null,
+                'social_connection_id' => $connection->getKey(),
+                'auto_reply' => $info->json('is_on_biz_app') !== true,
+            ],
         );
     }
 

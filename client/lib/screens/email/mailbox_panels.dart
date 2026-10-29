@@ -1252,6 +1252,15 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
 
     if (!mounted || _step != _Step.waiting) return;
 
+    // statusCode 0: the request never landed. On Android the poll keeps
+    // running while the browser has the screen and its socket is cut, so the
+    // round trip back reads as "Could not reach the server" though the
+    // sign-in worked. Ask again; waitAtMost still bounds the wait.
+    if (response.statusCode == 0 && --_asksLeft > 0) {
+      _askAgainLater();
+      return;
+    }
+
     if (!response.ok) {
       // The window is left OPEN on purpose. This branch is our end failing —
       // the request did not come back — and the person may be halfway through

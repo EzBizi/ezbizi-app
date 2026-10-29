@@ -5,6 +5,7 @@ namespace Tests\Feature\Monitoring;
 use App\Models\MonitoredDevice;
 use App\Models\PlatformStaff;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -102,20 +103,25 @@ class CaptureStatusTest extends TestCase
         $this->assertSame('blit_failed', $this->device()->capture_last_error);
     }
 
-    public function test_a_reason_outside_the_vocabulary_is_refused(): void
+    public function test_a_reason_outside_the_vocabulary_is_stored_as_capture_failed(): void
     {
         $alpha = $this->provisionTenant('Alpha');
+        Log::spy();
 
+        // 2026-10-29: refusing the beat took the device offline (461 beats),
+        // so the beat is kept and only the reason is replaced.
         $this->beat($alpha['admin'], ['capture' => [
             'ok' => false,
             'reason' => 'Reading an email from Dr Patel about the biopsy',
             'at' => now()->toIso8601String(),
-        ]])->assertStatus(422);
+        ]])->assertNoContent();
 
         // The point of the vocabulary: this string is rendered to whoever can
         // see the roster, so a free-text reason would be a way to publish
-        // whatever a tampered client read off the screen.
-        $this->assertNull(MonitoredDevice::withoutGlobalScopes()->value('capture_last_error'));
+        // whatever a tampered client read off the screen. It is not stored,
+        // and not logged either.
+        $this->assertSame('capture_failed', MonitoredDevice::withoutGlobalScopes()->value('capture_last_error'));
+        Log::shouldHaveReceived('info')->with('monitoring.capture.unknown_reason', ['reason' => '(not a slug)']);
     }
 
     public function test_an_upload_status_reason_is_accepted(): void

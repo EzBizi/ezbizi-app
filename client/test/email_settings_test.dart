@@ -1310,6 +1310,47 @@ void main() {
     await _tap(tester, find.widgetWithText(TextButton, 'Stop waiting'));
   });
 
+  testWidgets('a status ask that never lands is asked again, not shown as an '
+      'error', (tester) async {
+    // Android 0.0.0503: the poll ran while the browser had the screen, its
+    // socket was cut, and the sheet said "Could not reach the server" on a
+    // sign-in that had worked.
+    final rows = [_google()];
+    var asks = 0;
+
+    await _pumpSettings(
+      tester,
+      _handler(
+        googleUsable: true,
+        mailboxes: rows,
+        statusBodies: const [
+          {
+            'data': {'state': 'connected', 'message': null},
+          },
+        ],
+        onRequest: (method, path, _) {
+          if (!path.endsWith('/oauth/status')) return;
+          if (++asks == 1) throw Exception('socket closed');
+          rows[0] = _google(status: 'connected', canBeOpened: true);
+        },
+      ),
+      window: _FakeConsentWindow(),
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Connect'));
+    await _tap(
+      tester,
+      find.widgetWithText(FilledButton, 'Continue with Google (recommended)'),
+    );
+    await _waitOneRound(tester);
+    expect(find.textContaining('Could not reach the server'), findsNothing);
+
+    await _waitOneRound(tester);
+    await tester.pumpAndSettle();
+    expect(find.byType(SidePanel), findsNothing);
+    expect(find.text('Connected'), findsOneWidget);
+  });
+
   testWidgets('coming back signed in lands on the Settings tab with the inbox '
       'connected', (tester) async {
     final window = _FakeConsentWindow();

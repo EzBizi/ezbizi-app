@@ -118,13 +118,12 @@ class ProjectManagement2Controller extends Controller
         $money = $user->hasPermission('jobs.financials') ? JobMoney::of([$job->id]) : null;
 
         $at = fn (?Carbon $t) => $t?->toIso8601String();
-        // ponytail: Workiz's payload until Jobs stores the job's own created date and creator (asked 2026-10-27).
-        $created = $job->workizJob?->payload['CreatedDate'] ?? null;
+        // The job's own birth and who opened it (Jobs, ebc76a0e8; Workiz's backfilled for a mirrored job).
         $timeline = collect([[
             'kind' => 'created',
-            'at'   => $created ? Carbon::parse($created, $job->franchise?->timezone ?: 'UTC')->toIso8601String() : $at($job->created_at),
+            'at'   => $at($job->created_at),
             'what' => 'Job created',
-            'by'   => is_string($job->workizJob?->payload['CreatedBy'] ?? null) ? $job->workizJob->payload['CreatedBy'] : null,
+            'by'   => $job->created_by_label,
         ]]);
 
         // EzBizi's own estimates and Workiz's, and the payments, as JobMoney reads them.
@@ -228,10 +227,9 @@ class ProjectManagement2Controller extends Controller
             'status'     => $this->label($job->status, $job),
             'tags'       => $job->tags ?? [],
             'address'    => $job->customer_address,
-            // Workiz's own dates: jobs.created_at is when the sync copied the
-            // job in. Workiz has no edit time, so modified is its last status change.
-            'created'    => substr((string) ($job->workizJob?->payload['CreatedDate'] ?? ''), 0, 10)
-                ?: $job->created_at?->toDateString(),
+            // The job's own birth, on the branch's calendar. Workiz has no edit
+            // time, so modified is its last status change.
+            'created'    => $job->created_at?->copy()->setTimezone($job->franchise?->timezone ?: 'UTC')->toDateString(),
             'modified'   => $job->workizJob?->last_status_update?->toDateString()
                 ?? $job->updated_at?->toDateString(),
             // Financials only, and ABSENT without it, so the client draws no zero.
