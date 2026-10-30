@@ -318,6 +318,26 @@ class ExperimentalCallReportController extends Controller
     }
 
     /**
+     * PUT reports/experimental/sources - which Workiz accounts this person's
+     * Reports count (review 2026-10-30, item 12). Per person: a viewing
+     * choice that changes nobody else's figures. Stored as the unticked ones,
+     * so an account connected later is counted until somebody leaves it out.
+     */
+    public function sources(Request $request, WorkizJobs $workiz): JsonResponse
+    {
+        $known = array_column($workiz->allAccounts(), 'id');
+        $data = $request->validate([
+            'excluded' => ['present', 'array'],
+            'excluded.*' => ['string', 'in:'.implode(',', $known)],
+        ]);
+
+        $user = $request->user();
+        $user->forceFill(['preferences' => [...($user->preferences ?? []), WorkizJobs::EXCLUDED => array_values(array_unique($data['excluded']))]])->save();
+
+        return response()->json(['data' => $workiz->allAccounts()]);
+    }
+
+    /**
      * PUT reports/experimental/people/tag - a dispatcher's New / Existing tag,
      * set by hand (Jose, 2026-10-05). A null tag clears it.
      */

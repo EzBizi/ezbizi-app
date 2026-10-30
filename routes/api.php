@@ -1446,6 +1446,7 @@ Route::prefix('v1')
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
             Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
             Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
         });
 

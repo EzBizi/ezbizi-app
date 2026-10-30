@@ -12,6 +12,7 @@ use App\Support\Social\SocialProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use RuntimeException;
@@ -453,6 +454,28 @@ class ExperimentalCallReportTest extends TestCase
                 $this->assertNotEmpty($account['id']);
             }
             $this->assertTrue(app(WorkizJobs::class)->configured($tenant['admin']));
+        });
+    }
+
+    /** Review 2026-10-30, item 12: Sources ticks are one person's viewing choice. */
+    public function test_unticking_an_account_leaves_it_out_for_that_person_only(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizBranch($tenant, 'New Jersey', 'nj-token');
+        $this->workizBranch($tenant, 'Connecticut', 'ct-token');
+        $other = $this->userWithRole($tenant, 'Reader', ['reports.experimental.view', 'reports.view']);
+        $nj = $this->inTenant($tenant['org'], fn () => collect(app(WorkizJobs::class)->allAccounts())->firstWhere('name', 'New Jersey')['id']);
+
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/sources', ['excluded' => [$nj]])
+            ->assertOk()->assertJsonPath('data.0.included', false);
+        $this->signedInAs($tenant['admin'])->putJson('/api/v1/reports/experimental/sources', ['excluded' => ['not-an-account']])
+            ->assertUnprocessable();
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            Auth::setUser($tenant['admin']->fresh());
+            $this->assertSame([false, true], array_column(app(WorkizJobs::class)->allAccounts(), 'included'));
+            Auth::setUser($other);
+            $this->assertSame([true, true], array_column(app(WorkizJobs::class)->allAccounts(), 'included'), 'nobody else changes');
         });
     }
 

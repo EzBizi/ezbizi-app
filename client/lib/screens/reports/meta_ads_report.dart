@@ -23,7 +23,12 @@ class MetaAdsReport extends StatefulWidget {
     this.canEdit = false,
     this.now,
     this.formats = DisplayFormats.fallback,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final bool canEdit;
@@ -35,10 +40,22 @@ class MetaAdsReport extends StatefulWidget {
 }
 
 class _MetaAdsReportState extends State<MetaAdsReport> {
-  late DateSpan _span = DateSpan(
-    DateTime(_today.year, _today.month - 1),
-    DateTime(_today.year, _today.month, 0),
-  );
+  late DateSpan _span =
+      widget.span ??
+      DateSpan(
+        DateTime(_today.year, _today.month - 1),
+        DateTime(_today.year, _today.month, 0),
+      );
+
+  @override
+  void didUpdateWidget(MetaAdsReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
+
   String? _state;
   String? _category;
   String? _region;
@@ -142,17 +159,19 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ReportDates(
-          key: const ValueKey('tour-report-dates'),
-          initial: _span,
-          today: _today,
-          formats: widget.formats,
-          onChanged: (span) {
-            setState(() => _span = span);
-            _load();
-          },
-        ),
-        const SizedBox(height: 12),
+        if (widget.span == null) ...[
+          ReportDates(
+            key: const ValueKey('tour-report-dates'),
+            initial: _span,
+            today: _today,
+            formats: widget.formats,
+            onChanged: (span) {
+              setState(() => _span = span);
+              _load();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         Wrap(
           spacing: 12,
           runSpacing: 12,

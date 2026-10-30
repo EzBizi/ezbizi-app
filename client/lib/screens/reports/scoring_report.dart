@@ -34,7 +34,12 @@ class ScoringReport extends StatefulWidget {
     required this.formats,
     this.now,
     this.canWeigh = false,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final DisplayFormats formats;
@@ -144,9 +149,18 @@ class _ScoringReportState extends State<ScoringReport> {
 
   // Yesterday by default (Jose, 2026-10-14: "have the default time be
   // yesterday instead of 1 month").
-  late DateSpan _span = DateSpan.single(
-    DateTime(_today.year, _today.month, _today.day - 1),
-  );
+  late DateSpan _span =
+      widget.span ??
+      DateSpan.single(DateTime(_today.year, _today.month, _today.day - 1));
+
+  @override
+  void didUpdateWidget(ScoringReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
 
   bool _loading = true;
   String? _error;
@@ -336,7 +350,7 @@ class _ScoringReportState extends State<ScoringReport> {
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                dates,
+                if (widget.span == null) dates,
                 if (open == null && team != null && team.people.isNotEmpty)
                   // Standard field height, as tall as Leads search (Jose, 2026-10-27).
                   SizedBox(

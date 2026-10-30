@@ -22,7 +22,12 @@ class MarketingReport extends StatefulWidget {
     required this.api,
     this.now,
     this.formats = DisplayFormats.fallback,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final DateTime Function()? now;
@@ -33,7 +38,17 @@ class MarketingReport extends StatefulWidget {
 }
 
 class _MarketingReportState extends State<MarketingReport> {
-  late DateSpan _span = _lastWeek(_today);
+  late DateSpan _span = widget.span ?? _lastWeek(_today);
+
+  @override
+  void didUpdateWidget(MarketingReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
+
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = true;
   String? _error;
@@ -311,17 +326,19 @@ class _MarketingReportState extends State<MarketingReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ReportDates(
-          key: const ValueKey('tour-report-dates'),
-          initial: _span,
-          today: _today,
-          formats: widget.formats,
-          onChanged: (span) {
-            setState(() => _span = span);
-            _load();
-          },
-        ),
-        const SizedBox(height: 12),
+        if (widget.span == null) ...[
+          ReportDates(
+            key: const ValueKey('tour-report-dates'),
+            initial: _span,
+            today: _today,
+            formats: widget.formats,
+            onChanged: (span) {
+              setState(() => _span = span);
+              _load();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_error != null)
           ErrorNote(_error!)
         else if (_loading)

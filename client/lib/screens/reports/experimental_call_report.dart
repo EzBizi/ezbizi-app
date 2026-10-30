@@ -51,7 +51,12 @@ class ExperimentalCallReport extends StatefulWidget {
     this.now = DateTime.now,
     this.canEdit = true,
     this.openCall,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   /// A call to open on arrival (from a missed-call notification): Calls,
   /// Missed, with that call's details showing.
@@ -78,7 +83,13 @@ class ExperimentalCallReport extends StatefulWidget {
 
 class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// The dates the report covers (UI queue 57). Opens on today, as it did.
-  late DateSpan _span = DateSpan.single(widget.now());
+  late DateSpan _span = widget.span ?? DateSpan.single(widget.now());
+
+  @override
+  void didUpdateWidget(ExperimentalCallReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) _apply(widget.span!);
+  }
 
   /// The picker is open: under the bar on a wide screen, as its own page on a
   /// phone (Jose: "as u recommend", desktop 1 and phone 4).
@@ -250,7 +261,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       context,
       builder: (context) => SidePanel(
         title: 'Sources',
-        subtitle: 'Where the jobs in this report come from',
+        subtitle: 'Which Workiz accounts this report counts',
         child: _Sources(api: widget.api, report: report, reload: _reloaded),
       ),
     );
@@ -391,7 +402,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _dayBar(context, phone: phone),
+            if (widget.span == null)
+              _dayBar(context, phone: phone)
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (!phone) _sourcesButton(),
+                  IconButton(
+                    onPressed: _loading ? null : _load,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Reload',
+                  ),
+                ],
+              ),
             if (_picking) ...[
               const SizedBox(height: 8),
               DateRangePanel(
@@ -490,7 +514,9 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// them. Beside the dates; on a phone, where the dates need all of their
   /// row and the tabs all of theirs, at the foot of the Overview.
   Widget _sourcesButton() {
-    final count = (_report?['workiz_accounts'] as List?)?.length;
+    final accounts = _report?['workiz_accounts'] as List?;
+    final count = accounts?.length;
+    final left = _leftOut(_report);
 
     return TextButton.icon(
       key: const Key('call-report-sources'),
@@ -499,7 +525,39 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       label: Text(
         count == null
             ? 'Sources'
+            : left > 0
+            ? 'Sources · ${count - left} of $count accounts'
             : 'Sources · $count Workiz ${count == 1 ? 'account' : 'accounts'}',
+      ),
+    );
+  }
+
+  /// How many Workiz accounts this person has unticked in Sources.
+  static int _leftOut(Map<String, dynamic>? report) =>
+      ((report?['workiz_accounts'] as List?) ?? const [])
+          .where((a) => a is Map && a['included'] == false)
+          .length;
+
+  /// The slim strip every tab shows while some accounts are left out.
+  Widget _leftOutStrip(BuildContext context, int left) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: const Key('call-report-left-out'),
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_alt_outlined,
+            size: 16,
+            color: theme.colorScheme.outline,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$left Workiz ${left == 1 ? 'account' : 'accounts'} left out',
+            style: theme.textTheme.bodySmall,
+          ),
+          TextButton(onPressed: _openSources, child: const Text('Change')),
+        ],
       ),
     );
   }
@@ -534,6 +592,31 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         .toList();
 
     final problem = _sourcesProblem(context, report);
+    final accountCount =
+        ((report['workiz_accounts'] as List?) ?? const []).length;
+    final left = _leftOut(report);
+
+    // Every account unticked: say so, never a page of zeros.
+    if (accountCount > 0 && left == accountCount) {
+      return Center(
+        key: const Key('call-report-none-included'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'No accounts included',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              key: const Key('call-report-choose-sources'),
+              onPressed: _openSources,
+              child: const Text('Choose sources'),
+            ),
+          ],
+        ),
+      );
+    }
     // The counts only where there is room for all three tabs beside them.
     final views = [
       ('overview', 'Overview', Icons.dashboard_outlined),
@@ -556,6 +639,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ?problem,
+        if (left > 0) _leftOutStrip(context, left),
         TabBarLike(
           level: TabLevel.secondary,
           key: const Key('call-report-tabs'),
@@ -3078,6 +3162,25 @@ class _SourcesState extends State<_Sources> {
   String? _connectError;
   bool _showConnect = false;
   String? _error;
+  String _find = '';
+  bool _saving = false;
+
+  /// Saves which accounts this person leaves out, then reloads the report.
+  Future<void> _save(List<String> excluded) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    final response = await widget.api.put('/reports/experimental/sources', {
+      'excluded': excluded,
+    });
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (!response.ok) _error = response.message;
+    });
+    if (response.ok) await _refresh();
+  }
 
   @override
   void dispose() {
@@ -3170,31 +3273,80 @@ class _SourcesState extends State<_Sources> {
             ),
           ),
         const SizedBox(height: 16),
-        Text('Workiz accounts', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 8),
         if (accounts.isEmpty)
           Text('None connected.', style: theme.textTheme.bodySmall)
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
+        else ...[
+          TextField(
+            key: const Key('sources-search'),
+            onChanged: (v) => setState(() => _find = v),
+            decoration: const InputDecoration(
+              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 18),
+              hintText: 'Find an account…',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
             children: [
-              // Read-only (UI-UX, 2026-10-30): a one-click disconnect inside a
-              // report is how a branch's data goes by accident. Disconnecting
-              // is Settings' alone.
-              for (final account in accounts)
-                Chip(
-                  key: ValueKey('sources-account-${account['id']}'),
-                  label: Text('${account['name']}'),
-                ),
+              TextButton(
+                key: const Key('sources-all'),
+                onPressed: _saving ? null : () => _save(const []),
+                child: const Text('All'),
+              ),
+              TextButton(
+                key: const Key('sources-none'),
+                onPressed: _saving
+                    ? null
+                    : () => _save([for (final a in accounts) '${a['id']}']),
+                child: const Text('None'),
+              ),
             ],
           ),
-        const SizedBox(height: 4),
+          // A viewing choice, this person's own (review 2026-10-30, item 12):
+          // a tick never disconnects and never changes anyone else's figures.
+          for (final account in accounts)
+            if ('${account['place'] ?? account['name']}'.toLowerCase().contains(
+              _find.trim().toLowerCase(),
+            ))
+              CheckboxListTile(
+                key: ValueKey('sources-account-${account['id']}'),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: account['included'] != false,
+                onChanged: _saving
+                    ? null
+                    : (on) => _save([
+                        for (final a in accounts)
+                          if (a['id'] == account['id']
+                              ? on != true
+                              : a['included'] == false)
+                            '${a['id']}',
+                      ]),
+                title: Text('${account['place'] ?? account['name']}'),
+                subtitle: Text(
+                  'Connected',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ),
+        ],
+        const SizedBox(height: 8),
         Text(
-          'Manage in Settings › Integrations.',
-          key: const Key('sources-manage'),
+          'Unticking leaves an account out of your figures. It stays '
+          'connected.',
+          key: const Key('sources-help'),
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.outline,
+          ),
+        ),
+        Text(
+          'Manage connections in Settings › Integrations',
+          key: const Key('sources-manage'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.primary,
           ),
         ),
         if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
