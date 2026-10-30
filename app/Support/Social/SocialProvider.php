@@ -689,12 +689,6 @@ enum SocialProvider: string
         return in_array($kind, $this->accepts(), strict: true);
     }
 
-    /** True when words alone are not a post here. */
-    public function requiresMedia(): bool
-    {
-        return ! $this->takes(SocialMediaKind::Text);
-    }
-
     /**
      * Why this network will not take that kind, in a sentence.
      *

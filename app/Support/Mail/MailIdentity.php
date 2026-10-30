@@ -2,6 +2,7 @@
 
 namespace App\Support\Mail;
 
+use App\Models\SendingIdentity;
 use InvalidArgumentException;
 
 /**
@@ -13,7 +14,7 @@ use InvalidArgumentException;
  * cascade — it is the default the cascade ends at, in exactly the way a
  * SettingDefinition's `default` is what SettingsResolver returns when no scope
  * has set anything. So the platform builds one of these ({@see PlatformIdentity})
- * and a tenant row converts into one ({@see \App\Models\SendingIdentity}), and
+ * and a tenant row converts into one ({@see SendingIdentity}), and
  * every caller downstream holds the same object and cannot tell which it got
  * without asking.
  *
@@ -61,12 +62,6 @@ final class MailIdentity
                 "'{$fromAddress}' is not an email address, so nothing could be sent from it."
             );
         }
-    }
-
-    /** Did this come from EzBizi's deployment config rather than from a tenant? */
-    public function isPlatform(): bool
-    {
-        return $this->sourceType === null;
     }
 
     /**

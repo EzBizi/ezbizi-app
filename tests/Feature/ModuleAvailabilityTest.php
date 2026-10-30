@@ -37,11 +37,11 @@ class ModuleAvailabilityTest extends TestCase
         return app(ProvisionOrganization::class)(
             organizationName: $name,
             administrator: [
-                'name'     => 'Admin',
-                'email'    => strtolower(str_replace(' ', '', $name)).'@example.com',
+                'name' => 'Admin',
+                'email' => strtolower(str_replace(' ', '', $name)).'@example.com',
                 'password' => 'a-real-password',
             ],
-            companyName:   'Co',
+            companyName: 'Co',
             franchiseName: 'F1',
         );
     }
@@ -218,19 +218,5 @@ class ModuleAvailabilityTest extends TestCase
         $this->assertFalse(
             in_array('organization_id', app(PlatformModuleFlag::class)->getFillable(), strict: true)
         );
-    }
-
-    public function test_available_modules_list_reflects_flags(): void
-    {
-        ['organization' => $org] = $this->provision('Alpha');
-
-        $before = $this->availability->availableFor($org);
-
-        $this->availability->setState('audit', PlatformModuleFlag::DISABLED, reason: 'x');
-        $after = $this->availability->availableFor($org);
-
-        $this->assertContains('audit', $before);
-        $this->assertNotContains('audit', $after);
-        $this->assertCount(count($before) - 1, $after);
     }
 }

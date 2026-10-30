@@ -150,12 +150,6 @@ final class CustomerLinks
         return url('/api/m/'.$code);
     }
 
-    /** The join page as the customer would see it, where Join enrols nobody. A week. */
-    public static function previewJoinUrl(Customer $customer): string
-    {
-        return URL::temporarySignedRoute('memberships.join', now()->addDays(7), ['customer' => $customer->getKey(), 'preview' => 1]);
-    }
-
     public static function joinUrl(Customer $customer): string
     {
         return URL::temporarySignedRoute('memberships.join', now()->addDays(self::JOIN_DAYS), ['customer' => $customer->getKey()]);

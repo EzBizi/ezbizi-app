@@ -13,7 +13,6 @@ use App\Support\Email\MailboxReaders;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Phone\PhoneTexts;
-use App\Support\Phone\SmsCompliance;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Support\Facades\Storage;
@@ -175,8 +174,8 @@ final class InvoiceChannels
                     ? 'This company has no number that can send texts yet. Add one in Phone.'
                     : 'Choose the number invoices are texted from.'];
         }
-        if (! app(SmsCompliance::class)->allowsOutbound($number)) {
-            return ['channel' => 'sms', 'ready' => false, 'from' => $number->e164, 'why_not' => SmsCompliance::REFUSAL];
+        if (! $number->sms_outbound_allowed) {
+            return ['channel' => 'sms', 'ready' => false, 'from' => $number->e164, 'why_not' => PhoneNumber::SMS_REFUSAL];
         }
 
         return ['channel' => 'sms', 'ready' => true, 'why_not' => null, 'from' => $number->e164];

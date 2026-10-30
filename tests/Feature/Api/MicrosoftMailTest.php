@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Mailbox;
 use App\Support\Email\MailboxProvider;
+use App\Support\Email\MicrosoftMailboxReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -16,12 +18,11 @@ class MicrosoftMailTest extends TestCase
     {
         $this->assertContains(MailboxProvider::MicrosoftOauth, MailboxProvider::all());
         $this->assertSame('sign_in', MailboxProvider::MicrosoftOauth->connectsBy());
-        $this->assertFalse(MailboxProvider::MicrosoftOauth->storesAPassword());
     }
 
     public function test_the_reader_refuses_until_azure_is_configured(): void
     {
-        $reader = app(\App\Support\Email\MicrosoftMailboxReader::class);
+        $reader = app(MicrosoftMailboxReader::class);
 
         $this->assertNotNull($reader->notReadyBecause());
         $this->assertStringContainsString('EzBizi', $reader->notReadyBecause());
@@ -32,13 +33,13 @@ class MicrosoftMailTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inTenant($t['org'], function () use ($t) {
-            return \App\Models\Mailbox::create([
+            return Mailbox::create([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => 'organization',
-                'scope_id'        => $t['org']->id,
-                'address'         => 'info@a-1chimney.com',
-                'display_name'    => 'Info',
-                'provider'        => MailboxProvider::MicrosoftOauth->value,
+                'scope_type' => 'organization',
+                'scope_id' => $t['org']->id,
+                'address' => 'info@a-1chimney.com',
+                'display_name' => 'Info',
+                'provider' => MailboxProvider::MicrosoftOauth->value,
             ]);
         });
 

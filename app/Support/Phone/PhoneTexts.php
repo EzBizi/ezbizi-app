@@ -7,7 +7,6 @@ use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -22,7 +21,6 @@ final class PhoneTexts
 {
     public function __construct(
         private readonly TwilioGateway $twilio,
-        private readonly SmsCompliance $compliance,
         private readonly EventEmitter $events,
         private readonly PhoneLineHealth $health,
     ) {}
@@ -32,8 +30,8 @@ final class PhoneTexts
      */
     public function send(PhoneNumber $number, string $to, string $body): PhoneMessage
     {
-        if (! $this->compliance->allowsOutbound($number)) {
-            throw new TextRefused(SmsCompliance::REFUSAL, 403);
+        if (! $number->sms_outbound_allowed) {
+            throw new TextRefused(PhoneNumber::SMS_REFUSAL, 403);
         }
 
         $connection = $number->connection;
@@ -81,4 +79,3 @@ final class PhoneTexts
         });
     }
 }
-

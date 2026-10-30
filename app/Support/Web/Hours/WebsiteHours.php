@@ -27,11 +27,6 @@ final class WebsiteHours implements HoursDestination
         return 'Website';
     }
 
-    public function placeClass(): string
-    {
-        return WebSite::class;
-    }
-
     /** @param  WebSite  $place */
     public function placeName(Model $place): string
     {
