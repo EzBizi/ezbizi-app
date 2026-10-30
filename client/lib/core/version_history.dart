@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0511',
+      date: '30 Oct 2026',
+      items: [
+        'Leads: status chips are no longer cut off beside short names, and the star stays at the end of each row.',
+        'Behind the scenes: about 7,000 lines of unused code removed.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0510',
       date: '30 Oct 2026',
       items: [
