@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30** (`docs/previews/gbp-whatsapp-links-layouts.html`)
+### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30 — Jose: "as u recommend" (1 + phone 4)** (`docs/previews/gbp-whatsapp-links-layouts.html`)
 
 Google/Leads asked; endpoints GET business-profile/whatsapp-links + POST .../apply. Recommended 1 + phone 4: bulk action beside Hours in bulk; state chips (Missing/Different/Same/Can't reach) select their rows; Different rows unticked by default with an amber Replace and a preview warning; Can't reach not tickable; side-panel preview, per-row ✓/✗ with retry.
 
