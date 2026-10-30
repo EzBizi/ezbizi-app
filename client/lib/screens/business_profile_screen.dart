@@ -18,6 +18,7 @@ import 'business_profile/listing_media.dart';
 import 'business_profile/listing_services.dart';
 import 'business_profile/performance_view.dart';
 import 'business_profile/phone_check_view.dart';
+import 'business_profile/whatsapp_bulk_view.dart';
 import 'business_profile/whatsapp_row.dart';
 import 'monitoring/device_display.dart' show relativeAge;
 
@@ -103,6 +104,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   /// Phone check in the tab's place (design 154 #10).
   bool _phoneCheck = false;
+
+  /// WhatsApp links in bulk in the tab's place (UI queue 163).
+  bool _waBulk = false;
 
   /// Every listing but [id], as "Company · Branch", for copying to.
   List<ListingTarget> _othersThan(String id) => [
@@ -379,6 +383,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         final open = _open;
         final paneBeside = box.maxWidth >= _paneBesideFrom;
 
+        if (_waBulk) {
+          return WhatsAppBulkView(
+            api: widget.api,
+            onBack: () => setState(() => _waBulk = false),
+          );
+        }
+
         if (_phoneCheck) {
           return PhoneCheckView(
             api: widget.api,
@@ -507,6 +518,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       onPressed: () => setState(() => _phoneCheck = true),
     );
 
+    void openWaBulk() => setState(() => _waBulk = true);
+    final Widget waBulk = narrow
+        ? IconButton(
+            key: const ValueKey('cx-open-wa-bulk'),
+            tooltip: 'WhatsApp links in bulk',
+            icon: const Icon(Icons.chat_outlined),
+            onPressed: openWaBulk,
+          )
+        : TextButton.icon(
+            key: const ValueKey('cx-open-wa-bulk'),
+            icon: const Icon(Icons.chat_outlined, size: 18),
+            label: const Text('WhatsApp links in bulk'),
+            onPressed: openWaBulk,
+          );
+
     final profile = _profile == null
         ? null
         : ConnectedAccount(
@@ -525,6 +551,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               child: Row(
                 children: [
                   Expanded(child: counts),
+                  waBulk,
                   phoneCheck,
                   const SizedBox(width: 4),
                   check,
@@ -550,6 +577,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 child: profile,
               ),
             ),
+          waBulk,
           phoneCheck,
           const SizedBox(width: 8),
           check,
@@ -1059,7 +1087,10 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       fact('Address', l['address'] as String? ?? ''),
       fact('Phone', formatPhoneNumber(l['phone'] as String?)),
       fact('Website', l['website'] as String? ?? ''),
-      if (whatsapp != null && whatsapp.isNotEmpty) WhatsAppRow(link: whatsapp),
+      if (whatsapp != null && whatsapp.isNotEmpty) WhatsAppRow(
+          link: whatsapp,
+          onBulk: () => setState(() => _waBulk = true),
+        ),
       fact(
         'Category',
         [
