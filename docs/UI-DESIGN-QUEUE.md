@@ -46,6 +46,10 @@ live in `docs/previews/`. Jose answers by number.
 
 ---
 
+## Reports review + Performance counts/handles (2026-10-30)
+- Galleries: docs/previews/performance-counts-handles-layouts.html (912ce12a6), docs/previews/reports-ui-review-2026-10-30.html (b0888d292)
+- APPROVED by Jose 10-30: "As you recommend, improve and make the changes, ui-ux wise as well." = A1 + B1 + phone 4, plus review items 1-15. Built by the Reports session.
+
 ## Settled rules
 
 **No answer in 10 minutes means the recommendation.** Jose, 2026-10-06: *"from now on just always go with ur
