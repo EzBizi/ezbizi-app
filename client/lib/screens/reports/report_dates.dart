@@ -136,6 +136,7 @@ class _ReportDatesState extends State<ReportDates> {
               );
               final phoneDates = DateRangeBar(
                 expand: true,
+                phone: true,
                 span: _span,
                 today: widget.today,
                 formats: widget.formats,

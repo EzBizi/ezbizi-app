@@ -500,6 +500,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               formats: widget.formats,
               open: _picking,
               expand: phone,
+              phone: phone,
               onToggle: _loading
                   ? null
                   : () => setState(() => _picking = !_picking),
