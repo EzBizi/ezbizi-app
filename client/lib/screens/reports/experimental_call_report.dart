@@ -6,7 +6,6 @@ import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
-import '../../widgets/disconnect_panel.dart';
 import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
@@ -3041,13 +3040,14 @@ String? _workizProblem(Map<String, dynamic> report) {
 /// A row of chips above the table read as a FILTER - Jose's words: "they
 /// appear as if they were filters and people can get confused". They were
 /// never filters; they are the connection list, and their X disconnects a
-/// credential. So they are out of the page, behind Sources, and the one thing
+/// credential. So they are out of the page, behind Sources, read-only (the
+/// disconnect is Settings' alone, 2026-10-30), and the one thing
 /// the reader needs in order to read the numbers correctly — an account that
 /// did not answer — is the amber line above the tabs.
 ///
 /// The chips cannot be dropped entirely: a Workiz connection is a data source,
-/// excluded from the shared connections list on purpose, so this is still the
-/// ONLY place its id is published and the only way one can be taken back.
+/// excluded from the shared connections list on purpose, so this is still a
+/// place its id is published.
 ///
 /// The connect flow lives here rather than in Settings because the tokens and
 /// this report are retired together, and a connect flow parked somewhere
@@ -3074,8 +3074,6 @@ class _SourcesState extends State<_Sources> {
   late Map<String, dynamic> _report = widget.report;
 
   final TextEditingController _token = TextEditingController();
-  String? _disconnecting;
-  String? _confirmingDisconnect;
   bool _connecting = false;
   String? _connectError;
   bool _showConnect = false;
@@ -3122,47 +3120,6 @@ class _SourcesState extends State<_Sources> {
       _connecting = false;
       _showConnect = false;
     });
-    await _refresh();
-  }
-
-  /// Take a branch's Workiz account back.
-  ///
-  /// Straight through the shared connections endpoint, which already gates on
-  /// this provider's own connect permission and needs nothing from here beyond
-  /// the id.
-  ///
-  /// IT REMOVES EZBIZI'S STORED TOKEN AND NOTHING ELSE. No Workiz data is
-  /// touched, no job is deleted, nothing changes on their side — that branch
-  /// simply stops appearing in this report until somebody pastes its token
-  /// again. That is still worth a confirmation, because the token is write-only
-  /// once stored and nobody can read it back out of the app.
-  Future<void> _disconnect(String id) async {
-    setState(() {
-      _disconnecting = id;
-      _confirmingDisconnect = null;
-      _error = null;
-    });
-
-    // The panel lists what stops and takes the authenticator code the
-    // server requires for every disconnect.
-    final done = await confirmDisconnect(
-      context,
-      api: widget.api,
-      title: 'Disconnect this Workiz account?',
-      explanation:
-          'EzBizi forgets this branch’s Workiz token. Nothing changes in '
-          'Workiz; to read it again, the token has to be pasted again.',
-      dependentsPath: '/integrations/social/$id/dependents',
-      perform: (code) =>
-          widget.api.deleteWithBody('/social/connections/$id', {'code': code}),
-    );
-
-    if (!mounted) return;
-
-    setState(() => _disconnecting = null);
-
-    if (done == null) return;
-
     await _refresh();
   }
 
@@ -3222,47 +3179,24 @@ class _SourcesState extends State<_Sources> {
             spacing: 8,
             runSpacing: 4,
             children: [
+              // Read-only (UI-UX, 2026-10-30): a one-click disconnect inside a
+              // report is how a branch's data goes by accident. Disconnecting
+              // is Settings' alone.
               for (final account in accounts)
-                if (_confirmingDisconnect == account['id'])
-                  // Confirmed IN PLACE rather than in a dialog, the same way
-                  // deleting a saved report is. The X used to disconnect on one
-                  // click, which is a poor trade: undoing it needs that
-                  // branch's Workiz token pasted again, and the token is not
-                  // something the app can show you.
-                  Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Disconnect ${account['name']}?',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      TextButton(
-                        key: ValueKey('sources-disconnect-${account['id']}'),
-                        onPressed: _disconnecting == account['id']
-                            ? null
-                            : () => _disconnect('${account['id']}'),
-                        child: const Text('Disconnect'),
-                      ),
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _confirmingDisconnect = null),
-                        child: const Text('Keep'),
-                      ),
-                    ],
-                  )
-                else
-                  InputChip(
-                    key: ValueKey('sources-account-${account['id']}'),
-                    label: Text('${account['name']}'),
-                    onDeleted: () => setState(
-                      () => _confirmingDisconnect = '${account['id']}',
-                    ),
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    tooltip: 'Disconnect ${account['name']}',
-                  ),
+                Chip(
+                  key: ValueKey('sources-account-${account['id']}'),
+                  label: Text('${account['name']}'),
+                ),
             ],
           ),
+        const SizedBox(height: 4),
+        Text(
+          'Manage in Settings › Integrations.',
+          key: const Key('sources-manage'),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.outline,
+          ),
+        ),
         if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
         const SizedBox(height: 12),
         _connectControl(context),
