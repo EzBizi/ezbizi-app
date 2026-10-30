@@ -94,19 +94,23 @@ class _ReportDatesState extends State<ReportDates> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final q in _quick.entries)
-              ChoiceChip(
-                key: ValueKey('report-dates-${q.key}'),
-                label: Text(ReportDates.quickLabels[q.key] ?? q.key),
-                selected: _span == q.value,
-                showCheckmark: false,
-                onSelected: (_) => _set(q.value),
-              ),
-          ],
+        SingleChildScrollView(
+          // One line on a phone too (UI-UX review): it scrolls sideways.
+          scrollDirection: Axis.horizontal,
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final q in _quick.entries)
+                ChoiceChip(
+                  key: ValueKey('report-dates-${q.key}'),
+                  label: Text(ReportDates.quickLabels[q.key] ?? q.key),
+                  selected: _span == q.value,
+                  showCheckmark: false,
+                  onSelected: (_) => _set(q.value),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
         DateRangeBar(

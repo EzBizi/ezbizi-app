@@ -70,6 +70,30 @@ void main() {
     },
   );
 
+  // UI-UX review of 0a52fe906: the Missed tile counts what its card lists,
+  // voicemail included, even when the server's total says otherwise.
+  testWidgets('the Missed tile equals the Missed list, voicemail included', (
+    tester,
+  ) async {
+    final stale = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+    (stale['totals'] as Map)['reached_nobody'] = 0;
+    await _pump(tester, width: 1400, report: () => stale);
+
+    final tile = find.descendant(
+      of: find.byKey(const ValueKey('stat-reached-nobody')),
+      matching: find.text('2'),
+    );
+    expect(tile, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('overview-missed')),
+        matching: find.text('2'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Nobody picked up, incl. voicemail'), findsOneWidget);
+  });
+
   // Design B1: New | Existing | Both on every row, saved on the tap.
   testWidgets('Handles is set from the People table, Both being no tag', (
     tester,
@@ -669,8 +693,8 @@ void main() {
     ];
 
     expect(xs, [...xs]..sort(), reason: 'cards out of order');
-    // 3 jobs over 6 new-client calls.
-    expect(find.text('50%'), findsWidgets);
+    // 1 job over 3 new-client calls.
+    expect(find.text('33%'), findsWidgets);
   });
 
   testWidgets('Not booked lists the answered new-client call and marks it', (
@@ -1384,12 +1408,12 @@ const _report = {
   'workiz_failed': {},
   'workiz_unreachable': [],
   'totals': {
-    'calls': 3,
-    'answered': 3,
-    'reached_nobody': 0,
-    'new_client': 6,
-    'existing_client': 0,
-    'jobs': 3,
+    'calls': 4,
+    'answered': 2,
+    'reached_nobody': 2,
+    'new_client': 3,
+    'existing_client': 1,
+    'jobs': 1,
     'not_booked': 1,
     'avg_talk_seconds': 120,
   },

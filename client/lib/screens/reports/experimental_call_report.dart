@@ -418,19 +418,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final today = _today;
 
     // The same quick ranges as every Reports tab (review 2026-10-30, 14).
-    final quick = Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final q in ReportDates.quick(today).entries)
-          ChoiceChip(
-            key: ValueKey('report-dates-${q.key}'),
-            label: Text(ReportDates.quickLabels[q.key] ?? q.key),
-            selected: _span == q.value,
-            showCheckmark: false,
-            onSelected: _loading ? null : (_) => _apply(q.value),
-          ),
-      ],
+    final quick = SingleChildScrollView(
+      // One line on a phone too (UI-UX review): it scrolls sideways.
+      scrollDirection: Axis.horizontal,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final q in ReportDates.quick(today).entries)
+            ChoiceChip(
+              key: ValueKey('report-dates-${q.key}'),
+              label: Text(ReportDates.quickLabels[q.key] ?? q.key),
+              selected: _span == q.value,
+              showCheckmark: false,
+              onSelected: _loading ? null : (_) => _apply(q.value),
+            ),
+        ],
+      ),
     );
 
     return Column(
@@ -672,7 +676,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         return ListView(
           padding: const EdgeInsets.only(top: 4, bottom: 24),
           children: [
-            _figures(context, totals, across),
+            // Missed is counted from the calls the card lists, so the
+            // tile and the list cannot disagree (UI-UX review of 0a52fe906).
+            _figures(context, {
+              ...totals,
+              'reached_nobody': _nobody(calls).length,
+            }, across),
             const SizedBox(height: 16),
             if (box.maxWidth >= ExperimentalCallReport.tableAbove)
               IntrinsicHeight(
@@ -769,7 +778,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// What each tile counts, said under it (review 2026-10-30).
   static const _help = {
     'Inbound calls': 'New + Existing + other lines',
-    'Missed calls': 'Inbound calls nobody picked up',
+    'Missed calls': 'Nobody picked up, incl. voicemail',
     'Jobs created': 'Workiz jobs for these dates',
     'Conv. rate': 'Jobs ÷ answered New-client calls',
   };
