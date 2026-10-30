@@ -141,6 +141,24 @@ final class BusinessProfileApi
         return $this->categoriesAndServices($location)['services'];
     }
 
+    /** The "Chat on WhatsApp" button the listing has on Google, or null. */
+    public function whatsappLink(BusinessLocation $location): ?string
+    {
+        $attributes = $this->client($location)->get(self::INFO.self::v1Name($location).'/attributes')->throw()->json('attributes') ?? [];
+
+        return collect($attributes)->firstWhere('name', 'attributes/url_whatsapp')['uriValues'][0]['uri'] ?? null;
+    }
+
+    /** Sets the listing's "Chat on WhatsApp" button. Refused while writes are off. */
+    public function setWhatsappLink(BusinessLocation $location, string $uri): void
+    {
+        self::writable();
+        $this->client($location)->patch(self::INFO.self::v1Name($location).'/attributes?attributeMask=attributes/url_whatsapp', [
+            'name' => self::v1Name($location).'/attributes',
+            'attributes' => [['name' => 'attributes/url_whatsapp', 'valueType' => 'URL', 'uriValues' => [['uri' => $uri]]]],
+        ])->throw();
+    }
+
     /**
      * Google's standing for the listing: verified, published, may it be
      * managed, and what Google says to do when not.

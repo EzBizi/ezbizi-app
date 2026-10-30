@@ -162,6 +162,48 @@ class BusinessProfileListingController extends Controller
             ->first(fn ($rule) => str_contains((string) json_encode($rule->activeVersion?->actions ?? []), '"publish_reply"'))?->id;
     }
 
+    /**
+     * GET /business-profile/whatsapp-links: each listing's WhatsApp button on
+     * Google against the organization's link, the preview of the bulk editor.
+     */
+    public function whatsappLinks(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', BusinessLocation::class);
+        $proposed = self::whatsappLink();
+        $query = BusinessLocation::query()->whereNull('not_listed_since')->with(['franchise', 'connection'])->orderBy('title');
+        Places::scope($query, $request->user());
+
+        // ponytail: one Google read per listing, in sequence; pool them if a tenant passes a few hundred listings.
+        return response()->json(['proposed' => $proposed, 'data' => $query->get()->map(function (BusinessLocation $l) use ($proposed) {
+            try {
+                $current = $this->api->whatsappLink($l);
+                $state = match (true) {
+                    $current === null => 'missing',
+                    $current === $proposed => 'same',
+                    default => 'different',
+                };
+            } catch (Throwable) {
+                [$current, $state] = [null, 'unreachable'];
+            }
+
+            return ['id' => $l->id, 'name' => $l->label(), 'branch' => $l->franchise?->name, 'current' => $current, 'state' => $state];
+        })->values()->all()]);
+    }
+
+    /** POST /business-profile/whatsapp-links/apply {targets: [id]}: puts the organization's link on each. */
+    public function applyWhatsappLinks(Request $request): JsonResponse
+    {
+        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid']]);
+        if ($refused = $this->refused()) {
+            return $refused;
+        }
+        if (($link = self::whatsappLink()) === null) {
+            return response()->json(['message' => 'Connect a WhatsApp number first.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return $this->eachTarget($input['targets'], fn (BusinessLocation $t) => $this->api->setWhatsappLink($t, $link));
+    }
+
     /** The organization's WhatsApp chat link, for every listing's Info tab (design 154 #16). */
     public static function whatsappLink(): ?string
     {
