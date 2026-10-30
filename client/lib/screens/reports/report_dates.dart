@@ -20,6 +20,24 @@ class ReportDates extends StatefulWidget {
   final DisplayFormats formats;
   final ValueChanged<DateSpan> onChanged;
 
+  /// The quick ranges, keyed as before, worded as the picker words them
+  /// (review 2026-10-30, 14: "1 month" beside "Last month" read as the same).
+  /// Performance draws the same chips.
+  static Map<String, DateSpan> quick(DateTime t) {
+    DateTime back(int days) => DateTime(t.year, t.month, t.day - days);
+    return {
+      'Today': DateSpan.single(t),
+      'Yesterday': DateSpan.single(back(1)),
+      '1 week': DateSpan(back(6), t),
+      '1 month': DateSpan(back(29), t),
+    };
+  }
+
+  static const quickLabels = {
+    '1 week': 'Last 7 days',
+    '1 month': 'Last 30 days',
+  };
+
   @override
   State<ReportDates> createState() => _ReportDatesState();
 }
@@ -69,16 +87,7 @@ class _ReportDatesState extends State<ReportDates> {
 
   /// One tap for the common ranges (Jose, 2026-10-14: "add easy options to
   /// select 1 month - 1 week - yesterday - today, besides the custom").
-  Map<String, DateSpan> get _quick {
-    final t = widget.today;
-    DateTime back(int days) => DateTime(t.year, t.month, t.day - days);
-    return {
-      'Today': DateSpan.single(t),
-      'Yesterday': DateSpan.single(back(1)),
-      '1 week': DateSpan(back(6), t),
-      '1 month': DateSpan(back(29), t),
-    };
-  }
+  Map<String, DateSpan> get _quick => ReportDates.quick(widget.today);
 
   @override
   Widget build(BuildContext context) {
@@ -92,7 +101,7 @@ class _ReportDatesState extends State<ReportDates> {
             for (final q in _quick.entries)
               ChoiceChip(
                 key: ValueKey('report-dates-${q.key}'),
-                label: Text(q.key),
+                label: Text(ReportDates.quickLabels[q.key] ?? q.key),
                 selected: _span == q.value,
                 showCheckmark: false,
                 onSelected: (_) => _set(q.value),

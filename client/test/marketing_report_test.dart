@@ -27,6 +27,7 @@ void main() {
                   'cost_minor': 3000000,
                   'leads': 10,
                   'leads_to_jobs': 20.0,
+                  'lead_jobs': 2,
                   'jobs_created': 2,
                   'cost_per_job_minor': 1500000,
                   'done_jobs': 1,
@@ -78,11 +79,11 @@ void main() {
         find.descendant(of: table, matching: find.text(text));
     expect(inTable(r'$30,000.00'), findsNWidgets(2), reason: 'row and Total');
     expect(inTable(r'$15,000.00'), findsOneWidget);
-    expect(inTable('20.0%'), findsOneWidget);
+    // Leads → jobs on the Total uses the row's formula (review item 15).
+    expect(inTable('20.0%'), findsNWidgets(2), reason: 'row and Total');
     expect(inTable('−\$29,500.00'), findsNWidgets(2));
-    // Total: 3 jobs from 10 leads, $30,000 over 3 jobs, the one known profit.
+    // Total: $30,000 over 3 jobs, the one known profit.
     expect(inTable('Total'), findsOneWidget);
-    expect(inTable('30.0%'), findsOneWidget);
     expect(inTable(r'$10,000.00'), findsOneWidget);
     // Profit on the first row, gross on the second, and the Total's profit.
     expect(inTable(r'$500.00'), findsNWidgets(3));

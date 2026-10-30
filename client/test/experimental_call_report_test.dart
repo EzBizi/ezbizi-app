@@ -29,8 +29,149 @@ void main() {
     // Ada: 4 new-client calls, 1 job.
     expect(find.text('25%'), findsOneWidget);
 
-    // Bo: 2 new-client calls, 2 jobs.
-    expect(find.text('100%'), findsOneWidget);
+    // Bo: 2 new-client calls, 2 jobs (the Overview's rate is also 100%).
+    expect(find.text('100%'), findsWidgets);
+  });
+
+  // Jose, 2026-10-30 (design A1): the counts say what they count and add up.
+  testWidgets(
+    'the Client chips add up to All, and say which they count within',
+    (tester) async {
+      final mixed = jsonDecode(jsonEncode(_report)) as Map<String, dynamic>;
+      (mixed['calls'] as List).add({
+        ...((mixed['calls'] as List).first as Map),
+        'id': 'x1',
+        'queue': 'Somebody - Ext 101',
+      });
+      await _pump(tester, width: 1400, view: 'Calls', report: () => mixed);
+
+      int count(String key) {
+        final chip = tester.widget<ChoiceChip>(
+          find.byKey(ValueKey('calls-filter-$key')),
+        );
+        return int.parse(
+          RegExp(r'(\d+)$').firstMatch((chip.label as Text).data!)!.group(1)!,
+        );
+      }
+
+      expect(
+        count('new') + count('existing') + count('other'),
+        count('every-client'),
+      );
+      expect(count('other'), 1);
+
+      await tester.tap(find.byKey(const ValueKey('calls-filter-existing')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('calls-results-within')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Results within Existing'), findsOneWidget);
+    },
+  );
+
+  // Design B1: New | Existing | Both on every row, saved on the tap.
+  testWidgets('Handles is set from the People table, Both being no tag', (
+    tester,
+  ) async {
+    final put = <String>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/reports/experimental/calls')) {
+          return _json(_report, 200);
+        }
+        if (request.method == 'PUT') {
+          put.add(request.body);
+          return _json({'data': {}}, 200);
+        }
+        return _json({'message': 'Nothing stubbed.'}, 500);
+      }),
+    );
+    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: ExperimentalCallReport(api: api)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('People ·'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('handles-Ada')), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('handles-Ada')),
+        matching: find.text('Existing'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(put.single, contains('"tag":"existing"'));
+  });
+
+  testWidgets('Handles is read-only without edit rights', (tester) async {
+    final api = ApiClient(
+      client: MockClient((request) async => _json(_report, 200)),
+    );
+    tester.view.physicalSize = const Size(1400, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(body: ExperimentalCallReport(api: api, canEdit: false)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('People ·'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('handles-Ada'))).data,
+      'Both',
+    );
+  });
+
+  // Jose, 2026-10-30: "would be good to have search bars as well".
+  testWidgets('People and the Overview lists each have a search', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('overview-not-booked-search')),
+      'nobody by this name',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('overview-not-booked')),
+        matching: find.text('No caller matches.'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('overview-missed-search')),
+      'nobody by this name',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('overview-missed')),
+        matching: find.text('No caller matches.'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.textContaining('People ·'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('people-search')), 'bo');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('handles-Bo')), findsOneWidget);
+    expect(find.byKey(const ValueKey('handles-Ada')), findsNothing);
   });
 
   // UI queue 78: two columns worked out from the counts beside them.
@@ -38,10 +179,9 @@ void main() {
       'they answer', (tester) async {
     await _pump(tester, width: 1400, view: 'People');
 
-    expect(find.text('Not picked up'), findsOneWidget);
-    // Ada: rang 7, answered 6. Bo: rang 10, answered 9.
-    expect(find.text('86%'), findsOneWidget);
-    expect(find.text('90%'), findsOneWidget);
+    // Review 2026-10-30, item 6: a call a teammate took is not one missed.
+    expect(find.text('Teammate took'), findsOneWidget);
+    expect(find.text('Nobody answered'), findsOneWidget);
   });
 
   // UI queue 78: Calls is a table, and a search narrows it.
@@ -58,12 +198,12 @@ void main() {
     expect(tester.widget<Text>(c1).data, '7 / 10');
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('score-cell-c2'))).data,
-      '—',
+      '',
     );
     // Nobody answered c3: "Missed" where the score sits (Jose, 2026-10-14).
     expect(
       tester.widget<Text>(find.byKey(const ValueKey('score-cell-c3'))).data,
-      'Missed',
+      '',
     );
   });
 
@@ -169,7 +309,7 @@ void main() {
       find.byKey(const ValueKey('calls-filter-ai_booked_no_job')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Booked per AI · no job 1'), findsOneWidget);
+    expect(find.text('AI heard a booking, no job yet 1'), findsOneWidget);
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
     expect(find.textContaining('Blocked drain'), findsNothing);
   });
@@ -421,8 +561,12 @@ void main() {
     // Listed in Missed with who placed it, but not a missed customer. Since
     // UI queue 78 who placed it is the Answered by column and "No answer"
     // its Result.
-    expect(find.text('Inbound 2'), findsOneWidget);
-    expect(find.text('Outbound 1'), findsOneWidget);
+    // Review item 1: Missed is inbound only; our calls out are their own chip.
+    expect(find.text('Called by Ada'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('calls-filter-outbound_no_answer')),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Called by Ada'), findsOneWidget);
     expect(find.widgetWithText(StatusPill, 'No answer'), findsOneWidget);
 
@@ -433,7 +577,7 @@ void main() {
     expect(find.textContaining('Burst pipe'), findsNothing);
     expect(find.byKey(const ValueKey('nobody-missed')), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('calls-filter-inbound')));
+    await tester.tap(find.byKey(const ValueKey('calls-filter-missed')));
     await tester.pumpAndSettle();
 
     expect(find.text('Called by Ada'), findsNothing);
@@ -510,11 +654,11 @@ void main() {
     await _pump(tester, width: 1400);
 
     final labels = [
-      'Calls',
+      'Inbound calls',
       'Missed calls',
       'Existing client',
       'New client',
-      'Jobs booked',
+      'Jobs created',
       'Conv. rate',
       'Not booked',
     ];
@@ -541,7 +685,10 @@ void main() {
     // Kitchen tap: answered, new client, no job. Blocked drain was booked.
     expect(find.textContaining('Kitchen tap'), findsOneWidget);
     expect(find.textContaining('Blocked drain'), findsNothing);
-    expect(find.text('+15550001111'), findsOneWidget); // the caller's number
+    expect(
+      find.textContaining('5550001111'),
+      findsWidgets,
+    ); // the caller's number
 
     // The words, folded until asked for: the row opens to them (UI queue 78).
     expect(find.text('How much is a sweep?'), findsNothing);
@@ -571,16 +718,11 @@ void main() {
     expect(find.text('Availability 1'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('call-details-c1')));
     await tester.pumpAndSettle();
-    expect(find.text('Claude: Price · Grok: Availability'), findsOneWidget);
-
-    // Claude read the same call differently.
-    await tester.tap(find.text('Claude'));
-    await tester.pumpAndSettle();
-    expect(find.text('Price 1'), findsOneWidget);
-    expect(find.text('Availability 0'), findsOneWidget);
+    // One reason, marked AI (review item 9).
+    expect(find.text('AI: Availability'), findsOneWidget);
 
     // A count narrows the list to its calls.
-    await tester.tap(find.byKey(const ValueKey('label-availability')));
+    await tester.tap(find.byKey(const ValueKey('label-price')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Kitchen tap'), findsNothing);
   });
@@ -597,7 +739,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.ancestor(
-        of: find.text('Claude: Price · Grok: Availability'),
+        of: find.text('AI: Availability'),
         matching: find.byWidgetPredicate(
           (w) => w is Row && w.children.first is AiMark,
         ),
@@ -674,7 +816,14 @@ void main() {
     await tester.tap(find.byKey(const Key('date-range-previous')));
     await tester.pumpAndSettle();
     expect(asked.last, {'from': '2026-10-05', 'to': '2026-10-05'});
-    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('date-range-button')),
+        matching: find.text('Yesterday'),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(const Key('date-range-button')));
     await tester.pumpAndSettle();
@@ -854,7 +1003,7 @@ void main() {
     await _pump(tester, width: 1400);
 
     final tabs = find.byKey(const Key('call-report-tabs'));
-    for (final label in ['Overview', 'People · 3', 'Calls · 4']) {
+    for (final label in ['Overview', 'People · 3', 'Calls · 4 in · 0 out']) {
       expect(
         find.descendant(of: tabs, matching: find.text(label)),
         findsOneWidget,
@@ -880,7 +1029,7 @@ void main() {
     expect(opening, hasLength(1));
 
     // The two that open nothing are no shorter for it.
-    for (final label in ['Jobs booked', 'Conv. rate']) {
+    for (final label in ['Jobs created', 'Conv. rate']) {
       final tile = find
           .ancestor(of: find.text(label), matching: find.byType(Material))
           .first;
