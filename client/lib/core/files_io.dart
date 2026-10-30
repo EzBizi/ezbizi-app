@@ -1,3 +1,6 @@
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
+import 'dart:io';
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart' as fs;
@@ -23,7 +26,14 @@ import 'files.dart';
 /// What `image/*` and `video/*` mean to a native dialog, which filters on
 /// extension rather than on MIME.
 const _imageExtensions = <String>[
-  'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp',
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'webp',
+  'heic',
+  'heif',
+  'bmp',
 ];
 
 const _videoExtensions = <String>['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv'];
@@ -125,7 +135,37 @@ Future<PickedFile?> pickText() async {
 /// writes nothing; a failed write is swallowed rather than thrown into a
 /// caller that already moved on, and leaves no half-file behind it.
 void download(String filename, List<int> content) {
+  // A phone has no "Save as" window: file_selector's getSaveLocation is
+  // desktop-only and returned nothing, so the icon did nothing (Jose,
+  // 2026-10-30, a signed contract on his phone). There the share sheet is
+  // where a file is saved, mailed or opened.
+  if (isPhone()) {
+    unawaited(_share(filename, content));
+    return;
+  }
   unawaited(_saveAs(filename, content));
+}
+
+/// Swappable so a test can take the phone path on a desktop runner.
+@visibleForTesting
+bool Function() isPhone = () => Platform.isAndroid || Platform.isIOS;
+
+@visibleForTesting
+Future<void> Function(Uint8List bytes, String filename) sharePdf =
+    (bytes, filename) => Printing.sharePdf(bytes: bytes, filename: filename);
+
+Future<void> _share(String filename, List<int> content) async {
+  try {
+    if (filename.toLowerCase().endsWith('.pdf')) {
+      await sharePdf(Uint8List.fromList(content), filename);
+      return;
+    }
+    // Anything else lands in the app's documents, where Files can reach it.
+    final dir = await getApplicationDocumentsDirectory();
+    await File('${dir.path}/$filename').writeAsBytes(content, flush: true);
+  } catch (_) {
+    // As below: the caller has moved on.
+  }
 }
 
 Future<void> _saveAs(String filename, List<int> content) async {
