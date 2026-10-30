@@ -200,6 +200,11 @@ class BusinessProfileListingController extends Controller
         if (($link = self::whatsappLink()) === null) {
             return response()->json(['message' => 'Connect a WhatsApp number first.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
+        // ponytail: with several numbers the link is the oldest one, likely another brand's (desk, 2026-10-30);
+        // refuse until each company has its own number.
+        if (WhatsAppNumber::query()->count() > 1) {
+            return response()->json(['message' => 'This organization has several WhatsApp numbers. Choose which one each company uses first.'], Response::HTTP_CONFLICT);
+        }
 
         return $this->eachTarget($input['targets'], fn (BusinessLocation $t) => $this->api->setWhatsappLink($t, $link));
     }

@@ -55,5 +55,10 @@ class BusinessProfileWhatsAppLinkTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->method() === 'PATCH' && str_contains($r->url(), 'locations/2/attributes?attributeMask=attributes/url_whatsapp')
             && $r['attributes'][0]['uriValues'][0]['uri'] === 'https://wa.me/19375550100');
         $this->assertCount(1, Http::recorded(fn (Request $r) => $r->method() === 'PATCH'), 'the other listings are left alone');
+
+        // A second number makes "the organization's link" a guess at another brand's: refused, nothing written.
+        $this->inTenant($t['org'], fn () => WhatsAppNumber::create(['organization_id' => $t['org']->id, 'phone_number_id' => '3', 'waba_id' => '2', 'display_number' => '+1 (877) 555-0199']));
+        $this->postJson('/api/v1/business-profile/whatsapp-links/apply', ['targets' => [$orphan->id]])->assertConflict();
+        $this->assertCount(1, Http::recorded(fn (Request $r) => $r->method() === 'PATCH'));
     }
 }
