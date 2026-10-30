@@ -1231,7 +1231,7 @@ void main() {
     expect(find.byKey(const Key('call-report-problem')), findsNothing);
   });
 
-  testWidgets('Sources names the accounts and takes one back in place', (
+  testWidgets('Sources names the accounts and cannot disconnect them', (
     tester,
   ) async {
     final deleted = <String>[];
@@ -1239,7 +1239,7 @@ void main() {
       tester,
       width: 1400,
       deleted: deleted,
-      report: () => _withAccounts(northGone: deleted.isNotEmpty),
+      report: () => _withAccounts(),
     );
 
     await tester.tap(find.byKey(const Key('call-report-sources')));
@@ -1248,33 +1248,17 @@ void main() {
       find.text('Jobs cover 1 Workiz account: Harbor North.'),
       findsOneWidget,
     );
-
-    await tester.tap(
+    expect(find.byKey(const ValueKey('sources-account-w1')), findsOneWidget);
+    expect(
       find.descendant(
         of: find.byKey(const ValueKey('sources-account-w1')),
         matching: find.byIcon(Icons.close),
       ),
+      findsNothing,
+      reason: 'disconnecting is Settings alone',
     );
-    await tester.pumpAndSettle();
-    expect(deleted, isEmpty, reason: 'asked first, in place');
-
-    await tester.tap(find.byKey(const ValueKey('sources-disconnect-w1')));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('disconnect-confirm')));
-    await tester.pumpAndSettle();
-    expect(deleted, ['/api/v1/social/connections/w1']);
-
-    // The panel reads the report as reloaded: South alone, and silent.
-    expect(find.byKey(const ValueKey('sources-account-w1')), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byType(SidePanel),
-        matching: find.textContaining('No Workiz account answered'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('sources-manage')), findsOneWidget);
+    expect(deleted, isEmpty);
   });
 
   testWidgets('a Workiz account is connected from Sources', (tester) async {

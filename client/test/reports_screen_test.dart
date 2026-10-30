@@ -317,32 +317,24 @@ void main() {
     // UI queue 60 the page carries how many, on Sources, and an amber line
     // when one did not answer; Sources names them.
     expect(find.text('Sources · 2 Workiz accounts'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+    expect(find.widgetWithText(Chip, 'Nationwide'), findsNothing);
 
     await _openSources(tester);
     expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
   });
 
-  testWidgets('a connected branch can be taken back from this screen', (
+  testWidgets('Sources names the branches but cannot disconnect one', (
     tester,
   ) async {
-    // Workiz is a data source, and the shared connections list excludes those
-    // on purpose. So this screen is the only place the id is published, and
-    // without this chip a credential that can act on A-1's jobs could be
-    // connected and never removed.
-    String? deleted;
-
+    // A one-click disconnect inside a report is how a branch's data goes by
+    // accident (UI-UX, 2026-10-30): Settings › Integrations, which lists
+    // data sources, is where a Workiz account is taken back.
+    var deleted = false;
     await _pumpReports(
       tester,
       reports: [_report],
       onRequest: (request) {
-        if (request.method == 'DELETE' &&
-            request.url.path.contains('/social/connections/')) {
-          deleted = request.url.path.split('/').last;
-          return _json({
-            'data': {'id': deleted, 'problems': []},
-          });
-        }
+        if (request.method == 'DELETE') deleted = true;
         if (request.url.path.contains('experimental/calls')) {
           return _json(_callDay());
         }
@@ -352,32 +344,19 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
-
-    // The chips are behind Sources now: a row of them above the table read
-    // as a filter, and they are setup rather than part of the report.
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+    expect(find.widgetWithText(Chip, 'Nationwide'), findsNothing);
 
     await _openSources(tester);
-
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
-
-    await tester.tap(
+    expect(find.widgetWithText(Chip, 'Nationwide'), findsOneWidget);
+    expect(
       find.descendant(
-        of: find.widgetWithText(InputChip, 'Nationwide'),
+        of: find.widgetWithText(Chip, 'Nationwide'),
         matching: find.byIcon(Icons.close),
       ),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-
-    // Through the confirmation, which is the only way it goes now.
-    await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('disconnect-confirm')));
-    await tester.pumpAndSettle();
-
-    expect(deleted, 'id-Nationwide');
+    expect(find.text('Manage in Settings › Integrations.'), findsOneWidget);
+    expect(deleted, isFalse);
   });
 
   testWidgets('an account with no API subscription says so, permanently', (
@@ -437,51 +416,6 @@ void main() {
     expect(find.text('—'), findsWidgets);
     expect(find.text('0:00'), findsNothing);
     expect(find.text('0%'), findsNothing);
-  });
-
-  testWidgets('disconnecting a branch asks first', (tester) async {
-    // It used to go on one click. Undoing it needs that branch's Workiz token
-    // pasted again, and the token cannot be read back out of the app.
-    var deleted = false;
-
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      onRequest: (request) {
-        if (request.method == 'DELETE') {
-          deleted = true;
-          return _json({
-            'data': {'id': 'x', 'problems': []},
-          });
-        }
-        if (request.url.path.contains('experimental/calls')) {
-          return _json(_callDay());
-        }
-        return null;
-      },
-    );
-
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
-    await tester.pumpAndSettle();
-
-    await _openSources(tester);
-
-    await tester.tap(
-      find.descendant(
-        of: find.widgetWithText(InputChip, 'Nationwide'),
-        matching: find.byIcon(Icons.close),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(deleted, isFalse, reason: 'the X disconnected without asking');
-    expect(find.text('Disconnect Nationwide?'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(TextButton, 'Keep'));
-    await tester.pumpAndSettle();
-
-    expect(deleted, isFalse);
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (
