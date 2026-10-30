@@ -3200,3 +3200,26 @@ Production `/download/windows.json` 0.0.0506 at `dd01cf3b0`. Before this edit al
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0461. Desk not
 reachable from a scheduled run; publish asked as `0139`.
+
+## 2026-10-30: 0.0.0507-0.0.0513 live, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0513 at `27b215107` (= main). All 10 live `www/`
+files byte-identical to the repo, so `0139` (review auto-reply) is live.
+
+- **A1 Leads reader removed** (`config/services.php` lost `a1leads`): the site never named
+  A1 Leads; the sub-processor list is unaffected. **eKomi reviews** (0.0.0507) are read from
+  an organization's own connected eKomi account (`EkomiReviews`, shop id + password on an
+  `ekomi` connection): inbound, covered by "the accounts you connect".
+- **WhatsApp media "streamed, never stored"** (0.0.0507): consistent with `/privacy/`'s "we
+  store what each message says". New lead columns (`handle`, `avatar_url` as a URL,
+  `referral`, `form_answers`, WhatsApp `profile_name`/`saved_name`) are enquiry details kept
+  with the lead; the paragraph is not exhaustive, so not false. **Hidden leads excluded from
+  AI** narrows what reaches xAI; every xAI sentence is still true.
+- WhatsApp row: still held (no customer-number count taken this run). Reports Performance /
+  date bar / Sources ticks, Workiz job sales read-in, Field map colours, Business Profile bulk
+  WhatsApp link, phone-app downloads (share sheet, no new permission in manifests), Leads
+  layout, 7,000 lines removed: no sentence on the site touched.
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
+edit, so nothing to publish.
