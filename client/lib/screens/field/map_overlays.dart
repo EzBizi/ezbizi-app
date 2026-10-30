@@ -1130,7 +1130,7 @@ class FieldMapLegend extends StatelessWidget {
       ),
       if (showJobs) ...[
         (job(EzBiziTheme.fieldBlue), 'Job with a technician'),
-        (job(EzBiziTheme.fieldYellow), 'Job not assigned'),
+        (job(fieldUnassignedJob(context)), 'Job not assigned'),
         (job(scheme.onSurface), 'Job you opened'),
       ],
       (line(EzBiziTheme.fieldBlue), 'Route today'),
@@ -1243,6 +1243,11 @@ List<LatLng> decodePolyline(String encoded) {
   }
   return points;
 }
+
+/// An unassigned job's pin (Jose, 2026-10-30): neutral grey, so it cannot be
+/// mistaken for an assigned (blue) job or a lost-signal (yellow) person.
+Color fieldUnassignedJob(BuildContext context) =>
+    Theme.of(context).colorScheme.outline;
 
 /// Dark ink on a light pin (yellow, or the "opened" marker in dark mode),
 /// white on the others, so the job icon is always readable.

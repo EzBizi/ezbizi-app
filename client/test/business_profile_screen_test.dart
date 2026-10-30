@@ -236,6 +236,26 @@ void main() {
     expect(find.text('No listings match'), findsOneWidget);
   });
 
+  testWidgets('WhatsApp links in bulk opens in the tab and comes back', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      locations: [showing],
+      notLive: 0,
+      connections: connected,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('cx-open-wa-bulk')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('wa-bulk')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('wa-bulk-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('wa-bulk')), findsNothing);
+    expect(find.byKey(const ValueKey('gbp-row-loc-1')), findsOneWidget);
+  });
+
   testWidgets('opening a row shows its details in a pane beside the table', (
     tester,
   ) async {

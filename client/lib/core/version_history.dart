@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0510',
+      date: '30 Oct 2026',
+      items: [
+        'Field map: people who are reporting are listed first, lost signal is yellow, and unassigned jobs are grey.',
+        'Business Profile: add the WhatsApp chat link to many listings at once, with a preview before applying.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0509',
       date: '30 Oct 2026',
       items: [
