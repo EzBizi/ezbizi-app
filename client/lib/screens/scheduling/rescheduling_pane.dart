@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -106,16 +107,10 @@ class _ReschedulingPaneState extends State<ReschedulingPane> {
     return '${job['workiz_job_id'] ?? job['job_id'] ?? job['lead_id'] ?? job['number']}';
   }
 
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   static String _day(Object? ymd) {
     final d = ymd is String ? DateTime.tryParse(ymd) : null;
     if (d == null) return '';
-    return '${_weekdays[d.weekday - 1]} ${_months[d.month - 1]} ${d.day}';
+    return '${shortWeekdays[d.weekday - 1]} ${shortMonths[d.month - 1]} ${d.day}';
   }
 
   static String _span(Object? start, Object? end) => [

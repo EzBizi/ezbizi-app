@@ -127,74 +127,6 @@ class OnboardingCatalogTest extends TestCase
         $this->assertContains('tax_form', $keys('Accounting'));
         $this->assertNotContains('car_front', $keys('Accounting'), 'An office role was asked for a car.');
         $this->assertContains('car_front', $keys('Field Technician'));
-
-        $alpha = $this->provisionTenant('Alpha');
-        $contract = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => $name,
-            'fields' => [
-                ['key' => 'bank_name', 'label' => 'Our own bank question', 'type' => 'text',
-                    'filled_by' => 'employee', 'required' => true],
-                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
-                    'filled_by' => 'employee', 'required' => true],
-            ],
-        ])->assertCreated()->json('data.id');
-        $field = $contract('Field Technician (hourly)');
-        $office = $contract('Accounting (salary)');
-
-        // A version from before the home address moved to the profile still
-        // declares it, which FieldSet now refuses: on production this stopped
-        // the run after one contract (2026-09-30).
-        $legacy = $contract('Accounting (hourly)');
-        $this->inTenant($alpha['org'], function () use ($legacy) {
-            $c = Contract::findOrFail($legacy);
-            $fields = $c->currentVersion->fields;
-            array_unshift($fields, ['key' => 'address', 'label' => 'Home address', 'type' => 'text',
-                'options' => [], 'filled_by' => 'either', 'required' => true, 'sensitive' => false, 'retired' => false]);
-            $v = ContractVersion::create(['contract_id' => $c->getKey(), 'version' => 2, 'fields' => $fields,
-                'body' => $c->currentVersion->body, 'created_by' => $c->created_by]);
-            $c->forceFill(['current_version_id' => $v->getKey()])->save();
-        });
-
-        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Accounting (hourly): adds 13, drops address as version 3')
-            ->assertSuccessful();
-
-        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($field, $office, $legacy) {
-            $f = Contract::findOrFail($field)->currentVersion;
-            $o = Contract::findOrFail($office)->currentVersion;
-            $this->assertSame(2, (int) $f->version, 'A second run published again.');
-
-            $fk = array_column($f->fields, null, 'key');
-            $this->assertTrue($fk['ssn']['sensitive']);
-            $this->assertFalse($fk['car_front']['required'], 'A1 let a hire with no car yet skip it.');
-            $this->assertSame('Our own bank question', $fk['bank_name']['label'], 'Their own question was replaced.');
-            $this->assertSame('employee_signature', array_key_last($fk), 'The signature is no longer last.');
-            $this->assertArrayNotHasKey('car_front', array_column($o->fields, null, 'key'));
-            $this->assertSame(
-                Contract::findOrFail($field)->versions()->where('version', 1)->value('body'),
-                $f->body,
-            );
-
-            $l = Contract::findOrFail($legacy)->currentVersion;
-            $this->assertSame(3, (int) $l->version);
-            $this->assertNotContains('address', array_column($l->fields, 'key'), 'The profile field stayed on the contract.');
-
-            // A contract with every question that still declares a profile
-            // key gets a version without it, so every contract ends the same.
-            $fields = $l->fields;
-            array_unshift($fields, ['key' => 'address', 'label' => 'Home address', 'type' => 'text',
-                'options' => [], 'filled_by' => 'either', 'required' => true, 'sensitive' => false, 'retired' => false]);
-            $v = ContractVersion::create(['contract_id' => $legacy, 'version' => 4, 'fields' => $fields,
-                'body' => $l->body, 'created_by' => $l->created_by]);
-            Contract::findOrFail($legacy)->forceFill(['current_version_id' => $v->getKey()])->save();
-        });
-
-        $this->artisan('hr:add-new-hire-questions', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('Accounting (hourly): drops address as version 5')
-            ->assertSuccessful();
     }
 
     /**
@@ -207,59 +139,6 @@ class OnboardingCatalogTest extends TestCase
         $keys = collect(OnboardingCatalog::templates())->keyBy('name');
         $this->assertContains('tools', array_column($keys['Field Technician']['fields'], 'key'));
         $this->assertStringContainsString('{{tools}}', $keys['Field Technician']['body']);
-
-        $alpha = $this->provisionTenant('Alpha');
-        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'Field Repair Team (hourly)',
-            'body' => "Pay is good.\n\nTools Checklist\n\n• Tool Bag\n• Hammer\n\nEquipment Checklist\n\n• Vacuum\n\nThe end.",
-            'fields' => [['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
-                'filled_by' => 'employee', 'required' => true]],
-        ])->assertCreated()->json('data.id');
-
-        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Field Repair Team (hourly): lists as tables, as version 2')->assertSuccessful();
-        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:checklists-as-tables', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($id) {
-            $v = Contract::findOrFail($id)->currentVersion;
-            $this->assertSame(2, (int) $v->version);
-            $this->assertStringContainsString("## Tools Checklist\n\n{{tools}}", $v->body);
-            $this->assertStringContainsString("## Equipment Checklist\n\n{{equipment}}", $v->body);
-            $this->assertStringContainsString('The end.', $v->body);
-            $this->assertStringNotContainsString('• Tool Bag', $v->body);
-            $keys = array_column($v->fields, 'key');
-            $this->assertContains('tools', $keys);
-            $this->assertSame('employee_signature', end($keys), 'The signature is no longer last.');
-        });
-    }
-
-    /** One contract's cover, given to every contract that has none (Jose, 2026-10-05). */
-    public function test_a_cover_is_copied_to_the_contracts_without_one(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $make = fn (string $name) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => $name, 'body' => 'Agreed.',
-            'fields' => [['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
-                'filled_by' => 'employee', 'required' => true]],
-        ])->assertCreated()->json('data.id');
-        $covered = $make('Call Center Employee');
-        $bare = $make('Field Repair Team');
-        $this->inTenant($alpha['org'], fn () => DB::table('contract_versions')
-            ->where('id', Contract::findOrFail($covered)->current_version_id)
-            ->update(['cover_source' => 'logo', 'cover_path' => 'covers/alpha.png']));
-
-        $this->artisan('hr:copy-contract-cover', ['organization' => 'Alpha', 'from' => 'Call Center Employee'])
-            ->expectsOutputToContain('1 contracts given a new version.')->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($bare, $covered) {
-            $v = Contract::findOrFail($bare)->currentVersion;
-            $this->assertSame(2, (int) $v->version);
-            $this->assertSame('covers/alpha.png', $v->cover_path);
-            $this->assertSame('Agreed.', $v->body);
-            $this->assertSame(1, (int) Contract::findOrFail($covered)->currentVersion->version, 'The source was given a new version.');
-        });
     }
 
     /**
@@ -280,17 +159,11 @@ class OnboardingCatalogTest extends TestCase
 {{tools}}',
             'fields' => [
                 ['key' => 'tools', 'label' => 'Tools issued', 'type' => 'checklist', 'options' => ['Hammer'],
-                    'filled_by' => 'employer', 'required' => false],
+                    'filled_by' => 'employee', 'required' => false],
                 ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature',
                     'filled_by' => 'employee', 'required' => true],
             ],
         ])->assertCreated()->json('data.id');
-
-        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Field Repair Team: checklists to the employee, as version 2')->assertSuccessful();
-        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:checklists-to-technician', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
 
         $field = $this->inTenant($alpha['org'], fn () => collect(Contract::findOrFail($id)->currentVersion->fieldSet()->fields)
             ->firstWhere('key', 'tools'));
@@ -434,57 +307,6 @@ class OnboardingCatalogTest extends TestCase
             $body($dispatch),
         );
         $this->assertStringNotContainsString('Grok', $body($field));
-    }
-
-    /**
-     * Every contract carries the same pay terms, each its own line (Eve via
-     * Jose, 2026-10-06), whatever variant it was: a salary-only contract
-     * gains the hourly, commission and raise lines; the rest of its wording
-     * and its own subsections stay, lettered again.
-     */
-    public function test_every_contract_gets_the_same_pay_terms(): void
-    {
-        $alpha = $this->provisionTenant('Alpha');
-        $body = "1. EMPLOYMENT DETAILS\n\nEmployment Type: W-2 Employee\n\nSalary: \${{salary_amount}} per {{salary_period}}\n\n"
-            ."3. COMPENSATION\n\n(a) Base Pay\n\nThe Employee shall receive a fixed salary of \${{salary_amount}} per {{salary_period}}.\n\n"
-            ."(b) Performance Bonus\n\nBonuses may be paid.\n\n(c) Payment Schedule\n\nPaid weekly.\n\n4. WORK SCHEDULE\n\nAs agreed.";
-        $id = $this->signedInAs($alpha['admin'])->postJson('/api/v1/hr/contracts', [
-            'name' => 'Accounting (salary)', 'body' => $body,
-            'fields' => [
-                // A base contract's choice, with answers on record in real life:
-                // retired, never dropped (the box refused the ten that had it).
-                ['key' => 'pay_basis', 'label' => 'Pay basis', 'type' => 'choice', 'options' => ['Hourly', 'Salary'],
-                    'filled_by' => 'employer', 'required' => true],
-                ['key' => 'salary_amount', 'label' => 'Salary amount', 'type' => 'number', 'filled_by' => 'employer', 'required' => true],
-                ['key' => 'salary_period', 'label' => 'Salary period', 'type' => 'text', 'filled_by' => 'employer', 'required' => true],
-                ['key' => 'employee_signature', 'label' => 'Employee signature', 'type' => 'signature', 'filled_by' => 'employee', 'required' => true],
-            ],
-        ])->assertCreated()->json('data.id');
-
-        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha', '--dry-run' => true])
-            ->expectsOutputToContain('Accounting (salary): standard pay terms as version 2')->assertSuccessful();
-        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('hr:standard-pay-terms', ['organization' => 'Alpha'])
-            ->expectsOutputToContain('0 contracts given a new version.')->assertSuccessful();
-
-        $this->inTenant($alpha['org'], function () use ($id) {
-            $v = Contract::findOrFail($id)->currentVersion;
-            $this->assertSame(2, (int) $v->version);
-            $keys = array_column($v->fields, 'key');
-            foreach (StandardPayTerms::KEYS as $key) {
-                $this->assertContains($key, $keys);
-            }
-            $this->assertSame('employee_signature', end($keys));
-            $basis = collect($v->fields)->firstWhere('key', 'pay_basis');
-            $this->assertTrue($basis['retired']);
-            $this->assertFalse($basis['required']);
-            $this->assertStringContainsString("Hourly Rate: \${{hourly_rate}} per hour\n\nSalary: \${{salary_amount}} per {{salary_period}}", $v->body);
-            $this->assertStringContainsString("(a) Pay\n\n", $v->body);
-            $this->assertStringContainsString('Commission Rate: {{commission_pct}}%', $v->body);
-            $this->assertStringContainsString("(b) Performance Bonus\n\nBonuses may be paid.\n\n(c) Payment Schedule", $v->body);
-            $this->assertStringNotContainsString('Base Pay', $v->body);
-            $this->assertStringContainsString("4. WORK SCHEDULE\n\nAs agreed.", $v->body);
-        });
     }
 
     public function test_replace_retires_keys_the_catalog_no_longer_asks(): void

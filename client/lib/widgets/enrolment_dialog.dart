@@ -139,9 +139,9 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
 
         Text('Or enter it by hand', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        _field(context, 'Account name', widget.email),
-        _field(context, 'Key', widget.secret, copyable: true),
-        _field(context, 'Type of key', 'Time based'),
+        authenticatorField(context, 'Account name', widget.email),
+        authenticatorField(context, 'Key', widget.secret, copyable: true),
+        authenticatorField(context, 'Type of key', 'Time based'),
 
         const SizedBox(height: 18),
         Text(
@@ -165,39 +165,41 @@ class _EnrolmentDialogState extends State<EnrolmentDialog> {
       ],
     );
   }
+}
 
-  Widget _field(BuildContext context, String label, String value, {bool copyable = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+/// One line of "Or enter it by hand": a label, the value, and a copy button
+/// when [copyable]. The authenticator panels share it.
+Widget authenticatorField(BuildContext context, String label, String value, {bool copyable = false}) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 110,
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
           ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            ),
+        ),
+        if (copyable)
+          IconButton(
+            tooltip: 'Copy',
+            iconSize: 18,
+            visualDensity: VisualDensity.compact,
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: value));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('Key copied')));
+              }
+            },
+            icon: const Icon(Icons.copy_outlined),
           ),
-          if (copyable)
-            IconButton(
-              tooltip: 'Copy',
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: value));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Key copied')));
-                }
-              },
-              icon: const Icon(Icons.copy_outlined),
-            ),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 }

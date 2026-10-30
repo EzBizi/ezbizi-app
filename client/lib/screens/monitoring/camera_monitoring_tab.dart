@@ -10,6 +10,7 @@ import '../../core/api_client.dart';
 import '../../core/camera_watch.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/error_note.dart';
 import '../../widgets/help_video_io.dart'
     if (dart.library.js_interop) '../../widgets/help_video_web.dart'
     as native;
@@ -185,16 +186,8 @@ class _CameraMonitoringTabState extends State<CameraMonitoringTab> {
     await _load();
   }
 
-  void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-      ),
-    );
-  }
+  void _snack(String message, {bool isError = false}) =>
+      showFloatingSnack(context, message, isError: isError);
 
   @override
   Widget build(BuildContext context) {

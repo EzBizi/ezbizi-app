@@ -13,8 +13,9 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Reach for a row that sits on organization / company / franchise.
  *
- * Copied from InventoryItemPolicy with the nouns parameterized. Services,
- * groups, and labels all file the same way.
+ * Services, groups, labels, inventory and training all file the same way;
+ * each policy names its nouns and permissions. The protected defaults below
+ * are where a module words or loads something differently.
  */
 trait AuthorizesCatalogPlace
 {
@@ -28,17 +29,33 @@ trait AuthorizesCatalogPlace
 
     abstract protected function deleteAct(): string;
 
+    /** The refusal for lacking the read permission at all. */
+    protected function seeAnyAct(): string
+    {
+        return $this->seeAct();
+    }
+
+    protected function companyOf(Model $row): ?Company
+    {
+        return $row->company;
+    }
+
+    protected function franchiseOf(Model $row): ?Franchise
+    {
+        return $row->franchise;
+    }
+
     public function viewAny(User $user): Response
     {
         return $user->hasPermission($this->permission('view'))
             ? Response::allow()
-            : Refusal::permission($this->seeAct());
+            : Refusal::permission($this->seeAnyAct());
     }
 
     public function view(User $user, Model $row): Response
     {
         if (! $user->hasPermission($this->permission('view'))) {
-            return Refusal::permission($this->seeAct());
+            return Refusal::permission($this->seeAnyAct());
         }
 
         return $this->within($user, $row, $this->seeAct());
@@ -123,7 +140,7 @@ trait AuthorizesCatalogPlace
             return Response::allow();
         }
 
-        $company = $row->company;
+        $company = $this->companyOf($row);
 
         if ($company === null || ! $this->canSeeCompany($user, $company)) {
             return Refusal::noReach(
@@ -138,7 +155,7 @@ trait AuthorizesCatalogPlace
             return Response::allow();
         }
 
-        $franchise = $row->franchise;
+        $franchise = $this->franchiseOf($row);
 
         if ($franchise === null) {
             return Response::denyAsNotFound();
@@ -149,6 +166,10 @@ trait AuthorizesCatalogPlace
             : Refusal::noReach($user, Refusal::AT_FRANCHISE, $act, $franchise->name);
     }
 
+    /**
+     * Soft company reach for reading — franchise assignments see their
+     * company's General even though they cannot `canActOnCompany`.
+     */
     private function canSeeCompany(User $user, Company $company): bool
     {
         if ($user->canActOnCompany($company)) {

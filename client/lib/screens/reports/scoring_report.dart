@@ -961,14 +961,9 @@ class _DetailState extends State<_Detail> {
   /// Weekly first: a week of calls says more than one day's.
   bool _weekly = true;
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   static String _day(Object? ymd) {
     final d = ymd is String ? DateTime.tryParse(ymd) : null;
-    return d == null ? '' : '${_months[d.month - 1]} ${d.day}';
+    return d == null ? '' : '${shortMonths[d.month - 1]} ${d.day}';
   }
 
   @override

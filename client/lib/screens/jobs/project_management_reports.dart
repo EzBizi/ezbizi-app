@@ -1192,19 +1192,6 @@ class _ProjectManagementReportTableState
   }
 }
 
-/// The average production cost per job over [rows], or null with no jobs.
-int? pmAverageCost(List rows) {
-  var cost = 0;
-  var jobs = 0;
-  for (final r in rows) {
-    if (r is Map && r['jobs'] is int && r['cost_cents'] is int) {
-      jobs += r['jobs'] as int;
-      cost += r['cost_cents'] as int;
-    }
-  }
-  return jobs == 0 ? null : cost ~/ jobs;
-}
-
 /// Project Management › Repair team (design 144): Reports and Table, which
 /// were two tabs, as one with a Cards / Table switch. Its key is `reports`;
 /// `table` is retired.

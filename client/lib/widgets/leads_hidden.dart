@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../core/timestamps.dart';
 import 'lead_thread.dart';
 import 'side_panel.dart';
 
@@ -14,24 +15,9 @@ String _hiddenBy(Object? by) => by is Map
     ? by.trim()
     : '';
 
-const _months = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
 String _day(Object? iso) {
   final t = DateTime.tryParse('${iso ?? ''}')?.toLocal();
-  return t == null ? '' : '${_months[t.month - 1]} ${t.day}';
+  return t == null ? '' : '${shortMonths[t.month - 1]} ${t.day}';
 }
 
 /// "Pat Lin · Oct 28", either half when only one is known.

@@ -120,21 +120,6 @@ class RangePreset {
   }
 }
 
-const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _months = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
 const _monthNames = [
   'January',
   'February',
@@ -160,10 +145,10 @@ String dayWords(
 }) {
   final dayFirst = formats.dateParts.first == DatePart.day;
   final date = dayFirst
-      ? '${d.day} ${_months[d.month - 1]}'
-      : '${_months[d.month - 1]} ${d.day}';
+      ? '${d.day} ${shortMonths[d.month - 1]}'
+      : '${shortMonths[d.month - 1]} ${d.day}';
   final year = d.year == today.year ? '' : ', ${d.year}';
-  return weekday ? '${_weekdays[d.weekday - 1]}, $date$year' : '$date$year';
+  return weekday ? '${shortWeekdays[d.weekday - 1]}, $date$year' : '$date$year';
 }
 
 /// The dates in words: "Tue, Oct 6", "Mon, Oct 5 – today", "Sep 1 – Sep 30".

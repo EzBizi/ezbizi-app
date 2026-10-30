@@ -2,13 +2,7 @@
 
 namespace App\Policies;
 
-use App\Models\Company;
-use App\Models\Franchise;
-use App\Models\InventoryPurchaseOrder;
-use App\Models\User;
-use App\Support\Access\Refusal;
-use App\Support\Scoping\OwnedScope;
-use Illuminate\Auth\Access\Response;
+use App\Policies\Concerns\AuthorizesCatalogPlace;
 
 /**
  * Who may do what to a purchase order (spec §8.3).
@@ -19,126 +13,39 @@ use Illuminate\Auth\Access\Response;
  */
 class InventoryPurchaseOrderPolicy
 {
-    public function viewAny(User $user): Response
-    {
-        return $user->hasPermission('inventory.view')
-            ? Response::allow()
-            : Refusal::permission('see inventory');
+    // There was never a delete here. Private keeps the Gate refusing it the
+    // way it refused the missing method.
+    use AuthorizesCatalogPlace {
+        delete as private;
     }
 
-    public function view(User $user, InventoryPurchaseOrder $order): Response
+    protected function permission(string $action): string
     {
-        if (! $user->hasPermission('inventory.view')) {
-            return Refusal::permission('see inventory');
-        }
-
-        return $this->within($user, $order, 'see this order');
+        return 'inventory.'.$action;
     }
 
-    public function create(User $user, ?Company $company, ?Franchise $franchise = null): Response
+    protected function seeAnyAct(): string
     {
-        if (! $user->hasPermission('inventory.create')) {
-            return Refusal::permission('add a purchase order');
-        }
-
-        if ($company === null) {
-            return $this->createOnOrganization($user);
-        }
-
-        if ($franchise !== null) {
-            if ($franchise->company_id !== $company->getKey()) {
-                return Response::deny('That place is not part of this company.');
-            }
-
-            return $user->canActOnFranchise($franchise)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add a purchase order', $franchise->name);
-        }
-
-        return $user->canActOnCompany($company)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_COMPANY, 'add a purchase order', $company->name);
+        return 'see inventory';
     }
 
-    public function createOnOrganization(User $user): Response
+    protected function addAct(): string
     {
-        if (! $user->hasPermission('inventory.create')) {
-            return Refusal::permission('add a purchase order');
-        }
-
-        $organization = $user->organization;
-
-        return $user->canActOnOrganization($organization)
-            ? Response::allow()
-            : Refusal::noReach(
-                $user,
-                Refusal::AT_ORGANIZATION,
-                'add a purchase order',
-                $organization->name,
-            );
+        return 'add a purchase order';
     }
 
-    public function update(User $user, InventoryPurchaseOrder $order): Response
+    protected function seeAct(): string
     {
-        if (! $user->hasPermission('inventory.edit')) {
-            return Refusal::permission('change an order');
-        }
-
-        return $this->within($user, $order, 'change this order', write: true);
+        return 'see this order';
     }
 
-    private function within(User $user, InventoryPurchaseOrder $order, string $act, bool $write = false): Response
+    protected function changeAct(): string
     {
-        if ($order->organization_id !== $user->organization_id) {
-            return Response::denyAsNotFound();
-        }
-
-        if ($write) {
-            return OwnedScope::mayWrite(
-                $user,
-                $order->organization_id,
-                $order->franchise_id !== null ? 'franchise' : ($order->company_id !== null ? 'company' : 'organization'),
-                $order->franchise_id ?? $order->company_id,
-            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
-        }
-        if ($order->company_id === null) {
-            return Response::allow();
-        }
-
-        $company = $order->company;
-
-        if ($company === null || ! $this->canSeeCompany($user, $company)) {
-            return Refusal::noReach(
-                $user,
-                Refusal::AT_COMPANY,
-                $act,
-                $company?->name ?? 'that company',
-            );
-        }
-
-        if ($order->franchise_id === null) {
-            return Response::allow();
-        }
-
-        $franchise = $order->franchise;
-
-        if ($franchise === null) {
-            return Response::denyAsNotFound();
-        }
-
-        return $user->canActOnFranchise($franchise)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_FRANCHISE, $act, $franchise->name);
+        return 'change an order';
     }
 
-    private function canSeeCompany(User $user, Company $company): bool
+    protected function deleteAct(): string
     {
-        if ($user->canActOnCompany($company)) {
-            return true;
-        }
-
-        return $user->reachableFranchises()->contains(
-            fn (Franchise $f) => $f->company_id === $company->getKey(),
-        );
+        return 'delete an order';
     }
 }

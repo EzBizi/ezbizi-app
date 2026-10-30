@@ -9,6 +9,7 @@ import '../core/money.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../screens/customers/customer_detail_panel.dart';
 import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/call_tab.dart';
@@ -1930,7 +1931,6 @@ class _LeadThreadState extends State<LeadThread> {
     final b = _booking!;
     final status = '${b['status']}';
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final date = DateTime.tryParse('${b['date']}');
     String hm(Object? t) {
       final parts = '$t'.split(':');
@@ -1939,7 +1939,7 @@ class _LeadThreadState extends State<LeadThread> {
     }
 
     final when = [
-      if (date != null) '${days[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}',
+      if (date != null) '${days[date.weekday - 1]}, ${shortMonths[date.month - 1]} ${date.day}',
       '${hm(b['start_time'])} - ${hm(b['end_time'])}',
     ].join(' · ');
     final by = b['decided_by'] is String ? ' by ${b['decided_by']}' : '';
@@ -1961,7 +1961,7 @@ class _LeadThreadState extends State<LeadThread> {
       } else {
         final d = DateTime.tryParse('${fit['date']}');
         final at = [
-          if (d != null) '${days[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}',
+          if (d != null) '${days[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}',
           '${hm(fit['start_time'])} - ${hm(fit['end_time'])}',
         ].join(' · ');
         fitLine = 'Better: $at ($jobs)';
@@ -3192,9 +3192,7 @@ String? threadDay(String? iso, {DateTime? now}) {
   final days = t.difference(d).inDays;
   if (days == 0) return 'Today';
   if (days == 1) return 'Yesterday';
-  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  final label = '${week[at.weekday - 1]}, ${month[at.month - 1]} ${at.day}';
+  final label = '${shortWeekdays[at.weekday - 1]}, ${shortMonths[at.month - 1]} ${at.day}';
   return at.year == today.year ? label : '$label, ${at.year}';
 }
 

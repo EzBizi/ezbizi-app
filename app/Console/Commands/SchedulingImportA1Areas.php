@@ -14,7 +14,7 @@ use Illuminate\Console\Command;
  *
  * ── Why this is a file and not a live connection ────────────────
  *
- * Same rule `fleet:import-a1-tools` follows: A1 Tools is read-only to us and
+ * A1 Tools is read-only to us and
  * the read stays separable from the write, so the export can be inspected,
  * re-run and tested without a second live database handle. The query that
  * produces the file is in the spec beside this command's entry.

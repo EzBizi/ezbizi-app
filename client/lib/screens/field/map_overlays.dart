@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import 'field_status.dart';
 
 /// The pieces drawn over the Field map: the floating list (people and jobs),
@@ -1272,7 +1273,6 @@ Color fieldText(BuildContext context, Color field) => ToneColours.of(
 
 /// "Wed 10/1", and "Today" for today, for the map's date control.
 String fieldLongDay(DateTime d) {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  final label = '${days[d.weekday - 1]} ${d.month}/${d.day}';
+  final label = '${shortWeekdays[d.weekday - 1]} ${d.month}/${d.day}';
   return fieldDayLabel(d) == 'today' ? 'Today · $label' : label;
 }

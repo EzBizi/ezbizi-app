@@ -195,21 +195,6 @@ final class PhoneGlance extends DescribedGlance
             : "{$waiting} voicemails are waiting.";
     }
 
-    /** @param  array<string, mixed>  $data */
-    private function payload(array $data): GlancePayload
-    {
-        return new GlancePayload(
-            key: $this->key(),
-            label: $this->label(),
-            presentation: $this->defaultPresentation(),
-            allowedPresentations: $this->allowedPresentations(),
-            snapshot: $this->snapshot(),
-            comingSoon: false,
-            options: [],
-            data: $data,
-        );
-    }
-
     /**
      * What needs somebody, worst first: a phone account that stopped working
      * (no call reaches its lines), then voicemails left over a day, then the

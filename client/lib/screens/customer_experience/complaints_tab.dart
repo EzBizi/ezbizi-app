@@ -125,9 +125,6 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
       if (m is Map) m.cast<String, dynamic>(),
   ];
 
-  static String _ymd(DateTime d) =>
-      '${d.year}-${'${d.month}'.padLeft(2, '0')}-${'${d.day}'.padLeft(2, '0')}';
-
   Map<String, String> _query(int page) => {
     // The board is a column per status, so it asks for every status.
     'status': _board ? 'all' : _status,
@@ -135,7 +132,9 @@ class _ComplaintsTabState extends State<ComplaintsTab> {
     'owner': ?_owner,
     'branch': ?_branch,
     if (_days != null)
-      'from': _ymd(DateTime.now().subtract(Duration(days: _days!))),
+      'from': formatCalendarDay(
+        DateTime.now().subtract(Duration(days: _days!)),
+      ),
     if (_q.isNotEmpty) 'q': _q,
     'per_page': '${ComplaintsTab.perPage}',
     if (page > 1) 'page': '$page',

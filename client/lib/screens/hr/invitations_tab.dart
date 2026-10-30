@@ -855,16 +855,8 @@ class _InvitationsTabState extends State<InvitationsTab> {
     await _resend(invitation, email: email);
   }
 
-  void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-      ),
-    );
-  }
+  void _snack(String message, {bool isError = false}) =>
+      showFloatingSnack(context, message, isError: isError);
 }
 
 /// Inviting one person: who they are, what they may do, and where.

@@ -841,16 +841,8 @@ class _PersonRecordState extends State<_PersonRecord> {
     return confirmed == true && mounted;
   }
 
-  void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-      ),
-    );
-  }
+  void _snack(String message, {bool isError = false}) =>
+      showFloatingSnack(context, message, isError: isError);
 
   @override
   Widget build(BuildContext context) {

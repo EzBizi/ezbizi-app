@@ -287,14 +287,6 @@ class _ProjectManagementAssignmentsState
     _openRequest++;
   });
 
-  String _status(Object? value) {
-    if (value == null) return '—';
-    for (final s in widget.statuses) {
-      if (s.value == '$value') return s.label;
-    }
-    return jobStatusLabel(null, '$value');
-  }
-
   Widget _pane({required bool back}) {
     final row = _openRow;
     if (row != null) {
@@ -304,7 +296,7 @@ class _ProjectManagementAssignmentsState
         row: row,
         now: (widget.now ?? DateTime.now)(),
         me: _me,
-        status: _status,
+        statuses: widget.statuses,
         onClose: _close,
         onOpenJob: () => showSidePanel<bool>(
           context,

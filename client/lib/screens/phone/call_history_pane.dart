@@ -8,6 +8,8 @@ import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/status_pill.dart';
 
+import 'phone_search.dart';
+
 /// Recent calls, beside the dial pad.
 ///
 /// ── Why this and not the roster ──────────────────────────────────
@@ -101,7 +103,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
   /// CallsController@index (GET /phone/calls) does not read `q` yet, so the
   /// server returns the same newest 40 whatever is typed; this narrows them
   /// until it does. Once the server honours `q` it is a no-op.
-  bool _hit(CallRow row) => _searchHit(_query, [
+  bool _hit(CallRow row) => phoneSearchHit(_query, [
     row.customerName,
     row.callerName,
     row.peerName,
@@ -307,22 +309,7 @@ class _CallHistoryPaneState extends State<CallHistoryPane> {
     final ago = today.difference(day).inDays;
     if (ago == 0) return 'Today';
     if (ago == 1) return 'Yesterday';
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}';
+    return '${shortWeekdays[at.weekday - 1]} ${at.day} ${shortMonths[at.month - 1]}';
   }
 
   /// A later call out to the number of a missed one: it has been returned.
@@ -562,23 +549,4 @@ class CallRow {
     createdAt: (json['created_at'] ?? '').toString(),
     errorCode: json['error_code'] as String?,
   );
-}
-
-/// Whether any of [fields] holds [query], ignoring case. A query of digits
-/// and phone punctuation also matches a number however it is stored, so
-/// "(203) 555" finds +12035550199.
-bool _searchHit(String query, Iterable<String?> fields) {
-  final q = query.trim().toLowerCase();
-  if (q.isEmpty) return true;
-  final digits = q.replaceAll(RegExp(r'\D'), '');
-  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
-  for (final field in fields) {
-    if (field == null || field.isEmpty) continue;
-    final value = field.toLowerCase();
-    if (value.contains(q)) return true;
-    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
-      return true;
-    }
-  }
-  return false;
 }

@@ -50,9 +50,6 @@ class _MarketingReportState extends State<MarketingReport> {
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   void initState() {
     super.initState();
@@ -66,8 +63,8 @@ class _MarketingReportState extends State<MarketingReport> {
     });
     final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/marketing', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
     });
     if (!mounted) return;
 
