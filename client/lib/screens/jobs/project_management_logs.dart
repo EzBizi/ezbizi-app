@@ -218,14 +218,6 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
       _rows.isEmpty &&
       ['succeeded', 'failed', 'skipped', 'manual'].every((k) => _count(k) == 0);
 
-  String _status(Object? value) {
-    if (value == null) return '—';
-    for (final s in widget.statuses) {
-      if (s.value == '$value') return s.label;
-    }
-    return jobStatusLabel(null, '$value');
-  }
-
   /// The job's Pending Jobs row, which carries the timeline.
   Future<void> _openJob(String id) async {
     final request = ++_openRequest;
@@ -375,7 +367,7 @@ class _ProjectManagementLogsState extends State<ProjectManagementLogs> {
         row: row,
         now: _now(),
         me: _me,
-        status: _status,
+        statuses: widget.statuses,
         onClose: _close,
         onOpenJob: () => _openDetail(row),
       );

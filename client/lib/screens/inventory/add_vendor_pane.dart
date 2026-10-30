@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 import 'inventory_place_fields.dart';
 import 'item_pane.dart';
 
@@ -89,7 +90,6 @@ class _AddVendorPaneState extends State<AddVendorPane> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final canSave =
         !_busy &&
         _name.text.trim().isNotEmpty &&
@@ -98,21 +98,12 @@ class _AddVendorPaneState extends State<AddVendorPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back',
-                  onPressed: _busy ? null : widget.onCancel,
-                ),
-              Expanded(
-                child: Text('New vendor', style: theme.textTheme.titleMedium),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          'New vendor',
+          showBack: widget.showBack,
+          onBack: _busy ? null : widget.onCancel,
+          backTooltip: 'Back',
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -161,23 +152,9 @@ class _AddVendorPaneState extends State<AddVendorPane> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: _busy ? null : widget.onCancel,
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: canSave ? _save : null,
-                child: const Text('Save'),
-              ),
-            ],
-          ),
+        paneFooter(
+          onCancel: _busy ? null : widget.onCancel,
+          onSave: canSave ? _save : null,
         ),
       ],
     );

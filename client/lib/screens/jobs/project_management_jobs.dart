@@ -265,14 +265,6 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
     return null;
   }
 
-  String _status(Object? value) {
-    if (value == null) return '—';
-    for (final s in widget.statuses) {
-      if (s.value == '$value') return s.label;
-    }
-    return jobStatusLabel(null, '$value');
-  }
-
   /// The job's timeline row, read by id.
   Future<void> _openRow(String id) async {
     final request = ++_openRequest;
@@ -950,7 +942,7 @@ class _ProjectManagementJobsState extends State<ProjectManagementJobs> {
       row: timeline,
       now: _now(),
       me: _me,
-      status: _status,
+      statuses: widget.statuses,
       above: fields,
       onClose: _close,
       onOpenJob: () => _openJob(row),

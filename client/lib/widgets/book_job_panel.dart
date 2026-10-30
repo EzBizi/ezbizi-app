@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../core/timestamps.dart';
 import '../screens/scheduling/schedule_pane.dart';
 import 'address_fields.dart';
 import 'calendar_day_field.dart';
@@ -1326,27 +1327,12 @@ class _BookJobPanelState extends State<BookJobPanel> {
 String formatJobWhen(String? iso) {
   final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
   if (at == null) return '';
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
   final h12 = at.hour % 12 == 0 ? 12 : at.hour % 12;
   final minutes = at.minute == 0
       ? ''
       : ':${at.minute.toString().padLeft(2, '0')}';
   final ampm = at.hour < 12 ? 'AM' : 'PM';
-  return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}, '
+  return '${shortWeekdays[at.weekday - 1]} ${at.day} ${shortMonths[at.month - 1]}, '
       '$h12$minutes $ampm';
 }
 

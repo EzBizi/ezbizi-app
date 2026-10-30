@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/deep_links.dart';
 import '../../core/job_money.dart';
+import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/open_destination.dart';
 import '../../widgets/status_pill.dart';
 
-// What Project Management's tabs share: a job's timeline, its tags and
+// What Project Management's tabs share: a job's timeline, its
 // technician, and a rule step's outcome and link. The table this file was
 // named for, Pending Jobs, became the Jobs tab (design 141,
 // project_management_jobs.dart).
@@ -85,33 +86,6 @@ String? pmTechnician(Map<String, dynamic> row) {
   return t is String && t.trim().isNotEmpty ? t.trim() : null;
 }
 
-/// The job's current tags.
-List<String> pmTags(Map<String, dynamic> row) => [
-  for (final t in (row['tags'] as List?) ?? const [])
-    if ('$t'.trim().isNotEmpty) '$t'.trim(),
-];
-
-/// A job's tags as small chips: three at most, then "+N".
-class PmTags extends StatelessWidget {
-  const PmTags(this.tags, {super.key});
-
-  static const shown = 3;
-
-  final List<String> tags;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 4,
-      runSpacing: 4,
-      children: [
-        for (final t in tags.take(shown)) StatusPill(t),
-        if (tags.length > shown) StatusPill('+${tags.length - shown}'),
-      ],
-    );
-  }
-}
-
 String _name(Object? ref) =>
     ref is Map && ref['name'] is String ? ref['name'] as String : '—';
 
@@ -129,7 +103,7 @@ class PmTimeline extends StatelessWidget {
     required this.row,
     required this.now,
     required this.me,
-    required this.status,
+    required this.statuses,
     required this.onClose,
     required this.onOpenJob,
     this.back = false,
@@ -139,7 +113,7 @@ class PmTimeline extends StatelessWidget {
   final Map<String, dynamic> row;
   final DateTime now;
   final Me me;
-  final String Function(Object?) status;
+  final List<JobStatus> statuses;
   final VoidCallback onClose;
   final VoidCallback onOpenJob;
 
@@ -150,6 +124,15 @@ class PmTimeline extends StatelessWidget {
   /// Drawn between the header and the events: the Jobs tab's editable
   /// fields.
   final Widget? above;
+
+  /// A status value as the organization names it.
+  String _status(Object? value) {
+    if (value == null) return '—';
+    for (final s in statuses) {
+      if (s.value == '$value') return s.label;
+    }
+    return jobStatusLabel(null, '$value');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -280,10 +263,10 @@ class PmTimeline extends StatelessWidget {
       // The status change it was, since 2026-10-22: from and to, and `what`.
       'entered' when what != null => (what, Tone.info),
       'entered' when e['to'] != null => (
-        'Status ${status(e['from'])} → ${status(e['to'])}',
+        'Status ${_status(e['from'])} → ${_status(e['to'])}',
         Tone.info,
       ),
-      'entered' => ('Entered “${status(e['status'])}”', Tone.info),
+      'entered' => ('Entered “${_status(e['status'])}”', Tone.info),
       // One step a rule took: its outcome chip, the rule, and why not.
       'action' => (what ?? 'A rule ran', pmLogOutcome(e['outcome']).tone),
       'payment' => (
@@ -291,7 +274,7 @@ class PmTimeline extends StatelessWidget {
         Tone.ok,
       ),
       'status' => (
-        'Status ${status(e['from'])} → ${status(e['to'])}',
+        'Status ${_status(e['from'])} → ${_status(e['to'])}',
         Tone.neutral,
       ),
       'tags' => ('Tags ${_tags(e['tags'])}', Tone.caution),

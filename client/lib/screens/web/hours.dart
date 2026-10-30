@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/timestamps.dart';
 import '../../widgets/shortcode_button.dart';
 
 /// Hours of operation — the only field that is not a line of text.
@@ -64,16 +65,6 @@ class DayHours {
   int get hashCode => Object.hash(closed, open, close);
 }
 
-const List<String> weekdayNames = [
-  'Mon',
-  'Tue',
-  'Wed',
-  'Thu',
-  'Fri',
-  'Sat',
-  'Sun',
-];
-
 const List<String> weekdayLongNames = [
   'Monday',
   'Tuesday',
@@ -126,8 +117,8 @@ String formatWeek(List<DayHours> week) {
     if (sameAsRun) continue;
 
     final span = runStart == i - 1
-        ? weekdayNames[runStart]
-        : '${weekdayNames[runStart]}–${weekdayNames[i - 1]}';
+        ? shortWeekdays[runStart]
+        : '${shortWeekdays[runStart]}–${shortWeekdays[i - 1]}';
 
     final day = week[runStart];
 
@@ -165,12 +156,12 @@ List<DayHours>? parseWeek(String text) {
 
     if (match == null) return null;
 
-    final from = weekdayNames.indexWhere(
+    final from = shortWeekdays.indexWhere(
       (d) => d.toLowerCase() == match.group(1)!.toLowerCase(),
     );
     final to = match.group(2) == null
         ? from
-        : weekdayNames.indexWhere(
+        : shortWeekdays.indexWhere(
             (d) => d.toLowerCase() == match.group(2)!.toLowerCase(),
           );
 

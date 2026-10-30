@@ -4,11 +4,8 @@ namespace App\Policies;
 
 use App\Models\Company;
 use App\Models\Franchise;
-use App\Models\TrainingTest;
-use App\Models\User;
-use App\Support\Access\Refusal;
-use App\Support\Scoping\OwnedScope;
-use Illuminate\Auth\Access\Response;
+use App\Policies\Concerns\AuthorizesCatalogPlace;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Who may read and write training tests.
@@ -28,142 +25,47 @@ use Illuminate\Auth\Access\Response;
  */
 class TrainingTestPolicy
 {
-    public function viewAny(User $user): Response
+    use AuthorizesCatalogPlace;
+
+    // Looked up rather than read off a relation: TrainingTest declares no
+    // `company()` or `franchise()` (see the model).
+    protected function companyOf(Model $row): ?Company
     {
-        return $user->hasPermission('training.manage')
-            ? Response::allow()
-            : Refusal::permission('see training');
+        return Company::find($row->company_id);
     }
 
-    public function view(User $user, TrainingTest $test): Response
+    protected function franchiseOf(Model $row): ?Franchise
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('see training');
-        }
-
-        return $this->within($user, $test, 'see this test');
+        return Franchise::find($row->franchise_id);
     }
 
-    public function create(User $user, ?Company $company, ?Franchise $franchise = null): Response
+    protected function permission(string $action): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('add a test');
-        }
-
-        if ($company === null) {
-            return $this->createOnOrganization($user);
-        }
-
-        if ($franchise !== null) {
-            if ($franchise->company_id !== $company->getKey()) {
-                return Response::deny('That place is not part of this company.');
-            }
-
-            return $user->canActOnFranchise($franchise)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add a test', $franchise->name);
-        }
-
-        return $user->canActOnCompany($company)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_COMPANY, 'add a test', $company->name);
+        return 'training.manage';
     }
 
-    public function createOnOrganization(User $user): Response
+    protected function seeAnyAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('add a test');
-        }
-
-        $organization = $user->organization;
-
-        return $user->canActOnOrganization($organization)
-            ? Response::allow()
-            : Refusal::noReach(
-                $user,
-                Refusal::AT_ORGANIZATION,
-                'add a test',
-                $organization->name,
-            );
+        return 'see training';
     }
 
-    public function update(User $user, TrainingTest $test): Response
+    protected function addAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('change a test');
-        }
-
-        return $this->within($user, $test, 'change this test', write: true);
+        return 'add a test';
     }
 
-    public function delete(User $user, TrainingTest $test): Response
+    protected function seeAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('delete a test');
-        }
-
-        return $this->within($user, $test, 'delete this test', write: true);
+        return 'see this test';
     }
 
-    private function within(User $user, TrainingTest $test, string $act, bool $write = false): Response
+    protected function changeAct(): string
     {
-        if ($test->organization_id !== $user->organization_id) {
-            return Response::denyAsNotFound();
-        }
-
-        if ($write) {
-            return OwnedScope::mayWrite(
-                $user,
-                $test->organization_id,
-                $test->franchise_id !== null ? 'franchise' : ($test->company_id !== null ? 'company' : 'organization'),
-                $test->franchise_id ?? $test->company_id,
-            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
-        }
-        if ($test->company_id === null) {
-            return Response::allow();
-        }
-
-        // Looked up rather than read off a `company()` relation: TrainingTest
-        // declares none (see the model), and adding one is not this task's
-        // file to change.
-        $company = Company::find($test->company_id);
-
-        if ($company === null || ! $this->canSeeCompany($user, $company)) {
-            return Refusal::noReach(
-                $user,
-                Refusal::AT_COMPANY,
-                $act,
-                $company?->name ?? 'that company',
-            );
-        }
-
-        if ($test->franchise_id === null) {
-            return Response::allow();
-        }
-
-        $franchise = Franchise::find($test->franchise_id);
-
-        if ($franchise === null) {
-            return Response::denyAsNotFound();
-        }
-
-        return $user->canActOnFranchise($franchise)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_FRANCHISE, $act, $franchise->name);
+        return 'change a test';
     }
 
-    /**
-     * Soft company reach for reading the catalogue — franchise assignments see
-     * their company's General even though they cannot `canActOnCompany`.
-     */
-    private function canSeeCompany(User $user, Company $company): bool
+    protected function deleteAct(): string
     {
-        if ($user->canActOnCompany($company)) {
-            return true;
-        }
-
-        return $user->reachableFranchises()->contains(
-            fn (Franchise $f) => $f->company_id === $company->getKey(),
-        );
+        return 'delete a test';
     }
 }

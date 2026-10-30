@@ -6,6 +6,7 @@ import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import 'vehicle_card.dart';
 
 /// Add is the same 75% pane as a vehicle, not a modal.
@@ -278,21 +279,11 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: _busy ? null : widget.onCancel,
-                ),
-              Expanded(
-                child: Text('New vehicle', style: theme.textTheme.titleMedium),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          'New vehicle',
+          showBack: widget.showBack,
+          onBack: _busy ? null : widget.onCancel,
         ),
         Expanded(
           child: SingleChildScrollView(
@@ -526,23 +517,9 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
             ),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: _busy ? null : widget.onCancel,
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: canSave ? _save : null,
-                child: const Text('Save'),
-              ),
-            ],
-          ),
+        paneFooter(
+          onCancel: _busy ? null : widget.onCancel,
+          onSave: canSave ? _save : null,
         ),
       ],
     );

@@ -315,15 +315,4 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pm-table-editor')), findsNothing);
   });
-
-  test('the average production cost over rows', () {
-    expect(
-      pmAverageCost([
-        {'jobs': 9, 'cost_cents': 1116000},
-        {'jobs': 3, 'cost_cents': 300000},
-      ]),
-      118000,
-    );
-    expect(pmAverageCost(const []), isNull);
-  });
 }

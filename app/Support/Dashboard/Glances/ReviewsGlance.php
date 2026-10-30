@@ -177,21 +177,6 @@ final class ReviewsGlance extends DescribedGlance
         });
     }
 
-    /** @param array<string, mixed> $data */
-    private function payload(array $data): GlancePayload
-    {
-        return new GlancePayload(
-            key: $this->key(),
-            label: $this->label(),
-            presentation: $this->defaultPresentation(),
-            allowedPresentations: $this->allowedPresentations(),
-            snapshot: $this->snapshot(),
-            comingSoon: false,
-            options: [],
-            data: $data,
-        );
-    }
-
     /**
      * How many reviews were left in a window, on the same `reviewed_at` and
      * the same reach the line reads. Only a count: the figure's `previous`

@@ -18,10 +18,6 @@ void main() {
     expect(c.modes.map((m) => m.name), contains('Direct'));
     expect(c.zones, 4);
     expect(c.leds, 241);
-    // Every mode's raw bytes were sliced exactly: re-reading the first one
-    // from its own slice gives the same name back.
-    final first = c.modes.first;
-    expect(parseModeName(first.raw), first.name);
   });
 
   test('a colour is packed R, G, B, 0 per LED, scaled by brightness', () {

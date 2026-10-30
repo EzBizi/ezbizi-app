@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Http\Controllers\Api\Phone\Concerns\OpensTwilioWebhook;
 use App\Models\PhoneConnection;
 use App\Models\PhonePortRequest;
 use App\Support\Phone\HttpTwilioGateway;
-use App\Support\Phone\TwilioWebhook;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -17,23 +17,11 @@ use Symfony\Component\HttpFoundation\Response as Status;
  */
 class PortWebhookController extends Controller
 {
+    use OpensTwilioWebhook;
+
     public function __construct(
         private readonly TenantContext $tenant,
     ) {}
-
-    /**
-     * POST /api/v1/phone/port/{organization}/{connection}
-     */
-    public function __invoke(Request $request, string $organization, string $connection): Response
-    {
-        return TwilioWebhook::open(
-            $request,
-            $organization,
-            $connection,
-            $this->tenant,
-            fn (PhoneConnection $row) => $this->handle($request, $row),
-        );
-    }
 
     private function handle(Request $request, PhoneConnection $connection): Response
     {

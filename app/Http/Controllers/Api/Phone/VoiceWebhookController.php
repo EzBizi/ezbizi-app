@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Http\Controllers\Api\Phone\Concerns\OpensTwilioWebhook;
 use App\Models\PhoneBlockedNumber;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
@@ -13,7 +14,6 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Phone\Attestation;
 use App\Support\Phone\ClientIdentity;
 use App\Support\Phone\TwilioGateway;
-use App\Support\Phone\TwilioWebhook;
 use App\Support\Phone\TwimlRenderer;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
@@ -31,29 +31,14 @@ use Twilio\TwiML\VoiceResponse;
  */
 class VoiceWebhookController extends Controller
 {
+    use OpensTwilioWebhook;
+
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly TwimlRenderer $renderer,
         private readonly EventEmitter $events,
         private readonly TwilioGateway $twilio,
     ) {}
-
-    /**
-     * POST /api/v1/phone/voice/{organization}/{connection}
-     *
-     * Path ids are plain strings — route model binding would need a tenant
-     * before the connection can be read, and this request has none yet.
-     */
-    public function __invoke(Request $request, string $organization, string $connection): Response
-    {
-        return TwilioWebhook::open(
-            $request,
-            $organization,
-            $connection,
-            $this->tenant,
-            fn (PhoneConnection $row) => $this->handle($request, $row),
-        );
-    }
 
     private function handle(Request $request, PhoneConnection $connection): Response
     {

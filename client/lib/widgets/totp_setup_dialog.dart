@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../core/api_client.dart';
+import 'enrolment_dialog.dart' show authenticatorField;
 import 'error_note.dart';
 import 'recovery_codes.dart';
 import 'side_panel.dart';
@@ -145,9 +145,9 @@ class _TotpSetupDialogState extends State<TotpSetupDialog> {
         const SizedBox(height: 18),
         Text('Or enter it by hand', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        _field(context, 'Account name', widget.accountLabel),
-        _field(context, 'Key', widget.secret, copyable: true),
-        _field(context, 'Type of key', 'Time based'),
+        authenticatorField(context, 'Account name', widget.accountLabel),
+        authenticatorField(context, 'Key', widget.secret, copyable: true),
+        authenticatorField(context, 'Type of key', 'Time based'),
 
         const SizedBox(height: 18),
         Text(
@@ -170,41 +170,6 @@ class _TotpSetupDialogState extends State<TotpSetupDialog> {
           ErrorNote(_error!),
         ],
       ],
-    );
-  }
-
-  Widget _field(BuildContext context, String label, String value, {bool copyable = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          ),
-          Expanded(
-            child: SelectableText(
-              value,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            ),
-          ),
-          if (copyable)
-            IconButton(
-              tooltip: 'Copy',
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: value));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(const SnackBar(content: Text('Key copied')));
-                }
-              },
-              icon: const Icon(Icons.copy_outlined),
-            ),
-        ],
-      ),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/list_table.dart';
 import '../../widgets/status_pill.dart';
+import 'phone_search.dart';
 import 'recording_playback_bar.dart';
 import 'recording_player.dart';
 
@@ -169,7 +170,7 @@ class _RecordsTabState extends State<RecordsTab> {
     }
   }
 
-  bool _callHit(_Call call) => _searchHit(_query, [
+  bool _callHit(_Call call) => phoneSearchHit(_query, [
     call.customerName,
     call.peerName,
     call.answeredByName,
@@ -180,7 +181,7 @@ class _RecordsTabState extends State<RecordsTab> {
     call.voicemailTranscript,
   ]);
 
-  bool _threadHit(_Thread thread) => _searchHit(_query, [
+  bool _threadHit(_Thread thread) => phoneSearchHit(_query, [
     thread.peer,
     thread.name,
     for (final message in thread.messages) message.body,
@@ -1302,23 +1303,4 @@ class _Message {
     customerName: json['customer_name'] as String?,
     peerName: json['peer_name'] as String?,
   );
-}
-
-/// Whether any of [fields] holds [query], ignoring case. A query of digits
-/// and phone punctuation also matches a number however it is stored, so
-/// "(203) 555" finds +12035550199.
-bool _searchHit(String query, Iterable<String?> fields) {
-  final q = query.trim().toLowerCase();
-  if (q.isEmpty) return true;
-  final digits = q.replaceAll(RegExp(r'\D'), '');
-  final phoneish = digits.length >= 3 && RegExp(r'^[\d\s()+.-]+$').hasMatch(q);
-  for (final field in fields) {
-    if (field == null || field.isEmpty) continue;
-    final value = field.toLowerCase();
-    if (value.contains(q)) return true;
-    if (phoneish && value.replaceAll(RegExp(r'\D'), '').contains(digits)) {
-      return true;
-    }
-  }
-  return false;
 }

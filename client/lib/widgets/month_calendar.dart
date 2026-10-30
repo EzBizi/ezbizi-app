@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/timestamps.dart';
 import 'dashboard_card.dart';
 
 /// One thing sitting on a day.
@@ -116,7 +117,7 @@ class _MonthCalendarState extends State<MonthCalendar> {
           const SizedBox(height: 4),
           Row(
             children: [
-              for (final d in const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])
+              for (final d in shortWeekdays)
                 Expanded(
                   child: Center(
                     child: Text(d, style: theme.textTheme.labelSmall),

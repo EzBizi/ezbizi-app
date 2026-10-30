@@ -343,3 +343,51 @@ Future<T?> showSidePanel<T>(
     },
   );
 }
+
+/// A list pane's title row: a back arrow before the title when [showBack],
+/// which is how the pane opens full screen on a phone.
+Widget paneHeader(
+  BuildContext context,
+  String title, {
+  required bool showBack,
+  required VoidCallback? onBack,
+  String backTooltip = 'Back to the list',
+  bool ellipsis = false,
+}) => Padding(
+  padding: EdgeInsets.fromLTRB(showBack ? 8 : 20, 12, 20, 8),
+  child: Row(
+    children: [
+      if (showBack)
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: backTooltip,
+          onPressed: onBack,
+        ),
+      Expanded(
+        child: Text(
+          title,
+          style: Theme.of(context).textTheme.titleMedium,
+          overflow: ellipsis ? TextOverflow.ellipsis : null,
+        ),
+      ),
+    ],
+  ),
+);
+
+/// A form pane's Cancel and save buttons, at its foot.
+Widget paneFooter({
+  required VoidCallback? onCancel,
+  required VoidCallback? onSave,
+  String saveLabel = 'Save',
+}) => Padding(
+  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+  child: Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    alignment: WrapAlignment.end,
+    children: [
+      TextButton(onPressed: onCancel, child: const Text('Cancel')),
+      FilledButton(onPressed: onSave, child: Text(saveLabel)),
+    ],
+  ),
+);

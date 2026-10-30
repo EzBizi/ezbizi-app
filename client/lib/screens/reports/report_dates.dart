@@ -127,3 +127,51 @@ class _ReportDatesState extends State<ReportDates> {
     );
   }
 }
+
+/// A report's filter: typed to narrow, "All" first; [reload] runs after
+/// [pick].
+Widget reportFilter(
+  String label,
+  String? value,
+  Map<String, String> options,
+  ValueChanged<String?> pick,
+  Key key,
+  VoidCallback reload,
+) => DropdownMenu<String?>(
+  key: key,
+  enableFilter: true,
+  requestFocusOnTap: true,
+  label: Text(label),
+  initialSelection: value,
+  onSelected: (v) {
+    pick(v);
+    reload();
+  },
+  dropdownMenuEntries: [
+    const DropdownMenuEntry(value: null, label: 'All'),
+    for (final o in options.entries)
+      DropdownMenuEntry(value: o.key, label: o.value),
+  ],
+);
+
+/// A report's search box, the standard field height: as tall as Leads search
+/// (Jose, 2026-10-27).
+Widget reportSearch({
+  required Key key,
+  required String hint,
+  required ValueChanged<String> onChanged,
+}) => SizedBox(
+  width: 240,
+  child: TextField(
+    key: key,
+    textAlignVertical: TextAlignVertical.center,
+    decoration: InputDecoration(
+      isDense: true,
+      prefixIconConstraints: const BoxConstraints(minWidth: 36),
+      prefixIcon: const Icon(Icons.search, size: 18),
+      hintText: hint,
+      border: const OutlineInputBorder(),
+    ),
+    onChanged: onChanged,
+  ),
+);

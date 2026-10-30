@@ -2,128 +2,21 @@
 
 namespace App\Support\Email;
 
-use App\Models\Mailbox;
 use App\Models\MicrosoftMailSignIn;
-use App\Models\User;
-use App\Support\Pkce;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 
-/**
- * Issuing and burning the `state` that holds a Microsoft sign-in together.
- *
- * Same argument as {@see GoogleOAuthSignIns}: the callback is unauthenticated,
- * so `state` is the identification — organization, person, mailbox, PKCE.
- */
-final class MicrosoftOAuthSignIns
+/** Microsoft's sign-in `state`; why it is built this way is on {@see MailOAuthSignIns}. */
+final class MicrosoftOAuthSignIns extends MailOAuthSignIns
 {
-    public const MINUTES = 10;
+    protected const MODEL = MicrosoftMailSignIn::class;
 
-    public const WAITING = 'waiting';
+    protected const PROVIDER = 'Microsoft';
 
-    public const CONNECTED = 'connected';
-
-    public const REFUSED = 'refused';
-
-    private const OUTCOME_MINUTES = 15;
+    protected const OUTCOME_KEY = 'email.microsoft.sign-in-outcome.';
 
     public function __construct(private readonly MicrosoftOAuth $microsoft) {}
 
-    /**
-     * @return array{url: string, flow: string, expires_at: \Illuminate\Support\Carbon}
-     *
-     * @throws MailOAuthRefused
-     */
-    public function begin(User $user, Mailbox $mailbox): array
+    protected function authorizeUrl(string $state, string $verifier, string $loginHint): string
     {
-        $state    = Str::random(64);
-        $verifier = Pkce::verifier();
-
-        $url = $this->microsoft->authorizeUrl($state, $verifier, $mailbox->address);
-
-        $this->clearExpired();
-
-        $row = new MicrosoftMailSignIn;
-
-        $row->forceFill([
-            'organization_id' => $mailbox->organization_id,
-            'user_id'         => $user->getKey(),
-            'mailbox_id'      => $mailbox->getKey(),
-            'state_hash'      => $this->fingerprint($state),
-            'code_verifier'   => $verifier,
-            'expires_at'      => now()->addMinutes(self::MINUTES),
-        ])->save();
-
-        return ['url' => $url, 'flow' => (string) $row->getKey(), 'expires_at' => $row->expires_at];
-    }
-
-    public function record(MicrosoftMailSignIn $signIn, string $state, string $message): void
-    {
-        Cache::put($this->outcomeKey((string) $signIn->getKey()), [
-            'mailbox_id' => (string) $signIn->mailbox_id,
-            'state'      => $state,
-            'message'    => $message,
-        ], now()->addMinutes(self::OUTCOME_MINUTES));
-    }
-
-    /**
-     * @return array{state: string, message: ?string}
-     */
-    public function outcome(Mailbox $mailbox, ?string $flow): array
-    {
-        if ($flow !== null && $flow !== '') {
-            $recorded = Cache::get($this->outcomeKey($flow));
-
-            if (! is_array($recorded) || ($recorded['mailbox_id'] ?? null) !== (string) $mailbox->getKey()) {
-                return ['state' => self::WAITING, 'message' => null];
-            }
-
-            return [
-                'state'   => (string) $recorded['state'],
-                'message' => (string) $recorded['message'],
-            ];
-        }
-
-        return $mailbox->hasCredential()
-            ? ['state' => self::CONNECTED, 'message' => null]
-            : ['state' => self::WAITING, 'message' => null];
-    }
-
-    private function outcomeKey(string $flow): string
-    {
-        return 'email.microsoft.sign-in-outcome.'.$flow;
-    }
-
-    /**
-     * @throws MailOAuthRefused
-     */
-    public function complete(string $state): MicrosoftMailSignIn
-    {
-        $row = MicrosoftMailSignIn::where('state_hash', $this->fingerprint($state))->first();
-
-        if ($row === null || ! $this->burn($row)) {
-            throw MailOAuthRefused::noOpenSignIn('Microsoft');
-        }
-
-        if ($row->hasExpired()) {
-            throw MailOAuthRefused::noOpenSignIn('Microsoft');
-        }
-
-        return $row;
-    }
-
-    private function burn(MicrosoftMailSignIn $row): bool
-    {
-        return MicrosoftMailSignIn::whereKey($row->getKey())->delete() === 1;
-    }
-
-    private function clearExpired(): void
-    {
-        MicrosoftMailSignIn::where('expires_at', '<', now())->delete();
-    }
-
-    private function fingerprint(string $state): string
-    {
-        return hash('sha256', $state);
+        return $this->microsoft->authorizeUrl($state, $verifier, $loginHint);
     }
 }

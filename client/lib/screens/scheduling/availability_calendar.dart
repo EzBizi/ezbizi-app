@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 
 /// Availability › Calendar View: a month at a glance for a franchise or one of
@@ -46,7 +47,6 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
     'January', 'February', 'March', 'April', 'May', 'June', 'July', //
     'August', 'September', 'October', 'November', 'December',
   ];
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const double cellHeight = 92;
 
   /// Null before a pick; [_all] is "All areas" — every franchise in view,
@@ -289,7 +289,7 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
       children: [
         Row(
           children: [
-            for (final d in _weekdays)
+            for (final d in shortWeekdays)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 4),

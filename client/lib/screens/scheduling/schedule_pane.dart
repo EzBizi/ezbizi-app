@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 
@@ -42,10 +43,6 @@ class _SchedulePaneState extends State<SchedulePane> {
   static const _weekdays = [
     'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
     'Sunday', //
-  ];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
 
   static const double _techColumn = 190;
@@ -185,7 +182,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     final franchises = (board?['franchises'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final label =
-        '${_weekdays[_day.weekday - 1]}, ${_months[_day.month - 1]} '
+        '${_weekdays[_day.weekday - 1]}, ${shortMonths[_day.month - 1]} '
         '${_day.day}, ${_day.year}';
 
     return Padding(
@@ -719,7 +716,7 @@ class _SchedulePaneState extends State<SchedulePane> {
     final moveLabel = _moveDay == null
         ? 'Pick a day'
         : '${_weekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
-              '${_months[_moveDay!.month - 1]} ${_moveDay!.day}';
+              '${shortMonths[_moveDay!.month - 1]} ${_moveDay!.day}';
 
     final children = <Widget>[
       Row(

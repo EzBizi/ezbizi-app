@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../core/session.dart';
 import 'rescheduling_pane.dart';
@@ -152,12 +153,6 @@ class BookedAvailablePane extends StatefulWidget {
 }
 
 class _BookedAvailablePaneState extends State<BookedAvailablePane> {
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   late String _date;
   String? _today;
   bool _loading = true;
@@ -176,7 +171,9 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
   @override
   void initState() {
     super.initState();
-    _date = widget.date ?? _ymd(DateTime.now().add(const Duration(days: 1)));
+    _date =
+        widget.date ??
+        formatCalendarDay(DateTime.now().add(const Duration(days: 1)));
     _load();
   }
 
@@ -197,18 +194,14 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
     super.dispose();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   static String _day(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_weekdays[d.weekday - 1]} ${_months[d.month - 1]} ${d.day}';
+    return '${shortWeekdays[d.weekday - 1]} ${shortMonths[d.month - 1]} ${d.day}';
   }
 
   String _shift(String ymd, int days) {
     final d = DateTime.parse(ymd);
-    return _ymd(DateTime(d.year, d.month, d.day + days));
+    return formatCalendarDay(DateTime(d.year, d.month, d.day + days));
   }
 
   Future<void> _load() async {
@@ -409,7 +402,7 @@ class _BookedAvailablePaneState extends State<BookedAvailablePane> {
       return g > 0 ? n + g : n;
     });
     final full = rows.where((a) => _int(a['gap']) == 0).length;
-    final today = _today ?? _ymd(DateTime.now());
+    final today = _today ?? formatCalendarDay(DateTime.now());
     final tomorrow = _shift(today, 1);
 
     return ListView(
