@@ -12,7 +12,6 @@ import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
 import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
-import '../widgets/module_page_header.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/tab_help.dart';
@@ -375,40 +374,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
 
-  /// Design 161 T1: the shell's title row, where a desktop's search and
-  /// quick filters go. Null outside the shell (tests): drawn over the list.
-  ValueNotifier<Widget?>? _toolbarSlot;
-  Widget? _offered;
-  bool _toolbarInHeader = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _toolbarSlot = ModuleToolbarScope.maybeOf(context);
-  }
-
-  /// After the frame: a notifier set while building would rebuild the
-  /// header mid-build.
-  void _offerToolbar(Widget? bar) {
-    final slot = _toolbarSlot;
-    if (slot == null) return;
-    _offered = bar;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && identical(_offered, bar) && slot.value != bar) {
-        slot.value = bar;
-      }
-    });
-  }
-
   @override
   void dispose() {
-    final slot = _toolbarSlot;
-    final mine = _offered;
-    if (slot != null && mine != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (identical(slot.value, mine)) slot.value = null;
-      });
-    }
     _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
@@ -741,8 +708,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   Widget _googleTab(ThemeData theme) {
     if (_managing) {
-      _toolbarInHeader = false;
-      _offerToolbar(null);
       return LeadsConnections(
         api: widget.api,
         session: widget.session,
@@ -761,8 +726,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final body = LayoutBuilder(
       builder: (context, constraints) {
         final desk = constraints.maxWidth >= 900;
-        _toolbarInHeader = desk && _toolbarSlot != null;
-        _offerToolbar(_toolbarInHeader ? _toolbar(theme) : null);
         return desk ? _desk(theme) : _phone(theme);
       },
     );
@@ -1055,8 +1018,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      // Design 161 T1: in the shell's title row instead, on a desktop.
-      if (!_toolbarInHeader) ...[
+      // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         child: LayoutBuilder(
@@ -1075,8 +1037,6 @@ class _LeadsScreenState extends State<LeadsScreen> {
         ),
       ),
       _filterRow(theme, withStatus: false),
-      ] else
-        const SizedBox(height: 6),
       if (_moreFilters) ...[
         _takeoverFilters(),
         if (_source == null && _visibleSources.length > 1) _inAll(theme),
@@ -1118,58 +1078,24 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// pinned to the far edge it read as "floating in the air").
   Widget _filterRow(ThemeData theme, {required bool withStatus}) {
     final chips = _quickFilters(theme, withStatus: withStatus);
-    // Design 161, phone 4: one row that scrolls sideways.
-    if (MediaQuery.sizeOf(context).width < 600) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: SingleChildScrollView(
-          key: const ValueKey('tour-leads-filters'),
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              for (final (i, c) in chips.indexed) ...[
-                if (i > 0) const SizedBox(width: 6),
-                c,
-              ],
-            ],
-          ),
-        ),
-      );
-    }
+    // Design 162: one row that scrolls sideways, desktop and phone.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-      child: Wrap(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: SingleChildScrollView(
         key: const ValueKey('tour-leads-filters'),
-        spacing: 6,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: chips,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            for (final (i, c) in chips.indexed) ...[
+              if (i > 0) const SizedBox(width: 6),
+              c,
+            ],
+          ],
+        ),
       ),
     );
   }
-
-  /// Design 161 T1: search, status, Filters and the quick filters, in the
-  /// module's title row on a desktop.
-  Widget _toolbar(ThemeData theme) => Wrap(
-    key: const ValueKey('leads-toolbar'),
-    alignment: WrapAlignment.end,
-    spacing: 6,
-    runSpacing: 4,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      SizedBox(width: 240, child: _searchField()),
-      SizedBox(width: 140, child: _statusPicker()),
-      _filtersButton(),
-      Wrap(
-        key: const ValueKey('tour-leads-filters'),
-        spacing: 6,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: _quickFilters(theme, withStatus: false),
-      ),
-    ],
-  );
 
   List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
         FilterChip(
