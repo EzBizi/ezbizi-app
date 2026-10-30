@@ -655,15 +655,6 @@ class _NamePanelState extends State<_NamePanel> {
 
 String _people(int count) => count == 1 ? '1 person' : '$count people';
 
-/// "Dana Reyes" -> "DR"; one name gives one letter.
-String _initials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
-  if (parts.isEmpty) return '?';
-  final first = parts.first[0];
-  final last = parts.length > 1 ? parts.last[0] : '';
-  return '$first$last'.toUpperCase();
-}
-
 class _RoleSection {
   const _RoleSection({
     required this.key,
@@ -1986,7 +1977,7 @@ class _RolePageState extends State<_RolePage> {
                       radius: 12,
                       backgroundColor: scheme.primaryContainer,
                       child: Text(
-                        _initials(person.name),
+                        initials(person.name),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: scheme.onPrimaryContainer,
                         ),

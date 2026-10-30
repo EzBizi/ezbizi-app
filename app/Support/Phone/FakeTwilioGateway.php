@@ -31,17 +31,6 @@ final class FakeTwilioGateway implements TwilioGateway
      */
     public ?int $failSendMessageCode = null;
 
-    public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array
-    {
-        $this->record(__FUNCTION__, func_get_args());
-
-        return [
-            'account_sid' => $accountSid,
-            'friendly_name' => 'Fake account',
-            'auth_token' => 'auth-token-from-verify',
-        ];
-    }
-
     public function createSubaccount(string $friendlyName): array
     {
         $this->record(__FUNCTION__, func_get_args());

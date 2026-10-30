@@ -11,21 +11,18 @@ use App\Support\Phone\NumberNames;
 use App\Support\Phone\PhoneLineHealth;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\PhoneTexts;
-use App\Support\Phone\SmsCompliance;
 use App\Support\Phone\TextRefused;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response as Status;
-use Throwable;
 
 /**
  * Outbound SMS from the Call desk (spec §9).
  *
- * Needs phone.view and a grant on the line. SmsCompliance refuses until the
+ * Needs phone.view and a grant on the line. Texts are refused until the
  * number's campaign (or toll-free verification) is approved.
  */
 class MessagesController extends Controller
@@ -33,7 +30,6 @@ class MessagesController extends Controller
     public function __construct(
         private readonly PhoneNumberAccess $access,
         private readonly TwilioGateway $twilio,
-        private readonly SmsCompliance $compliance,
         private readonly EventEmitter $events,
         private readonly TenantContext $tenant,
         private readonly PhoneLineHealth $health,

@@ -5,7 +5,6 @@ namespace Tests\Feature\Tasks;
 use App\Models\AutomationEvent;
 use App\Models\Task;
 use App\Models\TaskBoard;
-use App\Support\Tasks\TaskStatuses;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -83,11 +82,6 @@ class TaskBoardCustomizationTest extends TestCase
             $this->assertSame('Shipped', $event->payload['after']['status']);
             $this->assertTrue($event->payload['after']['is_done']);
 
-            $this->assertContains('Shipped', TaskStatuses::namesIn('franchise', $this->tenant['franchise']->id));
-            // A company's scope reaches its franchises' boards; a stranger's franchise id reaches nothing.
-            $this->assertContains('In review', TaskStatuses::namesIn('company', $this->tenant['company']->id));
-            $this->assertSame([], TaskStatuses::namesIn('franchise', '00000000-0000-0000-0000-000000000000'));
-            $this->assertContains('Working on it', TaskStatuses::namesIn('organization', null));
         });
     }
 

@@ -24,7 +24,11 @@ class PhoneNumber extends Model implements StatesRetention
 
     /** @use HasFactory<PhoneNumberFactory> */
     use HasFactory;
+
     use HasUuids;
+
+    /** Outbound SMS is blocked until the line's campaign (or toll-free check) is approved; Settings flips sms_outbound_allowed. */
+    public const SMS_REFUSAL = 'This line cannot send texts until messaging is approved.';
 
     public const SCOPE_ORGANIZATION = 'organization';
 

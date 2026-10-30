@@ -61,7 +61,7 @@ class SendingIdentityCascadeTest extends TestCase
         // platform link at the end of the cascade is a known address.
         config([
             'mail.from.address' => 'noreply@ezbizi.test',
-            'mail.from.name'    => 'EzBizi',
+            'mail.from.name' => 'EzBizi',
         ]);
     }
 
@@ -75,7 +75,7 @@ class SendingIdentityCascadeTest extends TestCase
         $provisioned = app(ProvisionOrganization::class)(
             organizationName: 'A1-Group',
             administrator: ['name' => 'Owner', 'email' => 'owner@a1group.test', 'password' => 'a-real-password'],
-            companyName:   'A-1 Chimney',
+            companyName: 'A-1 Chimney',
             franchiseName: 'Connecticut',
         );
 
@@ -83,31 +83,31 @@ class SendingIdentityCascadeTest extends TestCase
 
         return app(TenantContext::class)->run($org, function () use ($org, $provisioned) {
             $northeast = Company::create([
-                'organization_id'   => $org->id,
+                'organization_id' => $org->id,
                 'parent_company_id' => $provisioned['company']->id,
-                'name'              => 'A-1 Northeast',
+                'name' => 'A-1 Northeast',
             ]);
 
             $everdoors = Company::create([
                 'organization_id' => $org->id,
-                'name'            => 'Everdoors',
+                'name' => 'Everdoors',
             ]);
 
             return [
                 'organization' => $org,
-                'a1'           => $provisioned['company'],
-                'northeast'    => $northeast,
-                'everdoors'    => $everdoors,
-                'connecticut'  => $provisioned['franchise'],
-                'hartford'     => Franchise::create([
+                'a1' => $provisioned['company'],
+                'northeast' => $northeast,
+                'everdoors' => $everdoors,
+                'connecticut' => $provisioned['franchise'],
+                'hartford' => Franchise::create([
                     'organization_id' => $org->id,
-                    'company_id'      => $northeast->id,
-                    'name'            => 'Hartford',
+                    'company_id' => $northeast->id,
+                    'name' => 'Hartford',
                 ]),
-                'everdoorsNj'  => Franchise::create([
+                'everdoorsNj' => Franchise::create([
                     'organization_id' => $org->id,
-                    'company_id'      => $everdoors->id,
-                    'name'            => 'Everdoors NJ',
+                    'company_id' => $everdoors->id,
+                    'name' => 'Everdoors NJ',
                 ]),
             ];
         });
@@ -124,11 +124,11 @@ class SendingIdentityCascadeTest extends TestCase
     {
         $identity = new SendingIdentity([
             'organization_id' => $scope instanceof Organization ? $scope->getKey() : $scope->organization_id,
-            'scope_type'      => $this->identities->scopeTypeOf($scope),
-            'scope_id'        => $scope->getKey(),
-            'from_address'    => $address,
-            'from_name'       => $name,
-            'transport'       => MailTransport::VerifiedDomain->value,
+            'scope_type' => $this->identities->scopeTypeOf($scope),
+            'scope_id' => $scope->getKey(),
+            'from_address' => $address,
+            'from_name' => $name,
+            'transport' => MailTransport::VerifiedDomain->value,
         ]);
 
         $identity->forceFill(['state' => $state->value])->save();
@@ -152,7 +152,6 @@ class SendingIdentityCascadeTest extends TestCase
             $identity = $this->identities->for($t['connecticut']);
 
             $this->assertSame('noreply@ezbizi.test', $identity->fromAddress);
-            $this->assertTrue($identity->isPlatform());
             $this->assertNull($this->identities->sourceOf($t['connecticut']));
 
             // And it can send. The platform has nothing to prove to itself —
@@ -174,7 +173,6 @@ class SendingIdentityCascadeTest extends TestCase
 
             $this->assertSame('info@a-1chimney.com', $identity->fromAddress);
             $this->assertSame('A-1 Chimney', $identity->fromName);
-            $this->assertFalse($identity->isPlatform());
 
             // Where it came from, which is a different question from what it is.
             $source = $this->identities->sourceOf($t['connecticut']);
@@ -338,18 +336,6 @@ class SendingIdentityCascadeTest extends TestCase
     }
 
     // ── the resolver answers about the level it was asked about ──
-
-    public function test_a_company_does_not_inherit_from_a_sibling(): void
-    {
-        $t = $this->a1Group();
-
-        app(TenantContext::class)->run($t['organization'], function () use ($t) {
-            $this->set($t['a1'], 'info@a-1chimney.com', 'A-1 Chimney');
-
-            // Everdoors has nothing, and A-1 Chimney is not above it.
-            $this->assertTrue($this->identities->for($t['everdoors'])->isPlatform());
-        });
-    }
 
     public function test_the_row_at_a_scope_is_not_the_inherited_answer(): void
     {

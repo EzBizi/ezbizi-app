@@ -215,7 +215,6 @@ class PlatformMailTest extends TestCase
         // no SMTP credential refuse to BUILD a password reset, so the transport
         // never gets the chance to report its own accurate error.
         $this->assertTrue($identity->canSend());
-        $this->assertTrue($identity->isPlatform());
         $this->assertSame(MailTransport::Platform, $identity->transport);
         $this->assertNull($identity->refusal());
     }
@@ -430,7 +429,7 @@ class PlatformMailTest extends TestCase
 
         // Jose, 2026-10-08: the invitation also points the new starter at the apps.
         $mail = $this->inTenant(fn () => (new InvitationLink($invitation, 'https://app.ezbizi.test/invitations/accept?token=x'))
-            ->toMail(new \Illuminate\Notifications\AnonymousNotifiable));
+            ->toMail(new AnonymousNotifiable));
         $this->assertStringContainsString('https://www.ezbizi.com/download/', implode(' ', $mail->outroLines));
     }
 

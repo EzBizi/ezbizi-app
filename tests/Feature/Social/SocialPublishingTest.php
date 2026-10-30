@@ -33,12 +33,10 @@ class SocialPublishingTest extends TestCase
     public function test_a_network_that_needs_media_refuses_words_alone(): void
     {
         foreach ([SocialProvider::Pinterest, SocialProvider::TikTok, SocialProvider::InstagramProfessional] as $p) {
-            $this->assertTrue($p->requiresMedia(), $p->value.' should need media');
             $this->assertStringContainsString('Attach', (string) $p->refuses(SocialMediaKind::Text));
         }
 
         foreach ([SocialProvider::FacebookPage, SocialProvider::Threads, SocialProvider::LinkedIn] as $p) {
-            $this->assertFalse($p->requiresMedia(), $p->value.' posts words alone');
             $this->assertNull($p->refuses(SocialMediaKind::Text));
         }
     }

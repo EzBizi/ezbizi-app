@@ -64,15 +64,6 @@ class ModuleAvailability
         return $this->isAvailable($moduleKey, $organization);
     }
 
-    /** @return string[] modules this organization can currently use */
-    public function availableFor(?Organization $organization): array
-    {
-        return array_values(array_filter(
-            array_keys($this->registry->all()),
-            fn (string $key) => $this->isAvailable($key, $organization)
-        ));
-    }
-
     // ── staff operations (§4.2) ──────────────────────────────────
 
     /**
@@ -121,9 +112,9 @@ class ModuleAvailability
         return PlatformModuleFlag::updateOrCreate(
             ['module_key' => $moduleKey],
             [
-                'state'                 => $state,
-                'reason'                => $reason,
-                'changed_by'            => $changedBy,
+                'state' => $state,
+                'reason' => $reason,
+                'changed_by' => $changedBy,
                 'beta_organization_ids' => $state === PlatformModuleFlag::BETA
                     ? array_values($betaOrganizationIds)
                     : null,

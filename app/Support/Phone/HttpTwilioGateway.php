@@ -3,32 +3,19 @@
 namespace App\Support\Phone;
 
 use App\Models\PhoneConnection;
+use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
 use Twilio\Jwt\AccessToken;
 use Twilio\Jwt\Grants\VoiceGrant;
 use Twilio\Rest\Client;
+use Twilio\Rest\Numbers\V1\PortingPortInModels;
 
 /**
  * Live Twilio REST / JWT. Bound outside tests.
  */
 final class HttpTwilioGateway implements TwilioGateway
 {
-    public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array
-    {
-        $account = $this->client($accountSid, $apiKeySid, $apiSecret)
-            ->api
-            ->v2010
-            ->accounts($accountSid)
-            ->fetch();
-
-        return [
-            'account_sid' => $account->sid,
-            'friendly_name' => $account->friendlyName,
-            'auth_token' => $account->authToken,
-        ];
-    }
-
     /**
      * A subaccount for this business, reusing one of the same name if it is
      * already there.
@@ -392,7 +379,7 @@ final class HttpTwilioGateway implements TwilioGateway
             'in_rate_center' => 'inRateCenter',
             'in_locality' => 'inLocality',
             'in_lata' => 'inLata',
-            
+
             'exclude_all_address_required' => 'excludeAllAddressRequired',
             'exclude_local_address_required' => 'excludeLocalAddressRequired',
             'exclude_foreign_address_required' => 'excludeForeignAddressRequired',
@@ -643,7 +630,7 @@ final class HttpTwilioGateway implements TwilioGateway
 
     public function sendPlatformMessage(string $accountSid, string $from, string $to, string $body): array
     {
-        $response = \Illuminate\Support\Facades\Http::asForm()
+        $response = Http::asForm()
             ->withBasicAuth(
                 (string) config('services.twilio.platform_account_sid'),
                 (string) config('services.twilio.platform_auth_token'),
@@ -739,7 +726,7 @@ final class HttpTwilioGateway implements TwilioGateway
         }
 
         if (is_array($carrier['address'] ?? null)) {
-            $carrier['address'] = \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingAddress($carrier['address']);
+            $carrier['address'] = PortingPortInModels::createNumbersV1PortingAddress($carrier['address']);
         }
 
         return $carrier;
@@ -748,7 +735,7 @@ final class HttpTwilioGateway implements TwilioGateway
     public function startPort(PhoneConnection $connection, array $e164s, array $params = []): array
     {
         $phoneNumbers = array_map(
-            fn (string $e164) => \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreatePhoneNumbers(array_filter([
+            fn (string $e164) => PortingPortInModels::createNumbersV1PortingPortInCreatePhoneNumbers(array_filter([
                 'phone_number' => $e164,
                 // US mobile carriers require it; one PIN covers the port.
                 'pin' => $params['pin'] ?? null,
@@ -761,7 +748,7 @@ final class HttpTwilioGateway implements TwilioGateway
             'phone_numbers' => $phoneNumbers,
             'documents' => $params['documents'] ?? [],
             'losing_carrier_information' => $params['losing_carrier_information']
-                ?? \Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingLosingCarrierInformation(
+                ?? PortingPortInModels::createNumbersV1PortingLosingCarrierInformation(
                     self::losingCarrier($params['losing_carrier'] ?? null),
                 ),
         ];
@@ -776,7 +763,7 @@ final class HttpTwilioGateway implements TwilioGateway
             ->numbers
             ->v1
             ->portingPortIns
-            ->create(\Twilio\Rest\Numbers\V1\PortingPortInModels::createNumbersV1PortingPortInCreate($payload));
+            ->create(PortingPortInModels::createNumbersV1PortingPortInCreate($payload));
 
         $status = (string) ($created->portInRequestStatus ?? 'waiting_for_signature');
 

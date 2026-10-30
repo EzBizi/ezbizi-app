@@ -14,11 +14,6 @@ use App\Models\PhoneConnection;
 interface TwilioGateway
 {
     /**
-     * @return array{account_sid: string, friendly_name: ?string, auth_token: ?string}
-     */
-    public function verifyAccount(string $accountSid, string $apiKeySid, string $apiSecret): array;
-
-    /**
      * @return array{account_sid: string, auth_token: ?string}
      */
     public function createSubaccount(string $friendlyName): array;

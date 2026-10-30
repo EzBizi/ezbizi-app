@@ -18,7 +18,6 @@ use App\Support\Automations\ActionRunner;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Phone\FakeTwilioGateway;
-use App\Support\Phone\SmsCompliance;
 use App\Support\Phone\TwilioGateway;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -212,7 +211,7 @@ class PhoneAutomationsTest extends TestCase
         });
 
         $this->assertFalse($result['ok']);
-        $this->assertSame(SmsCompliance::REFUSAL, $result['detail']);
+        $this->assertSame(PhoneNumber::SMS_REFUSAL, $result['detail']);
 
         $this->inTenant($t['org'], fn () => $this->assertSame(
             0,

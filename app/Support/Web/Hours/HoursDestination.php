@@ -22,9 +22,6 @@ interface HoursDestination
 
     public function label(): string;
 
-    /** The model class of the places it writes. */
-    public function placeClass(): string;
-
     /** A short name for a place, as the review lists it. */
     public function placeName(Model $place): string;
 
