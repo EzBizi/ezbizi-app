@@ -15,6 +15,7 @@ import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../phone/recording_playback_bar.dart';
 import '../phone/recording_player.dart';
+import 'report_dates.dart';
 
 /// One day of A-1's calls against the jobs they became (TEMPORARY).
 ///
@@ -153,8 +154,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// (Jose, 2026-10-06: both Claude and Grok, to compare).
   // Grok first (Jose, 2026-10-13: "we only use grok for now, set it as the
   // default instead of claude"); Claude stays one tap away.
-  String _labeller = 'grok';
+  // ponytail: one model, shown as "AI" (review 2026-10-30, item 9); a
+  // Settings choice when a second model is in use again.
+  final String _labeller = 'grok';
   String? _labelFilter;
+
+  /// The People search and the Overview lists' searches (Jose, 2026-10-30).
+  String _personQuery = '';
+  String _notBookedQuery = '';
+  String _missedQuery = '';
 
   static const _existingLabels = {
     'complaint': 'Complaint',
@@ -180,7 +188,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     'not_a_customer': 'Not a customer',
     'no_conversation': 'No conversation',
     'other': 'Other',
-    'booked': 'Booked (per AI)',
+    'booked': 'AI heard a booking, no job yet',
   };
 
   static const _newQueue = 'A1 - New Client';
@@ -258,6 +266,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     _clientFilter = client ? filter : null;
     _labelFilter = null;
     _nobodyFilter = null;
+    _directionFilter = null;
   });
 
   DateTime get _today => DateSpan.single(widget.now()).from;
@@ -408,6 +417,41 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   Widget _dayBar(BuildContext context, {required bool phone}) {
     final today = _today;
 
+    // The same quick ranges as every Reports tab (review 2026-10-30, 14).
+    final quick = SingleChildScrollView(
+      // One line on a phone too (UI-UX review): it scrolls sideways.
+      scrollDirection: Axis.horizontal,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final q in ReportDates.quick(today).entries)
+            ChoiceChip(
+              key: ValueKey('report-dates-${q.key}'),
+              label: Text(ReportDates.quickLabels[q.key] ?? q.key),
+              selected: _span == q.value,
+              showCheckmark: false,
+              onSelected: _loading ? null : (_) => _apply(q.value),
+            ),
+        ],
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        quick,
+        const SizedBox(height: 8),
+        _dayRow(context, phone: phone, today: today),
+      ],
+    );
+  }
+
+  Widget _dayRow(
+    BuildContext context, {
+    required bool phone,
+    required DateTime today,
+  }) {
     return Row(
       children: [
         Expanded(
@@ -501,7 +545,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       ),
       (
         'calls',
-        phone ? 'Calls' : 'Calls · ${calls.length}',
+        phone
+            ? 'Calls'
+            : 'Calls · ${calls.where((c) => !_isOutbound(c)).length} in · '
+                  '${calls.where(_isOutbound).length} out',
         Icons.call_outlined,
       ),
     ];
@@ -629,7 +676,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         return ListView(
           padding: const EdgeInsets.only(top: 4, bottom: 24),
           children: [
-            _figures(context, totals, across),
+            // Missed is counted from the calls the card lists, so the
+            // tile and the list cannot disagree (UI-UX review of 0a52fe906).
+            _figures(context, {
+              ...totals,
+              'reached_nobody': _nobody(calls).length,
+            }, across),
             const SizedBox(height: 16),
             if (box.maxWidth >= ExperimentalCallReport.tableAbove)
               IntrinsicHeight(
@@ -668,7 +720,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     int across,
   ) {
     final figures = <(String, Object?, String?, String?)>[
-      ('Calls', totals['calls'], 'all', 'stat-calls'),
+      ('Inbound calls', totals['calls'], 'all', 'stat-calls'),
       (
         'Missed calls',
         totals['reached_nobody'],
@@ -682,7 +734,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         'stat-existing',
       ),
       ('New client', totals['new_client'], 'new', 'stat-new'),
-      ('Jobs booked', totals['jobs'], null, null),
+      ('Jobs created', totals['jobs'], null, null),
       ('Conv. rate', _rate(totals['jobs'], totals['new_client']), null, null),
       ('Not booked', totals['not_booked'], 'not_booked', 'stat-not-booked'),
     ];
@@ -706,6 +758,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                             figures[j].$1,
                             figures[j].$2,
                             opens: figures[j].$3,
+                            help: _help[figures[j].$1],
                             key: switch (figures[j].$4) {
                               final key? => ValueKey(key),
                               null => null,
@@ -722,12 +775,23 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  /// Jobs over new-client calls, the same rule as each person's row; a dash
-  /// when there were no new-client calls to convert.
-  String _rate(Object? jobs, Object? newClient) {
+  /// What each tile counts, said under it (review 2026-10-30).
+  static const _help = {
+    'Inbound calls': 'New + Existing + other lines',
+    'Missed calls': 'Nobody picked up, incl. voicemail',
+    'Jobs created': 'Workiz jobs for these dates',
+    'Conv. rate': 'Jobs ÷ answered New-client calls',
+  };
+
+  /// Jobs over answered new-client calls, the same rule as each person's
+  /// row, never above 100% (review item 3): more jobs than calls is said as
+  /// "11 jobs · 6 calls". A dash when there were no new-client calls.
+  static String _rate(Object? jobs, Object? newClient) {
     final n = (newClient as num?) ?? 0;
+    final j = (jobs as num?) ?? 0;
     if (n == 0) return '—';
-    return '${((((jobs as num?) ?? 0) / n) * 100).round()}%';
+    if (j > n) return '$j jobs · $n calls';
+    return '${(j / n * 100).round()}%';
   }
 
   Widget _stat(
@@ -736,6 +800,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     Object? value, {
     Key? key,
     String? opens,
+    String? help,
   }) {
     final theme = Theme.of(context);
     final radius = BorderRadius.circular(EzBiziTheme.controlRadius);
@@ -757,6 +822,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             children: [
               Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
               Text(label, style: theme.textTheme.bodySmall),
+              if (help != null)
+                Text(
+                  help,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
               // A figure that opens says so, or nobody finds out it does.
               if (opens != null) ...[
                 const Spacer(),
@@ -818,27 +890,66 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   static bool _isOutbound(Map<String, dynamic> c) =>
       c['direction'] == 'Outbound';
 
+  /// A call whose caller name, line or number holds [query].
+  bool Function(Map<String, dynamic>) _matches(String query) {
+    final q = query.trim().toLowerCase();
+    final digits = q.replaceAll(RegExp(r'[^0-9]'), '');
+    return (c) =>
+        q.isEmpty ||
+        '${_who(c)} ${_line(c)}'.toLowerCase().contains(q) ||
+        (digits.length >= 3 &&
+            '${c['from'] ?? ''}'
+                .replaceAll(RegExp(r'[^0-9]'), '')
+                .contains(digits));
+  }
+
+  /// "Find a caller…" in an Overview list, styled as the Calls search.
+  Widget _listSearch(String key, void Function(String) set) => TextField(
+    key: ValueKey(key),
+    onChanged: (value) => setState(() => set(value)),
+    decoration: const InputDecoration(
+      isDense: true,
+      prefixIcon: Icon(Icons.search, size: 18),
+      hintText: 'Find a caller…',
+      border: OutlineInputBorder(),
+    ),
+  );
+
   Widget _notBookedCard(
     BuildContext context,
     List<Map<String, dynamic>> calls,
   ) {
-    final open = _unbooked(calls);
+    final all = _unbooked(calls);
+    final open = all.where(_matches(_notBookedQuery)).toList();
+    // Every not-booked call has a reason or "Not read yet", so they add up
+    // (review item 5); AI hearing a booking is said apart, as the booked side.
     final reasons = [
       for (final entry in _notBookedLabels.entries)
-        if (open.where((c) => _labelOf(c, _labeller) == entry.key).length
-            case final n when n > 0)
-          '${entry.value} $n',
+        if (entry.key != 'booked')
+          if (all.where((c) => _labelOf(c, _labeller) == entry.key).length
+              case final n when n > 0)
+            '${entry.value} $n',
+      if (all.where((c) => _labelOf(c, _labeller) == null).length case final n
+          when n > 0)
+        'Not read yet $n',
+      if (all.where((c) => _labelOf(c, _labeller) == 'booked').length
+          case final n when n > 0)
+        '· ${_notBookedLabels['booked']} $n',
     ];
 
     return _listCard(
       context,
       key: const ValueKey('overview-not-booked'),
       title: 'Not booked',
-      count: open.length,
-      detail: reasons.isEmpty
-          ? null
-          : '${_labeller == 'grok' ? 'Grok' : 'Claude'}: ${reasons.join(' · ')}',
-      empty: 'Every new-client call was booked.',
+      count: all.length,
+      detail: reasons.isEmpty ? null : 'AI: ${reasons.join(' · ')}',
+      empty: all.isEmpty
+          ? 'Every new-client call was booked.'
+          : 'No caller matches.',
+      search: _listSearch(
+        'overview-not-booked-search',
+        (v) => _notBookedQuery = v,
+      ),
       rows: [
         for (final call in open.take(3))
           _briefCall(
@@ -862,6 +973,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   Widget _missedCard(BuildContext context, List<Map<String, dynamic>> calls) {
     final nobody = _nobody(calls);
     int count(String queue) => nobody.where((c) => c['queue'] == queue).length;
+    // One row per caller: the same number twice is "Name · 2 calls" (item 13).
+    final byCaller = <String, List<Map<String, dynamic>>>{};
+    for (final call in nobody.where(_matches(_missedQuery))) {
+      byCaller.putIfAbsent('${call['from'] ?? call['id']}', () => []).add(call);
+    }
 
     return _listCard(
       context,
@@ -871,16 +987,20 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       detail: nobody.isEmpty
           ? null
           : 'New ${count(_newQueue)} · Existing ${count(_existingQueue)}',
-      empty: 'Every call reached somebody.',
+      empty: nobody.isEmpty
+          ? 'Every call reached somebody.'
+          : 'No caller matches.',
+      search: _listSearch('overview-missed-search', (v) => _missedQuery = v),
       rows: [
-        for (final call in nobody.take(3))
+        for (final repeat in byCaller.values.take(3))
           _briefCall(
             context,
-            call,
+            repeat.first,
             StatusPill(
-              _outcomes[call['outcome']] ?? 'Nobody answered',
+              _outcomes[repeat.first['outcome']] ?? 'Nobody answered',
               tone: Tone.caution,
             ),
+            times: repeat.length,
           ),
       ],
       filter: 'missed',
@@ -898,6 +1018,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     required String empty,
     required List<Widget> rows,
     required String filter,
+    Widget? search,
   }) {
     final theme = Theme.of(context);
 
@@ -925,6 +1046,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     color: theme.colorScheme.outline,
                   ),
                 ),
+                if (search != null && count > 0) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 220),
+                        child: search,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             if (detail != null) Text(detail, style: theme.textTheme.bodySmall),
@@ -953,13 +1086,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   Widget _briefCall(
     BuildContext context,
     Map<String, dynamic> call,
-    Widget action,
-  ) {
+    Widget action, {
+    int times = 1,
+  }) {
     final by = call['answered_by'];
     final rang = ((call['rang'] as List?) ?? const []).join(', ');
     final words = [
       _clock(call['started_at']),
-      _caller(call),
+      times > 1 ? '${_who(call)} · $times calls' : _who(call),
       if (by != null) ...[
         '$by',
         _mmss(call['talk_seconds']),
@@ -989,10 +1123,12 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     List<Map<String, dynamic>> people,
     List<Map<String, dynamic>> calls,
   ) {
+    final q = _personQuery.trim().toLowerCase();
     final ordered = _sorted(
-      _tagFilter == null
-          ? people
-          : people.where((p) => p['tag'] == _tagFilter).toList(),
+      people
+          .where((p) => _tagFilter == null || p['tag'] == _tagFilter)
+          .where((p) => q.isEmpty || '${p['person']}'.toLowerCase().contains(q))
+          .toList(),
     );
 
     /*
@@ -1062,10 +1198,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          SizedBox(
+            width: 220,
+            child: TextField(
+              key: const ValueKey('people-search'),
+              onChanged: (value) => setState(() => _personQuery = value),
+              decoration: const InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Find a person…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
           Padding(
             padding: const EdgeInsets.only(right: 2),
             child: Text(
-              'Answers for',
+              // A filter, so not the setting's word (review item 11).
+              'Show',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w700,
@@ -1073,8 +1224,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           ),
           chip(null, 'Everyone'),
-          chip('new', 'New client'),
-          chip('existing', 'Existing client'),
+          chip('new', 'Handles New'),
+          chip('existing', 'Handles Existing'),
         ],
       ),
     );
@@ -1094,22 +1245,45 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   }) {
     final theme = Theme.of(context);
 
-    List<Map<String, dynamic>> byClient(String? client) => client == null
-        ? calls
-        : calls
-              .where(
-                (c) =>
-                    c['queue'] ==
-                    (client == 'new' ? _newQueue : _existingQueue),
-              )
-              .toList();
+    // Other: lines that are neither queue, so the three add up to All.
+    List<Map<String, dynamic>> byClient(String? client) => switch (client) {
+      null => calls,
+      'other' =>
+        calls
+            .where(
+              (c) => c['queue'] != _newQueue && c['queue'] != _existingQueue,
+            )
+            .toList(),
+      _ =>
+        calls
+            .where(
+              (c) =>
+                  c['queue'] == (client == 'new' ? _newQueue : _existingQueue),
+            )
+            .toList(),
+    };
     List<Map<String, dynamic>> byResult(
       String result,
       List<Map<String, dynamic>> from,
     ) => switch (result) {
       'booked' => from.where((c) => c['booked'] == true).toList(),
       'not_booked' => _unbooked(from),
-      'missed' => [..._nobody(from), ..._outbound(from)],
+      // Inbound only (review item 1): our calls out are their own chip.
+      'missed' => _nobody(from),
+      'outbound_no_answer' => _outbound(from),
+      // Answered, not booked and not a lost booking: the rest of All (item 4).
+      'answered_other' => () {
+        final unbooked = _unbooked(from).toSet();
+        return from
+            .where(
+              (c) =>
+                  !_isOutbound(c) &&
+                  c['outcome'] == 'answered' &&
+                  c['booked'] != true &&
+                  !unbooked.contains(c),
+            )
+            .toList();
+      }(),
       // Grok read the call as booked, but no Workiz job matches it (Jose,
       // 2026-10-13: a list for a manager to follow up).
       'ai_booked_no_job' =>
@@ -1159,8 +1333,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           onSelected: (_) => setState(pick),
         );
 
-    Widget group(String label, List<Widget> chips) => Row(
-      mainAxisSize: MainAxisSize.min,
+    // Wraps: Result has seven chips now (review item 4).
+    Widget group(String label, List<Widget> chips) => Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: 6,
       children: [
         Text(
           label,
@@ -1181,8 +1357,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ('all', 'All'),
           ('booked', 'Booked'),
           ('not_booked', 'Not booked'),
+          ('answered_other', 'Answered · not a sale call'),
           ('missed', 'Missed'),
-          ('ai_booked_no_job', 'Booked per AI · no job'),
+          ('outbound_no_answer', 'Outbound, no answer'),
+          ('ai_booked_no_job', 'AI heard a booking, no job yet'),
         ])
           // The follow-up list only while it has calls, or is chosen.
           if (key != 'ai_booked_no_job' ||
@@ -1203,13 +1381,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       group('Client', [
         chip(
           'every-client',
-          'All',
+          'All ${byResult(_result, byClient(null)).length}',
           _clientFilter == null,
           () => _clientFilter = null,
         ),
         for (final (key, label) in const [
           ('new', 'New'),
           ('existing', 'Existing'),
+          ('other', 'Other'),
         ])
           chip(
             key,
@@ -1221,48 +1400,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             },
           ),
       ]),
-      // Which AI the Reason column reads (UI queue 78: it was beside the
-      // counts, and the column needs it everywhere).
-      group('Reasons by', [
-        SegmentedButton<String>(
-          key: const ValueKey('labeller'),
-          showSelectedIcon: false,
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-          segments: const [
-            ButtonSegment(value: 'claude', label: Text('Claude')),
-            ButtonSegment(value: 'grok', label: Text('Grok')),
-          ],
-          selected: {_labeller},
-          onSelectionChanged: (picked) => setState(() {
-            _labeller = picked.first;
-            _labelFilter = null;
-          }),
+      // Always offered (review item 8); Why stays under Missed.
+      group('Direction', [
+        chip(
+          'every-direction',
+          'All',
+          _directionFilter == null,
+          () => _directionFilter = null,
+        ),
+        chip(
+          'inbound',
+          'Inbound ${mine.where((c) => !_isOutbound(c)).length}',
+          _directionFilter == 'inbound',
+          () => _directionFilter = 'inbound',
+        ),
+        chip(
+          'outbound',
+          'Outbound ${mine.where(_isOutbound).length}',
+          _directionFilter == 'outbound',
+          () {
+            _directionFilter = 'outbound';
+            _nobodyFilter = null;
+          },
         ),
       ]),
-      if (_result == 'missed')
-        group('Direction', [
-          chip(
-            'every-direction',
-            'All',
-            _directionFilter == null,
-            () => _directionFilter = null,
-          ),
-          chip(
-            'inbound',
-            'Inbound ${_nobody(mine).length}',
-            _directionFilter == 'inbound',
-            () => _directionFilter = 'inbound',
-          ),
-          chip(
-            'outbound',
-            'Outbound ${_outbound(mine).length}',
-            _directionFilter == 'outbound',
-            () {
-              _directionFilter = 'outbound';
-              _nobodyFilter = null;
-            },
-          ),
-        ]),
       if (_result == 'missed' && _directionFilter != 'outbound')
         group('Why', [
           for (final entry in _outcomes.entries)
@@ -1321,34 +1482,34 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // Which AI put each call where, above the table it narrows.
     final counts = switch (_result) {
       'not_booked' => _labelCounts(context, _unbooked(mine), _notBookedLabels),
-      _ when _clientFilter == 'existing' && _result != 'missed' => _labelCounts(
-        context,
-        shown,
-        _existingLabels,
-      ),
+      _
+          when _clientFilter == 'existing' &&
+              _result != 'missed' &&
+              _result != 'outbound_no_answer' =>
+        _labelCounts(context, shown, _existingLabels),
       _ => null,
     };
 
+    // Direction narrows whatever Result shows; Outbound lists every call out.
+    final directed = switch (_directionFilter) {
+      'outbound' => mine.where(_isOutbound).toList(),
+      'inbound' => shown.where((c) => !_isOutbound(c)).toList(),
+      _ => shown,
+    };
     final rows = [
       ...switch (_result) {
+        _ when _directionFilter == 'outbound' => _everyCall(context, directed),
         'not_booked' => _notBooked(context, mine, conversions),
         'missed' => _everyCall(
           context,
-          shown
-              .where(
-                (c) => switch (_directionFilter) {
-                  'inbound' => !_isOutbound(c),
-                  'outbound' => _isOutbound(c),
-                  _ => true,
-                },
-              )
+          directed
               .where(
                 (c) => _nobodyFilter == null || c['outcome'] == _nobodyFilter,
               )
               .toList(),
         ),
-        _ when _clientFilter == 'existing' => _existingCalls(context, shown),
-        _ => _everyCall(context, shown),
+        _ when _clientFilter == 'existing' => _existingCalls(context, directed),
+        _ => _everyCall(context, directed),
       },
     ];
 
@@ -1376,6 +1537,18 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                         search,
                       ],
                     ),
+                  if (_clientFilter != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Results within ${switch (_clientFilter) {
+                        'new' => 'New',
+                        'existing' => 'Existing',
+                        _ => 'Other',
+                      }} (${byClient(_clientFilter).where((c) => !_isOutbound(c)).length})',
+                      key: const ValueKey('calls-results-within'),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
                   if (counts != null) ...[const SizedBox(height: 10), counts],
                 ],
               ),
@@ -1446,9 +1619,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         // queue 77). Which AI is the bar's "Reasons by" (UI queue 78).
         const AiMark(
           key: ValueKey('labels-ai-mark'),
-          tooltip:
-              'Each call was read and sorted by AI, Claude or Grok. '
-              'Switch between them to compare.',
+          tooltip: 'Each call was read and sorted by AI.',
         ),
         for (final entry in labels.entries)
           FilterChip(
@@ -1473,16 +1644,15 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// Both AIs' answer for one call, side by side.
   Widget _labelLine(BuildContext context, Map<String, dynamic> call) {
-    final claude = _labelOf(call, 'claude');
-    final grok = _labelOf(call, 'grok');
-    if (claude == null && grok == null) return const SizedBox.shrink();
+    final read = _labelOf(call, _labeller);
+    if (read == null) return const SizedBox.shrink();
 
     String name(String? label) => label == null
         ? '—'
         : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
 
     final line = Text(
-      'Claude: ${name(claude)} · Grok: ${name(grok)}',
+      'AI: ${name(read)}',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
         color: Theme.of(context).colorScheme.primary,
       ),
@@ -1492,9 +1662,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Row(
         children: [
           const AiMark(
-            tooltip:
-                'What each AI read this call as. Neither was checked by '
-                'a person.',
+            tooltip: 'What AI read this call as. Not checked by a person.',
           ),
           const SizedBox(width: 6),
           Flexible(child: line),
@@ -1607,13 +1775,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// that the pinned header could not follow.
   List<({String key, String label, int flex, bool numeric})> _columns() => [
     (key: 'person', label: 'Person', flex: 3, numeric: false),
+    // Jose, 2026-10-30: set for all 34 from the table (design B1).
+    (key: 'handles', label: 'Handles', flex: 5, numeric: false),
     (key: 'rang', label: 'Rang', flex: 2, numeric: true),
     (key: 'answered', label: 'Answered', flex: 2, numeric: true),
 
     // UI queue 78, from the two counts beside them: a call that rang this
     // person and that they did not pick up (someone else may have), and
     // the share they did. Their own phone rings for both.
-    (key: 'unanswered', label: 'Not picked up', flex: 2, numeric: true),
+    // Review item 6: a call a teammate took is not one this person missed.
+    (key: 'teammate', label: 'Teammate took', flex: 3, numeric: true),
+    (key: 'unanswered', label: 'Nobody answered', flex: 3, numeric: true),
     (key: 'answer_rate', label: 'Answer rate', flex: 2, numeric: true),
     (key: 'new_client', label: 'New', flex: 2, numeric: true),
     (key: 'existing_client', label: 'Existing', flex: 2, numeric: true),
@@ -1806,6 +1978,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         // descending column would read as the longest calls of the day.
         'conversion' => _nullsLast(_conversion(a), _conversion(b)),
         'unanswered' => _unanswered(a).compareTo(_unanswered(b)),
+        'teammate' => _missedBy(a).teammate.compareTo(_missedBy(b).teammate),
+        'handles' => '${a['tag'] ?? 'both'}'.compareTo('${b['tag'] ?? 'both'}'),
         'answer_rate' => _nullsLast(_answerRate(a), _answerRate(b)),
         'avg_talk_seconds' => _nullsLast(
           (a['avg_talk_seconds'] as num?)?.toDouble(),
@@ -1824,17 +1998,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   /// Calls that rang this person and that they did not take. The answerer
   /// is among those it rang, so this cannot go below zero.
-  int _unanswered(Map<String, dynamic> person) =>
-      (((person['rang'] as num?) ?? 0) - ((person['answered'] as num?) ?? 0))
-          .toInt()
-          .clamp(0, 1 << 30);
+  int _unanswered(Map<String, dynamic> person) => _missedBy(person).nobody;
 
-  /// Answered as a share of rang; null when nothing rang them.
+  /// Calls that rang [person] and that they did not take, split by whether a
+  /// teammate took them or nobody did.
+  ({int teammate, int nobody}) _missedBy(Map<String, dynamic> person) {
+    final name = person['person'];
+    var teammate = 0;
+    var nobody = 0;
+    for (final call in (_report?['calls'] as List? ?? const [])) {
+      if (call is! Map || call['answered_by'] == name) continue;
+      if (!((call['rang'] as List?) ?? const []).contains(name)) continue;
+      call['answered_by'] == null ? nobody++ : teammate++;
+    }
+    return (teammate: teammate, nobody: nobody);
+  }
+
+  /// Answered out of the calls they could have taken: those a teammate took
+  /// do not count against them. Null when nothing rang them.
   double? _answerRate(Map<String, dynamic> person) {
-    final rang = (person['rang'] as num?) ?? 0;
-    if (rang == 0) return null;
+    final answered = (person['answered'] as num?) ?? 0;
+    final chances = answered + _missedBy(person).nobody;
+    if (chances == 0) return null;
 
-    return ((person['answered'] as num?) ?? 0) / rang * 100;
+    return answered / chances * 100;
   }
 
   /// Ranks two possibly-absent numbers, keeping absence at the bottom.
@@ -1958,15 +2145,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(name, overflow: TextOverflow.ellipsis),
-                                if (person['tag'] != null)
-                                  Text(
-                                    person['tag'] == 'new'
-                                        ? 'New client'
-                                        : 'Existing client',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.primary,
-                                    ),
-                                  ),
                                 if (only != null)
                                   Text(
                                     only,
@@ -1976,6 +2154,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                                   ),
                               ],
                             )
+                          : column.key == 'handles'
+                          ? _handles(context, person)
                           : Text(_cell(person, column.key)),
                     ),
                   ),
@@ -1996,17 +2176,45 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
+  /// New | Existing | Both, saved on the tap (design B1). Both is no tag,
+  /// the default; without edit rights, the word alone.
+  Widget _handles(BuildContext context, Map<String, dynamic> person) {
+    final name = '${person['person']}';
+    final tag = '${person['tag'] ?? 'both'}';
+    if (!widget.canEdit) {
+      return Text(switch (tag) {
+        'new' => 'New',
+        'existing' => 'Existing',
+        _ => 'Both',
+      }, key: ValueKey('handles-$name'));
+    }
+    return SegmentedButton<String>(
+      key: ValueKey('handles-$name'),
+      showSelectedIcon: false,
+      style: const ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 8)),
+      ),
+      segments: const [
+        ButtonSegment(value: 'new', label: Text('New')),
+        ButtonSegment(value: 'existing', label: Text('Existing')),
+        ButtonSegment(value: 'both', label: Text('Both')),
+      ],
+      selected: {tag},
+      onSelectionChanged: (picked) =>
+          _setTag(name, picked.first == 'both' ? null : picked.first),
+    );
+  }
+
   String _cell(Map<String, dynamic> person, String key) => switch (key) {
     'avg_talk_seconds' => _mmss(person['avg_talk_seconds']),
     'unanswered' => '${_unanswered(person)}',
+    'teammate' => '${_missedBy(person).teammate}',
     'answer_rate' => switch (_answerRate(person)) {
       null => '—',
       final rate => '${rate.round()}%',
     },
-    'conversion' => switch (_conversion(person)) {
-      null => '—',
-      final rate => '${rate.round()}%',
-    },
+    'conversion' => _rate(person['jobs'], person['new_client']),
     'score' => switch (_avgScore(person)) {
       null => '—',
       final avg => '${avg.toStringAsFixed(1)} / 10',
@@ -2035,46 +2243,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       return ((call['rang'] as List?) ?? const []).contains(name);
     }).toList();
 
-    final people = (_report?['people'] as List? ?? const []).map(
-      (row) => (row as Map).cast<String, dynamic>(),
-    );
-    final tag = people.where((p) => p['person'] == name).firstOrNull?['tag'];
-
-    // Set by hand per person (Jose, 2026-10-05). Three choices side by side
-    // rather than a popup, the house rule for short choices.
-    final tagger = Padding(
-      padding: const EdgeInsets.fromLTRB(32, 0, 16, 8),
-      child: Wrap(
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 4,
-        children: [
-          Text('Answers for', style: theme.textTheme.bodySmall),
-          SegmentedButton<String>(
-            key: ValueKey('tag-$name'),
-            showSelectedIcon: false,
-            segments: const [
-              ButtonSegment(value: 'new', label: Text('New client')),
-              ButtonSegment(value: 'existing', label: Text('Existing client')),
-              ButtonSegment(value: 'none', label: Text('Not set')),
-            ],
-            selected: {'${tag ?? 'none'}'},
-            onSelectionChanged: widget.canEdit
-                ? (picked) => _setTag(
-                    name,
-                    picked.first == 'none' ? null : picked.first,
-                  )
-                : null,
-          ),
-        ],
-      ),
-    );
-
     if (mine.isEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tagger,
           Padding(
             padding: const EdgeInsets.fromLTRB(32, 0, 16, 16),
             child: Text(
@@ -2093,7 +2265,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tagger,
           _coaching(context, name),
           for (final call in mine) _call(context, name, call),
         ],
@@ -2189,7 +2360,13 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
     final dash = Text('—', style: small);
-    final when = Text(_clock(call['started_at']), style: small);
+    final when = Text(
+      _clock(call['started_at']),
+      style: small,
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.visible,
+    );
     final direction = Text(
       outbound ? 'Out' : 'In',
       style: theme.textTheme.labelSmall?.copyWith(
@@ -2197,16 +2374,35 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         color: outbound ? theme.colorScheme.primary : muted,
       ),
     );
-    final caller = Text(
-      _caller(call),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+    final named =
+        call['from'] != null &&
+        _who(call) != formatPhoneNumber('${call['from']}');
+    // A name, with its number under it; or the number alone.
+    final caller = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _who(call),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (named)
+          Text(
+            formatPhoneNumber('${call['from']}'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: small,
+          ),
+      ],
     );
-    final number = call['from'] == null
+    final number = _line(call).isEmpty
         ? dash
         : Text(
-            formatPhoneNumber('${call['from']}'),
+            _line(call),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall,
@@ -2269,11 +2465,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     // "Missed" on a call nobody answered (Jose, 2026-10-14).
     final aiScore = (call['score'] as Map?)?['score'];
     final score = Text(
-      aiScore != null
-          ? '$aiScore / 10'
-          : missed
-          ? 'Missed'
-          : '—',
+      aiScore != null ? '$aiScore / 10' : '',
       key: ValueKey('score-cell-$callId'),
       style: aiScore == null ? TextStyle(color: muted) : null,
     );
@@ -2539,7 +2731,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               heading('Time'),
               const SizedBox.shrink(),
               heading('Caller'),
-              heading('Number'),
+              heading('Line'),
               heading('Client'),
               heading('Result'),
               heading('Answered by'),
@@ -2548,11 +2740,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 children: [
                   heading('Reason'),
                   const SizedBox(width: 4),
-                  const AiMark(
-                    tooltip:
-                        'Each call was read and sorted by AI, Claude or '
-                        'Grok, whichever is chosen above.',
-                  ),
+                  const AiMark(tooltip: 'Each call was read and sorted by AI.'),
                 ],
               ),
               Row(
@@ -2619,6 +2807,41 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return known || queue == null ? said : '$said · $queue';
   }
 
+  /// RingCentral's from-name is either the line called ("CLE - LS Ads - A1 -
+  /// New Client") or the caller's own (CNAM, "SCHWEITZER,DONN").
+  static bool _nameIsLine(Map<String, dynamic> call) =>
+      '${call['caller_label'] ?? ''}'.contains(' - ');
+
+  /// Who called (review item 7): their name in normal case, else the number.
+  String _who(Map<String, dynamic> call) {
+    final label = '${call['caller_label'] ?? ''}'.trim();
+    if (label.isEmpty || _nameIsLine(call)) {
+      return call['from'] == null
+          ? 'Unknown caller'
+          : formatPhoneNumber('${call['from']}');
+    }
+    // Only a shouted CNAM ("SCHWEITZER,DONN") is recased and reordered.
+    if (label != label.toUpperCase()) return label;
+    final parts = label
+        .split(',')
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    final ordered = parts.length == 2 ? [parts.last, parts.first] : parts;
+    return ordered
+        .join(' ')
+        .split(RegExp(r'\s+'))
+        .map(
+          (w) =>
+              w.isEmpty ? w : w[0].toUpperCase() + w.substring(1).toLowerCase(),
+        )
+        .join(' ');
+  }
+
+  /// The line the call came in on: "CLE · LS Ads"; '' when not known.
+  String _line(Map<String, dynamic> call) =>
+      _nameIsLine(call) ? _caller(call) : '${call['to_name'] ?? ''}';
+
   /// Fetches one recording, keeping the server's sentence when it refuses.
   ///
   /// `getBytesResponse` rather than `getBytes`, because the refusal here is
@@ -2684,6 +2907,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('${person['person']}', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            _handles(context, person),
             if (only != null)
               Text(
                 only,

@@ -91,6 +91,8 @@ final class MarketingReport
                 // Accounts AdsCost could not read: the cost is then too low.
                 'cost_refused' => $channel === null ? 0 : count($ads['refused'] ?? []),
                 'leads' => $lead['leads'] ?? null,
+                // The jobs those leads became, so a total can use the column's formula.
+                'lead_jobs' => $lead['jobs'] ?? null,
                 'leads_to_jobs' => $lead === null || ! $lead['leads'] ? null : round($lead['jobs'] / $lead['leads'] * 100, 1),
                 'jobs_created' => $created,
                 'cost_per_job_minor' => $cost === null || ! $created ? null : intdiv($cost, $created),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme.dart';
 import '../core/timestamps.dart';
@@ -373,8 +374,16 @@ class _DateRangePanelState extends State<DateRangePanel> {
     return null;
   }
 
+  /// Escape closes the picker on every report tab (review 2026-10-30, 14).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): widget.onCancel,
+    },
+    child: Focus(autofocus: true, child: _panel(context)),
+  );
+
+  Widget _panel(BuildContext context) {
     final theme = Theme.of(context);
     final presets = _presets(context);
     final problem = _problem;
