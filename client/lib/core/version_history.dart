@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0513',
+      date: '30 Oct 2026',
+      items: [
+        'Reports › Performance: counts say what they count (calls in and out, inbound, other line), each person can be set to handle New, Existing or Both, and People, Not booked and Missed have search; Missed includes voicemail.',
+        'Reports: one date bar on every tab, Last 7 days by default and kept as you switch tabs; on phones it shows the dates in full.',
+        'Reports › Sources: each person ticks which Workiz accounts their figures count; nothing is disconnected there any more (manage connections in Settings › Integrations).',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0512',
       date: '30 Oct 2026',
       items: [
