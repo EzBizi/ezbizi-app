@@ -487,6 +487,11 @@ void main() {
       reason: 'Last 7 days on first open',
     );
 
+    // The quick buttons scroll sideways when the row is short of room.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('report-dates-Yesterday')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('report-dates-Yesterday')));
     await tester.pumpAndSettle();
     final yesterday = asked.last;

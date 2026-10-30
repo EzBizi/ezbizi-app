@@ -327,9 +327,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ],
               ),
             ),
+            // Performance draws the same bar itself, with its Sources and
+            // refresh on the row.
             if (_ranged.contains(
-              _chip < labels.length ? labels[_chip].$1 : null,
-            ))
+                  _chip < labels.length ? labels[_chip].$1 : null,
+                ) &&
+                labels[_chip].$1 != 'Performance')
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: KeyedSubtree(
@@ -338,6 +341,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: ReportDates(
                     // Re-made on a change, so its own copy follows this one.
                     key: ValueKey(_span),
+                    inline: true,
                     initial: _span,
                     today: _today,
                     formats:
@@ -648,6 +652,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           key: ValueKey('performance-$_openCall'),
           openCall: _openCall,
           span: _span,
+          onSpan: (span) => setState(() => _span = span),
+          // The same clock as the shared range, so "Last 7 days" names it.
+          now: widget.now,
           api: widget.api,
           canEdit: canExperiment,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,

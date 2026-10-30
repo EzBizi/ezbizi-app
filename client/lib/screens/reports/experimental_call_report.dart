@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/deep_links.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/ai_mark.dart';
 import '../../widgets/date_range_picker.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/open_destination.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tab_bar_like.dart';
@@ -52,7 +54,12 @@ class ExperimentalCallReport extends StatefulWidget {
     this.canEdit = true,
     this.openCall,
     this.span,
+    this.onSpan,
   });
+
+  /// Changes the shared range: with it, this tab draws the shared bar itself
+  /// so Sources and refresh share its row (UI-UX review of d1a6760d1).
+  final ValueChanged<DateSpan>? onSpan;
 
   /// The range from the Reports screen's shared date bar (review item 14);
   /// with it, this tab draws no date bar of its own.
@@ -257,13 +264,11 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final report = _report;
     if (report == null) return;
 
-    showSidePanel<void>(
+    showWorkizSources(
       context,
-      builder: (context) => SidePanel(
-        title: 'Sources',
-        subtitle: 'Which Workiz accounts this report counts',
-        child: _Sources(api: widget.api, report: report, reload: _reloaded),
-      ),
+      api: widget.api,
+      report: report,
+      reload: _reloaded,
     );
   }
 
@@ -405,16 +410,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             if (widget.span == null)
               _dayBar(context, phone: phone)
             else
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  if (!phone) _sourcesButton(),
-                  IconButton(
-                    onPressed: _loading ? null : _load,
-                    icon: const Icon(Icons.refresh),
-                    tooltip: 'Reload',
-                  ),
-                ],
+              KeyedSubtree(
+                key: const ValueKey('tour-report-dates'),
+                child: ReportDates(
+                  key: ValueKey(widget.span),
+                  inline: true,
+                  initial: widget.span!,
+                  today: _today,
+                  formats: widget.formats,
+                  onChanged: (span) => widget.onSpan?.call(span),
+                  trailing: [
+                    if (!phone) _sourcesButton(),
+                    IconButton(
+                      onPressed: _loading ? null : _load,
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Reload',
+                    ),
+                  ],
+                ),
               ),
             if (_picking) ...[
               const SizedBox(height: 8),
@@ -516,7 +529,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   Widget _sourcesButton() {
     final accounts = _report?['workiz_accounts'] as List?;
     final count = accounts?.length;
-    final left = _leftOut(_report);
+    final left = workizLeftOut(_report);
 
     return TextButton.icon(
       key: const Key('call-report-sources'),
@@ -528,36 +541,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             : left > 0
             ? 'Sources · ${count - left} of $count accounts'
             : 'Sources · $count Workiz ${count == 1 ? 'account' : 'accounts'}',
-      ),
-    );
-  }
-
-  /// How many Workiz accounts this person has unticked in Sources.
-  static int _leftOut(Map<String, dynamic>? report) =>
-      ((report?['workiz_accounts'] as List?) ?? const [])
-          .where((a) => a is Map && a['included'] == false)
-          .length;
-
-  /// The slim strip every tab shows while some accounts are left out.
-  Widget _leftOutStrip(BuildContext context, int left) {
-    final theme = Theme.of(context);
-    return Padding(
-      key: const Key('call-report-left-out'),
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Icon(
-            Icons.filter_alt_outlined,
-            size: 16,
-            color: theme.colorScheme.outline,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$left Workiz ${left == 1 ? 'account' : 'accounts'} left out',
-            style: theme.textTheme.bodySmall,
-          ),
-          TextButton(onPressed: _openSources, child: const Text('Change')),
-        ],
       ),
     );
   }
@@ -594,7 +577,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final problem = _sourcesProblem(context, report);
     final accountCount =
         ((report['workiz_accounts'] as List?) ?? const []).length;
-    final left = _leftOut(report);
+    final left = workizLeftOut(report);
 
     // Every account unticked: say so, never a page of zeros.
     if (accountCount > 0 && left == accountCount) {
@@ -639,7 +622,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ?problem,
-        if (left > 0) _leftOutStrip(context, left),
+        if (left > 0) LeftOutStrip(left: left, onChange: _openSources),
         TabBarLike(
           level: TabLevel.secondary,
           key: const Key('call-report-tabs'),
@@ -3137,15 +3120,78 @@ String? _workizProblem(Map<String, dynamic> report) {
 /// this report are retired together, and a connect flow parked somewhere
 /// permanent outlives the thing that needed it. It is also the entry point:
 /// without it the report has no way to reach its first account.
+/// How many Workiz accounts this person has unticked in Sources.
+int workizLeftOut(Map<String, dynamic>? report) =>
+    ((report?['workiz_accounts'] as List?) ?? const [])
+        .where((a) => a is Map && a['included'] == false)
+        .length;
+
+/// Sources as a side panel: Performance's and Scoring's (UI-UX review of
+/// d1a6760d1: one panel, not a copy). [report] carries `workiz_accounts`;
+/// [reload] fetches it again after a tick.
+void showWorkizSources(
+  BuildContext context, {
+  required ApiClient api,
+  required Map<String, dynamic> report,
+  required Future<Map<String, dynamic>?> Function() reload,
+}) {
+  // Read here: the panel's own context sits above the shell that provides it.
+  final open = OpenDestination.of(context);
+  showSidePanel<void>(
+    context,
+    builder: (context) => SidePanel(
+      title: 'Sources',
+      subtitle: 'Which Workiz accounts this report counts',
+      child: _Sources(api: api, report: report, reload: reload, open: open),
+    ),
+  );
+}
+
+/// The slim strip a tab shows while some accounts are left out.
+class LeftOutStrip extends StatelessWidget {
+  const LeftOutStrip({super.key, required this.left, required this.onChange});
+
+  final int left;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      key: const Key('call-report-left-out'),
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_alt_outlined,
+            size: 16,
+            color: theme.colorScheme.outline,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$left Workiz ${left == 1 ? 'account' : 'accounts'} left out',
+            style: theme.textTheme.bodySmall,
+          ),
+          TextButton(onPressed: onChange, child: const Text('Change')),
+        ],
+      ),
+    );
+  }
+}
+
 class _Sources extends StatefulWidget {
   const _Sources({
     required this.api,
     required this.report,
     required this.reload,
+    this.open,
   });
 
   final ApiClient api;
   final Map<String, dynamic> report;
+
+  /// The shell's way to another destination, or null outside it.
+  final void Function(String id)? open;
 
   /// Reloads the report behind the panel and hands back the new one.
   final Future<Map<String, dynamic>?> Function() reload;
@@ -3342,13 +3388,38 @@ class _SourcesState extends State<_Sources> {
             color: theme.colorScheme.outline,
           ),
         ),
-        Text(
-          'Manage connections in Settings › Integrations',
-          key: const Key('sources-manage'),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.primary,
+        // A real way there (UI-UX review of d1a6760d1): the shell's
+        // OpenDestination opens Settings, and the deep link names its tab.
+        if (widget.open case final open?)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('sources-manage'),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              onPressed: () {
+                Navigator.of(context).maybePop();
+                DeepLinks.open(
+                  const DeepLink(
+                    module: 'settings',
+                    type: 'tab',
+                    id: 'integrations',
+                  ),
+                );
+                open('settings');
+              },
+              child: const Text(
+                'Manage connections in Settings › Integrations',
+              ),
+            ),
+          )
+        else
+          Text(
+            'Manage connections in Settings › Integrations',
+            key: const Key('sources-manage'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
           ),
-        ),
         if (_error != null) ...[const SizedBox(height: 8), ErrorNote(_error!)],
         const SizedBox(height: 12),
         _connectControl(context),
