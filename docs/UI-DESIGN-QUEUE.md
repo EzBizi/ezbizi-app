@@ -2965,7 +2965,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 162 · Leads: search, status and filters in the list sidebar — **sent 2026-10-30** (`docs/previews/leads-list-filters-layouts.html`)
+### 162 · Leads: search, status and filters in the list sidebar — **sent 2026-10-30 — Jose: "That's good" (1 + phone 4)** (`docs/previews/leads-list-filters-layouts.html`)
 
 Jose on 161: likes it, except search/status/filters belong on the list sidebar, not the title row. Recommended 1 + phone 4: search + status + Filters on one row, quick filters one scrolling row below; title row back to title only.
 
