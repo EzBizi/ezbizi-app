@@ -491,7 +491,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
                             colour: j['job_id'] == _jobId
                                 ? scheme.onSurface
                                 : j['tech'] == null
-                                ? EzBiziTheme.fieldYellow
+                                ? fieldUnassignedJob(context)
                                 : EzBiziTheme.fieldBlue,
                             selected: j['job_id'] == _jobId,
                           ),
