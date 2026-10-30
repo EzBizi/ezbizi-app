@@ -1498,12 +1498,16 @@ void _triageTests() {
 
     await tester.tap(find.byKey(const ValueKey('filter-unread')));
     await tester.pumpAndSettle();
+    // Design 162: the quick filters are one sideways-scrolling row, so the
+    // later chips start off screen in a narrow list.
+    await tester.ensureVisible(find.byKey(const ValueKey('filter-starred')));
     await tester.tap(find.byKey(const ValueKey('filter-starred')));
     await tester.pumpAndSettle();
 
     expect(_lastListQuery['unread'], '1');
     expect(_lastListQuery['starred'], '1', reason: 'both, not either');
 
+    await tester.ensureVisible(find.byKey(const ValueKey('mark-all-read')));
     await tester.tap(find.byKey(const ValueKey('mark-all-read')));
     await tester.pumpAndSettle();
 
