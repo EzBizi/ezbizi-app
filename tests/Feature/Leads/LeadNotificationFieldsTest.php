@@ -74,6 +74,20 @@ class LeadNotificationFieldsTest extends TestCase
         $this->assertSame(1, $this->raised('lead.customer_replied'), 'a text lead still has replies');
     }
 
+    /** Jose, 2026-10-30: the closed-office text went out after an answered call on a text lead. */
+    public function test_an_answered_call_on_a_text_lead_is_not_a_reply_and_a_missed_one_is(): void
+    {
+        $text = $this->lead('MESSAGE');
+        $this->said($text, LeadConversation::CHANNEL_MESSAGE, ['text' => 'Hi']);
+        $this->said($text, LeadConversation::CHANNEL_PHONE_CALL, ['duration_ms' => 229000]);
+
+        $this->assertSame(0, $this->raised('lead.customer_replied'), 'an answered call was handled');
+
+        $this->said($text, LeadConversation::CHANNEL_PHONE_CALL, ['duration_ms' => 0]);
+
+        $this->assertSame(1, $this->raised('lead.customer_replied'), 'a missed call still waits for an answer');
+    }
+
     /** Jose, 2026-10-09: a customer who writes again is not left hidden. */
     public function test_writing_again_brings_a_set_aside_lead_back(): void
     {
