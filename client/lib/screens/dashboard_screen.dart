@@ -423,9 +423,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: ListView(
         key: const ValueKey('tour-dashboard-boxes'),
         // A phone's 16px gutter: 24 took the room a card's title needs.
-        padding: EdgeInsets.all(
-          MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
-        ),
+        // The top matches the 8px every other module's tab strip leaves
+        // under the title row.
+        padding: switch (MediaQuery.sizeOf(context).width < 600 ? 16.0 : 24.0) {
+          final g => EdgeInsets.fromLTRB(g, 8, g, g),
+        },
         children: [
           if (_customizing) _arrangeBar(context) else _periodRow(context),
           if (_applied case final applied?) ...[
