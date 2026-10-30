@@ -1948,10 +1948,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Row(
+                        child: LayoutBuilder(
+                          builder: (context, box) => Row(
                           children: [
                             Flexible(
-                              flex: 3,
                               child: Text(
                                 leadTitle(lead),
                                 style: theme.textTheme.titleSmall?.copyWith(
@@ -1977,8 +1977,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             // Design 161: one line. The chips never wrap;
                             // past the edge they are clipped and the name
                             // ellipsizes first.
-                            Flexible(
-                              flex: 2,
+                            // The chips take the room they need (up to 70%
+                            // of the row) and the name gets the rest: a
+                            // fixed 3:2 split clipped chips beside short
+                            // names (Jose, 2026-10-30).
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: box.maxWidth * 0.7,
+                              ),
                               child: SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 physics: const NeverScrollableScrollPhysics(),
@@ -2112,6 +2118,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             ),
                           ],
                         ),
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -2127,11 +2134,18 @@ class _LeadsScreenState extends State<LeadsScreen> {
                     ],
                   ),
                   const SizedBox(height: 1),
-                  Row(
+                  LayoutBuilder(
+                    builder: (context, box) => Row(
                     children: [
                       // Design 161: job and city lead the one muted line.
+                      // Capped, not Flexible: a loose Flexible beside the
+                      // Expanded preview left its unused half empty, so the
+                      // star drifted row to row (Jose, 2026-10-30).
                       if (src.jobLine != null)
-                        Flexible(
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: box.maxWidth * 0.4,
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: Text(
@@ -2235,6 +2249,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ],
               ),
