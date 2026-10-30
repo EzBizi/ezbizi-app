@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/deep_links.dart';
+
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/api_activity.dart';
@@ -56,6 +58,17 @@ class _SettingsShellState extends State<SettingsShell> {
   /// Settings must not fetch the company tree, and a tree already opened must
   /// not rebuild when somebody glances at Roles.
   final Set<String> _shown = {'settings'};
+
+  @override
+  void initState() {
+    super.initState();
+    // "Settings › Integrations" from elsewhere (Reports' Sources): the tab
+    // named by a waiting link opens instead of the landing face.
+    if (DeepLinks.take('settings') case final link? when link.type == 'tab') {
+      _tab = link.id;
+      _shown.add(link.id);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -347,16 +347,162 @@ void main() {
     expect(find.widgetWithText(Chip, 'Nationwide'), findsNothing);
 
     await _openSources(tester);
-    expect(find.widgetWithText(Chip, 'Nationwide'), findsOneWidget);
+    // A tick per account (review item 12): leaving one out, never a ✕.
+    expect(find.widgetWithText(CheckboxListTile, 'Nationwide'), findsOneWidget);
     expect(
       find.descendant(
-        of: find.widgetWithText(Chip, 'Nationwide'),
+        of: find.widgetWithText(CheckboxListTile, 'Nationwide'),
         matching: find.byIcon(Icons.close),
       ),
       findsNothing,
     );
-    expect(find.text('Manage in Settings › Integrations.'), findsOneWidget);
+    expect(
+      find.text('Manage connections in Settings › Integrations'),
+      findsOneWidget,
+    );
     expect(deleted, isFalse);
+  });
+
+  // Review 2026-10-30, item 12: ticks are this person's, saved on the server.
+  testWidgets('unticking an account saves it for this person and says so', (
+    tester,
+  ) async {
+    final excluded = <String>[];
+    Map<String, dynamic> day() {
+      final d = {..._callDay()};
+      d['workiz_accounts'] = [
+        for (final a in _callDay()['workiz_accounts'] as List)
+          {...(a as Map), 'included': !excluded.contains(a['id'])},
+      ];
+      return d;
+    }
+
+    String? sent;
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'PUT' &&
+            request.url.path.endsWith('/reports/experimental/sources')) {
+          sent = request.body;
+          excluded
+            ..clear()
+            ..addAll(
+              ((jsonDecode(request.body) as Map)['excluded'] as List)
+                  .cast<String>(),
+            );
+          return _json({'data': []});
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(day());
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    await _openSources(tester);
+
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Nationwide'));
+    await tester.pumpAndSettle();
+    expect(sent, '{"excluded":["id-Nationwide"]}');
+    expect(
+      find.text(
+        'Unticking leaves an account out of your figures. It stays '
+        'connected.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('call-report-left-out')), findsOneWidget);
+    expect(find.text('1 Workiz account left out'), findsOneWidget);
+    expect(find.text('Sources · 1 of 2 accounts'), findsOneWidget);
+  });
+
+  testWidgets('every account unticked is an empty state, never zeros', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/calls')) {
+          final d = {..._callDay()};
+          d['workiz_accounts'] = [
+            for (final a in _callDay()['workiz_accounts'] as List)
+              {...(a as Map), 'included': false},
+          ];
+          return _json(d);
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('call-report-none-included')), findsOneWidget);
+    expect(find.text('No accounts included'), findsOneWidget);
+    expect(find.text('Choose sources'), findsOneWidget);
+  });
+
+  // Review item 14: one bar for every tab, Last 7 days first, carried along.
+  testWidgets('the date range is one bar, kept between tabs', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [
+        'reports.view',
+        'reports.build',
+        'reports.library.view',
+        'reports.experimental.view',
+        'reports.scoring.view',
+      ],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/calls')) {
+          asked.add(request.url.queryParameters);
+          return _json(_callDay());
+        }
+        if (request.url.path.endsWith('/reports/scoring')) {
+          return _json({
+            'data': {'people': []},
+          });
+        }
+        return null;
+      },
+    );
+
+    // The list takes no range.
+    expect(find.byKey(const Key('date-range-button')), findsNothing);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
+    final first = asked.last;
+    expect(
+      DateTime.parse(first['to']!).difference(DateTime.parse(first['from']!)),
+      const Duration(days: 6),
+      reason: 'Last 7 days on first open',
+    );
+
+    // The quick buttons scroll sideways when the row is short of room.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('report-dates-Yesterday')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('report-dates-Yesterday')));
+    await tester.pumpAndSettle();
+    final yesterday = asked.last;
+    expect(yesterday['from'], yesterday['to']);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Scoring'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    expect(asked.last, yesterday, reason: 'the range carried between tabs');
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
   });
 
   testWidgets('an account with no API subscription says so, permanently', (

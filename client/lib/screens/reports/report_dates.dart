@@ -13,7 +13,17 @@ class ReportDates extends StatefulWidget {
     required this.today,
     required this.formats,
     required this.onChanged,
+    this.inline = false,
+    this.trailing = const [],
   });
+
+  /// One row on a wide screen: quick buttons, then ‹ picker ›, then
+  /// [trailing] pushed right (UI-UX review of d1a6760d1). On a phone the
+  /// quick buttons sit above, with [trailing] at the end of the picker row.
+  final bool inline;
+
+  /// Shown at the end of the row: a tab's Sources link and refresh.
+  final List<Widget> trailing;
 
   final DateSpan initial;
   final DateTime today;
@@ -94,34 +104,107 @@ class _ReportDatesState extends State<ReportDates> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SingleChildScrollView(
-          // One line on a phone too (UI-UX review): it scrolls sideways.
-          scrollDirection: Axis.horizontal,
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final q in _quick.entries)
-                ChoiceChip(
-                  key: ValueKey('report-dates-${q.key}'),
-                  label: Text(ReportDates.quickLabels[q.key] ?? q.key),
-                  selected: _span == q.value,
-                  showCheckmark: false,
-                  onSelected: (_) => _set(q.value),
+        if (widget.inline)
+          LayoutBuilder(
+            builder: (context, box) {
+              final quick = SingleChildScrollView(
+                // One line on a phone too (UI-UX review): it scrolls sideways.
+                scrollDirection: Axis.horizontal,
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final q in _quick.entries)
+                      ChoiceChip(
+                        key: ValueKey('report-dates-${q.key}'),
+                        label: Text(ReportDates.quickLabels[q.key] ?? q.key),
+                        selected: _span == q.value,
+                        showCheckmark: false,
+                        onSelected: (_) => _set(q.value),
+                      ),
+                  ],
                 ),
-            ],
+              );
+              final dates = DateRangeBar(
+                span: _span,
+                today: widget.today,
+                formats: widget.formats,
+                open: _picking,
+                onToggle: () => setState(() => _picking = !_picking),
+                onPrevious: () => _move(-1),
+                onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
+              );
+              final phoneDates = DateRangeBar(
+                expand: true,
+                span: _span,
+                today: widget.today,
+                formats: widget.formats,
+                open: _picking,
+                onToggle: () => setState(() => _picking = !_picking),
+                onPrevious: () => _move(-1),
+                onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
+              );
+              if (box.maxWidth < 600) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    quick,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: phoneDates),
+                        ...widget.trailing,
+                      ],
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(child: quick),
+                        const SizedBox(width: 12),
+                        dates,
+                      ],
+                    ),
+                  ),
+                  ...widget.trailing,
+                ],
+              );
+            },
+          )
+        else ...[
+          SingleChildScrollView(
+            // One line on a phone too (UI-UX review): it scrolls sideways.
+            scrollDirection: Axis.horizontal,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final q in _quick.entries)
+                  ChoiceChip(
+                    key: ValueKey('report-dates-${q.key}'),
+                    label: Text(ReportDates.quickLabels[q.key] ?? q.key),
+                    selected: _span == q.value,
+                    showCheckmark: false,
+                    onSelected: (_) => _set(q.value),
+                  ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        DateRangeBar(
-          span: _span,
-          today: widget.today,
-          formats: widget.formats,
-          open: _picking,
-          onToggle: () => setState(() => _picking = !_picking),
-          onPrevious: () => _move(-1),
-          onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
-        ),
+          const SizedBox(height: 8),
+          DateRangeBar(
+            span: _span,
+            today: widget.today,
+            formats: widget.formats,
+            open: _picking,
+            onToggle: () => setState(() => _picking = !_picking),
+            onPrevious: () => _move(-1),
+            onNext: _span.to.isBefore(widget.today) ? () => _move(1) : null,
+          ),
+        ],
         if (_picking) ...[
           const SizedBox(height: 8),
           _bounded(
