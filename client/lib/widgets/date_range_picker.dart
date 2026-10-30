@@ -186,7 +186,15 @@ class DateRangeBar extends StatelessWidget {
     this.onPrevious,
     this.onNext,
     this.expand = false,
+    this.phone = false,
   });
+
+  /// Phone width: no period name, the dates in full.
+  final bool phone;
+
+  /// Below this a phone's row has no room for "Custom" beside the dates,
+  /// the arrows and a refresh.
+  static const double _customFits = 430;
 
   final DateSpan span;
   final DateTime today;
@@ -206,6 +214,10 @@ class DateRangeBar extends StatelessWidget {
     final theme = Theme.of(context);
     final title = spanTitle(span, today);
     final unit = span.days == 1 ? 'day' : '${span.days} days';
+    final showTitle =
+        !phone ||
+        (RangePreset.matching(span, today) == null &&
+            MediaQuery.sizeOf(context).width >= _customFits);
 
     final button = OutlinedButton(
       key: const Key('date-range-button'),
@@ -226,26 +238,27 @@ class DateRangeBar extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
           const SizedBox(width: 8),
-          // Shrinks only when even the dates have run out of room (a phone
-          // with a refresh beside it); the dates get three shares to its one.
-          Flexible(
-            child: Text(
+          // A phone leaves the period's name to the quick buttons and shows
+          // the dates whole (UI-UX, 2026-10-30); "Custom" only where it fits.
+          if (showTitle) ...[
+            Text(
               title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              key: const Key('date-range-title'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
+          // One flexible child only: a second would take half the row
+          // whether it needed it or not, and cut the dates short.
           Flexible(
-            flex: 3,
             fit: expand ? FlexFit.tight : FlexFit.loose,
             child: Text(
               spanWords(span, today, formats),
               key: const Key('date-range-words'),
-              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              overflow: phone ? TextOverflow.visible : TextOverflow.ellipsis,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
