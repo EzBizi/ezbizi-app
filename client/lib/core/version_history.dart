@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0512',
+      date: '30 Oct 2026',
+      items: [
+        'Phone app: download buttons work; PDFs open the share sheet so you can save or send them.',
+        'Business Profile: the bulk WhatsApp link waits until each company has its own number chosen.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0511',
       date: '30 Oct 2026',
       items: [
