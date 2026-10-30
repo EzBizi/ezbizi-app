@@ -1054,6 +1054,8 @@ Route::prefix('v1')
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
         Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
+        Route::post('business-profile/whatsapp-links/apply', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'applyWhatsappLinks']);
         Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
         Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
         Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
