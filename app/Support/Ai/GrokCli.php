@@ -97,6 +97,17 @@ final class GrokCli
 
         $started = microtime(true);
         $answers = $provider->askMany(array_values($prompts), $schema, $timeout, $files);
+
+        // An empty answer is asked once more (prod 2026-10-26..11-02: 13 of
+        // 17 failures in 11,746 calls were "without structured output" with
+        // empty text - a blip, not a refusal). Timeouts are not retried.
+        $empty = array_keys(array_filter($answers, fn ($a) => $a instanceof RuntimeException && str_contains($a->getMessage(), 'without structured output')));
+        if ($empty !== []) {
+            $again = $provider->askMany(array_values(array_intersect_key(array_values($prompts), array_flip($empty))), $schema, $timeout, $files);
+            foreach ($empty as $n => $i) {
+                $answers[$i] = $again[$n];
+            }
+        }
         $ms = (int) round((microtime(true) - $started) * 1000);
 
         foreach (array_values($prompts) as $i => $prompt) {
