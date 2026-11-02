@@ -49,7 +49,7 @@ Nothing was written for testing except the two backfills under Broken. Both were
    - What's left is unknown callers. Nothing names those (see Suggestions 2).
 2. **Thumbtack: no lead since 2026-10-01.**
    - Not broken on our side: the grant is valid, the webhook is registered and answering, and Thumbtack sent 10 calls since Oct 21, all answered 200.
-   - Either A-1's Thumbtack ads stopped on Oct 1, or those calls named a business that isn't connected. Their API can't list leads, so EzBizi can't tell which. → Needs Jose.
+   - Jose confirmed (2026-11-02): A-1's Thumbtack ads stopped on Oct 1. No leads are expected until they run again.
    - Also ran `ezbizi:thumbtack-lead-costs --all`: 19 of 19 Thumbtack leads priced (same dump).
 3. **"Business Profile performance" listed 37 rows all named "A1 Chimney".**
    - Cause: it printed the listing title, which is the same on every A-1 listing.
@@ -83,7 +83,7 @@ Nothing was written for testing except the two backfills under Broken. Both were
 
 ## 5. Needs Jose
 
-1. Did A-1's Thumbtack ads stop on Oct 1, or should Thumbtack leads still be arriving?
+1. ~~Did A-1's Thumbtack ads stop on Oct 1?~~ Yes (Jose, 2026-11-02).
 2. Connect the Google accounts holding the 15 unreachable A-1 listings: Pittsburgh, Oklahoma City, New York, Rodrigo's, plus Morton Grove IL and Woodbridge NJ.
 3. Assign branches to the 18 reachable listings without one (Business Profile).
 4. Which WhatsApp number goes on A-1, EverDoors and Roofirst profiles? A-1's show 888-673-5556, which isn't an EzBizi number.
