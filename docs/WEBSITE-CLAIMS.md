@@ -3233,3 +3233,13 @@ still held, not re-measured (nothing shipped to move it).
 Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
 - 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
 edit, so nothing to publish.
+
+## 2026-11-01: nothing shipped, nothing on the site went false
+
+Production `/download/windows.json` 0.0.0513 at `27b215107`; main has only the 10-31
+website commit since. All 15 live `www/` files byte-identical to the repo. WhatsApp row:
+still held, not re-measured (nothing shipped to move it).
+
+Gate: `check-site.py` ok - 8 pages, 8 sitemap entries; forbidden-terms (LINE-split) ok
+- 4 terms, none present. Stores: Play `200`; Apple `resultCount` 1, 0.0.0502. No `www/`
+edit, so nothing to publish.
