@@ -3867,8 +3867,9 @@ class ActionRunner
         $told = 0;
         foreach ($people as $person) {
             $told += $this->notifications->dispatch(
-                title: $alert->message,
-                body: 'From the automation "'.($automation?->name ?? 'a rule').'"',
+                // notifications.title is 255; a long {{comment}} failed "Sad review" 11 times (review 2026-11-02).
+                title: \Illuminate\Support\Str::limit($alert->message, 250),
+                body: (mb_strlen($alert->message) > 250 ? $alert->message."\n\n" : '').'From the automation "'.($automation?->name ?? 'a rule').'"',
                 subject: $alert,
                 onlyTo: $person,
                 source: 'alert',
