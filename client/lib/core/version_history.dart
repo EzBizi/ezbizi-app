@@ -18,7 +18,7 @@ class VersionHistory {
       date: '2 Nov 2026',
       items: [
         'Customer Experience › GBP Listings: switching on auto-reply now answers new Google reviews by itself, with a reply for each star rating; the rule shows in Automations, where one switch turns it off everywhere.',
-        'WhatsApp links: set them on one listing or many, whatever WhatsApp numbers the organization has.',
+        'WhatsApp links: pick which WhatsApp number to use, and set it on one listing or many at once.',
         'Project Management - 2: a job with no price shows \$0.00 instead of a dash.',
       ],
     ),
