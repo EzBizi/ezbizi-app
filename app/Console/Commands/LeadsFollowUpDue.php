@@ -44,7 +44,10 @@ class LeadsFollowUpDue extends Command
             ->whereIn('source', Lead::INBOX_SOURCES)
             ->where('status', Lead::STATUS_NEW)
             ->whereNull('follow_up_raised_at')
-            ->where('last_contact_from', LeadConversation::FROM_ADVERTISER)
+            // Not last_contact_from: LeadThread leaves it on the customer after an
+            // automatic reply (only a person answers), so asking for ADVERTISER here
+            // matched no lead on production, ever (desk, 2026-11-02). Who spoke last is
+            // firstReplyIfQuiet's to decide, from the rows.
             ->whereBetween('last_contact_at', [now()->subDay(), now()->subHours(Lead::FOLLOW_UP_AFTER_HOURS)])
             ->get();
 
@@ -88,7 +91,7 @@ class LeadsFollowUpDue extends Command
     /** The first automatic reply, when nothing a person or the customer said came after it. */
     private function firstReplyIfQuiet(Lead $lead): ?LeadConversation
     {
-        $rows = $lead->conversations()->get();
+        $rows = $lead->conversations()->orderBy('occurred_at')->get();
         $ours = $rows->where('participant', LeadConversation::FROM_ADVERTISER);
         $first = $ours->first();
 
