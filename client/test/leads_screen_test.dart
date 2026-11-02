@@ -1656,10 +1656,20 @@ void _conversationRowTests() {
         // existed.
         _lead('lead-3', 'T. Bergqvist',
             from: 'CONSUMER', channel: 'PHONE_CALL', preview: 'Call · 1:08'),
+        // Not a lead: the customer spoke last and it can be replied to, but
+        // nobody owes an answer (Jose, 2026-11-02).
+        {
+          ..._lead('lead-4', 'Spam Caller',
+              from: 'CONSUMER', channel: 'MESSAGE',
+              preview: 'Buy followers', canReply: true),
+          'status': 'not_a_lead',
+          'reply_owed': false,
+        },
       ],
       connections: _connected,
     );
 
+    expect(find.byKey(const ValueKey('reply-badge-lead-4')), findsNothing);
     expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsOneWidget);
     expect(find.text('Awaiting reply'), findsOneWidget);
 
