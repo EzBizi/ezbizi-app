@@ -19,6 +19,9 @@ class VersionHistory {
       items: [
         'Customer Experience › GBP Listings: switching on auto-reply now answers new Google reviews by itself, with a reply for each star rating; the rule shows in Automations, where one switch turns it off everywhere.',
         'WhatsApp links: pick which WhatsApp number to use, and set it on one listing or many at once.',
+        'Customer Experience › Review links: eKomi opens its own screen with Overview, Requests, Reviews and Settings, including automatic review requests (off until switched on).',
+        'Human Resources › Payroll: W-2 / 1099 filter, the company and branch of each person, and Export.',
+        'Leads: Unread filter removed, Unreplied and Starred have icons, and the search, status and Filters controls are one height.',
         'Project Management - 2: a job with no price shows \$0.00 instead of a dash.',
       ],
     ),
