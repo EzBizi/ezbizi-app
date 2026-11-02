@@ -14,6 +14,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0516',
+      date: '2 Nov 2026',
+      items: [
+        'Leads: photos customers send on Messenger and Instagram show in the conversation.',
+        'Marketing: Pinterest posts link to the pin.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0515',
       date: '2 Nov 2026',
       items: [
