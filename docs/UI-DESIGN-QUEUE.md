@@ -2969,6 +2969,10 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 164 · GBP Listings: WhatsApp in the table, header actions under ⋯ — **sent 2026-11-02, awaiting Jose** (`docs/previews/gbp-listings-whatsapp-inline-layouts.html`)
+
+Jose 2026-11-02 via desk: "this section with all the options can be improved, specially the whatsapp stuff ... integrated instead of it leading to a new whole screen." Recommended 1 + phone 4: a WhatsApp column (state chip, click to set one listing), row ticks + "WhatsApp: Missing" filter chip with one action bar (number chips, Set on N, ✓/✗ per row, Retry failed), and Phone check / Check Google / Google connection in one ⋯ menu. This replaces 163's separate screen. Backend is cff96b475 (link per listing or many). 2 = always-visible second header row; 3 = banner only, no column.
+
 ### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30 — Jose: "as u recommend" (1 + phone 4)** (`docs/previews/gbp-whatsapp-links-layouts.html`)
 
 Google/Leads asked; endpoints GET business-profile/whatsapp-links + POST .../apply. Recommended 1 + phone 4: bulk action beside Hours in bulk; state chips (Missing/Different/Same/Can't reach) select their rows; Different rows unticked by default with an amber Replace and a preview warning; Can't reach not tickable; side-panel preview, per-row ✓/✗ with retry.
