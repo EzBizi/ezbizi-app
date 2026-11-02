@@ -14,6 +14,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0519',
+      date: '2 Nov 2026',
+      items: [
+        'Web: faster engine on Chrome and Edge, and the app reloads itself once if the graphics engine stops.',
+        'Reports › Scoring: score and checks as coloured chips, Did well and To improve listed one per line, with copy buttons.',
+        'Call transcripts in Reports and Leads colour each speaker (Dispatcher, Customer, IVR menu), are selectable and have one copy button.',
+        'Task Board: branch rows show their status by name, and headings stay pinned while scrolling.',
+        'Development tab brought up to date.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0518',
       date: '2 Nov 2026',
       items: [
