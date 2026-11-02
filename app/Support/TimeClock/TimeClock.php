@@ -238,10 +238,17 @@ final class TimeClock
                     ->first();
 
                 if ($recent !== null) {
+                    // Reopening a shift the clock itself just closed is the
+                    // lock screen's Clock In, not a new day: one extension.
+                    // On a day off it took the whole cap again (Romnick,
+                    // 2026-10-25: 18:00:01 closed, 18:00:03 back, 08:00 out).
+                    $closedByClock = $recent->ended_by !== TimeClockShift::ENDED_BY_PERSON;
                     $recent->forceFill([
                         'clocked_out_at' => null,
                         'ended_by' => null,
-                        'scheduled_end_at' => $fields['scheduled_end_at'],
+                        'scheduled_end_at' => $closedByClock
+                            ? $now->copy()->addMinutes((int) $this->settings->get('time_clock.extension_minutes', $user->organization))
+                            : $fields['scheduled_end_at'],
                     ])->save();
                     $shift = $recent;
                 } else {
