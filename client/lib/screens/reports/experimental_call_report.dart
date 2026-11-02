@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/deep_links.dart';
@@ -1727,7 +1728,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         ? '—'
         : (_existingLabels[label] ?? _notBookedLabels[label] ?? label);
 
-    final line = Text(
+    final line = SelectableText(
       'AI: ${name(read)}',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
         color: Theme.of(context).colorScheme.primary,
@@ -1941,6 +1942,65 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
+  /// The score bands Jose approved (2026-11-02): 8 and up, 5 to 7, below.
+  static Tone _scoreTone(num score) => score >= 8
+      ? Tone.ok
+      : score >= 5
+      ? Tone.caution
+      : Tone.bad;
+
+  /// A coaching check as a chip, tinted by its share: 80% up, 50 to 79, below.
+  static Widget _checkPill(String label, int pct) => StatusPill(
+    '$label $pct%',
+    tone: pct >= 80
+        ? Tone.ok
+        : pct >= 50
+        ? Tone.caution
+        : Tone.bad,
+  );
+
+  Widget _toneHeading(BuildContext context, String label, Tone tone) => Text(
+    label,
+    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: ToneColours.of(context, tone).ink,
+      fontWeight: FontWeight.w700,
+    ),
+  );
+
+  /// Selectable, with a copy icon beside it, as Leads' message copy.
+  Widget _copyable(BuildContext context, String text, String key) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: SelectableText(text, style: theme.textTheme.bodySmall)),
+        Tooltip(
+          message: 'Copy',
+          child: InkWell(
+            key: ValueKey('copy-$key'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              // ponytail: not awaited, so the snackbar never waits on the platform.
+              unawaited(Clipboard.setData(ClipboardData(text: text)));
+              ScaffoldMessenger.maybeOf(
+                context,
+              )?.showSnackBar(const SnackBar(content: Text('Copied')));
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: Icon(
+                Icons.copy_outlined,
+                size: 14,
+                semanticLabel: 'Copy',
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _ourCoaching(BuildContext context, String name) {
     final scores = _scoresOf(name);
     if (scores.isEmpty) return const SizedBox.shrink();
@@ -1961,28 +2021,46 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Coaching · ${avg.toStringAsFixed(1)} / 10 over '
-            '${scores.length} scored call${scores.length == 1 ? '' : 's'}',
-            style: theme.textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
           Wrap(
-            spacing: 16,
-            runSpacing: 2,
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Coaching · over ${scores.length} scored '
+                'call${scores.length == 1 ? '' : 's'}',
+                style: theme.textTheme.titleSmall,
+              ),
+              StatusPill(
+                '${avg.toStringAsFixed(1)} / 10',
+                tone: _scoreTone(avg),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
               for (final check in _checks.entries)
-                Text(
-                  '${check.value}: ${(scores.where((s) => (s['checks'] as Map?)?[check.key] == true).length / scores.length * 100).round()}%',
-                  style: theme.textTheme.bodySmall,
+                _checkPill(
+                  check.value,
+                  scores
+                          .where(
+                            (s) => (s['checks'] as Map?)?[check.key] == true,
+                          )
+                          .length *
+                      100 ~/
+                      scores.length,
                 ),
             ],
           ),
-          for (final note in notes) ...[
-            const SizedBox(height: 4),
-            Text('To improve: $note', style: muted),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _toneHeading(context, 'To improve', Tone.caution),
+            for (final note in notes)
+              _copyable(context, note, 'coaching-note-$name-$note'),
           ],
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             'Scored by AI from the transcript. A guide for coaching, not a '
             'verdict: the transcript can mishear, and some calls cannot be won.',
@@ -2673,13 +2751,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(outbound ? 'Number called' : 'Caller', style: muted),
-        SelectableText(
+        _copyable(
+          context,
           '${call['from'] ?? 'unknown'}',
-          style: theme.textTheme.bodySmall,
+          'from-${call['id']}',
         ),
         if (!outbound) ...[
           if (source.isNotEmpty)
-            Text(
+            SelectableText(
               source,
               key: ValueKey('call-source-${call['id']}'),
               style: theme.textTheme.bodySmall?.copyWith(
@@ -2688,9 +2767,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           const SizedBox(height: 6),
           Text('Line called', style: muted),
-          SelectableText(
+          _copyable(
+            context,
             '${call['to_number'] ?? 'unknown'}',
-            style: theme.textTheme.bodySmall,
+            'to-${call['id']}',
           ),
         ],
       ],
@@ -2742,11 +2822,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 StatusPill(
                   'AI score ${score['score']}/10',
                   key: ValueKey('score-${call['id']}'),
-                  tone: switch (num.tryParse('${score['score']}') ?? 0) {
-                    >= 8 => Tone.ok,
-                    >= 5 => Tone.caution,
-                    _ => Tone.bad,
-                  },
+                  tone: _scoreTone(num.tryParse('${score['score']}') ?? 0),
                 ),
                 for (final (label, text, tone) in [
                   ('Did well', score['strength'], Tone.ok),
@@ -2754,14 +2830,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 ])
                   if (text != null) ...[
                     const SizedBox(height: 6),
-                    Text(
-                      label,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: ToneColours.of(context, tone).ink,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text('$text', style: theme.textTheme.bodySmall),
+                    _toneHeading(context, label, tone),
+                    _copyable(context, '$text', '$label-${call['id']}'),
                   ],
               ],
               const Divider(height: 16),
