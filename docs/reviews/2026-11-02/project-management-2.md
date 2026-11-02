@@ -24,6 +24,12 @@ Jose's test job JOB-04926 is Submitted rather than done pending approval, so I c
   - The tests cover the refusals (409 when unpaid or no longer done pending approval, 403 without `jobs.edit`), the audit row, the events, and the queued Workiz status write.
   - The Workiz call behind it (WorkizJobWriter::setStatus) has worked 11 times on production, the last on 10-23.
   - No one has pressed Submit yet: all 8 done-pending-approval → Submitted moves since it shipped were made in Workiz.
+  - **Proven live on 2026-11-02, with Jose's go-ahead, on his test customer C-04284's job JOB-54897 (Workiz 100078115).** The job was backed up to `~ubuntu/pm2-proof/JOB-54897-before-20261102.json`.
+    - Setup: Workiz was set to Pending, EzBizi to done pending approval, and a $1 test payment was added in EzBizi only.
+    - It showed in Ready for Submission with Paid $1.00.
+    - Submit as Jose returned 200 at 15:39:46 (server time) and wrote the audit row and the job.updated and job.status_changed events under his name.
+    - **Workiz read back Submitted at 15:39:48**, and the job moved to the Submitted tab.
+    - Afterwards the test payment was deleted, and the job was put back to Canceled / Client Requested Cancellation in both EzBizi and Workiz.
 
 ## 2. Broken
 
@@ -44,7 +50,7 @@ Jose's test job JOB-04926 is Submitted rather than done pending approval, so I c
 
 ## 3. Cohesiveness (for UI-UX)
 
-- **"Pending" means three things on one screen**: the first tab (done pending approval), the money column (what is still owed), and Workiz's own status "Pending" (533 jobs in Jobs). See section 5.
+- **"Pending" meant three things on one screen**: the first tab (done pending approval), the money column (what is still owed), and Workiz's own status "Pending" (533 jobs in Jobs). The money column now reads "Balance" (section 5).
 - **Search parameter**: PM-2 and PM-1 send `q=`, while Jobs and Customers send `search=`. It is the same behaviour under different names.
 - **No branch filter**: unlike Jobs and PM-1, the list has no branch or company filter chips and relies on the scope switcher alone. Connecticut alone has about 40% of the jobs.
 - **"Last modified"** is Workiz's last status change. A change made in EzBizi (Submit, for one) shows there only after the next Workiz sync.
@@ -53,13 +59,20 @@ Jose's test job JOB-04926 is Submitted rather than done pending approval, so I c
 
 1. **Submit several at once** on Ready for Submission: tick the rows, confirm once. Payoff: the 24 jobs paid in full clear in one action instead of 24.
 2. **"Paid in full / Partly paid" chips** on Ready for Submission (24 / 15). Payoff: the jobs ready without a question come first.
-3. **Keep Submitted history past three months.** The tab reads the status-change events, which expire after 3 months under their retention policy. A stored "submitted on / by" on the job would keep it for good. Payoff: the tracking Jose asked for ("to keep it tracked") doesn't quietly drop old jobs.
+3. ~~**Keep Submitted history past three months.**~~ Done on Jose's yes (section 5): the submissions are now stored for good.
 4. **Days waiting on Pending**, sortable, oldest first, as PM-1 shows. Payoff: follow-ups on the oldest of the 1,400 first.
 5. **Branch chips with counts** on each tab. Payoff: one tap per state, without changing the scope.
 6. **Export the current tab** to CSV. Payoff: the list Shoval or the office works from off-screen.
 
 ## 5. Needs Jose
 
-1. **May I prove Submit end to end on your test job?** I would put JOB-04926 into done pending approval with a payment, press Submit, and check that Workiz shows Submitted within a minute. Until then, the first real use is its live proof.
-2. **Should the money column "Pending" become "Balance" (or "Due")?** It would stop clashing with the Pending tab and with Workiz's "Pending" status.
-3. **Should the Submitted tab keep jobs for good?** That needs a stored submission record. Otherwise it keeps 3 months, as it does today.
+Answered by Jose on 2026-11-02, and done:
+
+1. **Prove Submit end to end?** "yes, do whatever u need to do."
+   - JOB-04926 is EzBizi-only and has no Workiz copy, so the proof used JOB-54897, a Workiz-linked job of the same test customer C-04284. The result is in section 1.
+2. **Rename the money column "Pending" to "Balance"?** "sure."
+   - The columns now read Paid · Balance · Total. The server key is still `pending`.
+3. **Keep Submitted jobs for good?** "yes."
+   - A new table, `project_management_submissions`, records each move from done pending approval to Submitted. It is kept as long as the job and has no 3-month expiry.
+   - Submit writes its row at once, and `project-management-2:record-submissions` copies the moves made in Workiz every minute. Its first run copies all of history (since 2026-09-24).
+   - The Submitted tab reads the table, not the events.
