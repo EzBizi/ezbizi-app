@@ -14,6 +14,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0514',
+      date: '2 Nov 2026',
+      items: [
+        'Customer Experience › GBP Listings: switching on auto-reply now answers new Google reviews by itself, with a reply for each star rating; the rule shows in Automations, where one switch turns it off everywhere.',
+        'WhatsApp links: set them on one listing or many, whatever WhatsApp numbers the organization has.',
+        'Project Management - 2: a job with no price shows \$0.00 instead of a dash.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0513',
       date: '30 Oct 2026',
       items: [
