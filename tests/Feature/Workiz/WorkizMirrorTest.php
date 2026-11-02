@@ -4,12 +4,17 @@ namespace Tests\Feature\Workiz;
 
 use App\Jobs\MirrorToWorkiz;
 use App\Models\AuditEvent;
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SocialConnection;
 use App\Models\WorkizJob;
+use App\Support\Audit\AuditLogger;
+use App\Support\Automations\ActionRunner;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Social\SocialProvider;
+use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\WorkizJobWriter;
 use App\Support\Workiz\WorkizMirror;
 use App\Support\Workiz\WorkizV2;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +63,26 @@ class WorkizMirrorTest extends TestCase
         Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && $r['status'] === 'Pending');
     }
 
+    public function test_the_automation_job_set_step_queues_its_changes_for_workiz(): void
+    {
+        Queue::fake();
+        $this->inTenant($this->t['org'], function () {
+            $event = AutomationEvent::create(['organization_id' => $this->t['org']->id, 'event_key' => 'job.payment_received', 'payload' => [],
+                'occurred_at' => now(), 'available_at' => now()]);
+            $done = app(ActionRunner::class)->run(['type' => 'job.set', 'status' => Job::statusEntries($this->t['org'])[0]['value'],
+                'tags' => 'Deposit Received', 'unschedule' => true], $event, $this->job);
+            $this->assertTrue($done['ok'], $done['detail']);
+        });
+
+        $ops = [];
+        Queue::assertPushed(MirrorToWorkiz::class, function (MirrorToWorkiz $j) use (&$ops) {
+            $ops[] = $j->op;
+
+            return true;
+        });
+        $this->assertSame(['status', 'tags', 'unschedule'], $ops);
+    }
+
     public function test_nothing_is_queued_where_the_branch_does_not_mirror(): void
     {
         Queue::fake();
@@ -83,11 +108,11 @@ class WorkizMirrorTest extends TestCase
         Queue::fake();
 
         $this->inTenant($this->t['org'], fn () => (new MirrorToWorkiz($this->t['org']->id, $this->job->id, 'status', ['status' => 'Pending']))
-            ->handle(app(\App\Support\Tenancy\TenantContext::class), app(\App\Support\Workiz\WorkizJobWriter::class), app(\App\Support\Audit\AuditLogger::class)));
+            ->handle(app(TenantContext::class), app(WorkizJobWriter::class), app(AuditLogger::class)));
         Queue::assertPushed(MirrorToWorkiz::class, fn (MirrorToWorkiz $j) => $j->attempt === 2);
 
         $this->inTenant($this->t['org'], fn () => (new MirrorToWorkiz($this->t['org']->id, $this->job->id, 'status', ['status' => 'done pending approval']))
-            ->handle(app(\App\Support\Tenancy\TenantContext::class), app(\App\Support\Workiz\WorkizJobWriter::class), app(\App\Support\Audit\AuditLogger::class)));
+            ->handle(app(TenantContext::class), app(WorkizJobWriter::class), app(AuditLogger::class)));
 
         $failed = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'workiz.mirror_failed')->get());
         $this->assertCount(1, $failed, 'the rate limit was retried, not recorded; the refusal was recorded');

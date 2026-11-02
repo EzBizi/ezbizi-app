@@ -12,10 +12,9 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Inspection\BoundAnswers;
 use App\Support\Inspection\FieldType;
+use App\Support\Inspection\InspectionAccess;
 use App\Support\Inspection\OptionSet;
 use App\Support\Inspection\RecommendedWork;
-use App\Support\Inspection\InspectionAccess;
-use App\Support\Inspection\LooksLikeJobNumber;
 use App\Support\Inspection\RequiredFields;
 use App\Support\Inspection\ScopeKey;
 use App\Support\Scoping\ViewScope;
@@ -34,6 +33,9 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class InspectionRunsController extends Controller
 {
+    /** A job number (J-1042, JOB-00042, JOB-2026-00042) rather than a client name. */
+    private const JOB_NUMBER = '/^[A-Za-z][A-Za-z0-9]*-\d+(?:-\d+)?$/';
+
     public function __construct(
         private readonly InspectionAccess $access,
         private readonly EventEmitter $events,
@@ -55,7 +57,7 @@ class InspectionRunsController extends Controller
 
         $reachable = collect(ViewScope::forUser($request->user())->franchiseIds());
 
-        if (LooksLikeJobNumber::check($q)) {
+        if (preg_match(self::JOB_NUMBER, trim($q))) {
             $jobs = Job::query()
                 ->with(['customer', 'franchise:id,name'])
                 ->where('number', $q)

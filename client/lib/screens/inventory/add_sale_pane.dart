@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 
 import '../../core/api_client.dart';
-import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import 'inventory_place_fields.dart';
 import 'item_pane.dart';
+import 'order_lines.dart';
 
 /// Draft a sale in the 75% pane, not a modal.
 ///
@@ -42,7 +43,7 @@ class _AddSalePaneState extends State<AddSalePane> {
   final _note = TextEditingController();
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _items = [];
-  final List<_SaleLine> _lines = [_SaleLine()];
+  final List<OrderLine> _lines = [OrderLine()];
   bool _loading = true;
   bool _busy = false;
   bool _customersHidden = false;
@@ -114,10 +115,7 @@ class _AddSalePaneState extends State<AddSalePane> {
     });
   }
 
-  List<_SaleLine> get _readyLines => [
-    for (final line in _lines)
-      if (line.itemId != null && line.qty.text.trim().isNotEmpty) line,
-  ];
+  List<OrderLine> get _readyLines => readyOrderLines(_lines);
 
   Future<void> _save() async {
     if (_companyId == null && !_atOrganization) return;
@@ -126,22 +124,16 @@ class _AddSalePaneState extends State<AddSalePane> {
     final note = _note.text.trim();
     if (_customerId == null && note.isEmpty) return;
 
-    final lines = <Map<String, dynamic>>[];
-    for (final line in ready) {
-      final row = <String, dynamic>{
-        'item_id': line.itemId,
-        'qty': line.qty.text.trim(),
-      };
-      if (_financials) {
-        try {
-          final cents = parseAmountMinor(line.price.text);
-          if (cents != null) row['unit_price_minor'] = cents;
-        } on FormatException catch (e) {
-          setState(() => _error = e.message);
-          return;
-        }
-      }
-      lines.add(row);
+    final List<Map<String, dynamic>> lines;
+    try {
+      lines = orderLinesPayload(
+        ready,
+        financials: _financials,
+        amountKey: 'unit_price_minor',
+      );
+    } on FormatException catch (e) {
+      setState(() => _error = e.message);
+      return;
     }
 
     setState(() {
@@ -172,7 +164,6 @@ class _AddSalePaneState extends State<AddSalePane> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final canSave =
         !_busy &&
         !_loading &&
@@ -183,21 +174,11 @@ class _AddSalePaneState extends State<AddSalePane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: _busy ? null : widget.onCancel,
-                ),
-              Expanded(
-                child: Text('New sale', style: theme.textTheme.titleMedium),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          'New sale',
+          showBack: widget.showBack,
+          onBack: _busy ? null : widget.onCancel,
         ),
         Expanded(
           child: _loading
@@ -246,54 +227,14 @@ class _AddSalePaneState extends State<AddSalePane> {
                         ),
                         onChanged: (_) => setState(() {}),
                       ),
-                      for (var i = 0; i < _lines.length; i++) ...[
-                        const SizedBox(height: 12),
-                        SearchPickerField<String>(
-                          key: ValueKey('sale-item-$i-${_lines[i].itemId}'),
-                          value: _lines[i].itemId,
-                          label: 'Item',
-                          options: [
-                            for (final item in _items)
-                              SearchOption(value: item['id'] as String?, label: inventoryItemChoiceLabel(item)),
-                          ],
-                          onChanged: _busy
-                              ? null
-                              : (v) => setState(() => _lines[i].itemId = v),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _lines[i].qty,
-                          enabled: !_busy,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Qty ordered',
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                        if (_financials) ...[
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _lines[i].price,
-                            enabled: !_busy,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: 'Unit price',
-                            ),
-                          ),
-                        ],
-                      ],
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () => setState(() => _lines.add(_SaleLine())),
-                          child: const Text('Add line'),
-                        ),
+                      ...orderLineFields(
+                        lines: _lines,
+                        items: _items,
+                        busy: _busy,
+                        financials: _financials,
+                        keyPrefix: 'sale',
+                        amountLabel: 'Unit price',
+                        changed: () => setState(() {}),
                       ),
                       if (_error != null) ...[
                         const SizedBox(height: 8),
@@ -303,36 +244,12 @@ class _AddSalePaneState extends State<AddSalePane> {
                   ),
                 ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.end,
-            children: [
-              TextButton(
-                onPressed: _busy ? null : widget.onCancel,
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: canSave ? _save : null,
-                child: const Text('Save draft'),
-              ),
-            ],
-          ),
+        paneFooter(
+          onCancel: _busy ? null : widget.onCancel,
+          onSave: canSave ? _save : null,
+          saveLabel: 'Save draft',
         ),
       ],
     );
-  }
-}
-
-class _SaleLine {
-  String? itemId;
-  final qty = TextEditingController();
-  final price = TextEditingController();
-
-  void dispose() {
-    qty.dispose();
-    price.dispose();
   }
 }

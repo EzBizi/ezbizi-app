@@ -33,7 +33,7 @@ class LeadsDailyDigest extends Command
             $tenant->run($organization, function () use ($organization, $settings, $events, &$raised) {
                 $zone = (string) $settings->get('timezone', $organization);
                 $day = now($zone)->subDay()->startOfDay();
-                $leads = fn () => Lead::query()->where('leads.is_test', false);
+                $leads = fn () => Lead::query()->where('leads.is_test', false)->whereNull('leads.hidden_at');
 
                 $m = LeadDashboardController::measure($leads, $day, $day, $zone);
                 $t = $m['totals'];

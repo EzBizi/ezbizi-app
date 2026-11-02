@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/module_overview.dart';
 
@@ -425,12 +426,7 @@ class _FleetGeneralState extends State<FleetGeneral> {
     );
   }
 
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
-  static String _date(DateTime day) => '${_months[day.month - 1]} ${day.day}';
+  static String _date(DateTime day) => '${shortMonths[day.month - 1]} ${day.day}';
 
   // --- Spending -----------------------------------------------------------
 

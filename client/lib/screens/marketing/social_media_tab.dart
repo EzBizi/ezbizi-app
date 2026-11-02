@@ -3158,8 +3158,6 @@ class _CalendarsColumn extends StatefulWidget {
   final DisplayFormats formats;
   final void Function(_SentPost)? onOpen;
 
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   static const _monthNames = [
     'January',
     'February',
@@ -3175,21 +3173,6 @@ class _CalendarsColumn extends StatefulWidget {
     'December',
   ];
 
-  static const _shortMonths = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   static DateTime mondayOf(DateTime d) {
@@ -3203,10 +3186,10 @@ class _CalendarsColumn extends StatefulWidget {
   static String weekRange(DateTime monday) {
     final sunday = monday.add(const Duration(days: 6));
     if (monday.month == sunday.month) {
-      return '${monday.day}–${sunday.day} ${_shortMonths[monday.month - 1]}';
+      return '${monday.day}–${sunday.day} ${shortMonths[monday.month - 1]}';
     }
-    return '${monday.day} ${_shortMonths[monday.month - 1]} – '
-        '${sunday.day} ${_shortMonths[sunday.month - 1]}';
+    return '${monday.day} ${shortMonths[monday.month - 1]} – '
+        '${sunday.day} ${shortMonths[sunday.month - 1]}';
   }
 
   @override
@@ -3503,7 +3486,7 @@ class _WeekdayHeader extends StatelessWidget {
       children: [
         TableRow(
           children: [
-            for (final day in _CalendarsColumn._days)
+            for (final day in shortWeekdays)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(day, style: theme.textTheme.labelSmall),
@@ -5019,7 +5002,7 @@ class _AgendaRow extends StatelessWidget {
     final stamp = when == null
         ? ''
         : dated
-        ? '${_CalendarsColumn._shortMonths[when.month - 1]} ${when.day}'
+        ? '${shortMonths[when.month - 1]} ${when.day}'
         : formats.formatTime(when.hour, when.minute);
     final networks = {
       for (final t in post.targets)
@@ -5150,8 +5133,8 @@ int _daysFromToday(DateTime day) {
 
 /// "Fri, Oct 2".
 String _shortDay(DateTime day) =>
-    '${_CalendarsColumn._days[day.weekday - 1]}, '
-    '${_CalendarsColumn._shortMonths[day.month - 1]} ${day.day}';
+    '${shortWeekdays[day.weekday - 1]}, '
+    '${shortMonths[day.month - 1]} ${day.day}';
 
 /// "today", "tomorrow", "Tuesday" within the week, else "Fri, Oct 2".
 String _dayWord(DateTime day) => switch (_daysFromToday(day)) {

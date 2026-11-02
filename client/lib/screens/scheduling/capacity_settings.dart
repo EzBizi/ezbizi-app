@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
@@ -1999,15 +2000,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// `start-end` -> what was typed for that window on that date.
   final Map<String, String> _dateValues = {};
 
-  static const _monthsShort = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  static const _daysShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   static String _prettyDate(String ymd) {
     final d = DateTime.parse(ymd);
-    return '${_daysShort[d.weekday - 1]}, ${_monthsShort[d.month - 1]} ${d.day}';
+    return '${shortWeekdays[d.weekday - 1]}, ${shortMonths[d.month - 1]} ${d.day}';
   }
 
   /// Weeks scheduled to take over from a date (Eve, 2026-09-29: "change

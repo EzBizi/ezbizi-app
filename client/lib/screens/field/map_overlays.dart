@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import 'field_status.dart';
 
 /// The pieces drawn over the Field map: the floating list (people and jobs),
@@ -1130,7 +1131,7 @@ class FieldMapLegend extends StatelessWidget {
       ),
       if (showJobs) ...[
         (job(EzBiziTheme.fieldBlue), 'Job with a technician'),
-        (job(EzBiziTheme.fieldYellow), 'Job not assigned'),
+        (job(fieldUnassignedJob(context)), 'Job not assigned'),
         (job(scheme.onSurface), 'Job you opened'),
       ],
       (line(EzBiziTheme.fieldBlue), 'Route today'),
@@ -1244,6 +1245,11 @@ List<LatLng> decodePolyline(String encoded) {
   return points;
 }
 
+/// An unassigned job's pin (Jose, 2026-10-30): neutral grey, so it cannot be
+/// mistaken for an assigned (blue) job or a lost-signal (yellow) person.
+Color fieldUnassignedJob(BuildContext context) =>
+    Theme.of(context).colorScheme.outline;
+
 /// Dark ink on a light pin (yellow, or the "opened" marker in dark mode),
 /// white on the others, so the job icon is always readable.
 Color fieldInk(Color fill) => fill.computeLuminance() > 0.4
@@ -1267,7 +1273,6 @@ Color fieldText(BuildContext context, Color field) => ToneColours.of(
 
 /// "Wed 10/1", and "Today" for today, for the map's date control.
 String fieldLongDay(DateTime d) {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  final label = '${days[d.weekday - 1]} ${d.month}/${d.day}';
+  final label = '${shortWeekdays[d.weekday - 1]} ${d.month}/${d.day}';
   return fieldDayLabel(d) == 'today' ? 'Today · $label' : label;
 }

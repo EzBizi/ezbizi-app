@@ -70,8 +70,8 @@ final class DailyTexts
             if ($cost['accounts'] === 0) {
                 continue;
             }
-            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('job_source', 'PPC')
-                ->whereBetween('booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->count();
+            $jobs = ReportJobs::jobs((string) $branch->getKey())->where('j.job_source', 'PPC')
+                ->whereBetween('j.booked_at', [$day->toDateString().' 00:00:00', $day->toDateString().' 23:59:59'])->count();
             $c = $cost['ppc'];
             $lines = [...$lines, '*'.BranchName::of($branch).'*', ...$this->ppcLines($c['cost_minor'], $c['clicks'], $jobs, $c['conversions']), ''];
             $total['cost'] += $c['cost_minor'];

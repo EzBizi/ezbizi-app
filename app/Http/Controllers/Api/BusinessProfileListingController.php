@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Models\BusinessLocation;
 use App\Models\PhoneNumber;
 use App\Models\Review;
+use App\Models\SocialConnection;
 use App\Models\WhatsAppNumber;
 use App\Services\BusinessProfile\BusinessProfileApi;
 use App\Support\CustomerExperience\Places;
 use App\Support\Memberships\CustomerLinks;
+use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -136,17 +138,19 @@ class BusinessProfileListingController extends Controller
     public function sources(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Review::class);
-        $query = Review::query();
+        $query = Review::query()->whereNotNull('rating');
         Places::scope($query, $request->user());
-        $google = $query->whereNotNull('rating')->toBase()->select(DB::raw('avg(rating) as average, count(*) as n'))->first();
+        $by = $query->toBase()->select('source', DB::raw('avg(rating) as average, count(*) as n'))->groupBy('source')->get()->keyBy('source');
+        $row = fn (string $source, bool $connected, $last) => ['source' => $source, 'connected' => $connected,
+            'count' => (int) ($by[$source]->n ?? 0), 'average' => isset($by[$source]) ? round((float) $by[$source]->average, 2) : null,
+            'last_sync' => $last];
+        $ekomi = SocialConnection::query()->where('provider', SocialProvider::Ekomi->value);
 
         return response()->json(['data' => [
-            ['source' => 'google', 'connected' => true, 'count' => (int) ($google->n ?? 0),
-                'average' => $google?->n ? round((float) $google->average, 2) : null,
-                'last_sync' => BusinessLocation::query()->max('synced_at')],
-            // ponytail: no eKomi or Thumbtack review import yet; each needs its own credentials.
-            ['source' => 'ekomi', 'connected' => false, 'count' => 0, 'average' => null],
-            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null],
+            $row(Review::SOURCE_GOOGLE, true, BusinessLocation::query()->max('synced_at')),
+            $row(Review::SOURCE_EKOMI, (clone $ekomi)->exists(), $ekomi->max('last_reached_at')),
+            // ponytail: Thumbtack exposes no reviews API to partners; stays unconnected until it does.
+            ['source' => 'thumbtack', 'connected' => false, 'count' => 0, 'average' => null, 'last_sync' => null],
         ], 'reply_rule_id' => $this->replyRuleId()]);
     }
 
@@ -156,6 +160,53 @@ class BusinessProfileListingController extends Controller
         return \App\Models\Automation::query()->where('is_active', true)->whereNull('disabled_at')
             ->whereNotNull('active_version_id')->with('activeVersion')->orderBy('name')->get()
             ->first(fn ($rule) => str_contains((string) json_encode($rule->activeVersion?->actions ?? []), '"publish_reply"'))?->id;
+    }
+
+    /**
+     * GET /business-profile/whatsapp-links: each listing's WhatsApp button on
+     * Google against the organization's link, the preview of the bulk editor.
+     */
+    public function whatsappLinks(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', BusinessLocation::class);
+        $proposed = self::whatsappLink();
+        $query = BusinessLocation::query()->whereNull('not_listed_since')->with(['franchise', 'connection'])->orderBy('title');
+        Places::scope($query, $request->user());
+
+        // ponytail: one Google read per listing, in sequence; pool them if a tenant passes a few hundred listings.
+        return response()->json(['proposed' => $proposed, 'data' => $query->get()->map(function (BusinessLocation $l) use ($proposed) {
+            try {
+                $current = $this->api->whatsappLink($l);
+                $state = match (true) {
+                    $current === null => 'missing',
+                    $current === $proposed => 'same',
+                    default => 'different',
+                };
+            } catch (Throwable) {
+                [$current, $state] = [null, 'unreachable'];
+            }
+
+            return ['id' => $l->id, 'name' => $l->label(), 'branch' => $l->franchise?->name, 'current' => $current, 'state' => $state];
+        })->values()->all()]);
+    }
+
+    /** POST /business-profile/whatsapp-links/apply {targets: [id]}: puts the organization's link on each. */
+    public function applyWhatsappLinks(Request $request): JsonResponse
+    {
+        $input = $request->validate(['targets' => ['required', 'array', 'min:1'], 'targets.*' => ['uuid']]);
+        if ($refused = $this->refused()) {
+            return $refused;
+        }
+        if (($link = self::whatsappLink()) === null) {
+            return response()->json(['message' => 'Connect a WhatsApp number first.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        // ponytail: with several numbers the link is the oldest one, likely another brand's (desk, 2026-10-30);
+        // refuse until each company has its own number.
+        if (WhatsAppNumber::query()->count() > 1) {
+            return response()->json(['message' => 'This organization has several WhatsApp numbers. Choose which one each company uses first.'], Response::HTTP_CONFLICT);
+        }
+
+        return $this->eachTarget($input['targets'], fn (BusinessLocation $t) => $this->api->setWhatsappLink($t, $link));
     }
 
     /** The organization's WhatsApp chat link, for every listing's Info tab (design 154 #16). */

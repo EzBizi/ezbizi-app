@@ -236,17 +236,4 @@ class MembershipsPublicTest extends TestCase
             $this->assertNull($this->customer->fresh()->membership_link, 'Already a member.');
         });
     }
-
-    public function test_a_preview_link_shows_the_offer_and_joins_nobody(): void
-    {
-        $url = $this->inTenant($this->t['org'], fn () => CustomerLinks::previewJoinUrl($this->customer));
-        $plan = $this->inTenant($this->t['org'], fn () => MembershipPlan::query()->value('id'));
-
-        $this->get($url)->assertOk()->assertSee('Preview')->assertSee('Yearly sweep');
-        $this->post($url, ['plan' => $plan])->assertOk()->assertSee('would now be a member');
-        $this->assertSame(0, Membership::withoutGlobalScopes()->count());
-
-        // The flag is under the signature: stripping it breaks the link.
-        $this->get(str_replace('preview=1&', '', $url))->assertForbidden();
-    }
 }

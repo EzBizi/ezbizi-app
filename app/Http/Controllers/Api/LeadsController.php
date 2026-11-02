@@ -26,6 +26,7 @@ use App\Support\Leads\CallTypeCorrections;
 use App\Support\Leads\EzLeadCalls;
 use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadPresence;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadRecordings;
 use App\Support\Leads\LeadReplies;
 use App\Support\Leads\RingCentralLeadCalls;
@@ -45,6 +46,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -182,6 +184,9 @@ class LeadsController extends Controller
          * been able to build from the screen anyway.
          */
         $query->sourceVisibleTo($user);
+
+        // Leads › Manage › Hidden (Jose, 2026-10-29): gone from every list, count and search without the grant.
+        $query->notHiddenFrom($user);
 
         return $query;
     }
@@ -440,11 +445,17 @@ class LeadsController extends Controller
 
         $viewers = LeadPresence::others(array_map(fn (Lead $l) => (string) $l->id, $leads->items()), $user);
 
+        // The preview is an ad's preset question (Meta's is_ad_question): the list says so in muted text.
+        $adAsked = LeadConversation::query()->whereIn('lead_id', array_map(fn (Lead $l) => $l->id, $leads->items()))
+            ->where('is_ad_question', true)->selectRaw('lead_id, MAX(occurred_at) as at')->groupBy('lead_id')->pluck('at', 'lead_id');
+
         return response()->json([
             'data' => array_map(fn (Lead $l) => [
                 ...$this->present($l),
                 // Who else has it open right now (Jose, 2026-09-29).
                 'viewers' => $viewers[(string) $l->id] ?? [],
+                'last_contact_ad_question' => isset($adAsked[$l->id]) && $l->last_contact_at !== null
+                    && Carbon::parse($adAsked[$l->id])->equalTo($l->last_contact_at),
                 'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
                     ? null
                     : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
@@ -1092,6 +1103,10 @@ class LeadsController extends Controller
             && (str_starts_with((string) $c->remote_id, 'sms_') || str_starts_with((string) $c->remote_id, 'ez_sent_'))) {
             $sentBy = 'EzBizi';
         }
+        // Sent by staff from the WhatsApp Business app on the phone (coexistence).
+        if (str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP)) {
+            $sentBy = 'Phone (WhatsApp Business app)';
+        }
 
         return [
             'id' => $c->id,
@@ -1099,6 +1114,10 @@ class LeadsController extends Controller
             // sent it rather than a person, for the bot mark.
             'sent_by' => $sentBy !== '' ? $sentBy : null,
             'automatic' => (bool) $c->is_automatic,
+            // Sent by staff from the WhatsApp Business app on the phone.
+            'sent_from_phone' => str_starts_with((string) $c->remote_id, WhatsAppWebhookController::FROM_APP),
+            // Tapped from a Click-to-Message ad's suggested questions, not typed.
+            'ad_question' => (bool) $c->is_ad_question,
             'reaction' => self::reaction($c->text),
             'channel' => $c->channel,
             'from' => $c->participant,
@@ -1127,7 +1146,8 @@ class LeadsController extends Controller
                 && $c->recording_url !== null && $c->duration_ms !== null
                 && $c->occurred_at?->gte(now()->subDays(7)) === true
                 && app(CallTranscripts::class)->enabled(),
-            'attachments' => $c->attachments ?? [],
+            // A WhatsApp file becomes a short-lived signed link, streamed from Meta.
+            'attachments' => array_map(WhatsAppMediaController::url(...), $c->attachments ?? []),
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,
@@ -1934,6 +1954,25 @@ class LeadsController extends Controller
             fn ($f) => isset($set[$f]) && (string) $lead->{$f} === (string) $set[$f]));
     }
 
+    /** The work asked for, in words: Google's service key, else the provider's category. Call lines' category is the line, not a job. */
+    private static function jobType(Lead $lead): ?string
+    {
+        return match ($lead->source) {
+            Lead::SOURCE_LOCAL_SERVICES => $lead->service !== null ? Str::headline($lead->service) : null,
+            Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_EZ_TEXTS => $lead->service,
+            default => $lead->service ?? $lead->category,
+        };
+    }
+
+    /** What sent them: the stored referral, else the tracking line a call or text came in on ("NY - GMB"). */
+    private static function referral(Lead $lead): ?array
+    {
+        $line = in_array($lead->source, [Lead::SOURCE_RINGCENTRAL, Lead::SOURCE_EZ_CALLS, Lead::SOURCE_EZ_TEXTS], true) && $lead->category !== null
+            ? ['campaign_name' => $lead->category] : [];
+
+        return LeadReferral::clean([...$line, ...($lead->referral ?? [])]);
+    }
+
     private function present(Lead $lead): array
     {
         return [
@@ -1948,6 +1987,17 @@ class LeadsController extends Controller
             'phone' => $lead->phone,
             'email' => $lead->email,
             'postal_code' => $lead->postal_code,
+            // A Meta lead-ad form's answers, [{label, value}] in the form's order.
+            'form_answers' => $lead->form_answers,
+            'form_name' => $lead->form_name,
+            'form_submitted_at' => $lead->form_submitted_at?->toIso8601String(),
+            // Design 159 (Jose, 2026-10-29): what the provider said beyond the phone.
+            'handle' => $lead->handle,
+            'avatar_url' => $lead->avatar_url,
+            'address' => $lead->address,
+            'city' => $lead->city,
+            'job_type' => self::jobType($lead),
+            'referral' => self::referral($lead),
             'lead_type' => $lead->lead_type,
             'category' => $lead->category,
             'service' => $lead->service,

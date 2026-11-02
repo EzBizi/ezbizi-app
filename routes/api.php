@@ -442,6 +442,11 @@ Route::get('v1/training/media/{media}', [TrainingMediaController::class, 'show']
     ->whereUuid('media')
     ->name('training.media');
 
+Route::get('v1/whatsapp/media/{phone}/{media}', \App\Http\Controllers\Api\WhatsAppMediaController::class)
+    ->middleware(['signed', 'throttle:120,1'])
+    ->where(['phone' => '[0-9]+', 'media' => '[0-9]+'])
+    ->name('whatsapp.media');
+
 Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'show'])
     ->middleware(['signed', 'throttle:30,1'])
     ->where('handle', '[0-9A-Za-z]+(\.[0-9a-z]+)?')
@@ -1002,6 +1007,7 @@ Route::prefix('v1')
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
+        Route::post('reviews/replies/draft-batch', [ReviewsController::class, 'draftBatch']);
         Route::get('reviews/sources', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'sources']);
         // What customers did with their review links (Customer Experience, 2026-10-15).
         Route::get('customer-experience/review-links', \App\Http\Controllers\Api\ReviewLinkReportController::class);
@@ -1048,6 +1054,8 @@ Route::prefix('v1')
         Route::put('business-profile/locations/{location}/auto-reply', \App\Http\Controllers\Api\BusinessProfileAutoReplyController::class);
         // Media, services, phone check (A1 Leads takeover, design 154). Google writes stay behind the write switch.
         Route::get('business-profile/phone-check', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'phoneCheck']);
+        Route::get('business-profile/whatsapp-links', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'whatsappLinks']);
+        Route::post('business-profile/whatsapp-links/apply', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'applyWhatsappLinks']);
         Route::get('business-profile/locations/{location}/media', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'media']);
         Route::post('business-profile/locations/{location}/media/copy', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'copyMedia']);
         Route::get('business-profile/locations/{location}/services', [\App\Http\Controllers\Api\BusinessProfileListingController::class, 'services']);
@@ -1061,6 +1069,14 @@ Route::prefix('v1')
         Route::get('leads/stats', [\App\Http\Controllers\Api\LeadStatsController::class, 'show']);
         Route::get('leads/stats/points', [\App\Http\Controllers\Api\LeadStatsController::class, 'points']);
         Route::get('leads/sources', [\App\Http\Controllers\Api\LeadSourcesController::class, 'index']);
+        // Leads › Manage › Hidden (Jose, 2026-10-29): one grant sees, hides and unhides.
+        Route::middleware('permission:'.\App\Models\Lead::HIDDEN_PERMISSION)->group(function () {
+            Route::get('leads/hidden', [\App\Http\Controllers\Api\LeadHiddenController::class, 'index']);
+            Route::post('leads/hidden-numbers', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hideNumberDirectly']);
+            Route::delete('leads/hidden-numbers/{number}', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhideNumber']);
+            Route::post('leads/{lead}/hide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'hide']);
+            Route::post('leads/{lead}/unhide', [\App\Http\Controllers\Api\LeadHiddenController::class, 'unhide']);
+        });
         // Leads › Manage › Office hours (Jose, 2026-10-22): the closed-office replies' hours and time zone per place.
         Route::middleware('permission:leads.manage')->group(function () {
             Route::get('leads/office-hours', [\App\Http\Controllers\Api\LeadOfficeHoursController::class, 'index']);
@@ -1430,6 +1446,7 @@ Route::prefix('v1')
 
             // Hand-set facts the phones cannot say (Jose, 2026-10-05).
             Route::put('reports/experimental/people/tag', [ExperimentalCallReportController::class, 'tag']);
+            Route::put('reports/experimental/sources', [ExperimentalCallReportController::class, 'sources']);
             Route::post('reports/experimental/calls/{call}/convert', [ExperimentalCallReportController::class, 'convert']);
         });
 
@@ -1487,6 +1504,13 @@ Route::prefix('v1')
         Route::post('reports/drafts/{batch}/changes', [\App\Http\Controllers\Api\ReportDraftsController::class, 'change'])->middleware('permission:reports.correct');
         Route::get('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'index'])->middleware('permission:reports.view');
         Route::get('reports/period', [\App\Http\Controllers\Api\ReportPeriodController::class, 'show'])->middleware('permission:reports.view');
+        // The Reports workspace (takeover row 10, UI queue 157).
+        Route::middleware('permission:reports.view')->group(function () {
+            Route::get('reports/texts/{kind}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'text']);
+            Route::post('reports/texts/{kind}/send', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'send']);
+            Route::get('reports/batches/{period}', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'batch']);
+            Route::post('reports/batches/{batch}/approve', [\App\Http\Controllers\Api\ReportWorkspaceController::class, 'approve']);
+        });
         Route::put('reports/goals', [\App\Http\Controllers\Api\ReportGoalsController::class, 'update'])->middleware('permission:reports.settings');
         Route::get('reports/scoring/weights', [ScoringReportController::class, 'weights'])->middleware('permission:reports.scoring.view');
         Route::put('reports/scoring/weights', [ScoringReportController::class, 'saveWeights'])->middleware('permission:reports.scoring_weights');

@@ -20,7 +20,12 @@ class ThumbtackReport extends StatefulWidget {
     required this.api,
     this.now,
     this.formats = DisplayFormats.fallback,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final DateTime Function()? now;
@@ -31,10 +36,22 @@ class ThumbtackReport extends StatefulWidget {
 }
 
 class _ThumbtackReportState extends State<ThumbtackReport> {
-  late DateSpan _span = DateSpan(
-    DateTime(_today.year, _today.month - 1),
-    DateTime(_today.year, _today.month, 0),
-  );
+  late DateSpan _span =
+      widget.span ??
+      DateSpan(
+        DateTime(_today.year, _today.month - 1),
+        DateTime(_today.year, _today.month, 0),
+      );
+
+  @override
+  void didUpdateWidget(ThumbtackReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
+
   String? _category;
   String? _branch;
   String? _state;
@@ -43,9 +60,6 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
   String _query = '';
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
-
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   void initState() {
@@ -56,8 +70,8 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
   Future<void> _load() async {
     final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/thumbtack', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
       'category': ?_category,
       'branch': ?_branch,
       'state': ?_state,
@@ -78,29 +92,6 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
       minor is num ? formatMoney(minor.round()) : '—';
 
   static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
-
-  Widget _filter(
-    String label,
-    String? value,
-    Map<String, String> options,
-    ValueChanged<String?> pick,
-    Key key,
-  ) => DropdownMenu<String?>(
-    key: key,
-    enableFilter: true,
-    requestFocusOnTap: true,
-    label: Text(label),
-    initialSelection: value,
-    onSelected: (v) {
-      pick(v);
-      _load();
-    },
-    dropdownMenuEntries: [
-      const DropdownMenuEntry(value: null, label: 'All'),
-      for (final o in options.entries)
-        DropdownMenuEntry(value: o.key, label: o.value),
-    ],
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -136,39 +127,30 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ReportDates(
-          key: const ValueKey('tour-report-dates'),
-          initial: _span,
-          today: _today,
-          formats: widget.formats,
-          onChanged: (span) {
-            setState(() => _span = span);
-            _load();
-          },
-        ),
-        const SizedBox(height: 12),
+        if (widget.span == null) ...[
+          ReportDates(
+            key: const ValueKey('tour-report-dates'),
+            initial: _span,
+            today: _today,
+            formats: widget.formats,
+            onChanged: (span) {
+              setState(() => _span = span);
+              _load();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         Wrap(
           spacing: 12,
           runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            // Standard field height, as tall as Leads search (Jose, 2026-10-27).
-            SizedBox(
-              width: 240,
-              child: TextField(
-                key: const Key('thumbtack-report-search'),
-                textAlignVertical: TextAlignVertical.center,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIconConstraints: BoxConstraints(minWidth: 36),
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a category or branch',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
+            reportSearch(
+              key: const Key('thumbtack-report-search'),
+              hint: 'Find a category or branch',
+              onChanged: (v) => setState(() => _query = v),
             ),
-            _filter(
+            reportFilter(
               'Category',
               _category,
               {
@@ -177,8 +159,9 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
               },
               (v) => _category = v,
               const ValueKey('thumbtack-category'),
+              _load,
             ),
-            _filter(
+            reportFilter(
               'State',
               _state,
               {
@@ -187,8 +170,9 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
               },
               (v) => _state = v,
               const ValueKey('thumbtack-state'),
+              _load,
             ),
-            _filter(
+            reportFilter(
               'Branch',
               _branch,
               {
@@ -198,6 +182,7 @@ class _ThumbtackReportState extends State<ThumbtackReport> {
               },
               (v) => _branch = v,
               const ValueKey('thumbtack-branch'),
+              _load,
             ),
           ],
         ),

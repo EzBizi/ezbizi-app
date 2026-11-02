@@ -7,8 +7,10 @@ use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\ExplainsRefusal;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadReplyChannel;
 use App\Support\Leads\LeadThread;
+use App\Support\Notifications\LeadNotificationText;
 use App\Support\Social\ThumbtackNegotiations;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -367,6 +369,8 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
             // fills it in). Never blanked by a payload that omits it.
             $fromSource += array_filter(self::cost($raw), fn ($v) => $v !== null);
 
+            $fromSource += self::details($raw);
+
             if ($created) {
                 $lead = new Lead([
                     'organization_id' => $connection->organization_id,
@@ -432,6 +436,26 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
 
             return ['lead' => $lead, 'created' => $created];
         });
+    }
+
+    /**
+     * Design 159 (2026-10-29): where the job is, the customer's own words, and
+     * which of our Thumbtack businesses they asked. Absent keys stay absent, so
+     * a payload without them never blanks what an earlier one gave.
+     *
+     * @return array<string, mixed>
+     */
+    public static function details(array $raw): array
+    {
+        $request = (array) ($raw['request'] ?? []);
+        $where = (array) ($request['location'] ?? []);
+
+        return array_filter([
+            'address' => mb_substr(trim(($where['address1'] ?? '').' '.($where['address2'] ?? '')), 0, 255) ?: null,
+            'city' => mb_substr(trim((string) ($where['city'] ?? '')), 0, 120) ?: null,
+            'summary' => LeadNotificationText::clip(trim((string) ($request['description'] ?? '')), 255) ?: null,
+            'referral' => LeadReferral::clean(['page_name' => trim((string) (((array) ($raw['business'] ?? []))['name'] ?? '')) ?: null]),
+        ], fn ($v) => $v !== null);
     }
 
     /**

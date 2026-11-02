@@ -2978,6 +2978,8 @@ class ModuleServiceProvider extends ServiceProvider
                     // Calls and texts to EzBizi's own lines (Jose, 2026-10-16).
                     new TabDefinition('ez_calls', 'EZ Calls'),
                     new TabDefinition('ez_texts', 'EZ Texts'),
+                    // Private conversations kept from staff: sees, hides and unhides them (Jose, 2026-10-29).
+                    new TabDefinition('hidden', 'Hidden'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -4436,6 +4438,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('meta', 'Meta'),
                     // Thumbtack lead spend by category and branch (2026-10-13).
                     new TabDefinition('thumbtack', 'Thumbtack'),
+                    // Pick a report, preview it, export, approve or send it
+                    // (takeover row 10, UI queue 157, Jose 2026-10-29).
+                    new TabDefinition('workspace', 'Workspace'),
                 ],
                 actionRequires: [
                     'build' => ['reports.view'],

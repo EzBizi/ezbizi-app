@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
+import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/structure_canvas.dart';
@@ -144,16 +145,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     _load();
   }
 
-  void _snack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
-        behavior: SnackBarBehavior.floating,
-        width: 420,
-      ),
-    );
-  }
+  void _snack(String message, {bool isError = false}) =>
+      showFloatingSnack(context, message, isError: isError);
 
   @override
   Widget build(BuildContext context) {

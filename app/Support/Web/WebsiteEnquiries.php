@@ -13,6 +13,7 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadThread;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -262,40 +263,8 @@ final class WebsiteEnquiries
      */
     public static function condensed(array $fields, array $visitor = []): array
     {
-        $f = array_fill_keys(['rating', 'first', 'last', 'name', 'phone', 'email', 'date', 'time',
-            'line1', 'line2', 'city', 'state', 'zip', 'service', 'note'], '');
-        $other = [];
+        [$f, $other] = self::place($fields);
 
-        foreach ($fields as $label => $value) {
-            $label = (string) $label;
-            $value = trim((string) $value);
-            if ($value === '' || self::isRobotCheck($label)) {
-                continue;
-            }
-            $key = match (true) {
-                (bool) preg_match('/rating/i', $label) => 'rating',
-                (bool) preg_match('/e-?mail/i', $label) => 'email',
-                (bool) preg_match('/phone|mobile|cell|\btel/i', $label) => 'phone',
-                (bool) preg_match('/first.?name/i', $label) => 'first',
-                (bool) preg_match('/last.?name|surname/i', $label) => 'last',
-                (bool) preg_match('/^(full.?)?name$|your name/i', $label) => 'name',
-                (bool) preg_match('/date|day|when/i', $label) => 'date',
-                (bool) preg_match('/time|window/i', $label) => 'time',
-                (bool) preg_match('/line.?2|suite|apt|unit/i', $label) => 'line2',
-                (bool) preg_match('/city|town/i', $label) => 'city',
-                (bool) preg_match('/^state|province/i', $label) => 'state',
-                (bool) preg_match('/zip|postal/i', $label) => 'zip',
-                (bool) preg_match('/address|street/i', $label) => 'line1',
-                (bool) preg_match('/service|need|job|work/i', $label) => 'service',
-                (bool) preg_match('/note|message|comment|detail|describe|happened/i', $label) => 'note',
-                default => null,
-            };
-            if ($key === null || $f[$key] !== '') {
-                $other[] = '▫️ '.$label.': '.$value;   // unplaced, or a second of the same
-            } else {
-                $f[$key] = $value;
-            }
-        }
 
         foreach (['name' => 'name', 'phone' => 'phone', 'email' => 'email'] as $key => $from) {
             if ($f[$key] === '' && ($key !== 'name' || $f['first'].$f['last'] === '')) {
@@ -361,11 +330,29 @@ final class WebsiteEnquiries
             $visitor['comment'] = $fields['What happened?'] ?? null;
         }
 
+        // The form's own address, city, service and ZIP onto the lead (design 159, 2026-10-29).
+        [$f] = self::place($fields);
+        foreach (['address' => trim($f['line1'].' '.$f['line2']), 'city' => $f['city'], 'service' => $f['service'], 'zip' => $f['zip']] as $key => $value) {
+            if ($value !== '' && ($visitor[$key] ?? '') === '') {
+                $visitor[$key] = $value;
+            }
+        }
+
         // The same phone sending a form again within a day joins its earlier
         // form's lead (Jose, 2026-10-19: Elizabeth Bell sent the sad-face form
         // twice, 6 minutes apart, and showed as two leads - "yes, it should").
         $lead = self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
             ?? $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor, self::looksLikeSpam($visitor, $fields));
+        // A repeat form fills what the earlier lead lacks; it never overwrites.
+        $lead->fill(array_filter([
+            'address' => $lead->address === null && ($visitor['address'] ?? '') !== '' ? mb_substr($visitor['address'], 0, 255) : null,
+            'city' => $lead->city === null && ($visitor['city'] ?? '') !== '' ? mb_substr($visitor['city'], 0, 120) : null,
+            'service' => $lead->service === null && ($visitor['service'] ?? '') !== '' ? mb_substr($visitor['service'], 0, 120) : null,
+            'postal_code' => $lead->postal_code === null && preg_match('/^\d{5}(?:-\d{4})?$/', (string) ($visitor['zip'] ?? '')) === 1 ? $visitor['zip'] : null,
+        ]));
+        if ($lead->isDirty()) {
+            $lead->save();
+        }
 
         $lines = self::condensed($fields, $visitor);
 
@@ -404,7 +391,7 @@ final class WebsiteEnquiries
         // From the lead's own booking link (Jose, 2026-10-13): the request joins
         // that lead's thread rather than starting a second lead.
         $lead = $existing ?? self::recentWebLead($site, $visitor, [Lead::SOURCE_WEBSITE_FORM, Lead::SOURCE_WEBSITE_CHAT, Lead::SOURCE_WEBSITE_BOOKING])
-            ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor);
+            ?? $this->lead($site, Lead::SOURCE_WEBSITE_BOOKING, $remoteId, $visitor + ['address' => $address]);
         $visitor['name'] = ($visitor['name'] ?? '') !== '' ? $visitor['name'] : $lead->contact_name;
         $visitor['phone'] = ($visitor['phone'] ?? '') !== '' ? $visitor['phone'] : $lead->phone;
 
@@ -525,6 +512,11 @@ final class WebsiteEnquiries
             // Its own column: Grok's one-line read replaces `summary` (2026-10-19).
             'site_host' => $site->host,
             'lead_type' => $visitor['lead_type'] ?? null,
+            // Design 159 (2026-10-29): where they are and the ad or campaign their page link names.
+            'address' => isset($visitor['address']) ? mb_substr(trim((string) $visitor['address']), 0, 255) ?: null : null,
+            'city' => isset($visitor['city']) ? mb_substr(trim((string) $visitor['city']), 0, 120) ?: null : null,
+            'service' => isset($visitor['service']) ? mb_substr(trim((string) $visitor['service']), 0, 120) ?: null : null,
+            'referral' => LeadReferral::fromUrl($visitor['page_url'] ?? null),
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
         ]);
@@ -560,5 +552,51 @@ final class WebsiteEnquiries
         ]);
 
         return $lead;
+    }
+
+    /**
+     * A form's fields sorted into the slots condensed() reads, by the site
+     * owner's own labels; what fits no slot comes back as a labelled line.
+     *
+     * @return array{0: array<string, string>, 1: list<string>}
+     */
+    private static function place(array $fields): array
+    {
+        $f = array_fill_keys(['rating', 'first', 'last', 'name', 'phone', 'email', 'date', 'time',
+            'line1', 'line2', 'city', 'state', 'zip', 'service', 'note'], '');
+        $other = [];
+
+        foreach ($fields as $label => $value) {
+            $label = (string) $label;
+            $value = trim((string) $value);
+            if ($value === '' || self::isRobotCheck($label)) {
+                continue;
+            }
+            $key = match (true) {
+                (bool) preg_match('/rating/i', $label) => 'rating',
+                (bool) preg_match('/e-?mail/i', $label) => 'email',
+                (bool) preg_match('/phone|mobile|cell|\btel/i', $label) => 'phone',
+                (bool) preg_match('/first.?name/i', $label) => 'first',
+                (bool) preg_match('/last.?name|surname/i', $label) => 'last',
+                (bool) preg_match('/^(full.?)?name$|your name/i', $label) => 'name',
+                (bool) preg_match('/date|day|when/i', $label) => 'date',
+                (bool) preg_match('/time|window/i', $label) => 'time',
+                (bool) preg_match('/line.?2|suite|apt|unit/i', $label) => 'line2',
+                (bool) preg_match('/city|town/i', $label) => 'city',
+                (bool) preg_match('/^state|province/i', $label) => 'state',
+                (bool) preg_match('/zip|postal/i', $label) => 'zip',
+                (bool) preg_match('/address|street/i', $label) => 'line1',
+                (bool) preg_match('/service|need|job|work/i', $label) => 'service',
+                (bool) preg_match('/note|message|comment|detail|describe|happened/i', $label) => 'note',
+                default => null,
+            };
+            if ($key === null || $f[$key] !== '') {
+                $other[] = '▫️ '.$label.': '.$value;   // unplaced, or a second of the same
+            } else {
+                $f[$key] = $value;
+            }
+        }
+
+        return [$f, $other];
     }
 }

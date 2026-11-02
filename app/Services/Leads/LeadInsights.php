@@ -336,6 +336,10 @@ class LeadInsights
             if ($isCall || $row->text === null) {
                 $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Call from the customer' : 'Call from the business';
             }
+            // A question tapped from the ad's suggestions shows interest, not their own words.
+            if ($row->is_ad_question) {
+                $who = 'Customer tapped a suggested question from the ad';
+            }
             $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $said));
             $saidSomething = $saidSomething || $row->participant === LeadConversation::FROM_CONSUMER;
         }

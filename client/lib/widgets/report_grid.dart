@@ -12,6 +12,7 @@ class GridColumn {
     this.pinned = false,
     this.main = false,
     this.headline = false,
+    this.help,
   });
 
   final String label;
@@ -29,6 +30,9 @@ class GridColumn {
 
   /// The figure at the right of a phone card's title, such as net profit.
   final bool headline;
+
+  /// What the column means, on hover over its heading.
+  final String? help;
 }
 
 /// One cell. [tone] colours a figure that means something (a loss in red);
@@ -117,7 +121,7 @@ class ReportGrid extends StatelessWidget {
     final natural = [
       for (final (i, c) in columns.indexed)
         (math.max(
-                  measure(c.label, head),
+                  measure(c.label, head) + (c.help == null ? 0 : 18),
                   [
                     for (final r in rows) measure(r[i].text, body),
                     if (total != null) measure(total![i].text, bold),
@@ -198,11 +202,29 @@ class ReportGrid extends StatelessWidget {
                     alignment: columns[i].numeric
                         ? Alignment.centerRight
                         : Alignment.centerLeft,
-                    child: Text(
-                      columns[i].label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: head,
+                    child: Tooltip(
+                      message: columns[i].help ?? '',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              columns[i].label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: head,
+                            ),
+                          ),
+                          if (columns[i].help != null) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: theme.colorScheme.outline,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

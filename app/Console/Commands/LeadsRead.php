@@ -30,7 +30,7 @@ class LeadsRead extends Command
             return self::SUCCESS;   // Bedrock sorts inline; nothing configured, nothing to do
         }
 
-        $leads = Lead::query()->withoutGlobalScopes()
+        $leads = Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')   // AI never reads a hidden lead
             ->when($this->option('lead') !== [],
                 fn ($q) => $q->whereIn('id', $this->option('lead')),
                 fn ($q) => $q->whereNull('classification')
@@ -157,7 +157,7 @@ class LeadsRead extends Command
             return false;
         }
 
-        return Lead::query()->withoutGlobalScopes()
+        return Lead::query()->withoutGlobalScopes()->whereNull('hidden_at')
             ->where('organization_id', $lead->organization_id)
             ->where('phone_digits', $lead->phone_digits)
             ->whereKeyNot($lead->getKey())

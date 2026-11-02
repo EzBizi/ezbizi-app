@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -359,7 +360,7 @@ class _StructureTabState extends State<StructureTab> {
   void _arrivedFromServer(Map<String, Offset> theirs, String theirOrientation) {
     // Ours, come back to us — either the arrangement we already knew about or
     // the one currently in flight. Nothing happened.
-    if (_sameArrangement(theirs, _lastSaved) &&
+    if (mapEquals(theirs, _lastSaved) &&
         theirOrientation == _lastSavedOrientation) {
       return;
     }
@@ -367,7 +368,7 @@ class _StructureTabState extends State<StructureTab> {
     final sent = _sent;
 
     if (sent != null &&
-        _sameArrangement(theirs, sent) &&
+        mapEquals(theirs, sent) &&
         theirOrientation == _sentOrientation) {
       _lastSaved = theirs;
       _lastSavedOrientation = theirOrientation;
@@ -391,24 +392,6 @@ class _StructureTabState extends State<StructureTab> {
       _lastSavedOrientation = theirOrientation;
       _rearrangedByAnother = true;
     });
-  }
-
-  /// Whether two arrangements say the same thing about the same boxes.
-  ///
-  /// Written out rather than reached for through a collection helper, because
-  /// what is being compared is the ANSWER rather than the object: a round trip
-  /// through the endpoint rounds every coordinate to a whole pixel and the
-  /// reader on this side rebuilds it as a double, so two maps that describe one
-  /// picture are equal here by construction. Anything unequal is a different
-  /// picture, which is the only question this is asked.
-  static bool _sameArrangement(Map<String, Offset> a, Map<String, Offset> b) {
-    if (a.length != b.length) return false;
-
-    for (final entry in a.entries) {
-      if (b[entry.key] != entry.value) return false;
-    }
-
-    return true;
   }
 
   @override

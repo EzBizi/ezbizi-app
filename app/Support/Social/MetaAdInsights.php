@@ -134,18 +134,6 @@ final class MetaAdInsights
         return $this->read($org, $from, $to, false);
     }
 
-    /**
-     * Reports' "where viewers were": one row per day x campaign x region. Never
-     * add these to rows() - they are the same money split another way. Only
-     * about the last 13 months exist; older dates return nothing, not zeros.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function regionRows(Organization $org, string $from, string $to): array
-    {
-        return $this->read($org, $from, $to, true);
-    }
-
     /** @return list<array<string, mixed>> */
     private function read(Organization $org, string $from, string $to, bool $byRegion): array
     {

@@ -202,10 +202,7 @@ final class WhatsAppPeriodReports
         } elseif ($word === 'SEPARATELY') {
             SendWhatsAppPeriodReports::dispatch($batch->getKey(), null, $approver->getKey());
         } else {
-            $consolidated = $this->files($batch)->last();
-            $batch->forceFill(['approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null,
-                'approved_revision' => $batch->revision, 'approved_sha256' => $consolidated?->sha256])->save();
-            SendWhatsAppPeriodReports::dispatch($batch->getKey(), $approver->getKey());
+            $this->approve($batch, $approver);
         }
 
         $label = $this->label($batch);
@@ -217,6 +214,26 @@ final class WhatsAppPeriodReports
         });
 
         return true;
+    }
+
+    /**
+     * Approve the revision the approver saw (its consolidated PDF's hash) and
+     * send exactly those files. From the WhatsApp reply or the Reports
+     * workspace. Inside the tenant.
+     */
+    public function approve(WhatsAppReportBatch $batch, User $approver): void
+    {
+        $consolidated = $this->files($batch)->last();
+        $batch->forceFill(['approved_at' => now(), 'approved_by' => $approver->getKey(), 'held_at' => null,
+            'approved_revision' => $batch->revision, 'approved_sha256' => $consolidated?->sha256])->save();
+        SendWhatsAppPeriodReports::dispatch($batch->getKey(), $approver->getKey());
+    }
+
+    /** Whether this person is in the approval group, who may APPROVE. */
+    public static function mayApprove(User $user): bool
+    {
+        return (bool) WhatsAppGroup::query()->where('purpose', self::APPROVAL)->first()
+            ?->members()->where('users.id', $user->getKey())->where('is_active', true)->exists();
     }
 
     private function approver(string $from): ?User

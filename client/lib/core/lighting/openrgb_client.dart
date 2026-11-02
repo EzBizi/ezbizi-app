@@ -131,8 +131,6 @@ OpenRgbController parseController(int index, Uint8List data) {
   );
 }
 
-String parseModeName(Uint8List raw) => _Reader(raw).str();
-
 /// RGBCONTROLLER_UPDATELEDS payload: every LED the same colour.
 Uint8List colorsPayload(int leds, int r, int g, int b, {int brightness = 100}) {
   int s(int c) => (c * brightness / 100).round().clamp(0, 255);

@@ -509,75 +509,180 @@ void main() {
     expect(windowOpened, isTrue);
   });
 
-  testWidgets('#7 Reviews draws meta.stats and Draft all saves drafts only', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1300, 1000);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
-    final sent = <String>[];
-    final api = ApiClient(
-      client: MockClient((r) async {
-        sent.add('${r.method} ${r.url.path}');
-        if (r.url.path.endsWith('/reviews')) {
-          return _json({
-            'data': [
-              for (final id in ['rev-1', 'rev-2'])
-                {
-                  'id': id,
-                  'reviewer_name': 'Dana P.',
-                  'rating': 5,
-                  'comment': 'On time.',
-                  'reviewed_at': '2026-10-20T09:00:00Z',
-                  'reply': null,
-                },
-            ],
-            'meta': {
-              'total': 2,
-              'unanswered': 2,
-              'stats': {
-                'histogram': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 2},
-                'replies': {
-                  'published': 0,
-                  'by_ai': 0,
-                  'drafts': 0,
-                  'failed': 0,
+  testWidgets(
+    '#7 Draft all sends 25 ids as 20 + 5, fills drafts, posts nothing',
+    (tester) async {
+      tester.view.physicalSize = const Size(1300, 1000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final ids = [for (var i = 1; i <= 25; i++) 'rev-$i'];
+      final sent = <String>[];
+      final batches = <List<dynamic>>[];
+      final api = ApiClient(
+        client: MockClient((r) async {
+          final path = r.url.path;
+          sent.add('${r.method} $path');
+          if (path.endsWith('/me')) {
+            return _json({
+              'data': {
+                'id': 'u-1',
+                'name': 'Dana',
+                'email': 'dana@brightside.example',
+                'permissions': ['reviews.view', 'reviews.manage'],
+                'modules': <dynamic>[],
+                'organization': {'id': 'org-1', 'name': 'Brightside'},
+                'scope': {
+                  'type': 'organization',
+                  'id': 'org-1',
+                  'label': 'Brightside',
+                  'path': ['Brightside'],
                 },
               },
-            },
-          });
-        }
-        if (r.url.path.endsWith('/reply/suggest')) {
-          return _json({
-            'data': {'body': 'Thanks, Dana!'},
-          });
-        }
-        return _json({'data': <String, dynamic>{}});
-      }),
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: EzBiziTheme.light(),
-        home: Scaffold(
-          body: ReviewsScreen(api: api, session: Session(api)),
+            });
+          }
+          if (path.endsWith('/reviews/replies/draft-batch')) {
+            final chunk = (jsonDecode(r.body) as Map)['ids'] as List;
+            batches.add(chunk);
+            return _json({
+              'data': [
+                for (final id in chunk)
+                  id == 'rev-7'
+                      ? {'id': id, 'ok': false, 'message': 'AI is resting.'}
+                      : {'id': id, 'ok': true, 'body': 'Thanks from $id'},
+              ],
+            });
+          }
+          if (path.endsWith('/reviews')) {
+            return _json({
+              'data': [
+                for (final id in ids)
+                  {
+                    'id': id,
+                    'reviewer_name': 'Dana P.',
+                    'rating': 5,
+                    'comment': 'On time.',
+                    'reviewed_at': '2026-10-20T09:00:00Z',
+                    'reply': null,
+                  },
+              ],
+              'meta': {
+                'total': 25,
+                'unanswered': 25,
+                'stats': {
+                  'histogram': {'1': 0, '2': 0, '3': 0, '4': 0, '5': 25},
+                  'replies': {
+                    'published': 0,
+                    'by_ai': 0,
+                    'drafts': 0,
+                    'failed': 0,
+                  },
+                },
+              },
+            });
+          }
+          return _json({'data': <String, dynamic>{}});
+        }),
+      );
+      final session = Session(api);
+      await tester.runAsync(() => session.adopt('tok'));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: Scaffold(
+            body: ReviewsScreen(api: api, session: session),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('cx-histogram')), findsOneWidget);
-    expect(find.text('Draft all 2'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('cx-draft-all')));
-    await tester.pumpAndSettle();
-    expect(
-      sent.where((c) => c == 'PUT /api/v1/reviews/rev-1/reply'),
-      hasLength(1),
+      expect(find.text('Draft all 25'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cx-draft-all')));
+      await tester.pumpAndSettle();
+
+      expect(batches.map((b) => b.length), [20, 5]);
+      expect([...batches[0], ...batches[1]], ids);
+      expect(
+        find.text("24 drafts ready · 1 couldn't be drafted"),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('review-draft-failed-rev-7')),
+        findsOneWidget,
+      );
+      expect(find.text('AI is resting.'), findsOneWidget);
+      // Only the failed one is still waiting for a draft.
+      expect(find.text('Draft all 1'), findsOneWidget);
+      expect(sent.where((c) => c.contains('/publish')), isEmpty);
+      expect(sent.where((c) => c.startsWith('PUT')), isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('review-row-rev-3')));
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(TextField, 'Thanks from rev-3'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('#7 Draft all is hidden without reviews.manage', (tester) async {
+    await _pumpWidget(
+      tester,
+      const ReviewStatsBand(stats: {}, toDraft: 3),
+      const Size(1200, 400),
     );
-    expect(
-      sent.where((c) => c == 'PUT /api/v1/reviews/rev-2/reply'),
-      hasLength(1),
+    expect(find.byKey(const ValueKey('cx-draft-all')), findsNothing);
+  });
+
+  testWidgets('#7 the monthly chart draws 12 bars to scale, average labelled', (
+    tester,
+  ) async {
+    final counts = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 5];
+    await _pumpWidget(
+      tester,
+      ReviewStatsBand(
+        stats: {
+          'monthly': [
+            for (var i = 0; i < 12; i++)
+              {
+                'month': '2025-${(i + 11) % 12 + 1}',
+                'count': counts[i],
+                'average': counts[i] == 0 ? null : (i == 11 ? 4.25 : 4.0),
+              },
+          ],
+        },
+      ),
+      const Size(1200, 400),
     );
-    expect(sent.where((c) => c.contains('/publish')), isEmpty);
+    final bars = find.byWidgetPredicate(
+      (w) =>
+          w.key is ValueKey<String> &&
+          (w.key! as ValueKey<String>).value.startsWith('cx-monthly-bar-'),
+    );
+    expect(bars, findsNWidgets(12));
+    double height(int i) =>
+        tester.getSize(find.byKey(ValueKey('cx-monthly-bar-$i'))).height;
+    const top = ReviewStatsBand.monthlyBarMax;
+    expect(height(10), closeTo(top, 0.01));
+    expect(height(0), closeTo(1, 0.01));
+    expect(height(5), closeTo(1 + (top - 1) / 2, 0.01));
+    expect(height(11), closeTo(1 + (top - 1) * 5 / 20, 0.01));
+    expect(find.text('Reviews a month · latest avg 4.3 ★'), findsOneWidget);
+  });
+
+  testWidgets('#7 no monthly array draws no chart', (tester) async {
+    for (final stats in [
+      <String, dynamic>{},
+      {'monthly': <dynamic>[]},
+      {'monthly': null},
+    ]) {
+      await _pumpWidget(
+        tester,
+        ReviewStatsBand(stats: stats),
+        const Size(1200, 400),
+      );
+      expect(find.byKey(const ValueKey('cx-monthly')), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('#4 add missing only: mode sent, removes none, has shown', (

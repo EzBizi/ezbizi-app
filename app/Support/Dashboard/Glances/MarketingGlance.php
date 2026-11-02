@@ -291,21 +291,6 @@ final class MarketingGlance extends DescribedGlance
         return SocialPostTarget::query()->whereIn('social_connection_id', $visible);
     }
 
-    /** @param  array<string, mixed>  $data */
-    private function payload(array $data): GlancePayload
-    {
-        return new GlancePayload(
-            key: $this->key(),
-            label: $this->label(),
-            presentation: $this->defaultPresentation(),
-            allowedPresentations: $this->allowedPresentations(),
-            snapshot: $this->snapshot(),
-            comingSoon: false,
-            options: [],
-            data: $data,
-        );
-    }
-
     /** @return array<string, int> */
     private function emptyBuckets(DashboardPeriod $period): array
     {

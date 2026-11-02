@@ -13,8 +13,9 @@ enum FieldPersonState {
   notReported('Not reported', EzBiziTheme.fieldRed, Tone.bad),
 
   /// Was reporting and has stopped: the server's `silent` flag, raised only
-  /// for a phone that should be reporting. Red, dashed ring.
-  lostSignal('Lost signal', EzBiziTheme.fieldRed, Tone.bad),
+  /// for a phone that should be reporting. Warning yellow, dashed ring
+  /// (Jose, 2026-10-30), so it no longer reads as not reported.
+  lostSignal('Lost signal', EzBiziTheme.fieldYellow, Tone.caution),
 
   /// Stopped too long (`stopped`). Purple.
   stopped('Stopped too long', EzBiziTheme.fieldPurple, Tone.review),
@@ -49,12 +50,23 @@ FieldPersonState fieldPersonState(Map<String, dynamic> p) {
   return FieldPersonState.ongoing;
 }
 
-/// Attention first (red, red dashed, purple, green, grey), then name.
+/// List order (Jose, 2026-10-30): reporting, stopped, lost signal, not
+/// reported, then offline; by name within each group.
+const fieldListOrder = [
+  FieldPersonState.ongoing,
+  FieldPersonState.stopped,
+  FieldPersonState.lostSignal,
+  FieldPersonState.notReported,
+  FieldPersonState.offline,
+];
+
 List<Map<String, dynamic>> fieldSortByAttention(
   Iterable<Map<String, dynamic>> people,
 ) => [...people]
   ..sort((a, b) {
-    final s = fieldPersonState(a).index - fieldPersonState(b).index;
+    final s =
+        fieldListOrder.indexOf(fieldPersonState(a)) -
+        fieldListOrder.indexOf(fieldPersonState(b));
     if (s != 0) return s;
     return '${(a['user'] as Map)['name']}'.toLowerCase().compareTo(
       '${(b['user'] as Map)['name']}'.toLowerCase(),

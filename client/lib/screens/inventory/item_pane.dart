@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 
 Map<String, dynamic>? inventoryMap(dynamic value) =>
@@ -421,25 +422,12 @@ class _ItemPaneState extends State<ItemPane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: widget.onBack,
-                ),
-              Expanded(
-                child: Text(
-                  name,
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          name,
+          showBack: widget.showBack,
+          onBack: widget.onBack,
+          ellipsis: true,
         ),
         Expanded(
           child: _loading

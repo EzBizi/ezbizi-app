@@ -52,7 +52,7 @@ const Map<String, Tour> reportsTours = {
     ],
   ),
   'reports/Performance': Tour(
-    version: 1,
+    version: 2,
     steps: [
       TourStep(
         anchor: 'call-report-period',
@@ -77,9 +77,11 @@ const Map<String, Tour> reportsTours = {
         body: 'Calls that ended without a job, and the reasons why.',
       ),
       TourStep(
-        anchor: 'labeller',
-        title: 'Reasons by',
-        body: 'Which AI read the calls for the Reason column.',
+        anchor: 'people-search',
+        title: 'Handles',
+        body:
+            'On People: find a person and set whether they handle New, '
+            'Existing or Both kinds of client.',
       ),
       TourStep(
         anchor: 'calls-search',
@@ -90,6 +92,28 @@ const Map<String, Tour> reportsTours = {
         anchor: 'call-report-sources',
         title: 'Sources',
         body: 'The Workiz accounts whose calls and jobs this report reads.',
+      ),
+    ],
+  ),
+  'reports/Workspace': Tour(
+    version: 1,
+    steps: [
+      TourStep(
+        anchor: 'workspace-list',
+        title: 'Pick a report',
+        body: 'Tables and daily texts. Search finds one by name.',
+      ),
+      TourStep(
+        anchor: 'workspace-place',
+        title: 'Where',
+        body: 'Which company or branch the report covers.',
+      ),
+      TourStep(
+        anchor: 'workspace-actions',
+        title: 'Approve, download or send',
+        body:
+            'Approve a weekly or monthly report, download it as PDF or Excel, '
+            'or send a daily text to your WhatsApp now.',
       ),
     ],
   ),

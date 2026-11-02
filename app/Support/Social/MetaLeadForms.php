@@ -5,6 +5,7 @@ namespace App\Support\Social;
 use App\Models\Lead;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -53,6 +54,18 @@ final class MetaLeadForms
         }
 
         $answers = $this->read($leadgenId, $page);
+        $form = [
+            'form_answers' => collect($answers)->reject(fn ($v, $k) => str_starts_with((string) $k, '@'))
+                ->map(fn ($v, $k) => ['label' => ucfirst(str_replace('_', ' ', rtrim((string) $k, '?'))), 'value' => (string) $v])->values()->all(),
+            'form_name' => $this->formName((string) ($value['form_id'] ?? ''), $page),
+            'referral' => LeadReferral::clean([
+                'source' => ($answers['@platform'] ?? null) === 'ig' ? 'Instagram ad' : 'Facebook ad',
+                'campaign_name' => $answers['@campaign_name'] ?? null,
+                'ad_name' => $answers['@ad_name'] ?? null,
+                'page_name' => $page->display_name,
+            ]),
+            'form_submitted_at' => isset($answers['@created_time']) ? Carbon::parse($answers['@created_time']) : now(),
+        ];
         $pick = fn (array $names) => collect($names)->map(fn ($n) => $answers[$n] ?? null)->first(fn ($v) => $v !== null && $v !== '');
 
         $phone = $pick(self::PHONE);
@@ -64,6 +77,32 @@ final class MetaLeadForms
         $rest = collect($answers)->except($known)
             ->map(fn ($answer, $question) => str_replace('_', ' ', ucfirst((string) $question)).': '.$answer)
             ->implode('; ');
+
+        /*
+         * The chat came first (A-1, 2026-10-29): the Messenger lead this form
+         * opened already exists and its first message carries the phone. The
+         * answers go on that lead instead of a second one.
+         */
+        $digits = $phone !== null && strlen((string) Lead::digits($phone)) >= 10 ? substr((string) Lead::digits($phone), -10) : null;
+        $chat = $digits === null ? null : Lead::query()
+            ->where('source', ($answers['@platform'] ?? null) === 'ig' ? Lead::SOURCE_INSTAGRAM : Lead::SOURCE_FACEBOOK)
+            ->where('lead_type', LeadNotificationText::META_TEXT)
+            ->where('created_at', '>=', now()->subDay())
+            ->whereHas('conversations', fn ($q) => $q->where('text', 'like', '%Phone number:%'))
+            ->latest()->get()
+            ->first(fn (Lead $l) => $l->conversations()->where('text', 'like', '%Phone number:%')->get()
+                ->contains(fn ($c) => MetaMessages::formPhone(['message' => ['text' => $c->text]]) === $digits));
+
+        if ($chat !== null) {
+            $chat->forceFill(array_filter([
+                'phone' => $chat->phone ?? $phone,
+                'phone_digits' => $chat->phone_digits ?? Lead::digits($phone),
+                'email' => $chat->email ?? $pick(self::EMAIL),
+                'postal_code' => $chat->postal_code ?? ($zip !== null && preg_match('/^\d{5}(?:-\d{4})?$/', $zip) === 1 ? $zip : null),
+            ], fn ($v) => $v !== null) + $form)->save();
+
+            return true;
+        }
 
         $lead = Lead::query()->create([
             'organization_id' => $page->organization_id,
@@ -83,6 +122,7 @@ final class MetaLeadForms
             'summary' => LeadNotificationText::clip($rest !== '' ? $rest : $page->display_name, 255),
             'status' => Lead::STATUS_NEW,
             'received_at' => isset($answers['@created_time']) ? Carbon::parse($answers['@created_time']) : now(),
+            ...$form,
         ]);
 
         $this->events->emitAfterCommit('lead.received', $lead, [
@@ -92,6 +132,18 @@ final class MetaLeadForms
         ]);
 
         return true;
+    }
+
+    /** The form's own name ("Chimney sweep - fall"), or null when Meta will not say. */
+    private function formName(string $formId, SocialConnection $page): ?string
+    {
+        if ($formId === '') {
+            return null;
+        }
+        $name = Http::timeout(self::TIMEOUT)->get('https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$formId,
+            ['fields' => 'name', 'access_token' => $page->credentials['access_token'] ?? ''])->json('name');
+
+        return is_string($name) && $name !== '' ? mb_substr($name, 0, 255) : null;
     }
 
     /**
@@ -104,7 +156,7 @@ final class MetaLeadForms
         $response = Http::timeout(self::TIMEOUT)->get(
             'https://graph.facebook.com/'.FacebookOAuth::GRAPH_VERSION.'/'.$leadgenId,
             [
-                'fields' => 'created_time,field_data,platform',
+                'fields' => 'created_time,field_data,platform,ad_name,adset_name,campaign_name',
                 'access_token' => $page->credentials['access_token'] ?? '',
             ],
         );
@@ -125,6 +177,8 @@ final class MetaLeadForms
         return $answers + array_filter([
             '@platform' => $response->json('platform'),
             '@created_time' => $response->json('created_time'),
+            '@ad_name' => $response->json('ad_name'),
+            '@campaign_name' => $response->json('campaign_name'),
         ]);
     }
 }

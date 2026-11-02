@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/status_pill.dart';
@@ -84,10 +85,6 @@ class _RoutingPaneState extends State<RoutingPane> {
     await _load();
   }
 
-  static String _ymd(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   Future<void> _load() async {
     final area = _area;
     if (area == null) {
@@ -101,7 +98,7 @@ class _RoutingPaneState extends State<RoutingPane> {
     });
     final response = await widget.api.get('/scheduling/routes', {
       'area_id': area,
-      'date': _ymd(_date),
+      'date': formatCalendarDay(_date),
     });
     if (!mounted || ticket != _request) return;
     setState(() {
@@ -208,14 +205,8 @@ class _RoutingPaneState extends State<RoutingPane> {
     _load();
   }
 
-  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-
   String get _dayLabel =>
-      '${_weekdays[_date.weekday - 1]} ${_months[_date.month - 1]} ${_date.day}';
+      '${shortWeekdays[_date.weekday - 1]} ${shortMonths[_date.month - 1]} ${_date.day}';
 
   static String _span(Map<String, dynamic> stop) => [
     if (stop['time'] case final String t when t.isNotEmpty) JobDotCard.clock(t),

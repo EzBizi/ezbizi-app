@@ -22,7 +22,12 @@ class MarketingReport extends StatefulWidget {
     required this.api,
     this.now,
     this.formats = DisplayFormats.fallback,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final DateTime Function()? now;
@@ -33,7 +38,17 @@ class MarketingReport extends StatefulWidget {
 }
 
 class _MarketingReportState extends State<MarketingReport> {
-  late DateSpan _span = _lastWeek(_today);
+  late DateSpan _span = widget.span ?? _lastWeek(_today);
+
+  @override
+  void didUpdateWidget(MarketingReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
+
   List<Map<String, dynamic>> _rows = const [];
   bool _loading = true;
   String? _error;
@@ -50,9 +65,6 @@ class _MarketingReportState extends State<MarketingReport> {
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   void initState() {
     super.initState();
@@ -66,8 +78,8 @@ class _MarketingReportState extends State<MarketingReport> {
     });
     final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/marketing', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
     });
     if (!mounted) return;
 
@@ -89,6 +101,24 @@ class _MarketingReportState extends State<MarketingReport> {
       minor is num ? formatMoney(minor.round()) : '—';
 
   static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
+
+  /// The explanation, one line per column heading (review item 15).
+  static const _help = {
+    'clicks':
+        'From Google Ads. A dash: no ad account linked to the branch yet, not zero.',
+    'conversions':
+        'From Google Ads (LS Ads is Local Services, PPC the other campaigns).',
+    'cost_minor':
+        "From Google Ads. Marked * when one of the branch's ad accounts could not be read, so too low.",
+    'leads': 'Leads in these dates.',
+    'leads_to_jobs': 'The share of these leads that became a job.',
+    'jobs_created': 'Workiz jobs booked in these dates.',
+    'done_jobs': 'Jobs marked Done in these dates.',
+    'gross_minor': 'Sales of the jobs marked Done in these dates.',
+    'profit_minor':
+        "An estimate: Workiz holds no job costs, so gross sales times the branch's P&L margin before marketing.",
+    'net_profit_minor': 'Profit (est.) minus the ad cost.',
+  };
 
   static const _columns = <(String, String)>[
     ('branch', 'Branch'),
@@ -154,6 +184,9 @@ class _MarketingReportState extends State<MarketingReport> {
 
     final leads = sum('leads');
     final jobs = sum('jobs_created');
+    // Leads → jobs as each row counts it: the jobs those leads became (review
+    // item 15), not every job created.
+    final leadJobs = sum('lead_jobs');
     final cost = sum('cost_minor');
     return {
       'branch': 'Total',
@@ -170,8 +203,9 @@ class _MarketingReportState extends State<MarketingReport> {
         'net_profit_minor',
       ])
         key: sum(key),
-      'leads_to_jobs': leads != null && leads > 0 && jobs != null
-          ? num.parse((jobs / leads * 100).toStringAsFixed(1))
+      'lead_jobs': leadJobs,
+      'leads_to_jobs': leads != null && leads > 0 && leadJobs != null
+          ? num.parse((leadJobs / leads * 100).toStringAsFixed(1))
           : null,
       'cost_per_job_minor': cost != null && jobs != null && jobs > 0
           ? (cost / jobs).round()
@@ -185,7 +219,6 @@ class _MarketingReportState extends State<MarketingReport> {
     final t = _totals;
     final net = t['net_profit_minor'];
     final leads = t['leads'];
-    final jobs = t['jobs_created'];
     // The Total row stays the whole report's; the search narrows the rows.
     final query = _query.trim().toLowerCase();
     final shown = query.isEmpty
@@ -208,8 +241,8 @@ class _MarketingReportState extends State<MarketingReport> {
           OverviewFigure(
             label: 'Leads',
             value: _count(leads),
-            note: jobs is num
-                ? '${_count(jobs)} became jobs'
+            note: t['lead_jobs'] is num
+                ? '${_count(t['lead_jobs'])} became jobs'
                       '${t['leads_to_jobs'] is num ? ' · ${t['leads_to_jobs']}%' : ''}'
                 : '',
           ),
@@ -265,6 +298,7 @@ class _MarketingReportState extends State<MarketingReport> {
                     key == 'leads' ||
                     key == 'jobs_created',
                 headline: key == 'net_profit_minor',
+                help: _help[key],
               ),
           ],
           rows: [
@@ -289,25 +323,22 @@ class _MarketingReportState extends State<MarketingReport> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ReportDates(
-          key: const ValueKey('tour-report-dates'),
-          initial: _span,
-          today: _today,
-          formats: widget.formats,
-          onChanged: (span) {
-            setState(() => _span = span);
-            _load();
-          },
-        ),
-        const SizedBox(height: 12),
+        if (widget.span == null) ...[
+          ReportDates(
+            key: const ValueKey('tour-report-dates'),
+            initial: _span,
+            today: _today,
+            formats: widget.formats,
+            onChanged: (span) {
+              setState(() => _span = span);
+              _load();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_error != null)
           ErrorNote(_error!)
         else if (_loading)
@@ -321,18 +352,6 @@ class _MarketingReportState extends State<MarketingReport> {
           )
         else
           ..._figuresAndTable(),
-        const SizedBox(height: 12),
-        Text(
-          'Jobs created are booked in these dates; done jobs and gross sales '
-          'are jobs marked Done in them. Workiz holds no job costs, so profit '
-          'is an estimate: gross sales times the branch\'s P&L margin before '
-          'marketing. Net profit is that minus the ad cost. Clicks, '
-          'conversions and cost come from Google Ads (LS Ads is Local '
-          'Services, PPC the other campaigns); a dash means no ad account is '
-          'linked to the branch yet, not zero. A cost marked * is too low: '
-          "one of the branch's ad accounts could not be read.",
-          style: muted,
-        ),
       ],
     );
   }

@@ -62,4 +62,24 @@ abstract class DescribedGlance implements Glance
     {
         return static::SNAPSHOT;
     }
+
+    /**
+     * The payload a live glance answers with: its own description around
+     * whatever data it measured.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function payload(array $data): GlancePayload
+    {
+        return new GlancePayload(
+            key: $this->key(),
+            label: $this->label(),
+            presentation: $this->defaultPresentation(),
+            allowedPresentations: $this->allowedPresentations(),
+            snapshot: $this->snapshot(),
+            comingSoon: false,
+            options: [],
+            data: $data,
+        );
+    }
 }

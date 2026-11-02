@@ -7,6 +7,7 @@ import '../core/module_screens.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
 import '../core/theme.dart';
+import '../widgets/date_range_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/status_pill.dart';
 import '../widgets/search_picker.dart';
@@ -18,9 +19,11 @@ import 'reports/marketing_report.dart';
 import 'reports/meta_ads_report.dart';
 import 'reports/overbooking_report_panel.dart';
 import 'reports/report_builder.dart';
+import 'reports/report_dates.dart';
 import 'reports/scoring_report.dart';
 import 'reports/thumbtack_report.dart';
 import 'reports/report_run_view.dart';
+import 'reports/report_workspace.dart';
 import 'reports/work_hours_report_panel.dart';
 
 /// Reports (spec `docs/superpowers/specs/2026-09-10-reports-design.md`).
@@ -49,7 +52,15 @@ import 'reports/work_hours_report_panel.dart';
 /// another person makes the first report, so it does not read as this reader's
 /// own dead end.
 class ReportsScreen extends StatefulWidget {
-  const ReportsScreen({super.key, required this.api, required this.session});
+  const ReportsScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    this.now = DateTime.now,
+  });
+
+  /// The clock, so a test can say what today is.
+  final DateTime Function() now;
 
   final ApiClient api;
   final Session session;
@@ -64,6 +75,22 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
+  /// ONE date range for every tab that reads one (review 2026-10-30, item
+  /// 14, Jose approved): Last 7 days on first open, then the person's last
+  /// choice for the session, carried between tabs.
+  late DateSpan _span = ReportDates.quick(_today)['1 week']!;
+
+  DateTime get _today => DateSpan.single(widget.now()).from;
+
+  /// The tabs that take a range; the list, Builder and Workspace do not.
+  static const _ranged = {
+    'Performance',
+    'Scoring',
+    'Marketing',
+    'Meta',
+    'Thumbtack',
+  };
+
   /// Reports · Builder · Experimental. The builder is a DESTINATION now
   /// rather than a mode the list drops into, which is what Jose asked for and
   /// is also the honest shape: building and running are different jobs, and
@@ -244,7 +271,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -300,6 +327,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ],
               ),
             ),
+            // Performance draws the same bar itself, with its Sources and
+            // refresh on the row.
+            if (_ranged.contains(
+                  _chip < labels.length ? labels[_chip].$1 : null,
+                ) &&
+                labels[_chip].$1 != 'Performance')
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: KeyedSubtree(
+                  // The tours' anchor, as each tab's own bar had it.
+                  key: const ValueKey('tour-report-dates'),
+                  child: ReportDates(
+                    // Re-made on a change, so its own copy follows this one.
+                    key: ValueKey(_span),
+                    inline: true,
+                    initial: _span,
+                    today: _today,
+                    formats:
+                        widget.session.me?.display ?? DisplayFormats.fallback,
+                    onChanged: (span) => setState(() => _span = span),
+                  ),
+                ),
+              ),
             if (!ownPadding) const SizedBox(height: 12),
             Expanded(
               child: ownPadding
@@ -382,6 +432,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Icons.leaderboard_outlined,
           () => ScoringReport(
             api: widget.api,
+            span: _span,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
             canWeigh:
                 widget.session.me?.can('reports.scoring_weights') ?? false,
@@ -396,6 +447,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Icons.campaign_outlined,
           () => MarketingReport(
             api: widget.api,
+            span: _span,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
         ),
@@ -407,6 +459,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Icons.campaign_outlined,
           () => MetaAdsReport(
             api: widget.api,
+            span: _span,
             canEdit: canBuildHere,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
@@ -418,8 +471,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Icons.request_quote_outlined,
           () => ThumbtackReport(
             api: widget.api,
+            span: _span,
             formats: widget.session.me?.display ?? DisplayFormats.fallback,
           ),
+        ),
+      // Pick a report, preview it, export, approve or send it (takeover
+      // row 10, UI queue 157, Jose 2026-10-29).
+      if (_mayOpen('workspace'))
+        (
+          'Workspace',
+          Icons.dashboard_customize_outlined,
+          () => ReportWorkspace(api: widget.api, session: widget.session),
         ),
       if (me != null)
         for (final module in me.reachableModules)
@@ -589,6 +651,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
           // A new link starts the report over on that call.
           key: ValueKey('performance-$_openCall'),
           openCall: _openCall,
+          span: _span,
+          onSpan: (span) => setState(() => _span = span),
+          // The same clock as the shared range, so "Last 7 days" names it.
+          now: widget.now,
           api: widget.api,
           canEdit: canExperiment,
           formats: widget.session.me?.display ?? DisplayFormats.fallback,

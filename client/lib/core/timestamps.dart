@@ -176,6 +176,14 @@ enum DatePart { month, day, year }
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
+/// Month and weekday abbreviations, read as `[month - 1]` and
+/// `[weekday - 1]`. English whatever the locale, for the reason above.
+const shortMonths = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+const shortWeekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 /// A calendar day as `YYYY-MM-DD`. Null when the string is empty or not a day.
 ///
 /// Rejects overflow (`2026-02-31`) rather than letting [DateTime] roll it into

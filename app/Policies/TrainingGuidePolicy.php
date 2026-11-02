@@ -4,11 +4,8 @@ namespace App\Policies;
 
 use App\Models\Company;
 use App\Models\Franchise;
-use App\Models\TrainingGuide;
-use App\Models\User;
-use App\Support\Access\Refusal;
-use App\Support\Scoping\OwnedScope;
-use Illuminate\Auth\Access\Response;
+use App\Policies\Concerns\AuthorizesCatalogPlace;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Who may read and write training guides.
@@ -30,142 +27,47 @@ use Illuminate\Auth\Access\Response;
  */
 class TrainingGuidePolicy
 {
-    public function viewAny(User $user): Response
+    use AuthorizesCatalogPlace;
+
+    // Looked up rather than read off a relation: TrainingGuide declares no
+    // `company()` or `franchise()` (see the model).
+    protected function companyOf(Model $row): ?Company
     {
-        return $user->hasPermission('training.manage')
-            ? Response::allow()
-            : Refusal::permission('see training');
+        return Company::find($row->company_id);
     }
 
-    public function view(User $user, TrainingGuide $guide): Response
+    protected function franchiseOf(Model $row): ?Franchise
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('see training');
-        }
-
-        return $this->within($user, $guide, 'see this guide');
+        return Franchise::find($row->franchise_id);
     }
 
-    public function create(User $user, ?Company $company, ?Franchise $franchise = null): Response
+    protected function permission(string $action): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('add a guide');
-        }
-
-        if ($company === null) {
-            return $this->createOnOrganization($user);
-        }
-
-        if ($franchise !== null) {
-            if ($franchise->company_id !== $company->getKey()) {
-                return Response::deny('That place is not part of this company.');
-            }
-
-            return $user->canActOnFranchise($franchise)
-                ? Response::allow()
-                : Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add a guide', $franchise->name);
-        }
-
-        return $user->canActOnCompany($company)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_COMPANY, 'add a guide', $company->name);
+        return 'training.manage';
     }
 
-    public function createOnOrganization(User $user): Response
+    protected function seeAnyAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('add a guide');
-        }
-
-        $organization = $user->organization;
-
-        return $user->canActOnOrganization($organization)
-            ? Response::allow()
-            : Refusal::noReach(
-                $user,
-                Refusal::AT_ORGANIZATION,
-                'add a guide',
-                $organization->name,
-            );
+        return 'see training';
     }
 
-    public function update(User $user, TrainingGuide $guide): Response
+    protected function addAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('change a guide');
-        }
-
-        return $this->within($user, $guide, 'change this guide', write: true);
+        return 'add a guide';
     }
 
-    public function delete(User $user, TrainingGuide $guide): Response
+    protected function seeAct(): string
     {
-        if (! $user->hasPermission('training.manage')) {
-            return Refusal::permission('delete a guide');
-        }
-
-        return $this->within($user, $guide, 'delete this guide', write: true);
+        return 'see this guide';
     }
 
-    private function within(User $user, TrainingGuide $guide, string $act, bool $write = false): Response
+    protected function changeAct(): string
     {
-        if ($guide->organization_id !== $user->organization_id) {
-            return Response::denyAsNotFound();
-        }
-
-        if ($write) {
-            return OwnedScope::mayWrite(
-                $user,
-                $guide->organization_id,
-                $guide->franchise_id !== null ? 'franchise' : ($guide->company_id !== null ? 'company' : 'organization'),
-                $guide->franchise_id ?? $guide->company_id,
-            ) ? Response::allow() : Response::deny('You cannot change this record from your current view or assignments.');
-        }
-        if ($guide->company_id === null) {
-            return Response::allow();
-        }
-
-        // Looked up rather than read off a `company()` relation: TrainingGuide
-        // declares none (see the model), and adding one is not this task's
-        // file to change.
-        $company = Company::find($guide->company_id);
-
-        if ($company === null || ! $this->canSeeCompany($user, $company)) {
-            return Refusal::noReach(
-                $user,
-                Refusal::AT_COMPANY,
-                $act,
-                $company?->name ?? 'that company',
-            );
-        }
-
-        if ($guide->franchise_id === null) {
-            return Response::allow();
-        }
-
-        $franchise = Franchise::find($guide->franchise_id);
-
-        if ($franchise === null) {
-            return Response::denyAsNotFound();
-        }
-
-        return $user->canActOnFranchise($franchise)
-            ? Response::allow()
-            : Refusal::noReach($user, Refusal::AT_FRANCHISE, $act, $franchise->name);
+        return 'change a guide';
     }
 
-    /**
-     * Soft company reach for reading the catalogue — franchise assignments see
-     * their company's General even though they cannot `canActOnCompany`.
-     */
-    private function canSeeCompany(User $user, Company $company): bool
+    protected function deleteAct(): string
     {
-        if ($user->canActOnCompany($company)) {
-            return true;
-        }
-
-        return $user->reachableFranchises()->contains(
-            fn (Franchise $f) => $f->company_id === $company->getKey(),
-        );
+        return 'delete a guide';
     }
 }

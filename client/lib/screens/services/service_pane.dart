@@ -6,6 +6,7 @@ import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/side_panel.dart';
 import '../inventory/item_pane.dart';
 import 'service_photo.dart';
 
@@ -183,25 +184,12 @@ class _ServicePaneState extends State<ServicePane> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: _busy ? null : widget.onBack,
-                ),
-              Expanded(
-                child: Text(
-                  _service['name'] as String? ?? 'Service',
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          _service['name'] as String? ?? 'Service',
+          showBack: widget.showBack,
+          onBack: _busy ? null : widget.onBack,
+          ellipsis: true,
         ),
         Expanded(
           child: SingleChildScrollView(

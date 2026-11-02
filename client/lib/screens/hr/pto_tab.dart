@@ -1897,17 +1897,13 @@ class PtoEvent {
 }
 
 abstract final class PtoMaths {
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
 
   static const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June', //
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
 
-  static String month(DateTime at) => _months[at.month - 1];
+  static String month(DateTime at) => shortMonths[at.month - 1];
 
   /// Today as a date with no time in it.
   static DateTime today() {

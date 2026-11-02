@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadReferral;
 use App\Support\Leads\LeadThread;
 use App\Support\Notifications\LeadNotificationText;
 use Illuminate\Http\Client\ConnectionException;
@@ -122,6 +123,21 @@ final class MetaMessages
 
         $lead = $this->lead($connection, $source, $senderId, $event);
 
+        // The ad they came from, on the first message that carries it.
+        if ($lead->referral === null && ($referral = self::referral($event, $source)) !== null) {
+            $lead->forceFill(['referral' => $referral])->save();
+        }
+
+        // Instagram gives a @handle and a picture; Messenger's PSID profile is
+        // refused without Business Asset User Profile Access (see nameOf).
+        if ($lead->handle === null && $connection->provider === SocialProvider::InstagramProfessional->value) {
+            $profile = $this->instagramProfile($connection, $senderId);
+            $lead->forceFill(array_filter([
+                'handle' => isset($profile['username']) ? '@'.$profile['username'] : null,
+                'avatar_url' => $profile['profile_pic'] ?? null,
+            ]))->save();
+        }
+
         // Meta's timestamp is milliseconds since the epoch. Read as seconds it
         // lands in the year 57000 and the thread sorts wrongly forever.
         $at = isset($event['timestamp'])
@@ -136,7 +152,38 @@ final class MetaMessages
             // null body and the right channel, which is honest - an empty
             // string would read as somebody having sent nothing.
             'text' => isset($message['text']) && $message['text'] !== '' ? (string) $message['text'] : null,
+            'is_ad_question' => self::adQuestion($event),
         ]);
+    }
+
+    /**
+     * The phone a lead-ad form put in the chat's first message ("Phone number:
+     * (973) 678-2560"), as its last ten digits, or null.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function formPhone(array $event): ?string
+    {
+        $text = (string) ($event['message']['text'] ?? '');
+
+        // The last ten digits: the form stores "+1973...", the chat says "(973) ...".
+        return preg_match('/^\s*Phone number:\s*(.+)$/mi', $text, $m) === 1 && strlen((string) Lead::digits($m[1])) >= 10
+            ? substr((string) Lead::digits($m[1]), -10) : null;
+    }
+
+    /**
+     * A question the customer TAPPED from a Click-to-Message ad (A-1,
+     * 2026-10-29). Meta sends it as their message: the first carries the ad's
+     * `referral`, a suggested question carries a `quick_reply` payload.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function adQuestion(array $event): bool
+    {
+        $message = (array) ($event['message'] ?? []);
+
+        return isset($message['quick_reply']) || isset($message['referral'])
+            || (($event['referral']['source'] ?? null) === 'ADS');
     }
 
     /**
@@ -175,6 +222,33 @@ final class MetaMessages
             }
 
             return $lead;
+        }
+
+        /*
+         * ONE PERSON, ONE LEAD (A-1, 2026-10-29). A lead ad that opens
+         * Messenger delivers twice: the form (MetaLeadForms, no sender id) and
+         * then this chat, whose first message repeats the answers. The form's
+         * lead becomes this chat's lead, so replies go through Messenger.
+         */
+        $digits = self::formPhone($event);
+        $form = $digits === null ? null : Lead::query()->withoutGlobalScopes()
+            ->where('organization_id', $connection->organization_id)
+            // Source, not connection: an Instagram form arrives through the
+            // Page, its DM through the Instagram account (A-1, "Pritesh").
+            ->where('source', $source)
+            ->where('lead_type', LeadNotificationText::META_FORM)
+            ->where('phone_digits', 'like', '%'.$digits)
+            ->where('created_at', '>=', now()->subDay())
+            ->latest()->first();
+
+        if ($form !== null) {
+            $form->forceFill([
+                'lead_type' => LeadNotificationText::META_TEXT,
+                'remote_id' => $senderId,
+                'contact_name' => $this->nameOf($connection, $senderId) ?? $form->contact_name,
+            ])->save();
+
+            return $form;
         }
 
         $lead = Lead::query()->withoutGlobalScopes()->create([
@@ -260,6 +334,45 @@ final class MetaMessages
         }
 
         return $adopted;
+    }
+
+    /**
+     * A Click-to-Messenger / Instagram ad's context as a lead referral, or null.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    public static function referral(array $event, string $source): ?array
+    {
+        $r = (array) ($event['referral'] ?? $event['message']['referral'] ?? []);
+        if (($r['source'] ?? null) !== 'ADS') {
+            return null;
+        }
+        $ad = (array) ($r['ads_context_data'] ?? []);
+
+        return LeadReferral::clean([
+            'source' => $source === Lead::SOURCE_INSTAGRAM ? 'Instagram ad' : 'Facebook ad',
+            'ad_name' => $ad['ad_title'] ?? ($r['ad_id'] ?? null),
+            'headline' => $ad['ad_title'] ?? null,
+            'page_url' => $ad['photo_url'] ?? ($ad['video_url'] ?? null),
+        ]);
+    }
+
+    /** @return array{username?: string, profile_pic?: string} */
+    public function instagramProfile(SocialConnection $connection, string $senderId): array
+    {
+        $token = $connection->credentials['access_token'] ?? null;
+        if (! is_string($token) || $token === '') {
+            return [];
+        }
+        try {
+            $p = (array) Http::timeout(self::TIMEOUT)->get('https://graph.instagram.com/v21.0/'.$senderId,
+                ['fields' => 'username,profile_pic', 'access_token' => $token])->json();
+        } catch (ConnectionException) {
+            return [];
+        }
+
+        return array_filter(['username' => $p['username'] ?? null, 'profile_pic' => $p['profile_pic'] ?? null],
+            fn ($v) => is_string($v) && $v !== '');
     }
 
     /**

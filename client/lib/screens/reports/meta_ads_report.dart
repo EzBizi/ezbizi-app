@@ -23,7 +23,12 @@ class MetaAdsReport extends StatefulWidget {
     this.canEdit = false,
     this.now,
     this.formats = DisplayFormats.fallback,
+    this.span,
   });
+
+  /// The range from the Reports screen's shared date bar (review item 14);
+  /// with it, this tab draws no date bar of its own.
+  final DateSpan? span;
 
   final ApiClient api;
   final bool canEdit;
@@ -35,10 +40,22 @@ class MetaAdsReport extends StatefulWidget {
 }
 
 class _MetaAdsReportState extends State<MetaAdsReport> {
-  late DateSpan _span = DateSpan(
-    DateTime(_today.year, _today.month - 1),
-    DateTime(_today.year, _today.month, 0),
-  );
+  late DateSpan _span =
+      widget.span ??
+      DateSpan(
+        DateTime(_today.year, _today.month - 1),
+        DateTime(_today.year, _today.month, 0),
+      );
+
+  @override
+  void didUpdateWidget(MetaAdsReport old) {
+    super.didUpdateWidget(old);
+    if (widget.span != null && widget.span != old.span) {
+      setState(() => _span = widget.span!);
+      _load();
+    }
+  }
+
   String? _state;
   String? _category;
   String? _region;
@@ -50,9 +67,6 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
 
   DateTime get _today => DateSpan.single((widget.now ?? DateTime.now)()).from;
 
-  static String _day(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   @override
   void initState() {
     super.initState();
@@ -62,8 +76,8 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
   Future<void> _load() async {
     final (from, to) = (_span.from, _span.to);
     final response = await widget.api.get('/reports/meta', {
-      'from': _day(from),
-      'to': _day(to),
+      'from': formatCalendarDay(from),
+      'to': formatCalendarDay(to),
       'state': ?_state,
       'category': ?_category,
       'region': ?_region,
@@ -109,29 +123,6 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
 
   static String _count(Object? n) => n is num ? formatCount(n.round()) : '—';
 
-  Widget _filter(
-    String label,
-    String? value,
-    Map<String, String> options,
-    ValueChanged<String?> pick,
-    Key key,
-  ) => DropdownMenu<String?>(
-    key: key,
-    enableFilter: true,
-    requestFocusOnTap: true,
-    label: Text(label),
-    initialSelection: value,
-    onSelected: (v) {
-      pick(v);
-      _load();
-    },
-    dropdownMenuEntries: [
-      const DropdownMenuEntry(value: null, label: 'All'),
-      for (final o in options.entries)
-        DropdownMenuEntry(value: o.key, label: o.value),
-    ],
-  );
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -168,39 +159,30 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ReportDates(
-          key: const ValueKey('tour-report-dates'),
-          initial: _span,
-          today: _today,
-          formats: widget.formats,
-          onChanged: (span) {
-            setState(() => _span = span);
-            _load();
-          },
-        ),
-        const SizedBox(height: 12),
+        if (widget.span == null) ...[
+          ReportDates(
+            key: const ValueKey('tour-report-dates'),
+            initial: _span,
+            today: _today,
+            formats: widget.formats,
+            onChanged: (span) {
+              setState(() => _span = span);
+              _load();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         Wrap(
           spacing: 12,
           runSpacing: 12,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            // Standard field height, as tall as Leads search (Jose, 2026-10-27).
-            SizedBox(
-              width: 240,
-              child: TextField(
-                key: const Key('meta-ads-report-search'),
-                textAlignVertical: TextAlignVertical.center,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  prefixIconConstraints: BoxConstraints(minWidth: 36),
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Find a campaign',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (v) => setState(() => _query = v),
-              ),
+            reportSearch(
+              key: const Key('meta-ads-report-search'),
+              hint: 'Find a campaign',
+              onChanged: (v) => setState(() => _query = v),
             ),
-            _filter(
+            reportFilter(
               'State',
               _state,
               {
@@ -209,15 +191,17 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
               },
               (v) => _state = v,
               const ValueKey('meta-state'),
+              _load,
             ),
-            _filter(
+            reportFilter(
               'Category',
               _category,
               {...categories, 'none': 'Uncategorised'},
               (v) => _category = v,
               const ValueKey('meta-category'),
+              _load,
             ),
-            _filter(
+            reportFilter(
               'Where viewers were',
               _region,
               {
@@ -226,6 +210,7 @@ class _MetaAdsReportState extends State<MetaAdsReport> {
               },
               (v) => _region = v,
               const ValueKey('meta-region'),
+              _load,
             ),
           ],
         ),

@@ -54,11 +54,6 @@ final class BusinessProfileHours implements HoursDestination
         return 'Google Business Profile';
     }
 
-    public function placeClass(): string
-    {
-        return BusinessLocation::class;
-    }
-
     /** @param  BusinessLocation  $place */
     public function placeName(Model $place): string
     {

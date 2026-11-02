@@ -86,4 +86,34 @@ class BusinessProfileListingTest extends TestCase
         $this->postJson("/api/v1/business-profile/locations/{$from->id}/services/copy", ['targets' => [$to->id], 'apply' => true])
             ->assertStatus(409);
     }
+
+    /** A1 Leads takeover #43: eKomi reviews land in Reviews under their own source and cannot be answered. */
+    public function test_ekomi_reviews_sync_into_reviews_and_count_as_their_own_source(): void
+    {
+        \Illuminate\Support\Facades\Http::fake(['api.ekomi.de/*' => \Illuminate\Support\Facades\Http::response([
+            ['order_id' => 'A1', 'rating' => 5, 'review' => 'Great sweep.', 'submitted' => now()->subDay()->timestamp],
+            ['order_id' => 'A2', 'rating' => 2, 'review' => 'Late.', 'submitted' => now()->subDays(2)->timestamp],
+        ])]);
+        $connection = $this->inTenant($this->t['org'], function () {
+            $c = new \App\Models\SocialConnection;
+            $c->forceFill(['organization_id' => $this->t['org']->id, 'scope_type' => 'company', 'scope_id' => $this->t['company']->id,
+                'provider' => 'ekomi', 'remote_id' => '123', 'display_name' => 'eKomi']);
+            $c->connect(['refresh_token' => 'pw', 'shop_id' => '123', 'password' => 'pw']);
+            $c->save();
+
+            return $c;
+        });
+
+        $this->assertSame(2, $this->inTenant($this->t['org'], fn () => app(\App\Services\Reviews\EkomiReviews::class)->sync($connection)));
+        $this->inTenant($this->t['org'], fn () => app(\App\Services\Reviews\EkomiReviews::class)->sync($connection));
+
+        $ekomi = collect($this->getJson('/api/v1/reviews/sources')->assertOk()->json('data'))->firstWhere('source', 'ekomi');
+        $this->assertTrue($ekomi['connected']);
+        $this->assertSame(2, $ekomi['count'], 'once, though synced twice');
+        $this->assertEquals(3.5, $ekomi['average']);
+
+        $id = Review::withoutGlobalScopes()->where('remote_name', 'ekomi/A2')->value('id');
+        $this->getJson("/api/v1/reviews/{$id}")->assertOk()->assertJsonPath('data.source', 'ekomi');
+        $this->postJson("/api/v1/reviews/{$id}/reply/publish")->assertStatus(409);
+    }
 }

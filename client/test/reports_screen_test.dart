@@ -317,32 +317,24 @@ void main() {
     // UI queue 60 the page carries how many, on Sources, and an amber line
     // when one did not answer; Sources names them.
     expect(find.text('Sources · 2 Workiz accounts'), findsOneWidget);
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+    expect(find.widgetWithText(Chip, 'Nationwide'), findsNothing);
 
     await _openSources(tester);
     expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
   });
 
-  testWidgets('a connected branch can be taken back from this screen', (
+  testWidgets('Sources names the branches but cannot disconnect one', (
     tester,
   ) async {
-    // Workiz is a data source, and the shared connections list excludes those
-    // on purpose. So this screen is the only place the id is published, and
-    // without this chip a credential that can act on A-1's jobs could be
-    // connected and never removed.
-    String? deleted;
-
+    // A one-click disconnect inside a report is how a branch's data goes by
+    // accident (UI-UX, 2026-10-30): Settings › Integrations, which lists
+    // data sources, is where a Workiz account is taken back.
+    var deleted = false;
     await _pumpReports(
       tester,
       reports: [_report],
       onRequest: (request) {
-        if (request.method == 'DELETE' &&
-            request.url.path.contains('/social/connections/')) {
-          deleted = request.url.path.split('/').last;
-          return _json({
-            'data': {'id': deleted, 'problems': []},
-          });
-        }
+        if (request.method == 'DELETE') deleted = true;
         if (request.url.path.contains('experimental/calls')) {
           return _json(_callDay());
         }
@@ -352,32 +344,165 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
     await tester.pumpAndSettle();
-
-    // The chips are behind Sources now: a row of them above the table read
-    // as a filter, and they are setup rather than part of the report.
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+    expect(find.widgetWithText(Chip, 'Nationwide'), findsNothing);
 
     await _openSources(tester);
-
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
-
-    await tester.tap(
+    // A tick per account (review item 12): leaving one out, never a ✕.
+    expect(find.widgetWithText(CheckboxListTile, 'Nationwide'), findsOneWidget);
+    expect(
       find.descendant(
-        of: find.widgetWithText(InputChip, 'Nationwide'),
+        of: find.widgetWithText(CheckboxListTile, 'Nationwide'),
         matching: find.byIcon(Icons.close),
       ),
+      findsNothing,
+    );
+    expect(
+      find.text('Manage connections in Settings › Integrations'),
+      findsOneWidget,
+    );
+    expect(deleted, isFalse);
+  });
+
+  // Review 2026-10-30, item 12: ticks are this person's, saved on the server.
+  testWidgets('unticking an account saves it for this person and says so', (
+    tester,
+  ) async {
+    final excluded = <String>[];
+    Map<String, dynamic> day() {
+      final d = {..._callDay()};
+      d['workiz_accounts'] = [
+        for (final a in _callDay()['workiz_accounts'] as List)
+          {...(a as Map), 'included': !excluded.contains(a['id'])},
+      ];
+      return d;
+    }
+
+    String? sent;
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'PUT' &&
+            request.url.path.endsWith('/reports/experimental/sources')) {
+          sent = request.body;
+          excluded
+            ..clear()
+            ..addAll(
+              ((jsonDecode(request.body) as Map)['excluded'] as List)
+                  .cast<String>(),
+            );
+          return _json({'data': []});
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(day());
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    await _openSources(tester);
+
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Nationwide'));
+    await tester.pumpAndSettle();
+    expect(sent, '{"excluded":["id-Nationwide"]}');
+    expect(
+      find.text(
+        'Unticking leaves an account out of your figures. It stays '
+        'connected.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('call-report-left-out')), findsOneWidget);
+    expect(find.text('1 Workiz account left out'), findsOneWidget);
+    expect(find.text('Sources · 1 of 2 accounts'), findsOneWidget);
+  });
+
+  testWidgets('every account unticked is an empty state, never zeros', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/calls')) {
+          final d = {..._callDay()};
+          d['workiz_accounts'] = [
+            for (final a in _callDay()['workiz_accounts'] as List)
+              {...(a as Map), 'included': false},
+          ];
+          return _json(d);
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('call-report-none-included')), findsOneWidget);
+    expect(find.text('No accounts included'), findsOneWidget);
+    expect(find.text('Choose sources'), findsOneWidget);
+  });
+
+  // Review item 14: one bar for every tab, Last 7 days first, carried along.
+  testWidgets('the date range is one bar, kept between tabs', (tester) async {
+    final asked = <Map<String, String>>[];
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [
+        'reports.view',
+        'reports.build',
+        'reports.library.view',
+        'reports.experimental.view',
+        'reports.scoring.view',
+      ],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/calls')) {
+          asked.add(request.url.queryParameters);
+          return _json(_callDay());
+        }
+        if (request.url.path.endsWith('/reports/scoring')) {
+          return _json({
+            'data': {'people': []},
+          });
+        }
+        return null;
+      },
+    );
+
+    // The list takes no range.
+    expect(find.byKey(const Key('date-range-button')), findsNothing);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
+    final first = asked.last;
+    expect(
+      DateTime.parse(first['to']!).difference(DateTime.parse(first['from']!)),
+      const Duration(days: 6),
+      reason: 'Last 7 days on first open',
+    );
+
+    // The quick buttons scroll sideways when the row is short of room.
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('report-dates-Yesterday')),
     );
     await tester.pumpAndSettle();
-
-    // Through the confirmation, which is the only way it goes now.
-    await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
+    await tester.tap(find.byKey(const ValueKey('report-dates-Yesterday')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('disconnect-code')), '123456');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('disconnect-confirm')));
-    await tester.pumpAndSettle();
+    final yesterday = asked.last;
+    expect(yesterday['from'], yesterday['to']);
 
-    expect(deleted, 'id-Nationwide');
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Scoring'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
+    await tester.pumpAndSettle();
+    expect(asked.last, yesterday, reason: 'the range carried between tabs');
+    expect(find.byKey(const Key('date-range-button')), findsOneWidget);
   });
 
   testWidgets('an account with no API subscription says so, permanently', (
@@ -437,51 +562,6 @@ void main() {
     expect(find.text('—'), findsWidgets);
     expect(find.text('0:00'), findsNothing);
     expect(find.text('0%'), findsNothing);
-  });
-
-  testWidgets('disconnecting a branch asks first', (tester) async {
-    // It used to go on one click. Undoing it needs that branch's Workiz token
-    // pasted again, and the token cannot be read back out of the app.
-    var deleted = false;
-
-    await _pumpReports(
-      tester,
-      reports: [_report],
-      onRequest: (request) {
-        if (request.method == 'DELETE') {
-          deleted = true;
-          return _json({
-            'data': {'id': 'x', 'problems': []},
-          });
-        }
-        if (request.url.path.contains('experimental/calls')) {
-          return _json(_callDay());
-        }
-        return null;
-      },
-    );
-
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Performance'));
-    await tester.pumpAndSettle();
-
-    await _openSources(tester);
-
-    await tester.tap(
-      find.descendant(
-        of: find.widgetWithText(InputChip, 'Nationwide'),
-        matching: find.byIcon(Icons.close),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(deleted, isFalse, reason: 'the X disconnected without asking');
-    expect(find.text('Disconnect Nationwide?'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(TextButton, 'Keep'));
-    await tester.pumpAndSettle();
-
-    expect(deleted, isFalse);
-    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (

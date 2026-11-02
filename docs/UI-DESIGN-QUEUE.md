@@ -46,6 +46,10 @@ live in `docs/previews/`. Jose answers by number.
 
 ---
 
+## Reports review + Performance counts/handles (2026-10-30)
+- Galleries: docs/previews/performance-counts-handles-layouts.html (912ce12a6), docs/previews/reports-ui-review-2026-10-30.html (b0888d292)
+- APPROVED by Jose 10-30: "As you recommend, improve and make the changes, ui-ux wise as well." = A1 + B1 + phone 4, plus review items 1-15. Built by the Reports session.
+
 ## Settled rules
 
 **No answer in 10 minutes means the recommendation.** Jose, 2026-10-06: *"from now on just always go with ur
@@ -2964,6 +2968,34 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 **Why a counting ratchet beat a rule.** A rule saying "read colours from the theme" had been in
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
+
+### 163 · Business Profile: WhatsApp links in bulk (url_whatsapp) — **sent 2026-10-30 — Jose: "as u recommend" (1 + phone 4)** (`docs/previews/gbp-whatsapp-links-layouts.html`)
+
+Google/Leads asked; endpoints GET business-profile/whatsapp-links + POST .../apply. Recommended 1 + phone 4: bulk action beside Hours in bulk; state chips (Missing/Different/Same/Can't reach) select their rows; Different rows unticked by default with an amber Replace and a preview warning; Can't reach not tickable; side-panel preview, per-row ✓/✗ with retry.
+
+### 162 · Leads: search, status and filters in the list sidebar — **sent 2026-10-30 — Jose: "That's good" (1 + phone 4)** (`docs/previews/leads-list-filters-layouts.html`)
+
+Jose on 161: likes it, except search/status/filters belong on the list sidebar, not the title row. Recommended 1 + phone 4: search + status + Filters on one row, quick filters one scrolling row below; title row back to title only.
+
+### 161 · Leads: details column folded into the header, tighter list rows — **sent 2026-10-29 — Jose: "as u recommend" (1 + T1 + phone 4)** (`docs/previews/leads-header-facts-layouts.html`)
+
+Jose on 0.0.0507: the CONTACT / JOB column is pointless and duplicates the header (phone twice); list avatars sit at the top and name/chips wrap. Recommended 1 + phone 4: one labelled facts line under the name, each field once, form answers behind a fold that skips repeated answers; rows centre the avatar, name ellipsizes before chips wrap.
+
+### 160 · Leads threads: WhatsApp phone-echo + media, Hidden tab, merged ad form — **sent 2026-10-29 — Jose: "as u recommend" (A1, B1, C1 + phone 4)** (`docs/previews/leads-whatsapp-hidden-form-layouts.html`)
+
+Desk briefs (owners Meta + Leads). A1 Sent-from-phone line + streamed media bubbles; B1 Hidden table + side panel (leads.hide / leads.hidden.view); C1 form answers in the 159 details column + one system line (all recommended); 2-3 alternatives each; phones 4 with 1.
+
+### 159 · Leads: source colour chips + per-source contact details — **sent 2026-10-29 — Jose: "as u recommend" (1 and 4)** (`docs/previews/leads-source-details-layouts.html`)
+
+Desk/Leads sources audit with Google API + Meta; folds in 158 ad-question bubble. 1 = chip + avatar row, rich header, details column (recommended); 2 = colour edge; 3 = details card; phones 4-6.
+
+### 158 · Leads threads: Meta ad-question bubble — **sent 2026-10-29 — Jose: "Yea" (1 and 4)** (`docs/previews/leads-ad-question-layouts.html`)
+
+Desk/Meta cb4c94743: ad_question flag. 1 = outlined dashed bubble + tag (recommended); 2 = system line; 3 = edge + tag; phones 4-6.
+
+### 157 · Reports workspace (A1 Leads takeover row 10) — **sent 2026-10-29 — Jose: "As u recommend" (1 and 4)** (`docs/previews/reports-workspace-layouts.html`)
+
+Reports brief: report picker, place, dates, preview, PDF/Excel, draft→approved→sent, Send to WhatsApp + scheduled rules. 1 = list + preview + actions column (recommended); 2 = tabs; 3 = steps; phones 4-6. Reports builds.
 
 ### 156 · Leads › Manage › Connections (all lead sources) — **sent 2026-10-29 — Jose: "as u recommend on everything" (1 and 4)** (`docs/previews/leads-connections-sources-layouts.html`)
 

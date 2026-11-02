@@ -9,6 +9,7 @@ use App\Models\ReportScoringWeight;
 use App\Models\WorkizCall;
 use App\Support\Reports\Experimental\PerformancePeople;
 use App\Support\Reports\Experimental\RingCentralCallLog;
+use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Reports\ReportView;
 use App\Support\Reports\Scoring\ScoringWeights;
 use App\Support\Tenancy\TenantContext;
@@ -232,6 +233,9 @@ class ScoringReportController extends Controller
             'min_calls_to_rank' => self::MIN_CALLS,
             'weights' => $weights,
             'people' => $people,
+            // Its jobs are read from these, the reader's ticked ones only, so
+            // the page can say which are left out (UI-UX, 2026-10-30).
+            'workiz_accounts' => app(WorkizJobs::class)->allAccounts(),
         ]]);
     }
 }

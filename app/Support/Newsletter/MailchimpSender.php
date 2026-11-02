@@ -21,7 +21,7 @@ use App\Models\SocialConnection;
  * instruction, which is why it is allowed — and it is worth naming rather than
  * leaving as a side effect nobody wrote down.
  */
-final class MailchimpSender implements NewsletterSender
+final class MailchimpSender
 {
     public function __construct(private readonly MailchimpClient $mailchimp) {}
 

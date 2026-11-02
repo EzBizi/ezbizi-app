@@ -30,11 +30,17 @@ class WhatsAppContact extends Model implements HoldsPersonalData, StatesRetentio
 
     public const KIND_HIRING = LeadNotificationText::WHATSAPP_HIRING;
 
-    protected $fillable = ['organization_id', 'phone_number_id', 'counterparty', 'kind', 'lead_id', 'classified_at'];
+    protected $fillable = ['organization_id', 'phone_number_id', 'counterparty', 'profile_name', 'saved_name', 'referral', 'kind', 'lead_id', 'classified_at'];
 
     protected function casts(): array
     {
-        return ['classified_at' => 'datetime'];
+        return ['classified_at' => 'datetime', 'referral' => 'array'];
+    }
+
+    /** The name to show: the one the business saved, else their own WhatsApp name. */
+    public function name(): ?string
+    {
+        return $this->saved_name ?: ($this->profile_name ?: null);
     }
 
     public static function retention(): RetentionPolicy
@@ -58,6 +64,15 @@ class WhatsAppContact extends Model implements HoldsPersonalData, StatesRetentio
         return [
             new PersonalDataEntry('counterparty', PersonalDataEntry::CONTACT,
                 'Their WhatsApp number, the address the conversation is with.',
+                Erasure::erase()),
+            new PersonalDataEntry('profile_name', PersonalDataEntry::IDENTITY,
+                'The name they set on their own WhatsApp profile.',
+                Erasure::erase()),
+            new PersonalDataEntry('saved_name', PersonalDataEntry::IDENTITY,
+                'The name the business saved for them in the WhatsApp Business app.',
+                Erasure::erase()),
+            new PersonalDataEntry('referral', PersonalDataEntry::ACTIVITY,
+                'The Click-to-WhatsApp ad or post they came from.',
                 Erasure::erase()),
         ];
     }

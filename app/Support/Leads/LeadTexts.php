@@ -8,7 +8,6 @@ use App\Models\PhoneMessage;
 use App\Models\PhoneNumber;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
-use App\Support\Phone\SmsCompliance;
 use App\Support\Phone\TwilioGateway;
 use RuntimeException;
 use Throwable;
@@ -30,7 +29,6 @@ final class LeadTexts
 
     public function __construct(
         private readonly TwilioGateway $twilio,
-        private readonly SmsCompliance $compliance,
         private readonly LeadThread $thread,
         private readonly AuditLogger $audit,
     ) {}
@@ -124,7 +122,7 @@ final class LeadTexts
     private function line(Lead $lead): ?PhoneNumber
     {
         $cleared = PhoneNumber::query()->where('sms_outbound_allowed', true)->get()
-            ->filter(fn (PhoneNumber $n) => $this->compliance->allowsOutbound($n));
+            ->filter(fn (PhoneNumber $n) => $n->sms_outbound_allowed);
         $companyId = $lead->company_id ?? $lead->franchise?->company_id;
 
         return $cleared->first(fn ($n) => $n->scope_type === PhoneNumber::SCOPE_FRANCHISE && $lead->franchise_id !== null && $n->scope_id === $lead->franchise_id)

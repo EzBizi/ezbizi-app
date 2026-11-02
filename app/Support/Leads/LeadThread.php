@@ -59,8 +59,8 @@ final class LeadThread
 
         $row = LeadConversation::create([
             'organization_id' => $lead->organization_id,
-            'lead_id'         => $lead->getKey(),
-            'remote_id'       => $remoteId,
+            'lead_id' => $lead->getKey(),
+            'remote_id' => $remoteId,
             ...$fields,
         ]);
 
@@ -85,12 +85,14 @@ final class LeadThread
 
             $this->events->emitAfterCommit('lead.contact_received', $lead, [
                 'after' => [
-                    'kind'         => $lead->kind(),
-                    'channel'      => $row->channel,
-                    'occurred_at'  => $row->occurred_at,
-                    'preview'      => self::preview($row),
+                    'kind' => $lead->kind(),
+                    'channel' => $row->channel,
+                    'occurred_at' => $row->occurred_at,
+                    'preview' => self::preview($row),
                     'contact_name' => $lead->contact_name,
-                    'phone'        => $lead->phone,
+                    'phone' => $lead->phone,
+                    // Tapped from a Click-to-Message ad, not typed (A-1, 2026-10-29).
+                    'ad_question' => (bool) $row->is_ad_question,
                 ],
             ]);
 
@@ -99,16 +101,22 @@ final class LeadThread
             $callOnACallLead = $lead->source === Lead::SOURCE_LOCAL_SERVICES
                 && $lead->lead_type === 'PHONE_CALL';
 
-            if ($hadConversation && ! $callOnACallLead) {
+            // A call that connected was handled, so it is not a reply waiting
+            // for an answer (Jose, 2026-10-30: the closed-office text went out
+            // after an answered call). A missed call (no duration) still is.
+            $answeredCall = $row->channel === LeadConversation::CHANNEL_PHONE_CALL && (int) $row->duration_ms > 0;
+
+            // A second suggested question tapped from the ad is not a reply either.
+            if ($hadConversation && ! $callOnACallLead && ! $answeredCall && ! $row->is_ad_question) {
                 $this->events->emitAfterCommit('lead.customer_replied', $lead, [
                     'after' => [
-                        'source'       => $lead->source,
-                        'kind'         => $lead->kind(),
-                        'channel'      => $row->channel,
-                        'occurred_at'  => $row->occurred_at,
-                        'preview'      => self::preview($row),
+                        'source' => $lead->source,
+                        'kind' => $lead->kind(),
+                        'channel' => $row->channel,
+                        'occurred_at' => $row->occurred_at,
+                        'preview' => self::preview($row),
                         'contact_name' => $lead->contact_name,
-                        'phone'        => $lead->phone,
+                        'phone' => $lead->phone,
                     ],
                 ]);
             }
@@ -165,9 +173,9 @@ final class LeadThread
             ->first();
 
         $lead->forceFill([
-            'last_contact_at'      => $last?->occurred_at,
+            'last_contact_at' => $last?->occurred_at,
             'last_contact_channel' => $last?->channel,
-            'last_contact_from'    => $lastHuman?->participant,
+            'last_contact_from' => $lastHuman?->participant,
             'last_contact_preview' => $last !== null ? self::preview($last) : null,
         ])->save();
 
@@ -196,16 +204,16 @@ final class LeadThread
 
         $lead->forceFill([
             'classification' => $read['classification'],
-            'summary'        => $read['summary'] !== '' ? $read['summary'] : $lead->summary,
-            'classified_at'  => now(),
+            'summary' => $read['summary'] !== '' ? $read['summary'] : $lead->summary,
+            'classified_at' => now(),
         ])->save();
 
         $this->events->emitAfterCommit('lead.classified', $lead, [
             'after' => [
                 'classification' => $lead->classification,
-                'summary'        => $lead->summary,
-                'contact_name'   => $lead->contact_name,
-                'phone'          => $lead->phone,
+                'summary' => $lead->summary,
+                'contact_name' => $lead->contact_name,
+                'phone' => $lead->phone,
             ],
         ]);
     }

@@ -6,6 +6,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 
 /// One guide or test's own audience — `GET /training/dashboard/{id}/people`
@@ -123,30 +124,16 @@ class _DashboardPaneState extends State<DashboardPane> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(widget.showBack ? 8 : 20, 12, 20, 8),
-          child: Row(
-            children: [
-              if (widget.showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to the list',
-                  onPressed: widget.onBack,
-                ),
-              Expanded(
-                child: Text(
-                  widget.title,
-                  style: theme.textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
+        paneHeader(
+          context,
+          widget.title,
+          showBack: widget.showBack,
+          onBack: widget.onBack,
+          ellipsis: true,
         ),
         if (!_assigning) ...[
           Padding(

@@ -157,7 +157,7 @@ class PanelHeader extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (action == null) return text;

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -60,25 +61,9 @@ const _presets = {'7': 7, '28': 28, '90': 90};
 
 const _monthChoices = [1, 3, 6, 12];
 
-const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _monthNames = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
 /// "Sat 17 Oct".
 String _day(DateTime d) =>
-    '${_weekdayNames[d.weekday - 1]} ${d.day} ${_monthNames[d.month - 1]}';
+    '${shortWeekdays[d.weekday - 1]} ${d.day} ${shortMonths[d.month - 1]}';
 
 /// 938, 2.1k, 48.2k, 1.2M.
 String compactCount(int n) {
@@ -922,15 +907,5 @@ class _DailyBars extends CustomPainter {
 
   @override
   bool shouldRepaint(_DailyBars old) =>
-      old.ink != ink ||
-      old.track != track ||
-      old.values.length != values.length ||
-      !_same(old.values, values);
-
-  static bool _same(List<int> a, List<int> b) {
-    for (var i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
+      old.ink != ink || old.track != track || !listEquals(old.values, values);
 }

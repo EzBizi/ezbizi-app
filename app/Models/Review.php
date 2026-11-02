@@ -94,8 +94,12 @@ class Review extends Model implements HoldsPersonalData, StatesRetention
         return null;
     }
 
+    public const SOURCE_GOOGLE = 'google';
+
+    public const SOURCE_EKOMI = 'ekomi';
+
     protected $fillable = [
-        'organization_id', 'company_id', 'franchise_id', 'connection_id',
+        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'source',
         'remote_name', 'location_name', 'reviewer_name', 'reviewer_photo_url',
         'rating', 'comment', 'reviewed_at', 'edited_at', 'synced_at',
         'status', 'customer_id', 'customer_match', 'job_id', 'reported_at', 'report_reason',

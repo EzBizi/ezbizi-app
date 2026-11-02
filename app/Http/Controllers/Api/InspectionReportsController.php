@@ -7,11 +7,10 @@ use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Organization;
 use App\Support\Audit\AuditLogger;
-use App\Support\Files\FileStore;
 use App\Support\Automations\EventEmitter;
-use App\Support\Inspection\LooksLikeJobNumber;
-use App\Support\Inspection\ReportPdf;
+use App\Support\Files\FileStore;
 use App\Support\Inspection\InspectionScope;
+use App\Support\Inspection\ReportPdf;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -29,6 +28,9 @@ use Illuminate\Validation\ValidationException;
  */
 class InspectionReportsController extends Controller
 {
+    /** A job number (J-1042, JOB-00042, JOB-2026-00042) rather than a client name. */
+    private const JOB_NUMBER = '/^[A-Za-z][A-Za-z0-9]*-\d+(?:-\d+)?$/';
+
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
@@ -61,7 +63,7 @@ class InspectionReportsController extends Controller
         $message = null;
 
         if ($search !== '') {
-            if (LooksLikeJobNumber::check($search)) {
+            if (preg_match(self::JOB_NUMBER, trim($search))) {
                 $jobIds = Job::withTrashed()
                     ->where('number', $search)
                     ->whereIn('franchise_id', $reachable)
@@ -86,7 +88,7 @@ class InspectionReportsController extends Controller
 
             $rows = $query->limit(50)->get();
             if ($rows->isEmpty()) {
-                $message = LooksLikeJobNumber::check($search) ? 'Job not found' : 'Client not found';
+                $message = preg_match(self::JOB_NUMBER, trim($search)) ? 'Job not found' : 'Client not found';
             }
         } else {
             $rows = $query->limit(50)->get();

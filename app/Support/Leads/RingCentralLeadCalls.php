@@ -179,6 +179,8 @@ final class RingCentralLeadCalls
                     'category' => $line !== '' ? mb_substr($line, 0, 191) : null,
                     'phone' => Lead::e164(self::customerNumber($call)),
                     'phone_digits' => Lead::digits(self::customerNumber($call)),
+                    // The carrier's caller name, where it names a person (design 159, 2026-10-29).
+                    'contact_name' => $out ? null : self::callerName($call['caller_label'] ?? null),
                     'status' => Lead::STATUS_NEW,
                     'received_at' => $times[$i],
                     'source_status' => $outcome,
@@ -433,6 +435,24 @@ final class RingCentralLeadCalls
             'occurred_at' => $at->toIso8601String(),
             'source' => $lead->source,
         ];
+    }
+
+    /**
+     * Caller ID's name when it is a person's: "SMITH JOHN" → "Smith John".
+     * Carriers also send a place ("BROOKLYN NY"), a line kind ("WIRELESS
+     * CALLER") or a number; those name nobody.
+     * ponytail: a word list, not a CNAM service; misses a business name that looks like a person.
+     */
+    public static function callerName(?string $label): ?string
+    {
+        // CNAM pads with spaces and writes "SMITH,JOHN".
+        $label = trim((string) preg_replace('/\s+/', ' ', str_replace(',', ' ', (string) $label)));
+        if ($label === '' || preg_match('/\d|^(wireless|unknown|unavailable|private|anonymous|restricted|toll free|cell phone|blocked)\b|\bcaller\b|\s[A-Z]{2}$|\s-\s/i', $label) === 1
+            || preg_match('/^[\p{L}\'.-]+(?:,?\s+[\p{L}\'.-]+){1,3}$/u', $label) !== 1) {
+            return null;
+        }
+
+        return mb_convert_case(mb_strtolower($label), MB_CASE_TITLE);
     }
 
     /** @param  array<string, mixed>  $own  our own lines' ten digits, as keys */

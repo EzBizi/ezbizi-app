@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/ai_mark.dart';
+import '../widgets/lead_source_details.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
 import '../widgets/search_picker.dart';
@@ -723,8 +724,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // conversation runs from the title to the bottom. On a phone one button
     // says which source is showing and opens a page of them.
     final body = LayoutBuilder(
-      builder: (context, constraints) =>
-          constraints.maxWidth >= 900 ? _desk(theme) : _phone(theme),
+      builder: (context, constraints) {
+        final desk = constraints.maxWidth >= 900;
+        return desk ? _desk(theme) : _phone(theme);
+      },
     );
     // (?) runs the open source's own walkthrough, by the server's name for
     // its tab (Jose, 2026-10-14: walkthroughs for "all the sub tabs"). The
@@ -1015,6 +1018,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      // Design 162 (option 1 + phone 4): over the list, never the title row.
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         child: LayoutBuilder(
@@ -1072,14 +1076,28 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// Approved triage layout (18012c74): the three narrow together. Mark all
   /// read follows them in the same run, beside what it reads (design 28:
   /// pinned to the far edge it read as "floating in the air").
-  Widget _filterRow(ThemeData theme, {required bool withStatus}) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-    child: Wrap(
-      key: const ValueKey('tour-leads-filters'),
-      spacing: 6,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
+  Widget _filterRow(ThemeData theme, {required bool withStatus}) {
+    final chips = _quickFilters(theme, withStatus: withStatus);
+    // Design 162: one row that scrolls sideways, desktop and phone.
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: SingleChildScrollView(
+        key: const ValueKey('tour-leads-filters'),
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(
+          children: [
+            for (final (i, c) in chips.indexed) ...[
+              if (i > 0) const SizedBox(width: 6),
+              c,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _quickFilters(ThemeData theme, {required bool withStatus}) => [
         FilterChip(
           key: const ValueKey('filter-unread'),
           label: const Text('Unread'),
@@ -1138,9 +1156,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
           onPressed: _leads.isEmpty ? null : _readAll,
           icon: const Icon(Icons.done_all, size: 20),
         ),
-      ],
-    ),
-  );
+  ];
 
   /// Under All: which sources it holds, one toggle each, by the same icons
   /// the sources wear (Jose, 2026-09-29: "on ALL we should have filters for
@@ -1479,6 +1495,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
             onNote: (text) => _mark(lead, note: text, clearNote: text == null),
             session: widget.session,
             onBooked: _booked,
+            onHidden: () async {
+              close();
+              await _load();
+            },
           ),
         ),
       ],
@@ -1656,6 +1676,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           _mark(selected, note: text, clearNote: text == null),
                       session: widget.session,
                       onBooked: _booked,
+                      onHidden: _load,
                     ),
             ),
           ],
@@ -1851,6 +1872,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
     final preview = lead['last_contact_preview'] as String?;
+    // Design 159: the avatar, the source chip, "job type · city".
+    final src = LeadSourceFields.from(lead);
     /*
      * THE DOT IS UNREAD. Jose's ruling, 2026-09-15.
      *
@@ -1890,12 +1913,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
         // unmistakable at a glance where a 3px rule is not. No leading-edge
         // accent bar anywhere, on Jose's ruling of 2026-09-08.
         color: selected ? theme.colorScheme.primaryContainer : null,
-        padding: const EdgeInsets.fromLTRB(14, 9, 8, 7),
+        // Design 161: tighter, with the picture centred on the row.
+        padding: const EdgeInsets.fromLTRB(12, 5, 6, 5),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: EdgeInsets.zero,
               child: SizedBox(
                 width: 8,
                 height: 8,
@@ -1911,6 +1935,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
               ),
             ),
             const SizedBox(width: 10),
+            LeadAvatar(
+              key: ValueKey('lead-avatar-$id'),
+              name: leadTitle(lead),
+              url: src.avatarUrl,
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1918,7 +1948,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: Row(
+                        child: LayoutBuilder(
+                          builder: (context, box) => Row(
                           children: [
                             Flexible(
                               child: Text(
@@ -1943,12 +1974,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
                             // warning + Google row overflowed by 118px (Jose,
                             // 2026-09-28).
                             const SizedBox(width: 8),
-                            Flexible(
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                children: [
+                            // Design 161: one line. The chips never wrap;
+                            // past the edge they are clipped and the name
+                            // ellipsizes first.
+                            // The chips take the room they need (up to 70%
+                            // of the row) and the name gets the rest: a
+                            // fixed 3:2 split clipped chips beside short
+                            // names (Jose, 2026-10-30).
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: box.maxWidth * 0.7,
+                              ),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const NeverScrollableScrollPhysics(),
+                                child: _spaced([
+                                // Beside the name, in its own colour (design 159).
+                                if (src.sourceKey != null)
+                                  LeadSourceChip(
+                                    src.sourceKey,
+                                    key: ValueKey('source-badge-$id'),
+                                  ),
                                 // A specimen, not a customer. First on the row because
                                 // it changes how everything after it should be read.
                                 if (lead['is_test'] == true) ...[
@@ -1991,7 +2037,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                         const SizedBox(width: 3),
                                         // Flexible, so a long name ellipsizes in a
                                         // narrow list rather than running past it.
-                                        Flexible(
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 90),
                                           child: Text(
                                             '${(lead['viewers'] as List).first}'
                                             '${(lead['viewers'] as List).length > 1 ? ' +${(lead['viewers'] as List).length - 1}' : ''}',
@@ -2066,10 +2113,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                     ),
                                   ),
                                 ],
-                                ],
+                                ]),
                               ),
                             ),
                           ],
+                        ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -2085,17 +2133,39 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       const SizedBox(width: 6),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  Row(
+                  const SizedBox(height: 1),
+                  LayoutBuilder(
+                    builder: (context, box) => Row(
                     children: [
+                      // Design 161: job and city lead the one muted line.
+                      // Capped, not Flexible: a loose Flexible beside the
+                      // Expanded preview left its unused half empty, so the
+                      // star drifted row to row (Jose, 2026-10-30).
+                      if (src.jobLine != null)
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: box.maxWidth * 0.4,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Text(
+                              src.jobLine!,
+                              key: ValueKey('lead-job-line-$id'),
+                              style: muted,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
                       // No company tag here: it is on the lead's own header,
                       // and Jose wants it in one place only (2026-09-30, "not
                       // on both").
                       // The source first on the line, in its own colour.
-                      _SourceBadge(
-                        leadSourceWord(lead),
-                        key: ValueKey('source-badge-$id'),
-                      ),
+                      if (src.sourceKey == null)
+                        _SourceBadge(
+                          leadSourceWord(lead),
+                          key: ValueKey('source-badge-$id'),
+                        ),
                       // The channel badge is drawn only when it says
                       // something the source badge does not. "Call · Google"
                       // is two facts; a chat row read "Chat · Chat", one fact
@@ -2132,6 +2202,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
                                           color: theme.colorScheme.onSurface,
                                         ),
                                       ),
+                                    if (src.adQuestion)
+                                      const TextSpan(text: 'Ad question: '),
                                     TextSpan(text: preview),
                                   ],
                                 ),
@@ -2178,6 +2250,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                       ),
                     ],
                   ),
+                  ),
                 ],
               ),
             ),
@@ -2188,6 +2261,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
     );
   }
 }
+
+/// A row of chips, 6 apart (design 161: one line, never wrapped).
+Widget _spaced(List<Widget> chips) => Row(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    for (final (i, c) in chips.indexed) ...[
+      if (i > 0) const SizedBox(width: 6),
+      c,
+    ],
+  ],
+);
 
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 /// "POSSIBLE_SPAM" → "Possible spam".
