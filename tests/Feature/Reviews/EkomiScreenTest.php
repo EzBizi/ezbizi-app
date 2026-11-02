@@ -93,6 +93,18 @@ class EkomiScreenTest extends TestCase
         $this->assertSame([['Bo', 'interrupted', 'Bounced']], array_map(fn ($r) => [$r['name'], $r['status'], $r['bounce_reason']], $rows));
     }
 
+    public function test_the_review_list_narrows_to_one_source(): void
+    {
+        $this->inTenant($this->t['org'], function () {
+            foreach (['google' => 'accounts/1/locations/1/reviews/g', 'ekomi' => 'ekomi/1'] as $source => $name) {
+                \App\Models\Review::create(['organization_id' => $this->t['org']->id, 'source' => $source, 'remote_name' => $name,
+                    'location_name' => $source, 'reviewer_name' => $source, 'rating' => 5, 'reviewed_at' => now()]);
+            }
+        });
+        $rows = $this->signedInAs($this->t['admin'])->getJson('/api/v1/reviews?source=ekomi')->assertOk()->json('data');
+        $this->assertSame(['ekomi'], array_column($rows, 'reviewer_name'));
+    }
+
     public function test_asking_a_jobs_customer_takes_the_publish_grant_and_an_email(): void
     {
         $job = $this->job('ada@x.com');
